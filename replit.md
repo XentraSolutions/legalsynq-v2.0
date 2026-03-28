@@ -56,11 +56,25 @@ apps/web/
         appointment-list-table.tsx    ← paginated appointment table with status badges
         appointment-timeline.tsx      ← chronological status-history timeline
         appointment-detail-panel.tsx  ← full appointment detail: slot, client, orgs, notes, timeline
+      fund/
+        funding-status-badge.tsx      ← colour-coded status pill (Draft/Submitted/InReview/Approved/Rejected)
+        applicant-summary-card.tsx    ← inline applicant fields card
+        funding-status-timeline.tsx   ← derived status history timeline (Phase 1: from updatedAtUtc)
+        funding-application-list-table.tsx ← sortable table with status filter chips
+        funding-application-detail-panel.tsx ← full detail layout with all funding fields
+        submit-application-panel.tsx  ← SYNQFUND_REFERRER: Draft→Submitted transition form
+        review-decision-panel.tsx     ← SYNQFUND_FUNDER: BeginReview / Approve / Deny actions
+        create-funding-application-form.tsx ← full create form (client); saves as Draft
     lib/
       server-api-client.ts       ← server-side helper: reads cookie → calls gateway as Bearer
       careconnect-api.ts         ← typed wrappers: careConnectServerApi (server) + careConnectApi (client)
+      fund-api.ts                ← typed wrappers: fundServerApi (server) + fundApi (client)
+    app/api/
+      careconnect/[...path]/route.ts ← BFF catch-all proxy for CareConnect client calls
+      fund/[...path]/route.ts        ← BFF catch-all proxy for Fund client calls
     types/
       careconnect.ts             ← ProviderSummary/Detail, ReferralSummary/Detail, CreateReferralRequest, PagedResponse
+      fund.ts                    ← FundingApplicationSummary/Detail, Create/Submit/Approve/DenyRequest, ApplicationStatus
     app/
       layout.tsx                ← root layout: TenantBrandingProvider → SessionProvider
       page.tsx                  ← redirect → /dashboard

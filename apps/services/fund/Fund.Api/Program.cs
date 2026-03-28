@@ -30,15 +30,15 @@ builder.Services
         options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
+            ValidateIssuer           = true,
+            ValidateAudience         = true,
+            ValidateLifetime         = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtSection["Issuer"],
-            ValidAudience = jwtSection["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
-            RoleClaimType = ClaimTypes.Role,
-            ClockSkew = TimeSpan.Zero
+            ValidIssuer              = jwtSection["Issuer"],
+            ValidAudience            = jwtSection["Audience"],
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            RoleClaimType            = ClaimTypes.Role,
+            ClockSkew                = TimeSpan.Zero
         };
     });
 
@@ -52,6 +52,13 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
         policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
+
+    // SynqFund product-role gates
+    options.AddPolicy(Policies.CanReferFund, policy =>
+        policy.RequireRole(ProductRoleCodes.SynqFundReferrer));
+
+    options.AddPolicy(Policies.CanFundApplications, policy =>
+        policy.RequireRole(ProductRoleCodes.SynqFundFunder));
 });
 
 builder.Services.AddInfrastructure(builder.Configuration);

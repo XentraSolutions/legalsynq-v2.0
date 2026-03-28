@@ -1,0 +1,68 @@
+import { serverApi } from '@/lib/server-api-client';
+import { apiClient } from '@/lib/api-client';
+import type {
+  FundingApplicationSummary,
+  FundingApplicationDetail,
+  CreateFundingApplicationRequest,
+  SubmitFundingApplicationRequest,
+  ApproveFundingApplicationRequest,
+  DenyFundingApplicationRequest,
+  FundingApplicationSearchParams,
+} from '@/types/fund';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function toQs(params: Record<string, unknown>): string {
+  const pairs = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+  return pairs.length ? `?${pairs.join('&')}` : '';
+}
+
+// ── Server-side API ───────────────────────────────────────────────────────────
+// Use in Server Components and Server Actions.
+// Reads the platform_session cookie → calls gateway directly.
+// DO NOT import this in Client Components.
+
+export const fundServerApi = {
+  applications: {
+    search: (params: FundingApplicationSearchParams = {}) =>
+      serverApi.get<FundingApplicationSummary[]>(
+        `/fund/api/applications${toQs(params as Record<string, unknown>)}`,
+      ),
+
+    getById: (id: string) =>
+      serverApi.get<FundingApplicationDetail>(`/fund/api/applications/${id}`),
+  },
+};
+
+// ── Client-side API ───────────────────────────────────────────────────────────
+// Use in Client Components.
+// Calls /api/fund/* → BFF proxy → gateway.
+
+export const fundApi = {
+  applications: {
+    create: (body: CreateFundingApplicationRequest) =>
+      apiClient.post<FundingApplicationDetail>('/fund/api/applications', body),
+
+    search: (params: FundingApplicationSearchParams = {}) =>
+      apiClient.get<FundingApplicationSummary[]>(
+        `/fund/api/applications${toQs(params as Record<string, unknown>)}`,
+      ),
+
+    getById: (id: string) =>
+      apiClient.get<FundingApplicationDetail>(`/fund/api/applications/${id}`),
+
+    submit: (id: string, body: SubmitFundingApplicationRequest = {}) =>
+      apiClient.post<FundingApplicationDetail>(`/fund/api/applications/${id}/submit`, body),
+
+    beginReview: (id: string) =>
+      apiClient.post<FundingApplicationDetail>(`/fund/api/applications/${id}/begin-review`, {}),
+
+    approve: (id: string, body: ApproveFundingApplicationRequest) =>
+      apiClient.post<FundingApplicationDetail>(`/fund/api/applications/${id}/approve`, body),
+
+    deny: (id: string, body: DenyFundingApplicationRequest) =>
+      apiClient.post<FundingApplicationDetail>(`/fund/api/applications/${id}/deny`, body),
+  },
+};
