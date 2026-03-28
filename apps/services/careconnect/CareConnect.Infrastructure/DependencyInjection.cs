@@ -22,10 +22,16 @@ public static class DependencyInjection
         services.AddScoped<IProviderRepository, ProviderRepository>();
         services.AddScoped<IReferralRepository, ReferralRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
+        services.AddScoped<IFacilityRepository, FacilityRepository>();
+        services.AddScoped<IServiceOfferingRepository, ServiceOfferingRepository>();
+        services.AddScoped<IAvailabilityTemplateRepository, AvailabilityTemplateRepository>();
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();
         services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<IFacilityService, FacilityService>();
+        services.AddScoped<IServiceOfferingService, ServiceOfferingService>();
+        services.AddScoped<IAvailabilityTemplateService, AvailabilityTemplateService>();
 
         return services;
     }

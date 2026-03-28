@@ -73,5 +73,8 @@ app.MapGet("/info",   () => Results.Ok(new { service = "CareConnect", version = 
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
 app.MapCategoryEndpoints();
+app.MapFacilityEndpoints();
+app.MapServiceOfferingEndpoints();
+app.MapAvailabilityTemplateEndpoints();
 
 app.Run();

@@ -13,6 +13,11 @@ public class CareConnectDbContext : DbContext
     public DbSet<ProviderCategory> ProviderCategories => Set<ProviderCategory>();
     public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<ReferralStatusHistory> ReferralStatusHistories => Set<ReferralStatusHistory>();
+    public DbSet<Facility> Facilities => Set<Facility>();
+    public DbSet<ProviderFacility> ProviderFacilities => Set<ProviderFacility>();
+    public DbSet<ServiceOffering> ServiceOfferings => Set<ServiceOffering>();
+    public DbSet<ProviderServiceOffering> ProviderServiceOfferings => Set<ProviderServiceOffering>();
+    public DbSet<ProviderAvailabilityTemplate> ProviderAvailabilityTemplates => Set<ProviderAvailabilityTemplate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
