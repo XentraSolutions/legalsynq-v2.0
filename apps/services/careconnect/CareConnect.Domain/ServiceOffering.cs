@@ -1,6 +1,8 @@
+using BuildingBlocks.Domain;
+
 namespace CareConnect.Domain;
 
-public class ServiceOffering
+public class ServiceOffering : AuditableEntity
 {
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
@@ -9,10 +11,6 @@ public class ServiceOffering
     public string? Description { get; private set; }
     public int DurationMinutes { get; private set; }
     public bool IsActive { get; private set; }
-    public DateTime CreatedAtUtc { get; private set; }
-    public DateTime UpdatedAtUtc { get; private set; }
-    public Guid? CreatedByUserId { get; private set; }
-    public Guid? UpdatedByUserId { get; private set; }
 
     private ServiceOffering() { }
 
