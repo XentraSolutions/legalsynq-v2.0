@@ -60,7 +60,10 @@ export function buildNavGroups(session: PlatformSession): NavGroup[] {
           ? [{ href: '/lien/marketplace', label: 'Marketplace' }]
           : []),
         ...(roles.includes(pr.SynqLienSeller)
-          ? [{ href: '/lien/my-liens', label: 'My Liens' }]
+          ? [
+              { href: '/lien/my-liens',     label: 'My Liens' },
+              { href: '/lien/my-liens/new', label: 'New Lien' },
+            ]
           : []),
         ...(roles.includes(pr.SynqLienBuyer) || roles.includes(pr.SynqLienHolder)
           ? [{ href: '/lien/portfolio', label: 'Portfolio' }]

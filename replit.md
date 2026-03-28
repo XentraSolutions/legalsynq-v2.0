@@ -65,16 +65,31 @@ apps/web/
         submit-application-panel.tsx  ← SYNQFUND_REFERRER: Draft→Submitted transition form
         review-decision-panel.tsx     ← SYNQFUND_FUNDER: BeginReview / Approve / Deny actions
         create-funding-application-form.tsx ← full create form (client); saves as Draft
+      lien/
+        lien-status-badge.tsx         ← colour-coded pill (Draft/Offered/Sold/Withdrawn)
+        lien-list-table.tsx           ← seller's lien inventory table (reusable basePath prop)
+        lien-status-timeline.tsx      ← Phase 1 derived status history timeline
+        lien-detail-panel.tsx         ← full detail: amounts, orgs, subject party, offers, timeline
+        create-lien-form.tsx          ← SYNQLIEN_SELLER create form; confidentiality toggle + subject party
+        offer-lien-panel.tsx          ← SYNQLIEN_SELLER: Draft→Offered (set ask price) + Withdraw
+        marketplace-filters.tsx       ← client component; updates URL params (type/jurisdiction/min/max)
+        marketplace-card.tsx          ← grid card for marketplace browse; hides confidential subject
+        lien-offer-panel.tsx          ← SYNQLIEN_BUYER: submit negotiated offer
+        purchase-lien-panel.tsx       ← SYNQLIEN_BUYER: two-step direct purchase at asking price
+        portfolio-table.tsx           ← SYNQLIEN_BUYER/HOLDER portfolio with acquisition cost
     lib/
       server-api-client.ts       ← server-side helper: reads cookie → calls gateway as Bearer
       careconnect-api.ts         ← typed wrappers: careConnectServerApi (server) + careConnectApi (client)
       fund-api.ts                ← typed wrappers: fundServerApi (server) + fundApi (client)
+      lien-api.ts                ← typed wrappers: lienServerApi (server) + lienApi (client); my-liens/marketplace/portfolio/offer/purchase/submit-offer
     app/api/
       careconnect/[...path]/route.ts ← BFF catch-all proxy for CareConnect client calls
       fund/[...path]/route.ts        ← BFF catch-all proxy for Fund client calls
+      lien/[...path]/route.ts        ← BFF catch-all proxy for SynqLien client calls
     types/
       careconnect.ts             ← ProviderSummary/Detail, ReferralSummary/Detail, CreateReferralRequest, PagedResponse
       fund.ts                    ← FundingApplicationSummary/Detail, Create/Submit/Approve/DenyRequest, ApplicationStatus
+      lien.ts                    ← LienSummary/Detail, CreateLienRequest, OfferLienRequest, SubmitLienOfferRequest, PurchaseLienRequest, LienStatus, LIEN_TYPE_LABELS
     app/
       layout.tsx                ← root layout: TenantBrandingProvider → SessionProvider
       page.tsx                  ← redirect → /dashboard
