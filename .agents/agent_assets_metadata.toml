@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "fPGct6SogEpvz4yKcwn7v"
+uri = "file://exports/identity_core_schema_design.md"
+type = "text"
+title = "Identity / Core Schema Design — Multi-Org Product Role Platform"
