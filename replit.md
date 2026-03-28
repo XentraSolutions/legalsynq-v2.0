@@ -33,11 +33,16 @@ apps/
         Services/UserService.cs
         Services/AuthService.cs
       Identity.Domain/                    → Tenant, User, Role, UserRole, Product, TenantProduct
+                                            Organization, OrganizationDomain, OrganizationProduct
+                                            ProductRole, Capability, RoleCapability
+                                            UserOrganizationMembership, UserRoleAssignment
       Identity.Infrastructure/
-        Data/IdentityDbContext.cs
-        Data/Configurations/              ← IEntityTypeConfiguration<T> per entity
+        Data/IdentityDbContext.cs         ← 14 DbSets (existing + 8 new)
+        Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (14 configs)
         Persistence/Migrations/           ← InitialIdentitySchema
-        Services/JwtTokenService.cs
+                                            AddMultiOrgProductRoleModel (8 tables + seed)
+                                            SeedAdminOrgMembership
+        Services/JwtTokenService.cs       ← emits org_id, org_type, product_roles JWT claims
         DependencyInjection.cs
     fund/
       Fund.Api/                           → ASP.NET Core Web API (port 5002)

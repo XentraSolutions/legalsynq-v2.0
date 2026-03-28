@@ -10,4 +10,5 @@ public interface IUserRepository
     Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string email, CancellationToken ct = default);
     Task<List<User>> GetAllWithRolesAsync(CancellationToken ct = default);
     Task AddAsync(User user, IReadOnlyList<Guid> roleIds, CancellationToken ct = default);
+    Task<UserOrganizationMembership?> GetPrimaryOrgMembershipAsync(Guid userId, CancellationToken ct = default);
 }

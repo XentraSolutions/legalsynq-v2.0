@@ -17,7 +17,9 @@ public class JwtTokenService : IJwtTokenService
     public (string Token, DateTime ExpiresAtUtc) GenerateToken(
         User user,
         Tenant tenant,
-        IEnumerable<string> roles)
+        IEnumerable<string> roles,
+        Organization? organization = null,
+        IEnumerable<string>? productRoles = null)
     {
         var section = _configuration.GetSection("Jwt");
 
@@ -41,6 +43,15 @@ public class JwtTokenService : IJwtTokenService
 
         foreach (var role in roles)
             claims.Add(new Claim(ClaimTypes.Role, role));
+
+        if (organization is not null)
+        {
+            claims.Add(new Claim("org_id", organization.Id.ToString()));
+            claims.Add(new Claim("org_type", organization.OrgType));
+        }
+
+        foreach (var pr in productRoles ?? [])
+            claims.Add(new Claim("product_roles", pr));
 
         var expiresAtUtc = DateTime.UtcNow.AddMinutes(expiryMinutes);
 

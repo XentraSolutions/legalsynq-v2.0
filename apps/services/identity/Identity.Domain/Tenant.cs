@@ -12,6 +12,7 @@ public class Tenant
     public ICollection<User> Users { get; private set; } = [];
     public ICollection<Role> Roles { get; private set; } = [];
     public ICollection<TenantProduct> TenantProducts { get; private set; } = [];
+    public ICollection<Organization> Organizations { get; private set; } = [];
 
     private Tenant() { }
 

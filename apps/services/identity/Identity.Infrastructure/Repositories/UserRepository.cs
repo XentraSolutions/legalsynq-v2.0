@@ -43,4 +43,15 @@ public class UserRepository : IUserRepository
 
         await _db.SaveChangesAsync(ct);
     }
+
+    public Task<UserOrganizationMembership?> GetPrimaryOrgMembershipAsync(
+        Guid userId, CancellationToken ct = default) =>
+        _db.UserOrganizationMemberships
+            .Include(m => m.Organization)
+                .ThenInclude(o => o.OrganizationProducts)
+                    .ThenInclude(op => op.Product)
+                        .ThenInclude(p => p.ProductRoles)
+            .Where(m => m.UserId == userId && m.IsActive)
+            .OrderBy(m => m.JoinedAtUtc)
+            .FirstOrDefaultAsync(ct);
 }

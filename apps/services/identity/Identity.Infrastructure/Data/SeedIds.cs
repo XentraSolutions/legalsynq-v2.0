@@ -4,18 +4,69 @@ internal static class SeedIds
 {
     public static readonly DateTime SeededAt = new(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    // Products
+    // ── Products ──────────────────────────────────────────────────────────────
     public static readonly Guid ProductSynqFund        = new("10000000-0000-0000-0000-000000000001");
     public static readonly Guid ProductSynqLiens       = new("10000000-0000-0000-0000-000000000002");
     public static readonly Guid ProductSynqCareConnect = new("10000000-0000-0000-0000-000000000003");
     public static readonly Guid ProductSynqPay         = new("10000000-0000-0000-0000-000000000004");
     public static readonly Guid ProductSynqAI          = new("10000000-0000-0000-0000-000000000005");
 
-    // Tenant
+    // ── Tenant ────────────────────────────────────────────────────────────────
     public static readonly Guid TenantLegalSynq = new("20000000-0000-0000-0000-000000000001");
 
-    // Roles
+    // ── System Roles ──────────────────────────────────────────────────────────
     public static readonly Guid RolePlatformAdmin = new("30000000-0000-0000-0000-000000000001");
     public static readonly Guid RoleTenantAdmin   = new("30000000-0000-0000-0000-000000000002");
     public static readonly Guid RoleStandardUser  = new("30000000-0000-0000-0000-000000000003");
+
+    // ── Organizations ─────────────────────────────────────────────────────────
+    public static readonly Guid OrgLegalSynq = new("40000000-0000-0000-0000-000000000001");
+
+    // ── Organization Domains ──────────────────────────────────────────────────
+    public static readonly Guid OrgDomainLegalSynq = new("40000000-0000-0000-0000-000000000002");
+
+    // ── Product Roles ─────────────────────────────────────────────────────────
+    public static readonly Guid PrCareConnectReferrer     = new("50000000-0000-0000-0000-000000000001");
+    public static readonly Guid PrCareConnectReceiver     = new("50000000-0000-0000-0000-000000000002");
+    public static readonly Guid PrSynqLienSeller          = new("50000000-0000-0000-0000-000000000003");
+    public static readonly Guid PrSynqLienBuyer           = new("50000000-0000-0000-0000-000000000004");
+    public static readonly Guid PrSynqLienHolder          = new("50000000-0000-0000-0000-000000000005");
+    public static readonly Guid PrSynqFundReferrer        = new("50000000-0000-0000-0000-000000000006");
+    public static readonly Guid PrSynqFundFunder          = new("50000000-0000-0000-0000-000000000007");
+    public static readonly Guid PrSynqFundApplicantPortal = new("50000000-0000-0000-0000-000000000008");
+
+    // ── Capabilities — CareConnect ────────────────────────────────────────────
+    public static readonly Guid CapReferralCreate        = new("60000000-0000-0000-0000-000000000001");
+    public static readonly Guid CapReferralReadOwn       = new("60000000-0000-0000-0000-000000000002");
+    public static readonly Guid CapReferralCancel        = new("60000000-0000-0000-0000-000000000003");
+    public static readonly Guid CapReferralReadAddressed = new("60000000-0000-0000-0000-000000000004");
+    public static readonly Guid CapReferralAccept        = new("60000000-0000-0000-0000-000000000005");
+    public static readonly Guid CapReferralDecline       = new("60000000-0000-0000-0000-000000000006");
+    public static readonly Guid CapProviderSearch        = new("60000000-0000-0000-0000-000000000007");
+    public static readonly Guid CapProviderMap           = new("60000000-0000-0000-0000-000000000008");
+    public static readonly Guid CapAppointmentCreate     = new("60000000-0000-0000-0000-000000000009");
+    public static readonly Guid CapAppointmentUpdate     = new("60000000-0000-0000-0000-000000000010");
+    public static readonly Guid CapAppointmentReadOwn    = new("60000000-0000-0000-0000-000000000011");
+
+    // ── Capabilities — SynqLien ───────────────────────────────────────────────
+    public static readonly Guid CapLienCreate   = new("60000000-0000-0000-0000-000000000012");
+    public static readonly Guid CapLienOffer    = new("60000000-0000-0000-0000-000000000013");
+    public static readonly Guid CapLienReadOwn  = new("60000000-0000-0000-0000-000000000014");
+    public static readonly Guid CapLienBrowse   = new("60000000-0000-0000-0000-000000000015");
+    public static readonly Guid CapLienPurchase = new("60000000-0000-0000-0000-000000000016");
+    public static readonly Guid CapLienReadHeld = new("60000000-0000-0000-0000-000000000017");
+    public static readonly Guid CapLienService  = new("60000000-0000-0000-0000-000000000018");
+    public static readonly Guid CapLienSettle   = new("60000000-0000-0000-0000-000000000019");
+
+    // ── Capabilities — SynqFund ───────────────────────────────────────────────
+    public static readonly Guid CapApplicationCreate        = new("60000000-0000-0000-0000-000000000020");
+    public static readonly Guid CapApplicationReadOwn       = new("60000000-0000-0000-0000-000000000021");
+    public static readonly Guid CapApplicationCancel        = new("60000000-0000-0000-0000-000000000022");
+    public static readonly Guid CapApplicationReadAddressed = new("60000000-0000-0000-0000-000000000023");
+    public static readonly Guid CapApplicationEvaluate      = new("60000000-0000-0000-0000-000000000024");
+    public static readonly Guid CapApplicationApprove       = new("60000000-0000-0000-0000-000000000025");
+    public static readonly Guid CapApplicationDecline       = new("60000000-0000-0000-0000-000000000026");
+    public static readonly Guid CapPartyCreate              = new("60000000-0000-0000-0000-000000000027");
+    public static readonly Guid CapPartyReadOwn             = new("60000000-0000-0000-0000-000000000028");
+    public static readonly Guid CapApplicationStatusView    = new("60000000-0000-0000-0000-000000000029");
 }

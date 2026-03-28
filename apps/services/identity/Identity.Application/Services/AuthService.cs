@@ -1,5 +1,6 @@
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
+using Identity.Domain;
 
 namespace Identity.Application.Services;
 
@@ -42,7 +43,25 @@ public class AuthService : IAuthService
 
         var roleNames = userWithRoles.UserRoles.Select(ur => ur.Role.Name).ToList();
 
-        var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(userWithRoles, tenant, roleNames);
+        // Load org membership and compute product roles
+        var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);
+        var org = orgMembership?.Organization;
+
+        List<string> productRoles = [];
+        if (org is not null)
+        {
+            productRoles = org.OrganizationProducts
+                .Where(op => op.IsEnabled)
+                .SelectMany(op => op.Product.ProductRoles)
+                .Where(pr => pr.IsActive && (pr.EligibleOrgType is null || pr.EligibleOrgType == org.OrgType))
+                .Select(pr => pr.Code)
+                .Distinct()
+                .OrderBy(c => c)
+                .ToList();
+        }
+
+        var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
+            userWithRoles, tenant, roleNames, org, productRoles);
 
         var userResponse = new UserResponse(
             userWithRoles.Id,
@@ -51,7 +70,10 @@ public class AuthService : IAuthService
             userWithRoles.FirstName,
             userWithRoles.LastName,
             userWithRoles.IsActive,
-            roleNames);
+            roleNames,
+            org?.Id,
+            org?.OrgType,
+            productRoles);
 
         return new LoginResponse(token, expiresAtUtc, userResponse);
     }

@@ -12,6 +12,7 @@ public class Role
 
     public Tenant Tenant { get; private set; } = null!;
     public ICollection<UserRole> UserRoles { get; private set; } = [];
+    public ICollection<UserRoleAssignment> RoleAssignments { get; private set; } = [];
 
     private Role() { }
 

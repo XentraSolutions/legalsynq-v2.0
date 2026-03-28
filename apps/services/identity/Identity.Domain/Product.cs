@@ -10,6 +10,9 @@ public class Product
     public DateTime CreatedAtUtc { get; private set; }
 
     public ICollection<TenantProduct> TenantProducts { get; private set; } = [];
+    public ICollection<OrganizationProduct> OrganizationProducts { get; private set; } = [];
+    public ICollection<ProductRole> ProductRoles { get; private set; } = [];
+    public ICollection<Capability> Capabilities { get; private set; } = [];
 
     private Product() { }
 
