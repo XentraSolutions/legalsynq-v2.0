@@ -1,0 +1,21 @@
+namespace CareConnect.Application.DTOs;
+
+public class ReferralResponse
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ProviderId { get; set; }
+    public string ProviderName { get; set; } = string.Empty;
+    public string ClientFirstName { get; set; } = string.Empty;
+    public string ClientLastName { get; set; } = string.Empty;
+    public DateTime? ClientDob { get; set; }
+    public string ClientPhone { get; set; } = string.Empty;
+    public string ClientEmail { get; set; } = string.Empty;
+    public string? CaseNumber { get; set; }
+    public string RequestedService { get; set; } = string.Empty;
+    public string Urgency { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? Notes { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime UpdatedAtUtc { get; set; }
+}

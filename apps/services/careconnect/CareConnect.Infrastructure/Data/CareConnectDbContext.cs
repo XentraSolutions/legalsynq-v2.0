@@ -1,0 +1,43 @@
+using BuildingBlocks.Domain;
+using CareConnect.Domain;
+using Microsoft.EntityFrameworkCore;
+
+namespace CareConnect.Infrastructure.Data;
+
+public class CareConnectDbContext : DbContext
+{
+    public CareConnectDbContext(DbContextOptions<CareConnectDbContext> options) : base(options) { }
+
+    public DbSet<Provider> Providers => Set<Provider>();
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<ProviderCategory> ProviderCategories => Set<ProviderCategory>();
+    public DbSet<Referral> Referrals => Set<Referral>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(CareConnectDbContext).Assembly);
+        base.OnModelCreating(modelBuilder);
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+
+        foreach (var entry in ChangeTracker.Entries<AuditableEntity>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                if (entry.Entity.CreatedAtUtc == default)
+                    entry.Property(nameof(AuditableEntity.CreatedAtUtc)).CurrentValue = now;
+
+                entry.Property(nameof(AuditableEntity.UpdatedAtUtc)).CurrentValue = now;
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                entry.Property(nameof(AuditableEntity.UpdatedAtUtc)).CurrentValue = now;
+            }
+        }
+
+        return base.SaveChangesAsync(cancellationToken);
+    }
+}
