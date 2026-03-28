@@ -21,6 +21,32 @@ public class AppointmentRepository : IAppointmentRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task SaveStatusUpdateAsync(Appointment appointment, AppointmentStatusHistory? history, CancellationToken ct = default)
+    {
+        _db.Appointments.Update(appointment);
+        if (history is not null)
+            await _db.AppointmentStatusHistories.AddAsync(history, ct);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task SaveCancellationAsync(Appointment appointment, AppointmentSlot? slot, AppointmentStatusHistory history, CancellationToken ct = default)
+    {
+        _db.Appointments.Update(appointment);
+        if (slot is not null)
+            _db.AppointmentSlots.Update(slot);
+        await _db.AppointmentStatusHistories.AddAsync(history, ct);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task SaveRescheduleAsync(Appointment appointment, AppointmentSlot? oldSlot, AppointmentSlot newSlot, CancellationToken ct = default)
+    {
+        _db.Appointments.Update(appointment);
+        if (oldSlot is not null)
+            _db.AppointmentSlots.Update(oldSlot);
+        _db.AppointmentSlots.Update(newSlot);
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task<Appointment?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         return await _db.Appointments

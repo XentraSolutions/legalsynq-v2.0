@@ -70,4 +70,18 @@ public class AppointmentSlot : AuditableEntity
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }
+
+    public void Release(Guid? updatedByUserId)
+    {
+        if (ReservedCount <= 0)
+            return;
+
+        ReservedCount--;
+
+        if (Status == SlotStatus.Closed && ReservedCount < Capacity)
+            Status = SlotStatus.Open;
+
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
 }

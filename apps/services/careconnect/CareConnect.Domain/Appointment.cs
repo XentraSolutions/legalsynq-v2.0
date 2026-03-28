@@ -24,6 +24,34 @@ public class Appointment : AuditableEntity
 
     private Appointment() { }
 
+    public void UpdateStatus(string newStatus, Guid? updatedByUserId)
+    {
+        Status = newStatus;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void UpdateNotes(string? notes, Guid? updatedByUserId)
+    {
+        Notes = notes?.Trim();
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void Reschedule(AppointmentSlot newSlot, string? notes, Guid? updatedByUserId)
+    {
+        AppointmentSlotId = newSlot.Id;
+        ProviderId = newSlot.ProviderId;
+        FacilityId = newSlot.FacilityId;
+        ServiceOfferingId = newSlot.ServiceOfferingId;
+        ScheduledStartAtUtc = newSlot.StartAtUtc;
+        ScheduledEndAtUtc = newSlot.EndAtUtc;
+        if (notes is not null)
+            Notes = notes.Trim();
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public static Appointment Create(
         Guid tenantId,
         Guid referralId,

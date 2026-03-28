@@ -20,6 +20,7 @@ public class CareConnectDbContext : DbContext
     public DbSet<ProviderAvailabilityTemplate> ProviderAvailabilityTemplates => Set<ProviderAvailabilityTemplate>();
     public DbSet<AppointmentSlot> AppointmentSlots => Set<AppointmentSlot>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<AppointmentStatusHistory> AppointmentStatusHistories => Set<AppointmentStatusHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

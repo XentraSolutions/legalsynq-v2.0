@@ -27,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<IAvailabilityTemplateRepository, AvailabilityTemplateRepository>();
         services.AddScoped<IAppointmentSlotRepository, AppointmentSlotRepository>();
         services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+        services.AddScoped<IAppointmentStatusHistoryRepository, AppointmentStatusHistoryRepository>();
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();
