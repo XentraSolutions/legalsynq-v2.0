@@ -89,7 +89,6 @@ public class AppointmentService : IAppointmentService
                 });
 
         slot.Reserve(userId);
-        await _slots.UpdateAsync(slot, ct);
 
         var appointment = Appointment.Create(
             tenantId,
@@ -103,7 +102,7 @@ public class AppointmentService : IAppointmentService
             request.Notes,
             userId);
 
-        await _appointments.AddAsync(appointment, ct);
+        await _appointments.SaveBookingAsync(slot, appointment, ct);
 
         var loaded = await _appointments.GetByIdAsync(tenantId, appointment.Id, ct);
         return ToAppointmentResponse(loaded!);

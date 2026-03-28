@@ -4,7 +4,6 @@ namespace CareConnect.Application.Repositories;
 
 public interface IAppointmentSlotRepository
 {
-    Task<List<AppointmentSlot>> GetActiveTemplatesByProviderAsync(Guid tenantId, Guid providerId, CancellationToken ct = default);
     Task<HashSet<DateTime>> GetExistingStartTimesAsync(Guid tenantId, Guid providerId, Guid templateId, DateTime from, DateTime to, CancellationToken ct = default);
     Task AddRangeAsync(IEnumerable<AppointmentSlot> slots, CancellationToken ct = default);
     Task<AppointmentSlot?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);

@@ -14,13 +14,6 @@ public class AppointmentSlotRepository : IAppointmentSlotRepository
         _db = db;
     }
 
-    public async Task<List<AppointmentSlot>> GetActiveTemplatesByProviderAsync(Guid tenantId, Guid providerId, CancellationToken ct = default)
-    {
-        return await _db.AppointmentSlots
-            .Where(s => s.TenantId == tenantId && s.ProviderId == providerId)
-            .ToListAsync(ct);
-    }
-
     public async Task<HashSet<DateTime>> GetExistingStartTimesAsync(Guid tenantId, Guid providerId, Guid templateId, DateTime from, DateTime to, CancellationToken ct = default)
     {
         var times = await _db.AppointmentSlots

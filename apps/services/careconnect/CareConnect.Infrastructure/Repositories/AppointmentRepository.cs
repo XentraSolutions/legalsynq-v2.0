@@ -14,8 +14,9 @@ public class AppointmentRepository : IAppointmentRepository
         _db = db;
     }
 
-    public async Task AddAsync(Appointment appointment, CancellationToken ct = default)
+    public async Task SaveBookingAsync(AppointmentSlot slot, Appointment appointment, CancellationToken ct = default)
     {
+        _db.AppointmentSlots.Update(slot);
         await _db.Appointments.AddAsync(appointment, ct);
         await _db.SaveChangesAsync(ct);
     }
