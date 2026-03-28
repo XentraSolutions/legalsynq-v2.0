@@ -129,6 +129,16 @@ shared/
 | Product | Products | Id (Guid) | Code unique |
 | TenantProduct | TenantProducts | (TenantId, ProductId) | FK→Tenants Cascade |
 
+## Exception Handling (Fund.Api)
+
+`ExceptionHandlingMiddleware` registered first in the pipeline (before auth). Maps:
+
+| Exception | HTTP | Response `error.code` |
+|---|---|---|
+| `BuildingBlocks.Exceptions.ValidationException` | 400 | `validation_error` + `details` map |
+| `BuildingBlocks.Exceptions.NotFoundException` | 404 | `not_found` |
+| Any other `Exception` | 500 | `server_error` (safe message only) |
+
 ## Authorization Policies (Fund.Api)
 
 | Policy | Requirement | Applied to |
@@ -182,6 +192,7 @@ Migration `AddUpdatedByUserId` added nullable `UpdatedByUserId char(36)` column.
 | `GET /fund/health` | GET | Public | Fund health |
 | `GET /fund/info` | GET | Public | Fund info |
 | `POST /fund/api/applications` | POST | Bearer + PlatformOrTenantAdmin | Create application |
+| `PUT /fund/api/applications/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update application |
 | `GET /fund/api/applications` | GET | Bearer (AuthenticatedUser) | List applications (tenant-scoped) |
 | `GET /fund/api/applications/{id}` | GET | Bearer (AuthenticatedUser) | Get application by ID |
 

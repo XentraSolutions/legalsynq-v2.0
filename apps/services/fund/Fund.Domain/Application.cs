@@ -4,6 +4,9 @@ namespace Fund.Domain;
 
 public class Application : AuditableEntity
 {
+    public static readonly IReadOnlyCollection<string> ValidStatuses =
+        new[] { "New", "InReview", "Approved", "Rejected", "Funded" };
+
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
     public string ApplicationNumber { get; private set; } = string.Empty;
@@ -46,5 +49,21 @@ public class Application : AuditableEntity
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
+    }
+
+    public void Update(
+        string applicantFirstName,
+        string applicantLastName,
+        string email,
+        string phone,
+        string status,
+        Guid updatedByUserId)
+    {
+        ApplicantFirstName = applicantFirstName.Trim();
+        ApplicantLastName = applicantLastName.Trim();
+        Email = email.ToLowerInvariant().Trim();
+        Phone = phone.Trim();
+        Status = status;
+        UpdatedByUserId = updatedByUserId;
     }
 }

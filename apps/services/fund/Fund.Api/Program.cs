@@ -3,6 +3,7 @@ using System.Text;
 using BuildingBlocks.Authorization;
 using Contracts;
 using Fund.Api.Endpoints;
+using Fund.Api.Middleware;
 using Fund.Infrastructure;
 using Fund.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -75,6 +76,7 @@ if (app.Environment.IsDevelopment())
     }
 }
 
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 

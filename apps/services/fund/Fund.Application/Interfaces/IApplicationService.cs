@@ -10,6 +10,13 @@ public interface IApplicationService
         CreateApplicationRequest request,
         CancellationToken ct = default);
 
+    Task<ApplicationResponse> UpdateAsync(
+        Guid tenantId,
+        Guid id,
+        Guid updatedByUserId,
+        UpdateApplicationRequest request,
+        CancellationToken ct = default);
+
     Task<List<ApplicationResponse>> GetAllAsync(Guid tenantId, CancellationToken ct = default);
     Task<ApplicationResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 }

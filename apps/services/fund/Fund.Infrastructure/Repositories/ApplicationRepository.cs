@@ -24,4 +24,9 @@ public class ApplicationRepository : IApplicationRepository
         await _db.Applications.AddAsync(application, ct);
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task UpdateAsync(Domain.Application application, CancellationToken ct = default)
+    {
+        await _db.SaveChangesAsync(ct);
+    }
 }
