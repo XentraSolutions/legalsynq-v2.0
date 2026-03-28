@@ -39,6 +39,9 @@ public class SlotGenerationService : ISlotGenerationService
         var fromDate = request.FromDateUtc.Date;
         var toDate = request.ToDateUtc.Date;
 
+        if (fromDate.Year < 2000)
+            errors["fromDateUtc"] = new[] { "FromDateUtc must be a valid calendar date." };
+
         if (toDate < fromDate)
             errors["toDateUtc"] = new[] { "ToDateUtc must be on or after FromDateUtc." };
 
