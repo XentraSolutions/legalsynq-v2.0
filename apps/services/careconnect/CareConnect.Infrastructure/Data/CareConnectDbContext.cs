@@ -12,6 +12,7 @@ public class CareConnectDbContext : DbContext
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<ProviderCategory> ProviderCategories => Set<ProviderCategory>();
     public DbSet<Referral> Referrals => Set<Referral>();
+    public DbSet<ReferralStatusHistory> ReferralStatusHistories => Set<ReferralStatusHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

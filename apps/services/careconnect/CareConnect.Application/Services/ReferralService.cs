@@ -65,11 +65,35 @@ public class ReferralService : IReferralService
 
         ValidateUpdate(request);
 
+        ReferralStatusHistory? history = null;
+
+        if (referral.Status != request.Status)
+        {
+            ReferralWorkflowRules.ValidateTransition(referral.Status, request.Status);
+
+            history = ReferralStatusHistory.Create(
+                referral.Id,
+                tenantId,
+                referral.Status,
+                request.Status,
+                userId,
+                request.Notes);
+        }
+
         referral.Update(request.RequestedService, request.Urgency, request.Status, request.Notes, userId);
-        await _referrals.UpdateAsync(referral, ct);
+        await _referrals.UpdateAsync(referral, history, ct);
 
         var loaded = await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
         return ToResponse(loaded!);
+    }
+
+    public async Task<List<ReferralStatusHistoryResponse>> GetHistoryAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    {
+        _ = await _referrals.GetByIdAsync(tenantId, referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        var history = await _referrals.GetHistoryByReferralAsync(tenantId, referralId, ct);
+        return history.Select(ToHistoryResponse).ToList();
     }
 
     private static void ValidateCreate(CreateReferralRequest r)
@@ -138,5 +162,16 @@ public class ReferralService : IReferralService
         Notes = r.Notes,
         CreatedAtUtc = r.CreatedAtUtc,
         UpdatedAtUtc = r.UpdatedAtUtc
+    };
+
+    private static ReferralStatusHistoryResponse ToHistoryResponse(ReferralStatusHistory h) => new()
+    {
+        Id = h.Id,
+        ReferralId = h.ReferralId,
+        OldStatus = h.OldStatus,
+        NewStatus = h.NewStatus,
+        ChangedByUserId = h.ChangedByUserId,
+        ChangedAtUtc = h.ChangedAtUtc,
+        Notes = h.Notes
     };
 }

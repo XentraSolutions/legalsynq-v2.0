@@ -35,6 +35,18 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
 
+        group.MapGet("/{id:guid}/history", async (
+            Guid id,
+            IReferralService service,
+            ICurrentRequestContext ctx,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var history = await service.GetHistoryAsync(tenantId, id, ct);
+            return Results.Ok(history);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser);
+
         group.MapPost("/", async (
             [FromBody] CreateReferralRequest request,
             IReferralService service,

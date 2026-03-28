@@ -7,5 +7,6 @@ public interface IReferralRepository
     Task<List<Referral>> GetAllByTenantAsync(Guid tenantId, CancellationToken ct = default);
     Task<Referral?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task AddAsync(Referral referral, CancellationToken ct = default);
-    Task UpdateAsync(Referral referral, CancellationToken ct = default);
+    Task UpdateAsync(Referral referral, ReferralStatusHistory? history = null, CancellationToken ct = default);
+    Task<List<ReferralStatusHistory>> GetHistoryByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
 }

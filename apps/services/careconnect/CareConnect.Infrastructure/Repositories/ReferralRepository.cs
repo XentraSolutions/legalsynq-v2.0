@@ -37,9 +37,21 @@ public class ReferralRepository : IReferralRepository
         await _db.SaveChangesAsync(ct);
     }
 
-    public async Task UpdateAsync(Referral referral, CancellationToken ct = default)
+    public async Task UpdateAsync(Referral referral, ReferralStatusHistory? history = null, CancellationToken ct = default)
     {
         _db.Referrals.Update(referral);
+
+        if (history is not null)
+            await _db.ReferralStatusHistories.AddAsync(history, ct);
+
         await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<List<ReferralStatusHistory>> GetHistoryByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    {
+        return await _db.ReferralStatusHistories
+            .Where(h => h.TenantId == tenantId && h.ReferralId == referralId)
+            .OrderByDescending(h => h.ChangedAtUtc)
+            .ToListAsync(ct);
     }
 }
