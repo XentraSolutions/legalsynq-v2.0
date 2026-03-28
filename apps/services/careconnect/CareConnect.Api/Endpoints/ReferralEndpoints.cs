@@ -13,13 +13,28 @@ public static class ReferralEndpoints
         var group = app.MapGroup("/api/referrals");
 
         group.MapGet("/", async (
+            [AsParameters] ReferralSearchParams p,
             IReferralService service,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var referrals = await service.GetAllAsync(tenantId, ct);
-            return Results.Ok(referrals);
+
+            var query = new GetReferralsQuery
+            {
+                Status      = p.Status,
+                ProviderId  = p.ProviderId,
+                ClientName  = p.ClientName,
+                CaseNumber  = p.CaseNumber,
+                Urgency     = p.Urgency,
+                CreatedFrom = p.CreatedFrom,
+                CreatedTo   = p.CreatedTo,
+                Page        = p.Page ?? 1,
+                PageSize    = p.PageSize ?? 20
+            };
+
+            var result = await service.SearchAsync(tenantId, query, ct);
+            return Results.Ok(result);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
 
@@ -72,4 +87,17 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.PlatformOrTenantAdmin);
     }
+}
+
+internal sealed class ReferralSearchParams
+{
+    public string?   Status      { get; init; }
+    public Guid?     ProviderId  { get; init; }
+    public string?   ClientName  { get; init; }
+    public string?   CaseNumber  { get; init; }
+    public string?   Urgency     { get; init; }
+    public DateTime? CreatedFrom { get; init; }
+    public DateTime? CreatedTo   { get; init; }
+    public int?      Page        { get; init; }
+    public int?      PageSize    { get; init; }
 }

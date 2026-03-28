@@ -18,10 +18,19 @@ public class ReferralService : IReferralService
         _providers = providers;
     }
 
-    public async Task<List<ReferralResponse>> GetAllAsync(Guid tenantId, CancellationToken ct = default)
+    public async Task<PagedResponse<ReferralResponse>> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default)
     {
-        var referrals = await _referrals.GetAllByTenantAsync(tenantId, ct);
-        return referrals.Select(ToResponse).ToList();
+        ValidateQuery(query);
+
+        var (items, totalCount) = await _referrals.SearchAsync(tenantId, query, ct);
+
+        return new PagedResponse<ReferralResponse>
+        {
+            Items = items.Select(ToResponse).ToList(),
+            Page = query.Page,
+            PageSize = query.PageSize,
+            TotalCount = totalCount
+        };
     }
 
     public async Task<ReferralResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -94,6 +103,22 @@ public class ReferralService : IReferralService
 
         var history = await _referrals.GetHistoryByReferralAsync(tenantId, referralId, ct);
         return history.Select(ToHistoryResponse).ToList();
+    }
+
+    private static void ValidateQuery(GetReferralsQuery q)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (q.Page < 1)
+            errors["page"] = new[] { "Page must be >= 1." };
+
+        if (q.PageSize < 1)
+            errors["pageSize"] = new[] { "PageSize must be >= 1." };
+        else if (q.PageSize > 100)
+            errors["pageSize"] = new[] { "PageSize must be <= 100." };
+
+        if (errors.Count > 0)
+            throw new ValidationException("One or more validation errors occurred.", errors);
     }
 
     private static void ValidateCreate(CreateReferralRequest r)
