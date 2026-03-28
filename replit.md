@@ -35,12 +35,26 @@ apps/web/
     hooks/
       use-session.ts            ← useSession() / useRequiredSession()
       use-tenant-branding.ts    ← re-exports useTenantBranding()
-    components/shell/
-      app-shell.tsx             ← TopBar + Sidebar + main content wrapper
-      top-bar.tsx               ← tenant logo, org badge, product switcher, user menu
-      sidebar.tsx               ← role-driven nav groups from buildNavGroups()
-      org-badge.tsx             ← orgType label + orgName display
-      product-switcher.tsx      ← product tab links (Phase 1: display-only)
+    components/
+      shell/
+        app-shell.tsx             ← TopBar + Sidebar + main content wrapper
+        top-bar.tsx               ← tenant logo, org badge, product switcher, user menu
+        sidebar.tsx               ← role-driven nav groups from buildNavGroups()
+        org-badge.tsx             ← orgType label + orgName display
+        product-switcher.tsx      ← product tab links (Phase 1: display-only)
+      careconnect/
+        status-badge.tsx           ← StatusBadge + UrgencyBadge (colour-coded by value)
+        provider-card.tsx          ← clickable provider list card
+        provider-search-filters.tsx ← filter bar (client; writes to URL params)
+        provider-detail-card.tsx   ← full provider detail layout
+        referral-list-table.tsx    ← paginated referral table
+        referral-detail-panel.tsx  ← referral detail with sections: referral / client / notes
+        create-referral-form.tsx   ← modal form; validates + POSTs via BFF proxy
+    lib/
+      server-api-client.ts       ← server-side helper: reads cookie → calls gateway as Bearer
+      careconnect-api.ts         ← typed wrappers: careConnectServerApi (server) + careConnectApi (client)
+    types/
+      careconnect.ts             ← ProviderSummary/Detail, ReferralSummary/Detail, CreateReferralRequest, PagedResponse
     app/
       layout.tsx                ← root layout: TenantBrandingProvider → SessionProvider
       page.tsx                  ← redirect → /dashboard
@@ -48,9 +62,16 @@ apps/web/
       login/login-form.tsx      ← login form; POSTs to BFF /api/auth/login
       dashboard/page.tsx        ← redirects to first available product route
       no-org/page.tsx           ← shown when user has no org membership
+      api/
+        auth/{login,logout,me}/route.ts  ← BFF auth routes
+        careconnect/[...path]/route.ts   ← catch-all BFF proxy for CareConnect client-side calls
       (platform)/               ← route group: requireOrg() guard + AppShell
         layout.tsx
-        careconnect/referrals/page.tsx
+        careconnect/
+          providers/page.tsx         ← provider search (CARECONNECT_REFERRER only)
+          providers/[id]/page.tsx    ← provider detail + Create Referral modal (Client Component)
+          referrals/page.tsx         ← referral list (both roles; UX label adapts)
+          referrals/[id]/page.tsx    ← referral detail (read-only; Phase 1)
         fund/applications/page.tsx
         lien/marketplace/page.tsx
       (admin)/                  ← route group: requireAdmin() guard + AppShell
