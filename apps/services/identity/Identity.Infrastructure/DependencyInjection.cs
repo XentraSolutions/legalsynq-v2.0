@@ -1,6 +1,9 @@
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Context;
 using Identity.Application;
 using Identity.Application.Interfaces;
 using Identity.Application.Services;
+using Identity.Infrastructure.Auth;
 using Identity.Infrastructure.Data;
 using Identity.Infrastructure.Repositories;
 using Identity.Infrastructure.Services;
@@ -32,6 +35,13 @@ public static class DependencyInjection
 
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IAuthService, AuthService>();
+
+        // Capability-based authorization
+        services.AddMemoryCache();
+        services.AddHttpContextAccessor();
+        services.AddScoped<ICapabilityService, CapabilityService>();
+        services.AddScoped<AuthorizationService>();
+        services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 
         return services;
     }

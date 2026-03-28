@@ -38,7 +38,8 @@ apps/
                                             UserOrganizationMembership, UserRoleAssignment
       Identity.Infrastructure/
         Data/IdentityDbContext.cs         ← 14 DbSets (existing + 8 new)
-        Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (14 configs)
+        Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (15 configs)
+        Auth/CapabilityService.cs         ← ICapabilityService impl, 5-min IMemoryCache TTL
         Persistence/Migrations/           ← InitialIdentitySchema
                                             AddMultiOrgProductRoleModel (8 tables + seed)
                                             SeedAdminOrgMembership

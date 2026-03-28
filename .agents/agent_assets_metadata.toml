@@ -12,3 +12,9 @@ id = "aKn3DeHDkYOuJqMnZ2yfn"
 uri = "file://exports/identity_efcore_implementation_plan.md"
 type = "text"
 title = "EF Core Implementation & Migration Plan — Identity / Core Schema"
+
+[[outputs]]
+id = "U0KQ4VM_03DtogxGDS1Y_"
+uri = "file://exports/identity_auth_capability_implementation.md"
+type = "text"
+title = "Authentication, JWT Generation & Capability Authorization — Implementation Reference"
