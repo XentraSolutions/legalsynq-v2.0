@@ -82,5 +82,6 @@ app.MapAvailabilityExceptionEndpoints();
 app.MapReferralNoteEndpoints();
 app.MapAppointmentNoteEndpoints();
 app.MapAttachmentEndpoints();
+app.MapNotificationEndpoints();
 
 app.Run();

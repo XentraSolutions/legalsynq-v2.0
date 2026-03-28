@@ -12,17 +12,20 @@ public class AppointmentService : IAppointmentService
     private readonly IAppointmentRepository _appointments;
     private readonly IAppointmentStatusHistoryRepository _history;
     private readonly IReferralRepository _referrals;
+    private readonly INotificationService _notifications;
 
     public AppointmentService(
         IAppointmentSlotRepository slots,
         IAppointmentRepository appointments,
         IAppointmentStatusHistoryRepository history,
-        IReferralRepository referrals)
+        IReferralRepository referrals,
+        INotificationService notifications)
     {
-        _slots = slots;
-        _appointments = appointments;
-        _history = history;
-        _referrals = referrals;
+        _slots         = slots;
+        _appointments  = appointments;
+        _history       = history;
+        _referrals     = referrals;
+        _notifications = notifications;
     }
 
     public async Task<PagedResponse<SlotResponse>> SearchSlotsAsync(
@@ -107,6 +110,10 @@ public class AppointmentService : IAppointmentService
 
         await _appointments.SaveBookingAsync(slot, appointment, ct);
 
+        // Notification hook: AppointmentScheduled + AppointmentReminder.
+        try { await _notifications.CreateAppointmentScheduledAsync(tenantId, appointment.Id, slot.StartAtUtc, userId, ct); }
+        catch { /* Notification failure must not break the booking. */ }
+
         var loaded = await _appointments.GetByIdAsync(tenantId, appointment.Id, ct);
         return ToAppointmentResponse(loaded!);
     }
@@ -184,6 +191,13 @@ public class AppointmentService : IAppointmentService
 
         await _appointments.SaveStatusUpdateAsync(appointment, history, ct);
 
+        // Notification hook: fire when status becomes Confirmed.
+        if (request.Status == AppointmentStatus.Confirmed)
+        {
+            try { await _notifications.CreateAppointmentConfirmedAsync(tenantId, appointment.Id, userId, ct); }
+            catch { /* Notification failure must not break the update. */ }
+        }
+
         var loaded = await _appointments.GetByIdAsync(tenantId, appointment.Id, ct);
         return ToAppointmentResponse(loaded!);
     }
@@ -227,6 +241,10 @@ public class AppointmentService : IAppointmentService
             request.Notes);
 
         await _appointments.SaveCancellationAsync(appointment, slot, history, ct);
+
+        // Notification hook: AppointmentCancelled.
+        try { await _notifications.CreateAppointmentCancelledAsync(tenantId, appointment.Id, userId, ct); }
+        catch { /* Notification failure must not break the cancellation. */ }
 
         var loaded = await _appointments.GetByIdAsync(tenantId, appointment.Id, ct);
         return ToAppointmentResponse(loaded!);
@@ -296,6 +314,10 @@ public class AppointmentService : IAppointmentService
         appointment.Reschedule(newSlot, request.Notes, userId);
 
         await _appointments.SaveRescheduleAsync(appointment, oldSlot, newSlot, ct);
+
+        // Notification hook: new AppointmentScheduled + AppointmentReminder for the new slot time.
+        try { await _notifications.CreateAppointmentScheduledAsync(tenantId, appointment.Id, newSlot.StartAtUtc, userId, ct); }
+        catch { /* Notification failure must not break the reschedule. */ }
 
         var loaded = await _appointments.GetByIdAsync(tenantId, appointment.Id, ct);
         return ToAppointmentResponse(loaded!);

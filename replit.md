@@ -272,6 +272,8 @@ Migration `AddUpdatedByUserId` added nullable `UpdatedByUserId char(36)` column.
 | `POST /careconnect/api/referrals/{id}/attachments` | POST | Bearer + PlatformOrTenantAdmin | Create referral attachment metadata |
 | `GET /careconnect/api/appointments/{id}/attachments` | GET | Bearer (AuthenticatedUser) | List appointment attachment metadata (newest first) |
 | `POST /careconnect/api/appointments/{id}/attachments` | POST | Bearer + PlatformOrTenantAdmin | Create appointment attachment metadata |
+| `GET /careconnect/api/notifications` | GET | Bearer (AuthenticatedUser) | List notifications (filterable: status, notificationType, relatedEntityType, relatedEntityId, scheduledFrom, scheduledTo, page, pageSize) |
+| `GET /careconnect/api/notifications/{id}` | GET | Bearer (AuthenticatedUser) | Get notification by id |
 
 ## Running
 

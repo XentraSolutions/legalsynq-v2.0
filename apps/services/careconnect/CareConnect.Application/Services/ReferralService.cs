@@ -11,11 +11,16 @@ public class ReferralService : IReferralService
 {
     private readonly IReferralRepository _referrals;
     private readonly IProviderRepository _providers;
+    private readonly INotificationService _notifications;
 
-    public ReferralService(IReferralRepository referrals, IProviderRepository providers)
+    public ReferralService(
+        IReferralRepository referrals,
+        IProviderRepository providers,
+        INotificationService notifications)
     {
-        _referrals = referrals;
-        _providers = providers;
+        _referrals     = referrals;
+        _providers     = providers;
+        _notifications = notifications;
     }
 
     public async Task<PagedResponse<ReferralResponse>> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default)
@@ -89,8 +94,17 @@ public class ReferralService : IReferralService
                 request.Notes);
         }
 
+        bool statusChanged = history is not null;
+
         referral.Update(request.RequestedService, request.Urgency, request.Status, request.Notes, userId);
         await _referrals.UpdateAsync(referral, history, ct);
+
+        // Fire notification hook after successful save — non-blocking on failure.
+        if (statusChanged)
+        {
+            try { await _notifications.CreateReferralStatusChangedAsync(tenantId, referral.Id, userId, ct); }
+            catch { /* Notification failure must not break the referral update. */ }
+        }
 
         var loaded = await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
         return ToResponse(loaded!);

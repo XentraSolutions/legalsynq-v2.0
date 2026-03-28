@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<IAppointmentNoteRepository, AppointmentNoteRepository>();
         services.AddScoped<IReferralAttachmentRepository, ReferralAttachmentRepository>();
         services.AddScoped<IAppointmentAttachmentRepository, AppointmentAttachmentRepository>();
+        services.AddScoped<INotificationRepository, NotificationRepository>();
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();
@@ -47,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IAppointmentNoteService, AppointmentNoteService>();
         services.AddScoped<IReferralAttachmentService, ReferralAttachmentService>();
         services.AddScoped<IAppointmentAttachmentService, AppointmentAttachmentService>();
+        services.AddScoped<INotificationService, NotificationService>();
 
         return services;
     }

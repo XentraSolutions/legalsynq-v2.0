@@ -26,6 +26,7 @@ public class CareConnectDbContext : DbContext
     public DbSet<AppointmentNote> AppointmentNotes => Set<AppointmentNote>();
     public DbSet<ReferralAttachment> ReferralAttachments => Set<ReferralAttachment>();
     public DbSet<AppointmentAttachment> AppointmentAttachments => Set<AppointmentAttachment>();
+    public DbSet<CareConnectNotification> CareConnectNotifications => Set<CareConnectNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
