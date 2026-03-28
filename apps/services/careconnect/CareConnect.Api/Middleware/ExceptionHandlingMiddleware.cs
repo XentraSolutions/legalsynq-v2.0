@@ -59,6 +59,25 @@ public class ExceptionHandlingMiddleware
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             }));
         }
+        catch (BadHttpRequestException ex)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            context.Response.ContentType = "application/json";
+
+            var response = new
+            {
+                error = new
+                {
+                    code = "BAD_REQUEST",
+                    message = "The request body is invalid or malformed."
+                }
+            };
+
+            await context.Response.WriteAsync(JsonSerializer.Serialize(response, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            }));
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception: {Message}", ex.Message);
