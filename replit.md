@@ -262,6 +262,16 @@ Migration `AddUpdatedByUserId` added nullable `UpdatedByUserId char(36)` column.
 | `POST /careconnect/api/providers/{id}/availability-exceptions` | POST | Bearer + PlatformOrTenantAdmin | Create exception |
 | `PUT /careconnect/api/availability-exceptions/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update exception |
 | `POST /careconnect/api/providers/{id}/slots/apply-exceptions` | POST | Bearer + PlatformOrTenantAdmin | Block slots overlapping active exceptions |
+| `GET /careconnect/api/referrals/{id}/notes` | GET | Bearer (AuthenticatedUser) | List referral notes (newest first) |
+| `POST /careconnect/api/referrals/{id}/notes` | POST | Bearer + PlatformOrTenantAdmin | Create referral note |
+| `PUT /careconnect/api/referral-notes/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update referral note |
+| `GET /careconnect/api/appointments/{id}/notes` | GET | Bearer (AuthenticatedUser) | List appointment notes (newest first) |
+| `POST /careconnect/api/appointments/{id}/notes` | POST | Bearer + PlatformOrTenantAdmin | Create appointment note |
+| `PUT /careconnect/api/appointment-notes/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update appointment note |
+| `GET /careconnect/api/referrals/{id}/attachments` | GET | Bearer (AuthenticatedUser) | List referral attachment metadata (newest first) |
+| `POST /careconnect/api/referrals/{id}/attachments` | POST | Bearer + PlatformOrTenantAdmin | Create referral attachment metadata |
+| `GET /careconnect/api/appointments/{id}/attachments` | GET | Bearer (AuthenticatedUser) | List appointment attachment metadata (newest first) |
+| `POST /careconnect/api/appointments/{id}/attachments` | POST | Bearer + PlatformOrTenantAdmin | Create appointment attachment metadata |
 
 ## Running
 

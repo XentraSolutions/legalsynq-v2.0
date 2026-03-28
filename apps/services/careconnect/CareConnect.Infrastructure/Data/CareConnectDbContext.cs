@@ -22,6 +22,10 @@ public class CareConnectDbContext : DbContext
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<AppointmentStatusHistory> AppointmentStatusHistories => Set<AppointmentStatusHistory>();
     public DbSet<ProviderAvailabilityException> ProviderAvailabilityExceptions => Set<ProviderAvailabilityException>();
+    public DbSet<ReferralNote> ReferralNotes => Set<ReferralNote>();
+    public DbSet<AppointmentNote> AppointmentNotes => Set<AppointmentNote>();
+    public DbSet<ReferralAttachment> ReferralAttachments => Set<ReferralAttachment>();
+    public DbSet<AppointmentAttachment> AppointmentAttachments => Set<AppointmentAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

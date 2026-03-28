@@ -79,5 +79,8 @@ app.MapAvailabilityTemplateEndpoints();
 app.MapSlotEndpoints();
 app.MapAppointmentEndpoints();
 app.MapAvailabilityExceptionEndpoints();
+app.MapReferralNoteEndpoints();
+app.MapAppointmentNoteEndpoints();
+app.MapAttachmentEndpoints();
 
 app.Run();

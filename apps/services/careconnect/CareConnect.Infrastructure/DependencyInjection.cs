@@ -29,6 +29,10 @@ public static class DependencyInjection
         services.AddScoped<IAppointmentRepository, AppointmentRepository>();
         services.AddScoped<IAppointmentStatusHistoryRepository, AppointmentStatusHistoryRepository>();
         services.AddScoped<IAvailabilityExceptionRepository, AvailabilityExceptionRepository>();
+        services.AddScoped<IReferralNoteRepository, ReferralNoteRepository>();
+        services.AddScoped<IAppointmentNoteRepository, AppointmentNoteRepository>();
+        services.AddScoped<IReferralAttachmentRepository, ReferralAttachmentRepository>();
+        services.AddScoped<IAppointmentAttachmentRepository, AppointmentAttachmentRepository>();
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();
@@ -39,6 +43,10 @@ public static class DependencyInjection
         services.AddScoped<ISlotGenerationService, SlotGenerationService>();
         services.AddScoped<IAppointmentService, AppointmentService>();
         services.AddScoped<IAvailabilityExceptionService, AvailabilityExceptionService>();
+        services.AddScoped<IReferralNoteService, ReferralNoteService>();
+        services.AddScoped<IAppointmentNoteService, AppointmentNoteService>();
+        services.AddScoped<IReferralAttachmentService, ReferralAttachmentService>();
+        services.AddScoped<IAppointmentAttachmentService, AppointmentAttachmentService>();
 
         return services;
     }
