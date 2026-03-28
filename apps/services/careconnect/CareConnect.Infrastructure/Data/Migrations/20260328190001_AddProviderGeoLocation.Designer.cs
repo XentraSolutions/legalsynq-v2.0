@@ -611,10 +611,10 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<Guid?>("UpdatedByUserId")
                         .HasColumnType("char(36)");
 
-                    b.Property<decimal?>("Latitude")
+                    b.Property<double?>("Latitude")
                         .HasColumnType("decimal(10,7)");
 
-                    b.Property<decimal?>("Longitude")
+                    b.Property<double?>("Longitude")
                         .HasColumnType("decimal(10,7)");
 
                     b.Property<string>("GeoPointSource")

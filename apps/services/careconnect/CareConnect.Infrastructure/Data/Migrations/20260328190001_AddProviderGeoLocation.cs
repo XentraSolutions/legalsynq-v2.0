@@ -11,13 +11,13 @@ namespace CareConnect.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<decimal>(
+            migrationBuilder.AddColumn<double>(
                 name: "Latitude",
                 table: "Providers",
                 type: "decimal(10,7)",
                 nullable: true);
 
-            migrationBuilder.AddColumn<decimal>(
+            migrationBuilder.AddColumn<double>(
                 name: "Longitude",
                 table: "Providers",
                 type: "decimal(10,7)",
