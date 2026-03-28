@@ -16,10 +16,19 @@ public class ProviderService : IProviderService
         _providers = providers;
     }
 
-    public async Task<List<ProviderResponse>> GetAllAsync(Guid tenantId, CancellationToken ct = default)
+    public async Task<PagedResponse<ProviderResponse>> SearchAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
     {
-        var providers = await _providers.GetAllByTenantAsync(tenantId, ct);
-        return providers.Select(ToResponse).ToList();
+        ValidatePaging(query.Page, query.PageSize);
+
+        var (items, totalCount) = await _providers.SearchAsync(tenantId, query, ct);
+
+        return new PagedResponse<ProviderResponse>
+        {
+            Items = items.Select(ToResponse).ToList(),
+            Page = query.Page,
+            PageSize = query.PageSize,
+            TotalCount = totalCount
+        };
     }
 
     public async Task<ProviderResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -31,7 +40,7 @@ public class ProviderService : IProviderService
 
     public async Task<ProviderResponse> CreateAsync(Guid tenantId, Guid? userId, CreateProviderRequest request, CancellationToken ct = default)
     {
-        Validate(request.Name, request.Email, request.Phone, request.AddressLine1, request.City, request.State, request.PostalCode);
+        ValidateFields(request.Name, request.Email, request.Phone, request.AddressLine1, request.City, request.State, request.PostalCode);
 
         var provider = Provider.Create(
             tenantId,
@@ -61,7 +70,7 @@ public class ProviderService : IProviderService
         var provider = await _providers.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Provider '{id}' was not found.");
 
-        Validate(request.Name, request.Email, request.Phone, request.AddressLine1, request.City, request.State, request.PostalCode);
+        ValidateFields(request.Name, request.Email, request.Phone, request.AddressLine1, request.City, request.State, request.PostalCode);
 
         provider.Update(
             request.Name,
@@ -83,7 +92,23 @@ public class ProviderService : IProviderService
         return ToResponse(loaded!);
     }
 
-    private static void Validate(string name, string email, string phone, string addressLine1, string city, string state, string postalCode)
+    private static void ValidatePaging(int page, int pageSize)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        if (page < 1)
+            errors["page"] = new[] { "Page must be >= 1." };
+
+        if (pageSize < 1)
+            errors["pageSize"] = new[] { "PageSize must be >= 1." };
+        else if (pageSize > 100)
+            errors["pageSize"] = new[] { "PageSize must not exceed 100." };
+
+        if (errors.Count > 0)
+            throw new ValidationException("One or more validation errors occurred.", errors);
+    }
+
+    private static void ValidateFields(string name, string email, string phone, string addressLine1, string city, string state, string postalCode)
     {
         var errors = new Dictionary<string, string[]>();
 

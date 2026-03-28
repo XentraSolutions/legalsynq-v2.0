@@ -13,13 +13,27 @@ public static class ProviderEndpoints
         var group = app.MapGroup("/api/providers");
 
         group.MapGet("/", async (
+            [AsParameters] ProviderSearchParams p,
             IProviderService service,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var providers = await service.GetAllAsync(tenantId, ct);
-            return Results.Ok(providers);
+
+            var query = new GetProvidersQuery
+            {
+                Name             = p.Name,
+                CategoryCode     = p.CategoryCode,
+                City             = p.City,
+                State            = p.State,
+                AcceptingReferrals = p.AcceptingReferrals,
+                IsActive         = p.IsActive,
+                Page             = p.Page ?? 1,
+                PageSize         = p.PageSize ?? 20
+            };
+
+            var result = await service.SearchAsync(tenantId, query, ct);
+            return Results.Ok(result);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
 
@@ -60,4 +74,16 @@ public static class ProviderEndpoints
         })
         .RequireAuthorization(Policies.PlatformOrTenantAdmin);
     }
+}
+
+internal sealed class ProviderSearchParams
+{
+    public string? Name             { get; init; }
+    public string? CategoryCode     { get; init; }
+    public string? City             { get; init; }
+    public string? State            { get; init; }
+    public bool?   AcceptingReferrals { get; init; }
+    public bool?   IsActive         { get; init; }
+    public int?    Page             { get; init; }
+    public int?    PageSize         { get; init; }
 }
