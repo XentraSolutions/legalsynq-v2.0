@@ -1,13 +1,76 @@
-# LegalSynq — .NET 8 Microservices Monorepo
+# LegalSynq — .NET 8 Microservices + Next.js Monorepo
 
 ## Overview
-Bash-based monorepo for a .NET 8 microservices platform. Clean layered architecture (Api / Application / Domain / Infrastructure) per bounded context. Gateway validates JWT; downstream services also validate independently.
+Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router frontend. Clean layered architecture (Api / Application / Domain / Infrastructure) per bounded context. Gateway validates JWT; downstream services also validate independently.
 
 ## Environment
-- **Runtime:** .NET SDK 8.0.412 (via Nix `dotnet-sdk_8`)
-- **System packages:** `dotnet-sdk_8`, `git` (replit.nix)
+- **Runtime:** .NET SDK 8.0.412 (via Nix `dotnet-sdk_8`) + Node.js 22 (via Nix module)
+- **System packages:** `dotnet-sdk_8`, `git`, `nodejs-22` (replit.nix)
 - **Nix channel:** stable-25_05
-- **Entry point:** `bash scripts/run-dev.sh`
+- **Backend entry point:** `bash scripts/run-dev.sh`
+- **Frontend entry point:** `cd apps/web && node /home/runner/workspace/node_modules/.bin/next dev -p 3000`
+
+## Frontend (apps/web)
+- **Framework:** Next.js 14 App Router + TypeScript + Tailwind CSS
+- **Port:** 3000 (dev)
+- **Session:** HttpOnly cookie (`platform_session`) set by Identity service login; validated via `GET /identity/api/auth/me` — frontend never decodes raw JWT
+- **API:** All requests proxy through gateway via Next.js rewrites `/api/*` → `http://localhost:5000/*`
+- **Environment:** `apps/web/.env.local` (gitignored) — `NEXT_PUBLIC_ENV=development`, `GATEWAY_URL=http://localhost:5000`
+- **node_modules:** Installed at monorepo root (`/home/runner/workspace/node_modules`) — `apps/web` inherits via Node.js module resolution traversal
+
+### Frontend Structure
+```
+apps/web/
+  src/
+    types/index.ts              ← PlatformSession, TenantBranding, OrgType, ProductRole, NavGroup
+    lib/
+      api-client.ts             ← apiClient + ApiError (correlationId-aware)
+      session.ts                ← getServerSession() — calls /auth/me (server-side)
+      auth-guards.ts            ← requireAuthenticated/Org/ProductRole/Admin (server components)
+      nav.ts                    ← buildNavGroups(session) — role-driven nav derivation
+    providers/
+      session-provider.tsx      ← SessionProvider — fetches /auth/me client-side on mount
+      tenant-branding-provider.tsx ← TenantBrandingProvider — anonymous branding fetch + CSS vars
+    hooks/
+      use-session.ts            ← useSession() / useRequiredSession()
+      use-tenant-branding.ts    ← re-exports useTenantBranding()
+    components/shell/
+      app-shell.tsx             ← TopBar + Sidebar + main content wrapper
+      top-bar.tsx               ← tenant logo, org badge, product switcher, user menu
+      sidebar.tsx               ← role-driven nav groups from buildNavGroups()
+      org-badge.tsx             ← orgType label + orgName display
+      product-switcher.tsx      ← product tab links (Phase 1: display-only)
+    app/
+      layout.tsx                ← root layout: TenantBrandingProvider → SessionProvider
+      page.tsx                  ← redirect → /dashboard
+      login/page.tsx            ← branded login; tenantCode input in dev only
+      login/login-form.tsx      ← login form client component
+      dashboard/page.tsx        ← redirects to first available product route
+      no-org/page.tsx           ← shown when user has no org membership
+      (platform)/               ← route group: requireOrg() guard + AppShell
+        layout.tsx
+        careconnect/referrals/page.tsx
+        fund/applications/page.tsx
+        lien/marketplace/page.tsx
+      (admin)/                  ← route group: requireAdmin() guard + AppShell
+        layout.tsx
+        admin/users/page.tsx
+      portal/                   ← injured party portal (separate session shape — Phase 2)
+        login/page.tsx
+        my-application/page.tsx
+    middleware.ts               ← global cookie gate (platform_session / portal_session)
+```
+
+### Navigation Rules
+- `CARECONNECT_REFERRER` → CareConnect group (Referrals, Appointments, Find Providers)
+- `CARECONNECT_RECEIVER` → CareConnect group (Referrals, Appointments)
+- `SYNQFUND_REFERRER`    → SynqFund group (Applications, New Application)
+- `SYNQFUND_FUNDER`      → SynqFund group (Applications)
+- `SYNQLIEN_SELLER`      → SynqLien group (My Liens)
+- `SYNQLIEN_BUYER`       → SynqLien group (Marketplace, Portfolio)
+- `SYNQLIEN_HOLDER`      → SynqLien group (Portfolio)
+- `TenantAdmin`          → + Administration group (Users, Organizations, Products)
+- `PlatformAdmin`        → + Administration group (+ All Tenants)
 
 ## Project Structure
 

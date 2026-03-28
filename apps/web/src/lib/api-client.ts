@@ -1,0 +1,95 @@
+import type { ApiResponse } from '@/types';
+
+// In production the Next.js server proxies /api/* → gateway via next.config rewrites.
+// In dev the same rewrite points to http://localhost:5000.
+// Components should always use relative paths like '/api/careconnect/...'
+const GATEWAY_PREFIX = '/api';
+
+// ── Error class ───────────────────────────────────────────────────────────────
+
+export class ApiError extends Error {
+  constructor(
+    public readonly status:        number,
+    message:                       string,
+    public readonly correlationId: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+
+  get isUnauthorized(): boolean { return this.status === 401; }
+  get isForbidden():    boolean { return this.status === 403; }
+  get isNotFound():     boolean { return this.status === 404; }
+  get isConflict():     boolean { return this.status === 409; }
+  get isServerError():  boolean { return this.status >= 500; }
+}
+
+// ── Core request ─────────────────────────────────────────────────────────────
+
+interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  body?:   unknown;
+  headers?: Record<string, string>;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<ApiResponse<T>> {
+  const url = `${GATEWAY_PREFIX}${path}`;
+
+  const res = await fetch(url, {
+    method:      options.method ?? 'GET',
+    credentials: 'include',   // send HttpOnly session cookie automatically
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+  });
+
+  const correlationId = res.headers.get('X-Correlation-Id') ?? 'unknown';
+
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const errBody = await res.json();
+      message = errBody.message ?? errBody.title ?? message;
+    } catch {
+      // non-JSON error body — keep default message
+    }
+    throw new ApiError(res.status, message, correlationId);
+  }
+
+  // 204 No Content
+  if (res.status === 204) {
+    return { data: undefined as T, correlationId, status: res.status };
+  }
+
+  const data: T = await res.json();
+  return { data, correlationId, status: res.status };
+}
+
+// ── Public API client ─────────────────────────────────────────────────────────
+
+export const apiClient = {
+  get:    <T>(path: string)                    => request<T>(path),
+  post:   <T>(path: string, body: unknown)     => request<T>(path, { method: 'POST', body }),
+  put:    <T>(path: string, body: unknown)     => request<T>(path, { method: 'PUT',  body }),
+  patch:  <T>(path: string, body: unknown)     => request<T>(path, { method: 'PATCH', body }),
+  delete: <T>(path: string)                    => request<T>(path, { method: 'DELETE' }),
+};
+
+// ── Usage convention ──────────────────────────────────────────────────────────
+// In components / pages:
+//
+//   try {
+//     const { data, correlationId } = await apiClient.post('/careconnect/api/referrals', payload);
+//     // success
+//   } catch (err) {
+//     if (err instanceof ApiError) {
+//       if (err.isUnauthorized)  { router.push('/login'); return; }
+//       if (err.isForbidden)     { showForbiddenBanner(err.correlationId); return; }
+//       showError(err.message, err.correlationId);
+//     }
+//   }
