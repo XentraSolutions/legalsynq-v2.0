@@ -1,4 +1,5 @@
 using CareConnect.Application.DTOs;
+using CareConnect.Application.Helpers;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
 using CareConnect.Infrastructure.Data;
@@ -39,6 +40,17 @@ public class ProviderRepository : IProviderRepository
 
         if (query.IsActive.HasValue)
             baseQuery = baseQuery.Where(p => p.IsActive == query.IsActive.Value);
+
+        if (query.Latitude.HasValue && query.Longitude.HasValue && query.RadiusMiles.HasValue)
+        {
+            var (minLat, maxLat, minLon, maxLon) = ProviderGeoHelper.BoundingBox(
+                query.Latitude.Value, query.Longitude.Value, query.RadiusMiles.Value);
+
+            baseQuery = baseQuery.Where(p =>
+                p.Latitude  != null && p.Longitude != null &&
+                p.Latitude  >= minLat && p.Latitude  <= maxLat &&
+                p.Longitude >= minLon && p.Longitude <= maxLon);
+        }
 
         var totalCount = await baseQuery.CountAsync(ct);
 

@@ -29,8 +29,21 @@ public class ProviderConfiguration : IEntityTypeConfiguration<Provider>
         builder.Property(p => p.CreatedByUserId);
         builder.Property(p => p.UpdatedByUserId);
 
+        builder.Property(p => p.Latitude)
+            .HasColumnType("decimal(10,7)");
+
+        builder.Property(p => p.Longitude)
+            .HasColumnType("decimal(10,7)");
+
+        builder.Property(p => p.GeoPointSource)
+            .HasMaxLength(20);
+
+        builder.Property(p => p.GeoUpdatedAtUtc);
+
         builder.HasIndex(p => new { p.TenantId, p.Email }).IsUnique();
         builder.HasIndex(p => new { p.TenantId, p.Name });
+        builder.HasIndex(p => new { p.TenantId, p.City, p.State });
+        builder.HasIndex(p => new { p.TenantId, p.Latitude, p.Longitude });
 
         builder.HasMany(p => p.ProviderCategories)
                .WithOne(pc => pc.Provider)

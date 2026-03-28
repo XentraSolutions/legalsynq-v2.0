@@ -1,5 +1,6 @@
 using BuildingBlocks.Exceptions;
 using CareConnect.Application.DTOs;
+using CareConnect.Application.Helpers;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
@@ -19,14 +20,15 @@ public class ProviderService : IProviderService
     public async Task<PagedResponse<ProviderResponse>> SearchAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
     {
         ValidatePaging(query.Page, query.PageSize);
+        ValidateGeoSearchFields(query.Latitude, query.Longitude, query.RadiusMiles);
 
         var (items, totalCount) = await _providers.SearchAsync(tenantId, query, ct);
 
         return new PagedResponse<ProviderResponse>
         {
-            Items = items.Select(ToResponse).ToList(),
-            Page = query.Page,
-            PageSize = query.PageSize,
+            Items      = items.Select(ToResponse).ToList(),
+            Page       = query.Page,
+            PageSize   = query.PageSize,
             TotalCount = totalCount
         };
     }
@@ -41,6 +43,7 @@ public class ProviderService : IProviderService
     public async Task<ProviderResponse> CreateAsync(Guid tenantId, Guid? userId, CreateProviderRequest request, CancellationToken ct = default)
     {
         ValidateFields(request.Name, request.Email, request.Phone, request.AddressLine1, request.City, request.State, request.PostalCode);
+        ValidateGeoFields(request.Latitude, request.Longitude, request.GeoPointSource);
 
         var provider = Provider.Create(
             tenantId,
@@ -54,7 +57,10 @@ public class ProviderService : IProviderService
             request.PostalCode,
             request.IsActive,
             request.AcceptingReferrals,
-            userId);
+            userId,
+            request.Latitude,
+            request.Longitude,
+            request.GeoPointSource);
 
         await _providers.AddAsync(provider, ct);
 
@@ -71,6 +77,7 @@ public class ProviderService : IProviderService
             ?? throw new NotFoundException($"Provider '{id}' was not found.");
 
         ValidateFields(request.Name, request.Email, request.Phone, request.AddressLine1, request.City, request.State, request.PostalCode);
+        ValidateGeoFields(request.Latitude, request.Longitude, request.GeoPointSource);
 
         provider.Update(
             request.Name,
@@ -83,7 +90,10 @@ public class ProviderService : IProviderService
             request.PostalCode,
             request.IsActive,
             request.AcceptingReferrals,
-            userId);
+            userId,
+            request.Latitude,
+            request.Longitude,
+            request.GeoPointSource);
 
         await _providers.UpdateAsync(provider, ct);
         await _providers.SyncCategoriesAsync(provider.Id, request.CategoryIds, ct);
@@ -104,6 +114,22 @@ public class ProviderService : IProviderService
         else if (pageSize > 100)
             errors["pageSize"] = new[] { "PageSize must not exceed 100." };
 
+        if (errors.Count > 0)
+            throw new ValidationException("One or more validation errors occurred.", errors);
+    }
+
+    private static void ValidateGeoSearchFields(double? latitude, double? longitude, double? radiusMiles)
+    {
+        var errors = new Dictionary<string, string[]>();
+        ProviderGeoHelper.ValidateGeoSearch(latitude, longitude, radiusMiles, errors);
+        if (errors.Count > 0)
+            throw new ValidationException("One or more validation errors occurred.", errors);
+    }
+
+    private static void ValidateGeoFields(double? latitude, double? longitude, string? geoPointSource)
+    {
+        var errors = new Dictionary<string, string[]>();
+        ProviderGeoHelper.ValidateGeoFields(latitude, longitude, geoPointSource, errors);
         if (errors.Count > 0)
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
@@ -147,22 +173,27 @@ public class ProviderService : IProviderService
 
     private static ProviderResponse ToResponse(Provider p) => new()
     {
-        Id = p.Id,
-        TenantId = p.TenantId,
-        Name = p.Name,
+        Id               = p.Id,
+        TenantId         = p.TenantId,
+        Name             = p.Name,
         OrganizationName = p.OrganizationName,
-        Email = p.Email,
-        Phone = p.Phone,
-        AddressLine1 = p.AddressLine1,
-        City = p.City,
-        State = p.State,
-        PostalCode = p.PostalCode,
-        IsActive = p.IsActive,
+        Email            = p.Email,
+        Phone            = p.Phone,
+        AddressLine1     = p.AddressLine1,
+        City             = p.City,
+        State            = p.State,
+        PostalCode       = p.PostalCode,
+        IsActive         = p.IsActive,
         AcceptingReferrals = p.AcceptingReferrals,
-        Categories = p.ProviderCategories
+        Categories       = p.ProviderCategories
             .Where(pc => pc.Category != null)
             .Select(pc => pc.Category!.Name)
             .OrderBy(n => n)
-            .ToList()
+            .ToList(),
+        Latitude         = p.Latitude,
+        Longitude        = p.Longitude,
+        GeoPointSource   = p.GeoPointSource,
+        GeoUpdatedAtUtc  = p.GeoUpdatedAtUtc,
+        HasGeoLocation   = p.Latitude.HasValue && p.Longitude.HasValue
     };
 }

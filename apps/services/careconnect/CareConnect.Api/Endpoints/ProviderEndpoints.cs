@@ -22,14 +22,17 @@ public static class ProviderEndpoints
 
             var query = new GetProvidersQuery
             {
-                Name             = p.Name,
-                CategoryCode     = p.CategoryCode,
-                City             = p.City,
-                State            = p.State,
+                Name               = p.Name,
+                CategoryCode       = p.CategoryCode,
+                City               = p.City,
+                State              = p.State,
                 AcceptingReferrals = p.AcceptingReferrals,
-                IsActive         = p.IsActive,
-                Page             = p.Page ?? 1,
-                PageSize         = p.PageSize ?? 20
+                IsActive           = p.IsActive,
+                Page               = p.Page     ?? 1,
+                PageSize           = p.PageSize ?? 20,
+                Latitude           = p.Latitude,
+                Longitude          = p.Longitude,
+                RadiusMiles        = p.RadiusMiles
             };
 
             var result = await service.SearchAsync(tenantId, query, ct);
@@ -78,12 +81,15 @@ public static class ProviderEndpoints
 
 internal sealed class ProviderSearchParams
 {
-    public string? Name             { get; init; }
-    public string? CategoryCode     { get; init; }
-    public string? City             { get; init; }
-    public string? State            { get; init; }
+    public string? Name               { get; init; }
+    public string? CategoryCode       { get; init; }
+    public string? City               { get; init; }
+    public string? State              { get; init; }
     public bool?   AcceptingReferrals { get; init; }
-    public bool?   IsActive         { get; init; }
-    public int?    Page             { get; init; }
-    public int?    PageSize         { get; init; }
+    public bool?   IsActive           { get; init; }
+    public int?    Page               { get; init; }
+    public int?    PageSize           { get; init; }
+    public double? Latitude           { get; init; }
+    public double? Longitude          { get; init; }
+    public double? RadiusMiles        { get; init; }
 }
