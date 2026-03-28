@@ -14,12 +14,25 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
 
         builder.Property(r => r.Id).IsRequired();
         builder.Property(r => r.TenantId).IsRequired();
+
+        // Multi-org participant columns (nullable during migration window)
+        builder.Property(r => r.ReferringOrganizationId);
+        builder.Property(r => r.ReceivingOrganizationId);
+        builder.Property(r => r.SubjectPartyId);
+        builder.Property(r => r.SubjectNameSnapshot).HasMaxLength(250);
+        builder.Property(r => r.SubjectDobSnapshot).HasColumnType("date");
+
+        // Provider routing
         builder.Property(r => r.ProviderId).IsRequired();
+
+        // Legacy inline client fields (kept during migration window)
         builder.Property(r => r.ClientFirstName).IsRequired().HasMaxLength(100);
         builder.Property(r => r.ClientLastName).IsRequired().HasMaxLength(100);
         builder.Property(r => r.ClientDob);
         builder.Property(r => r.ClientPhone).IsRequired().HasMaxLength(50);
         builder.Property(r => r.ClientEmail).IsRequired().HasMaxLength(320);
+
+        // Referral detail
         builder.Property(r => r.CaseNumber).HasMaxLength(100);
         builder.Property(r => r.RequestedService).IsRequired().HasMaxLength(500);
         builder.Property(r => r.Urgency).IsRequired().HasMaxLength(20);
@@ -30,13 +43,29 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.Property(r => r.CreatedByUserId);
         builder.Property(r => r.UpdatedByUserId);
 
-        builder.HasIndex(r => new { r.TenantId, r.Status });
-        builder.HasIndex(r => new { r.TenantId, r.ProviderId });
-        builder.HasIndex(r => new { r.TenantId, r.CreatedAtUtc });
+        // Indexes
+        builder.HasIndex(r => new { r.TenantId, r.Status })
+            .HasDatabaseName("IX_Referrals_TenantId_Status");
+        builder.HasIndex(r => new { r.TenantId, r.ProviderId })
+            .HasDatabaseName("IX_Referrals_TenantId_ProviderId");
+        builder.HasIndex(r => new { r.TenantId, r.CreatedAtUtc })
+            .HasDatabaseName("IX_Referrals_TenantId_CreatedAtUtc");
+        builder.HasIndex(r => new { r.ReferringOrganizationId, r.Status })
+            .HasDatabaseName("IX_Referrals_ReferringOrgId_Status");
+        builder.HasIndex(r => new { r.ReceivingOrganizationId, r.Status })
+            .HasDatabaseName("IX_Referrals_ReceivingOrgId_Status");
+        builder.HasIndex(r => r.SubjectPartyId)
+            .HasDatabaseName("IX_Referrals_SubjectPartyId");
 
+        // Relationships
         builder.HasOne(r => r.Provider)
                .WithMany()
                .HasForeignKey(r => r.ProviderId)
+               .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(r => r.SubjectParty)
+               .WithMany()
+               .HasForeignKey(r => r.SubjectPartyId)
                .OnDelete(DeleteBehavior.Restrict);
     }
 }

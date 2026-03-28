@@ -54,12 +54,17 @@ public class ReferralService : IReferralService
 
         var referral = Referral.Create(
             tenantId,
+            referringOrganizationId: null,   // populated by multi-org endpoint; null = legacy path
+            receivingOrganizationId: null,   // will be derived from provider in multi-org phase
             provider.Id,
+            subjectPartyId: null,            // null = using inline fields (backward compat)
+            subjectNameSnapshot: null,
+            subjectDobSnapshot: null,
             request.ClientFirstName,
             request.ClientLastName,
             request.ClientDob,
-            request.ClientPhone,
-            request.ClientEmail,
+            request.ClientPhone ?? string.Empty,
+            request.ClientEmail ?? string.Empty,
             request.CaseNumber,
             request.RequestedService,
             request.Urgency,

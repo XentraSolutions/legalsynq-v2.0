@@ -47,6 +47,15 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<Guid>("ProviderId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("ReferringOrganizationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("ReceivingOrganizationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("SubjectPartyId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid>("ReferralId")
                         .HasColumnType("char(36)");
 
@@ -85,13 +94,23 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("ServiceOfferingId");
 
-                    b.HasIndex("TenantId", "AppointmentSlotId");
+                    b.HasIndex("TenantId", "AppointmentSlotId")
+                        .HasDatabaseName("IX_Appointments_TenantId_SlotId");
 
-                    b.HasIndex("TenantId", "ReferralId");
+                    b.HasIndex("TenantId", "ReferralId")
+                        .HasDatabaseName("IX_Appointments_TenantId_ReferralId");
 
-                    b.HasIndex("TenantId", "Status");
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("IX_Appointments_TenantId_Status");
 
-                    b.HasIndex("TenantId", "ProviderId", "ScheduledStartAtUtc");
+                    b.HasIndex("TenantId", "ProviderId", "ScheduledStartAtUtc")
+                        .HasDatabaseName("IX_Appointments_TenantId_ProviderId_Start");
+
+                    b.HasIndex("ReceivingOrganizationId", "Status")
+                        .HasDatabaseName("IX_Appointments_ReceivingOrgId_Status");
+
+                    b.HasIndex("SubjectPartyId")
+                        .HasDatabaseName("IX_Appointments_SubjectPartyId");
 
                     b.ToTable("Appointments", (string)null);
                 });
@@ -833,6 +852,22 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("ReferringOrganizationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("ReceivingOrganizationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("SubjectPartyId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("SubjectNameSnapshot")
+                        .HasMaxLength(250)
+                        .HasColumnType("varchar(250)");
+
+                    b.Property<DateOnly?>("SubjectDobSnapshot")
+                        .HasColumnType("date");
+
                     b.Property<string>("CaseNumber")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
@@ -901,11 +936,23 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("ProviderId");
 
-                    b.HasIndex("TenantId", "CreatedAtUtc");
+                    b.HasIndex("TenantId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_Referrals_TenantId_CreatedAtUtc");
 
-                    b.HasIndex("TenantId", "ProviderId");
+                    b.HasIndex("TenantId", "ProviderId")
+                        .HasDatabaseName("IX_Referrals_TenantId_ProviderId");
 
-                    b.HasIndex("TenantId", "Status");
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("IX_Referrals_TenantId_Status");
+
+                    b.HasIndex("ReferringOrganizationId", "Status")
+                        .HasDatabaseName("IX_Referrals_ReferringOrgId_Status");
+
+                    b.HasIndex("ReceivingOrganizationId", "Status")
+                        .HasDatabaseName("IX_Referrals_ReceivingOrgId_Status");
+
+                    b.HasIndex("SubjectPartyId")
+                        .HasDatabaseName("IX_Referrals_SubjectPartyId");
 
                     b.ToTable("Referrals", (string)null);
                 });
@@ -981,6 +1028,15 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("OwnerOrganizationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("VisibilityScope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasDefaultValue("SHARED")
+                        .HasColumnType("varchar(20)");
+
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasMaxLength(4000)
@@ -1016,9 +1072,14 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("ReferralId");
 
-                    b.HasIndex("TenantId", "NoteType");
+                    b.HasIndex("TenantId", "NoteType")
+                        .HasDatabaseName("IX_ReferralNotes_TenantId_NoteType");
 
-                    b.HasIndex("TenantId", "ReferralId", "CreatedAtUtc");
+                    b.HasIndex("TenantId", "ReferralId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_ReferralNotes_TenantId_ReferralId_CreatedAtUtc");
+
+                    b.HasIndex("ReferralId", "OwnerOrganizationId", "VisibilityScope")
+                        .HasDatabaseName("IX_ReferralNotes_ReferralId_Org_Visibility");
 
                     b.ToTable("ReferralNotes", (string)null);
                 });
@@ -1113,6 +1174,121 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ServiceOfferings", (string)null);
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.Party", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("OwnerOrganizationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("PartyType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasDefaultValue("INDIVIDUAL")
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("MiddleName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("PreferredName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<DateOnly?>("DateOfBirth")
+                        .HasColumnType("date");
+
+                    b.Property<string>("SsnLast4")
+                        .HasMaxLength(4)
+                        .HasColumnType("char(4)");
+
+                    b.Property<Guid?>("LinkedUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "LastName", "FirstName")
+                        .HasDatabaseName("IX_Parties_TenantId_Name");
+
+                    b.HasIndex("OwnerOrganizationId")
+                        .HasDatabaseName("IX_Parties_OwnerOrganizationId");
+
+                    b.HasIndex("TenantId", "LinkedUserId")
+                        .HasDatabaseName("IX_Parties_TenantId_LinkedUserId");
+
+                    b.HasIndex("TenantId", "DateOfBirth", "LastName")
+                        .HasDatabaseName("IX_Parties_TenantId_Dob_Name");
+
+                    b.ToTable("Parties", (string)null);
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.PartyContact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("PartyId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ContactType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("varchar(320)");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsVerified")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PartyId", "ContactType", "Value")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PartyContacts_PartyId_Type_Value");
+
+                    b.HasIndex("ContactType", "Value")
+                        .HasDatabaseName("IX_PartyContacts_Type_Value");
+
+                    b.ToTable("PartyContacts", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.Appointment", b =>
@@ -1330,6 +1506,17 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Navigation("ServiceOffering");
                 });
 
+            modelBuilder.Entity("CareConnect.Domain.PartyContact", b =>
+                {
+                    b.HasOne("CareConnect.Domain.Party", "Party")
+                        .WithMany("Contacts")
+                        .HasForeignKey("PartyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Party");
+                });
+
             modelBuilder.Entity("CareConnect.Domain.Referral", b =>
                 {
                     b.HasOne("CareConnect.Domain.Provider", "Provider")
@@ -1338,7 +1525,14 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("CareConnect.Domain.Party", "SubjectParty")
+                        .WithMany()
+                        .HasForeignKey("SubjectPartyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Provider");
+
+                    b.Navigation("SubjectParty");
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ReferralAttachment", b =>

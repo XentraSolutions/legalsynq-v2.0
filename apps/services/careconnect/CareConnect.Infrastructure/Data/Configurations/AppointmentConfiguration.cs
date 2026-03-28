@@ -15,6 +15,12 @@ public class AppointmentConfiguration : IEntityTypeConfiguration<Appointment>
         builder.Property(a => a.Id).IsRequired();
         builder.Property(a => a.TenantId).IsRequired();
         builder.Property(a => a.ReferralId).IsRequired();
+
+        // Multi-org participant columns (nullable; denormalized from Referral at create time)
+        builder.Property(a => a.ReferringOrganizationId);
+        builder.Property(a => a.ReceivingOrganizationId);
+        builder.Property(a => a.SubjectPartyId);
+
         builder.Property(a => a.ProviderId).IsRequired();
         builder.Property(a => a.FacilityId).IsRequired();
         builder.Property(a => a.ServiceOfferingId);
@@ -28,10 +34,18 @@ public class AppointmentConfiguration : IEntityTypeConfiguration<Appointment>
         builder.Property(a => a.CreatedByUserId);
         builder.Property(a => a.UpdatedByUserId);
 
-        builder.HasIndex(a => new { a.TenantId, a.ReferralId });
-        builder.HasIndex(a => new { a.TenantId, a.ProviderId, a.ScheduledStartAtUtc });
-        builder.HasIndex(a => new { a.TenantId, a.AppointmentSlotId });
-        builder.HasIndex(a => new { a.TenantId, a.Status });
+        builder.HasIndex(a => new { a.TenantId, a.ReferralId })
+            .HasDatabaseName("IX_Appointments_TenantId_ReferralId");
+        builder.HasIndex(a => new { a.TenantId, a.ProviderId, a.ScheduledStartAtUtc })
+            .HasDatabaseName("IX_Appointments_TenantId_ProviderId_Start");
+        builder.HasIndex(a => new { a.TenantId, a.AppointmentSlotId })
+            .HasDatabaseName("IX_Appointments_TenantId_SlotId");
+        builder.HasIndex(a => new { a.TenantId, a.Status })
+            .HasDatabaseName("IX_Appointments_TenantId_Status");
+        builder.HasIndex(a => new { a.ReceivingOrganizationId, a.Status })
+            .HasDatabaseName("IX_Appointments_ReceivingOrgId_Status");
+        builder.HasIndex(a => a.SubjectPartyId)
+            .HasDatabaseName("IX_Appointments_SubjectPartyId");
 
         builder.HasOne(a => a.Referral)
                .WithMany()

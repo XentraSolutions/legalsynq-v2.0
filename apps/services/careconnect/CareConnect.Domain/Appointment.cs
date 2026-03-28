@@ -7,6 +7,12 @@ public class Appointment : AuditableEntity
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
     public Guid ReferralId { get; private set; }
+
+    // ── Multi-org workflow participants (denormalized from Referral at create time) ──
+    public Guid? ReferringOrganizationId { get; private set; }
+    public Guid? ReceivingOrganizationId { get; private set; }
+    public Guid? SubjectPartyId { get; private set; }
+
     public Guid ProviderId { get; private set; }
     public Guid FacilityId { get; private set; }
     public Guid? ServiceOfferingId { get; private set; }

@@ -8,6 +8,8 @@ public class CareConnectDbContext : DbContext
 {
     public CareConnectDbContext(DbContextOptions<CareConnectDbContext> options) : base(options) { }
 
+    public DbSet<Party>        Parties       => Set<Party>();
+    public DbSet<PartyContact> PartyContacts => Set<PartyContact>();
     public DbSet<Provider> Providers => Set<Provider>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<ProviderCategory> ProviderCategories => Set<ProviderCategory>();

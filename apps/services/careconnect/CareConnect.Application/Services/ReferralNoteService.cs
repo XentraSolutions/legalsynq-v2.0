@@ -41,7 +41,8 @@ public class ReferralNoteService : IReferralNoteService
 
         ValidateNoteRequest(request.NoteType, request.Content);
 
-        var note = ReferralNote.Create(tenantId, referralId, request.NoteType, request.Content, request.IsInternal, userId);
+        var visibilityScope = request.IsInternal ? "INTERNAL" : "SHARED";
+        var note = ReferralNote.Create(tenantId, referralId, ownerOrganizationId: null, visibilityScope, request.NoteType, request.Content, userId);
         await _notes.AddAsync(note, ct);
 
         var loaded = await _notes.GetByIdAsync(tenantId, note.Id, ct);
@@ -60,7 +61,8 @@ public class ReferralNoteService : IReferralNoteService
 
         ValidateNoteRequest(request.NoteType, request.Content);
 
-        note.Update(request.NoteType, request.Content, request.IsInternal, userId);
+        var visibilityScope = request.IsInternal ? "INTERNAL" : "SHARED";
+        note.Update(request.NoteType, request.Content, visibilityScope, userId);
         await _notes.UpdateAsync(note, ct);
 
         var loaded = await _notes.GetByIdAsync(tenantId, id, ct);

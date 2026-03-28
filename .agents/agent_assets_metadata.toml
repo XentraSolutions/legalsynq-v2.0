@@ -18,3 +18,9 @@ id = "U0KQ4VM_03DtogxGDS1Y_"
 uri = "file://exports/identity_auth_capability_implementation.md"
 type = "text"
 title = "Authentication, JWT Generation & Capability Authorization — Implementation Reference"
+
+[[outputs]]
+id = "PtUO00MVwiSpNsa4FyZKN"
+uri = "file://exports/careconnect_party_model_refactor.md"
+type = "text"
+title = "CareConnect — Party Model & Multi-Org Workflow Refactor (Design & Implementation)"
