@@ -24,3 +24,9 @@ id = "PtUO00MVwiSpNsa4FyZKN"
 uri = "file://exports/careconnect_party_model_refactor.md"
 type = "text"
 title = "CareConnect — Party Model & Multi-Org Workflow Refactor (Design & Implementation)"
+
+[[outputs]]
+id = "KF2qXysjBokhPHCBMKrmK"
+uri = "file://exports/synqfund_data_model_design.md"
+type = "text"
+title = "SynqFund — Multi-Organization, Multi-Party Data Model Design"
