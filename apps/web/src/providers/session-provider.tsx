@@ -20,11 +20,13 @@ interface SessionContextValue {
 const SessionContext = createContext<SessionContextValue | null>(null);
 
 /**
- * Fetches session from /identity/api/auth/me on mount.
+ * Fetches session from the BFF /api/auth/me route on mount.
  *
- * The frontend does NOT decode the raw JWT from the HttpOnly cookie directly.
- * /auth/me is the server-validated source of truth for all session data.
- * A 401 response means the session is expired or invalid — redirect to /login.
+ * The BFF route reads the platform_session HttpOnly cookie, forwards it
+ * to the Identity service as Authorization: Bearer, and returns the
+ * AuthMeResponse envelope. The browser JS never sees the raw JWT.
+ *
+ * A 401 response means the session is expired or invalid → redirect to /login.
  */
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session,   setSession]   = useState<PlatformSession | null>(null);
@@ -33,7 +35,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const fetchSession = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/identity/api/auth/me', {
+      // /api/auth/me is the Next.js BFF route (not a direct gateway call)
+      // The browser sends the platform_session HttpOnly cookie automatically.
+      const res = await fetch('/api/auth/me', {
         credentials: 'include',
         cache:       'no-store',
       });

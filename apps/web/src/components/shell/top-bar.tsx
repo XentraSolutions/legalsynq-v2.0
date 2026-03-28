@@ -12,10 +12,9 @@ export function TopBar() {
   const navGroups = session ? buildNavGroups(session) : [];
 
   async function handleSignOut() {
-    await fetch('/api/identity/api/auth/logout', {
-      method:      'POST',
-      credentials: 'include',
-    });
+    // POST to the Next.js BFF logout route — it deletes the HttpOnly cookie
+    // and fire-and-forgets the backend logout notification.
+    await fetch('/api/auth/logout', { method: 'POST' });
     clearSession();
     window.location.href = '/login';
   }

@@ -13,9 +13,10 @@ Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router 
 ## Frontend (apps/web)
 - **Framework:** Next.js 14 App Router + TypeScript + Tailwind CSS
 - **Port:** 3000 (dev)
-- **Session:** HttpOnly cookie (`platform_session`) set by Identity service login; validated via `GET /identity/api/auth/me` — frontend never decodes raw JWT
+- **Session:** HttpOnly cookie (`platform_session`) set by BFF login route; validated via BFF `/api/auth/me` — frontend never decodes raw JWT
+- **BFF Routes:** `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` — Next.js API routes that proxy to Identity service with Bearer auth
 - **API:** All requests proxy through gateway via Next.js rewrites `/api/*` → `http://localhost:5000/*`
-- **Environment:** `apps/web/.env.local` (gitignored) — `NEXT_PUBLIC_ENV=development`, `GATEWAY_URL=http://localhost:5000`
+- **Environment:** `apps/web/.env.local` (gitignored) — `NEXT_PUBLIC_ENV=development`, `NEXT_PUBLIC_TENANT_CODE=LEGALSYNQ`, `GATEWAY_URL=http://localhost:5000`
 - **node_modules:** Installed at monorepo root (`/home/runner/workspace/node_modules`) — `apps/web` inherits via Node.js module resolution traversal
 
 ### Frontend Structure
@@ -29,8 +30,8 @@ apps/web/
       auth-guards.ts            ← requireAuthenticated/Org/ProductRole/Admin (server components)
       nav.ts                    ← buildNavGroups(session) — role-driven nav derivation
     providers/
-      session-provider.tsx      ← SessionProvider — fetches /auth/me client-side on mount
-      tenant-branding-provider.tsx ← TenantBrandingProvider — anonymous branding fetch + CSS vars
+      session-provider.tsx      ← SessionProvider — fetches BFF /api/auth/me client-side on mount
+      tenant-branding-provider.tsx ← TenantBrandingProvider — anonymous branding fetch + CSS vars + X-Tenant-Code header
     hooks/
       use-session.ts            ← useSession() / useRequiredSession()
       use-tenant-branding.ts    ← re-exports useTenantBranding()
@@ -44,7 +45,7 @@ apps/web/
       layout.tsx                ← root layout: TenantBrandingProvider → SessionProvider
       page.tsx                  ← redirect → /dashboard
       login/page.tsx            ← branded login; tenantCode input in dev only
-      login/login-form.tsx      ← login form client component
+      login/login-form.tsx      ← login form; POSTs to BFF /api/auth/login
       dashboard/page.tsx        ← redirects to first available product route
       no-org/page.tsx           ← shown when user has no org membership
       (platform)/               ← route group: requireOrg() guard + AppShell
@@ -88,7 +89,8 @@ apps/
       Identity.Api/                       → ASP.NET Core Web API (port 5001)
         Endpoints/
           UserEndpoints.cs                ← POST/GET /api/users
-          AuthEndpoints.cs                ← POST /api/auth/login
+          AuthEndpoints.cs                ← POST /api/auth/login (anon), GET /api/auth/me (Bearer), POST /api/auth/logout (anon)
+          TenantBrandingEndpoints.cs      ← GET /api/tenants/current/branding (anon; X-Tenant-Code > Host header)
         DesignTimeDbContextFactory.cs
         appsettings.json                  ← port 5001 + ConnectionStrings:IdentityDb
         appsettings.Development.json      ← dev JWT signing key + debug logging
@@ -302,6 +304,9 @@ Migration `AddUpdatedByUserId` added nullable `UpdatedByUserId char(36)` column.
 | `GET /identity/health` | GET | Public | Identity health |
 | `GET /identity/info` | GET | Public | Identity info |
 | `POST /identity/api/auth/login` | POST | Public | Login → JWT |
+| `GET /identity/api/auth/me` | GET | Bearer JWT | Current user session (called by Next.js BFF only) |
+| `POST /identity/api/auth/logout` | POST | Public | Backend logout (no-op; cookie deletion is BFF's job) |
+| `GET /identity/api/tenants/current/branding` | GET | Public | Tenant branding (X-Tenant-Code > Host) |
 | `POST /identity/api/users` | POST | Bearer | Create user |
 | `GET /identity/api/users` | GET | Bearer | List users (tenant-scoped) |
 | `GET /identity/api/users/{id}` | GET | Bearer | Get user by ID |

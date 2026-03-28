@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
 using Identity.Domain;
@@ -76,5 +77,52 @@ public class AuthService : IAuthService
             productRoles);
 
         return new LoginResponse(token, expiresAtUtc, userResponse);
+    }
+
+    /// <summary>
+    /// Assembles an AuthMeResponse from a validated ClaimsPrincipal.
+    /// All fields come from JWT claims — no DB query required.
+    /// The Identity service validates the token signature; this method reads the payload.
+    /// </summary>
+    public Task<AuthMeResponse> GetCurrentUserAsync(ClaimsPrincipal principal, CancellationToken ct = default)
+    {
+        var userId     = principal.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? principal.FindFirstValue("sub")
+            ?? throw new InvalidOperationException("sub claim missing");
+        var email      = principal.FindFirstValue(ClaimTypes.Email)
+            ?? principal.FindFirstValue("email")
+            ?? string.Empty;
+        var tenantId   = principal.FindFirstValue("tenant_id")   ?? string.Empty;
+        var tenantCode = principal.FindFirstValue("tenant_code") ?? string.Empty;
+        var orgId      = principal.FindFirstValue("org_id");
+        var orgType    = principal.FindFirstValue("org_type");
+
+        var productRoles = principal.FindAll("product_roles")
+            .Select(c => c.Value)
+            .ToList();
+
+        var systemRoles = principal.FindAll(ClaimTypes.Role)
+            .Select(c => c.Value)
+            .ToList();
+
+        // Derive expiry from the "exp" claim (Unix epoch seconds)
+        var expClaim    = principal.FindFirstValue("exp");
+        var expiresAtUtc = expClaim is not null && long.TryParse(expClaim, out var expUnix)
+            ? DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime
+            : DateTime.UtcNow.AddMinutes(60);
+
+        var response = new AuthMeResponse(
+            UserId:       userId,
+            Email:        email,
+            TenantId:     tenantId,
+            TenantCode:   tenantCode,
+            OrgId:        orgId,
+            OrgType:      orgType,
+            OrgName:      null,  // Phase 2: DB lookup by orgId for DisplayName ?? Name
+            ProductRoles: productRoles,
+            SystemRoles:  systemRoles,
+            ExpiresAtUtc: expiresAtUtc);
+
+        return Task.FromResult(response);
     }
 }

@@ -41,10 +41,12 @@ export async function getServerSession(): Promise<PlatformSession | null> {
   if (!sessionCookie?.value) return null;
 
   try {
+    // Forward the token as Bearer — the Identity service's /auth/me validates it.
+    // We do NOT send it as a Cookie header; the identity service expects Bearer auth.
     const res = await fetch(AUTH_ME_URL, {
       headers: {
-        Cookie:        `platform_session=${sessionCookie.value}`,
-        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${sessionCookie.value}`,
+        'Content-Type':  'application/json',
       },
       cache: 'no-store',
     });

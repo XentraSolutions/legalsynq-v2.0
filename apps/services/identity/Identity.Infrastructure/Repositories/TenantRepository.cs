@@ -16,4 +16,23 @@ public class TenantRepository : ITenantRepository
 
     public Task<Tenant?> GetByCodeAsync(string code, CancellationToken ct = default) =>
         _db.Tenants.FirstOrDefaultAsync(t => t.Code == code, ct);
+
+    /// <summary>
+    /// Resolves a tenant from the full HTTP hostname.
+    /// Strips any port (e.g. "firm-a.legalsynq.com:3000" → "firm-a.legalsynq.com")
+    /// then looks for a matching TenantDomain record.
+    /// </summary>
+    public Task<Tenant?> GetByHostAsync(string host, CancellationToken ct = default)
+    {
+        // Strip port number if present (e.g. localhost:3000 → localhost)
+        var hostWithoutPort = host.Contains(':')
+            ? host[..host.LastIndexOf(':')]
+            : host;
+
+        return _db.TenantDomains
+            .Include(td => td.Tenant)
+            .Where(td => td.Domain == hostWithoutPort.ToLowerInvariant())
+            .Select(td => td.Tenant)
+            .FirstOrDefaultAsync(ct);
+    }
 }

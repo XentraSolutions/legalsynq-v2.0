@@ -2,12 +2,19 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { ApiError } from '@/lib/api-client';
 
 /**
- * Login form — calls POST /api/identity/api/auth/login.
- * The gateway resolves tenantCode from the subdomain (Host header).
- * In local dev (NEXT_PUBLIC_ENV=development), a tenantCode field is shown.
+ * Login form — calls the Next.js BFF route POST /api/auth/login.
+ *
+ * The BFF route:
+ *   1. Resolves tenantCode from the Host header (production)
+ *      OR accepts it explicitly from the form body (dev mode)
+ *   2. Forwards credentials to the Identity service
+ *   3. Receives the JWT and sets it as an HttpOnly cookie (platform_session)
+ *   4. Returns only the session envelope — the raw token never reaches browser JS
+ *
+ * In local dev (NEXT_PUBLIC_ENV=development), a tenantCode field is shown
+ * because localhost has no subdomain for automatic resolution.
  */
 export function LoginForm() {
   const router   = useRouter();
@@ -15,7 +22,7 @@ export function LoginForm() {
 
   const [email,      setEmail]      = useState('');
   const [password,   setPassword]   = useState('');
-  const [tenantCode, setTenantCode] = useState('');
+  const [tenantCode, setTenantCode] = useState(process.env.NEXT_PUBLIC_TENANT_CODE ?? '');
   const [error,      setError]      = useState<string | null>(null);
   const [loading,    setLoading]    = useState(false);
 
@@ -25,13 +32,14 @@ export function LoginForm() {
     setLoading(true);
     try {
       const body: Record<string, string> = { email, password };
-      if (isDev && tenantCode) body.tenantCode = tenantCode;
+      if (tenantCode) body.tenantCode = tenantCode;
 
-      const res = await fetch('/api/identity/api/auth/login', {
-        method:      'POST',
-        credentials: 'include',
-        headers:     { 'Content-Type': 'application/json' },
-        body:        JSON.stringify(body),
+      // POST to the Next.js BFF — NOT the gateway directly.
+      // The BFF sets the platform_session HttpOnly cookie and returns the session envelope.
+      const res = await fetch('/api/auth/login', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
       });
 
       if (!res.ok) {
@@ -40,8 +48,8 @@ export function LoginForm() {
         return;
       }
 
-      // Session cookie is set by the Identity service response.
-      // Navigate to dashboard — SessionProvider will pick up the new session.
+      // Cookie is already set by the BFF response (HttpOnly — browser JS cannot read it).
+      // Navigate to dashboard — SessionProvider will call /api/auth/me and pick up the session.
       router.push('/dashboard');
     } catch {
       setError('Network error. Please try again.');
