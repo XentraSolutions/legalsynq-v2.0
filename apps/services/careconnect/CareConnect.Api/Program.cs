@@ -76,5 +76,7 @@ app.MapCategoryEndpoints();
 app.MapFacilityEndpoints();
 app.MapServiceOfferingEndpoints();
 app.MapAvailabilityTemplateEndpoints();
+app.MapSlotEndpoints();
+app.MapAppointmentEndpoints();
 
 app.Run();
