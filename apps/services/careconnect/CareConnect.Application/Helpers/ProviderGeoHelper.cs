@@ -4,6 +4,9 @@ public static class ProviderGeoHelper
 {
     private const double MilesPerDegreeLat = 69.0;
     private const double MaxRadiusMiles    = 100.0;
+    private const int    MaxMarkers        = 500;
+
+    public static int MarkerLimit => MaxMarkers;
 
     public static (double MinLat, double MaxLat, double MinLon, double MaxLon)
         BoundingBox(double centerLat, double centerLon, double radiusMiles)
@@ -41,6 +44,46 @@ public static class ProviderGeoHelper
             else if (radiusMiles > MaxRadiusMiles)
                 errors["radiusMiles"] = new[] { $"RadiusMiles must not exceed {MaxRadiusMiles}." };
         }
+    }
+
+    public static void ValidateViewport(double? northLat, double? southLat, double? eastLng, double? westLng,
+        Dictionary<string, string[]> errors)
+    {
+        if (northLat.HasValue || southLat.HasValue || eastLng.HasValue || westLng.HasValue)
+        {
+            if (!northLat.HasValue)
+                errors["northLat"] = new[] { "northLat is required when performing a viewport search." };
+            else if (northLat < -90 || northLat > 90)
+                errors["northLat"] = new[] { "northLat must be between -90 and 90." };
+
+            if (!southLat.HasValue)
+                errors["southLat"] = new[] { "southLat is required when performing a viewport search." };
+            else if (southLat < -90 || southLat > 90)
+                errors["southLat"] = new[] { "southLat must be between -90 and 90." };
+
+            if (!eastLng.HasValue)
+                errors["eastLng"] = new[] { "eastLng is required when performing a viewport search." };
+            else if (eastLng < -180 || eastLng > 180)
+                errors["eastLng"] = new[] { "eastLng must be between -180 and 180." };
+
+            if (!westLng.HasValue)
+                errors["westLng"] = new[] { "westLng is required when performing a viewport search." };
+            else if (westLng < -180 || westLng > 180)
+                errors["westLng"] = new[] { "westLng must be between -180 and 180." };
+
+            if (northLat.HasValue && southLat.HasValue && !errors.ContainsKey("northLat") && !errors.ContainsKey("southLat"))
+            {
+                if (northLat < southLat)
+                    errors["northLat"] = new[] { "northLat must be greater than or equal to southLat." };
+            }
+        }
+    }
+
+    public static void ValidateNoConflict(bool hasRadius, bool hasViewport,
+        Dictionary<string, string[]> errors)
+    {
+        if (hasRadius && hasViewport)
+            errors["search"] = new[] { "Radius search and viewport search cannot be used together. Provide either latitude/longitude/radiusMiles or northLat/southLat/eastLng/westLng, not both." };
     }
 
     public static void ValidateGeoFields(double? latitude, double? longitude, string? geoPointSource,

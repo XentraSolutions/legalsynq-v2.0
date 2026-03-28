@@ -21,4 +21,8 @@ public class ProviderResponse
     public string?   GeoPointSource  { get; set; }
     public DateTime? GeoUpdatedAtUtc { get; set; }
     public bool      HasGeoLocation  { get; set; }
+
+    public string?   PrimaryCategory  { get; set; }
+    public string    DisplayLabel     { get; set; } = string.Empty;
+    public string    MarkerSubtitle   { get; set; } = string.Empty;
 }

@@ -20,7 +20,7 @@ public class ProviderService : IProviderService
     public async Task<PagedResponse<ProviderResponse>> SearchAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
     {
         ValidatePaging(query.Page, query.PageSize);
-        ValidateGeoSearchFields(query.Latitude, query.Longitude, query.RadiusMiles);
+        ValidateSearchGeo(query);
 
         var (items, totalCount) = await _providers.SearchAsync(tenantId, query, ct);
 
@@ -31,6 +31,14 @@ public class ProviderService : IProviderService
             PageSize   = query.PageSize,
             TotalCount = totalCount
         };
+    }
+
+    public async Task<List<ProviderMarkerResponse>> GetMarkersAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
+    {
+        ValidateSearchGeo(query);
+
+        var items = await _providers.GetMarkersAsync(tenantId, query, ct);
+        return items.Select(ToMarker).ToList();
     }
 
     public async Task<ProviderResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -102,6 +110,25 @@ public class ProviderService : IProviderService
         return ToResponse(loaded!);
     }
 
+    private static void ValidateSearchGeo(GetProvidersQuery query)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        bool hasRadius   = query.Latitude.HasValue || query.Longitude.HasValue || query.RadiusMiles.HasValue;
+        bool hasViewport = query.NorthLat.HasValue  || query.SouthLat.HasValue  || query.EastLng.HasValue || query.WestLng.HasValue;
+
+        ProviderGeoHelper.ValidateNoConflict(hasRadius, hasViewport, errors);
+
+        if (!errors.ContainsKey("search"))
+        {
+            ProviderGeoHelper.ValidateGeoSearch(query.Latitude, query.Longitude, query.RadiusMiles, errors);
+            ProviderGeoHelper.ValidateViewport(query.NorthLat, query.SouthLat, query.EastLng, query.WestLng, errors);
+        }
+
+        if (errors.Count > 0)
+            throw new ValidationException("One or more validation errors occurred.", errors);
+    }
+
     private static void ValidatePaging(int page, int pageSize)
     {
         var errors = new Dictionary<string, string[]>();
@@ -114,14 +141,6 @@ public class ProviderService : IProviderService
         else if (pageSize > 100)
             errors["pageSize"] = new[] { "PageSize must not exceed 100." };
 
-        if (errors.Count > 0)
-            throw new ValidationException("One or more validation errors occurred.", errors);
-    }
-
-    private static void ValidateGeoSearchFields(double? latitude, double? longitude, double? radiusMiles)
-    {
-        var errors = new Dictionary<string, string[]>();
-        ProviderGeoHelper.ValidateGeoSearch(latitude, longitude, radiusMiles, errors);
         if (errors.Count > 0)
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
@@ -171,29 +190,82 @@ public class ProviderService : IProviderService
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
 
-    private static ProviderResponse ToResponse(Provider p) => new()
+    private static ProviderResponse ToResponse(Provider p)
     {
-        Id               = p.Id,
-        TenantId         = p.TenantId,
-        Name             = p.Name,
-        OrganizationName = p.OrganizationName,
-        Email            = p.Email,
-        Phone            = p.Phone,
-        AddressLine1     = p.AddressLine1,
-        City             = p.City,
-        State            = p.State,
-        PostalCode       = p.PostalCode,
-        IsActive         = p.IsActive,
-        AcceptingReferrals = p.AcceptingReferrals,
-        Categories       = p.ProviderCategories
+        var categories = p.ProviderCategories
             .Where(pc => pc.Category != null)
             .Select(pc => pc.Category!.Name)
             .OrderBy(n => n)
-            .ToList(),
-        Latitude         = p.Latitude,
-        Longitude        = p.Longitude,
-        GeoPointSource   = p.GeoPointSource,
-        GeoUpdatedAtUtc  = p.GeoUpdatedAtUtc,
-        HasGeoLocation   = p.Latitude.HasValue && p.Longitude.HasValue
-    };
+            .ToList();
+
+        var primary  = categories.FirstOrDefault();
+        var label    = p.OrganizationName ?? p.Name;
+        var subtitle = BuildSubtitle(p.City, p.State, primary);
+
+        return new ProviderResponse
+        {
+            Id               = p.Id,
+            TenantId         = p.TenantId,
+            Name             = p.Name,
+            OrganizationName = p.OrganizationName,
+            Email            = p.Email,
+            Phone            = p.Phone,
+            AddressLine1     = p.AddressLine1,
+            City             = p.City,
+            State            = p.State,
+            PostalCode       = p.PostalCode,
+            IsActive         = p.IsActive,
+            AcceptingReferrals = p.AcceptingReferrals,
+            Categories       = categories,
+            Latitude         = p.Latitude,
+            Longitude        = p.Longitude,
+            GeoPointSource   = p.GeoPointSource,
+            GeoUpdatedAtUtc  = p.GeoUpdatedAtUtc,
+            HasGeoLocation   = p.Latitude.HasValue && p.Longitude.HasValue,
+            PrimaryCategory  = primary,
+            DisplayLabel     = label,
+            MarkerSubtitle   = subtitle
+        };
+    }
+
+    private static ProviderMarkerResponse ToMarker(Provider p)
+    {
+        var categories = p.ProviderCategories
+            .Where(pc => pc.Category != null)
+            .Select(pc => pc.Category!.Name)
+            .OrderBy(n => n)
+            .ToList();
+
+        var primary  = categories.FirstOrDefault();
+        var label    = p.OrganizationName ?? p.Name;
+        var subtitle = BuildSubtitle(p.City, p.State, primary);
+
+        return new ProviderMarkerResponse
+        {
+            Id               = p.Id,
+            Name             = p.Name,
+            OrganizationName = p.OrganizationName,
+            DisplayLabel     = label,
+            MarkerSubtitle   = subtitle,
+            City             = p.City,
+            State            = p.State,
+            AddressLine1     = p.AddressLine1,
+            PostalCode       = p.PostalCode,
+            Email            = p.Email,
+            Phone            = p.Phone,
+            AcceptingReferrals = p.AcceptingReferrals,
+            IsActive         = p.IsActive,
+            Latitude         = p.Latitude!.Value,
+            Longitude        = p.Longitude!.Value,
+            GeoPointSource   = p.GeoPointSource,
+            PrimaryCategory  = primary,
+            Categories       = categories
+        };
+    }
+
+    private static string BuildSubtitle(string city, string state, string? primaryCategory)
+    {
+        var location = $"{city}, {state}";
+        return primaryCategory is null ? location : $"{location} · {primaryCategory}";
+    }
 }

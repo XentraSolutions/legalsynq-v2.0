@@ -14,4 +14,9 @@ public class GetProvidersQuery
     public double? Latitude          { get; init; }
     public double? Longitude         { get; init; }
     public double? RadiusMiles       { get; init; }
+
+    public double? NorthLat          { get; init; }
+    public double? SouthLat          { get; init; }
+    public double? EastLng           { get; init; }
+    public double? WestLng           { get; init; }
 }

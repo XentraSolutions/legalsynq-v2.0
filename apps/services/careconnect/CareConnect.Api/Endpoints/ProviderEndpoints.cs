@@ -32,11 +32,47 @@ public static class ProviderEndpoints
                 PageSize           = p.PageSize ?? 20,
                 Latitude           = p.Latitude,
                 Longitude          = p.Longitude,
-                RadiusMiles        = p.RadiusMiles
+                RadiusMiles        = p.RadiusMiles,
+                NorthLat           = p.NorthLat,
+                SouthLat           = p.SouthLat,
+                EastLng            = p.EastLng,
+                WestLng            = p.WestLng
             };
 
             var result = await service.SearchAsync(tenantId, query, ct);
             return Results.Ok(result);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser);
+
+        group.MapGet("/map", async (
+            [AsParameters] ProviderSearchParams p,
+            IProviderService service,
+            ICurrentRequestContext ctx,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+
+            var query = new GetProvidersQuery
+            {
+                Name               = p.Name,
+                CategoryCode       = p.CategoryCode,
+                City               = p.City,
+                State              = p.State,
+                AcceptingReferrals = p.AcceptingReferrals,
+                IsActive           = p.IsActive,
+                Page               = 1,
+                PageSize           = 500,
+                Latitude           = p.Latitude,
+                Longitude          = p.Longitude,
+                RadiusMiles        = p.RadiusMiles,
+                NorthLat           = p.NorthLat,
+                SouthLat           = p.SouthLat,
+                EastLng            = p.EastLng,
+                WestLng            = p.WestLng
+            };
+
+            var markers = await service.GetMarkersAsync(tenantId, query, ct);
+            return Results.Ok(markers);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
 
@@ -92,4 +128,8 @@ internal sealed class ProviderSearchParams
     public double? Latitude           { get; init; }
     public double? Longitude          { get; init; }
     public double? RadiusMiles        { get; init; }
+    public double? NorthLat           { get; init; }
+    public double? SouthLat           { get; init; }
+    public double? EastLng            { get; init; }
+    public double? WestLng            { get; init; }
 }

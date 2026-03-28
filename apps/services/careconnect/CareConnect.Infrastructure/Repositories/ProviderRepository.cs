@@ -18,39 +18,7 @@ public class ProviderRepository : IProviderRepository
 
     public async Task<(List<Provider> Items, int TotalCount)> SearchAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
     {
-        var baseQuery = _db.Providers
-            .Where(p => p.TenantId == tenantId)
-            .AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(query.Name))
-            baseQuery = baseQuery.Where(p => p.Name.Contains(query.Name));
-
-        if (!string.IsNullOrWhiteSpace(query.CategoryCode))
-            baseQuery = baseQuery.Where(p => p.ProviderCategories
-                .Any(pc => pc.Category != null && pc.Category.Code == query.CategoryCode));
-
-        if (!string.IsNullOrWhiteSpace(query.City))
-            baseQuery = baseQuery.Where(p => p.City == query.City);
-
-        if (!string.IsNullOrWhiteSpace(query.State))
-            baseQuery = baseQuery.Where(p => p.State == query.State);
-
-        if (query.AcceptingReferrals.HasValue)
-            baseQuery = baseQuery.Where(p => p.AcceptingReferrals == query.AcceptingReferrals.Value);
-
-        if (query.IsActive.HasValue)
-            baseQuery = baseQuery.Where(p => p.IsActive == query.IsActive.Value);
-
-        if (query.Latitude.HasValue && query.Longitude.HasValue && query.RadiusMiles.HasValue)
-        {
-            var (minLat, maxLat, minLon, maxLon) = ProviderGeoHelper.BoundingBox(
-                query.Latitude.Value, query.Longitude.Value, query.RadiusMiles.Value);
-
-            baseQuery = baseQuery.Where(p =>
-                p.Latitude  != null && p.Longitude != null &&
-                p.Latitude  >= minLat && p.Latitude  <= maxLat &&
-                p.Longitude >= minLon && p.Longitude <= maxLon);
-        }
+        var baseQuery = BuildBaseQuery(tenantId, query);
 
         var totalCount = await baseQuery.CountAsync(ct);
 
@@ -69,6 +37,25 @@ public class ProviderRepository : IProviderRepository
             .ToListAsync(ct);
 
         return (items, totalCount);
+    }
+
+    public async Task<List<Provider>> GetMarkersAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
+    {
+        var baseQuery = BuildBaseQuery(tenantId, query)
+            .Where(p => p.Latitude != null && p.Longitude != null);
+
+        var ids = await baseQuery
+            .OrderBy(p => p.Name)
+            .Take(ProviderGeoHelper.MarkerLimit)
+            .Select(p => p.Id)
+            .ToListAsync(ct);
+
+        return await _db.Providers
+            .Where(p => ids.Contains(p.Id))
+            .Include(p => p.ProviderCategories)
+                .ThenInclude(pc => pc.Category)
+            .OrderBy(p => p.Name)
+            .ToListAsync(ct);
     }
 
     public async Task<Provider?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -111,5 +98,53 @@ public class ProviderRepository : IProviderRepository
         }
 
         await _db.SaveChangesAsync(ct);
+    }
+
+    private IQueryable<Provider> BuildBaseQuery(Guid tenantId, GetProvidersQuery query)
+    {
+        var q = _db.Providers
+            .Where(p => p.TenantId == tenantId)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(query.Name))
+            q = q.Where(p => p.Name.Contains(query.Name));
+
+        if (!string.IsNullOrWhiteSpace(query.CategoryCode))
+            q = q.Where(p => p.ProviderCategories
+                .Any(pc => pc.Category != null && pc.Category.Code == query.CategoryCode));
+
+        if (!string.IsNullOrWhiteSpace(query.City))
+            q = q.Where(p => p.City == query.City);
+
+        if (!string.IsNullOrWhiteSpace(query.State))
+            q = q.Where(p => p.State == query.State);
+
+        if (query.AcceptingReferrals.HasValue)
+            q = q.Where(p => p.AcceptingReferrals == query.AcceptingReferrals.Value);
+
+        if (query.IsActive.HasValue)
+            q = q.Where(p => p.IsActive == query.IsActive.Value);
+
+        if (query.Latitude.HasValue && query.Longitude.HasValue && query.RadiusMiles.HasValue)
+        {
+            var (minLat, maxLat, minLon, maxLon) = ProviderGeoHelper.BoundingBox(
+                query.Latitude.Value, query.Longitude.Value, query.RadiusMiles.Value);
+
+            q = q.Where(p =>
+                p.Latitude  != null && p.Longitude != null &&
+                p.Latitude  >= minLat && p.Latitude  <= maxLat &&
+                p.Longitude >= minLon && p.Longitude <= maxLon);
+        }
+
+        if (query.NorthLat.HasValue && query.SouthLat.HasValue &&
+            query.EastLng.HasValue  && query.WestLng.HasValue)
+        {
+            q = q.Where(p =>
+                p.Latitude  != null && p.Longitude != null &&
+                p.Latitude  >= query.SouthLat.Value && p.Latitude  <= query.NorthLat.Value &&
+                p.Longitude >= query.WestLng.Value  && p.Longitude <= query.EastLng.Value);
+        }
+
+        return q;
     }
 }
