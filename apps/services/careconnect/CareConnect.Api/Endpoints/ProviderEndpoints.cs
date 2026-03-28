@@ -17,7 +17,8 @@ public static class ProviderEndpoints
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
-            var providers = await service.GetAllAsync(ctx.TenantId, ct);
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var providers = await service.GetAllAsync(tenantId, ct);
             return Results.Ok(providers);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
@@ -28,7 +29,8 @@ public static class ProviderEndpoints
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
-            var provider = await service.GetByIdAsync(ctx.TenantId, id, ct);
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var provider = await service.GetByIdAsync(tenantId, id, ct);
             return Results.Ok(provider);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
@@ -39,7 +41,8 @@ public static class ProviderEndpoints
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
-            var provider = await service.CreateAsync(ctx.TenantId, ctx.UserId, request, ct);
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var provider = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/providers/{provider.Id}", provider);
         })
         .RequireAuthorization(Policies.PlatformOrTenantAdmin);
@@ -51,7 +54,8 @@ public static class ProviderEndpoints
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
-            var provider = await service.UpdateAsync(ctx.TenantId, id, ctx.UserId, request, ct);
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var provider = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(provider);
         })
         .RequireAuthorization(Policies.PlatformOrTenantAdmin);

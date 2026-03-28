@@ -60,6 +60,35 @@ apps/
         Data/Migrations/                  ← InitialFundSchema
         Repositories/ApplicationRepository.cs
         DependencyInjection.cs
+    careconnect/
+      CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
+        Endpoints/
+          ProviderEndpoints.cs            ← GET/POST/PUT /api/providers
+          ReferralEndpoints.cs            ← GET/POST/PUT /api/referrals
+          CategoryEndpoints.cs            ← GET /api/categories
+        Middleware/ExceptionHandlingMiddleware.cs
+        DesignTimeDbContextFactory.cs
+        appsettings.json                  ← port 5003 + ConnectionStrings:CareConnectDb
+        appsettings.Development.json      ← dev JWT signing key + debug logging
+      CareConnect.Application/
+        DTOs/                             ← CreateProviderRequest, UpdateProviderRequest, ProviderResponse
+                                             CreateReferralRequest, UpdateReferralRequest, ReferralResponse
+                                             CategoryResponse
+        Interfaces/IProviderService.cs, IReferralService.cs, ICategoryService.cs
+        Repositories/IProviderRepository.cs, IReferralRepository.cs, ICategoryRepository.cs
+        Services/ProviderService.cs, ReferralService.cs, CategoryService.cs
+      CareConnect.Domain/
+        Provider.cs                       ← Provider entity (AuditableEntity)
+        Category.cs                       ← Category entity (seeded)
+        ProviderCategory.cs               ← join table entity
+        Referral.cs                       ← Referral entity (ValidStatuses, ValidUrgencies)
+      CareConnect.Infrastructure/
+        Data/CareConnectDbContext.cs
+        Data/Configurations/              ← ProviderConfiguration, CategoryConfiguration,
+                                             ProviderCategoryConfiguration, ReferralConfiguration
+        Data/Migrations/                  ← InitialCareConnectSchema
+        Repositories/ProviderRepository.cs, ReferralRepository.cs, CategoryRepository.cs
+        DependencyInjection.cs
 shared/
   contracts/
     Contracts/                            → HealthResponse, InfoResponse, ServiceResponse<T>
@@ -96,6 +125,7 @@ shared/
 |---|---|---|
 | `ConnectionStrings__IdentityDb` | Identity.Api | MySQL, identity_db |
 | `ConnectionStrings__FundDb` | Fund.Api | MySQL, fund_db |
+| `ConnectionStrings__CareConnectDb` | CareConnect.Api | MySQL, careconnect_db |
 
 ## JWT
 
@@ -117,6 +147,9 @@ shared/
 | `/fund/health` | Anonymous | Fund :5002 |
 | `/fund/info` | Anonymous | Fund :5002 |
 | `/fund/**` | Bearer JWT required | Fund :5002 |
+| `/careconnect/health` | Anonymous | CareConnect :5003 |
+| `/careconnect/info` | Anonymous | CareConnect :5003 |
+| `/careconnect/**` | Bearer JWT required | CareConnect :5003 |
 
 ## Identity Domain Model
 
@@ -195,6 +228,17 @@ Migration `AddUpdatedByUserId` added nullable `UpdatedByUserId char(36)` column.
 | `PUT /fund/api/applications/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update application |
 | `GET /fund/api/applications` | GET | Bearer (AuthenticatedUser) | List applications (tenant-scoped) |
 | `GET /fund/api/applications/{id}` | GET | Bearer (AuthenticatedUser) | Get application by ID |
+| `GET /careconnect/health` | GET | Public | CareConnect health |
+| `GET /careconnect/info` | GET | Public | CareConnect info |
+| `GET /careconnect/api/categories` | GET | Bearer (AuthenticatedUser) | List active categories |
+| `GET /careconnect/api/providers` | GET | Bearer (AuthenticatedUser) | List providers (tenant-scoped) |
+| `GET /careconnect/api/providers/{id}` | GET | Bearer (AuthenticatedUser) | Get provider by ID |
+| `POST /careconnect/api/providers` | POST | Bearer + PlatformOrTenantAdmin | Create provider |
+| `PUT /careconnect/api/providers/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update provider |
+| `GET /careconnect/api/referrals` | GET | Bearer (AuthenticatedUser) | List referrals (tenant-scoped) |
+| `GET /careconnect/api/referrals/{id}` | GET | Bearer (AuthenticatedUser) | Get referral by ID |
+| `POST /careconnect/api/referrals` | POST | Bearer + PlatformOrTenantAdmin | Create referral |
+| `PUT /careconnect/api/referrals/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update referral |
 
 ## Running
 
@@ -202,8 +246,8 @@ Migration `AddUpdatedByUserId` added nullable `UpdatedByUserId char(36)` column.
 bash scripts/run-dev.sh
 ```
 
-Starts Identity (5001), Fund (5002), and Gateway (5000) in parallel after build.  
-Both Identity and Fund auto-migrate on startup in Development.
+Starts Identity (5001), Fund (5002), CareConnect (5003), and Gateway (5000) in parallel after build.  
+Identity, Fund, and CareConnect auto-migrate on startup in Development.
 
 ## Migration Commands
 
@@ -218,6 +262,12 @@ dotnet tool run dotnet-ef migrations add <Name> \
 dotnet tool run dotnet-ef migrations add <Name> \
   --project apps/services/fund/Fund.Infrastructure \
   --startup-project apps/services/fund/Fund.Api \
+  --output-dir Data/Migrations
+
+# CareConnect
+dotnet tool run dotnet-ef migrations add <Name> \
+  --project apps/services/careconnect/CareConnect.Infrastructure \
+  --startup-project apps/services/careconnect/CareConnect.Api \
   --output-dir Data/Migrations
 ```
 

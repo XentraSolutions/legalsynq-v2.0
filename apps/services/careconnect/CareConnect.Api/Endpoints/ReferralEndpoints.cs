@@ -17,7 +17,8 @@ public static class ReferralEndpoints
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
-            var referrals = await service.GetAllAsync(ctx.TenantId, ct);
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var referrals = await service.GetAllAsync(tenantId, ct);
             return Results.Ok(referrals);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
@@ -28,7 +29,8 @@ public static class ReferralEndpoints
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
-            var referral = await service.GetByIdAsync(ctx.TenantId, id, ct);
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var referral = await service.GetByIdAsync(tenantId, id, ct);
             return Results.Ok(referral);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
@@ -39,7 +41,8 @@ public static class ReferralEndpoints
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
-            var referral = await service.CreateAsync(ctx.TenantId, ctx.UserId, request, ct);
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/referrals/{referral.Id}", referral);
         })
         .RequireAuthorization(Policies.PlatformOrTenantAdmin);
@@ -51,7 +54,8 @@ public static class ReferralEndpoints
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
-            var referral = await service.UpdateAsync(ctx.TenantId, id, ctx.UserId, request, ct);
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(referral);
         })
         .RequireAuthorization(Policies.PlatformOrTenantAdmin);
