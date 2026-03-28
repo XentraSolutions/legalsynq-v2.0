@@ -97,4 +97,21 @@ public class AppointmentSlotRepository : IAppointmentSlotRepository
         _db.AppointmentSlots.Update(slot);
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task<List<AppointmentSlot>> GetOpenByProviderInRangeAsync(Guid tenantId, Guid providerId, DateTime from, DateTime to, CancellationToken ct = default)
+    {
+        return await _db.AppointmentSlots
+            .Where(s => s.TenantId == tenantId
+                     && s.ProviderId == providerId
+                     && s.Status == SlotStatus.Open
+                     && s.StartAtUtc < to
+                     && s.EndAtUtc > from)
+            .ToListAsync(ct);
+    }
+
+    public async Task UpdateRangeAsync(IEnumerable<AppointmentSlot> slots, CancellationToken ct = default)
+    {
+        _db.AppointmentSlots.UpdateRange(slots);
+        await _db.SaveChangesAsync(ct);
+    }
 }

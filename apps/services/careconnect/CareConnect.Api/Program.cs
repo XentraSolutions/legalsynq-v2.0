@@ -78,5 +78,6 @@ app.MapServiceOfferingEndpoints();
 app.MapAvailabilityTemplateEndpoints();
 app.MapSlotEndpoints();
 app.MapAppointmentEndpoints();
+app.MapAvailabilityExceptionEndpoints();
 
 app.Run();

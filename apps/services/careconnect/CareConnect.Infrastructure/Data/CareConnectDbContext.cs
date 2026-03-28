@@ -21,6 +21,7 @@ public class CareConnectDbContext : DbContext
     public DbSet<AppointmentSlot> AppointmentSlots => Set<AppointmentSlot>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<AppointmentStatusHistory> AppointmentStatusHistories => Set<AppointmentStatusHistory>();
+    public DbSet<ProviderAvailabilityException> ProviderAvailabilityExceptions => Set<ProviderAvailabilityException>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

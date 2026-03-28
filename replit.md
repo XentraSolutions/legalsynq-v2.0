@@ -82,6 +82,16 @@ apps/
         Category.cs                       ← Category entity (seeded)
         ProviderCategory.cs               ← join table entity
         Referral.cs                       ← Referral entity (ValidStatuses, ValidUrgencies)
+        ReferralStatusHistory.cs          ← Referral lifecycle history
+        AppointmentSlot.cs                ← Slot with Reserve/Release/Block methods
+        SlotStatus.cs                     ← Open, Blocked, Closed constants
+        Appointment.cs                    ← Appointment with UpdateStatus/Reschedule/Cancel
+        AppointmentStatus.cs              ← Scheduled, Confirmed, Completed, Cancelled, NoShow
+        AppointmentStatusHistory.cs       ← Appointment lifecycle history
+        AppointmentWorkflowRules.cs       ← Transition table + terminal/reschedulable guards
+        ProviderAvailabilityTemplate.cs   ← Recurring schedule template
+        ProviderAvailabilityException.cs  ← Blackout/exception entity (AuditableEntity)
+        ExceptionType.cs                  ← Unavailable, Holiday, Vacation, Blocked constants
       CareConnect.Infrastructure/
         Data/CareConnectDbContext.cs
         Data/Configurations/              ← ProviderConfiguration, CategoryConfiguration,
@@ -239,6 +249,19 @@ Migration `AddUpdatedByUserId` added nullable `UpdatedByUserId char(36)` column.
 | `GET /careconnect/api/referrals/{id}` | GET | Bearer (AuthenticatedUser) | Get referral by ID |
 | `POST /careconnect/api/referrals` | POST | Bearer + PlatformOrTenantAdmin | Create referral |
 | `PUT /careconnect/api/referrals/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update referral |
+| `GET /careconnect/api/slots` | GET | Bearer (AuthenticatedUser) | List slots (tenant-scoped, filterable) |
+| `POST /careconnect/api/providers/{id}/slots/generate` | POST | Bearer + PlatformOrTenantAdmin | Generate slots from templates |
+| `POST /careconnect/api/appointments` | POST | Bearer + PlatformOrTenantAdmin | Book appointment |
+| `GET /careconnect/api/appointments` | GET | Bearer (AuthenticatedUser) | List appointments |
+| `GET /careconnect/api/appointments/{id}` | GET | Bearer (AuthenticatedUser) | Get appointment |
+| `PUT /careconnect/api/appointments/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update status/notes |
+| `POST /careconnect/api/appointments/{id}/cancel` | POST | Bearer + PlatformOrTenantAdmin | Cancel appointment |
+| `POST /careconnect/api/appointments/{id}/reschedule` | POST | Bearer + PlatformOrTenantAdmin | Reschedule appointment |
+| `GET /careconnect/api/appointments/{id}/history` | GET | Bearer (AuthenticatedUser) | Appointment status history |
+| `GET /careconnect/api/providers/{id}/availability-exceptions` | GET | Bearer (AuthenticatedUser) | List provider exceptions |
+| `POST /careconnect/api/providers/{id}/availability-exceptions` | POST | Bearer + PlatformOrTenantAdmin | Create exception |
+| `PUT /careconnect/api/availability-exceptions/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update exception |
+| `POST /careconnect/api/providers/{id}/slots/apply-exceptions` | POST | Bearer + PlatformOrTenantAdmin | Block slots overlapping active exceptions |
 
 ## Running
 

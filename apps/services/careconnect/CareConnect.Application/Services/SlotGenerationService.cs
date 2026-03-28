@@ -13,15 +13,18 @@ public class SlotGenerationService : ISlotGenerationService
     private readonly IProviderRepository _providers;
     private readonly IAvailabilityTemplateRepository _templates;
     private readonly IAppointmentSlotRepository _slots;
+    private readonly IAvailabilityExceptionRepository _exceptions;
 
     public SlotGenerationService(
         IProviderRepository providers,
         IAvailabilityTemplateRepository templates,
-        IAppointmentSlotRepository slots)
+        IAppointmentSlotRepository slots,
+        IAvailabilityExceptionRepository exceptions)
     {
-        _providers = providers;
-        _templates = templates;
-        _slots = slots;
+        _providers  = providers;
+        _templates  = templates;
+        _slots      = slots;
+        _exceptions = exceptions;
     }
 
     public async Task<GenerateSlotsResponse> GenerateSlotsAsync(
@@ -69,6 +72,8 @@ public class SlotGenerationService : ISlotGenerationService
                 tenantId, providerId, tmpl.Id, rangeStart, rangeEnd, ct);
         }
 
+        var activeExceptions = await _exceptions.GetActiveInRangeAsync(tenantId, providerId, rangeStart, rangeEnd, ct);
+
         var newSlots = new List<AppointmentSlot>();
 
         for (var date = fromDate; date <= toDate; date = date.AddDays(1))
@@ -90,7 +95,11 @@ public class SlotGenerationService : ISlotGenerationService
                     var startAtUtc = date + slotStart;
                     var endAtUtc = startAtUtc + TimeSpan.FromMinutes(tmpl.SlotDurationMinutes);
 
-                    if (!existing.Contains(startAtUtc))
+                    var blockedByException = activeExceptions.Any(ex =>
+                        ex.OverlapsWith(startAtUtc, endAtUtc) &&
+                        (ex.FacilityId == null || ex.FacilityId == tmpl.FacilityId));
+
+                    if (!existing.Contains(startAtUtc) && !blockedByException)
                     {
                         newSlots.Add(AppointmentSlot.Create(
                             tenantId,
