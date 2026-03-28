@@ -30,3 +30,9 @@ id = "KF2qXysjBokhPHCBMKrmK"
 uri = "file://exports/synqfund_data_model_design.md"
 type = "text"
 title = "SynqFund — Multi-Organization, Multi-Party Data Model Design"
+
+[[outputs]]
+id = "4EyoRiyE8klr0R_zDDwUg"
+uri = "file://exports/synqlien_data_model_design.md"
+type = "text"
+title = "SynqLien — Multi-Organization, Multi-Party Data Model Design"
