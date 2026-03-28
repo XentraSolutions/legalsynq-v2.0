@@ -43,13 +43,19 @@ apps/web/
         org-badge.tsx             ← orgType label + orgName display
         product-switcher.tsx      ← product tab links (Phase 1: display-only)
       careconnect/
-        status-badge.tsx           ← StatusBadge + UrgencyBadge (colour-coded by value)
-        provider-card.tsx          ← clickable provider list card
-        provider-search-filters.tsx ← filter bar (client; writes to URL params)
-        provider-detail-card.tsx   ← full provider detail layout
-        referral-list-table.tsx    ← paginated referral table
-        referral-detail-panel.tsx  ← referral detail with sections: referral / client / notes
-        create-referral-form.tsx   ← modal form; validates + POSTs via BFF proxy
+        status-badge.tsx              ← StatusBadge + UrgencyBadge (colour-coded by value)
+        provider-card.tsx             ← clickable provider list card
+        provider-search-filters.tsx   ← filter bar (client; writes to URL params)
+        provider-detail-card.tsx      ← full provider detail layout
+        referral-list-table.tsx       ← paginated referral table
+        referral-detail-panel.tsx     ← referral detail with sections: referral / client / notes
+        create-referral-form.tsx      ← modal form; validates + POSTs via BFF proxy
+        slot-picker.tsx               ← individual availability slot button (selected/unavailable states)
+        availability-list.tsx         ← groups slots by calendar date; calls SlotPicker
+        booking-panel.tsx             ← modal; pre-populated from referral; POST /appointments; 409 handled
+        appointment-list-table.tsx    ← paginated appointment table with status badges
+        appointment-timeline.tsx      ← chronological status-history timeline
+        appointment-detail-panel.tsx  ← full appointment detail: slot, client, orgs, notes, timeline
     lib/
       server-api-client.ts       ← server-side helper: reads cookie → calls gateway as Bearer
       careconnect-api.ts         ← typed wrappers: careConnectServerApi (server) + careConnectApi (client)
@@ -68,10 +74,13 @@ apps/web/
       (platform)/               ← route group: requireOrg() guard + AppShell
         layout.tsx
         careconnect/
-          providers/page.tsx         ← provider search (CARECONNECT_REFERRER only)
-          providers/[id]/page.tsx    ← provider detail + Create Referral modal (Client Component)
-          referrals/page.tsx         ← referral list (both roles; UX label adapts)
-          referrals/[id]/page.tsx    ← referral detail (read-only; Phase 1)
+          providers/page.tsx                        ← provider search (CARECONNECT_REFERRER only)
+          providers/[id]/page.tsx                   ← provider detail + Create Referral modal (Client Component)
+          providers/[id]/availability/page.tsx      ← availability calendar; date-range picker; BookingPanel modal; ?referralId= context (Client Component)
+          referrals/page.tsx                        ← referral list (both roles; UX label adapts)
+          referrals/[id]/page.tsx                   ← referral detail + "Book Appointment" link for referrers
+          appointments/page.tsx                     ← appointment list (both roles; UX label adapts; status filter chips)
+          appointments/[id]/page.tsx                ← appointment detail; back-links to referral; Phase-2 status actions placeholder
         fund/applications/page.tsx
         lien/marketplace/page.tsx
       (admin)/                  ← route group: requireAdmin() guard + AppShell

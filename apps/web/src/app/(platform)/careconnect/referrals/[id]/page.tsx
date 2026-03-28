@@ -73,10 +73,25 @@ export default async function ReferralDetailPage({ params }: ReferralDetailPageP
 
       {referral && <ReferralDetailPanel referral={referral} />}
 
-      {/* Referrer actions (future: accept / decline for receivers; Phase 1 is view-only) */}
-      {referral && isReferrer && (
+      {/* Referrer: book an appointment for this referral */}
+      {referral && isReferrer && referral.status !== 'Cancelled' && referral.status !== 'Declined' && (
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/careconnect/providers/${referral.providerId}/availability?referralId=${referral.id}`}
+            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+          >
+            Book Appointment
+          </Link>
+          <span className="text-xs text-gray-400">
+            Opens the provider's availability calendar with this referral pre-loaded.
+          </span>
+        </div>
+      )}
+
+      {/* Phase 2 placeholder for receiver status updates */}
+      {referral && isReceiver && (
         <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-400">
-          Status updates and notes are coming in Phase 2.
+          Status updates (Accept / Decline) are coming in Phase 2.
         </div>
       )}
     </div>

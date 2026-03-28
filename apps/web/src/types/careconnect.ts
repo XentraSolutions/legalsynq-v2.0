@@ -99,6 +99,110 @@ export interface ReferralSearchParams {
   pageSize?:    number;
 }
 
+// ── Appointment ───────────────────────────────────────────────────────────────
+
+export const AppointmentStatus = {
+  Scheduled:  'Scheduled',
+  Confirmed:  'Confirmed',
+  Cancelled:  'Cancelled',
+  Completed:  'Completed',
+  NoShow:     'NoShow',
+} as const;
+export type AppointmentStatusValue = typeof AppointmentStatus[keyof typeof AppointmentStatus];
+
+/** One bookable time block returned by GET /providers/{id}/availability */
+export interface AvailabilitySlot {
+  id:              string;
+  startUtc:        string;   // ISO-8601
+  endUtc:          string;   // ISO-8601
+  durationMinutes: number;
+  isAvailable:     boolean;
+  serviceType?:    string;
+  location?:       string;
+}
+
+/** Full response for GET /providers/{id}/availability */
+export interface ProviderAvailabilityResponse {
+  providerId:   string;
+  providerName: string;
+  from:         string;      // ISO date yyyy-MM-dd
+  to:           string;      // ISO date yyyy-MM-dd
+  slots:        AvailabilitySlot[];
+}
+
+export interface AvailabilitySearchParams {
+  from?:        string;      // yyyy-MM-dd
+  to?:          string;      // yyyy-MM-dd
+  serviceType?: string;
+}
+
+/** Row in the appointments list */
+export interface AppointmentSummary {
+  id:               string;
+  referralId?:      string;
+  providerId:       string;
+  providerName:     string;
+  scheduledAtUtc:   string;
+  durationMinutes:  number;
+  status:           string;
+  serviceType?:     string;
+  clientFirstName:  string;
+  clientLastName:   string;
+  caseNumber?:      string;
+  createdAtUtc:     string;
+  updatedAtUtc:     string;
+}
+
+export interface AppointmentStatusHistoryItem {
+  status:          string;
+  changedAtUtc:    string;
+  changedByUserId: string;
+  changedByName?:  string;
+  notes?:          string;
+}
+
+/** Full appointment returned by GET /appointments/{id} */
+export interface AppointmentDetail extends AppointmentSummary {
+  referringOrganizationId?:   string;
+  referringOrganizationName?: string;
+  receivingOrganizationId?:   string;
+  receivingOrganizationName?: string;
+  scheduledEndAtUtc?:         string;
+  notes?:                     string;
+  location?:                  string;
+  clientDob?:                 string;
+  clientPhone?:               string;
+  clientEmail?:               string;
+  statusHistory:              AppointmentStatusHistoryItem[];
+}
+
+/** Body for POST /appointments */
+export interface CreateAppointmentRequest {
+  providerId:       string;
+  referralId?:      string;
+  slotId?:          string;
+  scheduledAtUtc:   string;
+  durationMinutes?: number;
+  serviceType?:     string;
+  notes?:           string;
+  clientFirstName:  string;
+  clientLastName:   string;
+  clientDob?:       string;
+  clientPhone?:     string;
+  clientEmail?:     string;
+  caseNumber?:      string;
+}
+
+export interface AppointmentSearchParams {
+  status?:     string;
+  providerId?: string;
+  referralId?: string;
+  from?:       string;
+  to?:         string;
+  page?:       number;
+  pageSize?:   number;
+}
+
 // ── Pagination ────────────────────────────────────────────────────────────────
 
 /** Matches the backend PagedResponse<T> envelope */

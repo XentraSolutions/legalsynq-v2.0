@@ -4,10 +4,16 @@ import type {
   ProviderSummary,
   ProviderDetail,
   ProviderSearchParams,
+  ProviderAvailabilityResponse,
+  AvailabilitySearchParams,
   ReferralSummary,
   ReferralDetail,
   CreateReferralRequest,
   ReferralSearchParams,
+  AppointmentSummary,
+  AppointmentDetail,
+  CreateAppointmentRequest,
+  AppointmentSearchParams,
   PagedResponse,
 } from '@/types/careconnect';
 
@@ -35,6 +41,11 @@ export const careConnectServerApi = {
 
     getById: (id: string) =>
       serverApi.get<ProviderDetail>(`/careconnect/api/providers/${id}`),
+
+    getAvailability: (id: string, params: AvailabilitySearchParams = {}) =>
+      serverApi.get<ProviderAvailabilityResponse>(
+        `/careconnect/api/providers/${id}/availability${toQs(params as Record<string, unknown>)}`,
+      ),
   },
 
   referrals: {
@@ -45,6 +56,16 @@ export const careConnectServerApi = {
 
     getById: (id: string) =>
       serverApi.get<ReferralDetail>(`/careconnect/api/referrals/${id}`),
+  },
+
+  appointments: {
+    search: (params: AppointmentSearchParams = {}) =>
+      serverApi.get<PagedResponse<AppointmentSummary>>(
+        `/careconnect/api/appointments${toQs(params as Record<string, unknown>)}`,
+      ),
+
+    getById: (id: string) =>
+      serverApi.get<AppointmentDetail>(`/careconnect/api/appointments/${id}`),
   },
 };
 
@@ -61,6 +82,11 @@ export const careConnectApi = {
 
     getById: (id: string) =>
       apiClient.get<ProviderDetail>(`/careconnect/api/providers/${id}`),
+
+    getAvailability: (id: string, params: AvailabilitySearchParams = {}) =>
+      apiClient.get<ProviderAvailabilityResponse>(
+        `/careconnect/api/providers/${id}/availability${toQs(params as Record<string, unknown>)}`,
+      ),
   },
 
   referrals: {
@@ -74,5 +100,18 @@ export const careConnectApi = {
 
     getById: (id: string) =>
       apiClient.get<ReferralDetail>(`/careconnect/api/referrals/${id}`),
+  },
+
+  appointments: {
+    create: (body: CreateAppointmentRequest) =>
+      apiClient.post<AppointmentDetail>('/careconnect/api/appointments', body),
+
+    search: (params: AppointmentSearchParams = {}) =>
+      apiClient.get<PagedResponse<AppointmentSummary>>(
+        `/careconnect/api/appointments${toQs(params as Record<string, unknown>)}`,
+      ),
+
+    getById: (id: string) =>
+      apiClient.get<AppointmentDetail>(`/careconnect/api/appointments/${id}`),
   },
 };
