@@ -6,3 +6,9 @@ id = "fPGct6SogEpvz4yKcwn7v"
 uri = "file://exports/identity_core_schema_design.md"
 type = "text"
 title = "Identity / Core Schema Design — Multi-Org Product Role Platform"
+
+[[outputs]]
+id = "aKn3DeHDkYOuJqMnZ2yfn"
+uri = "file://exports/identity_efcore_implementation_plan.md"
+type = "text"
+title = "EF Core Implementation & Migration Plan — Identity / Core Schema"

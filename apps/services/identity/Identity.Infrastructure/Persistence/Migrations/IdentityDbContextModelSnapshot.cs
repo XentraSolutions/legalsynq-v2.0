@@ -277,6 +277,23 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasData(new { Id = new Guid("20000000-0000-0000-0000-000000000001"), Code = "LEGALSYNQ", CreatedAtUtc = new DateTime(2024,1,1,0,0,0,0,DateTimeKind.Utc), IsActive = true, Name = "LegalSynq Internal", UpdatedAtUtc = new DateTime(2024,1,1,0,0,0,0,DateTimeKind.Utc) });
                 });
 
+            // ── TenantDomain ─────────────────────────────────────────────────
+            modelBuilder.Entity("Identity.Domain.TenantDomain", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("char(36)");
+                    b.Property<Guid>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("Domain").IsRequired().HasMaxLength(253).HasColumnType("varchar(253)");
+                    b.Property<string>("DomainType").IsRequired().HasMaxLength(20).HasColumnType("varchar(20)");
+                    b.Property<bool>("IsPrimary").HasColumnType("tinyint(1)");
+                    b.Property<bool>("IsVerified").HasColumnType("tinyint(1)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex("Domain").IsUnique().HasDatabaseName("IX_TenantDomains_Domain");
+                    b.HasIndex("TenantId").HasDatabaseName("IX_TenantDomains_TenantId");
+                    b.HasIndex(new[] { "TenantId", "IsPrimary" }).HasDatabaseName("IX_TenantDomains_TenantId_IsPrimary");
+                    b.ToTable("TenantDomains", (string)null);
+                });
+
             // ── TenantProduct ────────────────────────────────────────────────
             modelBuilder.Entity("Identity.Domain.TenantProduct", b =>
                 {
@@ -432,6 +449,16 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .IsRequired();
                     b.Navigation("Capability");
                     b.Navigation("ProductRole");
+                });
+
+            modelBuilder.Entity("Identity.Domain.TenantDomain", b =>
+                {
+                    b.HasOne("Identity.Domain.Tenant", "Tenant")
+                        .WithMany("Domains")
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("Identity.Domain.TenantProduct", b =>

@@ -42,6 +42,10 @@ apps/
         Persistence/Migrations/           ← InitialIdentitySchema
                                             AddMultiOrgProductRoleModel (8 tables + seed)
                                             SeedAdminOrgMembership
+                                            AddTenantDomains (TenantDomains table)
+                                            SeedTenantDomains (legalsynq.legalsynq.com)
+                                            CorrectSynqLienRoleMappings (SELLER→PROVIDER)
+                                            DropStaleApplicationsTable (identity_db cleanup)
         Services/JwtTokenService.cs       ← emits org_id, org_type, product_roles JWT claims
         DependencyInjection.cs
     fund/
