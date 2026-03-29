@@ -48,11 +48,11 @@ export default function LoginPage() {
           <Image
             src="/legalsynq-logo-white.png"
             alt="LegalSynq"
-            width={152}
-            height={36}
+            width={220}
+            height={52}
             priority
             unoptimized
-            className="h-8 w-auto"
+            className="h-12 w-auto"
           />
         </div>
 
