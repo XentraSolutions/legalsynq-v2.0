@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { useSession } from '@/hooks/use-session';
+import { useProduct } from '@/contexts/product-context';
 import { orgTypeLabel } from '@/lib/nav';
 
 // ── All platform products shown in the app switcher ──────────────────────────
@@ -97,6 +98,7 @@ export function TopBar() {
 function AppSwitcher() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { setSelectedProductId } = useProduct();
 
   useEffect(() => {
     if (!open) return;
@@ -146,7 +148,7 @@ function AppSwitcher() {
               <Link
                 key={product.id}
                 href={product.href}
-                onClick={() => setOpen(false)}
+                onClick={() => { setSelectedProductId(product.id); setOpen(false); }}
                 className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors group"
               >
                 {/* Colored icon tile */}

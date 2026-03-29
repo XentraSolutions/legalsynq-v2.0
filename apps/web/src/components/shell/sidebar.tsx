@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useProduct } from '@/contexts/product-context';
-import type { NavGroup, NavItem } from '@/types';
+import { PRODUCT_NAV, PRODUCT_META } from '@/lib/nav';
+import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
 
 const STORAGE_KEY = 'ls_sidebar_collapsed';
@@ -12,22 +13,18 @@ const STORAGE_KEY = 'ls_sidebar_collapsed';
 /**
  * Persistent collapsible sidebar.
  *
- * - Never returns null — layout column is always stable.
- * - Always shows ALL available nav groups regardless of active route.
- * - Collapse toggle sits in the top-right corner of the sidebar header (like the screenshot).
- * - Expanded (220px): icons + labels + group headers.
- * - Collapsed (52px): icons only, centered, with native title tooltips.
- * - Collapse state persisted in localStorage.
- * - Keyboard shortcut: Ctrl+[ toggles the sidebar.
+ * - Shows only the nav items for the currently selected product.
+ * - When no product is selected (e.g. /dashboard), shows nothing but the
+ *   collapse toggle so the column is still stable.
+ * - Collapse state persisted in localStorage (Ctrl+[ shortcut).
  */
 export function Sidebar() {
-  const pathname           = usePathname();
-  const { availableGroups } = useProduct();
+  const pathname              = usePathname();
+  const { selectedProductId } = useProduct();
 
   const [collapsed, setCollapsed] = useState(false);
   const [mounted,   setMounted]   = useState(false);
 
-  // Hydrate from localStorage after mount (avoids SSR mismatch)
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'true') setCollapsed(true);
@@ -42,13 +39,10 @@ export function Sidebar() {
     });
   }
 
-  // Keyboard shortcut: Ctrl+[
+  // Keyboard shortcut Ctrl+[
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === '[') {
-        e.preventDefault();
-        toggle();
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key === '[') { e.preventDefault(); toggle(); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -56,6 +50,9 @@ export function Sidebar() {
   }, []);
 
   const width = !mounted ? 220 : collapsed ? 52 : 220;
+
+  const items  = selectedProductId ? (PRODUCT_NAV[selectedProductId] ?? []) : [];
+  const meta   = selectedProductId ? PRODUCT_META[selectedProductId]         : null;
 
   return (
     <aside
@@ -73,98 +70,59 @@ export function Sidebar() {
           collapsed ? 'justify-center h-12' : 'justify-between h-12 px-4',
         )}
       >
-        {!collapsed && (
+        {/* Product name + icon (expanded only) */}
+        {!collapsed && meta && (
+          <div className="flex items-center gap-2 min-w-0">
+            <i className={`${meta.icon} text-[15px]`} style={{ color: meta.color }} />
+            <span className="text-[12px] font-semibold text-gray-700 truncate">
+              {meta.label}
+            </span>
+          </div>
+        )}
+
+        {/* Placeholder when no product selected + expanded */}
+        {!collapsed && !meta && (
           <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 select-none">
             Navigation
           </span>
         )}
 
-        {/* Collapse / expand button */}
+        {/* Collapse / expand toggle */}
         <button
           onClick={toggle}
           title={collapsed ? 'Expand sidebar (Ctrl+[)' : 'Collapse sidebar (Ctrl+[)'}
           className={clsx(
             'flex items-center justify-center rounded-md text-gray-400 transition-colors',
             'hover:bg-gray-100 hover:text-gray-700',
-            collapsed ? 'w-8 h-8' : 'w-7 h-7',
+            collapsed ? 'w-8 h-8' : 'w-7 h-7 shrink-0',
           )}
         >
-          <i
-            className={clsx(
-              'text-[17px] leading-none',
-              collapsed ? 'ri-sidebar-unfold-line' : 'ri-sidebar-fold-line',
-            )}
-          />
+          <i className={clsx(
+            'text-[17px] leading-none',
+            collapsed ? 'ri-sidebar-unfold-line' : 'ri-sidebar-fold-line',
+          )} />
         </button>
       </div>
 
-      {/* ── Nav groups ──────────────────────────────────────────────────────── */}
+      {/* ── Nav items ───────────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden py-2">
-        {availableGroups.length === 0 ? (
-          /* Loading skeleton */
-          <div className={clsx('space-y-1 px-2')}>
-            {[...Array(5)].map((_, i) => (
-              <div
-                key={i}
-                className={clsx(
-                  'rounded-lg bg-gray-100 animate-pulse',
-                  collapsed ? 'w-8 h-8 mx-auto' : 'h-9',
-                )}
-              />
-            ))}
-          </div>
+        {items.length === 0 ? (
+          /* No product selected — empty state */
+          <div />
         ) : (
-          <div className={collapsed ? '' : 'px-3 space-y-5'}>
-            {availableGroups.map(group => (
-              <NavGroupSection
-                key={group.id}
-                group={group}
+          <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
+            {items.map(item => (
+              <SidebarItem
+                key={item.href}
+                item={item}
                 pathname={pathname}
                 collapsed={collapsed}
               />
             ))}
-          </div>
+          </nav>
         )}
       </div>
     </aside>
-  );
-}
-
-// ── Group section ─────────────────────────────────────────────────────────────
-
-function NavGroupSection({
-  group, pathname, collapsed,
-}: { group: NavGroup; pathname: string; collapsed: boolean }) {
-  return (
-    <div className={collapsed ? 'py-1' : ''}>
-      {/* Group label (expanded only) */}
-      {!collapsed && (
-        <div className="flex items-center gap-1.5 px-3 mb-1">
-          {group.icon && (
-            <i className={`${group.icon} text-[12px] text-gray-400`} />
-          )}
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-            {group.label}
-          </p>
-        </div>
-      )}
-
-      {/* Thin divider between groups when collapsed */}
-      {collapsed && (
-        <div className="mx-2 mb-1.5 border-t border-gray-100" />
-      )}
-
-      <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : '')}>
-        {group.items.map(item => (
-          <SidebarItem
-            key={item.href}
-            item={item}
-            pathname={pathname}
-            collapsed={collapsed}
-          />
-        ))}
-      </nav>
-    </div>
   );
 }
 

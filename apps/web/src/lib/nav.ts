@@ -1,98 +1,58 @@
-import type { NavGroup, PlatformSession } from '@/types';
-import { ProductRole } from '@/types';
+import type { NavItem, PlatformSession } from '@/types';
 
-const pr = ProductRole;
+// ── Per-product sidebar navigation ────────────────────────────────────────────
+// Keyed by product id (matches ALL_PRODUCTS ids in top-bar.tsx)
 
-/**
- * Derives the sidebar navigation from the session.
- * Rules:
- *  - Groups appear only when the session contains at least one relevant product role.
- *  - Individual items inside a group may also be filtered by role.
- *  - The Admin group appears for TenantAdmin and PlatformAdmin.
- *  - This is a UX convenience only — backend enforces real authorization.
- */
-export function buildNavGroups(session: PlatformSession): NavGroup[] {
-  const roles = session.productRoles;
-  const groups: NavGroup[] = [];
+export const PRODUCT_NAV: Record<string, NavItem[]> = {
+  careconnect: [
+    { href: '/careconnect/dashboard',  label: 'Dashboard',  icon: 'ri-dashboard-line' },
+    { href: '/careconnect/providers',  label: 'Providers',  icon: 'ri-hospital-line' },
+    { href: '/careconnect/referrals',  label: 'Referrals',  icon: 'ri-file-list-3-line' },
+  ],
+  fund: [
+    { href: '/fund/dashboard',     label: 'Dashboard',    icon: 'ri-dashboard-line' },
+    { href: '/fund/processing',    label: 'Processing',   icon: 'ri-loader-4-line' },
+    { href: '/fund/underwriting',  label: 'Underwriting', icon: 'ri-file-search-line' },
+    { href: '/fund/payouts',       label: 'Payouts',      icon: 'ri-money-dollar-circle-line' },
+    { href: '/fund/reports',       label: 'Reports',      icon: 'ri-bar-chart-2-line' },
+  ],
+  lien: [
+    { href: '/lien/dashboard',      label: 'Dashboard',    icon: 'ri-dashboard-line' },
+    { href: '/lien/cases',          label: 'Cases',        icon: 'ri-folder-open-line' },
+    { href: '/lien/liens',          label: 'Liens',        icon: 'ri-file-stack-line' },
+    { href: '/lien/bill-of-sales',  label: 'Bill of Sales', icon: 'ri-receipt-line' },
+    { href: '/lien/contacts',       label: 'Contacts',     icon: 'ri-contacts-book-line' },
+  ],
+  ai: [
+    { href: '/ai/dashboard', label: 'Dashboard', icon: 'ri-dashboard-line' },
+  ],
+  insights: [
+    { href: '/insights/dashboard', label: 'Dashboard', icon: 'ri-dashboard-line' },
+  ],
+};
 
-  // ── CareConnect ─────────────────────────────────────────────────────────────
-  const ccRoles: string[] = [pr.CareConnectReferrer, pr.CareConnectReceiver];
-  if (roles.some(r => ccRoles.includes(r))) {
-    groups.push({
-      id:    'careconnect',
-      label: 'CareConnect',
-      icon:  'ri-shield-cross-line',
-      items: [
-        { href: '/careconnect/referrals',    label: 'Referrals',    icon: 'ri-file-list-3-line' },
-        { href: '/careconnect/appointments', label: 'Appointments', icon: 'ri-calendar-event-line' },
-        ...(roles.includes(pr.CareConnectReferrer)
-          ? [{ href: '/careconnect/providers', label: 'Find Providers', icon: 'ri-hospital-line' }]
-          : []),
-      ],
-    });
-  }
+// ── Product metadata (label + icon) used in the sidebar header ───────────────
 
-  // ── SynqFund ────────────────────────────────────────────────────────────────
-  const fundRoles: string[] = [pr.SynqFundReferrer, pr.SynqFundFunder];
-  if (roles.some(r => fundRoles.includes(r))) {
-    groups.push({
-      id:    'fund',
-      label: 'SynqFund',
-      icon:  'ri-bank-line',
-      items: [
-        { href: '/fund/applications',     label: 'Applications',     icon: 'ri-file-list-line' },
-        ...(roles.includes(pr.SynqFundReferrer)
-          ? [{ href: '/fund/applications/new', label: 'New Application', icon: 'ri-add-circle-line' }]
-          : []),
-      ],
-    });
-  }
+export const PRODUCT_META: Record<string, { label: string; icon: string; color: string }> = {
+  careconnect: { label: 'Synq CareConnect', icon: 'ri-shield-cross-line',  color: '#2563eb' },
+  fund:        { label: 'Synq Funds',        icon: 'ri-bank-line',           color: '#16a34a' },
+  lien:        { label: 'Synq Liens',        icon: 'ri-file-stack-line',     color: '#7c3aed' },
+  ai:          { label: 'Synq AI',           icon: 'ri-robot-line',          color: '#d97706' },
+  insights:    { label: 'Synq Insights',     icon: 'ri-bar-chart-2-line',    color: '#0891b2' },
+};
 
-  // ── SynqLien ────────────────────────────────────────────────────────────────
-  const lienRoles: string[] = [pr.SynqLienSeller, pr.SynqLienBuyer, pr.SynqLienHolder];
-  if (roles.some(r => lienRoles.includes(r))) {
-    groups.push({
-      id:    'lien',
-      label: 'SynqLien',
-      icon:  'ri-file-stack-line',
-      items: [
-        ...(roles.includes(pr.SynqLienBuyer)
-          ? [{ href: '/lien/marketplace', label: 'Marketplace', icon: 'ri-shopping-bag-line' }]
-          : []),
-        ...(roles.includes(pr.SynqLienSeller)
-          ? [
-              { href: '/lien/my-liens',     label: 'My Liens', icon: 'ri-file-stack-line' },
-              { href: '/lien/my-liens/new', label: 'New Lien', icon: 'ri-add-circle-line' },
-            ]
-          : []),
-        ...(roles.includes(pr.SynqLienBuyer) || roles.includes(pr.SynqLienHolder)
-          ? [{ href: '/lien/portfolio', label: 'Portfolio', icon: 'ri-briefcase-line' }]
-          : []),
-      ],
-    });
-  }
+// ── Infer product id from pathname ────────────────────────────────────────────
 
-  // ── Administration ───────────────────────────────────────────────────────────
-  if (session.isTenantAdmin || session.isPlatformAdmin) {
-    groups.push({
-      id:    'admin',
-      label: 'Administration',
-      icon:  'ri-settings-3-line',
-      items: [
-        { href: '/admin/users',         label: 'Users',         icon: 'ri-group-line' },
-        { href: '/admin/organizations', label: 'Organizations', icon: 'ri-building-line' },
-        { href: '/admin/products',      label: 'Products',      icon: 'ri-cube-line' },
-        ...(session.isPlatformAdmin
-          ? [{ href: '/admin/tenants', label: 'All Tenants', icon: 'ri-global-line' }]
-          : []),
-      ],
-    });
-  }
-
-  return groups;
+export function inferProductFromPath(pathname: string): string | null {
+  if (pathname.startsWith('/careconnect')) return 'careconnect';
+  if (pathname.startsWith('/fund'))        return 'fund';
+  if (pathname.startsWith('/lien'))        return 'lien';
+  if (pathname.startsWith('/ai'))          return 'ai';
+  if (pathname.startsWith('/insights'))    return 'insights';
+  return null;
 }
 
-// ── Human-readable org type label ────────────────────────────────────────────
+// ── Human-readable org type label ─────────────────────────────────────────────
 
 export function orgTypeLabel(orgType: string | undefined): string {
   const labels: Record<string, string> = {
@@ -103,4 +63,10 @@ export function orgTypeLabel(orgType: string | undefined): string {
     INTERNAL:   'Internal',
   };
   return orgType ? (labels[orgType] ?? orgType) : 'No Organization';
+}
+
+// ── Legacy helper (kept so existing imports don't break) ──────────────────────
+
+export function buildNavGroups(_session: PlatformSession) {
+  return [];
 }

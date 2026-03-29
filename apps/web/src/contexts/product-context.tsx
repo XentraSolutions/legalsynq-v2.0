@@ -1,40 +1,37 @@
 'use client';
 
-import { createContext, useContext, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { useSession } from '@/hooks/use-session';
-import { buildNavGroups } from '@/lib/nav';
-import { inferProductIdFromPath } from '@/lib/product-config';
-import type { NavGroup } from '@/types';
+import { inferProductFromPath } from '@/lib/nav';
 
 interface ProductContextValue {
-  /** The product id inferred from the current pathname (e.g. 'careconnect', 'fund'). */
-  activeProductId: string | null;
-  /** All nav groups the user has access to (role-filtered). */
-  availableGroups: NavGroup[];
-  /** The single NavGroup corresponding to the active product, or null if none matched. */
-  activeGroup: NavGroup | null;
+  /** Currently selected product id (set by app switcher or inferred from path). */
+  selectedProductId: string | null;
+  /** Programmatically select a product (called by the app switcher). */
+  setSelectedProductId: (id: string | null) => void;
 }
 
 const ProductContext = createContext<ProductContextValue>({
-  activeProductId: null,
-  availableGroups: [],
-  activeGroup: null,
+  selectedProductId: null,
+  setSelectedProductId: () => {},
 });
 
 export function ProductProvider({ children }: { children: React.ReactNode }) {
-  const { session } = useSession();
   const pathname = usePathname();
 
-  const value = useMemo<ProductContextValue>(() => {
-    const availableGroups = session ? buildNavGroups(session) : [];
-    const activeProductId = inferProductIdFromPath(pathname);
-    const activeGroup = availableGroups.find(g => g.id === activeProductId) ?? null;
-    return { activeProductId, availableGroups, activeGroup };
-  }, [session, pathname]);
+  // Initialise from the current path so a hard-nav/refresh lands correctly
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(
+    () => inferProductFromPath(pathname),
+  );
+
+  // Keep the selection in sync when the user navigates via browser back/forward
+  useEffect(() => {
+    const inferred = inferProductFromPath(pathname);
+    if (inferred) setSelectedProductId(inferred);
+  }, [pathname]);
 
   return (
-    <ProductContext.Provider value={value}>
+    <ProductContext.Provider value={{ selectedProductId, setSelectedProductId }}>
       {children}
     </ProductContext.Provider>
   );
