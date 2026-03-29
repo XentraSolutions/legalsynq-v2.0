@@ -502,3 +502,59 @@ dotnet tool run dotnet-ef migrations add <Name> \
 
 ### Analysis documents
 - `analysis/step14_integration_tests.md` — coverage summary, infrastructure, gaps, how to run
+
+---
+
+## .NET Documents Service (apps/services/documents-dotnet)
+
+**Port**: 5006  
+**Framework**: .NET 8 Minimal APIs + EF Core 8 + Npgsql (PostgreSQL)  
+**Architecture**: 4-project layered monorepo (Domain → Application → Infrastructure → Api)  
+**Status**: Fully implemented, builds cleanly (0 errors, 0 warnings)
+
+### Project Layout
+
+| Project | Purpose |
+|---------|---------|
+| `Documents.Domain` | Entities, enums, interfaces, value objects. Zero external NuGet deps. |
+| `Documents.Application` | Services, DTOs, exceptions, RequestContext. Depends only on Domain + FluentValidation. |
+| `Documents.Infrastructure` | EF Core DbContext, repositories, storage providers (Local/S3), scanners, token stores, JWT extractor, DI wiring. |
+| `Documents.Api` | Minimal API endpoints, middleware, Program.cs, appsettings. |
+
+### Key Characteristics
+- **PostgreSQL** — uses Npgsql/EF Core 8 (NOT MySQL, unlike other .NET services; matches TypeScript Docs service schema)
+- **Full API parity**: 13/13 TypeScript endpoints implemented
+- **Three-layer tenant isolation**: L1 pre-query guard + L2 LINQ WHERE predicate + L3 ABAC in DocumentService
+- **RBAC**: 5 roles (DocReader/DocUploader/DocManager/TenantAdmin/PlatformAdmin)
+- **Storage**: `local` (dev) or `s3` (prod), selected via `Storage:Provider` config
+- **File scanning**: `none` (pass-through) or `mock` (configurable result), selected via `Scanner:Provider`
+- **Access tokens**: Opaque 64-hex (256-bit), one-time-use, configurable TTL; backed by in-memory or Redis
+- **JWT auth**: HS256 symmetric key (dev) or JWKS/RS256 (prod), configured via `Jwt:SigningKey` or `Jwt:JwksUri`
+- **Structured logging**: Serilog with console sink
+- **Swagger**: Available at `/docs` in Development environment
+
+### Build Command
+```bash
+dotnet build apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj
+```
+
+### Database Setup
+```bash
+# Apply EF Core migrations
+dotnet ef migrations add InitialCreate \
+  --project apps/services/documents-dotnet/Documents.Infrastructure \
+  --startup-project apps/services/documents-dotnet/Documents.Api
+dotnet ef database update \
+  --startup-project apps/services/documents-dotnet/Documents.Api
+```
+Or run `apps/services/documents-dotnet/Documents.Infrastructure/Database/schema.sql` directly against PostgreSQL.
+
+### Analysis Documents (7 phases)
+All in `apps/services/docs/analysis/`:
+- `dotnet_phase1_discovery_and_mapping.md` — TS→.NET translation decisions
+- `dotnet_phase2_scaffolding.md` — project structure and dependency graph
+- `dotnet_phase3_domain_and_contracts.md` — entities, enums, interfaces, invariants
+- `dotnet_phase4_api_and_application.md` — services, RBAC, endpoints, configuration
+- `dotnet_phase5_infrastructure.md` — EF Core, repositories, storage, scanner, token stores
+- `dotnet_phase6_security_and_tenancy.md` — threat model, three-layer isolation, HIPAA notes
+- `dotnet_phase7_parity_review.md` — 13/13 endpoint parity, A- grade, gaps, next steps
