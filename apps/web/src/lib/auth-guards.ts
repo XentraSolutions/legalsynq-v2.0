@@ -44,6 +44,18 @@ export async function requireAdmin(): Promise<PlatformSession> {
 }
 
 /**
+ * Ensure the session is a PlatformAdmin.
+ * TenantAdmins are NOT granted access — this guard is strictly for
+ * LegalSynq platform administrators operating the Control Center.
+ * Redirects to /dashboard if not.
+ */
+export async function requirePlatformAdmin(): Promise<PlatformSession> {
+  const session = await requireSession();
+  if (!session.isPlatformAdmin) redirect('/dashboard');
+  return session;
+}
+
+/**
  * Lightweight check — no redirect. Use in layouts to conditionally render UI.
  */
 export async function getOptionalSession(): Promise<PlatformSession | null> {
