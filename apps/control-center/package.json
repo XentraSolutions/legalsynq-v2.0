@@ -7,5 +7,19 @@
     "build": "next build",
     "start": "next start -p 5004",
     "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "*",
+    "react": "*",
+    "react-dom": "*"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "*",
+    "@types/node": "*",
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "autoprefixer": "*",
+    "tailwindcss": "*",
+    "typescript": "*"
   }
 }

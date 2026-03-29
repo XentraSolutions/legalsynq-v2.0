@@ -11,6 +11,11 @@ echo "[web] Starting Next.js on :5000"
 (cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$ROOT/node_modules/.bin/next" dev -p 5000) &
 PID_WEB=$!
 
+# Start Control Center — port 5004
+echo "[control-center] Starting Next.js on :5004"
+(cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$ROOT/node_modules/.bin/next" dev -p 5004) &
+PID_CC=$!
+
 # Restore, build, and start .NET services all in background
 (
   dotnet restore "$ROOT/LegalSynq.sln" --verbosity quiet
@@ -24,9 +29,9 @@ PID_WEB=$!
 PID_DOTNET=$!
 
 cleanup() {
-    kill "$PID_WEB" "$PID_DOTNET" 2>/dev/null || true
+    kill "$PID_WEB" "$PID_CC" "$PID_DOTNET" 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-wait "$PID_WEB" "$PID_DOTNET"
+wait "$PID_WEB" "$PID_CC" "$PID_DOTNET"
