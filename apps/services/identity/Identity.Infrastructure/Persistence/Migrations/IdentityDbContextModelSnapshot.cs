@@ -19,6 +19,24 @@ namespace Identity.Infrastructure.Persistence.Migrations
                 .HasAnnotation("ProductVersion", "8.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
+            // ── AuditLog ─────────────────────────────────────────────────────
+            modelBuilder.Entity("Identity.Domain.AuditLog", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("char(36)");
+                    b.Property<string>("ActorName").IsRequired().HasMaxLength(320).HasColumnType("varchar(320)");
+                    b.Property<string>("ActorType").IsRequired().HasMaxLength(20).HasColumnType("varchar(20)");
+                    b.Property<string>("Action").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("EntityType").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("EntityId").IsRequired().HasMaxLength(500).HasColumnType("varchar(500)");
+                    b.Property<string>("MetadataJson").HasMaxLength(4000).HasColumnType("varchar(4000)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex("ActorType");
+                    b.HasIndex("CreatedAtUtc");
+                    b.HasIndex("EntityType");
+                    b.ToTable("AuditLogs", (string)null);
+                });
+
             // ── Capability ───────────────────────────────────────────────────
             modelBuilder.Entity("Identity.Domain.Capability", b =>
                 {
