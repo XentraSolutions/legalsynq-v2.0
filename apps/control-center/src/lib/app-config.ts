@@ -1,0 +1,53 @@
+/**
+ * app-config.ts — Control Center origin and path configuration.
+ *
+ * Used by middleware and auth redirects so that no URL is ever
+ * hard-coded to localhost or a specific port. All redirect targets
+ * must be derived from these constants.
+ *
+ * TODO: integrate with Identity service session validation
+ * TODO: move to HttpOnly secure cookies
+ * TODO: support cross-subdomain auth (set cookie domain to .legalsynq.com)
+ */
+
+/**
+ * The canonical public origin of the Control Center.
+ *
+ * In production this will be something like https://admin.legalsynq.com.
+ * In development it is derived from the Replit dev domain env var,
+ * falling back to the standard local port.
+ *
+ * The NEXT_PUBLIC_ prefix makes this available to both server and
+ * client-side code without a separate server-action fetch.
+ */
+export const CONTROL_CENTER_ORIGIN: string =
+  process.env.NEXT_PUBLIC_CONTROL_CENTER_ORIGIN ??
+  (process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : 'http://localhost:5004');
+
+/**
+ * Optional URL path prefix for the Control Center (e.g. "/admin").
+ * Leave empty in most deployments — only needed when the app is
+ * mounted at a sub-path behind a reverse proxy.
+ */
+export const BASE_PATH: string =
+  process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+
+/**
+ * The name of the session cookie used by the Control Center BFF.
+ *
+ * Matches the cookie set by POST /api/auth/login.
+ * Named platform_session (not cc_session) for cross-app compatibility
+ * with the Identity service JWT flow.
+ *
+ * TODO: rename to cc_session once cross-subdomain cookie scoping is in place
+ */
+export const SESSION_COOKIE_NAME = 'platform_session' as const;
+
+/**
+ * Full login URL — absolute origin + path.
+ * Used in middleware and server-side redirects so they never contain
+ * a hard-coded host.
+ */
+export const LOGIN_URL = `${CONTROL_CENTER_ORIGIN}${BASE_PATH}/login` as const;

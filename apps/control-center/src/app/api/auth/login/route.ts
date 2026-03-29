@@ -1,7 +1,14 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { SESSION_COOKIE_NAME, CONTROL_CENTER_ORIGIN } from '@/lib/app-config';
+
+// TODO: integrate with Identity service session validation
+// TODO: move to HttpOnly secure cookies in production
+// TODO: support cross-subdomain auth (scope cookie to .legalsynq.com)
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
 const IS_PROD     = process.env.NODE_ENV === 'production';
+
+void CONTROL_CENTER_ORIGIN; // reserved for future CORS / redirect use
 
 /**
  * BFF Login route — POST /api/auth/login
@@ -71,7 +78,7 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json(sessionEnvelope, { status: 200 });
 
-  response.cookies.set('platform_session', accessToken, {
+  response.cookies.set(SESSION_COOKIE_NAME, accessToken, {
     httpOnly: true,
     secure:   IS_PROD,
     sameSite: IS_PROD ? 'strict' : 'lax',

@@ -1,18 +1,23 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { SESSION_COOKIE_NAME, BASE_PATH } from '@/lib/app-config';
 
 /**
  * Control Center middleware — route protection.
  *
- * All routes except /login and Next.js internals require the platform_session cookie.
- * The cookie is a gate only — actual role check (isPlatformAdmin) is done in
- * requirePlatformAdmin() inside each Server Component / layout.
+ * All routes except /login and Next.js internals require the platform_session
+ * cookie. The cookie is a gate only — the actual role check (isPlatformAdmin)
+ * is done in requirePlatformAdmin() inside each Server Component / layout.
  *
  * This middleware is intentionally lightweight. It does NOT decode the JWT or
  * make role decisions — those belong to the server-side auth guards.
+ *
+ * TODO: integrate with Identity service session validation
+ * TODO: move to HttpOnly secure cookies
+ * TODO: support cross-subdomain auth (accept cookie scoped to .legalsynq.com)
  */
 
 const PUBLIC_PATHS = [
-  '/login',
+  `${BASE_PATH}/login`,
   '/_next',
   '/favicon.ico',
   '/api/auth/login',
@@ -26,9 +31,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const sessionCookie = request.cookies.get('platform_session');
+  const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME);
   if (!sessionCookie) {
-    const loginUrl = new URL('/login', request.url);
+    const loginPath = `${BASE_PATH}/login`;
+    const loginUrl  = new URL(loginPath, request.url);
     loginUrl.searchParams.set('reason', 'unauthenticated');
     return NextResponse.redirect(loginUrl);
   }

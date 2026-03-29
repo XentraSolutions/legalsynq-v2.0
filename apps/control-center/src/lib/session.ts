@@ -2,6 +2,11 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { PlatformSession, SystemRoleValue, ProductRoleValue, OrgTypeValue } from '@/types';
 import { SystemRole } from '@/types';
+import { SESSION_COOKIE_NAME } from '@/lib/app-config';
+
+// TODO: integrate with Identity service session validation
+// TODO: move to HttpOnly secure cookies
+// TODO: support cross-subdomain auth (accept cookie scoped to .legalsynq.com)
 
 // ── /auth/me response shape ───────────────────────────────────────────────────
 
@@ -30,7 +35,7 @@ const AUTH_ME_URL  = `${GATEWAY_URL}/identity/api/auth/me`;
  */
 export async function getServerSession(): Promise<PlatformSession | null> {
   const cookieStore = cookies();
-  const sessionCookie = cookieStore.get('platform_session');
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
 
   if (!sessionCookie?.value) return null;
 

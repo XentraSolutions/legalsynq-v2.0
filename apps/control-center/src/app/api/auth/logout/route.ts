@@ -1,4 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { SESSION_COOKIE_NAME } from '@/lib/app-config';
+
+// TODO: move to HttpOnly secure cookies in production
+// TODO: support cross-subdomain auth (clear cookie scoped to .legalsynq.com)
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
 const IS_PROD     = process.env.NODE_ENV === 'production';
@@ -8,7 +12,7 @@ const IS_PROD     = process.env.NODE_ENV === 'production';
  * Clears the platform_session cookie and optionally notifies the backend.
  */
 export async function POST(request: NextRequest) {
-  const token = request.cookies.get('platform_session')?.value;
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
 
   if (token) {
     fetch(`${GATEWAY_URL}/identity/api/auth/logout`, {
@@ -19,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json({ ok: true }, { status: 200 });
 
-  response.cookies.set('platform_session', '', {
+  response.cookies.set(SESSION_COOKIE_NAME, '', {
     httpOnly: true,
     secure:   IS_PROD,
     sameSite: IS_PROD ? 'strict' : 'lax',
