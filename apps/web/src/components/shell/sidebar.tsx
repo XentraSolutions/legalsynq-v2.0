@@ -12,20 +12,22 @@ const STORAGE_KEY = 'ls_sidebar_collapsed';
 /**
  * Persistent collapsible sidebar.
  *
- * - Always renders (never returns null) so the layout column is stable.
- * - Always shows ALL available nav groups regardless of the active route.
- * - Active item highlighted across all groups.
+ * - Never returns null — layout column is always stable.
+ * - Always shows ALL available nav groups regardless of active route.
+ * - Collapse toggle sits in the top-right corner of the sidebar header (like the screenshot).
  * - Expanded (220px): icons + labels + group headers.
  * - Collapsed (52px): icons only, centered, with native title tooltips.
  * - Collapse state persisted in localStorage.
+ * - Keyboard shortcut: Ctrl+[ toggles the sidebar.
  */
 export function Sidebar() {
-  const pathname        = usePathname();
+  const pathname           = usePathname();
   const { availableGroups } = useProduct();
 
   const [collapsed, setCollapsed] = useState(false);
   const [mounted,   setMounted]   = useState(false);
 
+  // Hydrate from localStorage after mount (avoids SSR mismatch)
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'true') setCollapsed(true);
@@ -40,6 +42,19 @@ export function Sidebar() {
     });
   }
 
+  // Keyboard shortcut: Ctrl+[
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === '[') {
+        e.preventDefault();
+        toggle();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const width = !mounted ? 220 : collapsed ? 52 : 220;
 
   return (
@@ -48,30 +63,47 @@ export function Sidebar() {
       style={{
         width,
         transition: mounted ? 'width 200ms ease' : undefined,
-        /* Must fill the parent flex row height */
         alignSelf: 'stretch',
       }}
     >
-      {/* ── Header (expanded only) ───────────────────────────────────────── */}
+      {/* ── Header row ──────────────────────────────────────────────────────── */}
       <div
-        className="shrink-0 overflow-hidden"
-        style={{ height: collapsed ? 12 : undefined, transition: 'height 200ms ease' }}
+        className={clsx(
+          'shrink-0 flex items-center border-b border-gray-100',
+          collapsed ? 'justify-center h-12' : 'justify-between h-12 px-4',
+        )}
       >
         {!collapsed && (
-          <div className="px-5 pt-5 pb-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-0.5">
-              Navigation
-            </p>
-          </div>
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 select-none">
+            Navigation
+          </span>
         )}
+
+        {/* Collapse / expand button */}
+        <button
+          onClick={toggle}
+          title={collapsed ? 'Expand sidebar (Ctrl+[)' : 'Collapse sidebar (Ctrl+[)'}
+          className={clsx(
+            'flex items-center justify-center rounded-md text-gray-400 transition-colors',
+            'hover:bg-gray-100 hover:text-gray-700',
+            collapsed ? 'w-8 h-8' : 'w-7 h-7',
+          )}
+        >
+          <i
+            className={clsx(
+              'text-[17px] leading-none',
+              collapsed ? 'ri-sidebar-unfold-line' : 'ri-sidebar-fold-line',
+            )}
+          />
+        </button>
       </div>
 
-      {/* ── Nav groups ──────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      {/* ── Nav groups ──────────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-2">
         {availableGroups.length === 0 ? (
-          /* Loading / no-groups skeleton */
-          <div className={clsx('space-y-1 py-2', collapsed ? 'px-1.5' : 'px-3')}>
-            {[...Array(4)].map((_, i) => (
+          /* Loading skeleton */
+          <div className={clsx('space-y-1 px-2')}>
+            {[...Array(5)].map((_, i) => (
               <div
                 key={i}
                 className={clsx(
@@ -82,7 +114,7 @@ export function Sidebar() {
             ))}
           </div>
         ) : (
-          <div className={clsx('py-2', collapsed ? '' : 'px-3 space-y-5')}>
+          <div className={collapsed ? '' : 'px-3 space-y-5'}>
             {availableGroups.map(group => (
               <NavGroupSection
                 key={group.id}
@@ -93,32 +125,6 @@ export function Sidebar() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* ── Collapse / expand toggle ─────────────────────────────────────── */}
-      <div
-        className={clsx(
-          'shrink-0 border-t border-gray-100 py-2',
-          collapsed ? 'flex justify-center' : 'px-3',
-        )}
-      >
-        <button
-          onClick={toggle}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className={clsx(
-            'flex items-center gap-2 rounded-lg text-[12px] font-medium text-gray-400',
-            'hover:bg-gray-100 hover:text-gray-700 transition-colors',
-            collapsed ? 'w-8 h-8 justify-center' : 'w-full px-3 py-2',
-          )}
-        >
-          <i
-            className={clsx(
-              'text-[16px] leading-none shrink-0',
-              collapsed ? 'ri-sidebar-unfold-line' : 'ri-sidebar-fold-line',
-            )}
-          />
-          {!collapsed && <span>Collapse</span>}
-        </button>
       </div>
     </aside>
   );
@@ -143,7 +149,7 @@ function NavGroupSection({
         </div>
       )}
 
-      {/* Divider between groups when collapsed */}
+      {/* Thin divider between groups when collapsed */}
       {collapsed && (
         <div className="mx-2 mb-1.5 border-t border-gray-100" />
       )}
