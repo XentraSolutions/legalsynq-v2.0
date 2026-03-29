@@ -6,6 +6,8 @@ import { usePathname } from 'next/navigation';
 import { useSession } from '@/hooks/use-session';
 import { useTenantBranding } from '@/hooks/use-tenant-branding';
 import { buildControlCenterNav } from '@/lib/control-center-nav';
+import { CCRoutes } from '@/lib/control-center-routes';
+import { CC_LOGIN_URL } from '@/lib/control-center-config';
 import type { NavGroup, NavItem } from '@/types';
 import { clsx } from 'clsx';
 
@@ -14,12 +16,13 @@ interface ControlCenterShellProps {
 }
 
 /**
- * Dedicated layout shell for Control Center (/control-center) routes.
+ * Dedicated layout shell for Control Center routes.
  *
  * Mirrors AppShell in structure and visual style, but:
  *  - Uses buildControlCenterNav() instead of buildNavGroups()
  *  - Shows a "Control Center" identity badge instead of org/product switcher
  *  - Intended exclusively for PlatformAdmin users
+ *  - Logout redirect uses CC_LOGIN_URL so it works in both embedded and standalone mode
  *
  * Must be used inside <SessionProvider> and <TenantBrandingProvider>.
  */
@@ -44,20 +47,26 @@ function ControlCenterTopBar() {
   const branding = useTenantBranding();
 
   async function handleSignOut() {
+    // POST to /api/auth/logout to clear the HttpOnly cookie server-side.
+    // Uses CC_LOGIN_URL for the post-logout redirect so it works in both modes:
+    //   embedded:   redirects to /login (operator portal login on same host)
+    //   standalone: redirects to CC_LOGIN_URL (configured for the standalone host)
     await fetch('/api/auth/logout', { method: 'POST' });
     clearSession();
-    window.location.href = '/login';
+    window.location.href = CC_LOGIN_URL;
   }
 
   return (
     <header className="h-14 border-b border-gray-200 bg-white flex items-center px-4 gap-4 z-10">
-      {/* Tenant logo / name */}
+      {/* Tenant logo / name — links to CC dashboard via CCRoutes */}
       <div className="flex items-center gap-2 shrink-0">
-        {branding.logoUrl ? (
-          <img src={branding.logoUrl} alt={branding.displayName} className="h-7 w-auto" />
-        ) : (
-          <span className="font-semibold text-gray-900">{branding.displayName}</span>
-        )}
+        <Link href={CCRoutes.dashboard} className="flex items-center gap-2">
+          {branding.logoUrl ? (
+            <img src={branding.logoUrl} alt={branding.displayName} className="h-7 w-auto" />
+          ) : (
+            <span className="font-semibold text-gray-900">{branding.displayName}</span>
+          )}
+        </Link>
       </div>
 
       <div className="w-px h-6 bg-gray-200" />

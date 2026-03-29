@@ -1,11 +1,14 @@
 import Link from 'next/link';
-import { requirePlatformAdmin } from '@/lib/auth-guards';
+import { requireCCPlatformAdmin } from '@/lib/auth-guards';
+import { CCRoutes } from '@/lib/control-center-routes';
 
 /**
  * Control Center Dashboard
  *
  * Minimal async Server Component — renders a module card grid linking to
  * all future Control Center sections. No backend calls yet.
+ *
+ * All hrefs use CCRoutes so they work in both embedded and standalone deployment.
  */
 
 interface ModuleCard {
@@ -17,52 +20,52 @@ interface ModuleCard {
 
 const MODULES: ModuleCard[] = [
   {
-    href:        '/control-center/tenants',
+    href:        CCRoutes.tenants,
     title:       'Tenants',
     description: 'View and manage all tenants on the platform.',
     badge:       'Core',
   },
   {
-    href:        '/control-center/tenant-users',
+    href:        CCRoutes.tenantUsers,
     title:       'Tenant Users',
     description: 'Search and administer users across all tenants.',
     badge:       'Core',
   },
   {
-    href:        '/control-center/roles',
+    href:        CCRoutes.roles,
     title:       'Roles & Permissions',
     description: 'Inspect product roles and their capability assignments.',
   },
   {
-    href:        '/control-center/products',
+    href:        CCRoutes.products,
     title:       'Product Entitlements',
     description: 'Enable or disable product access per tenant.',
   },
   {
-    href:        '/control-center/support',
+    href:        CCRoutes.support,
     title:       'Support Tools',
     description: 'Lookup sessions, reset credentials, and assist tenants.',
   },
   {
-    href:        '/control-center/audit-logs',
+    href:        CCRoutes.auditLogs,
     title:       'Audit Logs',
     description: 'Browse platform-wide administrative event history.',
     badge:       'Coming soon',
   },
   {
-    href:        '/control-center/monitoring',
+    href:        CCRoutes.monitoring,
     title:       'Monitoring',
     description: 'Check live health status of all platform services.',
   },
   {
-    href:        '/control-center/settings',
+    href:        CCRoutes.settings,
     title:       'Platform Settings',
     description: 'Manage global platform configuration and feature flags.',
   },
 ];
 
 export default async function ControlCenterDashboardPage() {
-  const session = await requirePlatformAdmin();
+  const session = await requireCCPlatformAdmin();
 
   return (
     <div className="space-y-6">

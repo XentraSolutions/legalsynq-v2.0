@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getServerSession, requireSession } from '@/lib/session';
 import type { PlatformSession, ProductRoleValue } from '@/types';
+import { CC_ACCESS_DENIED_URL, CC_LOGIN_URL } from '@/lib/control-center-config';
 
 /**
  * Ensure a valid session exists.
@@ -52,6 +53,30 @@ export async function requireAdmin(): Promise<PlatformSession> {
 export async function requirePlatformAdmin(): Promise<PlatformSession> {
   const session = await requireSession();
   if (!session.isPlatformAdmin) redirect('/dashboard');
+  return session;
+}
+
+/**
+ * Control Center guard — requires PlatformAdmin system role.
+ *
+ * This is the guard to use inside all (control-center) Server Components and layouts.
+ * Unlike requirePlatformAdmin(), this guard uses CC_ACCESS_DENIED_URL for the fallback
+ * redirect so it works correctly in both deployment modes:
+ *
+ *   Embedded (default): redirects non-admins to /dashboard (operator portal)
+ *   Standalone:         redirects non-admins to CC_LOGIN_URL (same host login)
+ *
+ * Also redirects to CC_LOGIN_URL if no session exists, rather than the shared /login page.
+ * In standalone mode CC_LOGIN_URL should point to whatever login page serves that host.
+ *
+ * NOTE: In standalone mode the middleware still gates on platform_session cookie existence
+ * before this guard is ever reached. The CC_LOGIN_URL redirect is for the case where a
+ * session exists but the user is not a PlatformAdmin.
+ */
+export async function requireCCPlatformAdmin(): Promise<PlatformSession> {
+  const session = await getServerSession();
+  if (!session) redirect(CC_LOGIN_URL);
+  if (!session.isPlatformAdmin) redirect(CC_ACCESS_DENIED_URL);
   return session;
 }
 

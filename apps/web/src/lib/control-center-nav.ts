@@ -1,14 +1,19 @@
 import type { NavGroup, PlatformSession } from '@/types';
+import { CCRoutes } from '@/lib/control-center-routes';
 
 /**
  * Derives the Control Center sidebar navigation from the session.
  *
  * Only rendered for PlatformAdmin users — the (control-center) layout
- * enforces this via requirePlatformAdmin() before this is ever called.
+ * enforces this via requireCCPlatformAdmin() before this is ever called.
+ *
+ * All hrefs are built through CCRoutes so they work in both:
+ *   - embedded mode (/control-center/... prefix)
+ *   - standalone mode (host-root paths)
  *
  * Returns a flat list of NavGroups compatible with the existing Sidebar
  * and ControlCenterShell. All items are always shown to platform admins
- * (no product-role filtering needed here — access is binary: admin or not).
+ * (access is binary: admin or not — no product-role filtering needed).
  */
 export function buildControlCenterNav(_session: PlatformSession): NavGroup[] {
   return [
@@ -17,7 +22,7 @@ export function buildControlCenterNav(_session: PlatformSession): NavGroup[] {
       label: 'Overview',
       icon:  'LayoutDashboard',
       items: [
-        { href: '/control-center', label: 'Dashboard' },
+        { href: CCRoutes.dashboard, label: 'Dashboard' },
       ],
     },
     {
@@ -25,8 +30,8 @@ export function buildControlCenterNav(_session: PlatformSession): NavGroup[] {
       label: 'Tenants',
       icon:  'Building2',
       items: [
-        { href: '/control-center/tenants',      label: 'All Tenants' },
-        { href: '/control-center/tenant-users', label: 'Tenant Users' },
+        { href: CCRoutes.tenants,     label: 'All Tenants' },
+        { href: CCRoutes.tenantUsers, label: 'Tenant Users' },
       ],
     },
     {
@@ -34,8 +39,8 @@ export function buildControlCenterNav(_session: PlatformSession): NavGroup[] {
       label: 'Access Control',
       icon:  'ShieldCheck',
       items: [
-        { href: '/control-center/roles',    label: 'Roles & Permissions' },
-        { href: '/control-center/products', label: 'Product Entitlements' },
+        { href: CCRoutes.roles,    label: 'Roles & Permissions' },
+        { href: CCRoutes.products, label: 'Product Entitlements' },
       ],
     },
     {
@@ -43,9 +48,9 @@ export function buildControlCenterNav(_session: PlatformSession): NavGroup[] {
       label: 'Operations',
       icon:  'Wrench',
       items: [
-        { href: '/control-center/support',    label: 'Support Tools' },
-        { href: '/control-center/audit-logs', label: 'Audit Logs' },
-        { href: '/control-center/monitoring', label: 'Monitoring' },
+        { href: CCRoutes.support,    label: 'Support Tools' },
+        { href: CCRoutes.auditLogs,  label: 'Audit Logs' },
+        { href: CCRoutes.monitoring, label: 'Monitoring' },
       ],
     },
     {
@@ -53,7 +58,7 @@ export function buildControlCenterNav(_session: PlatformSession): NavGroup[] {
       label: 'Configuration',
       icon:  'Settings',
       items: [
-        { href: '/control-center/settings', label: 'Platform Settings' },
+        { href: CCRoutes.settings, label: 'Platform Settings' },
       ],
     },
   ];
