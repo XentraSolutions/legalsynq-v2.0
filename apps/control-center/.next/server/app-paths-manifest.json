@@ -1,1 +1,4 @@
-{}
+{
+  "/api/auth/login/route": "app/api/auth/login/route.js",
+  "/tenants/page": "app/tenants/page.js"
+}

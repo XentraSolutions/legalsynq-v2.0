@@ -1,14 +1,7 @@
-import dynamic from 'next/dynamic';
+'use client';
 
-const LoginForm = dynamic(
-  () => import('./login-form').then(m => ({ default: m.LoginForm })),
-  { ssr: false },
-);
-
-const CCLink = dynamic(
-  () => import('./cc-link').then(m => ({ default: m.CCLink })),
-  { ssr: false },
-);
+import { LoginForm } from './login-form';
+import { CCLink } from './cc-link';
 
 export default function LoginPage() {
   return (
