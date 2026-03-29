@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
 
@@ -18,11 +19,15 @@ const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
  *
  * Server Components: use lib/server-api-client.ts directly (no extra hop).
  * Client Components: use controlCenterApi → this proxy → gateway.
+ *
+ * Cookie reading: uses cookies() from next/headers (server-side store) rather
+ * than request.cookies — more reliable inside App Router Route Handlers.
  */
 type RouteContext = { params: { path: string[] } };
 
 async function proxy(request: NextRequest, { params }: RouteContext): Promise<NextResponse> {
-  const token = request.cookies.get('platform_session')?.value;
+  const cookieStore = cookies();
+  const token = cookieStore.get('platform_session')?.value;
 
   const gatewayPath = `/identity/${params.path.join('/')}`;
   const qs = request.nextUrl.searchParams.toString();

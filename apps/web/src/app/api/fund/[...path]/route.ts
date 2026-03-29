@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 
 /**
  * Catch-all BFF proxy for all SynqFund client-side API calls.
@@ -7,16 +8,18 @@ import { type NextRequest, NextResponse } from 'next/server';
  * This handler forwards    → GATEWAY_URL/fund/api/applications/...
  * with the session cookie forwarded as Authorization: Bearer.
  *
- * Pattern mirrors /api/careconnect/[...path]/route.ts exactly.
+ * Cookie reading: uses cookies() from next/headers (server-side store) rather
+ * than request.cookies — more reliable inside App Router Route Handlers.
  */
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5000';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
 
 async function proxy(req: NextRequest, segments: string[]): Promise<NextResponse> {
   const path   = segments.join('/');
   const search = req.nextUrl.search;
   const url    = `${GATEWAY_URL}/fund/${path}${search}`;
 
-  const token   = req.cookies.get('platform_session')?.value;
+  const cookieStore = cookies();
+  const token = cookieStore.get('platform_session')?.value;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
