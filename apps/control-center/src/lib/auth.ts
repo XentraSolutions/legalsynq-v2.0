@@ -19,10 +19,10 @@
 import { cookies } from 'next/headers';
 import { getServerSession } from '@/lib/session';
 import { requirePlatformAdmin as _requirePlatformAdmin } from '@/lib/auth-guards';
-import { TENANT_CONTEXT_COOKIE_NAME } from '@/lib/app-config';
+import { TENANT_CONTEXT_COOKIE_NAME, IMPERSONATION_COOKIE_NAME } from '@/lib/app-config';
 import type { SessionUser } from '@/types/auth';
 import type { PlatformSession } from '@/types';
-import type { TenantContext } from '@/types/control-center';
+import type { TenantContext, UserImpersonationSession } from '@/types/control-center';
 
 // ── Session ───────────────────────────────────────────────────────────────────
 
@@ -149,4 +149,89 @@ export function setTenantContext(tenant: TenantContext): void {
 export function clearTenantContext(): void {
   const cookieStore = cookies();
   cookieStore.delete(TENANT_CONTEXT_COOKIE_NAME);
+}
+
+// ── User Impersonation ────────────────────────────────────────────────────────
+
+/**
+ * getImpersonation() — reads the active user impersonation cookie.
+ *
+ * Returns a UserImpersonationSession when a platform admin is actively
+ * impersonating a tenant user, or null otherwise.
+ *
+ * Safe to call from Server Components, Server Actions, and Route Handlers.
+ *
+ * The value is stored as JSON in the cc_impersonation cookie. If the cookie
+ * is present but malformed the function returns null to avoid hard failures.
+ *
+ * TODO: integrate with Identity service impersonation endpoint
+ * TODO: validate impersonation token server-side
+ */
+export function getImpersonation(): UserImpersonationSession | null {
+  const cookieStore = cookies();
+  const raw = cookieStore.get(IMPERSONATION_COOKIE_NAME)?.value;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      'adminId'               in parsed && typeof (parsed as Record<string, unknown>).adminId               === 'string' &&
+      'impersonatedUserId'    in parsed && typeof (parsed as Record<string, unknown>).impersonatedUserId    === 'string' &&
+      'impersonatedUserEmail' in parsed && typeof (parsed as Record<string, unknown>).impersonatedUserEmail === 'string' &&
+      'tenantId'              in parsed && typeof (parsed as Record<string, unknown>).tenantId              === 'string' &&
+      'startedAtUtc'          in parsed && typeof (parsed as Record<string, unknown>).startedAtUtc          === 'string'
+    ) {
+      return parsed as UserImpersonationSession;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * setImpersonation() — writes the user impersonation cookie.
+ *
+ * IMPORTANT: Must only be called from a Server Action or Route Handler.
+ *
+ * Cookie options:
+ *   - httpOnly: false — not an auth credential; client JS may read it for
+ *               optimistic UI state (e.g. banners) without a server round-trip.
+ *   - sameSite: 'lax' — adequate for non-sensitive UI state.
+ *   - path: '/' — available across all Control Center routes.
+ *   - No maxAge — expires with the browser session.
+ *
+ * TODO: integrate with Identity service impersonation endpoint
+ * TODO: issue temporary impersonation token
+ * TODO: audit log impersonation start event
+ */
+export function setImpersonation(session: UserImpersonationSession): void {
+  const cookieStore = cookies();
+  cookieStore.set(IMPERSONATION_COOKIE_NAME, JSON.stringify(session), {
+    httpOnly: false,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path:     '/',
+  });
+}
+
+/**
+ * clearImpersonation() — removes the user impersonation cookie.
+ *
+ * IMPORTANT: Must only be called from a Server Action or Route Handler.
+ *
+ * Called:
+ *   - on logout (BFF /api/auth/logout)
+ *   - when the admin clicks "Exit Impersonation"
+ *
+ * Tenant context (cc_tenant_context) is NOT cleared — it persists so the admin
+ * returns to the scoped view they had before starting impersonation.
+ *
+ * TODO: revoke impersonation token on Identity service
+ * TODO: audit log impersonation stop event
+ */
+export function clearImpersonation(): void {
+  const cookieStore = cookies();
+  cookieStore.delete(IMPERSONATION_COOKIE_NAME);
 }

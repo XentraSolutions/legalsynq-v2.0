@@ -5,6 +5,7 @@ import { Routes } from '@/lib/routes';
 import { CCShell } from '@/components/shell/cc-shell';
 import { UserDetailCard } from '@/components/users/user-detail-card';
 import { UserActions } from '@/components/users/user-actions';
+import { startImpersonationAction } from '@/app/actions/impersonation';
 import type { UserStatus } from '@/types/control-center';
 
 interface UserDetailPageProps {
@@ -95,11 +96,41 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
               </div>
 
               {/* Action buttons */}
-              <UserActions
-                userId={user.id}
-                currentStatus={user.status}
-                isLocked={user.isLocked}
-              />
+              <div className="flex items-center gap-2 flex-wrap">
+
+                {/* Impersonate User — only for Active users */}
+                {(() => {
+                  const action = startImpersonationAction.bind(null, {
+                    id:         user.id,
+                    email:      user.email,
+                    tenantId:   user.tenantId,
+                    tenantName: user.tenantDisplayName,
+                  });
+                  return (
+                    <form action={action}>
+                      <button
+                        type="submit"
+                        disabled={user.status !== 'Active'}
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-300 hover:border-rose-400 px-3 py-1.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-rose-50 disabled:hover:border-rose-300"
+                        title={
+                          user.status !== 'Active'
+                            ? 'Only Active users can be impersonated'
+                            : `Impersonate ${user.email}`
+                        }
+                      >
+                        <span aria-hidden="true">⚡</span>
+                        Impersonate User
+                      </button>
+                    </form>
+                  );
+                })()}
+
+                <UserActions
+                  userId={user.id}
+                  currentStatus={user.status}
+                  isLocked={user.isLocked}
+                />
+              </div>
             </div>
 
             {/* Detail sections */}

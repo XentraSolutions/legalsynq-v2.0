@@ -4,7 +4,8 @@ import { SignOutButton } from './sign-out-button';
 import { CCSidebar } from './cc-sidebar';
 import { AppSwitcher } from './app-switcher';
 import { TenantContextBanner } from '@/components/layout/tenant-context-banner';
-import { getTenantContext } from '@/lib/auth';
+import { ImpersonationBanner } from '@/components/layout/impersonation-banner';
+import { getTenantContext, getImpersonation } from '@/lib/auth';
 
 interface CCShellProps {
   children:  ReactNode;
@@ -19,14 +20,18 @@ interface CCShellProps {
  *
  * Layout:
  *   fixed top bar
+ *   [rose ImpersonationBanner  — only when impersonating a user]
  *   [amber TenantContextBanner — only when a tenant context is active]
  *   fixed sidebar + scrollable main content area
  *
- * getTenantContext() is synchronous and reads the cc_tenant_context cookie
- * directly — no network call, no latency.
+ * Impersonation takes priority and is displayed above the tenant context
+ * banner. Both can be visible simultaneously.
+ *
+ * Both cookie reads are synchronous — no network call, no latency.
  */
 export function CCShell({ children, userEmail }: CCShellProps) {
-  const tenantCtx = getTenantContext();
+  const tenantCtx    = getTenantContext();
+  const impersonation = getImpersonation();
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
@@ -54,7 +59,10 @@ export function CCShell({ children, userEmail }: CCShellProps) {
         </div>
       </header>
 
-      {/* Tenant context banner — visible only in context mode */}
+      {/* Impersonation banner — rose/red — visible only when impersonating */}
+      {impersonation && <ImpersonationBanner session={impersonation} />}
+
+      {/* Tenant context banner — amber — visible only in context mode */}
       {tenantCtx && <TenantContextBanner context={tenantCtx} />}
 
       {/* Body */}

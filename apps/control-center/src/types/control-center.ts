@@ -262,6 +262,31 @@ export interface ImpersonationSession {
   startedAtUtc:           string;
 }
 
+/**
+ * UserImpersonationSession — records a live user-level impersonation started
+ * by a platform admin acting as a specific tenant user.
+ *
+ * adminId               — userId of the PlatformAdmin performing impersonation.
+ * impersonatedUserId    — id of the user being impersonated.
+ * impersonatedUserEmail — email address for banner display.
+ * tenantId              — tenant the impersonated user belongs to.
+ * tenantName            — tenant display name for banner (not in minimal spec
+ *                         but always available at impersonation start time).
+ * startedAtUtc          — ISO 8601 timestamp in UTC.
+ *
+ * TODO: integrate with Identity service impersonation endpoint
+ * TODO: issue temporary impersonation token
+ * TODO: audit log impersonation events
+ */
+export interface UserImpersonationSession {
+  adminId:               string;
+  impersonatedUserId:    string;
+  impersonatedUserEmail: string;
+  tenantId:              string;
+  tenantName:            string;
+  startedAtUtc:          string;
+}
+
 // ── Shared ────────────────────────────────────────────────────────────────────
 
 export interface PagedResponse<T> {

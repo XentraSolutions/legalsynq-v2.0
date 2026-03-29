@@ -62,3 +62,19 @@ export const LOGIN_URL = `${CONTROL_CENTER_ORIGIN}${BASE_PATH}/login` as const;
  * TODO: persist tenant context in backend session
  */
 export const TENANT_CONTEXT_COOKIE_NAME = 'cc_tenant_context' as const;
+
+/**
+ * Cookie name for the active user-level impersonation session.
+ *
+ * Stores a JSON-serialised UserImpersonationSession.
+ * Not an auth credential — does not grant access; Identity service must
+ * issue a real impersonation token before any tenant-facing requests are made.
+ *
+ * Impersonation takes priority over tenant context when both are set.
+ * Cleared on logout and when the admin clicks "Exit Impersonation".
+ *
+ * TODO: integrate with Identity service impersonation endpoint
+ * TODO: issue temporary impersonation token
+ * TODO: audit log impersonation events
+ */
+export const IMPERSONATION_COOKIE_NAME = 'cc_impersonation' as const;
