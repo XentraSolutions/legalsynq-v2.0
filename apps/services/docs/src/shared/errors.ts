@@ -71,6 +71,20 @@ export class UnsupportedFileTypeError extends DocsError {
   }
 }
 
+// ── 429 Too Many Requests ─────────────────────────────────────────────────────
+export class RateLimitError extends DocsError {
+  constructor(
+    public readonly retryAfterSeconds: number,
+    public readonly limitDimension: 'ip' | 'user' | 'tenant',
+  ) {
+    super(
+      `Rate limit exceeded. Retry after ${retryAfterSeconds} second(s).`,
+      429,
+      'RATE_LIMIT_EXCEEDED',
+    );
+  }
+}
+
 // ── 500 Internal ──────────────────────────────────────────────────────────────
 export class StorageError extends DocsError {
   constructor(message: string) {

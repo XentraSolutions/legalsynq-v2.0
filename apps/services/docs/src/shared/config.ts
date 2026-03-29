@@ -41,6 +41,14 @@ const schema = z.object({
 
   // CORS
   CORS_ORIGINS: z.string().default('http://localhost:5000'),
+
+  // Rate limiting
+  RATE_LIMIT_PROVIDER:         z.enum(['memory', 'redis']).default('memory'),
+  REDIS_URL:                   z.string().optional(),
+  RATE_LIMIT_WINDOW_SECONDS:   z.coerce.number().int().min(1).default(60),
+  RATE_LIMIT_MAX_REQUESTS:     z.coerce.number().int().min(1).default(100),
+  RATE_LIMIT_UPLOAD_MAX:       z.coerce.number().int().min(1).default(10),
+  RATE_LIMIT_SIGNED_URL_MAX:   z.coerce.number().int().min(1).default(30),
 });
 
 function parseConfig() {

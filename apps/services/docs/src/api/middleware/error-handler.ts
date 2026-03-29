@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { DocsError }    from '@/shared/errors';
+import { DocsError, RateLimitError } from '@/shared/errors';
 import { logger }       from '@/shared/logger';
 import { ZodError }     from 'zod';
 import { MulterError }  from 'multer';
@@ -33,6 +33,19 @@ export function errorHandler(
     res.status(413).json({
       error:         'FILE_TOO_LARGE',
       message:       `File upload error: ${err.message}`,
+      correlationId,
+    });
+    return;
+  }
+
+  // ── RateLimitError (429) — set Retry-After header before body ────────────
+  if (err instanceof RateLimitError) {
+    res.setHeader('Retry-After', err.retryAfterSeconds);
+    res.status(429).json({
+      error:         err.code,
+      message:       err.message,
+      retryAfter:    err.retryAfterSeconds,
+      limitDimension: err.limitDimension,
       correlationId,
     });
     return;

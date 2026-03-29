@@ -2,14 +2,16 @@ import { Router, Request, Response } from 'express';
 import { z }                     from 'zod';
 import { requireAuth, getPrincipal } from '@/api/middleware/auth';
 import { upload, validateFileContent } from '@/api/middleware/file-validator';
+import { generalLimiter, uploadLimiter, signedUrlLimiter } from '@/api/middleware/rate-limiter';
 import { DocumentService }       from '@/application/document-service';
 import { assertPermission, assertTenantScope } from '@/application/rbac';
 import { ValidationError }       from '@/shared/errors';
 
 const router = Router();
 
-// All document routes require authentication
+// All document routes require authentication, then general rate limiting
 router.use(requireAuth);
+router.use(generalLimiter);
 
 // ── Schema helpers ────────────────────────────────────────────────────────────
 const CreateDocumentBody = z.object({
@@ -48,8 +50,8 @@ function ctx(req: Request) {
   };
 }
 
-// ── POST /documents ───────────────────────────────────────────────────────────
-router.post('/', (req, res, next) => {
+// ── POST /documents — uploadLimiter enforced before file processing ───────────
+router.post('/', uploadLimiter, (req, res, next) => {
   upload(req, res, async (multerErr) => {
     if (multerErr) return next(multerErr);
 
@@ -143,8 +145,8 @@ router.delete('/:id', async (req: Request, res: Response, next) => {
   }
 });
 
-// ── POST /documents/:id/versions ──────────────────────────────────────────────
-router.post('/:id/versions', (req, res, next) => {
+// ── POST /documents/:id/versions — uploadLimiter enforced before file processing
+router.post('/:id/versions', uploadLimiter, (req, res, next) => {
   upload(req, res, async (multerErr) => {
     if (multerErr) return next(multerErr);
 
@@ -186,8 +188,8 @@ router.get('/:id/versions', async (req: Request, res: Response, next) => {
   }
 });
 
-// ── POST /documents/:id/view-url ──────────────────────────────────────────────
-router.post('/:id/view-url', async (req: Request, res: Response, next) => {
+// ── POST /documents/:id/view-url ─────────────────────────────────────────────
+router.post('/:id/view-url', signedUrlLimiter, async (req: Request, res: Response, next) => {
   try {
     const principal = getPrincipal(req);
     assertPermission(principal, 'read');
@@ -201,7 +203,7 @@ router.post('/:id/view-url', async (req: Request, res: Response, next) => {
 });
 
 // ── POST /documents/:id/download-url ─────────────────────────────────────────
-router.post('/:id/download-url', async (req: Request, res: Response, next) => {
+router.post('/:id/download-url', signedUrlLimiter, async (req: Request, res: Response, next) => {
   try {
     const principal = getPrincipal(req);
     assertPermission(principal, 'read');
