@@ -1,14 +1,10 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE_NAME, CONTROL_CENTER_ORIGIN } from '@/lib/app-config';
+import { SESSION_COOKIE_NAME }            from '@/lib/app-config';
+import { CONTROL_CENTER_API_BASE, IS_PROD } from '@/lib/env';
 
+// All env var resolution is delegated to env.ts — no process.env reads here.
 // TODO: integrate with Identity service session validation
-// TODO: move to HttpOnly secure cookies in production
 // TODO: support cross-subdomain auth (scope cookie to .legalsynq.com)
-
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
-const IS_PROD     = process.env.NODE_ENV === 'production';
-
-void CONTROL_CENTER_ORIGIN; // reserved for future CORS / redirect use
 
 /**
  * BFF Login route — POST /api/auth/login
@@ -43,7 +39,7 @@ export async function POST(request: NextRequest) {
 
   let identityRes: Response;
   try {
-    identityRes = await fetch(`${GATEWAY_URL}/identity/api/auth/login`, {
+    identityRes = await fetch(`${CONTROL_CENTER_API_BASE}/identity/api/auth/login`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ tenantCode, email, password }),

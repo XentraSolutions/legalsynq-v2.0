@@ -1,11 +1,9 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE_NAME } from '@/lib/app-config';
+import { SESSION_COOKIE_NAME }            from '@/lib/app-config';
+import { CONTROL_CENTER_API_BASE, IS_PROD } from '@/lib/env';
 
-// TODO: move to HttpOnly secure cookies in production
+// All env var resolution is delegated to env.ts — no process.env reads here.
 // TODO: support cross-subdomain auth (clear cookie scoped to .legalsynq.com)
-
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
-const IS_PROD     = process.env.NODE_ENV === 'production';
 
 /**
  * BFF Logout route — POST /api/auth/logout
@@ -15,7 +13,7 @@ export async function POST(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
 
   if (token) {
-    fetch(`${GATEWAY_URL}/identity/api/auth/logout`, {
+    fetch(`${CONTROL_CENTER_API_BASE}/identity/api/auth/logout`, {
       method:  'POST',
       headers: { 'Authorization': `Bearer ${token}` },
     }).catch(() => { /* best-effort — backend logout is stateless */ });

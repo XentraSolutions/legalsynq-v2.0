@@ -62,17 +62,16 @@
  * TODO: add request deduplication
  */
 
-import { redirect }                    from 'next/navigation';
-import { cookies }                     from 'next/headers';
-import { logInfo, logWarn, logError }   from '@/lib/logger';
+import { redirect }                          from 'next/navigation';
+import { cookies }                           from 'next/headers';
+import { logInfo, logWarn, logError }        from '@/lib/logger';
 import { getTenantContext, getImpersonation } from '@/lib/auth';
+import { CONTROL_CENTER_API_BASE }           from '@/lib/env';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const API_BASE: string =
-  process.env.CONTROL_CENTER_API_BASE ??
-  process.env.GATEWAY_URL             ??
-  'http://localhost:5010';
+// All env var resolution is centralised in env.ts; no process.env reads here.
+const API_BASE: string = CONTROL_CENTER_API_BASE;
 
 // ── Error ─────────────────────────────────────────────────────────────────────
 

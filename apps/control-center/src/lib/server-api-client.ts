@@ -1,6 +1,19 @@
-import { cookies } from 'next/headers';
+/**
+ * server-api-client.ts — Low-level server-side fetch helper.
+ *
+ * Provides a thin fetch wrapper for Server Components and Server Actions
+ * that need direct gateway access without the full apiFetch lifecycle
+ * (no ISR caching, no request tracing, no context enrichment).
+ *
+ * For most use cases, prefer apiFetch (api-client.ts) which provides
+ * observability, caching, and security hardening. Use this module only
+ * when you need a minimal fetch wrapper with no side effects.
+ *
+ * All env var resolution is delegated to env.ts — no process.env reads here.
+ */
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+import { cookies }                 from 'next/headers';
+import { CONTROL_CENTER_API_BASE } from '@/lib/env';
 
 // ── Error ─────────────────────────────────────────────────────────────────────
 
@@ -38,7 +51,7 @@ async function serverRequest<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${GATEWAY_URL}${path}`, {
+  const res = await fetch(`${CONTROL_CENTER_API_BASE}${path}`, {
     method:  options.method ?? 'GET',
     headers,
     body:    options.body !== undefined ? JSON.stringify(options.body) : undefined,

@@ -5,34 +5,42 @@
  * hard-coded to localhost or a specific port. All redirect targets
  * must be derived from these constants.
  *
- * TODO: integrate with Identity service session validation
- * TODO: move to HttpOnly secure cookies
+ * All environment variable reads are delegated to env.ts — this module
+ * derives app-level constants (URLs, cookie names, paths) from those values.
+ *
  * TODO: support cross-subdomain auth (set cookie domain to .legalsynq.com)
+ * TODO: persist tenant context in backend session
+ * TODO: integrate with Identity service session validation
  */
+
+import {
+  CONTROL_CENTER_ORIGIN as _ORIGIN,
+  BASE_PATH as _BASE_PATH,
+} from '@/lib/env';
 
 /**
  * The canonical public origin of the Control Center.
  *
- * In production this will be something like https://admin.legalsynq.com.
+ * In production this will be something like https://controlcenter.legalsynq.com.
  * In development it is derived from the Replit dev domain env var,
  * falling back to the standard local port.
  *
- * The NEXT_PUBLIC_ prefix makes this available to both server and
- * client-side code without a separate server-action fetch.
+ * The NEXT_PUBLIC_ prefix on the underlying env var makes this available to
+ * both server and client-side code without a separate server-action fetch.
+ *
+ * Resolution priority (see env.ts):
+ *   1. NEXT_PUBLIC_CONTROL_CENTER_ORIGIN
+ *   2. REPLIT_DEV_DOMAIN → https://<domain>
+ *   3. http://localhost:5004
  */
-export const CONTROL_CENTER_ORIGIN: string =
-  process.env.NEXT_PUBLIC_CONTROL_CENTER_ORIGIN ??
-  (process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : 'http://localhost:5004');
+export const CONTROL_CENTER_ORIGIN: string = _ORIGIN;
 
 /**
  * Optional URL path prefix for the Control Center (e.g. "/admin").
  * Leave empty in most deployments — only needed when the app is
  * mounted at a sub-path behind a reverse proxy.
  */
-export const BASE_PATH: string =
-  process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+export const BASE_PATH: string = _BASE_PATH;
 
 /**
  * The name of the session cookie used by the Control Center BFF.
@@ -75,6 +83,5 @@ export const TENANT_CONTEXT_COOKIE_NAME = 'cc_tenant_context' as const;
  *
  * TODO: integrate with Identity service impersonation endpoint
  * TODO: issue temporary impersonation token
- * TODO: audit log impersonation events
  */
 export const IMPERSONATION_COOKIE_NAME = 'cc_impersonation' as const;

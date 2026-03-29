@@ -3,10 +3,11 @@ import { redirect } from 'next/navigation';
 import type { PlatformSession, SystemRoleValue, ProductRoleValue, OrgTypeValue } from '@/types';
 import { SystemRole } from '@/types';
 import { SESSION_COOKIE_NAME } from '@/lib/app-config';
+import { CONTROL_CENTER_API_BASE } from '@/lib/env';
 
 // TODO: integrate with Identity service session validation
-// TODO: move to HttpOnly secure cookies
 // TODO: support cross-subdomain auth (accept cookie scoped to .legalsynq.com)
+// TODO: replace remote /auth/me call with local JWT decode + periodic revalidation
 
 // ── /auth/me response shape ───────────────────────────────────────────────────
 
@@ -25,8 +26,8 @@ interface AuthMeResponse {
 
 // ── Server-side session helper ────────────────────────────────────────────────
 
-const GATEWAY_URL  = process.env.GATEWAY_URL ?? 'http://localhost:5010';
-const AUTH_ME_URL  = `${GATEWAY_URL}/identity/api/auth/me`;
+// All env var resolution is centralised in env.ts; no process.env reads here.
+const AUTH_ME_URL  = `${CONTROL_CENTER_API_BASE}/identity/api/auth/me`;
 
 /**
  * Fetches the current session from /identity/api/auth/me.
