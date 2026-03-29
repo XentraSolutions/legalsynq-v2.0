@@ -4,14 +4,20 @@
 
 // ── Tenants ───────────────────────────────────────────────────────────────────
 
+export type TenantType = 'LawFirm' | 'Provider' | 'Corporate' | 'Government' | 'Other';
+export type TenantStatus = 'Active' | 'Inactive' | 'Suspended';
+
 export interface TenantSummary {
-  id:          string;
-  code:        string;
-  displayName: string;
-  isActive:    boolean;
-  userCount:   number;
-  orgCount:    number;
-  createdAtUtc: string;
+  id:                 string;
+  code:               string;
+  displayName:        string;
+  type:               TenantType;
+  status:             TenantStatus;
+  primaryContactName: string;
+  isActive:           boolean;
+  userCount:          number;
+  orgCount:           number;
+  createdAtUtc:       string;
 }
 
 export interface TenantDetail {
