@@ -4,73 +4,21 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { useSession } from '@/hooks/use-session';
-import { useProduct } from '@/contexts/product-context';
 import { orgTypeLabel } from '@/lib/nav';
-
-// ── All platform products shown in the app switcher ──────────────────────────
-
-const ALL_PRODUCTS = [
-  {
-    id: 'careconnect',
-    label: 'Synq CareConnect',
-    href: '/careconnect/referrals',
-    icon: 'ri-shield-cross-line',
-    color: '#2563eb',         // blue
-    bg:    '#eff6ff',
-  },
-  {
-    id: 'fund',
-    label: 'Synq Funds',
-    href: '/fund/applications',
-    icon: 'ri-bank-line',
-    color: '#16a34a',         // green
-    bg:    '#f0fdf4',
-  },
-  {
-    id: 'lien',
-    label: 'Synq Liens',
-    href: '/lien/marketplace',
-    icon: 'ri-file-stack-line',
-    color: '#7c3aed',         // purple
-    bg:    '#f5f3ff',
-  },
-  {
-    id: 'ai',
-    label: 'Synq AI',
-    href: '#',
-    icon: 'ri-robot-line',
-    color: '#d97706',         // amber
-    bg:    '#fffbeb',
-  },
-  {
-    id: 'insights',
-    label: 'Synq Insights',
-    href: '#',
-    icon: 'ri-bar-chart-2-line',
-    color: '#0891b2',         // cyan
-    bg:    '#ecfeff',
-  },
-] as const;
 
 /**
  * Full-width navy top bar.
- * Left:   9-dot app-switcher → logo
- * Right:  avatar → profile dropdown
+ * Left:  LegalSynq logo
+ * Right: avatar → profile dropdown
  */
 export function TopBar() {
   const { session, clearSession } = useSession();
 
   return (
     <header
-      className="flex items-center h-14 px-4 shrink-0 gap-3"
+      className="flex items-center h-14 px-5 shrink-0 gap-4"
       style={{ backgroundColor: '#0f1928' }}
     >
-      {/* ── App switcher ────────────────────────────────────────────────── */}
-      <AppSwitcher />
-
-      {/* ── Vertical divider ────────────────────────────────────────────── */}
-      <div className="self-center h-5 w-px shrink-0" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }} />
-
       {/* ── Logo ────────────────────────────────────────────────────────── */}
       <Link href="/dashboard" className="flex items-center shrink-0">
         <Image
@@ -90,86 +38,6 @@ export function TopBar() {
       {/* ── User menu ───────────────────────────────────────────────────── */}
       {session && <UserMenu session={session} clearSession={clearSession} />}
     </header>
-  );
-}
-
-// ── App switcher button + popout ──────────────────────────────────────────────
-
-function AppSwitcher() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const { setSelectedProductId } = useProduct();
-
-  useEffect(() => {
-    if (!open) return;
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    function handler(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false); }
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative flex items-center shrink-0">
-      <button
-        onClick={() => setOpen(p => !p)}
-        title="Switch product"
-        aria-haspopup="true"
-        aria-expanded={open}
-        className={[
-          'w-8 h-8 flex items-center justify-center rounded-lg transition-colors',
-          open
-            ? 'bg-white/15 text-white'
-            : 'text-slate-400 hover:bg-white/10 hover:text-white',
-        ].join(' ')}
-      >
-        <i className="ri-apps-2-line text-[18px] leading-none" />
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-[calc(100%+10px)] w-64 rounded-xl bg-white shadow-2xl border border-gray-200 overflow-hidden z-50">
-          {/* Header */}
-          <div className="px-4 py-3 border-b border-gray-100">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">
-              LegalSynq Products
-            </p>
-          </div>
-
-          {/* Product list */}
-          <div className="py-2">
-            {ALL_PRODUCTS.map(product => (
-              <Link
-                key={product.id}
-                href={product.href}
-                onClick={() => { setSelectedProductId(product.id); setOpen(false); }}
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors group"
-              >
-                {/* Colored icon tile */}
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: product.bg }}
-                >
-                  <i
-                    className={`${product.icon} text-[18px] leading-none`}
-                    style={{ color: product.color }}
-                  />
-                </div>
-                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors">
-                  {product.label}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -250,8 +118,8 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
           </div>
 
           <div className="py-1.5">
-            <ProfileMenuItem href="/profile"  icon="ri-user-3-line"    label="Profile"           onClick={() => setOpen(false)} />
-            <ProfileMenuItem href="/settings" icon="ri-settings-3-line" label="Account Settings" onClick={() => setOpen(false)} />
+            <ProfileMenuItem href="/profile"  icon="ri-user-3-line"     label="Profile"           onClick={() => setOpen(false)} />
+            <ProfileMenuItem href="/settings" icon="ri-settings-3-line"  label="Account Settings" onClick={() => setOpen(false)} />
           </div>
 
           <div className="border-t border-gray-100" />
