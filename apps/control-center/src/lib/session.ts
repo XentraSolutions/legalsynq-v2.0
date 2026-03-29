@@ -1,0 +1,80 @@
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import type { PlatformSession, SystemRoleValue, ProductRoleValue, OrgTypeValue } from '@/types';
+import { SystemRole } from '@/types';
+
+// ── /auth/me response shape ───────────────────────────────────────────────────
+
+interface AuthMeResponse {
+  userId:       string;
+  email:        string;
+  tenantId:     string;
+  tenantCode:   string;
+  orgId?:       string;
+  orgType?:     OrgTypeValue;
+  orgName?:     string;
+  productRoles: ProductRoleValue[];
+  systemRoles:  SystemRoleValue[];
+  expiresAtUtc: string;
+}
+
+// ── Server-side session helper ────────────────────────────────────────────────
+
+const GATEWAY_URL  = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const AUTH_ME_URL  = `${GATEWAY_URL}/identity/api/auth/me`;
+
+/**
+ * Fetches the current session from /identity/api/auth/me.
+ * Call only from Server Components or Server Actions — never Client Components.
+ * Returns null if the session cookie is absent or the token is invalid/expired.
+ */
+export async function getServerSession(): Promise<PlatformSession | null> {
+  const cookieStore = cookies();
+  const sessionCookie = cookieStore.get('platform_session');
+
+  if (!sessionCookie?.value) return null;
+
+  try {
+    const res = await fetch(AUTH_ME_URL, {
+      headers: {
+        'Authorization': `Bearer ${sessionCookie.value}`,
+        'Content-Type':  'application/json',
+      },
+      cache: 'no-store',
+    });
+
+    if (!res.ok) return null;
+
+    const me: AuthMeResponse = await res.json();
+    return mapToSession(me);
+  } catch {
+    return null;
+  }
+}
+
+function mapToSession(me: AuthMeResponse): PlatformSession {
+  const systemRoles = me.systemRoles ?? [];
+  return {
+    userId:      me.userId,
+    email:       me.email,
+    tenantId:    me.tenantId,
+    tenantCode:  me.tenantCode,
+    orgId:       me.orgId,
+    orgType:     me.orgType,
+    orgName:     me.orgName,
+    productRoles: me.productRoles ?? [],
+    systemRoles,
+    isPlatformAdmin: systemRoles.includes(SystemRole.PlatformAdmin),
+    isTenantAdmin:   systemRoles.includes(SystemRole.TenantAdmin),
+    hasOrg:          !!me.orgId,
+    expiresAt:       new Date(me.expiresAtUtc),
+  };
+}
+
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+
+export async function requireSession(): Promise<PlatformSession> {
+  const session = await getServerSession();
+  if (!session) redirect('/login');
+  return session;
+}
