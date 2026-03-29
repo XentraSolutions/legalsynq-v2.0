@@ -48,3 +48,9 @@ id = "NMZkcXaUv97bmcPgoKsto"
 uri = "file://exports/frontend_architecture_design.md"
 type = "text"
 title = "Frontend Architecture Design — LegalSynq Platform (Next.js)"
+
+[[outputs]]
+id = "6mG0t-JJbtSCq95sKnXAA"
+uri = "file://legalsynq-source.tar.gz"
+type = "unspecified"
+title = "LegalSynq — Full Source Code (tar.gz, 2.3 MB)"
