@@ -65,11 +65,11 @@ export default function LoginPage() {
           />
 
           <h2 className="text-3xl xl:text-4xl font-bold text-white leading-tight tracking-tight mb-4">
-            Legal-medical<br />workflows, unified.
+            Synchronizing legal-medical workflows
           </h2>
 
           <p className="text-[15px] text-slate-400 leading-relaxed mb-10 max-w-xs">
-            One platform for law firms and medical providers to manage the full case lifecycle — from referral to resolution.
+            For law firms, medical providers, lien owners, and case managers
           </p>
 
           {/* Highlights */}
