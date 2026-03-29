@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
-import { lienServerApi } from '@/lib/lien-api';
+import { lienServerApi } from '@/lib/lien-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { PortfolioTable } from '@/components/lien/portfolio-table';
 

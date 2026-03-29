@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { requireProductRole } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
-import { lienServerApi } from '@/lib/lien-api';
+import { lienServerApi } from '@/lib/lien-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { MarketplaceFilters } from '@/components/lien/marketplace-filters';
 import { MarketplaceCard } from '@/components/lien/marketplace-card';

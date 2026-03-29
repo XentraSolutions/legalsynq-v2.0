@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
-import { careConnectServerApi } from '@/lib/careconnect-api';
+import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { ReferralListTable } from '@/components/careconnect/referral-list-table';
 

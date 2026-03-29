@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
-import { fundServerApi } from '@/lib/fund-api';
+import { fundServerApi } from '@/lib/fund-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { FundingApplicationListTable } from '@/components/fund/funding-application-list-table';
 

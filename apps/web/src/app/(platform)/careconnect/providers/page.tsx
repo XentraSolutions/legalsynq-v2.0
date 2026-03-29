@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
-import { careConnectServerApi } from '@/lib/careconnect-api';
+import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { ProviderSearchFilters } from '@/components/careconnect/provider-search-filters';
 import { ProviderMapShell } from '@/components/careconnect/provider-map-shell';

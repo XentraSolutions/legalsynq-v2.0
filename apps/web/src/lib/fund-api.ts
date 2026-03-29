@@ -1,4 +1,3 @@
-import { serverApi } from '@/lib/server-api-client';
 import { apiClient } from '@/lib/api-client';
 import type {
   FundingApplicationSummary,
@@ -18,23 +17,6 @@ function toQs(params: Record<string, unknown>): string {
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
   return pairs.length ? `?${pairs.join('&')}` : '';
 }
-
-// ── Server-side API ───────────────────────────────────────────────────────────
-// Use in Server Components and Server Actions.
-// Reads the platform_session cookie → calls gateway directly.
-// DO NOT import this in Client Components.
-
-export const fundServerApi = {
-  applications: {
-    search: (params: FundingApplicationSearchParams = {}) =>
-      serverApi.get<FundingApplicationSummary[]>(
-        `/fund/api/applications${toQs(params as Record<string, unknown>)}`,
-      ),
-
-    getById: (id: string) =>
-      serverApi.get<FundingApplicationDetail>(`/fund/api/applications/${id}`),
-  },
-};
 
 // ── Client-side API ───────────────────────────────────────────────────────────
 // Use in Client Components.
