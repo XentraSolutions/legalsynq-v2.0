@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
@@ -17,14 +17,21 @@ import { useRouter } from 'next/navigation';
  * because localhost has no subdomain for automatic resolution.
  */
 export function LoginForm() {
-  const router   = useRouter();
-  const isDev    = process.env.NEXT_PUBLIC_ENV === 'development';
+  const router = useRouter();
 
+  // Defer env-dependent state to after hydration to avoid server/client mismatch.
+  const [isDev, setIsDev]           = useState(false);
   const [email,      setEmail]      = useState('');
   const [password,   setPassword]   = useState('');
-  const [tenantCode, setTenantCode] = useState(process.env.NEXT_PUBLIC_TENANT_CODE ?? '');
+  const [tenantCode, setTenantCode] = useState('');
   const [error,      setError]      = useState<string | null>(null);
   const [loading,    setLoading]    = useState(false);
+
+  // Runs only on the client — safe to read NEXT_PUBLIC_ env vars here.
+  useEffect(() => {
+    setIsDev(process.env.NEXT_PUBLIC_ENV === 'development');
+    setTenantCode(process.env.NEXT_PUBLIC_TENANT_CODE ?? '');
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();

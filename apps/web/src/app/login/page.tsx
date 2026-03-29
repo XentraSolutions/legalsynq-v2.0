@@ -1,4 +1,5 @@
 import { LoginForm } from './login-form';
+import { CCLink } from './cc-link';
 
 export default function LoginPage() {
   return (
@@ -11,6 +12,7 @@ export default function LoginPage() {
           </p>
         </div>
         <LoginForm />
+        <CCLink />
       </div>
     </div>
   );
