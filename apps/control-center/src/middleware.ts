@@ -22,6 +22,7 @@ const PUBLIC_PATHS = [
   '/favicon.ico',
   '/api/auth/login',
   '/api/auth/logout',
+  '/api/health',   // unauthenticated — called by load balancers / orchestrators
 ];
 
 export function middleware(request: NextRequest) {
