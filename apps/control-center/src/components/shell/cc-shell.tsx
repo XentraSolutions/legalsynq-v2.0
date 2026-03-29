@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { SignOutButton } from './sign-out-button';
 import { CCSidebar } from './cc-sidebar';
+import { AppSwitcher } from './app-switcher';
 
 interface CCShellProps {
   children:  ReactNode;
@@ -36,6 +37,8 @@ export function CCShell({ children, userEmail }: CCShellProps) {
         <div className="flex-1" />
 
         <div className="flex items-center gap-3 shrink-0">
+          <AppSwitcher />
+          <div className="w-px h-4 bg-gray-200" />
           <span className="text-sm text-gray-600">{userEmail}</span>
           <SignOutButton />
         </div>

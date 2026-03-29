@@ -42,6 +42,21 @@ export function TopBar() {
         <ProductSwitcher groups={navGroups} />
       </div>
 
+      {/* Control Center switcher — PlatformAdmin only */}
+      {session?.isPlatformAdmin && (
+        <button
+          onClick={() => {
+            const { protocol, hostname } = window.location;
+            window.location.href = `${protocol}//${hostname}:5004`;
+          }}
+          title="Switch to Control Center (port 5004)"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-300 transition-colors shrink-0"
+        >
+          <span>Control Center</span>
+          <span>→</span>
+        </button>
+      )}
+
       {/* User menu */}
       {session && (
         <div className="flex items-center gap-3 shrink-0">
