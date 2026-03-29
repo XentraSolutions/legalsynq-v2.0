@@ -56,10 +56,25 @@
       "static/chunks/main-app.js",
       "static/chunks/app/roles/[id]/page.js"
     ],
-    "/_not-found/page": [
+    "/tenants/[id]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/tenants/[id]/page.js"
+    ],
+    "/tenant-users/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenant-users/page.js"
+    ],
+    "/tenant-users/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenant-users/loading.js"
+    ],
+    "/tenant-users/[id]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenant-users/[id]/page.js"
     ]
   }
 }

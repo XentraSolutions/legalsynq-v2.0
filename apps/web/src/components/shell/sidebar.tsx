@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useProduct } from '@/contexts/product-context';
+import { useSettings } from '@/contexts/settings-context';
 import { PRODUCT_NAV, PRODUCT_META } from '@/lib/nav';
 import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
@@ -13,6 +14,8 @@ const STORAGE_KEY = 'ls_sidebar_collapsed';
 export function Sidebar() {
   const pathname              = usePathname();
   const { selectedProductId } = useProduct();
+  const settings              = useSettings();
+  const nav                   = settings.appearance.nav;
 
   const [collapsed, setCollapsed] = useState(false);
   const [mounted,   setMounted]   = useState(false);
@@ -60,7 +63,7 @@ export function Sidebar() {
       )}>
         {!collapsed && meta && (
           <div className="flex items-center gap-2 min-w-0">
-            <i className={`${meta.icon} text-[15px]`} style={{ color: meta.color }} />
+            <i className={`${meta.icon} text-[15px]`} style={{ color: nav.activeColor }} />
             <span className="text-[12px] font-semibold text-gray-700 truncate">{meta.label}</span>
           </div>
         )}
@@ -101,7 +104,8 @@ export function Sidebar() {
                   item={item}
                   pathname={pathname}
                   collapsed={collapsed}
-                  accentColor={meta?.color ?? '#f97316'}
+                  activeColor={nav.activeColor}
+                  activeBg={nav.activeBg}
                 />
               ))}
             </nav>
@@ -113,8 +117,14 @@ export function Sidebar() {
 }
 
 function SidebarItem({
-  item, pathname, collapsed, accentColor,
-}: { item: NavItem; pathname: string; collapsed: boolean; accentColor: string }) {
+  item, pathname, collapsed, activeColor, activeBg,
+}: {
+  item:        NavItem;
+  pathname:    string;
+  collapsed:   boolean;
+  activeColor: string;
+  activeBg:    string;
+}) {
   const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
 
   return (
@@ -124,21 +134,29 @@ function SidebarItem({
       className={clsx(
         'relative flex items-center rounded-lg text-[12px] font-medium transition-colors',
         collapsed ? 'w-8 h-8 justify-center mx-auto' : 'gap-2.5 px-3 py-2.5',
-        isActive
-          ? 'bg-orange-50 text-[#0f1928]'
-          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+        !isActive && 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
       )}
+      style={isActive ? { backgroundColor: activeBg, color: '#0f1928' } : undefined}
     >
+      {/* Left accent bar (expanded active) */}
       {isActive && !collapsed && (
-        <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full"
-          style={{ backgroundColor: accentColor }} />
+        <span
+          className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full"
+          style={{ backgroundColor: activeColor }}
+        />
       )}
+      {/* Right pip (collapsed active) */}
       {isActive && collapsed && (
-        <span className="absolute -right-0.5 top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-orange-500" />
+        <span
+          className="absolute -right-0.5 top-1/2 -translate-y-1/2 w-1 h-4 rounded-full"
+          style={{ backgroundColor: activeColor }}
+        />
       )}
       {item.icon
-        ? <i className={`${item.icon} text-[16px] leading-none shrink-0`}
-            style={{ color: isActive ? accentColor : undefined }} />
+        ? <i
+            className={`${item.icon} text-[16px] leading-none shrink-0`}
+            style={{ color: isActive ? activeColor : undefined }}
+          />
         : <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
       }
       {!collapsed && <span>{item.label}</span>}
