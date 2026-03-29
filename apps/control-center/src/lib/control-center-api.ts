@@ -16,6 +16,10 @@ import type {
   SystemHealthSummary,
   SystemAlert,
   MonitoringSummary,
+  SupportCase,
+  SupportCaseDetail,
+  SupportCaseStatus,
+  SupportNote,
   PagedResponse,
   TenantType,
 } from '@/types/control-center';
@@ -620,6 +624,111 @@ const MOCK_AUDIT_LOGS = ([
   },
 ] as AuditLogEntry[]).sort((a, b) => b.createdAtUtc.localeCompare(a.createdAtUtc)); // newest first
 
+// ── Mock support data ─────────────────────────────────────────────────────────
+// TODO: replace with /identity/api/admin/support endpoints
+
+let MOCK_SUPPORT_CASES: SupportCaseDetail[] = [
+  {
+    id: 'case-001', title: 'Cannot log in after password reset',
+    tenantId: '11111111-0000-0000-0000-000000000001', tenantName: 'Hartwell & Associates',
+    userId: 'a0000000-0000-0000-0000-000000000001', userName: 'margaret@hartwell.law',
+    status: 'Investigating', category: 'Authentication', priority: 'High',
+    createdAtUtc: '2026-03-28T09:15:00Z', updatedAtUtc: '2026-03-28T11:30:00Z',
+    notes: [
+      {
+        id: 'note-001-1', caseId: 'case-001',
+        message: 'User reports receiving the reset email but the link throws a 401 after clicking. Checking JWT signing key rotation.',
+        createdBy: 'n.patel@legalsynq.com', createdAtUtc: '2026-03-28T10:05:00Z',
+      },
+      {
+        id: 'note-001-2', caseId: 'case-001',
+        message: 'Confirmed signing key was rotated during maintenance window. Issuing fresh reset link manually.',
+        createdBy: 'admin@legalsynq.com', createdAtUtc: '2026-03-28T11:30:00Z',
+      },
+    ],
+  },
+  {
+    id: 'case-002', title: 'SynqFund report export generates empty file',
+    tenantId: '11111111-0000-0000-0000-000000000002', tenantName: 'Meridian Care Partners',
+    userId: undefined, userName: undefined,
+    status: 'Open', category: 'Reporting', priority: 'Medium',
+    createdAtUtc: '2026-03-27T14:00:00Z', updatedAtUtc: '2026-03-27T14:00:00Z',
+    notes: [],
+  },
+  {
+    id: 'case-003', title: 'GRAYSTONE tenant billing suspended incorrectly',
+    tenantId: '11111111-0000-0000-0000-000000000005', tenantName: 'Graystone Gov Solutions',
+    userId: undefined, userName: undefined,
+    status: 'Resolved', category: 'Billing', priority: 'High',
+    createdAtUtc: '2026-03-20T08:00:00Z', updatedAtUtc: '2026-03-22T16:45:00Z',
+    notes: [
+      {
+        id: 'note-003-1', caseId: 'case-003',
+        message: 'Payment processor webhook delivered a duplicate failure event. Tenant was suspended erroneously.',
+        createdBy: 'admin@legalsynq.com', createdAtUtc: '2026-03-20T09:20:00Z',
+      },
+      {
+        id: 'note-003-2', caseId: 'case-003',
+        message: 'Suspension lifted. Webhook deduplication logic deployed to prevent recurrence.',
+        createdBy: 'n.patel@legalsynq.com', createdAtUtc: '2026-03-22T16:45:00Z',
+      },
+    ],
+  },
+  {
+    id: 'case-004', title: 'CareConnect map not loading for NEXUSHEALTH users',
+    tenantId: '11111111-0000-0000-0000-000000000004', tenantName: 'NexusHealth Network',
+    userId: undefined, userName: undefined,
+    status: 'Open', category: 'Feature', priority: 'Medium',
+    createdAtUtc: '2026-03-29T01:30:00Z', updatedAtUtc: '2026-03-29T01:30:00Z',
+    notes: [],
+  },
+  {
+    id: 'case-005', title: 'Request to add second TenantAdmin for THORNFIELD',
+    tenantId: '11111111-0000-0000-0000-000000000003', tenantName: 'Thornfield Law Group',
+    userId: undefined, userName: undefined,
+    status: 'Closed', category: 'User Management', priority: 'Low',
+    createdAtUtc: '2026-03-15T10:00:00Z', updatedAtUtc: '2026-03-15T14:00:00Z',
+    notes: [
+      {
+        id: 'note-005-1', caseId: 'case-005',
+        message: 'Second admin account created and confirmed by tenant contact.',
+        createdBy: 'admin@legalsynq.com', createdAtUtc: '2026-03-15T14:00:00Z',
+      },
+    ],
+  },
+  {
+    id: 'case-006', title: 'Audit log entries missing for HARTWELL org between Feb–Mar',
+    tenantId: '11111111-0000-0000-0000-000000000001', tenantName: 'Hartwell & Associates',
+    userId: undefined, userName: undefined,
+    status: 'Investigating', category: 'Compliance', priority: 'High',
+    createdAtUtc: '2026-03-26T13:00:00Z', updatedAtUtc: '2026-03-27T09:00:00Z',
+    notes: [
+      {
+        id: 'note-006-1', caseId: 'case-006',
+        message: 'Reviewing audit pipeline logs for the affected date range. Possible write failure during DB maintenance.',
+        createdBy: 'n.patel@legalsynq.com', createdAtUtc: '2026-03-27T09:00:00Z',
+      },
+    ],
+  },
+  {
+    id: 'case-007', title: 'PINNACLE user locked out — MFA device lost',
+    tenantId: '11111111-0000-0000-0000-000000000006', tenantName: 'Pinnacle Legal Partners',
+    userId: undefined, userName: undefined,
+    status: 'Resolved', category: 'Authentication', priority: 'Medium',
+    createdAtUtc: '2026-03-24T16:00:00Z', updatedAtUtc: '2026-03-24T17:30:00Z',
+    notes: [
+      {
+        id: 'note-007-1', caseId: 'case-007',
+        message: 'Identity verified via tenant admin approval. MFA reset issued and confirmed.',
+        createdBy: 'admin@legalsynq.com', createdAtUtc: '2026-03-24T17:30:00Z',
+      },
+    ],
+  },
+];
+
+let MOCK_NOTE_SEQ = 100;
+let MOCK_CASE_SEQ = 8;
+
 // ── Mock monitoring data ───────────────────────────────────────────────────────
 // TODO: replace with GET /platform/monitoring/summary
 
@@ -927,6 +1036,115 @@ export const controlCenterServerApi = {
         integrations: MOCK_MONITORING_SUMMARY.integrations.map(i => ({ ...i })),
         alerts:       MOCK_MONITORING_SUMMARY.alerts.map(a => ({ ...a })),
       }),
+  },
+
+  support: {
+    // TODO: replace with /identity/api/admin/support endpoints
+
+    list: (params: {
+      page?:     number;
+      pageSize?: number;
+      search?:   string;
+      status?:   string;
+      priority?: string;
+    } = {}): Promise<{ items: SupportCase[]; totalCount: number }> => {
+      const page     = params.page     ?? 1;
+      const pageSize = params.pageSize ?? 10;
+      const search   = (params.search   ?? '').toLowerCase().trim();
+      const status   = (params.status   ?? '').toLowerCase().trim();
+      const priority = (params.priority ?? '').toLowerCase().trim();
+
+      let filtered: SupportCase[] = MOCK_SUPPORT_CASES.map(
+        ({ notes: _notes, ...c }) => c,
+      );
+
+      if (search) {
+        filtered = filtered.filter(c =>
+          c.title.toLowerCase().includes(search)      ||
+          c.tenantName.toLowerCase().includes(search) ||
+          (c.userName ?? '').toLowerCase().includes(search),
+        );
+      }
+      if (status) {
+        filtered = filtered.filter(c => c.status.toLowerCase() === status);
+      }
+      if (priority) {
+        filtered = filtered.filter(c => c.priority.toLowerCase() === priority);
+      }
+
+      filtered = filtered.sort((a, b) =>
+        b.updatedAtUtc.localeCompare(a.updatedAtUtc),
+      );
+
+      const totalCount = filtered.length;
+      const start      = (page - 1) * pageSize;
+      return Promise.resolve({ items: filtered.slice(start, start + pageSize), totalCount });
+    },
+
+    getById: (id: string): Promise<SupportCaseDetail | null> => {
+      const found = MOCK_SUPPORT_CASES.find(c => c.id === id) ?? null;
+      return Promise.resolve(found ? { ...found, notes: [...found.notes] } : null);
+    },
+
+    create: (data: {
+      title:      string;
+      tenantId:   string;
+      tenantName: string;
+      userId?:    string;
+      userName?:  string;
+      category:   string;
+      priority:   SupportCase['priority'];
+    }): Promise<SupportCaseDetail> => {
+      const now  = new Date().toISOString();
+      const seq  = String(MOCK_CASE_SEQ++).padStart(3, '0');
+      const newCase: SupportCaseDetail = {
+        id:           `case-${seq}`,
+        title:        data.title,
+        tenantId:     data.tenantId,
+        tenantName:   data.tenantName,
+        userId:       data.userId,
+        userName:     data.userName,
+        status:       'Open',
+        category:     data.category,
+        priority:     data.priority,
+        createdAtUtc: now,
+        updatedAtUtc: now,
+        notes:        [],
+      };
+      MOCK_SUPPORT_CASES = [newCase, ...MOCK_SUPPORT_CASES];
+      return Promise.resolve({ ...newCase });
+    },
+
+    addNote: (caseId: string, message: string): Promise<SupportNote> => {
+      const idx = MOCK_SUPPORT_CASES.findIndex(c => c.id === caseId);
+      if (idx === -1) return Promise.reject(new Error(`Case ${caseId} not found.`));
+      const seq = String(MOCK_NOTE_SEQ++).padStart(3, '0');
+      const note: SupportNote = {
+        id:           `note-auto-${seq}`,
+        caseId,
+        message,
+        createdBy:    'admin@legalsynq.com',
+        createdAtUtc: new Date().toISOString(),
+      };
+      MOCK_SUPPORT_CASES[idx] = {
+        ...MOCK_SUPPORT_CASES[idx],
+        notes:        [...MOCK_SUPPORT_CASES[idx].notes, note],
+        updatedAtUtc: note.createdAtUtc,
+      };
+      return Promise.resolve({ ...note });
+    },
+
+    updateStatus: (caseId: string, status: SupportCaseStatus): Promise<SupportCase> => {
+      const idx = MOCK_SUPPORT_CASES.findIndex(c => c.id === caseId);
+      if (idx === -1) return Promise.reject(new Error(`Case ${caseId} not found.`));
+      MOCK_SUPPORT_CASES[idx] = {
+        ...MOCK_SUPPORT_CASES[idx],
+        status,
+        updatedAtUtc: new Date().toISOString(),
+      };
+      const { notes: _n, ...summary } = MOCK_SUPPORT_CASES[idx];
+      return Promise.resolve({ ...summary });
+    },
   },
 };
 

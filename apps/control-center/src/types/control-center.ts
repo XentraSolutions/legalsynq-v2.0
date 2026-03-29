@@ -198,6 +198,37 @@ export interface MonitoringSummary {
   alerts:       SystemAlert[];
 }
 
+// ── Support Tools ─────────────────────────────────────────────────────────────
+
+export type SupportCaseStatus   = 'Open' | 'Investigating' | 'Resolved' | 'Closed';
+export type SupportCasePriority = 'Low' | 'Medium' | 'High';
+
+export interface SupportCase {
+  id:           string;
+  title:        string;
+  tenantId:     string;
+  tenantName:   string;
+  userId?:      string;
+  userName?:    string;
+  status:       SupportCaseStatus;
+  category:     string;
+  priority:     SupportCasePriority;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface SupportNote {
+  id:           string;
+  caseId:       string;
+  message:      string;
+  createdBy:    string;
+  createdAtUtc: string;
+}
+
+export interface SupportCaseDetail extends SupportCase {
+  notes: SupportNote[];
+}
+
 // ── Shared ────────────────────────────────────────────────────────────────────
 
 export interface PagedResponse<T> {
