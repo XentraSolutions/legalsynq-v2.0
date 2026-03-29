@@ -1,92 +1,126 @@
-import type { AccessTokenStore }  from '@/domain/interfaces/access-token-store';
-import type { AccessToken }       from '@/domain/entities/access-token';
-import { logger }                 from '@/shared/logger';
-import { config }                 from '@/shared/config';
-
 /**
- * RedisAccessTokenStore — distributed access-token storage scaffold.
- *
- * Uses Redis SETEX for atomic TTL management.
- * Uses Redis Lua script for atomic markUsed() to prevent TOCTOU races.
+ * RedisAccessTokenStore — distributed access-token storage.
  *
  * Key schema:
- *   access_token:{tokenString}       → JSON(AccessToken), TTL = ACCESS_TOKEN_TTL_SECONDS
+ *   access_token:{tokenString}  → JSON(AccessToken), TTL = remaining seconds
  *
- * To activate:
- *   1. Install ioredis: `npm install ioredis`
- *   2. Set REDIS_URL and ACCESS_TOKEN_STORE=redis
- *   3. Uncomment the implementation below
+ * Atomic one-time-use via Lua MARK_USED_LUA:
+ *   Reads isUsed, guards against concurrent replay, flips flag in a single
+ *   Redis command — prevents TOCTOU races across horizontally-scaled replicas.
+ *   Returns: 1 = marked successfully, 0 = already used, -1 = key not found.
  *
- * Atomic markUsed() via Lua:
- *   The Lua script reads isUsed, sets it true, and returns 0 (already used) or 1 (success)
- *   atomically. This prevents two concurrent redemption requests both succeeding.
+ * Graceful degradation:
+ *   All methods wrap Redis errors in RedisUnavailableError so callers
+ *   can decide to fall back to the memory provider or surface a 503.
  */
 
-// ── Lua script for atomic one-time-use enforcement ─────────────────────────────
-// const MARK_USED_LUA = `
-//   local key = KEYS[1]
-//   local raw = redis.call('GET', key)
-//   if not raw then return -1 end
-//   local token = cjson.decode(raw)
-//   if token.isUsed then return 0 end
-//   token.isUsed = true
-//   local ttl = redis.call('TTL', key)
-//   redis.call('SET', key, cjson.encode(token), 'EX', ttl)
-//   return 1
-// `;
+import type { AccessTokenStore } from '@/domain/interfaces/access-token-store';
+import type { AccessToken }      from '@/domain/entities/access-token';
+import { getRedisClient }        from '@/infrastructure/redis/redis-client';
+import { RedisUnavailableError } from '@/shared/errors';
+import { logger }                from '@/shared/logger';
+
+const KEY_PREFIX = 'access_token:';
+
+const MARK_USED_LUA = `
+local key  = KEYS[1]
+local raw  = redis.call('GET', key)
+if not raw then return -1 end
+local tok  = cjson.decode(raw)
+if tok.isUsed then return 0 end
+tok.isUsed = true
+local ttl  = redis.call('TTL', key)
+if ttl < 1 then return -1 end
+redis.call('SET', key, cjson.encode(tok), 'EX', ttl)
+return 1
+`;
+
+function key(tokenString: string): string {
+  return `${KEY_PREFIX}${tokenString}`;
+}
+
+function deserialise(raw: string): AccessToken {
+  const t = JSON.parse(raw) as AccessToken;
+  t.expiresAt = new Date(t.expiresAt);
+  t.createdAt = new Date(t.createdAt);
+  return t;
+}
+
+function ttlSeconds(expiresAt: Date): number {
+  return Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / 1_000));
+}
 
 export class RedisAccessTokenStore implements AccessTokenStore {
-  // private readonly redis: Redis;
-
   constructor() {
-    logger.info(
-      { redisUrl: config.REDIS_URL ? '[redacted]' : 'not set' },
-      'RedisAccessTokenStore initialising (scaffold)',
-    );
-    // Uncomment when activating:
-    // const Redis = (await import('ioredis')).default;
-    // this.redis = new Redis(config.REDIS_URL!);
+    logger.info({ store: 'redis' }, 'RedisAccessTokenStore initialising');
   }
 
-  async store(_token: AccessToken): Promise<void> {
-    // const ttl = Math.max(1, Math.ceil((_token.expiresAt.getTime() - Date.now()) / 1000));
-    // const key  = `access_token:${_token.token}`;
-    // await this.redis.setex(key, ttl, JSON.stringify(_token));
-    logger.warn('RedisAccessTokenStore.store() — scaffold, falling back is not automatic');
-    throw new Error('RedisAccessTokenStore is a scaffold. Set ACCESS_TOKEN_STORE=memory for dev.');
+  async store(token: AccessToken): Promise<void> {
+    try {
+      const ttl = ttlSeconds(token.expiresAt);
+      await getRedisClient().setex(key(token.token), ttl, JSON.stringify(token));
+      logger.debug({ documentId: token.documentId, ttl }, 'Access token stored in Redis');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg, operation: 'store' }, 'Redis access token store error');
+      throw new RedisUnavailableError('store', msg);
+    }
   }
 
   async get(tokenString: string): Promise<AccessToken | null> {
-    // const raw = await this.redis.get(`access_token:${tokenString}`);
-    // if (!raw) return null;
-    // const token = JSON.parse(raw) as AccessToken;
-    // token.expiresAt = new Date(token.expiresAt);
-    // token.createdAt = new Date(token.createdAt);
-    // return token;
-    void tokenString;
-    throw new Error('RedisAccessTokenStore is a scaffold.');
+    try {
+      const raw = await getRedisClient().get(key(tokenString));
+      if (!raw) return null;
+      return deserialise(raw);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg, operation: 'get' }, 'Redis access token get error');
+      throw new RedisUnavailableError('get', msg);
+    }
   }
 
+  /**
+   * Atomically mark a token as used.
+   * Returns true if the token was successfully marked (first use).
+   * Returns false if the token was already used OR does not exist.
+   *
+   * The Lua script ensures no two concurrent requests can both succeed,
+   * even on a Redis cluster with multiple app replicas.
+   */
   async markUsed(tokenString: string): Promise<boolean> {
-    // const result = await this.redis.eval(MARK_USED_LUA, 1, `access_token:${tokenString}`);
-    // return result === 1;
-    void tokenString;
-    throw new Error('RedisAccessTokenStore is a scaffold.');
+    try {
+      const result = await getRedisClient().eval(MARK_USED_LUA, 1, key(tokenString)) as number;
+      // 1 = marked, 0 = already used, -1 = not found / expired
+      return result === 1;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg, operation: 'markUsed' }, 'Redis markUsed error');
+      throw new RedisUnavailableError('markUsed', msg);
+    }
   }
 
   async revoke(tokenString: string): Promise<void> {
-    // await this.redis.del(`access_token:${tokenString}`);
-    void tokenString;
-    throw new Error('RedisAccessTokenStore is a scaffold.');
+    try {
+      await getRedisClient().del(key(tokenString));
+      logger.debug({ operation: 'revoke' }, 'Access token revoked in Redis');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg, operation: 'revoke' }, 'Redis revoke error');
+      throw new RedisUnavailableError('revoke', msg);
+    }
   }
 
+  /**
+   * Redis TTL handles expiry automatically — no manual sweep needed.
+   * Always returns 0 (nothing manually removed).
+   */
   async cleanup(): Promise<number> {
-    // Redis TTL handles expiry automatically — no manual cleanup needed
     return 0;
   }
 
   destroy(): void {
-    // await this.redis.quit();
-    logger.info('RedisAccessTokenStore destroyed (scaffold)');
+    // Connection lifecycle managed by shared redis-client singleton.
+    // Individual stores do not close the connection.
+    logger.info({ store: 'redis' }, 'RedisAccessTokenStore destroyed (connection managed by pool)');
   }
 }

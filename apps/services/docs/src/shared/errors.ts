@@ -119,6 +119,22 @@ export class RateLimitError extends DocsError {
   }
 }
 
+// ── 503 Service Unavailable ───────────────────────────────────────────────────
+/**
+ * Thrown when a Redis command fails because the connection is down.
+ * The API middleware maps 503 → Retry-After header, and the factory
+ * layers catch this to decide whether to fall back to the memory provider.
+ */
+export class RedisUnavailableError extends DocsError {
+  constructor(operation: string, cause?: string) {
+    super(
+      `Redis unavailable during ${operation}${cause ? `: ${cause}` : ''}`,
+      503,
+      'REDIS_UNAVAILABLE',
+    );
+  }
+}
+
 // ── 500 Internal ──────────────────────────────────────────────────────────────
 export class StorageError extends DocsError {
   constructor(message: string) {
