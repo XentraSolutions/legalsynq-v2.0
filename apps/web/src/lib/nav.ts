@@ -32,7 +32,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         { href: '/lien/dashboard',     label: 'Dashboard',     icon: 'ri-dashboard-line' },
         { href: '/lien/task-manager',  label: 'Task Manager',  icon: 'ri-task-line' },
         { href: '/lien/cases',         label: 'Cases',         icon: 'ri-folder-open-line' },
-        { href: '/lien/liens',         label: 'Liens',         icon: 'ri-file-stack-line' },
+        { href: '/lien/liens',         label: 'Liens',         icon: 'ri-stack-line' },
         { href: '/lien/bill-of-sales', label: 'Bill of Sales', icon: 'ri-receipt-line' },
         { href: '/lien/servicing',     label: 'Servicing',     icon: 'ri-tools-line' },
         { href: '/lien/contacts',      label: 'Contacts',      icon: 'ri-contacts-book-line' },
@@ -67,7 +67,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
 export const PRODUCT_META: Record<string, { label: string; icon: string; color: string }> = {
   careconnect: { label: 'Synq CareConnect', icon: 'ri-shield-cross-line',  color: '#2563eb' },
   fund:        { label: 'Synq Funds',        icon: 'ri-bank-line',           color: '#16a34a' },
-  lien:        { label: 'Synq Liens',        icon: 'ri-file-stack-line',     color: '#7c3aed' },
+  lien:        { label: 'Synq Liens',        icon: 'ri-stack-line',          color: '#7c3aed' },
   ai:          { label: 'Synq AI',           icon: 'ri-robot-line',          color: '#d97706' },
   insights:    { label: 'Synq Insights',     icon: 'ri-bar-chart-2-line',    color: '#0891b2' },
 };
