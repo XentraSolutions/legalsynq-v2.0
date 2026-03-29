@@ -1,18 +1,22 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
  * Login form — calls the Next.js BFF route POST /api/auth/login.
  *
- * Loaded client-only (ssr: false in page.tsx) so env vars can be read
- * safely without any server/client hydration mismatch.
+ * isDev is deferred to after mount so the server render and the initial
+ * client render always agree (both see isDev = false), eliminating the
+ * hydration mismatch caused by NEXT_PUBLIC_ENV being available in the
+ * Node.js process but not necessarily inlined in the browser bundle.
  */
 export function LoginForm() {
   const router = useRouter();
 
-  const isDev = process.env.NEXT_PUBLIC_ENV === 'development';
+  const [mounted,    setMounted]    = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const isDev = mounted && process.env.NEXT_PUBLIC_ENV === 'development';
 
   const [email,      setEmail]      = useState('');
   const [password,   setPassword]   = useState('');
