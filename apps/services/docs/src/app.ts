@@ -7,6 +7,7 @@ import { correlationIdMiddleware } from '@/api/middleware/correlation-id';
 import { errorHandler }    from '@/api/middleware/error-handler';
 import healthRouter        from '@/api/routes/health';
 import documentsRouter     from '@/api/routes/documents';
+import accessRouter        from '@/api/routes/access';
 import { config }          from '@/shared/config';
 import { logger }          from '@/shared/logger';
 
@@ -58,6 +59,7 @@ export function createApp() {
   // ── Routes ──────────────────────────────────────────────────────────────────
   app.use('/health',    healthRouter);
   app.use('/documents', documentsRouter);
+  app.use('/access',    accessRouter);
 
   // 404 handler
   app.use((_req, res) => {

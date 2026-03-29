@@ -42,6 +42,12 @@ const schema = z.object({
   // CORS
   CORS_ORIGINS: z.string().default('http://localhost:5000'),
 
+  // Access token mediation
+  ACCESS_TOKEN_STORE:         z.enum(['memory', 'redis']).default('memory'),
+  ACCESS_TOKEN_TTL_SECONDS:   z.coerce.number().int().min(10).default(300),
+  ACCESS_TOKEN_ONE_TIME_USE:  z.coerce.boolean().default(true),
+  DIRECT_PRESIGN_ENABLED:     z.coerce.boolean().default(false),
+
   // Malware scanning
   FILE_SCANNER_PROVIDER:           z.enum(['mock', 'clamav', 'none']).default('none'),
   CLAMAV_HOST:                     z.string().default('localhost'),

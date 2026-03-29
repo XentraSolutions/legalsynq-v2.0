@@ -3,11 +3,13 @@ import { DocumentRepository }   from '@/infrastructure/database/document-reposit
 import { getStorageProvider }   from '@/infrastructure/storage/storage-factory';
 import { auditService }         from './audit-service';
 import { ScanService }          from './scan-service';
+import { AccessTokenService }   from './access-token-service';
 import { config }               from '@/shared/config';
 import { NotFoundError, ForbiddenError, ScanBlockedError } from '@/shared/errors';
 import { AuditEvent }           from '@/shared/constants';
 import type { AuthPrincipal }   from '@/domain/interfaces/auth-provider';
 import type { CreateDocumentInput, UpdateDocumentInput } from '@/domain/entities/document';
+import type { IssuedToken, PresignedUrlResult } from '@/domain/entities/access-token';
 
 
 interface RequestContext {
@@ -249,19 +251,48 @@ export const DocumentService = {
     return version;
   },
 
-  // ── Signed URL (view / download) ───────────────────────────────────────────
+  // ── Request access (replaces generateSignedUrl in new flow) ───────────────
+  /**
+   * Primary access entry point.
+   *
+   * When DIRECT_PRESIGN_ENABLED=false (default — secure mode):
+   *   Issues a short-lived opaque access token.
+   *   Client redeems it at GET /access/:token.
+   *   Storage key is never exposed.
+   *
+   * When DIRECT_PRESIGN_ENABLED=true (legacy / compat mode):
+   *   Generates a pre-signed storage URL directly (old behaviour).
+   *   Suitable for trusted clients or storage-direct architectures.
+   */
+  async requestAccess(
+    documentId: string,
+    type: 'view' | 'download',
+    ctx: RequestContext,
+  ): Promise<IssuedToken | PresignedUrlResult> {
+    if (config.DIRECT_PRESIGN_ENABLED) {
+      return this.generateSignedUrl(documentId, type, ctx);
+    }
+    return AccessTokenService.issue(documentId, type, ctx);
+  },
+
+  // ── Signed URL (internal / legacy) ────────────────────────────────────────
+  /**
+   * Generates a direct pre-signed URL from storage.
+   * Used internally by token redemption (short TTL = 30s) and
+   * as a fallback when DIRECT_PRESIGN_ENABLED=true.
+   *
+   * NEVER call this from a route handler directly unless DIRECT_PRESIGN_ENABLED=true.
+   * Use requestAccess() which enforces the configured access model.
+   */
   async generateSignedUrl(
     documentId: string,
     type: 'view' | 'download',
     ctx: RequestContext,
-  ): Promise<{ url: string; expiresInSeconds: number }> {
+  ): Promise<PresignedUrlResult> {
     const doc = await DocumentRepository.findById(documentId, ctx.principal.tenantId);
     if (!doc) throw new NotFoundError('Document', documentId);
 
     // ── Scan gate ────────────────────────────────────────────────────────────
-    // Throws ScanBlockedError if access should be denied.
-    // CLEAN + SKIPPED are always allowed.
-    // INFECTED always blocked. PENDING/FAILED blocked in strict mode.
     try {
       ScanService.enforceCleanScan(doc.scanStatus, {
         documentId,

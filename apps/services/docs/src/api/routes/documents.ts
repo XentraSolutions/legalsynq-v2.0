@@ -4,6 +4,7 @@ import { requireAuth, getPrincipal } from '@/api/middleware/auth';
 import { upload, validateFileContent } from '@/api/middleware/file-validator';
 import { generalLimiter, uploadLimiter, signedUrlLimiter } from '@/api/middleware/rate-limiter';
 import { DocumentService }       from '@/application/document-service';
+import { AccessTokenService }    from '@/application/access-token-service';
 import { assertPermission, assertTenantScope } from '@/application/rbac';
 import { ValidationError }       from '@/shared/errors';
 
@@ -189,12 +190,14 @@ router.get('/:id/versions', async (req: Request, res: Response, next) => {
 });
 
 // ── POST /documents/:id/view-url ─────────────────────────────────────────────
+// Returns an access token (DIRECT_PRESIGN_ENABLED=false, default) or a
+// pre-signed URL (DIRECT_PRESIGN_ENABLED=true, legacy compat).
 router.post('/:id/view-url', signedUrlLimiter, async (req: Request, res: Response, next) => {
   try {
     const principal = getPrincipal(req);
     assertPermission(principal, 'read');
 
-    const result = await DocumentService.generateSignedUrl(req.params['id']!, 'view', ctx(req));
+    const result = await DocumentService.requestAccess(req.params['id']!, 'view', ctx(req));
 
     res.json({ data: result });
   } catch (err) {
@@ -208,9 +211,30 @@ router.post('/:id/download-url', signedUrlLimiter, async (req: Request, res: Res
     const principal = getPrincipal(req);
     assertPermission(principal, 'read');
 
-    const result = await DocumentService.generateSignedUrl(req.params['id']!, 'download', ctx(req));
+    const result = await DocumentService.requestAccess(req.params['id']!, 'download', ctx(req));
 
     res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /documents/:id/content ────────────────────────────────────────────────
+// Authenticated direct access — RBAC validated, then 302 redirect to a
+// 30-second storage URL. No token required; session JWT is the credential.
+// Storage keys are never exposed.
+router.get('/:id/content', async (req: Request, res: Response, next) => {
+  try {
+    const principal = getPrincipal(req);
+    assertPermission(principal, 'read');
+
+    const typeParam = req.query['type'];
+    const type: 'view' | 'download' = typeParam === 'download' ? 'download' : 'view';
+
+    const result = await AccessTokenService.accessDirect(req.params['id']!, type, ctx(req));
+
+    // 302 redirect → short-lived storage URL
+    res.redirect(302, result.redirectUrl);
   } catch (err) {
     next(err);
   }

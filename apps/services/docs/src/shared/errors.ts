@@ -92,6 +92,19 @@ export class InfectedFileError extends DocsError {
   }
 }
 
+// ── 401 Token errors ──────────────────────────────────────────────────────────
+export class TokenExpiredError extends DocsError {
+  constructor() {
+    super('Access token has expired', 401, 'TOKEN_EXPIRED');
+  }
+}
+
+export class TokenInvalidError extends DocsError {
+  constructor(reason = 'Access token is invalid or has already been used') {
+    super(reason, 401, 'TOKEN_INVALID');
+  }
+}
+
 // ── 429 Too Many Requests ─────────────────────────────────────────────────────
 export class RateLimitError extends DocsError {
   constructor(
