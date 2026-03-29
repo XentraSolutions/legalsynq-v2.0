@@ -8,26 +8,47 @@
  * Base URL is controlled by CONTROL_CENTER_API_BASE (e.g. the API gateway).
  * Falls back to GATEWAY_URL → http://localhost:5010 if not set.
  *
- * Caching (GET requests only):
+ * ── Request tracing ──────────────────────────────────────────────────────────
+ *
+ *   Every request is assigned a UUID requestId via crypto.randomUUID().
+ *   The ID is attached as:
+ *     - X-Request-Id header → forwarded to the API gateway and downstream
+ *       services so a single user-visible error can be traced end-to-end
+ *     - all log entries for the request lifecycle
+ *
+ * ── Observability ────────────────────────────────────────────────────────────
+ *
+ *   apiFetch emits structured log entries at each lifecycle point:
+ *     api.request.start       — method, endpoint, tenantId, impersonation
+ *     api.request.success     — status, durationMs
+ *     api.request.redirect_401— session expired, durationMs
+ *     api.request.error       — status, message, durationMs (4xx/5xx)
+ *     api.network_failure     — network-level error before HTTP response
+ *
+ * ── Caching (GET requests only) ──────────────────────────────────────────────
+ *
  *   - Pass revalidateSeconds to opt into Next.js ISR-style fetch caching.
  *   - Pass tags[] to enable on-demand revalidation via revalidateTag().
  *   - Mutations (POST/PATCH/PUT/DELETE) always use cache: 'no-store'.
  *   - Reads with no revalidateSeconds default to cache: 'no-store' (safe default).
  *
- * Error handling:
+ * ── Error handling ────────────────────────────────────────────────────────────
+ *
  *   HTTP 401 → redirects to /login?reason=session_expired
  *   HTTP 403 → throws ApiError (Forbidden)
  *   Other non-2xx → throws ApiError with status + message
+ *   Network error → throws the original fetch error
  *
  * TODO: add retry/backoff
- * TODO: add request tracing (correlation-id header)
  * TODO: add Redis or edge caching
  * TODO: add stale-while-revalidate strategy
  * TODO: add request deduplication
  */
 
-import { redirect } from 'next/navigation';
-import { cookies }   from 'next/headers';
+import { redirect }                    from 'next/navigation';
+import { cookies }                     from 'next/headers';
+import { logInfo, logError }           from '@/lib/logger';
+import { getTenantContext, getImpersonation } from '@/lib/auth';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -94,16 +115,25 @@ export interface ApiFetchOptions {
 /**
  * apiFetch<T>(path, options?) — send a typed HTTP request to the API gateway.
  *
- * Caching behaviour:
+ * ── Request lifecycle ─────────────────────────────────────────────────────────
+ *
+ *   1. Generate requestId (UUID) + read tenant/impersonation context
+ *   2. Build headers: Authorization, Content-Type, X-Request-Id
+ *   3. Build Next.js cache config based on method + revalidateSeconds
+ *   4. Log api.request.start
+ *   5. Call fetch() — network errors are caught and logged separately
+ *   6. Log api.request.redirect_401 + redirect on 401
+ *   7. Log api.request.error + throw ApiError on non-2xx
+ *   8. Log api.request.success
+ *   9. Return parsed JSON body (or undefined for 204)
+ *
+ * ── Caching behaviour ─────────────────────────────────────────────────────────
+ *
  *   GET + revalidateSeconds set → next: { revalidate, tags }
  *   GET + no revalidateSeconds  → cache: 'no-store'
  *   Non-GET                     → cache: 'no-store' (never cache mutations)
  *
- * On HTTP 401, redirects immediately to /login?reason=session_expired.
- * On any other non-2xx, throws ApiError.
- *
  * TODO: add retry/backoff
- * TODO: add request tracing (correlation-id header)
  * TODO: add Redis or edge caching
  * TODO: add stale-while-revalidate strategy
  * TODO: add request deduplication
@@ -112,32 +142,58 @@ export async function apiFetch<T>(
   path:    string,
   options: ApiFetchOptions = {},
 ): Promise<T> {
+  // ── 1. Request identity + context ────────────────────────────────────────
+
+  // Unique ID for this request — forwarded to the gateway via X-Request-Id
+  // and included in every log entry so the full lifecycle is searchable by ID.
+  // TODO: integrate with Datadog / OpenTelemetry trace context
+  const requestId = crypto.randomUUID();
+
+  // Read active tenant + impersonation context from cookies.
+  // getTenantContext() and getImpersonation() both call cookies() internally;
+  // Next.js memoises cookies() per-request so there is no extra overhead.
+  const tenantCtx      = getTenantContext();
+  const impersonation  = getImpersonation();
+
+  // Build a shared meta object for all log entries in this request's lifecycle
+  const method  = options.method ?? 'GET';
+  const logMeta = {
+    requestId,
+    method,
+    endpoint: path,
+    ...(tenantCtx     ? { tenantId: tenantCtx.tenantId, tenantCode: tenantCtx.tenantCode } : {}),
+    ...(impersonation ? {
+      impersonatedUserId:    impersonation.impersonatedUserId,
+      impersonatedUserEmail: impersonation.impersonatedUserEmail,
+    } : {}),
+  };
+
+  // ── 2. Auth header ────────────────────────────────────────────────────────
+
   const cookieStore = cookies();
   const token = cookieStore.get('platform_session')?.value;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Accept':       'application/json',
+    // Attach requestId so the API gateway and downstream services can correlate
+    // log entries across the entire call chain.
+    // TODO: integrate with Datadog / OpenTelemetry distributed tracing
+    'X-Request-Id': requestId,
   };
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // TODO: add correlation-id header for request tracing
-  // headers['X-Correlation-Id'] = crypto.randomUUID();
+  // ── 3. Cache config ───────────────────────────────────────────────────────
 
-  const method = options.method ?? 'GET';
   const isRead = method === 'GET' || method === 'HEAD';
 
-  // Build the Next.js fetch cache config:
-  //   - Reads with revalidateSeconds → ISR-style with optional tags
-  //   - Everything else             → no-store (never cache mutations)
   let fetchCache: RequestCache | undefined;
   let nextOptions: { revalidate?: number; tags?: string[] } | undefined;
 
   if (isRead && options.revalidateSeconds !== undefined) {
-    // Use Next.js data cache with revalidation
     nextOptions = {
       revalidate: options.revalidateSeconds,
       ...(options.tags && options.tags.length > 0 ? { tags: options.tags } : {}),
@@ -146,30 +202,61 @@ export async function apiFetch<T>(
     fetchCache = 'no-store';
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body:    options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    ...(fetchCache     ? { cache: fetchCache }    : {}),
-    ...(nextOptions    ? { next:  nextOptions }    : {}),
-  });
+  // ── 4. Log request start ──────────────────────────────────────────────────
 
-  // 401 — session expired or missing; redirect to login
+  logInfo('api.request.start', logMeta);
+
+  // ── 5. Execute fetch (network-error boundary) ─────────────────────────────
+
+  const startMs = Date.now();
+  let res: Response;
+
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body:    options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      ...(fetchCache  ? { cache: fetchCache } : {}),
+      ...(nextOptions ? { next:  nextOptions } : {}),
+    });
+  } catch (networkErr: unknown) {
+    // fetch() itself threw — DNS failure, connection refused, timeout, etc.
+    const durationMs = Date.now() - startMs;
+    logError('api.network_failure', networkErr, { ...logMeta, durationMs });
+    throw networkErr;
+  }
+
+  const durationMs = Date.now() - startMs;
+
+  // ── 6. Handle 401 ─────────────────────────────────────────────────────────
+
   if (res.status === 401) {
+    logInfo('api.request.redirect_401', { ...logMeta, durationMs, status: 401 });
     redirect('/login?reason=session_expired');
   }
+
+  // ── 7. Handle non-2xx ─────────────────────────────────────────────────────
 
   if (!res.ok) {
     let message = `HTTP ${res.status} ${res.statusText}`;
     try {
-      const err = await res.json() as Record<string, unknown>;
-      if (typeof err.message === 'string') message = err.message;
-      else if (typeof err.title === 'string') message = err.title;
+      const errBody = await res.json() as Record<string, unknown>;
+      if (typeof errBody.message === 'string') message = errBody.message;
+      else if (typeof errBody.title === 'string') message = errBody.title;
     } catch { /* non-JSON error body — use status text */ }
-    throw new ApiError(res.status, message);
+
+    const apiErr = new ApiError(res.status, message);
+    logError('api.request.error', apiErr, { ...logMeta, durationMs, status: res.status });
+    throw apiErr;
   }
 
-  // 204 No Content
+  // ── 8. Log success ────────────────────────────────────────────────────────
+
+  logInfo('api.request.success', { ...logMeta, durationMs, status: res.status });
+
+  // ── 9. Return body ────────────────────────────────────────────────────────
+
+  // 204 No Content — return undefined without attempting JSON parse
   if (res.status === 204) return undefined as T;
 
   return res.json() as Promise<T>;
@@ -186,7 +273,7 @@ export const apiClient = {
    * @param tags              cache tags for revalidateTag() on-demand purge
    */
   get: <T>(
-    path:              string,
+    path:               string,
     revalidateSeconds?: number,
     tags?:              string[],
   ) => apiFetch<T>(path, { revalidateSeconds, tags }),
