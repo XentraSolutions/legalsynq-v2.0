@@ -40,6 +40,7 @@ export function TopBar() {
           width={130}
           height={32}
           priority
+          unoptimized
           className="h-7 w-auto"
         />
       </Link>
