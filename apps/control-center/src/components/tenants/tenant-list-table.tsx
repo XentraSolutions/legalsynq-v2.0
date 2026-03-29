@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { TenantSummary, TenantStatus, TenantType } from '@/types/control-center';
+import { Routes } from '@/lib/routes';
 
 interface TenantListTableProps {
   tenants:    TenantSummary[];
@@ -84,7 +85,7 @@ export function TenantListTable({ tenants, totalCount, page, pageSize }: TenantL
                 </td>
                 <td className="px-4 py-3 text-right">
                   <Link
-                    href={`/tenants/${tenant.id}`}
+                    href={Routes.tenantDetail(tenant.id)}
                     className="text-xs text-indigo-600 font-medium hover:underline whitespace-nowrap"
                   >
                     View →

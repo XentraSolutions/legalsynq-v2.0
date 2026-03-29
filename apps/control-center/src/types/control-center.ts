@@ -20,26 +20,34 @@ export interface TenantSummary {
   createdAtUtc:       string;
 }
 
-export interface TenantDetail {
-  id:           string;
-  code:         string;
-  displayName:  string;
-  type:         TenantType;
-  status:       TenantStatus;
-  primaryContactName: string;
-  isActive:     boolean;
-  createdAtUtc: string;
-  updatedAtUtc: string;
-  products:     TenantProductSummary[];
-  userCount:    number;
-  orgCount:     number;
+/**
+ * Full tenant record returned by GET /identity/api/admin/tenants/{id}.
+ * Extends TenantSummary with enriched fields not present in the list view.
+ */
+export interface TenantDetail extends TenantSummary {
+  email?:              string;
+  updatedAtUtc:        string;
+  activeUserCount:     number;
+  linkedOrgCount?:     number;
+  productEntitlements: ProductEntitlementSummary[];
 }
 
-export interface TenantProductSummary {
-  productId:    string;
-  productCode:  string;
-  productName:  string;
-  isEnabled:    boolean;
+// ── Product Entitlements ──────────────────────────────────────────────────────
+
+export type EntitlementStatus = 'Enabled' | 'Disabled' | 'NotProvisioned';
+
+/**
+ * A single product entitlement for a tenant.
+ * Used inside TenantDetail.productEntitlements.
+ *
+ * For the standalone platform-wide entitlements list (future),
+ * the backend will likely extend this with tenantId / tenantCode.
+ */
+export interface ProductEntitlementSummary {
+  productCode:   string;
+  productName:   string;
+  enabled:       boolean;
+  status:        EntitlementStatus;
   enabledAtUtc?: string;
 }
 
@@ -68,29 +76,17 @@ export interface RoleSummary {
   isActive:     boolean;
 }
 
-// ── Product Entitlements ──────────────────────────────────────────────────────
-
-export interface ProductEntitlementSummary {
-  tenantId:     string;
-  tenantCode:   string;
-  productId:    string;
-  productCode:  string;
-  productName:  string;
-  isEnabled:    boolean;
-  enabledAtUtc?: string;
-}
-
 // ── Audit Logs ────────────────────────────────────────────────────────────────
 
 export interface AuditLogEntry {
-  id:           string;
-  tenantId?:    string;
-  actorId?:     string;
-  actorEmail?:  string;
-  action:       string;
-  entityType:   string;
-  entityId?:    string;
-  detail?:      string;
+  id:            string;
+  tenantId?:     string;
+  actorId?:      string;
+  actorEmail?:   string;
+  action:        string;
+  entityType:    string;
+  entityId?:     string;
+  detail?:       string;
   occurredAtUtc: string;
 }
 
@@ -107,11 +103,11 @@ export interface PlatformSetting {
 // ── Monitoring ────────────────────────────────────────────────────────────────
 
 export interface SystemHealthSummary {
-  serviceName:   string;
-  status:        'ok' | 'degraded' | 'down' | 'unknown';
-  version?:      string;
-  environment?:  string;
-  checkedAtUtc:  string;
+  serviceName:  string;
+  status:       'ok' | 'degraded' | 'down' | 'unknown';
+  version?:     string;
+  environment?: string;
+  checkedAtUtc: string;
 }
 
 // ── Shared ────────────────────────────────────────────────────────────────────
