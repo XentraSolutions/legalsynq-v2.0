@@ -6,6 +6,7 @@ import { AppSwitcher } from './app-switcher';
 import { TenantContextBanner } from '@/components/layout/tenant-context-banner';
 import { ImpersonationBanner } from '@/components/layout/impersonation-banner';
 import { getTenantContext, getImpersonation } from '@/lib/auth';
+import { AnalyticsProvider } from '@/components/analytics/analytics-provider';
 
 interface CCShellProps {
   children:  ReactNode;
@@ -68,9 +69,17 @@ export function CCShell({ children, userEmail }: CCShellProps) {
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         <CCSidebar />
-        <main className="flex-1 overflow-y-auto p-6">
-          {children}
-        </main>
+        {/*
+          AnalyticsProvider fires a page.view event on every client-side
+          navigation. Scoped to the authenticated shell so the login page
+          is never inside a Client Component boundary — avoids hydration
+          mismatches caused by server/client env variable differences.
+        */}
+        <AnalyticsProvider>
+          <main className="flex-1 overflow-y-auto p-6">
+            {children}
+          </main>
+        </AnalyticsProvider>
       </div>
     </div>
   );

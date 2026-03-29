@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
@@ -10,7 +10,15 @@ import { useRouter } from 'next/navigation';
  */
 export function LoginForm() {
   const router = useRouter();
-  const isDev  = process.env.NEXT_PUBLIC_ENV === 'development';
+
+  // Defer the dev-mode check to after mount so the first client render
+  // matches the server render (both start as false). Without this, if
+  // NEXT_PUBLIC_ENV is set in the server environment but not inlined into
+  // the client bundle, isDev is true server-side and false client-side,
+  // which causes a React hydration mismatch on the Tenant Code field.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const isDev = mounted && process.env.NEXT_PUBLIC_ENV === 'development';
 
   const [email,      setEmail]      = useState('');
   const [password,   setPassword]   = useState('');
