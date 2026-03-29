@@ -90,10 +90,11 @@ export default function LoginPage() {
 
         {/* Footer */}
         <div className="relative z-10 pt-6 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-          <p className="text-[11px] text-slate-500">
-            &copy; {new Date().getFullYear()} LegalSynq
-          </p>
-          <div className="flex items-center gap-3 mt-2">
+          <div className="flex items-center gap-3">
+            <p className="text-[11px] text-slate-500">
+              &copy; {new Date().getFullYear()} LegalSynq
+            </p>
+            <span className="text-slate-700 text-[10px]">&bull;</span>
             <a href="/privacy-policy" className="text-[11px] text-slate-600 hover:text-slate-400 transition-colors">
               Privacy Policy
             </a>
