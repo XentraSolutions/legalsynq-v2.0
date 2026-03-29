@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
+import { getTenantContext } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { SupportDetailPanel } from '@/components/support/support-detail-panel';
@@ -26,10 +27,17 @@ const PRIORITY_STYLES = {
  * Returns 404 if case not found.
  */
 export default async function SupportCaseDetailPage({ params }: SupportCaseDetailPageProps) {
-  const session = await requirePlatformAdmin();
+  const session   = await requirePlatformAdmin();
+  const tenantCtx = getTenantContext();
 
   const kase = await controlCenterServerApi.support.getById(params.id);
   if (!kase) notFound();
+
+  // Context mismatch — case belongs to a different tenant than the active context.
+  // We show a warning but allow the admin to proceed (no redirect).
+  const contextMismatch =
+    tenantCtx !== null &&
+    kase.tenantId !== tenantCtx.tenantId;
 
   return (
     <CCShell userEmail={session.email}>
@@ -46,6 +54,23 @@ export default async function SupportCaseDetailPage({ params }: SupportCaseDetai
               {kase.title}
             </span>
           </nav>
+
+          {/* Context mismatch warning */}
+          {contextMismatch && (
+            <div className="mb-5 flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-lg px-4 py-3">
+              <span className="text-amber-500 text-lg leading-none mt-0.5" aria-hidden="true">⚠</span>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Tenant context mismatch</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  This case belongs to{' '}
+                  <span className="font-medium">{kase.tenantName}</span>, but you are currently
+                  viewing the context for{' '}
+                  <span className="font-medium">{tenantCtx!.tenantName}</span>.
+                  Data shown is for the case tenant, not your active context.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Page header */}
           <div className="mb-6">

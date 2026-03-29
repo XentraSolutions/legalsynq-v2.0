@@ -1,4 +1,5 @@
 import { requirePlatformAdmin } from '@/lib/auth-guards';
+import { getTenantContext } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { SupportCaseTable } from '@/components/support/support-case-table';
@@ -26,7 +27,8 @@ const PAGE_SIZE = 10;
  * Filtering: search (title/tenant/user), status, priority — all via URL params.
  */
 export default async function SupportPage({ searchParams }: SupportPageProps) {
-  const session  = await requirePlatformAdmin();
+  const session   = await requirePlatformAdmin();
+  const tenantCtx = getTenantContext();
 
   const page     = Math.max(1, parseInt(searchParams.page ?? '1', 10) || 1);
   const search   = searchParams.search   ?? '';
@@ -37,7 +39,14 @@ export default async function SupportPage({ searchParams }: SupportPageProps) {
   let fetchError: string | null = null;
 
   try {
-    result = await controlCenterServerApi.support.list({ page, pageSize: PAGE_SIZE, search, status, priority });
+    result = await controlCenterServerApi.support.list({
+      page,
+      pageSize: PAGE_SIZE,
+      search,
+      status,
+      priority,
+      tenantId: tenantCtx?.tenantId,
+    });
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load support cases.';
   }
@@ -53,9 +62,19 @@ export default async function SupportPage({ searchParams }: SupportPageProps) {
           {/* Page header */}
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold text-gray-900">Support Tools</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-semibold text-gray-900">Support Tools</h1>
+                {tenantCtx && (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[11px] font-semibold text-amber-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    Scoped to {tenantCtx.tenantName}
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-gray-500 mt-1">
-                Internal case management — track, investigate, and resolve tenant issues.
+                {tenantCtx
+                  ? `Cases for ${tenantCtx.tenantName} — track, investigate, and resolve.`
+                  : 'Internal case management — track, investigate, and resolve tenant issues.'}
               </p>
             </div>
 

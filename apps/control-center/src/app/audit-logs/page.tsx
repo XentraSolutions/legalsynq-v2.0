@@ -1,4 +1,5 @@
 import { requirePlatformAdmin } from '@/lib/auth-guards';
+import { getTenantContext } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { AuditLogTable } from '@/components/audit-logs/audit-log-table';
@@ -27,7 +28,8 @@ const PAGE_SIZE = 15;
  *       no page change needed, only the API method in control-center-api.ts.
  */
 export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps) {
-  const session = await requirePlatformAdmin();
+  const session   = await requirePlatformAdmin();
+  const tenantCtx = getTenantContext();
 
   const search     = searchParams.search     ?? '';
   const entityType = searchParams.entityType ?? '';
@@ -44,6 +46,7 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
       search:     search     || undefined,
       entityType: entityType || undefined,
       actor:      actor      || undefined,
+      tenantId:   tenantCtx?.tenantId,
     });
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load audit logs.';
@@ -61,9 +64,19 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
 
         {/* Page header */}
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Audit Logs</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold text-gray-900">Audit Logs</h1>
+            {tenantCtx && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[11px] font-semibold text-amber-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                Scoped to {tenantCtx.tenantName}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-500 mt-0.5">
-            System-wide activity log — all platform and tenant events
+            {tenantCtx
+              ? `Events for ${tenantCtx.tenantName} (${tenantCtx.tenantCode})`
+              : 'System-wide activity log — all platform and tenant events'}
           </p>
         </div>
 

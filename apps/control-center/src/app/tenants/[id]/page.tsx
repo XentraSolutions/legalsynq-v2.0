@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
+import { getTenantContext } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { Routes } from '@/lib/routes';
 import { CCShell } from '@/components/shell/cc-shell';
@@ -23,8 +24,9 @@ interface TenantDetailPageProps {
  *       no page change needed, only the API method in control-center-api.ts.
  */
 export default async function TenantDetailPage({ params }: TenantDetailPageProps) {
-  const session = await requirePlatformAdmin();
-  const { id }  = params;
+  const session   = await requirePlatformAdmin();
+  const tenantCtx = getTenantContext();
+  const { id }    = params;
 
   let tenant = null;
   let fetchError: string | null = null;
@@ -90,26 +92,58 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
 
               {/* Action buttons */}
               <div className="flex items-center gap-2 shrink-0">
-                {/* Switch to Tenant Context */}
-                {(() => {
-                  const switchAction = switchTenantContextAction.bind(null, {
-                    tenantId:   tenant.id,
-                    tenantName: tenant.displayName,
-                    tenantCode: tenant.code,
-                  });
-                  return (
-                    <form action={switchAction}>
-                      <button
-                        type="submit"
-                        className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 hover:border-amber-400 px-3 py-1.5 rounded-md transition-colors"
-                        title="Switch admin view into this tenant's context"
-                      >
-                        <span aria-hidden="true">⇄</span>
-                        Switch to Tenant Context
-                      </button>
-                    </form>
-                  );
-                })()}
+
+                {/* Context switch button — state-aware */}
+                {tenantCtx?.tenantId === tenant.id ? (
+                  // Already in this tenant's context
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-md">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    Active Context
+                  </span>
+                ) : tenantCtx ? (
+                  // In a different context — allow switching, but warn
+                  (() => {
+                    const switchAction = switchTenantContextAction.bind(null, {
+                      tenantId:   tenant.id,
+                      tenantName: tenant.displayName,
+                      tenantCode: tenant.code,
+                    });
+                    return (
+                      <form action={switchAction}>
+                        <button
+                          type="submit"
+                          className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 hover:border-amber-400 px-3 py-1.5 rounded-md transition-colors"
+                          title={`Switch context from ${tenantCtx.tenantName} to ${tenant.displayName}`}
+                        >
+                          <span aria-hidden="true">⇄</span>
+                          Switch Context
+                        </button>
+                      </form>
+                    );
+                  })()
+                ) : (
+                  // No active context — offer to switch into this tenant
+                  (() => {
+                    const switchAction = switchTenantContextAction.bind(null, {
+                      tenantId:   tenant.id,
+                      tenantName: tenant.displayName,
+                      tenantCode: tenant.code,
+                    });
+                    return (
+                      <form action={switchAction}>
+                        <button
+                          type="submit"
+                          className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 hover:border-amber-400 px-3 py-1.5 rounded-md transition-colors"
+                          title="Switch admin view into this tenant's context"
+                        >
+                          <span aria-hidden="true">⇄</span>
+                          Switch to Tenant Context
+                        </button>
+                      </form>
+                    );
+                  })()
+                )}
+
                 <TenantActions tenantId={tenant.id} currentStatus={tenant.status} />
               </div>
             </div>

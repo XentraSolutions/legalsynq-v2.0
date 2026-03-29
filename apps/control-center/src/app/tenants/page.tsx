@@ -30,7 +30,7 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
   let fetchError: string | null = null;
 
   try {
-    result = await controlCenterServerApi.tenants.list({ page, pageSize: 20, search });
+    result = await controlCenterServerApi.tenants.list({ page, pageSize: 20, search, tenantId: tenantCtx?.tenantId });
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load tenants.';
   }

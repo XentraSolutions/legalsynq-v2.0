@@ -857,26 +857,34 @@ export const controlCenterServerApi = {
 
   tenants: {
     // TODO: replace with GET /identity/api/admin/tenants
-    list: (params: { page?: number; pageSize?: number; search?: string } = {}) => {
+    // TODO: enforce tenant scoping server-side
+    // TODO: validate tenant context against session
+    list: (params: { page?: number; pageSize?: number; search?: string; tenantId?: string } = {}) => {
       const page     = params.page     ?? 1;
       const pageSize = params.pageSize ?? 20;
       const search   = (params.search ?? '').toLowerCase();
 
-      const filtered = search
-        ? MOCK_TENANTS.filter(
-            t =>
-              t.displayName.toLowerCase().includes(search) ||
-              t.code.toLowerCase().includes(search) ||
-              t.primaryContactName.toLowerCase().includes(search),
-          )
+      // When a tenantId is provided (context-scoped view), restrict results to
+      // that single tenant. Global view (no tenantId) returns all tenants.
+      let pool = params.tenantId
+        ? MOCK_TENANTS.filter(t => t.id === params.tenantId)
         : MOCK_TENANTS;
 
+      if (search) {
+        pool = pool.filter(
+          t =>
+            t.displayName.toLowerCase().includes(search) ||
+            t.code.toLowerCase().includes(search) ||
+            t.primaryContactName.toLowerCase().includes(search),
+        );
+      }
+
       const start = (page - 1) * pageSize;
-      const items = filtered.slice(start, start + pageSize);
+      const items = pool.slice(start, start + pageSize);
 
       return Promise.resolve<PagedResponse<TenantSummary>>({
         items,
-        totalCount: filtered.length,
+        totalCount: pool.length,
         page,
         pageSize,
       });
@@ -915,6 +923,8 @@ export const controlCenterServerApi = {
 
   users: {
     // TODO: replace with GET /identity/api/admin/users
+    // TODO: enforce tenant scoping server-side
+    // TODO: validate tenant context against session
     list: (params: {
       page?:     number;
       pageSize?: number;
@@ -969,12 +979,15 @@ export const controlCenterServerApi = {
 
   audit: {
     // TODO: replace with GET /identity/api/admin/audit
+    // TODO: enforce tenant scoping server-side
+    // TODO: validate tenant context against session
     list: (params: {
       page?:       number;
       pageSize?:   number;
       search?:     string;
       entityType?: string;
       actor?:      string;
+      tenantId?:   string;
     } = {}): Promise<{ items: AuditLogEntry[]; totalCount: number }> => {
       const page       = params.page     ?? 1;
       const pageSize   = params.pageSize ?? 15;
@@ -983,6 +996,22 @@ export const controlCenterServerApi = {
       const actor      = (params.actor      ?? '').toLowerCase().trim();
 
       let filtered = MOCK_AUDIT_LOGS;
+
+      // When tenantId is provided, restrict to events for that tenant only.
+      // Matches: metadata.tenantCode === tenant.code  OR  entityType=Tenant + entityId=code
+      if (params.tenantId) {
+        const tenant = MOCK_TENANTS.find(t => t.id === params.tenantId);
+        if (tenant) {
+          const code = tenant.code;
+          filtered = filtered.filter(e => {
+            const meta = e.metadata as Record<string, unknown> | undefined;
+            return (
+              meta?.tenantCode === code ||
+              (e.entityType === 'Tenant' && e.entityId === code)
+            );
+          });
+        }
+      }
 
       if (search) {
         filtered = filtered.filter(e =>
@@ -1040,6 +1069,8 @@ export const controlCenterServerApi = {
 
   support: {
     // TODO: replace with /identity/api/admin/support endpoints
+    // TODO: enforce tenant scoping server-side
+    // TODO: validate tenant context against session
 
     list: (params: {
       page?:     number;
@@ -1047,6 +1078,7 @@ export const controlCenterServerApi = {
       search?:   string;
       status?:   string;
       priority?: string;
+      tenantId?: string;
     } = {}): Promise<{ items: SupportCase[]; totalCount: number }> => {
       const page     = params.page     ?? 1;
       const pageSize = params.pageSize ?? 10;
@@ -1057,6 +1089,11 @@ export const controlCenterServerApi = {
       let filtered: SupportCase[] = MOCK_SUPPORT_CASES.map(
         ({ notes: _notes, ...c }) => c,
       );
+
+      // When tenantId is provided, restrict to cases for that tenant only.
+      if (params.tenantId) {
+        filtered = filtered.filter(c => c.tenantId === params.tenantId);
+      }
 
       if (search) {
         filtered = filtered.filter(c =>

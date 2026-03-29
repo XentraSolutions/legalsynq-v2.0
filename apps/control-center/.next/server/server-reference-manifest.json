@@ -2,25 +2,29 @@
   "node": {
     "25c5d7113983d5557e371529df6f086ef9368b84": {
       "workers": {
-        "app/tenants/page": "(rsc)/../../node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fhome%2Frunner%2Fworkspace%2Fapps%2Fcontrol-center%2Fsrc%2Fapp%2Factions%2Ftenant-context.ts%22%2C%5B%22switchTenantContextAction%22%2C%22exitTenantContextAction%22%5D%5D%5D&__client_imported__=!",
-        "app/tenant-users/[id]/page": "(rsc)/../../node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fhome%2Frunner%2Fworkspace%2Fapps%2Fcontrol-center%2Fsrc%2Fapp%2Factions%2Ftenant-context.ts%22%2C%5B%22switchTenantContextAction%22%2C%22exitTenantContextAction%22%5D%5D%5D&__client_imported__=!"
+        "app/tenants/[id]/page": "(rsc)/../../node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fhome%2Frunner%2Fworkspace%2Fapps%2Fcontrol-center%2Fsrc%2Fapp%2Factions%2Ftenant-context.ts%22%2C%5B%22switchTenantContextAction%22%2C%22exitTenantContextAction%22%5D%5D%5D&__client_imported__=!"
       },
       "layer": {
-        "app/tenants/page": "rsc",
-        "app/tenant-users/[id]/page": "rsc"
+        "app/tenants/[id]/page": "rsc"
       }
     },
     "d9ce9a04010006c0145d2efadf79e68ee97ad20c": {
       "workers": {
-        "app/tenants/page": "(rsc)/../../node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fhome%2Frunner%2Fworkspace%2Fapps%2Fcontrol-center%2Fsrc%2Fapp%2Factions%2Ftenant-context.ts%22%2C%5B%22switchTenantContextAction%22%2C%22exitTenantContextAction%22%5D%5D%5D&__client_imported__=!",
-        "app/tenant-users/[id]/page": "(rsc)/../../node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fhome%2Frunner%2Fworkspace%2Fapps%2Fcontrol-center%2Fsrc%2Fapp%2Factions%2Ftenant-context.ts%22%2C%5B%22switchTenantContextAction%22%2C%22exitTenantContextAction%22%5D%5D%5D&__client_imported__=!"
+        "app/tenants/[id]/page": "(rsc)/../../node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fhome%2Frunner%2Fworkspace%2Fapps%2Fcontrol-center%2Fsrc%2Fapp%2Factions%2Ftenant-context.ts%22%2C%5B%22switchTenantContextAction%22%2C%22exitTenantContextAction%22%5D%5D%5D&__client_imported__=!"
       },
       "layer": {
-        "app/tenants/page": "rsc",
-        "app/tenant-users/[id]/page": "rsc"
+        "app/tenants/[id]/page": "rsc"
+      }
+    },
+    "b678a8842fc73b354f519eb076d5f4fc4f558f6e": {
+      "workers": {
+        "app/tenants/[id]/page": "(action-browser)/../../node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fhome%2Frunner%2Fworkspace%2Fapps%2Fcontrol-center%2Fsrc%2Fapp%2Ftenants%2F%5Bid%5D%2Factions.ts%22%2C%5B%22updateProductEntitlement%22%5D%5D%5D&__client_imported__=true!"
+      },
+      "layer": {
+        "app/tenants/[id]/page": "action-browser"
       }
     }
   },
   "edge": {},
-  "encryptionKey": "/gmPSeLQ9HM7leGkpF4ofXmf+q5nxO2yrp7ZAXJd36I="
+  "encryptionKey": "m1opX0ZwvzuLQ+Ctrspy50iGCvfa7tjb4RVCB+05bFs="
 }
