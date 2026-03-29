@@ -13,9 +13,11 @@ export function SignOutButton() {
   return (
     <button
       onClick={handleSignOut}
-      className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
+      title="Sign out"
+      className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors py-1 px-2 rounded-md hover:bg-white/5"
     >
-      Sign out
+      <i className="ri-logout-box-r-line text-sm" />
+      <span className="hidden sm:inline">Sign out</span>
     </button>
   );
 }

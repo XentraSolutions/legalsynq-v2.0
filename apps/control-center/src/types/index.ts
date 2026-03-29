@@ -54,8 +54,9 @@ export interface PlatformSession {
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 export interface NavItem {
-  href:  string;
-  label: string;
+  href:   string;
+  label:  string;
+  riIcon?: string;
 }
 
 export interface NavGroup {

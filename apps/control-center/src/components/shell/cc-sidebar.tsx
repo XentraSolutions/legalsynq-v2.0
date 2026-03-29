@@ -7,8 +7,8 @@ import type { NavGroup, NavItem } from '@/types';
 import { clsx } from 'clsx';
 
 /**
- * Control Center sidebar — Client Component for active-link highlighting.
- * Nav structure is built from lib/nav.ts (no cross-app imports).
+ * Control Center sidebar.
+ * White bg, orange active accent bar — matches the web app sidebar style.
  */
 export function CCSidebar() {
   const pathname = usePathname();
@@ -16,7 +16,14 @@ export function CCSidebar() {
 
   return (
     <aside className="w-56 shrink-0 border-r border-gray-200 bg-white flex flex-col h-full overflow-y-auto">
-      <nav className="flex-1 py-4 space-y-6 px-2">
+      {/* Product name header */}
+      <div className="px-4 py-3 border-b border-gray-100">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+          Admin Portal
+        </p>
+      </div>
+
+      <nav className="flex-1 py-3 space-y-5 px-2">
         {groups.map(group => (
           <NavGroupSection key={group.id} group={group} pathname={pathname} />
         ))}
@@ -43,17 +50,26 @@ function NavGroupSection({ group, pathname }: { group: NavGroup; pathname: strin
 function NavItemLink({ item, pathname }: { item: NavItem; pathname: string }) {
   const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
   return (
-    <li>
+    <li className="relative">
+      {/* Orange left accent bar */}
+      {isActive && (
+        <span className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-orange-500" />
+      )}
       <Link
         href={item.href}
         className={clsx(
-          'flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+          'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[12px] font-medium transition-colors',
           isActive
-            ? 'bg-indigo-50 text-indigo-700'
-            : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900',
+            ? 'bg-orange-50 text-[#0f1928]'
+            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
         )}
       >
-        {item.label}
+        {item.riIcon && (
+          <i className={clsx(item.riIcon, 'text-[16px] leading-none shrink-0',
+            isActive ? 'text-orange-500' : 'text-gray-400',
+          )} />
+        )}
+        <span>{item.label}</span>
       </Link>
     </li>
   );
