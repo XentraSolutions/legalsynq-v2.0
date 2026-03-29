@@ -1,3 +1,5 @@
+import type { ScanStatusValue } from '@/shared/constants';
+
 /**
  * DocumentVersion entity — immutable once created.
  * Each upload of a new file creates a new version.
@@ -15,14 +17,17 @@ export interface DocumentVersion {
   fileSizeBytes: number;
   checksum:      string;        // SHA-256
 
-  // Virus scan
-  scanStatus:    'PENDING' | 'CLEAN' | 'INFECTED' | 'SKIPPED';
-  scanCompletedAt: Date | null;
+  // Scan lifecycle: PENDING → CLEAN | INFECTED | FAILED | SKIPPED
+  scanStatus:        ScanStatusValue;
+  scanCompletedAt:   Date | null;
+  scanDurationMs:    number | null;
+  scanThreats:       string[];        // populated when INFECTED
+  scanEngineVersion: string | null;
 
   // Audit
   uploadedAt:    Date;
   uploadedBy:    string;
-  label:         string | null; // e.g. "Final v1", "Redlined draft"
+  label:         string | null;
   isDeleted:     boolean;
   deletedAt:     Date | null;
   deletedBy:     string | null;
@@ -38,4 +43,9 @@ export interface CreateVersionInput {
   mimeType:      string;
   fileSizeBytes: number;
   checksum:      string;
+  scanStatus:    ScanStatusValue;
+  scanCompletedAt?: Date;
+  scanDurationMs?:  number;
+  scanThreats?:     string[];
+  scanEngineVersion?: string;
 }

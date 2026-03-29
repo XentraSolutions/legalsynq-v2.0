@@ -25,6 +25,16 @@ export const DocumentStatus = {
 } as const;
 export type DocumentStatusValue = typeof DocumentStatus[keyof typeof DocumentStatus];
 
+/** Scan status lifecycle */
+export const ScanStatus = {
+  PENDING:  'PENDING',    // scan not yet started
+  CLEAN:    'CLEAN',      // no threats found
+  INFECTED: 'INFECTED',   // malware detected — access always blocked
+  FAILED:   'FAILED',     // scanner error — access blocked when REQUIRE_CLEAN_SCAN_FOR_ACCESS=true
+  SKIPPED:  'SKIPPED',    // no scanner configured — access allowed
+} as const;
+export type ScanStatusValue = typeof ScanStatus[keyof typeof ScanStatus];
+
 /** Audit event types — all critical actions must be captured */
 export const AuditEvent = {
   // Document lifecycle
@@ -42,6 +52,12 @@ export const AuditEvent = {
   ACCESS_DENIED:          'ACCESS_DENIED',
   // Metadata
   METADATA_UPDATED: 'METADATA_UPDATED',
+  // Scan lifecycle
+  SCAN_REQUESTED:   'SCAN_REQUESTED',
+  SCAN_COMPLETED:   'SCAN_COMPLETED',
+  SCAN_FAILED:      'SCAN_FAILED',
+  SCAN_INFECTED:    'SCAN_INFECTED',
+  SCAN_ACCESS_DENIED: 'SCAN_ACCESS_DENIED',
 } as const;
 export type AuditEventValue = typeof AuditEvent[keyof typeof AuditEvent];
 

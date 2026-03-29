@@ -140,6 +140,26 @@ const MIGRATIONS = [
       );
     `,
   },
+  {
+    name: '006_add_scan_columns',
+    sql: `
+      -- Add scan lifecycle columns to documents (mirrors current version scan state)
+      ALTER TABLE documents
+        ADD COLUMN IF NOT EXISTS scan_status       TEXT NOT NULL DEFAULT 'PENDING',
+        ADD COLUMN IF NOT EXISTS scan_completed_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS scan_threats      TEXT[] NOT NULL DEFAULT '{}';
+
+      -- Add extended scan detail columns to document_versions
+      ALTER TABLE document_versions
+        ADD COLUMN IF NOT EXISTS scan_duration_ms    INT,
+        ADD COLUMN IF NOT EXISTS scan_threats        TEXT[] NOT NULL DEFAULT '{}',
+        ADD COLUMN IF NOT EXISTS scan_engine_version TEXT;
+
+      -- Index for fast querying of unscanned/infected documents
+      CREATE INDEX IF NOT EXISTS idx_documents_scan_status ON documents(tenant_id, scan_status)
+        WHERE is_deleted = FALSE;
+    `,
+  },
 ];
 
 async function run() {

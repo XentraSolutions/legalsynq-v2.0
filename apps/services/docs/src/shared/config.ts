@@ -42,6 +42,12 @@ const schema = z.object({
   // CORS
   CORS_ORIGINS: z.string().default('http://localhost:5000'),
 
+  // Malware scanning
+  FILE_SCANNER_PROVIDER:           z.enum(['mock', 'clamav', 'none']).default('none'),
+  CLAMAV_HOST:                     z.string().default('localhost'),
+  CLAMAV_PORT:                     z.coerce.number().default(3310),
+  REQUIRE_CLEAN_SCAN_FOR_ACCESS:   z.coerce.boolean().default(true),
+
   // Rate limiting
   RATE_LIMIT_PROVIDER:         z.enum(['memory', 'redis']).default('memory'),
   REDIS_URL:                   z.string().optional(),

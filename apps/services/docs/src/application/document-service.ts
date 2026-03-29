@@ -2,8 +2,9 @@ import crypto from 'crypto';
 import { DocumentRepository }   from '@/infrastructure/database/document-repository';
 import { getStorageProvider }   from '@/infrastructure/storage/storage-factory';
 import { auditService }         from './audit-service';
+import { ScanService }          from './scan-service';
 import { config }               from '@/shared/config';
-import { NotFoundError, ForbiddenError } from '@/shared/errors';
+import { NotFoundError, ForbiddenError, ScanBlockedError } from '@/shared/errors';
 import { AuditEvent }           from '@/shared/constants';
 import type { AuthPrincipal }   from '@/domain/interfaces/auth-provider';
 import type { CreateDocumentInput, UpdateDocumentInput } from '@/domain/entities/document';
@@ -39,7 +40,23 @@ export const DocumentService = {
     const key       = buildStorageKey(input.tenantId, docId, originalName);
     const checksum  = sha256(fileBuffer);
 
-    // Upload to storage first
+    // ── Phase 1: scan before upload ─────────────────────────────────────────
+    // We scan first so infected files are NEVER written to storage.
+    // Note: to switch to async scanning, move this after upload + DB write,
+    // set scanStatus=PENDING, and process via a background worker.
+    const scanResult = await ScanService.scanDocument(fileBuffer, {
+      documentId:    docId,
+      tenantId:      input.tenantId,
+      actorId:       ctx.principal.userId,
+      actorRoles:    ctx.principal.roles,
+      correlationId: ctx.correlationId,
+      filename:      originalName,
+    });
+
+    // Reject infected files immediately — do NOT upload
+    ScanService.assertNotInfected(scanResult);
+
+    // ── Phase 2: upload to storage ──────────────────────────────────────────
     await storage.upload({
       bucket,
       key,
@@ -47,14 +64,18 @@ export const DocumentService = {
       mimeType: input.mimeType ?? 'application/octet-stream',
     });
 
+    // ── Phase 3: persist document with scan result ──────────────────────────
     const doc = await DocumentRepository.create({
       ...input,
-      uploadedBy:    ctx.principal.userId,
-      storageKey:    key,
-      storageBucket: bucket,
-      mimeType:      input.mimeType ?? 'application/octet-stream',
-      fileSizeBytes: fileBuffer.byteLength,
+      uploadedBy:      ctx.principal.userId,
+      storageKey:      key,
+      storageBucket:   bucket,
+      mimeType:        input.mimeType ?? 'application/octet-stream',
+      fileSizeBytes:   fileBuffer.byteLength,
       checksum,
+      scanStatus:      scanResult.status,
+      scanCompletedAt: scanResult.scannedAt,
+      scanThreats:     scanResult.threats ?? [],
     });
 
     await auditService.log({
@@ -67,7 +88,12 @@ export const DocumentService = {
       ipAddress:     ctx.ipAddress,
       userAgent:     ctx.userAgent,
       outcome:       'SUCCESS',
-      detail:        { title: doc.title, mimeType: doc.mimeType, fileSizeBytes: doc.fileSizeBytes },
+      detail: {
+        title:         doc.title,
+        mimeType:      doc.mimeType,
+        fileSizeBytes: doc.fileSizeBytes,
+        scanStatus:    doc.scanStatus,
+      },
     });
 
     return doc;
@@ -157,6 +183,21 @@ export const DocumentService = {
     const key      = buildStorageKey(ctx.principal.tenantId, documentId, originalName);
     const checksum = sha256(fileBuffer);
 
+    // ── Scan before upload ──────────────────────────────────────────────────
+    // Scan result will be attached to the version row after it's created.
+    // We pre-run the scan so we can reject infected files without writing to storage.
+    const scanResult = await ScanService.scanDocument(fileBuffer, {
+      documentId,
+      tenantId:      ctx.principal.tenantId,
+      actorId:       ctx.principal.userId,
+      actorRoles:    ctx.principal.roles,
+      correlationId: ctx.correlationId,
+      filename:      originalName,
+    });
+
+    ScanService.assertNotInfected(scanResult);
+
+    // ── Upload to storage ────────────────────────────────────────────────────
     await storage.upload({
       bucket,
       key,
@@ -164,16 +205,29 @@ export const DocumentService = {
       mimeType: doc.mimeType,
     });
 
+    // ── Create version record with scan outcome ──────────────────────────────
     const version = await DocumentRepository.createVersion({
       documentId,
-      tenantId:      ctx.principal.tenantId,
-      uploadedBy:    ctx.principal.userId,
+      tenantId:          ctx.principal.tenantId,
+      uploadedBy:        ctx.principal.userId,
       label,
-      storageKey:    key,
-      storageBucket: bucket,
-      mimeType:      doc.mimeType,
-      fileSizeBytes: fileBuffer.byteLength,
+      storageKey:        key,
+      storageBucket:     bucket,
+      mimeType:          doc.mimeType,
+      fileSizeBytes:     fileBuffer.byteLength,
       checksum,
+      scanStatus:        scanResult.status,
+      scanCompletedAt:   scanResult.scannedAt,
+      scanDurationMs:    scanResult.scanDurationMs,
+      scanThreats:       scanResult.threats ?? [],
+      scanEngineVersion: scanResult.engineVersion,
+    });
+
+    // Mirror scan status to parent document
+    await DocumentRepository.updateDocumentScanStatus(documentId, ctx.principal.tenantId, {
+      scanStatus:      scanResult.status,
+      scanCompletedAt: scanResult.scannedAt,
+      scanThreats:     scanResult.threats ?? [],
     });
 
     await auditService.log({
@@ -185,7 +239,11 @@ export const DocumentService = {
       actorRoles:        ctx.principal.roles,
       correlationId:     ctx.correlationId,
       outcome:           'SUCCESS',
-      detail:            { versionNumber: version.versionNumber, fileSizeBytes: version.fileSizeBytes },
+      detail: {
+        versionNumber:  version.versionNumber,
+        fileSizeBytes:  version.fileSizeBytes,
+        scanStatus:     version.scanStatus,
+      },
     });
 
     return version;
@@ -200,14 +258,43 @@ export const DocumentService = {
     const doc = await DocumentRepository.findById(documentId, ctx.principal.tenantId);
     if (!doc) throw new NotFoundError('Document', documentId);
 
+    // ── Scan gate ────────────────────────────────────────────────────────────
+    // Throws ScanBlockedError if access should be denied.
+    // CLEAN + SKIPPED are always allowed.
+    // INFECTED always blocked. PENDING/FAILED blocked in strict mode.
+    try {
+      ScanService.enforceCleanScan(doc.scanStatus, {
+        documentId,
+        correlationId: ctx.correlationId,
+      });
+    } catch (err) {
+      if (err instanceof ScanBlockedError) {
+        await auditService.log({
+          tenantId:      ctx.principal.tenantId,
+          documentId,
+          event:         AuditEvent.SCAN_ACCESS_DENIED,
+          actorId:       ctx.principal.userId,
+          actorRoles:    ctx.principal.roles,
+          correlationId: ctx.correlationId,
+          outcome:       'DENIED',
+          detail: {
+            reason:     'scan_blocked',
+            scanStatus: doc.scanStatus,
+            urlType:    type,
+          },
+        });
+      }
+      throw err;
+    }
+
     const storage    = getStorageProvider();
     const expiresIn  = config.SIGNED_URL_EXPIRY_SECONDS;
 
     const url = await storage.generateSignedUrl({
-      bucket:          doc.storageBucket,
-      key:             doc.storageKey,
+      bucket:           doc.storageBucket,
+      key:              doc.storageKey,
       expiresInSeconds: expiresIn,
-      operation:       'GET',
+      operation:        'GET',
     });
 
     await auditService.log({
@@ -218,7 +305,7 @@ export const DocumentService = {
       actorRoles:    ctx.principal.roles,
       correlationId: ctx.correlationId,
       outcome:       'SUCCESS',
-      detail:        { type, expiresInSeconds: expiresIn },
+      detail:        { type, expiresInSeconds: expiresIn, scanStatus: doc.scanStatus },
     });
 
     return { url, expiresInSeconds: expiresIn };

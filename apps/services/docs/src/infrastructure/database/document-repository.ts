@@ -24,6 +24,9 @@ function rowToDocument(row: Record<string, unknown>): Document {
     checksum:         row['checksum'] as string,
     currentVersionId: row['current_version_id'] as string | null,
     versionCount:     Number(row['version_count']),
+    scanStatus:       (row['scan_status'] as Document['scanStatus']) ?? 'PENDING',
+    scanCompletedAt:  row['scan_completed_at'] ? new Date(row['scan_completed_at'] as string) : null,
+    scanThreats:      (row['scan_threats'] as string[]) ?? [],
     isDeleted:        row['is_deleted'] as boolean,
     deletedAt:        row['deleted_at'] ? new Date(row['deleted_at'] as string) : null,
     deletedBy:        row['deleted_by'] as string | null,
@@ -47,14 +50,17 @@ function rowToVersion(row: Record<string, unknown>): DocumentVersion {
     mimeType:       row['mime_type'] as string,
     fileSizeBytes:  Number(row['file_size_bytes']),
     checksum:       row['checksum'] as string,
-    scanStatus:     row['scan_status'] as DocumentVersion['scanStatus'],
-    scanCompletedAt: row['scan_completed_at'] ? new Date(row['scan_completed_at'] as string) : null,
-    uploadedAt:     new Date(row['uploaded_at'] as string),
-    uploadedBy:     row['uploaded_by'] as string,
-    label:          row['label'] as string | null,
-    isDeleted:      row['is_deleted'] as boolean,
-    deletedAt:      row['deleted_at'] ? new Date(row['deleted_at'] as string) : null,
-    deletedBy:      row['deleted_by'] as string | null,
+    scanStatus:        (row['scan_status'] as DocumentVersion['scanStatus']) ?? 'PENDING',
+    scanCompletedAt:   row['scan_completed_at'] ? new Date(row['scan_completed_at'] as string) : null,
+    scanDurationMs:    row['scan_duration_ms'] != null ? Number(row['scan_duration_ms']) : null,
+    scanThreats:       (row['scan_threats'] as string[]) ?? [],
+    scanEngineVersion: row['scan_engine_version'] as string | null ?? null,
+    uploadedAt:        new Date(row['uploaded_at'] as string),
+    uploadedBy:        row['uploaded_by'] as string,
+    label:             row['label'] as string | null,
+    isDeleted:         row['is_deleted'] as boolean,
+    deletedAt:         row['deleted_at'] ? new Date(row['deleted_at'] as string) : null,
+    deletedBy:         row['deleted_by'] as string | null,
   };
 }
 
@@ -110,6 +116,7 @@ export const DocumentRepository = {
   async create(input: CreateDocumentInput & {
     storageKey: string; storageBucket: string;
     mimeType: string; fileSizeBytes: number; checksum: string;
+    scanStatus?: string; scanCompletedAt?: Date | null; scanThreats?: string[];
   }): Promise<Document> {
     const id = uuidv4();
     const row = await queryOne<Record<string, unknown>>(
@@ -117,15 +124,20 @@ export const DocumentRepository = {
         id, tenant_id, product_id, reference_id, reference_type, document_type_id,
         title, description, status,
         storage_key, storage_bucket, mime_type, file_size_bytes, checksum,
+        scan_status, scan_completed_at, scan_threats,
         created_by, updated_by
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,'DRAFT',$9,$10,$11,$12,$13,$14,$14
+        $1,$2,$3,$4,$5,$6,$7,$8,'DRAFT',$9,$10,$11,$12,$13,$14,$15,$16,$17,$17
       ) RETURNING *`,
       [
         id, input.tenantId, input.productId, input.referenceId, input.referenceType,
         input.documentTypeId, input.title, input.description ?? null,
         input.storageKey, input.storageBucket, input.mimeType, input.fileSizeBytes,
-        input.checksum, input.uploadedBy,
+        input.checksum,
+        input.scanStatus ?? 'PENDING',
+        input.scanCompletedAt ?? null,
+        input.scanThreats ?? [],
+        input.uploadedBy,
       ],
     );
     return rowToDocument(row!);
@@ -175,12 +187,18 @@ export const DocumentRepository = {
         `INSERT INTO document_versions (
           id, document_id, tenant_id, version_number,
           storage_key, storage_bucket, mime_type, file_size_bytes, checksum,
-          uploaded_by, label
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+          uploaded_by, label,
+          scan_status, scan_completed_at, scan_duration_ms, scan_threats, scan_engine_version
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
         [
           versionId, input.documentId, input.tenantId, versionNumber,
           input.storageKey, input.storageBucket, input.mimeType,
           input.fileSizeBytes, input.checksum, input.uploadedBy, input.label ?? null,
+          input.scanStatus ?? 'PENDING',
+          input.scanCompletedAt ?? null,
+          input.scanDurationMs ?? null,
+          input.scanThreats ?? [],
+          input.scanEngineVersion ?? null,
         ],
       );
 
@@ -214,5 +232,44 @@ export const DocumentRepository = {
       [documentId, tenantId],
     );
     return rows.map(rowToVersion);
+  },
+
+  // ── Scan status updates ────────────────────────────────────────────────────
+
+  async updateDocumentScanStatus(
+    id: string,
+    tenantId: string,
+    scan: { scanStatus: string; scanCompletedAt: Date; scanThreats: string[] },
+  ): Promise<void> {
+    await query(
+      `UPDATE documents
+          SET scan_status = $3, scan_completed_at = $4, scan_threats = $5, updated_at = NOW()
+        WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId, scan.scanStatus, scan.scanCompletedAt, scan.scanThreats],
+    );
+  },
+
+  async updateVersionScanStatus(
+    versionId: string,
+    tenantId: string,
+    scan: {
+      scanStatus:        string;
+      scanCompletedAt:   Date;
+      scanDurationMs:    number;
+      scanThreats:       string[];
+      scanEngineVersion: string | null;
+    },
+  ): Promise<void> {
+    await query(
+      `UPDATE document_versions
+          SET scan_status = $3, scan_completed_at = $4,
+              scan_duration_ms = $5, scan_threats = $6, scan_engine_version = $7
+        WHERE id = $1 AND tenant_id = $2`,
+      [
+        versionId, tenantId,
+        scan.scanStatus, scan.scanCompletedAt,
+        scan.scanDurationMs, scan.scanThreats, scan.scanEngineVersion,
+      ],
+    );
   },
 };

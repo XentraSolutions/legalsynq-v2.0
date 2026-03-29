@@ -71,6 +71,27 @@ export class UnsupportedFileTypeError extends DocsError {
   }
 }
 
+// ── 403 Scan-blocked ─────────────────────────────────────────────────────────
+export class ScanBlockedError extends DocsError {
+  constructor(scanStatus: string) {
+    super(
+      `Access denied: file scan status is ${scanStatus}. Only CLEAN files may be accessed.`,
+      403,
+      'SCAN_BLOCKED',
+    );
+  }
+}
+
+export class InfectedFileError extends DocsError {
+  constructor(threats: string[]) {
+    super(
+      `File rejected: malware detected (${threats.join(', ')})`,
+      422,
+      'INFECTED_FILE',
+    );
+  }
+}
+
 // ── 429 Too Many Requests ─────────────────────────────────────────────────────
 export class RateLimitError extends DocsError {
   constructor(

@@ -1,4 +1,4 @@
-import type { DocumentStatusValue } from '@/shared/constants';
+import type { DocumentStatusValue, ScanStatusValue } from '@/shared/constants';
 
 /**
  * Core Document entity — cloud and persistence agnostic.
@@ -25,6 +25,11 @@ export interface Document {
   // Versioning
   currentVersionId: string | null;
   versionCount:  number;
+
+  // Scan lifecycle (mirrors current version scan state on the document for fast access gating)
+  scanStatus:        ScanStatusValue;
+  scanCompletedAt:   Date | null;
+  scanThreats:       string[];
 
   // Soft delete + retention
   isDeleted:     boolean;
