@@ -48,7 +48,7 @@ function SidebarItem({ item, pathname }: { item: NavItem; pathname: string }) {
     <Link
       href={item.href}
       className={clsx(
-        'relative flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+        'relative flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[12px] font-medium transition-colors',
         isActive
           ? 'bg-orange-50 text-[#0f1928]'
           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
