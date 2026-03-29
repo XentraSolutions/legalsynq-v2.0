@@ -66,10 +66,12 @@ export const config = {
   matcher: [
     /*
      * Match all request paths EXCEPT:
-     * - _next/static  (Next.js static assets)
-     * - _next/image   (Next.js image optimization)
+     * - _next/static       (Next.js static assets)
+     * - _next/image        (Next.js image optimization)
      * - favicon.ico
+     * - Static file types  (images/fonts served from /public — must bypass auth
+     *                       so the login page can load logos without a session)
      */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|otf)).*)',
   ],
 };
