@@ -1,0 +1,218 @@
+import { query, queryOne, withTransaction } from './db';
+import type { Document, CreateDocumentInput, UpdateDocumentInput } from '@/domain/entities/document';
+import type { DocumentVersion, CreateVersionInput } from '@/domain/entities/document-version';
+import { NotFoundError } from '@/shared/errors';
+import { v4 as uuidv4 }  from 'uuid';
+
+// ── Row → Entity mappers ───────────────────────────────────────────────────────
+
+function rowToDocument(row: Record<string, unknown>): Document {
+  return {
+    id:               row['id'] as string,
+    tenantId:         row['tenant_id'] as string,
+    productId:        row['product_id'] as string,
+    referenceId:      row['reference_id'] as string,
+    referenceType:    row['reference_type'] as string,
+    documentTypeId:   row['document_type_id'] as string,
+    title:            row['title'] as string,
+    description:      row['description'] as string | null,
+    status:           row['status'] as Document['status'],
+    storageKey:       row['storage_key'] as string,
+    storageBucket:    row['storage_bucket'] as string,
+    mimeType:         row['mime_type'] as string,
+    fileSizeBytes:    Number(row['file_size_bytes']),
+    checksum:         row['checksum'] as string,
+    currentVersionId: row['current_version_id'] as string | null,
+    versionCount:     Number(row['version_count']),
+    isDeleted:        row['is_deleted'] as boolean,
+    deletedAt:        row['deleted_at'] ? new Date(row['deleted_at'] as string) : null,
+    deletedBy:        row['deleted_by'] as string | null,
+    retainUntil:      row['retain_until'] ? new Date(row['retain_until'] as string) : null,
+    legalHoldAt:      row['legal_hold_at'] ? new Date(row['legal_hold_at'] as string) : null,
+    createdAt:        new Date(row['created_at'] as string),
+    createdBy:        row['created_by'] as string,
+    updatedAt:        new Date(row['updated_at'] as string),
+    updatedBy:        row['updated_by'] as string,
+  };
+}
+
+function rowToVersion(row: Record<string, unknown>): DocumentVersion {
+  return {
+    id:             row['id'] as string,
+    documentId:     row['document_id'] as string,
+    tenantId:       row['tenant_id'] as string,
+    versionNumber:  Number(row['version_number']),
+    storageKey:     row['storage_key'] as string,
+    storageBucket:  row['storage_bucket'] as string,
+    mimeType:       row['mime_type'] as string,
+    fileSizeBytes:  Number(row['file_size_bytes']),
+    checksum:       row['checksum'] as string,
+    scanStatus:     row['scan_status'] as DocumentVersion['scanStatus'],
+    scanCompletedAt: row['scan_completed_at'] ? new Date(row['scan_completed_at'] as string) : null,
+    uploadedAt:     new Date(row['uploaded_at'] as string),
+    uploadedBy:     row['uploaded_by'] as string,
+    label:          row['label'] as string | null,
+    isDeleted:      row['is_deleted'] as boolean,
+    deletedAt:      row['deleted_at'] ? new Date(row['deleted_at'] as string) : null,
+    deletedBy:      row['deleted_by'] as string | null,
+  };
+}
+
+// ── DocumentRepository ─────────────────────────────────────────────────────────
+
+export const DocumentRepository = {
+  async findById(id: string, tenantId: string): Promise<Document | null> {
+    const row = await queryOne<Record<string, unknown>>(
+      `SELECT * FROM documents WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE`,
+      [id, tenantId],
+    );
+    return row ? rowToDocument(row) : null;
+  },
+
+  async list(tenantId: string, opts: {
+    productId?:    string;
+    referenceId?:  string;
+    referenceType?: string;
+    status?:       string;
+    limit?:        number;
+    offset?:       number;
+  }): Promise<{ documents: Document[]; total: number }> {
+    const conditions: string[] = ['d.tenant_id = $1', 'd.is_deleted = FALSE'];
+    const params: unknown[] = [tenantId];
+    let pi = 2;
+
+    if (opts.productId)    { conditions.push(`d.product_id = $${pi++}`);    params.push(opts.productId); }
+    if (opts.referenceId)  { conditions.push(`d.reference_id = $${pi++}`);  params.push(opts.referenceId); }
+    if (opts.referenceType){ conditions.push(`d.reference_type = $${pi++}`); params.push(opts.referenceType); }
+    if (opts.status)       { conditions.push(`d.status = $${pi++}`);        params.push(opts.status); }
+
+    const where = conditions.join(' AND ');
+    const limit  = opts.limit  ?? 50;
+    const offset = opts.offset ?? 0;
+
+    const [rows, countRows] = await Promise.all([
+      query<Record<string, unknown>>(
+        `SELECT d.* FROM documents d WHERE ${where} ORDER BY d.created_at DESC LIMIT $${pi} OFFSET $${pi + 1}`,
+        [...params, limit, offset],
+      ),
+      query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM documents d WHERE ${where}`,
+        params,
+      ),
+    ]);
+
+    return {
+      documents: rows.map(rowToDocument),
+      total:     parseInt(countRows[0]?.['count'] ?? '0'),
+    };
+  },
+
+  async create(input: CreateDocumentInput & {
+    storageKey: string; storageBucket: string;
+    mimeType: string; fileSizeBytes: number; checksum: string;
+  }): Promise<Document> {
+    const id = uuidv4();
+    const row = await queryOne<Record<string, unknown>>(
+      `INSERT INTO documents (
+        id, tenant_id, product_id, reference_id, reference_type, document_type_id,
+        title, description, status,
+        storage_key, storage_bucket, mime_type, file_size_bytes, checksum,
+        created_by, updated_by
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,'DRAFT',$9,$10,$11,$12,$13,$14,$14
+      ) RETURNING *`,
+      [
+        id, input.tenantId, input.productId, input.referenceId, input.referenceType,
+        input.documentTypeId, input.title, input.description ?? null,
+        input.storageKey, input.storageBucket, input.mimeType, input.fileSizeBytes,
+        input.checksum, input.uploadedBy,
+      ],
+    );
+    return rowToDocument(row!);
+  },
+
+  async update(id: string, tenantId: string, input: UpdateDocumentInput): Promise<Document> {
+    const sets: string[] = ['updated_at = NOW()', `updated_by = $3`];
+    const params: unknown[] = [id, tenantId, input.updatedBy];
+    let pi = 4;
+
+    if (input.title !== undefined)         { sets.push(`title = $${pi++}`);          params.push(input.title); }
+    if (input.description !== undefined)   { sets.push(`description = $${pi++}`);    params.push(input.description); }
+    if (input.documentTypeId !== undefined){ sets.push(`document_type_id = $${pi++}`); params.push(input.documentTypeId); }
+    if (input.status !== undefined)        { sets.push(`status = $${pi++}`);         params.push(input.status); }
+    if (input.retainUntil !== undefined)   { sets.push(`retain_until = $${pi++}`);   params.push(input.retainUntil); }
+
+    const row = await queryOne<Record<string, unknown>>(
+      `UPDATE documents SET ${sets.join(', ')} WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE RETURNING *`,
+      params,
+    );
+    if (!row) throw new NotFoundError('Document', id);
+    return rowToDocument(row);
+  },
+
+  async softDelete(id: string, tenantId: string, deletedBy: string): Promise<void> {
+    await query(
+      `UPDATE documents SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $3, status = 'DELETED'
+       WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE`,
+      [id, tenantId, deletedBy],
+    );
+  },
+
+  // ── Versions ──────────────────────────────────────────────────────────────
+  async createVersion(input: CreateVersionInput): Promise<DocumentVersion> {
+    return withTransaction(async (client) => {
+      // Lock the document row
+      const docResult = await client.query(
+        `SELECT version_count FROM documents WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE FOR UPDATE`,
+        [input.documentId, input.tenantId],
+      );
+      if (docResult.rowCount === 0) throw new NotFoundError('Document', input.documentId);
+
+      const versionNumber = Number(docResult.rows[0]['version_count']) + 1;
+      const versionId     = uuidv4();
+
+      const vResult = await client.query<Record<string, unknown>>(
+        `INSERT INTO document_versions (
+          id, document_id, tenant_id, version_number,
+          storage_key, storage_bucket, mime_type, file_size_bytes, checksum,
+          uploaded_by, label
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+        [
+          versionId, input.documentId, input.tenantId, versionNumber,
+          input.storageKey, input.storageBucket, input.mimeType,
+          input.fileSizeBytes, input.checksum, input.uploadedBy, input.label ?? null,
+        ],
+      );
+
+      await client.query(
+        `UPDATE documents SET
+          current_version_id = $1,
+          version_count = $2,
+          storage_key = $3,
+          storage_bucket = $4,
+          mime_type = $5,
+          file_size_bytes = $6,
+          checksum = $7,
+          updated_at = NOW(),
+          updated_by = $8
+         WHERE id = $9`,
+        [
+          versionId, versionNumber,
+          input.storageKey, input.storageBucket, input.mimeType,
+          input.fileSizeBytes, input.checksum, input.uploadedBy,
+          input.documentId,
+        ],
+      );
+
+      return rowToVersion(vResult.rows[0]);
+    });
+  },
+
+  async listVersions(documentId: string, tenantId: string): Promise<DocumentVersion[]> {
+    const rows = await query<Record<string, unknown>>(
+      `SELECT * FROM document_versions WHERE document_id = $1 AND tenant_id = $2 AND is_deleted = FALSE ORDER BY version_number DESC`,
+      [documentId, tenantId],
+    );
+    return rows.map(rowToVersion);
+  },
+};

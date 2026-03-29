@@ -1,7 +1,7 @@
 # LegalSynq — .NET 8 Microservices + Next.js Monorepo
 
 ## Overview
-Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router frontend. Clean layered architecture (Api / Application / Domain / Infrastructure) per bounded context. Gateway validates JWT; downstream services also validate independently.
+Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router frontend, plus a standalone TypeScript Docs Service. Clean layered architecture (Api / Application / Domain / Infrastructure) per bounded context. Gateway validates JWT; downstream services also validate independently.
 
 ## Environment
 - **Runtime:** .NET SDK 8.0.412 (via Nix `dotnet-sdk_8`) + Node.js 22 (via Nix module)
