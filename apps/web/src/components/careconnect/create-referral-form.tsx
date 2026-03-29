@@ -15,7 +15,8 @@ interface CreateReferralFormProps {
 }
 
 const URGENCY_OPTIONS: { value: ReferralUrgencyValue; label: string }[] = [
-  { value: 'Routine',   label: 'Routine'   },
+  { value: 'Low',       label: 'Low'       },
+  { value: 'Normal',    label: 'Normal'    },
   { value: 'Urgent',    label: 'Urgent'    },
   { value: 'Emergency', label: 'Emergency' },
 ];
@@ -45,7 +46,7 @@ export function CreateReferralForm({ providerId, providerName, onClose }: Create
   // Referral details
   const [caseNumber,       setCaseNumber]       = useState('');
   const [requestedService, setRequestedService] = useState('');
-  const [urgency,          setUrgency]          = useState<ReferralUrgencyValue>('Routine');
+  const [urgency,          setUrgency]          = useState<ReferralUrgencyValue>('Normal');
   const [notes,            setNotes]            = useState('');
 
   const [loading,          setLoading]          = useState(false);

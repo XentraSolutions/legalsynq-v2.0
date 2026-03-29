@@ -65,16 +65,18 @@ export interface ProviderMarker {
 // ── Referral ──────────────────────────────────────────────────────────────────
 
 export const ReferralStatus = {
-  Pending:   'Pending',
-  Accepted:  'Accepted',
-  Declined:  'Declined',
+  New:       'New',
+  Received:  'Received',
+  Contacted: 'Contacted',
+  Scheduled: 'Scheduled',
   Completed: 'Completed',
   Cancelled: 'Cancelled',
 } as const;
 export type ReferralStatusValue = typeof ReferralStatus[keyof typeof ReferralStatus];
 
 export const ReferralUrgency = {
-  Routine:   'Routine',
+  Low:       'Low',
+  Normal:    'Normal',
   Urgent:    'Urgent',
   Emergency: 'Emergency',
 } as const;
