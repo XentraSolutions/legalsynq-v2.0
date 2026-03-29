@@ -54,6 +54,16 @@ public sealed class LocalStorageProvider : IStorageProvider
         return Task.CompletedTask;
     }
 
+    public Task<Stream> DownloadAsync(string key, CancellationToken ct = default)
+    {
+        var path = GetFilePath(key);
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"LocalStorage: key not found: {key}", path);
+
+        Stream stream = File.OpenRead(path);
+        return Task.FromResult(stream);
+    }
+
     public Task<bool> ExistsAsync(string key, CancellationToken ct = default)
         => Task.FromResult(File.Exists(GetFilePath(key)));
 

@@ -26,9 +26,11 @@ public sealed class Document
     public int    VersionCount     { get; set; }
 
     // Scan
-    public ScanStatus ScanStatus        { get; set; } = ScanStatus.Pending;
-    public DateTime?  ScanCompletedAt   { get; set; }
-    public List<string> ScanThreats     { get; set; } = new();
+    public ScanStatus   ScanStatus        { get; set; } = ScanStatus.Pending;
+    public DateTime?    ScanCompletedAt   { get; set; }
+    public int?         ScanDurationMs    { get; set; }
+    public List<string> ScanThreats       { get; set; } = new();
+    public string?      ScanEngineVersion { get; set; }
 
     // Soft delete
     public bool     IsDeleted  { get; set; }

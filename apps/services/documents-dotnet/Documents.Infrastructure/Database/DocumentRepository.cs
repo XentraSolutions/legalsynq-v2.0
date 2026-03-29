@@ -83,10 +83,12 @@ public sealed class DocumentRepository : IDocumentRepository
         await _db.Documents
             .Where(d => d.Id == id && d.TenantId == tenantId)
             .ExecuteUpdateAsync(s => s
-                .SetProperty(d => d.ScanStatus, update.ScanStatus)
-                .SetProperty(d => d.ScanCompletedAt, update.ScanCompletedAt)
-                .SetProperty(d => d.ScanThreats, update.ScanThreats)
-                .SetProperty(d => d.UpdatedAt, DateTime.UtcNow),
+                .SetProperty(d => d.ScanStatus,        update.ScanStatus)
+                .SetProperty(d => d.ScanCompletedAt,   update.ScanCompletedAt)
+                .SetProperty(d => d.ScanDurationMs,    update.ScanDurationMs)
+                .SetProperty(d => d.ScanThreats,       update.ScanThreats)
+                .SetProperty(d => d.ScanEngineVersion, update.ScanEngineVersion)
+                .SetProperty(d => d.UpdatedAt,         DateTime.UtcNow),
             ct);
     }
 

@@ -42,13 +42,19 @@ public static class DependencyInjection
         // ── File scanner ─────────────────────────────────────────────────────
         var scannerProvider = config["Scanner:Provider"] ?? "none";
         services.Configure<MockScannerOptions>(config.GetSection("Scanner:Mock"));
+        services.Configure<ClamAvOptions>(config.GetSection("Scanner:ClamAv"));
         services.AddSingleton<NullScannerProvider>();
         services.AddSingleton<MockScannerProvider>();
+        services.AddSingleton<ClamAvFileScannerProvider>();
         services.AddSingleton<IFileScannerProvider>(sp => scannerProvider switch
         {
-            "mock" => sp.GetRequiredService<MockScannerProvider>(),
-            _      => sp.GetRequiredService<NullScannerProvider>(),
+            "clamav" => sp.GetRequiredService<ClamAvFileScannerProvider>(),
+            "mock"   => sp.GetRequiredService<MockScannerProvider>(),
+            _        => sp.GetRequiredService<NullScannerProvider>(),
         });
+
+        // ── Scan job queue (singleton — shared between API handlers and worker)
+        services.AddSingleton<IScanJobQueue, InMemoryScanJobQueue>();
 
         // ── Access token store ───────────────────────────────────────────────
         var tokenStore = config["AccessToken:Store"] ?? "memory";
@@ -69,6 +75,7 @@ public static class DependencyInjection
         services.Configure<DocumentServiceOptions>(config.GetSection("Documents"));
         services.Configure<AccessTokenOptions>(config.GetSection("AccessToken"));
         services.AddScoped<ScanService>();
+        services.AddScoped<ScanOrchestrationService>();
         services.AddScoped<AuditService>();
         services.AddScoped<DocumentService>();
         services.AddScoped<AccessTokenService>();

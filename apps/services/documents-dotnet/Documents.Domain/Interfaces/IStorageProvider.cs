@@ -10,6 +10,9 @@ public interface IStorageProvider
         string mimeType,
         CancellationToken ct = default);
 
+    /// <summary>Download file as a readable stream. Caller is responsible for disposing.</summary>
+    Task<Stream> DownloadAsync(string key, CancellationToken ct = default);
+
     Task<string> GenerateSignedUrlAsync(
         string key,
         int ttlSeconds,

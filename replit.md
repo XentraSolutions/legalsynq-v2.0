@@ -527,7 +527,10 @@ dotnet tool run dotnet-ef migrations add <Name> \
 - **Three-layer tenant isolation**: L1 pre-query guard + L2 LINQ WHERE predicate + L3 ABAC in DocumentService
 - **RBAC**: 5 roles (DocReader/DocUploader/DocManager/TenantAdmin/PlatformAdmin)
 - **Storage**: `local` (dev) or `s3` (prod), selected via `Storage:Provider` config
-- **File scanning**: `none` (pass-through) or `mock` (configurable result), selected via `Scanner:Provider`
+- **File scanning**: `none` (Skipped) / `mock` (configurable) / `clamav` (TCP to clamd) — `Scanner:Provider` config; async background worker model
+- **Async scanning**: Uploads immediately return `scanStatus: "PENDING"`; `DocumentScanWorker` (BackgroundService) scans asynchronously via `IScanJobQueue` (in-process Channel)
+- **Quarantine model**: All uploads stored under `quarantine/{tenantId}/{docTypeId}/` prefix; access gated by application-layer `ScanStatus` enforcement (fail-closed by default)
+- **RequireCleanScanForAccess**: Defaults to `true` — Pending/Failed/Infected files blocked at access endpoints
 - **Access tokens**: Opaque 64-hex (256-bit), one-time-use, configurable TTL; backed by in-memory or Redis
 - **JWT auth**: HS256 symmetric key (dev) or JWKS/RS256 (prod), configured via `Jwt:SigningKey` or `Jwt:JwksUri`
 - **Structured logging**: Serilog with console sink
@@ -549,8 +552,8 @@ dotnet ef database update \
 ```
 Or run `apps/services/documents-dotnet/Documents.Infrastructure/Database/schema.sql` directly against PostgreSQL.
 
-### Analysis Documents (7 phases)
-All in `apps/services/documents-nodejs/analysis/`:
+### Analysis Documents (7 + 6 phases)
+Architecture phases in `apps/services/documents-nodejs/analysis/`:
 - `dotnet_phase1_discovery_and_mapping.md` — TS→.NET translation decisions
 - `dotnet_phase2_scaffolding.md` — project structure and dependency graph
 - `dotnet_phase3_domain_and_contracts.md` — entities, enums, interfaces, invariants
@@ -558,3 +561,11 @@ All in `apps/services/documents-nodejs/analysis/`:
 - `dotnet_phase5_infrastructure.md` — EF Core, repositories, storage, scanner, token stores
 - `dotnet_phase6_security_and_tenancy.md` — threat model, three-layer isolation, HIPAA notes
 - `dotnet_phase7_parity_review.md` — 13/13 endpoint parity, A- grade, gaps, next steps
+
+ClamAV phases in `apps/services/documents-dotnet/analysis/`:
+- `dotnet_clamav_phase1_design.md` — async scan architecture, quarantine model, ADRs
+- `dotnet_clamav_phase2_provider.md` — ClamAV TCP implementation, provider selection
+- `dotnet_clamav_phase3_worker.md` — BackgroundService, Channel queue, scan lifecycle
+- `dotnet_clamav_phase4_quarantine_and_access.md` — quarantine prefix, access enforcement, API changes
+- `dotnet_clamav_phase5_review.md` — audit events, config reference, parity gaps, production notes
+- `dotnet_clamav_final_summary.md` — complete summary, security posture, schema changes

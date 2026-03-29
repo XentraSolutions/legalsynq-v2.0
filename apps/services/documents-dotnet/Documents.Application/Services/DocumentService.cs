@@ -21,6 +21,7 @@ public sealed class DocumentService
     private readonly IDocumentVersionRepository _versions;
     private readonly IStorageProvider           _storage;
     private readonly ScanService                _scan;
+    private readonly ScanOrchestrationService   _scanOrchestration;
     private readonly AuditService               _audit;
     private readonly DocumentServiceOptions     _opts;
     private readonly ILogger<DocumentService>   _log;
@@ -44,17 +45,19 @@ public sealed class DocumentService
         IDocumentVersionRepository versions,
         IStorageProvider           storage,
         ScanService                scan,
+        ScanOrchestrationService   scanOrchestration,
         AuditService               audit,
         IOptions<DocumentServiceOptions> opts,
         ILogger<DocumentService>   log)
     {
-        _docs     = docs;
-        _versions = versions;
-        _storage  = storage;
-        _scan     = scan;
-        _audit    = audit;
-        _opts     = opts.Value;
-        _log      = log;
+        _docs              = docs;
+        _versions          = versions;
+        _storage           = storage;
+        _scan              = scan;
+        _scanOrchestration = scanOrchestration;
+        _audit             = audit;
+        _opts              = opts.Value;
+        _log               = log;
     }
 
     // ── Create ───────────────────────────────────────────────────────────────
@@ -72,13 +75,8 @@ public sealed class DocumentService
         AssertPermission(ctx.Principal, "write");
         ValidateMimeType(mimeType);
 
-        // Scan before storage
-        var scanResult = await _scan.ScanAsync(fileStream, fileName, ct);
-
-        // Reset stream position after scanning
-        if (fileStream.CanSeek) fileStream.Position = 0;
-
-        var storageKey    = BuildStorageKey(req.TenantId, req.DocumentTypeId, fileName);
+        // Store in quarantine prefix — scan status starts as Pending
+        var storageKey    = BuildQuarantineKey(req.TenantId, req.DocumentTypeId, fileName);
         var storageBucket = await _storage.UploadAsync(storageKey, fileStream, mimeType, ct);
 
         var doc = Document.Create(
@@ -96,14 +94,14 @@ public sealed class DocumentService
             checksum: null,
             ctx.Principal.UserId);
 
-        doc.ScanStatus      = scanResult.ScanStatus;
-        doc.ScanCompletedAt = scanResult.ScanCompletedAt;
-        doc.ScanThreats     = scanResult.ScanThreats;
-
+        // ScanStatus.Pending is the default — file access blocked until scan completes
         var created = await _docs.CreateAsync(doc, ct);
 
+        // Enqueue async background scan — does NOT block the upload response
+        await _scanOrchestration.EnqueueDocumentScanAsync(created, fileName, mimeType, ctx, ct);
+
         await _audit.LogAsync(AuditEvent.DocumentCreated, ctx, created.Id,
-            detail: new { mimeType, fileSizeBytes, scanStatus = scanResult.ScanStatus.ToString() });
+            detail: new { mimeType, fileSizeBytes, scanStatus = ScanStatus.Pending.ToString() });
 
         return DocumentResponse.From(created);
     }
@@ -236,44 +234,43 @@ public sealed class DocumentService
         await AssertDocumentTenantScopeAsync(ctx, doc);
         ValidateMimeType(mimeType);
 
-        var scanResult = await _scan.ScanAsync(fileStream, fileName, ct);
-        if (fileStream.CanSeek) fileStream.Position = 0;
-
-        var storageKey    = BuildStorageKey(doc.TenantId, doc.DocumentTypeId, fileName);
+        // Store in quarantine prefix — scan status starts as Pending
+        var storageKey    = BuildQuarantineKey(doc.TenantId, doc.DocumentTypeId, fileName);
         var storageBucket = await _storage.UploadAsync(storageKey, fileStream, mimeType, ct);
 
         var version = new DocumentVersion
         {
-            Id             = Guid.NewGuid(),
-            DocumentId     = documentId,
-            TenantId       = doc.TenantId,
-            VersionNumber  = doc.VersionCount + 1,
-            MimeType       = mimeType,
-            FileSizeBytes  = fileSizeBytes,
-            StorageKey     = storageKey,
-            StorageBucket  = storageBucket,
-            ScanStatus     = scanResult.ScanStatus,
-            ScanCompletedAt = scanResult.ScanCompletedAt,
-            ScanDurationMs = scanResult.ScanDurationMs,
-            ScanThreats    = scanResult.ScanThreats,
-            Label          = req.Label,
-            UploadedAt     = DateTime.UtcNow,
-            UploadedBy     = ctx.Principal.UserId,
+            Id            = Guid.NewGuid(),
+            DocumentId    = documentId,
+            TenantId      = doc.TenantId,
+            VersionNumber = doc.VersionCount + 1,
+            MimeType      = mimeType,
+            FileSizeBytes = fileSizeBytes,
+            StorageKey    = storageKey,
+            StorageBucket = storageBucket,
+            ScanStatus    = ScanStatus.Pending,
+            Label         = req.Label,
+            UploadedAt    = DateTime.UtcNow,
+            UploadedBy    = ctx.Principal.UserId,
         };
 
         var created = await _versions.CreateAsync(version, ct);
 
-        // Update parent document
+        // Update parent document — track current version, inherit Pending scan status
         doc.CurrentVersionId = created.Id;
         doc.VersionCount     = created.VersionNumber;
-        doc.ScanStatus       = scanResult.ScanStatus;
-        doc.ScanCompletedAt  = scanResult.ScanCompletedAt;
+        doc.ScanStatus       = ScanStatus.Pending;
+        doc.ScanCompletedAt  = null;
         doc.UpdatedAt        = DateTime.UtcNow;
         doc.UpdatedBy        = ctx.Principal.UserId;
         await _docs.UpdateAsync(doc, ct);
 
+        // Enqueue async background scan — does NOT block the upload response
+        await _scanOrchestration.EnqueueVersionScanAsync(created, doc, fileName, mimeType, ctx, ct);
+
         await _audit.LogAsync(AuditEvent.VersionUploaded, ctx, documentId,
-            detail: new { versionId = created.Id, versionNumber = created.VersionNumber, mimeType });
+            detail: new { versionId = created.Id, versionNumber = created.VersionNumber, mimeType,
+                          scanStatus = ScanStatus.Pending.ToString() });
 
         return DocumentVersionResponse.From(created);
     }
@@ -384,10 +381,15 @@ public sealed class DocumentService
             throw new UnsupportedFileTypeException($"File type not permitted: {mimeType}");
     }
 
-    private static string BuildStorageKey(Guid tenantId, Guid docTypeId, string fileName)
+    /// <summary>
+    /// Build a quarantine-prefixed storage key for newly uploaded files.
+    /// Files remain under this key until the background scan worker processes them.
+    /// Access is gated by application-layer scan status enforcement, not by key obscurity.
+    /// </summary>
+    private static string BuildQuarantineKey(Guid tenantId, Guid docTypeId, string fileName)
     {
         var ext = Path.GetExtension(fileName).TrimStart('.');
-        return $"docs/{tenantId}/{docTypeId}/{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.{ext}";
+        return $"quarantine/{tenantId}/{docTypeId}/{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.{ext}";
     }
 
     private static DocumentStatus ParseStatus(string status) => status.ToUpperInvariant() switch

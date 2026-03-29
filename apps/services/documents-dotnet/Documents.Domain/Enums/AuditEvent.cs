@@ -9,7 +9,9 @@ public static class AuditEvent
     public const string DocumentAccessed         = "DOCUMENT_ACCESSED";
     public const string VersionUploaded          = "VERSION_UPLOADED";
     public const string ScanRequested            = "SCAN_REQUESTED";
+    public const string ScanStarted             = "SCAN_STARTED";
     public const string ScanCompleted            = "SCAN_COMPLETED";
+    public const string ScanClean               = "SCAN_CLEAN";
     public const string ScanFailed               = "SCAN_FAILED";
     public const string ScanInfected             = "SCAN_INFECTED";
     public const string ScanAccessDenied         = "SCAN_ACCESS_DENIED";

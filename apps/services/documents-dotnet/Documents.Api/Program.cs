@@ -1,4 +1,5 @@
 using System.Text;
+using Documents.Api.Background;
 using Documents.Api.Endpoints;
 using Documents.Api.Middleware;
 using Documents.Domain.Interfaces;
@@ -27,6 +28,9 @@ builder.Host.UseSerilog();
 
 // ── Infrastructure ────────────────────────────────────────────────────────────
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// ── Background scan worker ────────────────────────────────────────────────────
+builder.Services.AddHostedService<DocumentScanWorker>();
 
 // ── JWT authentication ────────────────────────────────────────────────────────
 var jwtSection  = builder.Configuration.GetSection("Jwt");

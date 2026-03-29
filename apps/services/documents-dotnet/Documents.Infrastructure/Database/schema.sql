@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS documents (
     scan_status       VARCHAR(20)  NOT NULL DEFAULT 'PENDING'
                         CHECK (scan_status IN ('PENDING','CLEAN','INFECTED','FAILED','SKIPPED')),
     scan_completed_at TIMESTAMPTZ,
+    scan_duration_ms  INT,
     scan_threats      JSONB        NOT NULL DEFAULT '[]',
+    scan_engine_version VARCHAR(100),
     is_deleted        BOOLEAN      NOT NULL DEFAULT FALSE,
     deleted_at        TIMESTAMPTZ,
     deleted_by        UUID,

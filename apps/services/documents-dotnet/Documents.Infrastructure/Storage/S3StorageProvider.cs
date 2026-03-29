@@ -75,6 +75,12 @@ public sealed class S3StorageProvider : IStorageProvider, IAsyncDisposable
         await _s3.DeleteObjectAsync(_opts.BucketName, key, ct);
     }
 
+    public async Task<Stream> DownloadAsync(string key, CancellationToken ct = default)
+    {
+        var response = await _s3.GetObjectAsync(_opts.BucketName, key, ct);
+        return response.ResponseStream;
+    }
+
     public async Task<bool> ExistsAsync(string key, CancellationToken ct = default)
     {
         try

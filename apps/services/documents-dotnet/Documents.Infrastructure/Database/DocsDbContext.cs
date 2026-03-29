@@ -45,12 +45,14 @@ public sealed class DocsDbContext : DbContext
                 .HasColumnName("scan_status")
                 .HasConversion(new EnumToStringConverter<ScanStatus>());
             e.Property(d => d.ScanCompletedAt).HasColumnName("scan_completed_at");
+            e.Property(d => d.ScanDurationMs).HasColumnName("scan_duration_ms");
             e.Property(d => d.ScanThreats)
                 .HasColumnName("scan_threats")
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                     v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new())
                 .HasColumnType("jsonb");
+            e.Property(d => d.ScanEngineVersion).HasColumnName("scan_engine_version").HasMaxLength(100);
             e.Property(d => d.IsDeleted).HasColumnName("is_deleted");
             e.Property(d => d.DeletedAt).HasColumnName("deleted_at");
             e.Property(d => d.DeletedBy).HasColumnName("deleted_by");
