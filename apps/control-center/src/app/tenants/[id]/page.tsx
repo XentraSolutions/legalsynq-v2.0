@@ -12,7 +12,7 @@ interface TenantDetailPageProps {
 }
 
 /**
- * /tenants/[id] — Tenant detail page.
+ * /tenants/[id] — Tenant detail (Overview tab).
  *
  * Access: PlatformAdmin only (enforced by requirePlatformAdmin).
  *
@@ -35,17 +35,18 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
 
   return (
     <CCShell userEmail={session.email}>
-      <div className="space-y-6">
+      <div className="space-y-5">
 
-        {/* Back link */}
-        <div>
-          <Link
-            href={Routes.tenants}
-            className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            ← All Tenants
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-1.5 text-sm text-gray-500">
+          <Link href={Routes.tenants} className="hover:text-gray-900 transition-colors">
+            Tenants
           </Link>
-        </div>
+          <span className="text-gray-300">›</span>
+          <span className="text-gray-900 font-medium">
+            {tenant ? tenant.displayName : id}
+          </span>
+        </nav>
 
         {/* Error state */}
         {fetchError && (
@@ -89,6 +90,12 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
               <TenantActions tenantId={tenant.id} currentStatus={tenant.status} />
             </div>
 
+            {/* Sub-navigation tabs */}
+            <div className="flex items-center gap-0 border-b border-gray-200">
+              <SubNavLink href={Routes.tenantDetail(id)}    label="Overview" active />
+              <SubNavLink href={Routes.tenantUsers_(id)}    label="Users"    active={false} />
+            </div>
+
             {/* Detail sections */}
             <TenantDetailCard tenant={tenant} />
           </>
@@ -98,7 +105,23 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
   );
 }
 
-// ── Local helpers (used only in this page's header) ───────────────────────────
+// ── Local helpers ─────────────────────────────────────────────────────────────
+
+function SubNavLink({ href, label, active }: { href: string; label: string; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={[
+        'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+        active
+          ? 'border-indigo-600 text-indigo-700'
+          : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300',
+      ].join(' ')}
+    >
+      {label}
+    </Link>
+  );
+}
 
 function StatusBadge({ status }: { status: TenantStatus }) {
   const styles: Record<TenantStatus, string> = {

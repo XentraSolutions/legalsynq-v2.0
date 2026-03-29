@@ -39,9 +39,6 @@ export type EntitlementStatus = 'Enabled' | 'Disabled' | 'NotProvisioned';
 /**
  * A single product entitlement for a tenant.
  * Used inside TenantDetail.productEntitlements.
- *
- * For the standalone platform-wide entitlements list (future),
- * the backend will likely extend this with tenantId / tenantCode.
  */
 export interface ProductEntitlementSummary {
   productCode:   string;
@@ -51,17 +48,33 @@ export interface ProductEntitlementSummary {
   enabledAtUtc?: string;
 }
 
-// ── Tenant Users ──────────────────────────────────────────────────────────────
+// ── Users ─────────────────────────────────────────────────────────────────────
 
-export interface TenantUserSummary {
-  id:           string;
-  email:        string;
-  firstName:    string;
-  lastName:     string;
-  isActive:     boolean;
-  systemRoles:  string[];
-  orgName?:     string;
+export type UserStatus = 'Active' | 'Inactive' | 'Invited';
+
+/**
+ * User record returned by GET /identity/api/admin/users.
+ * Represents a single user within a tenant as seen from the platform admin view.
+ */
+export interface UserSummary {
+  id:              string;
+  firstName:       string;
+  lastName:        string;
+  email:           string;
+  role:            string;
+  status:          UserStatus;
+  tenantId:        string;
+  tenantCode:      string;
+  lastLoginAtUtc?: string;
+}
+
+/**
+ * Full user record returned by GET /identity/api/admin/users/{id}.
+ * Extends UserSummary with audit timestamps.
+ */
+export interface UserDetail extends UserSummary {
   createdAtUtc: string;
+  updatedAtUtc: string;
 }
 
 // ── Roles & Permissions ───────────────────────────────────────────────────────
