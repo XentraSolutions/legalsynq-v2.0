@@ -98,6 +98,12 @@ export interface NavItem {
   icon?: string;
 }
 
+/** A labelled group of items within a single product's sidebar. */
+export interface NavSection {
+  heading?: string;  // e.g. "MY TASKS" — omit for an unlabelled section
+  items: NavItem[];
+}
+
 export interface NavGroup {
   id:    string;
   label: string;

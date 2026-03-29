@@ -10,19 +10,9 @@ import { clsx } from 'clsx';
 
 const STORAGE_KEY = 'ls_sidebar_collapsed';
 
-/**
- * Collapsible sidebar.
- *
- * Shows only the nav items for the product selected in the top-bar app switcher.
- * When no product is selected (/dashboard), the nav area is empty.
- *
- * Expanded (220px): product name header + icons + labels.
- * Collapsed (52px): icons only with title tooltips + orange right pip for active item.
- * Collapse state persisted in localStorage. Keyboard shortcut: Ctrl+[
- */
 export function Sidebar() {
-  const pathname               = usePathname();
-  const { selectedProductId }  = useProduct();
+  const pathname              = usePathname();
+  const { selectedProductId } = useProduct();
 
   const [collapsed, setCollapsed] = useState(false);
   const [mounted,   setMounted]   = useState(false);
@@ -50,9 +40,9 @@ export function Sidebar() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const width = !mounted ? 220 : collapsed ? 52 : 220;
-  const items = selectedProductId ? (PRODUCT_NAV[selectedProductId] ?? []) : [];
-  const meta  = selectedProductId ? PRODUCT_META[selectedProductId]        : null;
+  const width    = !mounted ? 220 : collapsed ? 52 : 220;
+  const sections = selectedProductId ? (PRODUCT_NAV[selectedProductId] ?? []) : [];
+  const meta     = selectedProductId ? PRODUCT_META[selectedProductId] : null;
 
   return (
     <aside
@@ -63,64 +53,64 @@ export function Sidebar() {
         alignSelf: 'stretch',
       }}
     >
-      {/* ── Header row ──────────────────────────────────────────────────── */}
-      <div
-        className={clsx(
-          'shrink-0 flex items-center border-b border-gray-100 h-12',
-          collapsed ? 'justify-center' : 'justify-between px-4',
-        )}
-      >
-        {/* Product name + icon when a product is selected (expanded) */}
+      {/* ── Header ────────────────────────────────────────────────────────── */}
+      <div className={clsx(
+        'shrink-0 flex items-center border-b border-gray-100 h-12',
+        collapsed ? 'justify-center' : 'justify-between px-4',
+      )}>
         {!collapsed && meta && (
           <div className="flex items-center gap-2 min-w-0">
             <i className={`${meta.icon} text-[15px]`} style={{ color: meta.color }} />
-            <span className="text-[12px] font-semibold text-gray-700 truncate">
-              {meta.label}
-            </span>
+            <span className="text-[12px] font-semibold text-gray-700 truncate">{meta.label}</span>
           </div>
         )}
-
-        {/* Generic label when no product is active */}
         {!collapsed && !meta && (
           <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 select-none">
             Navigation
           </span>
         )}
-
-        {/* Collapse / expand toggle */}
         <button
           onClick={toggle}
           title={collapsed ? 'Expand sidebar (Ctrl+[)' : 'Collapse sidebar (Ctrl+[)'}
           className="flex items-center justify-center rounded-md w-7 h-7 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors shrink-0"
         >
-          <i className={clsx(
-            'text-[17px] leading-none',
+          <i className={clsx('text-[17px] leading-none',
             collapsed ? 'ri-sidebar-unfold-line' : 'ri-sidebar-fold-line',
           )} />
         </button>
       </div>
 
-      {/* ── Nav items ───────────────────────────────────────────────────── */}
+      {/* ── Nav sections ──────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden py-2">
-        {items.length > 0 && (
-          <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
-            {items.map(item => (
-              <SidebarItem
-                key={item.href}
-                item={item}
-                pathname={pathname}
-                collapsed={collapsed}
-                accentColor={meta?.color ?? '#f97316'}
-              />
-            ))}
-          </nav>
-        )}
+        {sections.map((section, si) => (
+          <div key={si} className={si > 0 ? 'mt-4' : ''}>
+            {/* Section heading (expanded only) */}
+            {section.heading && !collapsed && (
+              <p className="px-5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none">
+                {section.heading}
+              </p>
+            )}
+            {/* Divider between sections when collapsed */}
+            {si > 0 && collapsed && (
+              <div className="mx-2 mb-2 border-t border-gray-100" />
+            )}
+            <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
+              {section.items.map(item => (
+                <SidebarItem
+                  key={item.href}
+                  item={item}
+                  pathname={pathname}
+                  collapsed={collapsed}
+                  accentColor={meta?.color ?? '#f97316'}
+                />
+              ))}
+            </nav>
+          </div>
+        ))}
       </div>
     </aside>
   );
 }
-
-// ── Nav item ──────────────────────────────────────────────────────────────────
 
 function SidebarItem({
   item, pathname, collapsed, accentColor,
@@ -139,28 +129,18 @@ function SidebarItem({
           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
       )}
     >
-      {/* Expanded: left accent bar in product colour */}
       {isActive && !collapsed && (
-        <span
-          className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full"
-          style={{ backgroundColor: accentColor }}
-        />
+        <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full"
+          style={{ backgroundColor: accentColor }} />
       )}
-
-      {/* Collapsed: right orange pip */}
       {isActive && collapsed && (
         <span className="absolute -right-0.5 top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-orange-500" />
       )}
-
-      {item.icon ? (
-        <i
-          className={`${item.icon} text-[16px] leading-none shrink-0`}
-          style={{ color: isActive ? accentColor : undefined }}
-        />
-      ) : (
-        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
-      )}
-
+      {item.icon
+        ? <i className={`${item.icon} text-[16px] leading-none shrink-0`}
+            style={{ color: isActive ? accentColor : undefined }} />
+        : <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+      }
       {!collapsed && <span>{item.label}</span>}
     </Link>
   );
