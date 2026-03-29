@@ -8,7 +8,8 @@ import { ProductRole } from '@/types';
 export interface ProductDef {
   id: string;
   label: string;
-  iconName: 'Heart' | 'Banknote' | 'FileStack' | 'Settings';
+  /** Remix Icon CSS class for this product */
+  riIcon: string;
   routePrefix: string;
   /** Roles that grant access to this product. Empty = controlled by session flags (admin). */
   requiredRoles: ProductRoleValue[];
@@ -18,28 +19,28 @@ export const PRODUCT_DEFS: readonly ProductDef[] = [
   {
     id: 'careconnect',
     label: 'CareConnect',
-    iconName: 'Heart',
+    riIcon: 'ri-shield-cross-line',
     routePrefix: '/careconnect',
     requiredRoles: [ProductRole.CareConnectReferrer, ProductRole.CareConnectReceiver],
   },
   {
     id: 'fund',
     label: 'SynqFund',
-    iconName: 'Banknote',
+    riIcon: 'ri-bank-line',
     routePrefix: '/fund',
     requiredRoles: [ProductRole.SynqFundReferrer, ProductRole.SynqFundFunder],
   },
   {
     id: 'lien',
     label: 'SynqLien',
-    iconName: 'FileStack',
+    riIcon: 'ri-file-stack-line',
     routePrefix: '/lien',
     requiredRoles: [ProductRole.SynqLienSeller, ProductRole.SynqLienBuyer, ProductRole.SynqLienHolder],
   },
   {
     id: 'admin',
     label: 'Admin',
-    iconName: 'Settings',
+    riIcon: 'ri-settings-3-line',
     routePrefix: '/admin',
     requiredRoles: [],
   },

@@ -21,12 +21,12 @@ export function buildNavGroups(session: PlatformSession): NavGroup[] {
     groups.push({
       id:    'careconnect',
       label: 'CareConnect',
-      icon:  'HeartPulse',
+      icon:  'ri-shield-cross-line',
       items: [
-        { href: '/careconnect/referrals',    label: 'Referrals' },
-        { href: '/careconnect/appointments', label: 'Appointments' },
+        { href: '/careconnect/referrals',    label: 'Referrals',    icon: 'ri-file-list-3-line' },
+        { href: '/careconnect/appointments', label: 'Appointments', icon: 'ri-calendar-event-line' },
         ...(roles.includes(pr.CareConnectReferrer)
-          ? [{ href: '/careconnect/providers', label: 'Find Providers' }]
+          ? [{ href: '/careconnect/providers', label: 'Find Providers', icon: 'ri-hospital-line' }]
           : []),
       ],
     });
@@ -38,11 +38,11 @@ export function buildNavGroups(session: PlatformSession): NavGroup[] {
     groups.push({
       id:    'fund',
       label: 'SynqFund',
-      icon:  'Banknote',
+      icon:  'ri-bank-line',
       items: [
-        { href: '/fund/applications', label: 'Applications' },
+        { href: '/fund/applications',     label: 'Applications',     icon: 'ri-file-list-line' },
         ...(roles.includes(pr.SynqFundReferrer)
-          ? [{ href: '/fund/applications/new', label: 'New Application' }]
+          ? [{ href: '/fund/applications/new', label: 'New Application', icon: 'ri-add-circle-line' }]
           : []),
       ],
     });
@@ -54,19 +54,19 @@ export function buildNavGroups(session: PlatformSession): NavGroup[] {
     groups.push({
       id:    'lien',
       label: 'SynqLien',
-      icon:  'FileStack',
+      icon:  'ri-file-stack-line',
       items: [
         ...(roles.includes(pr.SynqLienBuyer)
-          ? [{ href: '/lien/marketplace', label: 'Marketplace' }]
+          ? [{ href: '/lien/marketplace', label: 'Marketplace', icon: 'ri-shopping-bag-line' }]
           : []),
         ...(roles.includes(pr.SynqLienSeller)
           ? [
-              { href: '/lien/my-liens',     label: 'My Liens' },
-              { href: '/lien/my-liens/new', label: 'New Lien' },
+              { href: '/lien/my-liens',     label: 'My Liens', icon: 'ri-file-stack-line' },
+              { href: '/lien/my-liens/new', label: 'New Lien', icon: 'ri-add-circle-line' },
             ]
           : []),
         ...(roles.includes(pr.SynqLienBuyer) || roles.includes(pr.SynqLienHolder)
-          ? [{ href: '/lien/portfolio', label: 'Portfolio' }]
+          ? [{ href: '/lien/portfolio', label: 'Portfolio', icon: 'ri-briefcase-line' }]
           : []),
       ],
     });
@@ -77,13 +77,13 @@ export function buildNavGroups(session: PlatformSession): NavGroup[] {
     groups.push({
       id:    'admin',
       label: 'Administration',
-      icon:  'Settings',
+      icon:  'ri-settings-3-line',
       items: [
-        { href: '/admin/users',         label: 'Users' },
-        { href: '/admin/organizations', label: 'Organizations' },
-        { href: '/admin/products',      label: 'Products' },
+        { href: '/admin/users',         label: 'Users',         icon: 'ri-group-line' },
+        { href: '/admin/organizations', label: 'Organizations', icon: 'ri-building-line' },
+        { href: '/admin/products',      label: 'Products',      icon: 'ri-cube-line' },
         ...(session.isPlatformAdmin
-          ? [{ href: '/admin/tenants', label: 'All Tenants' }]
+          ? [{ href: '/admin/tenants', label: 'All Tenants', icon: 'ri-global-line' }]
           : []),
       ],
     });

@@ -13,18 +13,18 @@ interface AppShellProps {
  * Shared layout shell for all (platform) and (admin) routes.
  *
  * Structure:
- *   [dark sidebar: product brand + nav + user profile]
- *   [content area: org-info header strip (top-right) + page content]
+ *   [navy top bar — full width: logo + product switcher + user]
+ *   [light sidebar: product nav]  [gray-50 main content]
  *
  * Must be used inside <SessionProvider> and <TenantBrandingProvider>.
  */
 export function AppShell({ children }: AppShellProps) {
   return (
     <ProductProvider>
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <div className="flex flex-col flex-1 overflow-hidden bg-white">
-          <TopBar />
+      <div className="flex flex-col h-screen overflow-hidden">
+        <TopBar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
           <main className="flex-1 overflow-y-auto bg-gray-50">
             {children}
           </main>
