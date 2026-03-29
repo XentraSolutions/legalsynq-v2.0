@@ -3,6 +3,7 @@ import { apiClient } from '@/lib/api-client';
 import type {
   ProviderSummary,
   ProviderDetail,
+  ProviderMarker,
   ProviderSearchParams,
   ProviderAvailabilityResponse,
   AvailabilitySearchParams,
@@ -41,6 +42,11 @@ export const careConnectServerApi = {
 
     getById: (id: string) =>
       serverApi.get<ProviderDetail>(`/careconnect/api/providers/${id}`),
+
+    getMarkers: (params: ProviderSearchParams = {}) =>
+      serverApi.get<ProviderMarker[]>(
+        `/careconnect/api/providers/map${toQs(params as Record<string, unknown>)}`,
+      ),
 
     getAvailability: (id: string, params: AvailabilitySearchParams = {}) =>
       serverApi.get<ProviderAvailabilityResponse>(
@@ -82,6 +88,11 @@ export const careConnectApi = {
 
     getById: (id: string) =>
       apiClient.get<ProviderDetail>(`/careconnect/api/providers/${id}`),
+
+    getMarkers: (params: ProviderSearchParams = {}) =>
+      apiClient.get<ProviderMarker[]>(
+        `/careconnect/api/providers/map${toQs(params as Record<string, unknown>)}`,
+      ),
 
     getAvailability: (id: string, params: AvailabilitySearchParams = {}) =>
       apiClient.get<ProviderAvailabilityResponse>(

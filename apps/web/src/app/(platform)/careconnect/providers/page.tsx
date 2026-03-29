@@ -3,8 +3,8 @@ import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-api';
 import { ServerApiError } from '@/lib/server-api-client';
-import { ProviderCard } from '@/components/careconnect/provider-card';
 import { ProviderSearchFilters } from '@/components/careconnect/provider-search-filters';
+import { ProviderMapShell } from '@/components/careconnect/provider-map-shell';
 
 interface ProvidersPageProps {
   searchParams: {
@@ -14,20 +14,33 @@ interface ProvidersPageProps {
     categoryCode?:       string;
     acceptingReferrals?: string;
     page?:               string;
+    view?:               string;
+    lat?:                string;
+    lng?:                string;
+    radius?:             string;
+    nLat?:               string;
+    sLat?:               string;
+    eLng?:               string;
+    wLng?:               string;
   };
 }
 
 /**
- * /careconnect/providers — Provider search.
+ * /careconnect/providers — Provider search with list/map toggle.
  *
  * Access: CARECONNECT_REFERRER only.
- *   - Provider users (CARECONNECT_RECEIVER) do not need to discover providers.
- *   - The nav builder already hides "Find Providers" from non-referrers.
- *   - This page hard-redirects as a defence-in-depth measure.
  *
- * Rendering: Server Component — data fetched directly via serverApi.
- * Filters: rendered as a Client Component (ProviderSearchFilters) that
- *   writes to URL params, triggering a server re-render with fresh data.
+ * Rendering: Server Component — fetches initial list data and passes it
+ * to ProviderMapShell (Client Component) as a prop.
+ *   - List mode uses the initial data (no extra round-trip).
+ *   - Map mode fetches markers client-side via BFF proxy.
+ *
+ * URL params:
+ *   name, city, state, categoryCode, acceptingReferrals  — text filters
+ *   page                                                  — list pagination
+ *   view                                                  — "list" | "map"
+ *   lat, lng, radius                                      — geolocation (radius search)
+ *   nLat, sLat, eLng, wLng                               — viewport bounds (map pan)
  */
 export default async function ProvidersPage({ searchParams }: ProvidersPageProps) {
   const session = await requireOrg();
@@ -37,6 +50,21 @@ export default async function ProvidersPage({ searchParams }: ProvidersPageProps
   }
 
   const page = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
+
+  const lat    = searchParams.lat    ? parseFloat(searchParams.lat)    : undefined;
+  const lng    = searchParams.lng    ? parseFloat(searchParams.lng)    : undefined;
+  const radius = searchParams.radius ? parseFloat(searchParams.radius) : undefined;
+  const nLat   = searchParams.nLat   ? parseFloat(searchParams.nLat)   : undefined;
+  const sLat   = searchParams.sLat   ? parseFloat(searchParams.sLat)   : undefined;
+  const eLng   = searchParams.eLng   ? parseFloat(searchParams.eLng)   : undefined;
+  const wLng   = searchParams.wLng   ? parseFloat(searchParams.wLng)   : undefined;
+
+  const geoParams =
+    lat && lng && radius
+      ? { latitude: lat, longitude: lng, radiusMiles: radius }
+      : nLat && sLat && eLng && wLng
+      ? { northLat: nLat, southLat: sLat, eastLng: eLng, westLng: wLng }
+      : {};
 
   let result = null;
   let fetchError: string | null = null;
@@ -51,20 +79,16 @@ export default async function ProvidersPage({ searchParams }: ProvidersPageProps
       isActive:           true,
       page,
       pageSize:           20,
+      ...geoParams,
     });
   } catch (err) {
-    fetchError = err instanceof ServerApiError
-      ? (err.isNotFound ? 'No providers found.' : err.message)
-      : 'Failed to load providers.';
+    fetchError =
+      err instanceof ServerApiError
+        ? err.isNotFound
+          ? 'No providers found.'
+          : err.message
+        : 'Failed to load providers.';
   }
-
-  const hasFilters = !!(
-    searchParams.name ||
-    searchParams.city ||
-    searchParams.state ||
-    searchParams.categoryCode ||
-    searchParams.acceptingReferrals
-  );
 
   return (
     <div className="space-y-4">
@@ -73,68 +97,22 @@ export default async function ProvidersPage({ searchParams }: ProvidersPageProps
         <h1 className="text-xl font-semibold text-gray-900">Find Providers</h1>
         {result && (
           <span className="text-sm text-gray-400">
-            {result.totalCount.toLocaleString()} {result.totalCount === 1 ? 'result' : 'results'}
+            {result.totalCount.toLocaleString()}{' '}
+            {result.totalCount === 1 ? 'result' : 'results'}
           </span>
         )}
       </div>
 
-      {/* Filters (client component) */}
+      {/* Filters (client component, URL-synced) */}
       <ProviderSearchFilters />
 
-      {/* Error */}
-      {fetchError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-          {fetchError}
-        </div>
-      )}
-
-      {/* Results */}
-      {result && (
-        <>
-          {result.items.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">
-              <p className="text-sm text-gray-400">
-                {hasFilters
-                  ? 'No providers match your filters. Try adjusting your search.'
-                  : 'No providers available.'}
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-3">
-              {result.items.map(provider => (
-                <ProviderCard key={provider.id} provider={provider} />
-              ))}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {result.totalCount > 20 && (
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-gray-400">
-                Page {page} of {Math.ceil(result.totalCount / 20)}
-              </p>
-              <div className="flex items-center gap-3">
-                {page > 1 && (
-                  <a
-                    href={`?${new URLSearchParams({ ...searchParams, page: String(page - 1) })}`}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    ← Previous
-                  </a>
-                )}
-                {page * 20 < result.totalCount && (
-                  <a
-                    href={`?${new URLSearchParams({ ...searchParams, page: String(page + 1) })}`}
-                    className="text-sm text-primary hover:underline"
-                  >
-                    Next →
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
-        </>
-      )}
+      {/* Shell — handles list/map toggle + rendering */}
+      <ProviderMapShell
+        initialProviders={result}
+        initialPage={page}
+        isReferrer
+        fetchError={fetchError}
+      />
     </div>
   );
 }

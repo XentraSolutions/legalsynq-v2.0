@@ -32,6 +32,34 @@ export interface ProviderSearchParams {
   isActive?:           boolean;
   page?:               number;
   pageSize?:           number;
+  latitude?:           number;
+  longitude?:          number;
+  radiusMiles?:        number;
+  northLat?:           number;
+  southLat?:           number;
+  eastLng?:            number;
+  westLng?:            number;
+}
+
+export interface ProviderMarker {
+  id:                 string;
+  name:               string;
+  organizationName?:  string;
+  displayLabel:       string;
+  markerSubtitle:     string;
+  city:               string;
+  state:              string;
+  addressLine1:       string;
+  postalCode:         string;
+  email:              string;
+  phone:              string;
+  acceptingReferrals: boolean;
+  isActive:           boolean;
+  latitude:           number;
+  longitude:          number;
+  geoPointSource?:    string;
+  primaryCategory?:   string;
+  categories:         string[];
 }
 
 // ── Referral ──────────────────────────────────────────────────────────────────
