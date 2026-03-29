@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { useState, useRef, useEffect } from 'react';
 import { useSession } from '@/hooks/use-session';
 import { useProduct } from '@/contexts/product-context';
 import { PRODUCT_DEFS } from '@/lib/product-config';
@@ -10,18 +11,12 @@ import { orgTypeLabel } from '@/lib/nav';
 /**
  * Full-width navy top bar.
  * Left:   LegalSynq white logo
- * Center: product switcher tabs (only accessible products shown)
- * Right:  org name / user info + sign-out
+ * Center: product switcher tabs
+ * Right:  avatar button → profile dropdown
  */
 export function TopBar() {
   const { session, clearSession } = useSession();
   const { activeProductId, availableGroups } = useProduct();
-
-  async function handleSignOut() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    clearSession();
-    window.location.href = '/login';
-  }
 
   const accessibleProducts = PRODUCT_DEFS.filter(def =>
     availableGroups.some(g => g.id === def.id)
@@ -73,34 +68,145 @@ export function TopBar() {
         })}
       </nav>
 
-      {/* ── User area ─────────────────────────────────────────────────────── */}
-      {session && (
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex items-center gap-2">
+      {/* ── User menu ─────────────────────────────────────────────────────── */}
+      {session && <UserMenu session={session} clearSession={clearSession} />}
+    </header>
+  );
+}
+
+// ── Profile dropdown ──────────────────────────────────────────────────────────
+
+interface UserMenuProps {
+  session: NonNullable<ReturnType<typeof useSession>['session']>;
+  clearSession: () => void;
+}
+
+function UserMenu({ session, clearSession }: UserMenuProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
+  async function handleSignOut() {
+    setOpen(false);
+    await fetch('/api/auth/logout', { method: 'POST' });
+    clearSession();
+    window.location.href = '/login';
+  }
+
+  // Initials for avatar
+  const initials = session.orgName
+    ? session.orgName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+    : session.email.slice(0, 2).toUpperCase();
+
+  return (
+    <div ref={ref} className="relative flex items-center shrink-0">
+      <button
+        onClick={() => setOpen(prev => !prev)}
+        className="flex items-center gap-2.5 rounded-full focus:outline-none group"
+        aria-haspopup="true"
+        aria-expanded={open}
+      >
+        {/* Avatar circle */}
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 ring-2 ring-transparent group-hover:ring-white/20 transition-all"
+          style={{ backgroundColor: '#f97316' }}
+        >
+          {initials}
+        </div>
+      </button>
+
+      {/* ── Dropdown panel ─────────────────────────────────────────────── */}
+      {open && (
+        <div
+          className="absolute right-0 top-[calc(100%+10px)] w-64 rounded-xl bg-white shadow-xl border border-gray-200 overflow-hidden z-50"
+          role="menu"
+        >
+          {/* User header */}
+          <div className="flex items-center gap-3 px-4 py-3.5 bg-gray-50 border-b border-gray-100">
             <div
-              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-              style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+              className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
+              style={{ backgroundColor: '#f97316' }}
             >
-              <i className="ri-user-3-line text-[13px] text-slate-300" />
+              {initials}
             </div>
-            <div className="hidden sm:block leading-tight">
-              <p className="text-xs font-semibold text-white">{session.orgName ?? session.email}</p>
-              <p className="text-[10px] text-slate-400">{orgTypeLabel(session.orgType)}</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-900 truncate">
+                {session.orgName ?? session.email}
+              </p>
+              <p className="text-xs text-gray-500 truncate">{session.email}</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">{orgTypeLabel(session.orgType)}</p>
             </div>
           </div>
 
-          <div className="h-4 w-px" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }} />
+          {/* Menu items */}
+          <div className="py-1.5">
+            <MenuItem
+              href="/profile"
+              icon="ri-user-3-line"
+              label="Profile"
+              onClick={() => setOpen(false)}
+            />
+            <MenuItem
+              href="/settings"
+              icon="ri-settings-3-line"
+              label="Account Settings"
+              onClick={() => setOpen(false)}
+            />
+          </div>
 
-          <button
-            onClick={handleSignOut}
-            title="Sign out"
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors py-1 px-2 rounded-md hover:bg-white/5"
-          >
-            <i className="ri-logout-box-r-line text-sm" />
-            <span className="hidden sm:inline">Sign out</span>
-          </button>
+          {/* Divider */}
+          <div className="border-t border-gray-100" />
+
+          {/* Sign out */}
+          <div className="py-1.5">
+            <button
+              onClick={handleSignOut}
+              role="menuitem"
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <i className="ri-logout-box-r-line text-base leading-none" />
+              <span>Log out</span>
+            </button>
+          </div>
         </div>
       )}
-    </header>
+    </div>
+  );
+}
+
+function MenuItem({
+  href, icon, label, onClick,
+}: { href: string; icon: string; label: string; onClick: () => void }) {
+  return (
+    <Link
+      href={href}
+      role="menuitem"
+      onClick={onClick}
+      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+    >
+      <i className={`${icon} text-base leading-none text-gray-400`} />
+      <span>{label}</span>
+    </Link>
   );
 }
