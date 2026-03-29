@@ -1,13 +1,12 @@
-import type { NextConfig } from 'next';
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   experimental: {
     serverActions: {
-      allowedOrigins: ['localhost:3000'],
+      allowedOrigins: ['*'],
     },
   },
   async rewrites() {
-    const gatewayUrl = process.env.GATEWAY_URL ?? 'http://localhost:5000';
+    const gatewayUrl = process.env.GATEWAY_URL ?? 'http://localhost:5010';
     return [
       {
         source: '/api/:path*',

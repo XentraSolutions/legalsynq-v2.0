@@ -2,46 +2,31 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NODE="/nix/store/51gywl5jn4nna7al9waj142pw4vfhy0k-nodejs-22.19.0/bin/node"
 
-echo "======================================="
-echo "  LegalSynq — starting all services"
-echo "======================================="
-echo ""
+echo "====== LegalSynq dev startup ======"
 
-echo "Restoring dependencies..."
-dotnet restore "$ROOT/LegalSynq.sln"
+# Start Next.js immediately — port 5000 must open for the preview pane
+echo "[web] Starting Next.js on :5000"
+(cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$ROOT/node_modules/.bin/next" dev -p 5000) &
+PID_WEB=$!
 
-echo "Building solution..."
-dotnet build "$ROOT/LegalSynq.sln" --no-restore --configuration Debug
-
-echo ""
-echo "Starting services..."
-echo "  Identity     → http://localhost:5001"
-echo "  Fund         → http://localhost:5002"
-echo "  CareConnect  → http://localhost:5003"
-echo "  Gateway      → http://localhost:5000"
-echo ""
-
-dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
-PID_IDENTITY=$!
-
-dotnet run --no-build --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
-PID_FUND=$!
-
-dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
-PID_CARECONNECT=$!
-
-dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
-PID_GATEWAY=$!
+# Restore, build, and start .NET services all in background
+(
+  dotnet restore "$ROOT/LegalSynq.sln" --verbosity quiet
+  dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Debug --verbosity quiet
+  dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
+  dotnet run --no-build --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
+  dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
+  dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
+  wait
+) &
+PID_DOTNET=$!
 
 cleanup() {
-    echo ""
-    echo "Stopping all services..."
-    kill "$PID_IDENTITY" "$PID_FUND" "$PID_CARECONNECT" "$PID_GATEWAY" 2>/dev/null || true
-    wait "$PID_IDENTITY" "$PID_FUND" "$PID_CARECONNECT" "$PID_GATEWAY" 2>/dev/null || true
-    echo "All services stopped."
+    kill "$PID_WEB" "$PID_DOTNET" 2>/dev/null || true
+    wait 2>/dev/null || true
 }
-
 trap cleanup EXIT INT TERM
 
-wait "$PID_IDENTITY" "$PID_FUND" "$PID_CARECONNECT" "$PID_GATEWAY"
+wait "$PID_WEB" "$PID_DOTNET"
