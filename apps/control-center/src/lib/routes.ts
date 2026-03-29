@@ -15,7 +15,7 @@ export const Routes = {
   /** /tenant-users — Users across all tenants */
   tenantUsers: '/tenant-users',
 
-  /** /roles — Roles & permissions */
+  /** /roles — Roles & permissions list */
   roles: '/roles',
 
   /** /products — Product entitlements */
@@ -43,4 +43,7 @@ export const Routes = {
 
   /** /tenant-users/:id — User detail */
   userDetail: (id: string) => `/tenant-users/${id}`,
+
+  /** /roles/:id — Role detail */
+  roleDetail: (id: string) => `/roles/${id}`,
 } as const;

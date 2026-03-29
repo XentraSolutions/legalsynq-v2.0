@@ -85,14 +85,36 @@ export interface UserDetail extends UserSummary {
 
 // ── Roles & Permissions ───────────────────────────────────────────────────────
 
+/**
+ * A single granular permission in the platform RBAC model.
+ * Permissions are additive — roles are a named collection of permissions.
+ */
+export interface Permission {
+  id:          string;
+  key:         string;   // e.g. "tenants.activate"
+  description: string;
+}
+
+/**
+ * Role record returned by GET /identity/api/admin/roles.
+ * Platform-level roles only — tenant-level roles are separate.
+ */
 export interface RoleSummary {
-  id:           string;
-  code:         string;
-  name:         string;
-  productCode:  string;
-  productName:  string;
-  capabilities: string[];
-  isActive:     boolean;
+  id:          string;
+  name:        string;
+  description: string;
+  userCount:   number;
+  permissions: string[];   // permission keys
+}
+
+/**
+ * Full role record returned by GET /identity/api/admin/roles/{id}.
+ * Extends RoleSummary with audit timestamps and resolved permission objects.
+ */
+export interface RoleDetail extends RoleSummary {
+  createdAtUtc:        string;
+  updatedAtUtc:        string;
+  resolvedPermissions: Permission[];
 }
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────

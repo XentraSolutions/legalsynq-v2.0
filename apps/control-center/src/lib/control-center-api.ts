@@ -4,6 +4,9 @@ import type {
   TenantDetail,
   UserSummary,
   UserDetail,
+  Permission,
+  RoleSummary,
+  RoleDetail,
   ProductEntitlementSummary,
   EntitlementStatus,
   PagedResponse,
@@ -278,6 +281,133 @@ function buildTenantDetail(summary: TenantSummary): TenantDetail {
   };
 }
 
+// ── Mock roles & permissions ──────────────────────────────────────────────────
+// TODO: replace with GET /identity/api/admin/roles when backend endpoint is ready.
+
+const MOCK_PERMISSIONS: Permission[] = [
+  // Platform
+  { id: 'perm-p1', key: 'platform.view',            description: 'View platform dashboard and summary metrics' },
+  { id: 'perm-p2', key: 'platform.settings.read',   description: 'View platform configuration settings' },
+  { id: 'perm-p3', key: 'platform.settings.write',  description: 'Modify platform configuration settings' },
+  // Tenants
+  { id: 'perm-t1', key: 'tenants.read',             description: 'View tenant list and tenant detail' },
+  { id: 'perm-t2', key: 'tenants.create',           description: 'Create new tenant accounts' },
+  { id: 'perm-t3', key: 'tenants.update',           description: 'Edit tenant details and configuration' },
+  { id: 'perm-t4', key: 'tenants.activate',         description: 'Activate or deactivate tenant accounts' },
+  { id: 'perm-t5', key: 'tenants.suspend',          description: 'Suspend tenant accounts' },
+  // Users
+  { id: 'perm-u1', key: 'users.read',               description: 'View user list and user detail' },
+  { id: 'perm-u2', key: 'users.create',             description: 'Invite new users to tenants' },
+  { id: 'perm-u3', key: 'users.update',             description: 'Edit user profile information' },
+  { id: 'perm-u4', key: 'users.lock',               description: 'Lock or unlock user accounts' },
+  { id: 'perm-u5', key: 'users.reset-password',     description: 'Send password reset emails to users' },
+  // Roles
+  { id: 'perm-r1', key: 'roles.read',               description: 'View role definitions and permission lists' },
+  { id: 'perm-r2', key: 'roles.write',              description: 'Modify role definitions and assignments' },
+  // Audit
+  { id: 'perm-a1', key: 'audit.read',               description: 'View audit logs and event history' },
+  // Monitoring
+  { id: 'perm-m1', key: 'monitoring.read',          description: 'View service health and system status' },
+  // Support
+  { id: 'perm-s1', key: 'support.tools',            description: 'Access support tools and diagnostic utilities' },
+];
+
+const PERM_MAP = new Map<string, Permission>(
+  MOCK_PERMISSIONS.map(p => [p.key, p]),
+);
+
+function resolvePermissions(keys: string[]): Permission[] {
+  return keys.flatMap(k => {
+    const p = PERM_MAP.get(k);
+    return p ? [p] : [];
+  });
+}
+
+const MOCK_ROLES: RoleSummary[] = [
+  {
+    id:          'role-super',
+    name:        'SuperAdmin',
+    description: 'Unrestricted access to all Control Center features and settings. Reserved for platform engineering.',
+    userCount:   0,
+    permissions: MOCK_PERMISSIONS.map(p => p.key),
+  },
+  {
+    id:          'role-platform',
+    name:        'PlatformAdmin',
+    description: 'Full operational access: manage tenants, users, entitlements, and view all platform data.',
+    userCount:   2,
+    permissions: [
+      'platform.view', 'platform.settings.read',
+      'tenants.read', 'tenants.activate', 'tenants.suspend',
+      'users.read', 'users.create', 'users.update', 'users.lock', 'users.reset-password',
+      'roles.read',
+      'audit.read',
+      'monitoring.read',
+    ],
+  },
+  {
+    id:          'role-support',
+    name:        'SupportAdmin',
+    description: 'Read access to tenant and user data with limited remediation actions for support workflows.',
+    userCount:   1,
+    permissions: [
+      'platform.view',
+      'tenants.read',
+      'users.read', 'users.lock', 'users.reset-password',
+      'audit.read',
+      'support.tools',
+    ],
+  },
+  {
+    id:          'role-ops',
+    name:        'OperationsAdmin',
+    description: 'Operational access to tenant lifecycle management, monitoring, and audit log review.',
+    userCount:   0,
+    permissions: [
+      'platform.view', 'platform.settings.read',
+      'tenants.read', 'tenants.activate', 'tenants.suspend',
+      'users.read',
+      'monitoring.read',
+      'audit.read',
+    ],
+  },
+  {
+    id:          'role-readonly',
+    name:        'ReadOnly',
+    description: 'View-only access to all Control Center sections. Cannot make any changes.',
+    userCount:   2,
+    permissions: [
+      'platform.view',
+      'tenants.read',
+      'users.read',
+      'roles.read',
+      'audit.read',
+      'monitoring.read',
+    ],
+  },
+];
+
+const ROLE_TIMESTAMPS: Record<string, { createdAtUtc: string; updatedAtUtc: string }> = {
+  'role-super':    { createdAtUtc: '2024-01-01T00:00:00Z', updatedAtUtc: '2025-01-01T00:00:00Z' },
+  'role-platform': { createdAtUtc: '2024-01-01T00:00:00Z', updatedAtUtc: '2025-02-15T10:00:00Z' },
+  'role-support':  { createdAtUtc: '2024-01-01T00:00:00Z', updatedAtUtc: '2025-01-20T09:00:00Z' },
+  'role-ops':      { createdAtUtc: '2024-01-01T00:00:00Z', updatedAtUtc: '2025-01-20T09:00:00Z' },
+  'role-readonly': { createdAtUtc: '2024-01-01T00:00:00Z', updatedAtUtc: '2024-11-01T08:00:00Z' },
+};
+
+function buildRoleDetail(summary: RoleSummary): RoleDetail {
+  const ts = ROLE_TIMESTAMPS[summary.id] ?? {
+    createdAtUtc: '2024-01-01T00:00:00Z',
+    updatedAtUtc: '2024-01-01T00:00:00Z',
+  };
+  return {
+    ...summary,
+    createdAtUtc:        ts.createdAtUtc,
+    updatedAtUtc:        ts.updatedAtUtc,
+    resolvedPermissions: resolvePermissions(summary.permissions),
+  };
+}
+
 // ── Server-side API ───────────────────────────────────────────────────────────
 // Use in Server Components and Server Actions only.
 
@@ -355,6 +485,20 @@ export const controlCenterServerApi = {
       const summary = MOCK_USERS.find(u => u.id === id);
       if (!summary) return Promise.resolve(null);
       return Promise.resolve(buildUserDetail(summary));
+    },
+  },
+
+  roles: {
+    // TODO: replace with GET /identity/api/admin/roles
+    list: (): Promise<RoleSummary[]> => {
+      return Promise.resolve(MOCK_ROLES);
+    },
+
+    // TODO: replace with GET /identity/api/admin/roles/{id}
+    getById: (id: string): Promise<RoleDetail | null> => {
+      const summary = MOCK_ROLES.find(r => r.id === id);
+      if (!summary) return Promise.resolve(null);
+      return Promise.resolve(buildRoleDetail(summary));
     },
   },
 };
