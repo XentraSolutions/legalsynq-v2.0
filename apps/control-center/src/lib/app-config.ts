@@ -51,3 +51,14 @@ export const SESSION_COOKIE_NAME = 'platform_session' as const;
  * a hard-coded host.
  */
 export const LOGIN_URL = `${CONTROL_CENTER_ORIGIN}${BASE_PATH}/login` as const;
+
+/**
+ * Cookie name for the active tenant context selected by a platform admin.
+ *
+ * Stores a JSON-serialised TenantContext (tenantId, tenantName, tenantCode).
+ * Not an auth credential — presence is additive context, not a gate.
+ * Cleared on logout and when the admin explicitly exits a tenant context.
+ *
+ * TODO: persist tenant context in backend session
+ */
+export const TENANT_CONTEXT_COOKIE_NAME = 'cc_tenant_context' as const;

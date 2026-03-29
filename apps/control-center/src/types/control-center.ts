@@ -229,6 +229,39 @@ export interface SupportCaseDetail extends SupportCase {
   notes: SupportNote[];
 }
 
+// ── Tenant Context / Impersonation ────────────────────────────────────────────
+
+/**
+ * TenantContext — identifies which tenant the platform admin is currently
+ * "scoped to" for context-switching and impersonation flows.
+ *
+ * Stored in the cc_tenant_context cookie and consumed by pages/actions that
+ * need to filter data by a specific tenant without a full login as that tenant.
+ */
+export interface TenantContext {
+  tenantId:   string;
+  tenantName: string;
+  tenantCode: string;
+}
+
+/**
+ * ImpersonationSession — records a live impersonation started by a platform
+ * admin acting as a tenant.
+ *
+ * originalAdminId       — userId of the PlatformAdmin who started impersonation.
+ * impersonatedTenantId  — id of the tenant whose context is active.
+ * impersonatedTenantName — display name kept for UI banners.
+ * startedAtUtc          — ISO 8601 timestamp in UTC.
+ *
+ * TODO: persist impersonation session in backend and emit audit log entry
+ */
+export interface ImpersonationSession {
+  originalAdminId:        string;
+  impersonatedTenantId:   string;
+  impersonatedTenantName: string;
+  startedAtUtc:           string;
+}
+
 // ── Shared ────────────────────────────────────────────────────────────────────
 
 export interface PagedResponse<T> {

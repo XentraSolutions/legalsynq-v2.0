@@ -4,18 +4,27 @@
  * Provides getSession() and requirePlatformAdmin() as the
  * canonical entry points for all auth checks in this app.
  *
+ * Also owns the tenant context cookie helpers that power
+ * Tenant Context Switching and Impersonation flows.
+ *
  * Implementation delegates to session.ts (which calls
  * GET /identity/api/auth/me via the gateway) and auth-guards.ts.
  *
  * TODO: integrate with Identity service session validation
  * TODO: move to HttpOnly secure cookies
  * TODO: support cross-subdomain auth
+ * TODO: persist tenant context in backend session
  */
 
+import { cookies } from 'next/headers';
 import { getServerSession } from '@/lib/session';
 import { requirePlatformAdmin as _requirePlatformAdmin } from '@/lib/auth-guards';
+import { TENANT_CONTEXT_COOKIE_NAME } from '@/lib/app-config';
 import type { SessionUser } from '@/types/auth';
 import type { PlatformSession } from '@/types';
+import type { TenantContext } from '@/types/control-center';
+
+// ── Session ───────────────────────────────────────────────────────────────────
 
 /**
  * getSession() — reads the current session from the platform_session cookie.
@@ -63,4 +72,81 @@ export function toSessionUser(session: PlatformSession): SessionUser {
     roles:           session.systemRoles,
     isPlatformAdmin: session.isPlatformAdmin,
   };
+}
+
+// ── Tenant Context ────────────────────────────────────────────────────────────
+
+/**
+ * getTenantContext() — reads the active tenant context cookie.
+ *
+ * Returns a TenantContext if the platform admin has switched into a tenant,
+ * or null when no tenant is selected (global admin view).
+ *
+ * Safe to call from Server Components, Server Actions, and Route Handlers.
+ *
+ * The value is stored as JSON in the cc_tenant_context cookie. If the cookie
+ * is present but malformed the function returns null to avoid hard failures.
+ */
+export function getTenantContext(): TenantContext | null {
+  const cookieStore = cookies();
+  const raw = cookieStore.get(TENANT_CONTEXT_COOKIE_NAME)?.value;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      'tenantId'   in parsed && typeof (parsed as Record<string, unknown>).tenantId   === 'string' &&
+      'tenantName' in parsed && typeof (parsed as Record<string, unknown>).tenantName === 'string' &&
+      'tenantCode' in parsed && typeof (parsed as Record<string, unknown>).tenantCode === 'string'
+    ) {
+      return parsed as TenantContext;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * setTenantContext() — writes the active tenant context cookie.
+ *
+ * IMPORTANT: Must only be called from a Server Action or Route Handler.
+ * Calling this inside a Server Component render will throw:
+ *   "Cookies can only be modified in a Server Action or Route Handler."
+ *
+ * Cookie options:
+ *   - httpOnly: false — not an auth credential; client JS may read it for
+ *               optimistic UI state (e.g. banners) without a server round-trip.
+ *   - sameSite: 'lax' — adequate for non-sensitive UI state.
+ *   - path: '/' — available across all Control Center routes.
+ *   - No maxAge — expires with the browser session; cleared on logout anyway.
+ *
+ * TODO: persist tenant context in backend session
+ */
+export function setTenantContext(tenant: TenantContext): void {
+  const cookieStore = cookies();
+  cookieStore.set(TENANT_CONTEXT_COOKIE_NAME, JSON.stringify(tenant), {
+    httpOnly: false,
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path:     '/',
+  });
+}
+
+/**
+ * clearTenantContext() — removes the active tenant context cookie.
+ *
+ * IMPORTANT: Must only be called from a Server Action or Route Handler.
+ *
+ * Called:
+ *   - on logout (BFF /api/auth/logout)
+ *   - when the admin clicks "Exit tenant context"
+ *   - when navigating back to the global admin view
+ *
+ * TODO: persist tenant context in backend session
+ */
+export function clearTenantContext(): void {
+  const cookieStore = cookies();
+  cookieStore.delete(TENANT_CONTEXT_COOKIE_NAME);
 }
