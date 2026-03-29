@@ -8,6 +8,7 @@ import type {
   RoleSummary,
   RoleDetail,
   ProductEntitlementSummary,
+  ProductCode,
   EntitlementStatus,
   PagedResponse,
   TenantType,
@@ -219,22 +220,36 @@ function buildUserDetail(summary: UserSummary): UserDetail {
 
 // ── Mock tenant detail builder ────────────────────────────────────────────────
 
-const ALL_PRODUCTS = [
-  { productCode: 'SYNQFUND',    productName: 'SynqFund'    },
-  { productCode: 'SYNQLIEN',    productName: 'SynqLien'    },
-  { productCode: 'SYNQBILL',    productName: 'SynqBill'    },
-  { productCode: 'SYNQRX',      productName: 'SynqRx'      },
-  { productCode: 'SYNQPAYOUT',  productName: 'SynqPayout'  },
-  { productCode: 'CARECONNECT', productName: 'CareConnect' },
+const ALL_PRODUCTS: { productCode: ProductCode; productName: string }[] = [
+  { productCode: 'SynqFund',    productName: 'SynqFund'    },
+  { productCode: 'SynqLien',    productName: 'SynqLien'    },
+  { productCode: 'SynqBill',    productName: 'SynqBill'    },
+  { productCode: 'SynqRx',      productName: 'SynqRx'      },
+  { productCode: 'SynqPayout',  productName: 'SynqPayout'  },
+  { productCode: 'CareConnect', productName: 'CareConnect' },
 ];
 
-const ENABLED_BY_TYPE: Record<TenantType, string[]> = {
-  LawFirm:    ['SYNQFUND', 'SYNQLIEN', 'CARECONNECT'],
-  Provider:   ['CARECONNECT', 'SYNQRX'],
-  Corporate:  ['SYNQFUND', 'SYNQBILL', 'SYNQPAYOUT', 'SYNQRX', 'SYNQLIEN', 'CARECONNECT'],
-  Government: ['CARECONNECT', 'SYNQBILL'],
+const ENABLED_BY_TYPE: Record<TenantType, ProductCode[]> = {
+  LawFirm:    ['SynqFund', 'SynqLien', 'CareConnect'],
+  Provider:   ['CareConnect', 'SynqRx'],
+  Corporate:  ['SynqFund', 'SynqBill', 'SynqPayout', 'SynqRx', 'SynqLien', 'CareConnect'],
+  Government: ['CareConnect', 'SynqBill'],
   Other:      [],
 };
+
+/**
+ * In-memory entitlement overrides.
+ * Keyed by tenantId → productCode → enabled.
+ * Resets on server restart; replaced by DB calls once backend is live.
+ */
+const ENTITLEMENT_OVERRIDES = new Map<string, Map<ProductCode, boolean>>();
+
+function getEntitlementOverrides(tenantId: string): Map<ProductCode, boolean> {
+  if (!ENTITLEMENT_OVERRIDES.has(tenantId)) {
+    ENTITLEMENT_OVERRIDES.set(tenantId, new Map());
+  }
+  return ENTITLEMENT_OVERRIDES.get(tenantId)!;
+}
 
 const DETAIL_EXTRAS: Record<string, { email: string; updatedAtUtc: string; activeUserCount: number }> = {
   HARTWELL:    { email: 'admin@hartwell.law',           updatedAtUtc: '2024-11-20T09:00:00Z', activeUserCount: 12 },
@@ -247,14 +262,22 @@ const DETAIL_EXTRAS: Record<string, { email: string; updatedAtUtc: string; activ
   GRAYSTONE:   { email: 'it@graystonegov.org',          updatedAtUtc: '2024-10-01T12:00:00Z', activeUserCount: 0  },
 };
 
-function buildProductEntitlements(type: TenantType, code: string): ProductEntitlementSummary[] {
-  const enabledCodes = code === 'LEGALSYNQ'
+function buildProductEntitlements(
+  type:     TenantType,
+  code:     string,
+  tenantId: string,
+): ProductEntitlementSummary[] {
+  const defaults: ProductCode[] = code === 'LEGALSYNQ'
     ? ALL_PRODUCTS.map(p => p.productCode)
     : ENABLED_BY_TYPE[type] ?? [];
 
+  const overrides = getEntitlementOverrides(tenantId);
+
   return ALL_PRODUCTS.map(p => {
-    const enabled = enabledCodes.includes(p.productCode);
-    const status: EntitlementStatus = enabled ? 'Enabled' : 'Disabled';
+    const enabled = overrides.has(p.productCode)
+      ? overrides.get(p.productCode)!
+      : defaults.includes(p.productCode);
+    const status: EntitlementStatus = enabled ? 'Active' : 'Disabled';
     return {
       productCode:  p.productCode,
       productName:  p.productName,
@@ -277,7 +300,7 @@ function buildTenantDetail(summary: TenantSummary): TenantDetail {
     updatedAtUtc:        extras.updatedAtUtc,
     activeUserCount:     extras.activeUserCount,
     linkedOrgCount:      summary.orgCount,
-    productEntitlements: buildProductEntitlements(summary.type, summary.code),
+    productEntitlements: buildProductEntitlements(summary.type, summary.code, summary.id),
   };
 }
 
@@ -445,6 +468,29 @@ export const controlCenterServerApi = {
       const summary = MOCK_TENANTS.find(t => t.id === id);
       if (!summary) return Promise.resolve(null);
       return Promise.resolve(buildTenantDetail(summary));
+    },
+
+    // TODO: replace with POST /identity/api/admin/tenants/{id}/entitlements
+    updateEntitlement: (
+      tenantId:    string,
+      productCode: ProductCode,
+      enabled:     boolean,
+    ): Promise<ProductEntitlementSummary> => {
+      const summary = MOCK_TENANTS.find(t => t.id === tenantId);
+      if (!summary) return Promise.reject(new Error(`Tenant ${tenantId} not found`));
+
+      getEntitlementOverrides(tenantId).set(productCode, enabled);
+
+      const product = ALL_PRODUCTS.find(p => p.productCode === productCode);
+      const status: EntitlementStatus = enabled ? 'Active' : 'Disabled';
+      const result: ProductEntitlementSummary = {
+        productCode,
+        productName:  product?.productName ?? productCode,
+        enabled,
+        status,
+        enabledAtUtc: enabled ? new Date().toISOString() : undefined,
+      };
+      return Promise.resolve(result);
     },
   },
 

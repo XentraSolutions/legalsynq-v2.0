@@ -1,7 +1,1 @@
-{
-  "/_not-found/page": "app/_not-found/page.js",
-  "/roles/page": "app/roles/page.js",
-  "/tenants/page": "app/tenants/page.js",
-  "/tenant-users/page": "app/tenant-users/page.js",
-  "/tenants/[id]/page": "app/tenants/[id]/page.js"
-}
+{}

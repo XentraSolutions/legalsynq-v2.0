@@ -5,6 +5,7 @@ import { Routes } from '@/lib/routes';
 import { CCShell } from '@/components/shell/cc-shell';
 import { TenantDetailCard } from '@/components/tenants/tenant-detail-card';
 import { TenantActions } from '@/components/tenants/tenant-actions';
+import { ProductEntitlementsPanel } from '@/components/tenants/product-entitlements-panel';
 import type { TenantStatus, TenantType } from '@/types/control-center';
 
 interface TenantDetailPageProps {
@@ -98,6 +99,12 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
 
             {/* Detail sections */}
             <TenantDetailCard tenant={tenant} />
+
+            {/* ── Product Entitlements (editable) ───────────────────────────── */}
+            <ProductEntitlementsPanel
+              tenantId={tenant.id}
+              entitlements={tenant.productEntitlements}
+            />
           </>
         )}
       </div>

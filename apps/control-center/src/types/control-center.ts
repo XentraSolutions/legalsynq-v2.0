@@ -34,14 +34,27 @@ export interface TenantDetail extends TenantSummary {
 
 // ── Product Entitlements ──────────────────────────────────────────────────────
 
-export type EntitlementStatus = 'Enabled' | 'Disabled' | 'NotProvisioned';
+/**
+ * Canonical product identifiers used across the LegalSynq platform.
+ * Must match values emitted by Identity service entitlement endpoints.
+ */
+export type ProductCode =
+  | 'SynqFund'
+  | 'SynqLien'
+  | 'SynqBill'
+  | 'SynqRx'
+  | 'SynqPayout'
+  | 'CareConnect';
+
+/** Live status of a product entitlement for a tenant. */
+export type EntitlementStatus = 'Active' | 'Disabled';
 
 /**
  * A single product entitlement for a tenant.
  * Used inside TenantDetail.productEntitlements.
  */
 export interface ProductEntitlementSummary {
-  productCode:   string;
+  productCode:   ProductCode;
   productName:   string;
   enabled:       boolean;
   status:        EntitlementStatus;

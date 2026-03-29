@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { TenantDetail, ProductEntitlementSummary, EntitlementStatus } from '@/types/control-center';
+import type { TenantDetail } from '@/types/control-center';
 
 interface TenantDetailCardProps {
   tenant: TenantDetail;
@@ -62,31 +62,6 @@ export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
         </dl>
       </div>
 
-      {/* ── D. Product Entitlements ───────────────────────────────────────── */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Product Entitlements
-          </h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-100">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Product</th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Enabled</th>
-                <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {tenant.productEntitlements.map(p => (
-                <EntitlementRow key={p.productCode} entitlement={p} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
     </div>
   );
 }
@@ -108,40 +83,6 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
       <dt className="w-36 shrink-0 text-xs font-medium text-gray-500">{label}</dt>
       <dd className="text-sm text-gray-800">{value}</dd>
     </div>
-  );
-}
-
-function EntitlementRow({ entitlement }: { entitlement: ProductEntitlementSummary }) {
-  return (
-    <tr className="hover:bg-gray-50 transition-colors">
-      <td className="px-5 py-3 text-sm font-medium text-gray-900">
-        {entitlement.productName}
-      </td>
-      <td className="px-5 py-3 text-sm text-gray-700">
-        {entitlement.enabled ? 'Yes' : 'No'}
-      </td>
-      <td className="px-5 py-3">
-        <EntitlementStatusBadge status={entitlement.status} />
-      </td>
-    </tr>
-  );
-}
-
-function EntitlementStatusBadge({ status }: { status: EntitlementStatus }) {
-  const styles: Record<EntitlementStatus, string> = {
-    Enabled:         'bg-green-50 text-green-700 border-green-200',
-    Disabled:        'bg-gray-100 text-gray-500 border-gray-200',
-    NotProvisioned:  'bg-yellow-50 text-yellow-700 border-yellow-200',
-  };
-  const labels: Record<EntitlementStatus, string> = {
-    Enabled:        'Enabled',
-    Disabled:       'Disabled',
-    NotProvisioned: 'Not Provisioned',
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${styles[status]}`}>
-      {labels[status]}
-    </span>
   );
 }
 
