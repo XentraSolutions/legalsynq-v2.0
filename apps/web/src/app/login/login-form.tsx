@@ -1,37 +1,24 @@
 'use client';
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
  * Login form — calls the Next.js BFF route POST /api/auth/login.
  *
- * The BFF route:
- *   1. Resolves tenantCode from the Host header (production)
- *      OR accepts it explicitly from the form body (dev mode)
- *   2. Forwards credentials to the Identity service
- *   3. Receives the JWT and sets it as an HttpOnly cookie (platform_session)
- *   4. Returns only the session envelope — the raw token never reaches browser JS
- *
- * In local dev (NEXT_PUBLIC_ENV=development), a tenantCode field is shown
- * because localhost has no subdomain for automatic resolution.
+ * Loaded client-only (ssr: false in page.tsx) so env vars can be read
+ * safely without any server/client hydration mismatch.
  */
 export function LoginForm() {
   const router = useRouter();
 
-  // Defer env-dependent state to after hydration to avoid server/client mismatch.
-  const [isDev, setIsDev]           = useState(false);
+  const isDev = process.env.NEXT_PUBLIC_ENV === 'development';
+
   const [email,      setEmail]      = useState('');
   const [password,   setPassword]   = useState('');
-  const [tenantCode, setTenantCode] = useState('');
+  const [tenantCode, setTenantCode] = useState(process.env.NEXT_PUBLIC_TENANT_CODE ?? '');
   const [error,      setError]      = useState<string | null>(null);
   const [loading,    setLoading]    = useState(false);
-
-  // Runs only on the client — safe to read NEXT_PUBLIC_ env vars here.
-  useEffect(() => {
-    setIsDev(process.env.NEXT_PUBLIC_ENV === 'development');
-    setTenantCode(process.env.NEXT_PUBLIC_TENANT_CODE ?? '');
-  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -41,8 +28,6 @@ export function LoginForm() {
       const body: Record<string, string> = { email, password };
       if (tenantCode) body.tenantCode = tenantCode;
 
-      // POST to the Next.js BFF — NOT the gateway directly.
-      // The BFF sets the platform_session HttpOnly cookie and returns the session envelope.
       const res = await fetch('/api/auth/login', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,8 +40,6 @@ export function LoginForm() {
         return;
       }
 
-      // Cookie is already set by the BFF response (HttpOnly — browser JS cannot read it).
-      // Navigate to dashboard — SessionProvider will call /api/auth/me and pick up the session.
       router.push('/dashboard');
     } catch {
       setError('Network error. Please try again.');
