@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { SignOutButton } from './sign-out-button';
 import { CCSidebar } from './cc-sidebar';
 import { AppSwitcher } from './app-switcher';
+import { TenantContextBanner } from '@/components/layout/tenant-context-banner';
+import { getTenantContext } from '@/lib/auth';
 
 interface CCShellProps {
   children:  ReactNode;
@@ -15,9 +17,17 @@ interface CCShellProps {
  * Receives userEmail as a prop from the Server Component layout (no client-side
  * session hook needed — the layout already calls requirePlatformAdmin()).
  *
- * Layout: fixed top bar + fixed sidebar + scrollable main content area.
+ * Layout:
+ *   fixed top bar
+ *   [amber TenantContextBanner — only when a tenant context is active]
+ *   fixed sidebar + scrollable main content area
+ *
+ * getTenantContext() is synchronous and reads the cc_tenant_context cookie
+ * directly — no network call, no latency.
  */
 export function CCShell({ children, userEmail }: CCShellProps) {
+  const tenantCtx = getTenantContext();
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Top bar */}
@@ -43,6 +53,9 @@ export function CCShell({ children, userEmail }: CCShellProps) {
           <SignOutButton />
         </div>
       </header>
+
+      {/* Tenant context banner — visible only in context mode */}
+      {tenantCtx && <TenantContextBanner context={tenantCtx} />}
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">

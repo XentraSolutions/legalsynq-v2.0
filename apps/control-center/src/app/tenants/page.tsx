@@ -1,4 +1,5 @@
 import { requirePlatformAdmin } from '@/lib/auth-guards';
+import { getTenantContext } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { TenantListTable } from '@/components/tenants/tenant-list-table';
@@ -19,7 +20,8 @@ interface TenantsPageProps {
  * TODO: When GET /identity/api/admin/tenants is live, the stub auto-wires — no page change needed.
  */
 export default async function TenantsPage({ searchParams }: TenantsPageProps) {
-  const session = await requirePlatformAdmin();
+  const session    = await requirePlatformAdmin();
+  const tenantCtx  = getTenantContext();
 
   const page   = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
   const search = searchParams.search ?? '';
@@ -38,7 +40,15 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-gray-900">Tenants</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold text-gray-900">Tenants</h1>
+            {tenantCtx && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[11px] font-semibold text-amber-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                Scoped to {tenantCtx.tenantName}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             disabled

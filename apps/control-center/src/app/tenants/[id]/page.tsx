@@ -6,6 +6,7 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { TenantDetailCard } from '@/components/tenants/tenant-detail-card';
 import { TenantActions } from '@/components/tenants/tenant-actions';
 import { ProductEntitlementsPanel } from '@/components/tenants/product-entitlements-panel';
+import { switchTenantContextAction } from '@/app/actions/tenant-context';
 import type { TenantStatus, TenantType } from '@/types/control-center';
 
 interface TenantDetailPageProps {
@@ -88,7 +89,29 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
               </div>
 
               {/* Action buttons */}
-              <TenantActions tenantId={tenant.id} currentStatus={tenant.status} />
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Switch to Tenant Context */}
+                {(() => {
+                  const switchAction = switchTenantContextAction.bind(null, {
+                    tenantId:   tenant.id,
+                    tenantName: tenant.displayName,
+                    tenantCode: tenant.code,
+                  });
+                  return (
+                    <form action={switchAction}>
+                      <button
+                        type="submit"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 hover:border-amber-400 px-3 py-1.5 rounded-md transition-colors"
+                        title="Switch admin view into this tenant's context"
+                      >
+                        <span aria-hidden="true">⇄</span>
+                        Switch to Tenant Context
+                      </button>
+                    </form>
+                  );
+                })()}
+                <TenantActions tenantId={tenant.id} currentStatus={tenant.status} />
+              </div>
             </div>
 
             {/* Sub-navigation tabs */}
