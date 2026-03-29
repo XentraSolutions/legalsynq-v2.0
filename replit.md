@@ -465,7 +465,7 @@ dotnet tool run dotnet-ef migrations add <Name> \
 - **Display fields (both endpoints):** `DisplayLabel = OrganizationName ?? Name`; `MarkerSubtitle = "City, State[ · PrimaryCategory]"`; `PrimaryCategory` = first category alphabetically.
 - **`BuildBaseQuery`:** Shared LINQ filter builder in `ProviderRepository` used by both `SearchAsync` and `GetMarkersAsync` to avoid duplication.
 
-## Docs Service (apps/services/docs) — Test Coverage
+## Docs Service (apps/services/documents-nodejs) — Test Coverage
 
 **258 tests across 14 suites, all passing.**
 
@@ -550,7 +550,7 @@ dotnet ef database update \
 Or run `apps/services/documents-dotnet/Documents.Infrastructure/Database/schema.sql` directly against PostgreSQL.
 
 ### Analysis Documents (7 phases)
-All in `apps/services/docs/analysis/`:
+All in `apps/services/documents-nodejs/analysis/`:
 - `dotnet_phase1_discovery_and_mapping.md` — TS→.NET translation decisions
 - `dotnet_phase2_scaffolding.md` — project structure and dependency graph
 - `dotnet_phase3_domain_and_contracts.md` — entities, enums, interfaces, invariants
