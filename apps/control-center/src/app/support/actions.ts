@@ -1,5 +1,21 @@
 'use server';
 
+/**
+ * support/actions.ts — Server Actions for Support Case management.
+ *
+ * ── Security guards ──────────────────────────────────────────────────────────
+ *
+ *   Every action calls requirePlatformAdmin() before any mutation.
+ *   This performs a full server-side session + role check:
+ *     - No session cookie  → redirect /login?reason=unauthenticated
+ *     - Session invalid    → redirect /login?reason=unauthenticated
+ *     - Not PlatformAdmin  → redirect /login?reason=unauthorized
+ *
+ * TODO: add RBAC enforcement middleware
+ * TODO: add rate limiting
+ */
+
+import { requirePlatformAdmin } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import type { SupportCaseDetail, SupportCaseStatus, SupportNote, SupportCase } from '@/types/control-center';
 
@@ -23,12 +39,14 @@ export interface CreateCaseResult {
 
 /**
  * Update the status of a support case.
+ * Requires an active PlatformAdmin session.
  * TODO: replace with POST /identity/api/admin/support/{id}/status
  */
 export async function updateCaseStatus(
   caseId: string,
   status: SupportCaseStatus,
 ): Promise<UpdateStatusResult> {
+  await requirePlatformAdmin();
   try {
     const updated = await controlCenterServerApi.support.updateStatus(caseId, status);
     return { success: true, case: updated };
@@ -39,12 +57,14 @@ export async function updateCaseStatus(
 
 /**
  * Add an internal note to a support case.
+ * Requires an active PlatformAdmin session.
  * TODO: replace with POST /identity/api/admin/support/{id}/notes
  */
 export async function addCaseNote(
   caseId:  string,
   message: string,
 ): Promise<AddNoteResult> {
+  await requirePlatformAdmin();
   if (!message.trim()) return { success: false, error: 'Note cannot be empty.' };
   try {
     const note = await controlCenterServerApi.support.addNote(caseId, message.trim());
@@ -56,6 +76,7 @@ export async function addCaseNote(
 
 /**
  * Create a new support case.
+ * Requires an active PlatformAdmin session.
  * TODO: replace with POST /identity/api/admin/support
  */
 export async function createSupportCase(data: {
@@ -67,6 +88,7 @@ export async function createSupportCase(data: {
   category:   string;
   priority:   SupportCase['priority'];
 }): Promise<CreateCaseResult> {
+  await requirePlatformAdmin();
   if (!data.title.trim()) return { success: false, error: 'Title is required.' };
   try {
     const created = await controlCenterServerApi.support.create(data);

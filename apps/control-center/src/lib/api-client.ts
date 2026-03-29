@@ -16,6 +16,22 @@
  *       services so a single user-visible error can be traced end-to-end
  *     - all log entries for the request lifecycle
  *
+ * ── Session pre-flight check ──────────────────────────────────────────────────
+ *
+ *   Before building headers or logging anything, apiFetch checks whether the
+ *   platform_session cookie is present. If it is missing entirely, the request
+ *   is aborted and the caller is redirected to /login?reason=session_expired.
+ *
+ *   This avoids an unnecessary gateway round-trip: without a token the gateway
+ *   would return 401 anyway, which apiFetch would then redirect on. The
+ *   pre-flight check short-circuits that path immediately and logs a WARN
+ *   entry so operators can detect clients with stale sessions.
+ *
+ *   Note: the check is a cookie-presence guard only — it does NOT validate the
+ *   JWT signature or expiry. Full validation happens on the Identity service
+ *   when the token is forwarded. A token that is present but expired still
+ *   results in a 401 response (and subsequent redirect) at step 6 below.
+ *
  * ── Observability ────────────────────────────────────────────────────────────
  *
  *   apiFetch emits structured log entries at each lifecycle point:
@@ -24,6 +40,7 @@
  *     api.request.redirect_401— session expired, durationMs
  *     api.request.error       — status, message, durationMs (4xx/5xx)
  *     api.network_failure     — network-level error before HTTP response
+ *     security.session.missing_token — pre-flight abort (no cookie at all)
  *
  * ── Caching (GET requests only) ──────────────────────────────────────────────
  *
@@ -47,7 +64,7 @@
 
 import { redirect }                    from 'next/navigation';
 import { cookies }                     from 'next/headers';
-import { logInfo, logError }           from '@/lib/logger';
+import { logInfo, logWarn, logError }   from '@/lib/logger';
 import { getTenantContext, getImpersonation } from '@/lib/auth';
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -173,6 +190,19 @@ export async function apiFetch<T>(
   const cookieStore = cookies();
   const token = cookieStore.get('platform_session')?.value;
 
+  // ── Session pre-flight check ───────────────────────────────────────────
+  // If the session cookie is completely absent, short-circuit immediately.
+  // This avoids a gateway round-trip that would result in a 401 → redirect
+  // anyway. A WARN log is emitted so operators can detect stale sessions.
+  // Note: this is a presence check only. JWT expiry / signature validation
+  // happens on the Identity service when the token is forwarded (step 5+).
+  // TODO: add CSRF protection
+  // TODO: add rate limiting on failed auth attempts
+  if (!token) {
+    logWarn('security.session.missing_token', { requestId, method, endpoint: path });
+    redirect('/login?reason=session_expired');
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Accept':       'application/json',
@@ -180,11 +210,8 @@ export async function apiFetch<T>(
     // log entries across the entire call chain.
     // TODO: integrate with Datadog / OpenTelemetry distributed tracing
     'X-Request-Id': requestId,
+    'Authorization': `Bearer ${token}`,
   };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   // ── 3. Cache config ───────────────────────────────────────────────────────
 
