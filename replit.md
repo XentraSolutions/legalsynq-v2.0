@@ -464,3 +464,41 @@ dotnet tool run dotnet-ef migrations add <Name> \
 - **`GET /api/providers/map`:** Returns `ProviderMarkerResponse[]`, capped at 500 markers, only geo-located providers. Shares all filter params with the list endpoint.
 - **Display fields (both endpoints):** `DisplayLabel = OrganizationName ?? Name`; `MarkerSubtitle = "City, State[ · PrimaryCategory]"`; `PrimaryCategory` = first category alphabetically.
 - **`BuildBaseQuery`:** Shared LINQ filter builder in `ProviderRepository` used by both `SearchAsync` and `GetMarkersAsync` to avoid duplication.
+
+## Docs Service (apps/services/docs) — Test Coverage
+
+**258 tests across 14 suites, all passing.**
+
+### Unit Tests (161 tests, 7 suites)
+`npm run test:unit` — mocked DB/storage/auth.
+
+| Suite | Tests | Coverage |
+|-------|-------|----------|
+| errors.test.ts | 28 | Error hierarchy, HTTP status codes, error codes |
+| rbac.test.ts | 22 | ROLE_PERMISSIONS matrix, assertPermission, assertTenantScope |
+| malware-scanning.test.ts | 27 | NullScanner, MockScanner, ClamAV, scan gate, ScanService lifecycle |
+| access-mediation.test.ts | 20 | AccessTokenService issue/redeem/one-time-use, scan gate |
+| redis-backing.test.ts | 23 | RedisRateLimiter, RedisAccessTokenStore, fallback |
+| tenant-isolation.test.ts | 22 | assertDocumentTenantScope, resolveEffectiveTenantId, Layer2 ABAC |
+| rate-limiting.test.ts | 19 | generalLimiter, uploadLimiter, signedUrlLimiter, IP+user+tenant dims |
+
+### Integration Tests (97 tests, 7 suites)
+`npm run test:int` — real PostgreSQL (heliumdb), local storage, HS256 JWT.
+
+| Suite | Tests | Coverage |
+|-------|-------|----------|
+| auth.test.ts | 25 | Missing/invalid/expired tokens, auth bypass attempts |
+| rbac.test.ts | 22 | Full RBAC matrix against live API |
+| tenant-isolation.test.ts | 21 | Three-layer isolation; cross-tenant 404 not 403; admin audit |
+| upload-validation.test.ts | 14 | MIME whitelist, size limit, magic-byte mismatch |
+| access-control.test.ts | 19 | Soft delete, legal hold, scan status gating, access token round-trip |
+| rate-limiting.test.ts | 9 | 429 after limit, Retry-After header, per-user buckets |
+| audit.test.ts | 28 | DOCUMENT_CREATED/UPDATED/DELETED, SCAN events, ADMIN_CROSS_TENANT_ACCESS, immutability |
+
+### Key architectural fixes discovered during integration testing
+1. `DocumentRepository.create` was generating its own UUID independently from `docId` pre-generated in `document-service.ts`, causing scan audit events to be stored under a mismatched `document_id`. Fixed by accepting optional `id` in create input.
+2. `auth.ts` was using `'unknown'` and `'n/a'` as UUID placeholders in audit events — replaced with nil UUID `00000000-0000-0000-0000-000000000000`.
+3. `file-type` downgraded from v19 (ESM-only) to v16.5.4 (last CJS release) for Jest compatibility.
+
+### Analysis documents
+- `analysis/step14_integration_tests.md` — coverage summary, infrastructure, gaps, how to run

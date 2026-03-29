@@ -79,8 +79,11 @@ export const DocumentService = {
     });
 
     // ── Phase 3: persist document with scan result ──────────────────────────
+    // Pass the pre-generated docId so scan audit events and the document row
+    // share the same document_id in document_audits.
     const doc = await DocumentRepository.create({
       ...input,
+      id:              docId,
       uploadedBy:      ctx.principal.userId,
       storageKey:      key,
       storageBucket:   bucket,

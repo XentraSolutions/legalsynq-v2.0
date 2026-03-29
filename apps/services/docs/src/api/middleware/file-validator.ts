@@ -1,6 +1,6 @@
 import multer from 'multer';
 import type { Request } from 'express';
-import { fileTypeFromBuffer } from 'file-type';
+import { fromBuffer as fileTypeFromBuffer } from 'file-type';
 import { ALLOWED_MIME_TYPES } from '@/shared/constants';
 import {
   FileValidationError,

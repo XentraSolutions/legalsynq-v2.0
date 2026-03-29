@@ -22,13 +22,16 @@ declare global {
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers['authorization'];
 
+  // Nil UUID used as placeholder when no tenant/document context exists
+  const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+
   if (!authHeader?.startsWith('Bearer ')) {
     // Audit the denied attempt before responding
     void auditService.log({
-      tenantId:      'unknown',
-      documentId:    'n/a',
+      tenantId:      NIL_UUID,
+      documentId:    NIL_UUID,
       event:         AuditEvent.ACCESS_DENIED,
-      actorId:       'anonymous',
+      actorId:       NIL_UUID,
       actorRoles:    [],
       correlationId: req.correlationId,
       ipAddress:     req.ip,

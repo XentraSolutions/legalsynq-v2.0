@@ -132,13 +132,14 @@ export const DocumentRepository = {
    * tenantId is taken from the input and embedded in every column — never inferred.
    */
   async create(input: CreateDocumentInput & {
+    id?:         string;
     storageKey: string; storageBucket: string;
     mimeType: string; fileSizeBytes: number; checksum: string;
     scanStatus?: string; scanCompletedAt?: Date | null; scanThreats?: string[];
   }): Promise<Document> {
     requireTenantId(input.tenantId, 'DocumentRepository.create');
 
-    const id = uuidv4();
+    const id = input.id ?? uuidv4();
     const row = await queryOne<Record<string, unknown>>(
       `INSERT INTO documents (
         id, tenant_id, product_id, reference_id, reference_type, document_type_id,
