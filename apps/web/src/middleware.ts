@@ -26,6 +26,9 @@ const PUBLIC_PATHS = [
   '/portal/login',
   '/_next',
   '/favicon.ico',
+  // Auth API endpoints must be reachable before a session cookie exists
+  '/api/auth/login',
+  '/api/auth/logout',
 ];
 
 export function middleware(request: NextRequest) {
