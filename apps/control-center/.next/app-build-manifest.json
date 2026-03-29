@@ -51,10 +51,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/roles/loading.js"
     ],
-    "/_not-found/page": [
+    "/tenant-users/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/tenant-users/page.js"
+    ],
+    "/tenant-users/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenant-users/loading.js"
     ]
   }
 }
