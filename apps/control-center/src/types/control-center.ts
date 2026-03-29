@@ -170,12 +170,32 @@ export interface PlatformSetting {
 
 // ── Monitoring ────────────────────────────────────────────────────────────────
 
+export type MonitoringStatus = 'Healthy' | 'Degraded' | 'Down';
+export type AlertSeverity    = 'Info' | 'Warning' | 'Critical';
+
 export interface SystemHealthSummary {
-  serviceName:  string;
-  status:       'ok' | 'degraded' | 'down' | 'unknown';
-  version?:     string;
-  environment?: string;
-  checkedAtUtc: string;
+  status:           MonitoringStatus;
+  lastCheckedAtUtc: string;
+}
+
+export interface IntegrationStatus {
+  name:             string;
+  status:           MonitoringStatus;
+  latencyMs?:       number;
+  lastCheckedAtUtc: string;
+}
+
+export interface SystemAlert {
+  id:           string;
+  message:      string;
+  severity:     AlertSeverity;
+  createdAtUtc: string;
+}
+
+export interface MonitoringSummary {
+  system:       SystemHealthSummary;
+  integrations: IntegrationStatus[];
+  alerts:       SystemAlert[];
 }
 
 // ── Shared ────────────────────────────────────────────────────────────────────

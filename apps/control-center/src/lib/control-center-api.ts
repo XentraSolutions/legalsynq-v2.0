@@ -12,6 +12,10 @@ import type {
   EntitlementStatus,
   AuditLogEntry,
   PlatformSetting,
+  IntegrationStatus,
+  SystemHealthSummary,
+  SystemAlert,
+  MonitoringSummary,
   PagedResponse,
   TenantType,
 } from '@/types/control-center';
@@ -616,6 +620,81 @@ const MOCK_AUDIT_LOGS = ([
   },
 ] as AuditLogEntry[]).sort((a, b) => b.createdAtUtc.localeCompare(a.createdAtUtc)); // newest first
 
+// ── Mock monitoring data ───────────────────────────────────────────────────────
+// TODO: replace with GET /platform/monitoring/summary
+
+const MOCK_MONITORING_SUMMARY: MonitoringSummary = {
+  system: {
+    status:           'Healthy',
+    lastCheckedAtUtc: '2026-03-29T03:50:00Z',
+  },
+
+  integrations: [
+    {
+      name:             'Identity Service',
+      status:           'Healthy',
+      latencyMs:        42,
+      lastCheckedAtUtc: '2026-03-29T03:50:00Z',
+    },
+    {
+      name:             'Payments Gateway',
+      status:           'Degraded',
+      latencyMs:        1240,
+      lastCheckedAtUtc: '2026-03-29T03:50:00Z',
+    },
+    {
+      name:             'Notifications',
+      status:           'Healthy',
+      latencyMs:        88,
+      lastCheckedAtUtc: '2026-03-29T03:50:00Z',
+    },
+    {
+      name:             'CareConnect API',
+      status:           'Healthy',
+      latencyMs:        115,
+      lastCheckedAtUtc: '2026-03-29T03:50:00Z',
+    },
+    {
+      name:             'Document Storage',
+      status:           'Down',
+      lastCheckedAtUtc: '2026-03-29T03:48:00Z',
+    },
+  ],
+
+  alerts: [
+    {
+      id:           'alert-001',
+      message:      'Payments Gateway latency above 1 000 ms threshold — investigating upstream provider.',
+      severity:     'Warning',
+      createdAtUtc: '2026-03-29T03:45:00Z',
+    },
+    {
+      id:           'alert-002',
+      message:      'Document Storage health check failed — service unreachable since 03:48 UTC.',
+      severity:     'Critical',
+      createdAtUtc: '2026-03-29T03:48:00Z',
+    },
+    {
+      id:           'alert-003',
+      message:      'Scheduled maintenance window confirmed for 2026-04-01 02:00–04:00 UTC.',
+      severity:     'Info',
+      createdAtUtc: '2026-03-28T18:00:00Z',
+    },
+    {
+      id:           'alert-004',
+      message:      'Identity Service certificate renewal completed successfully.',
+      severity:     'Info',
+      createdAtUtc: '2026-03-27T10:00:00Z',
+    },
+    {
+      id:           'alert-005',
+      message:      'Unusual login volume detected from GRAYSTONE tenant — security review initiated.',
+      severity:     'Warning',
+      createdAtUtc: '2026-03-26T22:15:00Z',
+    },
+  ],
+};
+
 // ── Mock platform settings ─────────────────────────────────────────────────────
 // TODO: replace with GET/POST /identity/api/admin/settings
 
@@ -838,6 +917,16 @@ export const controlCenterServerApi = {
       MOCK_SETTINGS_STORE[idx] = { ...setting, value };
       return Promise.resolve({ ...MOCK_SETTINGS_STORE[idx] });
     },
+  },
+
+  monitoring: {
+    // TODO: replace with GET /platform/monitoring/summary
+    getSummary: (): Promise<MonitoringSummary> =>
+      Promise.resolve({
+        system:       { ...MOCK_MONITORING_SUMMARY.system },
+        integrations: MOCK_MONITORING_SUMMARY.integrations.map(i => ({ ...i })),
+        alerts:       MOCK_MONITORING_SUMMARY.alerts.map(a => ({ ...a })),
+      }),
   },
 };
 
