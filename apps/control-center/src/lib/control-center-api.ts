@@ -10,6 +10,7 @@ import type {
   ProductEntitlementSummary,
   ProductCode,
   EntitlementStatus,
+  AuditLogEntry,
   PagedResponse,
   TenantType,
 } from '@/types/control-center';
@@ -431,6 +432,189 @@ function buildRoleDetail(summary: RoleSummary): RoleDetail {
   };
 }
 
+// ── Mock audit log data ───────────────────────────────────────────────────────
+// TODO: replace with GET /identity/api/admin/audit
+
+const MOCK_AUDIT_LOGS = ([
+  // ── User actions ────────────────────────────────────────────────────────────
+  {
+    id: 'al-001', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'user.invite',            entityType: 'User',        entityId: 'o.chen@hartwell.law',
+    metadata: { tenantCode: 'HARTWELL', role: 'CaseManager' },
+    createdAtUtc: '2025-03-10T11:05:00Z',
+  },
+  {
+    id: 'al-002', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'user.deactivate',        entityType: 'User',        entityId: 'a.diallo@meridiancare.com',
+    metadata: { tenantCode: 'MERIDIAN', reason: 'extended-leave' },
+    createdAtUtc: '2024-12-10T10:00:00Z',
+  },
+  {
+    id: 'al-003', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'user.lock',              entityType: 'User',        entityId: 'tanya@bluehavenrecovery.org',
+    metadata: { tenantCode: 'BLUEHAVEN', reason: 'policy-violation' },
+    createdAtUtc: '2024-09-15T08:30:00Z',
+  },
+  {
+    id: 'al-004', actorName: 'n.patel@legalsynq.com',  actorType: 'Admin',
+    action: 'user.invite',            entityType: 'User',        entityId: 's.kirk@thornfieldlaw.com',
+    metadata: { tenantCode: 'THORNFIELD', role: 'CaseManager' },
+    createdAtUtc: '2025-02-20T14:05:00Z',
+  },
+  {
+    id: 'al-005', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'user.lock',              entityType: 'User',        entityId: 'p.langford@graystonegov.org',
+    metadata: { tenantCode: 'GRAYSTONE', reason: 'account-suspended' },
+    createdAtUtc: '2024-10-01T12:10:00Z',
+  },
+  {
+    id: 'al-006', actorName: 'n.patel@legalsynq.com',  actorType: 'Admin',
+    action: 'user.invite',            entityType: 'User',        entityId: 'y.tanaka@nexushealth.net',
+    metadata: { tenantCode: 'NEXUSHEALTH', role: 'ReadOnly' },
+    createdAtUtc: '2025-03-15T11:05:00Z',
+  },
+  {
+    id: 'al-007', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'user.unlock',            entityType: 'User',        entityId: 'j.whitmore@hartwell.law',
+    metadata: { tenantCode: 'HARTWELL' },
+    createdAtUtc: '2025-01-15T14:05:00Z',
+  },
+  {
+    id: 'al-008', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'user.password_reset',    entityType: 'User',        entityId: 'r.moss@pinnaclelegal.com',
+    metadata: { tenantCode: 'PINNACLE', method: 'email-link' },
+    createdAtUtc: '2025-03-05T08:15:00Z',
+  },
+
+  // ── Tenant updates ──────────────────────────────────────────────────────────
+  {
+    id: 'al-009', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'tenant.create',          entityType: 'Tenant',      entityId: 'HARTWELL',
+    metadata: { tenantType: 'LawFirm' },
+    createdAtUtc: '2024-02-15T08:30:00Z',
+  },
+  {
+    id: 'al-010', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'tenant.create',          entityType: 'Tenant',      entityId: 'NEXUSHEALTH',
+    metadata: { tenantType: 'Provider' },
+    createdAtUtc: '2024-06-18T08:45:00Z',
+  },
+  {
+    id: 'al-011', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'tenant.suspend',         entityType: 'Tenant',      entityId: 'GRAYSTONE',
+    metadata: { previousStatus: 'Active', reason: 'non-payment' },
+    createdAtUtc: '2024-10-01T12:00:00Z',
+  },
+  {
+    id: 'al-012', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'tenant.deactivate',      entityType: 'Tenant',      entityId: 'BLUEHAVEN',
+    metadata: { previousStatus: 'Active' },
+    createdAtUtc: '2024-09-01T09:00:00Z',
+  },
+  {
+    id: 'al-013', actorName: 'n.patel@legalsynq.com',  actorType: 'Admin',
+    action: 'tenant.create',          entityType: 'Tenant',      entityId: 'THORNFIELD',
+    metadata: { tenantType: 'LawFirm' },
+    createdAtUtc: '2024-06-05T11:30:00Z',
+  },
+  {
+    id: 'al-014', actorName: 'n.patel@legalsynq.com',  actorType: 'Admin',
+    action: 'tenant.update',          entityType: 'Tenant',      entityId: 'MERIDIAN',
+    metadata: { field: 'primaryContactEmail', previous: 'old@meridiancare.com', next: 'ops@meridiancare.com' },
+    createdAtUtc: '2025-01-05T14:30:00Z',
+  },
+
+  // ── Entitlement changes ─────────────────────────────────────────────────────
+  {
+    id: 'al-015', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'entitlement.enable',     entityType: 'Entitlement', entityId: 'HARTWELL:SynqFund',
+    metadata: { tenantCode: 'HARTWELL', product: 'SynqFund' },
+    createdAtUtc: '2024-02-16T09:00:00Z',
+  },
+  {
+    id: 'al-016', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'entitlement.enable',     entityType: 'Entitlement', entityId: 'MERIDIAN:CareConnect',
+    metadata: { tenantCode: 'MERIDIAN', product: 'CareConnect' },
+    createdAtUtc: '2024-03-02T10:15:00Z',
+  },
+  {
+    id: 'al-017', actorName: 'n.patel@legalsynq.com',  actorType: 'Admin',
+    action: 'entitlement.disable',    entityType: 'Entitlement', entityId: 'BLUEHAVEN:CareConnect',
+    metadata: { tenantCode: 'BLUEHAVEN', product: 'CareConnect', reason: 'subscription-lapsed' },
+    createdAtUtc: '2024-09-02T10:00:00Z',
+  },
+  {
+    id: 'al-018', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'entitlement.enable',     entityType: 'Entitlement', entityId: 'THORNFIELD:SynqLien',
+    metadata: { tenantCode: 'THORNFIELD', product: 'SynqLien' },
+    createdAtUtc: '2024-06-06T08:00:00Z',
+  },
+  {
+    id: 'al-019', actorName: 'n.patel@legalsynq.com',  actorType: 'Admin',
+    action: 'entitlement.enable',     entityType: 'Entitlement', entityId: 'NEXUSHEALTH:SynqRx',
+    metadata: { tenantCode: 'NEXUSHEALTH', product: 'SynqRx' },
+    createdAtUtc: '2024-07-01T11:00:00Z',
+  },
+  {
+    id: 'al-020', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'entitlement.disable',    entityType: 'Entitlement', entityId: 'GRAYSTONE:SynqBill',
+    metadata: { tenantCode: 'GRAYSTONE', product: 'SynqBill', reason: 'account-suspended' },
+    createdAtUtc: '2024-10-02T08:00:00Z',
+  },
+
+  // ── Role changes ────────────────────────────────────────────────────────────
+  {
+    id: 'al-021', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'role.assign',            entityType: 'Role',        entityId: 'PlatformAdmin',
+    metadata: { assignedTo: 'n.patel@legalsynq.com' },
+    createdAtUtc: '2024-01-05T08:10:00Z',
+  },
+  {
+    id: 'al-022', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'role.assign',            entityType: 'Role',        entityId: 'SupportAdmin',
+    metadata: { assignedTo: 'support@legalsynq.com' },
+    createdAtUtc: '2024-03-15T10:00:00Z',
+  },
+  {
+    id: 'al-023', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'role.revoke',            entityType: 'Role',        entityId: 'ReadOnly',
+    metadata: { revokedFrom: 'temp@legalsynq.com', reason: 'contract-ended' },
+    createdAtUtc: '2024-11-30T17:00:00Z',
+  },
+
+  // ── System events ────────────────────────────────────────────────────────────
+  {
+    id: 'al-024', actorName: 'identity-service',       actorType: 'System',
+    action: 'system.migration',       entityType: 'System',      entityId: 'identity-db',
+    metadata: { migration: '20260328200000_AddMultiOrgProductRoleModel', result: 'applied' },
+    createdAtUtc: '2026-03-28T20:00:10Z',
+  },
+  {
+    id: 'al-025', actorName: 'identity-service',       actorType: 'System',
+    action: 'system.health_check',    entityType: 'System',      entityId: 'identity-service',
+    metadata: { status: 'healthy', durationMs: 12 },
+    createdAtUtc: '2025-03-29T06:00:00Z',
+  },
+  {
+    id: 'al-026', actorName: 'identity-service',       actorType: 'System',
+    action: 'user.session_expired',   entityType: 'User',        entityId: 'p.langford@graystonegov.org',
+    metadata: { tenantCode: 'GRAYSTONE', reason: 'jwt-ttl' },
+    createdAtUtc: '2024-09-20T18:00:00Z',
+  },
+  {
+    id: 'al-027', actorName: 'admin@legalsynq.com',    actorType: 'Admin',
+    action: 'tenant.activate',        entityType: 'Tenant',      entityId: 'PINNACLE',
+    metadata: { previousStatus: 'Inactive' },
+    createdAtUtc: '2024-04-10T14:30:00Z',
+  },
+  {
+    id: 'al-028', actorName: 'n.patel@legalsynq.com',  actorType: 'Admin',
+    action: 'user.deactivate',        entityType: 'User',        entityId: 'h.bates@graystonegov.org',
+    metadata: { tenantCode: 'GRAYSTONE', reason: 'account-suspended' },
+    createdAtUtc: '2024-09-30T10:05:00Z',
+  },
+] as AuditLogEntry[]).sort((a, b) => b.createdAtUtc.localeCompare(a.createdAtUtc)); // newest first
+
 // ── Server-side API ───────────────────────────────────────────────────────────
 // Use in Server Components and Server Actions only.
 
@@ -545,6 +729,52 @@ export const controlCenterServerApi = {
       const summary = MOCK_ROLES.find(r => r.id === id);
       if (!summary) return Promise.resolve(null);
       return Promise.resolve(buildRoleDetail(summary));
+    },
+  },
+
+  audit: {
+    // TODO: replace with GET /identity/api/admin/audit
+    list: (params: {
+      page?:       number;
+      pageSize?:   number;
+      search?:     string;
+      entityType?: string;
+      actor?:      string;
+    } = {}): Promise<{ items: AuditLogEntry[]; totalCount: number }> => {
+      const page       = params.page     ?? 1;
+      const pageSize   = params.pageSize ?? 15;
+      const search     = (params.search     ?? '').toLowerCase().trim();
+      const entityType = (params.entityType ?? '').toLowerCase().trim();
+      const actor      = (params.actor      ?? '').toLowerCase().trim();
+
+      let filtered = MOCK_AUDIT_LOGS;
+
+      if (search) {
+        filtered = filtered.filter(e =>
+          e.action.toLowerCase().includes(search)     ||
+          e.entityId.toLowerCase().includes(search)   ||
+          e.actorName.toLowerCase().includes(search)  ||
+          e.entityType.toLowerCase().includes(search),
+        );
+      }
+
+      if (entityType) {
+        filtered = filtered.filter(e =>
+          e.entityType.toLowerCase() === entityType,
+        );
+      }
+
+      if (actor) {
+        filtered = filtered.filter(e =>
+          e.actorName.toLowerCase().includes(actor),
+        );
+      }
+
+      const totalCount = filtered.length;
+      const start      = (page - 1) * pageSize;
+      const items      = filtered.slice(start, start + pageSize);
+
+      return Promise.resolve({ items, totalCount });
     },
   },
 };

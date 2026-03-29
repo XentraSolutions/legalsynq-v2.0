@@ -132,16 +132,29 @@ export interface RoleDetail extends RoleSummary {
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────
 
+/** Who originated an audited action. */
+export type ActorType = 'Admin' | 'System';
+
+/**
+ * A single audit log entry.
+ * Returned by GET /identity/api/admin/audit (paged).
+ *
+ * actorName  — display name of the actor (email for Admins, service name for System).
+ * actorType  — distinguishes human admins from automated/system events.
+ * entityType — the domain object affected: "Tenant", "User", "Role", "Entitlement".
+ * entityId   — id or code of the affected record.
+ * metadata   — arbitrary key/value context captured at event time.
+ * createdAtUtc — ISO 8601 timestamp in UTC.
+ */
 export interface AuditLogEntry {
-  id:            string;
-  tenantId?:     string;
-  actorId?:      string;
-  actorEmail?:   string;
-  action:        string;
-  entityType:    string;
-  entityId?:     string;
-  detail?:       string;
-  occurredAtUtc: string;
+  id:           string;
+  actorName:    string;
+  actorType:    ActorType;
+  action:       string;
+  entityType:   string;
+  entityId:     string;
+  metadata?:    Record<string, unknown>;
+  createdAtUtc: string;
 }
 
 // ── Platform Settings ─────────────────────────────────────────────────────────
