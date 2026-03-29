@@ -11,19 +11,21 @@ interface AppShellProps {
 
 /**
  * Shared layout shell for all (platform) and (admin) routes.
- * Wraps the tree in ProductProvider so TopBar and Sidebar both
- * read the same derived active-product state.
+ *
+ * Structure:
+ *   [dark sidebar: product brand + nav + user profile]
+ *   [content area: org-info header strip (top-right) + page content]
  *
  * Must be used inside <SessionProvider> and <TenantBrandingProvider>.
  */
 export function AppShell({ children }: AppShellProps) {
   return (
     <ProductProvider>
-      <div className="flex flex-col h-screen bg-gray-50">
-        <TopBar />
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto p-6">
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <div className="flex flex-col flex-1 overflow-hidden bg-white">
+          <TopBar />
+          <main className="flex-1 overflow-y-auto bg-gray-50">
             {children}
           </main>
         </div>
