@@ -70,11 +70,17 @@ export interface UserSummary {
 
 /**
  * Full user record returned by GET /identity/api/admin/users/{id}.
- * Extends UserSummary with audit timestamps.
+ * Extends UserSummary with audit timestamps and account state.
+ *
+ * tenantDisplayName is included so the detail page can link to the tenant
+ * without requiring a second API call.
  */
 export interface UserDetail extends UserSummary {
-  createdAtUtc: string;
-  updatedAtUtc: string;
+  tenantDisplayName: string;
+  createdAtUtc:      string;
+  updatedAtUtc:      string;
+  isLocked?:         boolean;
+  inviteSentAtUtc?:  string;
 }
 
 // ── Roles & Permissions ───────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import type {
   TenantSummary,
   TenantDetail,
   UserSummary,
+  UserDetail,
   ProductEntitlementSummary,
   EntitlementStatus,
   PagedResponse,
@@ -162,6 +163,57 @@ const MOCK_USERS: UserSummary[] = [
   { id: 'u-021', firstName: 'Howard',    lastName: 'Bates',     email: 'h.bates@graystonegov.org',   role: 'ReadOnly',         status: 'Inactive', tenantId: '11111111-0000-0000-0000-000000000008', tenantCode: 'GRAYSTONE',   lastLoginAtUtc: '2024-09-15T10:00:00Z' },
 ];
 
+// ── Mock user detail extras ───────────────────────────────────────────────────
+
+/**
+ * Per-user detail fields that are not present in the summary.
+ * Keyed by user id (u-001 … u-021).
+ */
+const USER_DETAIL_EXTRAS: Record<string, {
+  createdAtUtc:     string;
+  updatedAtUtc:     string;
+  isLocked?:        boolean;
+  inviteSentAtUtc?: string;
+}> = {
+  'u-001': { createdAtUtc: '2024-02-15T08:30:00Z', updatedAtUtc: '2025-03-01T10:00:00Z' },
+  'u-002': { createdAtUtc: '2024-02-20T09:00:00Z', updatedAtUtc: '2025-01-15T14:00:00Z' },
+  'u-003': { createdAtUtc: '2025-03-10T11:00:00Z', updatedAtUtc: '2025-03-10T11:00:00Z', inviteSentAtUtc: '2025-03-10T11:05:00Z' },
+  'u-004': { createdAtUtc: '2024-03-01T10:00:00Z', updatedAtUtc: '2025-02-20T08:00:00Z' },
+  'u-005': { createdAtUtc: '2024-03-15T12:00:00Z', updatedAtUtc: '2025-02-01T09:00:00Z' },
+  'u-006': { createdAtUtc: '2024-04-01T08:00:00Z', updatedAtUtc: '2024-12-10T10:00:00Z' },
+  'u-007': { createdAtUtc: '2024-04-10T09:00:00Z', updatedAtUtc: '2024-12-10T10:00:00Z', isLocked: true },
+  'u-008': { createdAtUtc: '2024-04-10T14:15:00Z', updatedAtUtc: '2025-03-05T08:00:00Z' },
+  'u-009': { createdAtUtc: '2024-05-01T09:00:00Z', updatedAtUtc: '2025-01-20T11:00:00Z' },
+  'u-010': { createdAtUtc: '2024-05-20T09:00:00Z', updatedAtUtc: '2024-09-15T08:00:00Z', isLocked: true },
+  'u-011': { createdAtUtc: '2024-01-01T00:00:00Z', updatedAtUtc: '2025-03-01T00:00:00Z' },
+  'u-012': { createdAtUtc: '2024-01-05T08:00:00Z', updatedAtUtc: '2025-02-15T10:00:00Z' },
+  'u-013': { createdAtUtc: '2024-06-05T11:30:00Z', updatedAtUtc: '2025-02-10T11:00:00Z' },
+  'u-014': { createdAtUtc: '2024-06-10T09:00:00Z', updatedAtUtc: '2025-01-05T09:00:00Z' },
+  'u-015': { createdAtUtc: '2025-02-20T14:00:00Z', updatedAtUtc: '2025-02-20T14:00:00Z', inviteSentAtUtc: '2025-02-20T14:05:00Z' },
+  'u-016': { createdAtUtc: '2024-06-18T08:45:00Z', updatedAtUtc: '2025-02-28T16:00:00Z' },
+  'u-017': { createdAtUtc: '2024-07-01T09:00:00Z', updatedAtUtc: '2025-02-20T12:00:00Z' },
+  'u-018': { createdAtUtc: '2024-07-15T10:00:00Z', updatedAtUtc: '2025-01-10T15:00:00Z' },
+  'u-019': { createdAtUtc: '2025-03-15T11:00:00Z', updatedAtUtc: '2025-03-15T11:00:00Z', inviteSentAtUtc: '2025-03-15T11:05:00Z' },
+  'u-020': { createdAtUtc: '2024-07-02T13:00:00Z', updatedAtUtc: '2024-10-01T12:00:00Z', isLocked: true },
+  'u-021': { createdAtUtc: '2024-07-10T09:00:00Z', updatedAtUtc: '2024-09-30T10:00:00Z' },
+};
+
+function buildUserDetail(summary: UserSummary): UserDetail {
+  const extras = USER_DETAIL_EXTRAS[summary.id] ?? {
+    createdAtUtc: '2024-01-01T00:00:00Z',
+    updatedAtUtc: '2024-01-01T00:00:00Z',
+  };
+  const tenant = MOCK_TENANTS.find(t => t.id === summary.tenantId);
+  return {
+    ...summary,
+    tenantDisplayName: tenant?.displayName ?? summary.tenantCode,
+    createdAtUtc:      extras.createdAtUtc,
+    updatedAtUtc:      extras.updatedAtUtc,
+    isLocked:          extras.isLocked ?? false,
+    inviteSentAtUtc:   extras.inviteSentAtUtc,
+  };
+}
+
 // ── Mock tenant detail builder ────────────────────────────────────────────────
 
 const ALL_PRODUCTS = [
@@ -296,6 +348,13 @@ export const controlCenterServerApi = {
       const items = filtered.slice(start, start + pageSize);
 
       return Promise.resolve({ items, totalCount: filtered.length, page, pageSize });
+    },
+
+    // TODO: replace with GET /identity/api/admin/users/{id}
+    getById: (id: string): Promise<UserDetail | null> => {
+      const summary = MOCK_USERS.find(u => u.id === id);
+      if (!summary) return Promise.resolve(null);
+      return Promise.resolve(buildUserDetail(summary));
     },
   },
 };

@@ -40,4 +40,7 @@ export const Routes = {
 
   /** /tenants/:id/users — Users for a specific tenant */
   tenantUsers_: (tenantId: string) => `/tenants/${tenantId}/users`,
+
+  /** /tenant-users/:id — User detail */
+  userDetail: (id: string) => `/tenant-users/${id}`,
 } as const;

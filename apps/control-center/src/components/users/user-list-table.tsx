@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { UserSummary, UserStatus } from '@/types/control-center';
+import { Routes } from '@/lib/routes';
 
 interface UserListTableProps {
   users:             UserSummary[];
@@ -95,7 +96,12 @@ export function UserListTable({
             {users.map(user => (
               <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3">
-                  <p className="text-sm font-medium text-gray-900">{fullName(user)}</p>
+                  <Link
+                    href={Routes.userDetail(user.id)}
+                    className="text-sm font-medium text-gray-900 hover:text-indigo-700 hover:underline transition-colors"
+                  >
+                    {fullName(user)}
+                  </Link>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-700">
                   {user.email}
