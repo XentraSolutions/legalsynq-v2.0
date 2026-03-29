@@ -86,5 +86,6 @@ app.MapProductEndpoints();
 app.MapUserEndpoints();
 app.MapAuthEndpoints();
 app.MapTenantBrandingEndpoints();
+app.MapAdminEndpoints();
 
 app.Run();
