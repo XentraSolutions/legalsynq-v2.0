@@ -1,22 +1,33 @@
 import crypto from 'crypto';
-import { DocumentRepository }   from '@/infrastructure/database/document-repository';
-import { getStorageProvider }   from '@/infrastructure/storage/storage-factory';
-import { auditService }         from './audit-service';
-import { ScanService }          from './scan-service';
-import { AccessTokenService }   from './access-token-service';
-import { config }               from '@/shared/config';
+import { DocumentRepository }          from '@/infrastructure/database/document-repository';
+import { getStorageProvider }          from '@/infrastructure/storage/storage-factory';
+import { auditService }                from './audit-service';
+import { ScanService }                 from './scan-service';
+import { AccessTokenService }          from './access-token-service';
+import { assertDocumentTenantScope, resolveEffectiveTenantId } from './tenant-guard';
+import { config }                      from '@/shared/config';
 import { NotFoundError, ForbiddenError, ScanBlockedError } from '@/shared/errors';
-import { AuditEvent }           from '@/shared/constants';
-import type { AuthPrincipal }   from '@/domain/interfaces/auth-provider';
+import { AuditEvent }                  from '@/shared/constants';
+import type { AuthPrincipal }          from '@/domain/interfaces/auth-provider';
 import type { CreateDocumentInput, UpdateDocumentInput } from '@/domain/entities/document';
 import type { IssuedToken, PresignedUrlResult } from '@/domain/entities/access-token';
 
 
+/**
+ * Request context threaded through every service call.
+ *
+ * targetTenantId:
+ *   PlatformAdmin only — explicit cross-tenant access.
+ *   Non-admin: silently ignored (resolveEffectiveTenantId enforces this).
+ *   When supplied by a PlatformAdmin, all queries use this tenantId and
+ *   an ADMIN_CROSS_TENANT_ACCESS audit event is emitted.
+ */
 interface RequestContext {
-  principal:     AuthPrincipal;
-  correlationId: string;
-  ipAddress?:    string;
-  userAgent?:    string;
+  principal:      AuthPrincipal;
+  correlationId:  string;
+  ipAddress?:     string;
+  userAgent?:     string;
+  targetTenantId?: string;  // PlatformAdmin cross-tenant only
 }
 
 function buildStorageKey(tenantId: string, documentId: string, filename: string): string {
@@ -29,6 +40,7 @@ function sha256(buffer: Buffer): string {
 }
 
 export const DocumentService = {
+
   // ── Create ─────────────────────────────────────────────────────────────────
   async create(
     input: Omit<CreateDocumentInput, 'uploadedBy'>,
@@ -36,6 +48,10 @@ export const DocumentService = {
     originalName: string,
     ctx: RequestContext,
   ) {
+    // tenantId on the input is already validated against the principal at the
+    // route layer via assertTenantScope(principal, body.tenantId).
+    // requireTenantId() is called inside DocumentRepository.create() as a
+    // second line of defence.
     const storage   = getStorageProvider();
     const bucket    = config.AWS_BUCKET_NAME ?? 'docs-local';
     const docId     = crypto.randomUUID();
@@ -43,9 +59,6 @@ export const DocumentService = {
     const checksum  = sha256(fileBuffer);
 
     // ── Phase 1: scan before upload ─────────────────────────────────────────
-    // We scan first so infected files are NEVER written to storage.
-    // Note: to switch to async scanning, move this after upload + DB write,
-    // set scanStatus=PENDING, and process via a background worker.
     const scanResult = await ScanService.scanDocument(fileBuffer, {
       documentId:    docId,
       tenantId:      input.tenantId,
@@ -55,7 +68,6 @@ export const DocumentService = {
       filename:      originalName,
     });
 
-    // Reject infected files immediately — do NOT upload
     ScanService.assertNotInfected(scanResult);
 
     // ── Phase 2: upload to storage ──────────────────────────────────────────
@@ -111,22 +123,32 @@ export const DocumentService = {
     limit?:        number;
     offset?:       number;
   }) {
+    // tenantId comes from principal at the route layer — not from user input
     return DocumentRepository.list(opts.tenantId, opts);
   },
 
   // ── Get by ID ──────────────────────────────────────────────────────────────
   async getById(id: string, ctx: RequestContext) {
-    const doc = await DocumentRepository.findById(id, ctx.principal.tenantId);
+    const effectiveTenantId = resolveEffectiveTenantId(ctx.principal, ctx.targetTenantId);
+    const doc = await DocumentRepository.findById(id, effectiveTenantId);
     if (!doc) throw new NotFoundError('Document', id);
+
+    // Layer 2 ABAC — defence-in-depth; also handles admin cross-tenant audit
+    await assertDocumentTenantScope(ctx.principal, doc, ctx);
+
     return doc;
   },
 
   // ── Update metadata ────────────────────────────────────────────────────────
   async update(id: string, input: Omit<UpdateDocumentInput, 'updatedBy'>, ctx: RequestContext) {
-    const doc = await DocumentRepository.findById(id, ctx.principal.tenantId);
+    const effectiveTenantId = resolveEffectiveTenantId(ctx.principal, ctx.targetTenantId);
+    const doc = await DocumentRepository.findById(id, effectiveTenantId);
     if (!doc) throw new NotFoundError('Document', id);
 
-    const updated = await DocumentRepository.update(id, ctx.principal.tenantId, {
+    // Layer 2 ABAC
+    await assertDocumentTenantScope(ctx.principal, doc, ctx);
+
+    const updated = await DocumentRepository.update(id, effectiveTenantId, {
       ...input,
       updatedBy: ctx.principal.userId,
     });
@@ -147,15 +169,19 @@ export const DocumentService = {
 
   // ── Soft delete ────────────────────────────────────────────────────────────
   async delete(id: string, ctx: RequestContext) {
-    const doc = await DocumentRepository.findById(id, ctx.principal.tenantId);
+    const effectiveTenantId = resolveEffectiveTenantId(ctx.principal, ctx.targetTenantId);
+    const doc = await DocumentRepository.findById(id, effectiveTenantId);
     if (!doc) throw new NotFoundError('Document', id);
+
+    // Layer 2 ABAC
+    await assertDocumentTenantScope(ctx.principal, doc, ctx);
 
     // Prevent deletion of documents on legal hold
     if (doc.legalHoldAt) {
       throw new ForbiddenError('Document is on legal hold and cannot be deleted');
     }
 
-    await DocumentRepository.softDelete(id, ctx.principal.tenantId, ctx.principal.userId);
+    await DocumentRepository.softDelete(id, effectiveTenantId, ctx.principal.userId);
 
     await auditService.log({
       tenantId:      ctx.principal.tenantId,
@@ -171,26 +197,28 @@ export const DocumentService = {
 
   // ── Upload new version ─────────────────────────────────────────────────────
   async uploadVersion(
-    documentId: string,
-    fileBuffer: Buffer,
+    documentId:  string,
+    fileBuffer:  Buffer,
     originalName: string,
-    label: string | undefined,
-    ctx: RequestContext,
+    label:       string | undefined,
+    ctx:         RequestContext,
   ) {
-    const doc = await DocumentRepository.findById(documentId, ctx.principal.tenantId);
+    const effectiveTenantId = resolveEffectiveTenantId(ctx.principal, ctx.targetTenantId);
+    const doc = await DocumentRepository.findById(documentId, effectiveTenantId);
     if (!doc) throw new NotFoundError('Document', documentId);
+
+    // Layer 2 ABAC
+    await assertDocumentTenantScope(ctx.principal, doc, ctx);
 
     const storage  = getStorageProvider();
     const bucket   = doc.storageBucket;
-    const key      = buildStorageKey(ctx.principal.tenantId, documentId, originalName);
+    const key      = buildStorageKey(effectiveTenantId, documentId, originalName);
     const checksum = sha256(fileBuffer);
 
     // ── Scan before upload ──────────────────────────────────────────────────
-    // Scan result will be attached to the version row after it's created.
-    // We pre-run the scan so we can reject infected files without writing to storage.
     const scanResult = await ScanService.scanDocument(fileBuffer, {
       documentId,
-      tenantId:      ctx.principal.tenantId,
+      tenantId:      effectiveTenantId,
       actorId:       ctx.principal.userId,
       actorRoles:    ctx.principal.roles,
       correlationId: ctx.correlationId,
@@ -199,7 +227,6 @@ export const DocumentService = {
 
     ScanService.assertNotInfected(scanResult);
 
-    // ── Upload to storage ────────────────────────────────────────────────────
     await storage.upload({
       bucket,
       key,
@@ -207,10 +234,9 @@ export const DocumentService = {
       mimeType: doc.mimeType,
     });
 
-    // ── Create version record with scan outcome ──────────────────────────────
     const version = await DocumentRepository.createVersion({
       documentId,
-      tenantId:          ctx.principal.tenantId,
+      tenantId:          effectiveTenantId,
       uploadedBy:        ctx.principal.userId,
       label,
       storageKey:        key,
@@ -226,7 +252,7 @@ export const DocumentService = {
     });
 
     // Mirror scan status to parent document
-    await DocumentRepository.updateDocumentScanStatus(documentId, ctx.principal.tenantId, {
+    await DocumentRepository.updateDocumentScanStatus(documentId, effectiveTenantId, {
       scanStatus:      scanResult.status,
       scanCompletedAt: scanResult.scannedAt,
       scanThreats:     scanResult.threats ?? [],
@@ -262,7 +288,6 @@ export const DocumentService = {
    *
    * When DIRECT_PRESIGN_ENABLED=true (legacy / compat mode):
    *   Generates a pre-signed storage URL directly (old behaviour).
-   *   Suitable for trusted clients or storage-direct architectures.
    */
   async requestAccess(
     documentId: string,
@@ -281,16 +306,19 @@ export const DocumentService = {
    * Used internally by token redemption (short TTL = 30s) and
    * as a fallback when DIRECT_PRESIGN_ENABLED=true.
    *
-   * NEVER call this from a route handler directly unless DIRECT_PRESIGN_ENABLED=true.
-   * Use requestAccess() which enforces the configured access model.
+   * NEVER call this from a route handler unless DIRECT_PRESIGN_ENABLED=true.
    */
   async generateSignedUrl(
     documentId: string,
     type: 'view' | 'download',
     ctx: RequestContext,
   ): Promise<PresignedUrlResult> {
-    const doc = await DocumentRepository.findById(documentId, ctx.principal.tenantId);
+    const effectiveTenantId = resolveEffectiveTenantId(ctx.principal, ctx.targetTenantId);
+    const doc = await DocumentRepository.findById(documentId, effectiveTenantId);
     if (!doc) throw new NotFoundError('Document', documentId);
+
+    // Layer 2 ABAC
+    await assertDocumentTenantScope(ctx.principal, doc, ctx);
 
     // ── Scan gate ────────────────────────────────────────────────────────────
     try {
@@ -344,8 +372,13 @@ export const DocumentService = {
 
   // ── Versions list ──────────────────────────────────────────────────────────
   async listVersions(documentId: string, ctx: RequestContext) {
-    const doc = await DocumentRepository.findById(documentId, ctx.principal.tenantId);
+    const effectiveTenantId = resolveEffectiveTenantId(ctx.principal, ctx.targetTenantId);
+    const doc = await DocumentRepository.findById(documentId, effectiveTenantId);
     if (!doc) throw new NotFoundError('Document', documentId);
-    return DocumentRepository.listVersions(documentId, ctx.principal.tenantId);
+
+    // Layer 2 ABAC
+    await assertDocumentTenantScope(ctx.principal, doc, ctx);
+
+    return DocumentRepository.listVersions(documentId, effectiveTenantId);
   },
 };

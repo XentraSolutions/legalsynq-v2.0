@@ -58,6 +58,9 @@ export const AuditEvent = {
   SCAN_FAILED:      'SCAN_FAILED',
   SCAN_INFECTED:    'SCAN_INFECTED',
   SCAN_ACCESS_DENIED: 'SCAN_ACCESS_DENIED',
+  // Tenant isolation
+  ADMIN_CROSS_TENANT_ACCESS: 'ADMIN_CROSS_TENANT_ACCESS',  // PlatformAdmin explicit cross-tenant — always audited
+  TENANT_ISOLATION_VIOLATION: 'TENANT_ISOLATION_VIOLATION', // blocked cross-tenant attempt
   // Access token lifecycle
   ACCESS_TOKEN_ISSUED:   'ACCESS_TOKEN_ISSUED',
   ACCESS_TOKEN_REDEEMED: 'ACCESS_TOKEN_REDEEMED',

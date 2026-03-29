@@ -1,4 +1,5 @@
 import { query, queryOne, withTransaction } from './db';
+import { requireTenantId }                  from './tenant-query';
 import type { Document, CreateDocumentInput, UpdateDocumentInput } from '@/domain/entities/document';
 import type { DocumentVersion, CreateVersionInput } from '@/domain/entities/document-version';
 import { NotFoundError } from '@/shared/errors';
@@ -67,7 +68,14 @@ function rowToVersion(row: Record<string, unknown>): DocumentVersion {
 // ── DocumentRepository ─────────────────────────────────────────────────────────
 
 export const DocumentRepository = {
+
+  /**
+   * Find a document by ID scoped to a specific tenant.
+   * Returns null if the document does not exist OR belongs to a different tenant.
+   * Callers MUST NOT expose which condition matched — always surface as 404.
+   */
   async findById(id: string, tenantId: string): Promise<Document | null> {
+    requireTenantId(tenantId, 'DocumentRepository.findById');
     const row = await queryOne<Record<string, unknown>>(
       `SELECT * FROM documents WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE`,
       [id, tenantId],
@@ -75,24 +83,30 @@ export const DocumentRepository = {
     return row ? rowToDocument(row) : null;
   },
 
+  /**
+   * List documents for a tenant with optional filters.
+   * tenantId is always the first WHERE predicate — it cannot be omitted.
+   */
   async list(tenantId: string, opts: {
-    productId?:    string;
-    referenceId?:  string;
+    productId?:     string;
+    referenceId?:   string;
     referenceType?: string;
-    status?:       string;
-    limit?:        number;
-    offset?:       number;
+    status?:        string;
+    limit?:         number;
+    offset?:        number;
   }): Promise<{ documents: Document[]; total: number }> {
+    requireTenantId(tenantId, 'DocumentRepository.list');
+
     const conditions: string[] = ['d.tenant_id = $1', 'd.is_deleted = FALSE'];
     const params: unknown[] = [tenantId];
     let pi = 2;
 
-    if (opts.productId)    { conditions.push(`d.product_id = $${pi++}`);    params.push(opts.productId); }
-    if (opts.referenceId)  { conditions.push(`d.reference_id = $${pi++}`);  params.push(opts.referenceId); }
-    if (opts.referenceType){ conditions.push(`d.reference_type = $${pi++}`); params.push(opts.referenceType); }
-    if (opts.status)       { conditions.push(`d.status = $${pi++}`);        params.push(opts.status); }
+    if (opts.productId)     { conditions.push(`d.product_id = $${pi++}`);     params.push(opts.productId); }
+    if (opts.referenceId)   { conditions.push(`d.reference_id = $${pi++}`);   params.push(opts.referenceId); }
+    if (opts.referenceType) { conditions.push(`d.reference_type = $${pi++}`); params.push(opts.referenceType); }
+    if (opts.status)        { conditions.push(`d.status = $${pi++}`);         params.push(opts.status); }
 
-    const where = conditions.join(' AND ');
+    const where  = conditions.join(' AND ');
     const limit  = opts.limit  ?? 50;
     const offset = opts.offset ?? 0;
 
@@ -113,11 +127,17 @@ export const DocumentRepository = {
     };
   },
 
+  /**
+   * Insert a new document row.
+   * tenantId is taken from the input and embedded in every column — never inferred.
+   */
   async create(input: CreateDocumentInput & {
     storageKey: string; storageBucket: string;
     mimeType: string; fileSizeBytes: number; checksum: string;
     scanStatus?: string; scanCompletedAt?: Date | null; scanThreats?: string[];
   }): Promise<Document> {
+    requireTenantId(input.tenantId, 'DocumentRepository.create');
+
     const id = uuidv4();
     const row = await queryOne<Record<string, unknown>>(
       `INSERT INTO documents (
@@ -143,39 +163,68 @@ export const DocumentRepository = {
     return rowToDocument(row!);
   },
 
+  /**
+   * Update mutable metadata fields.
+   * WHERE clause always includes both id AND tenant_id — a cross-tenant id
+   * will simply match 0 rows and throw NotFoundError.
+   */
   async update(id: string, tenantId: string, input: UpdateDocumentInput): Promise<Document> {
+    requireTenantId(tenantId, 'DocumentRepository.update');
+
     const sets: string[] = ['updated_at = NOW()', `updated_by = $3`];
     const params: unknown[] = [id, tenantId, input.updatedBy];
     let pi = 4;
 
-    if (input.title !== undefined)         { sets.push(`title = $${pi++}`);          params.push(input.title); }
-    if (input.description !== undefined)   { sets.push(`description = $${pi++}`);    params.push(input.description); }
-    if (input.documentTypeId !== undefined){ sets.push(`document_type_id = $${pi++}`); params.push(input.documentTypeId); }
-    if (input.status !== undefined)        { sets.push(`status = $${pi++}`);         params.push(input.status); }
-    if (input.retainUntil !== undefined)   { sets.push(`retain_until = $${pi++}`);   params.push(input.retainUntil); }
+    if (input.title !== undefined)          { sets.push(`title = $${pi++}`);           params.push(input.title); }
+    if (input.description !== undefined)    { sets.push(`description = $${pi++}`);     params.push(input.description); }
+    if (input.documentTypeId !== undefined) { sets.push(`document_type_id = $${pi++}`); params.push(input.documentTypeId); }
+    if (input.status !== undefined)         { sets.push(`status = $${pi++}`);          params.push(input.status); }
+    if (input.retainUntil !== undefined)    { sets.push(`retain_until = $${pi++}`);    params.push(input.retainUntil); }
 
     const row = await queryOne<Record<string, unknown>>(
-      `UPDATE documents SET ${sets.join(', ')} WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE RETURNING *`,
+      `UPDATE documents SET ${sets.join(', ')}
+         WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE
+       RETURNING *`,
       params,
     );
     if (!row) throw new NotFoundError('Document', id);
     return rowToDocument(row);
   },
 
+  /**
+   * Soft-delete: sets is_deleted=TRUE and status='DELETED'.
+   * Tenant filter in WHERE means cross-tenant id → 0 rows affected (silent).
+   * Callers must call findById first to verify existence before relying on this.
+   */
   async softDelete(id: string, tenantId: string, deletedBy: string): Promise<void> {
+    requireTenantId(tenantId, 'DocumentRepository.softDelete');
     await query(
-      `UPDATE documents SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $3, status = 'DELETED'
-       WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE`,
+      `UPDATE documents
+          SET is_deleted = TRUE, deleted_at = NOW(), deleted_by = $3, status = 'DELETED'
+        WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE`,
       [id, tenantId, deletedBy],
     );
   },
 
-  // ── Versions ──────────────────────────────────────────────────────────────
+  // ── Versions ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Create a new version inside a serialisable transaction.
+   *
+   * Security note: BOTH the SELECT (for-update lock) AND the final UPDATE on
+   * the documents table include tenant_id in their WHERE clause.
+   * This prevents a race condition where a version could be attached to a
+   * document owned by a different tenant.
+   */
   async createVersion(input: CreateVersionInput): Promise<DocumentVersion> {
+    requireTenantId(input.tenantId, 'DocumentRepository.createVersion');
+
     return withTransaction(async (client) => {
-      // Lock the document row
+      // Lock the document row — tenant filter prevents cross-tenant lock
       const docResult = await client.query(
-        `SELECT version_count FROM documents WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE FOR UPDATE`,
+        `SELECT version_count FROM documents
+           WHERE id = $1 AND tenant_id = $2 AND is_deleted = FALSE
+           FOR UPDATE`,
         [input.documentId, input.tenantId],
       );
       if (docResult.rowCount === 0) throw new NotFoundError('Document', input.documentId);
@@ -202,23 +251,26 @@ export const DocumentRepository = {
         ],
       );
 
+      // ── BUG FIX: tenant_id added to WHERE clause ─────────────────────────
+      // Without `AND tenant_id = $10`, a rogue documentId could update any
+      // document row across tenants if the ID collision ever occurred.
       await client.query(
-        `UPDATE documents SET
-          current_version_id = $1,
-          version_count = $2,
-          storage_key = $3,
-          storage_bucket = $4,
-          mime_type = $5,
-          file_size_bytes = $6,
-          checksum = $7,
-          updated_at = NOW(),
-          updated_by = $8
-         WHERE id = $9`,
+        `UPDATE documents
+            SET current_version_id = $1,
+                version_count      = $2,
+                storage_key        = $3,
+                storage_bucket     = $4,
+                mime_type          = $5,
+                file_size_bytes    = $6,
+                checksum           = $7,
+                updated_at         = NOW(),
+                updated_by         = $8
+          WHERE id = $9 AND tenant_id = $10`,
         [
           versionId, versionNumber,
           input.storageKey, input.storageBucket, input.mimeType,
           input.fileSizeBytes, input.checksum, input.uploadedBy,
-          input.documentId,
+          input.documentId, input.tenantId,   // $9, $10 — both required
         ],
       );
 
@@ -226,9 +278,16 @@ export const DocumentRepository = {
     });
   },
 
+  /**
+   * List all non-deleted versions for a document, scoped to a tenant.
+   * documentId + tenantId both required — cross-tenant documentId → empty array.
+   */
   async listVersions(documentId: string, tenantId: string): Promise<DocumentVersion[]> {
+    requireTenantId(tenantId, 'DocumentRepository.listVersions');
     const rows = await query<Record<string, unknown>>(
-      `SELECT * FROM document_versions WHERE document_id = $1 AND tenant_id = $2 AND is_deleted = FALSE ORDER BY version_number DESC`,
+      `SELECT * FROM document_versions
+         WHERE document_id = $1 AND tenant_id = $2 AND is_deleted = FALSE
+         ORDER BY version_number DESC`,
       [documentId, tenantId],
     );
     return rows.map(rowToVersion);
@@ -237,10 +296,11 @@ export const DocumentRepository = {
   // ── Scan status updates ────────────────────────────────────────────────────
 
   async updateDocumentScanStatus(
-    id: string,
+    id:       string,
     tenantId: string,
     scan: { scanStatus: string; scanCompletedAt: Date; scanThreats: string[] },
   ): Promise<void> {
+    requireTenantId(tenantId, 'DocumentRepository.updateDocumentScanStatus');
     await query(
       `UPDATE documents
           SET scan_status = $3, scan_completed_at = $4, scan_threats = $5, updated_at = NOW()
@@ -251,7 +311,7 @@ export const DocumentRepository = {
 
   async updateVersionScanStatus(
     versionId: string,
-    tenantId: string,
+    tenantId:  string,
     scan: {
       scanStatus:        string;
       scanCompletedAt:   Date;
@@ -260,6 +320,7 @@ export const DocumentRepository = {
       scanEngineVersion: string | null;
     },
   ): Promise<void> {
+    requireTenantId(tenantId, 'DocumentRepository.updateVersionScanStatus');
     await query(
       `UPDATE document_versions
           SET scan_status = $3, scan_completed_at = $4,

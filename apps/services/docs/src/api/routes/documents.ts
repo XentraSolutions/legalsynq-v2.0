@@ -44,10 +44,14 @@ const ListQuery = z.object({
 
 function ctx(req: Request) {
   return {
-    principal:     getPrincipal(req),
-    correlationId: req.correlationId,
-    ipAddress:     req.ip,
-    userAgent:     req.headers['user-agent'],
+    principal:      getPrincipal(req),
+    correlationId:  req.correlationId,
+    ipAddress:      req.ip,
+    userAgent:      req.headers['user-agent'],
+    // PlatformAdmin explicit cross-tenant: header is extracted here but only
+    // honoured if the principal has the PlatformAdmin role (enforced in tenant-guard.ts).
+    // Non-admin callers supplying this header are silently ignored.
+    targetTenantId: req.headers['x-admin-target-tenant'] as string | undefined,
   };
 }
 

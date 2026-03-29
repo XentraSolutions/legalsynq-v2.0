@@ -119,6 +119,21 @@ export class RateLimitError extends DocsError {
   }
 }
 
+// ── 403 Tenant isolation ──────────────────────────────────────────────────────
+/**
+ * Thrown when a tenant boundary is violated at the application layer.
+ * Distinct from generic ForbiddenError so monitoring can alert on cross-tenant
+ * attempts separately from ordinary permission denials.
+ *
+ * NEVER reveal which tenant owns the resource in the message — return 403 with
+ * a generic string to avoid tenantId enumeration.
+ */
+export class TenantIsolationError extends DocsError {
+  constructor(context = 'Cross-tenant access denied') {
+    super(context, 403, 'TENANT_ISOLATION_VIOLATION');
+  }
+}
+
 // ── 503 Service Unavailable ───────────────────────────────────────────────────
 /**
  * Thrown when a Redis command fails because the connection is down.
