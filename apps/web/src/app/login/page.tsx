@@ -90,8 +90,8 @@ export default function LoginPage() {
 
         {/* Footer trust line */}
         <div className="relative z-10 pt-6 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-          <p className="text-[11px] text-slate-500 tracking-wide uppercase">
-            Trusted by law firms &amp; medical providers
+          <p className="text-[11px] text-slate-500">
+            &copy; {new Date().getFullYear()} LegalSynq
           </p>
         </div>
       </div>
