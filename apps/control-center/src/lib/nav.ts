@@ -1,49 +1,47 @@
-import type { NavGroup } from '@/types';
+import type { NavSection } from '@/types';
 
 /**
- * Control Center sidebar navigation.
- * All routes are host-root paths (no /control-center prefix — this is a standalone app).
+ * Control Center sidebar navigation — NavSection[] matching the web app structure.
+ * All routes are host-root paths (no /control-center prefix — standalone app).
  */
-export function buildCCNav(): NavGroup[] {
-  return [
-    {
-      id:    'overview',
-      label: 'Overview',
-      items: [
-        { href: '/tenants', label: 'Dashboard', riIcon: 'ri-dashboard-3-line' },
-      ],
-    },
-    {
-      id:    'tenants',
-      label: 'Tenants',
-      items: [
-        { href: '/tenants',      label: 'All Tenants',  riIcon: 'ri-building-2-line' },
-        { href: '/tenant-users', label: 'Tenant Users', riIcon: 'ri-group-line' },
-      ],
-    },
-    {
-      id:    'access',
-      label: 'Access Control',
-      items: [
-        { href: '/roles',    label: 'Roles & Permissions',  riIcon: 'ri-shield-keyhole-line' },
-        { href: '/products', label: 'Product Entitlements', riIcon: 'ri-apps-line' },
-      ],
-    },
-    {
-      id:    'ops',
-      label: 'Operations',
-      items: [
-        { href: '/support',    label: 'Support Tools', riIcon: 'ri-customer-service-2-line' },
-        { href: '/audit-logs', label: 'Audit Logs',    riIcon: 'ri-file-list-3-line' },
-        { href: '/monitoring', label: 'Monitoring',    riIcon: 'ri-pulse-line' },
-      ],
-    },
-    {
-      id:    'config',
-      label: 'Configuration',
-      items: [
-        { href: '/settings', label: 'Platform Settings', riIcon: 'ri-settings-3-line' },
-      ],
-    },
-  ];
+export const CC_NAV: NavSection[] = [
+  {
+    heading: 'OVERVIEW',
+    items: [
+      { href: '/tenants',    label: 'Dashboard', icon: 'ri-dashboard-3-line' },
+    ],
+  },
+  {
+    heading: 'TENANTS',
+    items: [
+      { href: '/tenants',      label: 'All Tenants',  icon: 'ri-building-2-line' },
+      { href: '/tenant-users', label: 'Tenant Users', icon: 'ri-group-line'      },
+    ],
+  },
+  {
+    heading: 'ACCESS CONTROL',
+    items: [
+      { href: '/roles',    label: 'Roles & Permissions',  icon: 'ri-shield-keyhole-line' },
+      { href: '/products', label: 'Product Entitlements', icon: 'ri-apps-line'           },
+    ],
+  },
+  {
+    heading: 'OPERATIONS',
+    items: [
+      { href: '/support',    label: 'Support Tools', icon: 'ri-customer-service-2-line' },
+      { href: '/audit-logs', label: 'Audit Logs',    icon: 'ri-file-list-3-line'        },
+      { href: '/monitoring', label: 'Monitoring',    icon: 'ri-pulse-line'              },
+    ],
+  },
+  {
+    heading: 'CONFIGURATION',
+    items: [
+      { href: '/settings', label: 'Platform Settings', icon: 'ri-settings-3-line' },
+    ],
+  },
+];
+
+/** @deprecated — kept for any existing callers; remove once all are migrated. */
+export function buildCCNav() {
+  return CC_NAV;
 }

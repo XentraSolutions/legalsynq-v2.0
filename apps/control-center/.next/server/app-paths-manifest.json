@@ -1,9 +1,1 @@
-{
-  "/roles/[id]/page": "app/roles/[id]/page.js",
-  "/audit-logs/page": "app/audit-logs/page.js",
-  "/monitoring/page": "app/monitoring/page.js",
-  "/tenant-users/page": "app/tenant-users/page.js",
-  "/tenants/[id]/page": "app/tenants/[id]/page.js",
-  "/tenant-users/[id]/page": "app/tenant-users/[id]/page.js",
-  "/page": "app/page.js"
-}
+{}

@@ -54,11 +54,18 @@ export interface PlatformSession {
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 export interface NavItem {
-  href:   string;
-  label:  string;
-  riIcon?: string;
+  href:  string;
+  label: string;
+  icon?: string;
 }
 
+/** A labelled section of nav items — mirrors the web app NavSection. */
+export interface NavSection {
+  heading?: string;
+  items: NavItem[];
+}
+
+/** @deprecated Use NavSection[] */
 export interface NavGroup {
   id:    string;
   label: string;

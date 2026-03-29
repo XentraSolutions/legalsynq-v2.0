@@ -2,75 +2,162 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { buildCCNav } from '@/lib/nav';
-import type { NavGroup, NavItem } from '@/types';
+import { useState, useEffect } from 'react';
+import { CC_NAV } from '@/lib/nav';
+import { useSettings } from '@/contexts/settings-context';
+import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
 
+const STORAGE_KEY = 'ls_cc_sidebar_collapsed';
+
 /**
- * Control Center sidebar.
- * White bg, orange active accent bar — matches the web app sidebar style.
+ * Control Center sidebar — matches the web app sidebar structure:
+ *   - Collapsible (220 px ↔ 52 px) with toggle button + Ctrl+[ shortcut
+ *   - NavSection[] with uppercase section headings
+ *   - Icon-only collapsed mode with right-side active pip
+ *   - Active colour driven by AppSettings (orange by default)
  */
 export function CCSidebar() {
   const pathname = usePathname();
-  const groups   = buildCCNav();
+  const settings = useSettings();
+  const nav      = settings.appearance.nav;
+
+  const [collapsed, setCollapsed] = useState(false);
+  const [mounted,   setMounted]   = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'true') setCollapsed(true);
+    setMounted(true);
+  }, []);
+
+  function toggle() {
+    setCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem(STORAGE_KEY, String(next));
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === '[') { e.preventDefault(); toggle(); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const width = !mounted ? 220 : collapsed ? 52 : 220;
 
   return (
-    <aside className="w-56 shrink-0 border-r border-gray-200 bg-white flex flex-col h-full overflow-y-auto">
-      {/* Product name header */}
-      <div className="px-4 py-3 border-b border-gray-100">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-          Admin Portal
-        </p>
+    <aside
+      className="shrink-0 flex flex-col bg-white border-r border-gray-200 overflow-hidden"
+      style={{
+        width,
+        transition: mounted ? 'width 200ms ease' : undefined,
+        alignSelf: 'stretch',
+      }}
+    >
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div className={clsx(
+        'shrink-0 flex items-center border-b border-gray-100 h-12',
+        collapsed ? 'justify-center' : 'justify-between px-4',
+      )}>
+        {!collapsed && (
+          <div className="flex items-center gap-2 min-w-0">
+            <i className="ri-shield-star-line text-[15px]" style={{ color: nav.activeColor }} />
+            <span className="text-[12px] font-semibold text-gray-700 truncate">Control Center</span>
+          </div>
+        )}
+        <button
+          onClick={toggle}
+          title={collapsed ? 'Expand sidebar (Ctrl+[)' : 'Collapse sidebar (Ctrl+[)'}
+          className="flex items-center justify-center rounded-md w-7 h-7 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors shrink-0"
+        >
+          <i className={clsx('text-[17px] leading-none',
+            collapsed ? 'ri-sidebar-unfold-line' : 'ri-sidebar-fold-line',
+          )} />
+        </button>
       </div>
 
-      <nav className="flex-1 py-3 space-y-5 px-2">
-        {groups.map(group => (
-          <NavGroupSection key={group.id} group={group} pathname={pathname} />
+      {/* ── Nav sections ───────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-2">
+        {CC_NAV.map((section, si) => (
+          <div key={si} className={si > 0 ? 'mt-4' : ''}>
+            {/* Section heading — expanded only */}
+            {section.heading && !collapsed && (
+              <p className="px-5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none">
+                {section.heading}
+              </p>
+            )}
+            {/* Thin divider between sections when collapsed */}
+            {si > 0 && collapsed && (
+              <div className="mx-2 mb-2 border-t border-gray-100" />
+            )}
+            <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
+              {section.items.map(item => (
+                <SidebarItem
+                  key={item.href}
+                  item={item}
+                  pathname={pathname}
+                  collapsed={collapsed}
+                  activeColor={nav.activeColor}
+                  activeBg={nav.activeBg}
+                />
+              ))}
+            </nav>
+          </div>
         ))}
-      </nav>
+      </div>
     </aside>
   );
 }
 
-function NavGroupSection({ group, pathname }: { group: NavGroup; pathname: string }) {
-  return (
-    <div>
-      <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-        {group.label}
-      </p>
-      <ul className="space-y-0.5">
-        {group.items.map(item => (
-          <NavItemLink key={item.href} item={item} pathname={pathname} />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function NavItemLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function SidebarItem({
+  item, pathname, collapsed, activeColor, activeBg,
+}: {
+  item:        NavItem;
+  pathname:    string;
+  collapsed:   boolean;
+  activeColor: string;
+  activeBg:    string;
+}) {
   const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+
   return (
-    <li className="relative">
-      {/* Orange left accent bar */}
-      {isActive && (
-        <span className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full bg-orange-500" />
+    <Link
+      href={item.href}
+      title={collapsed ? item.label : undefined}
+      className={clsx(
+        'relative flex items-center rounded-lg text-[12px] font-medium transition-colors',
+        collapsed ? 'w-8 h-8 justify-center mx-auto' : 'gap-2.5 px-3 py-2.5',
+        !isActive && 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
       )}
-      <Link
-        href={item.href}
-        className={clsx(
-          'flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[12px] font-medium transition-colors',
-          isActive
-            ? 'bg-orange-50 text-[#0f1928]'
-            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
-        )}
-      >
-        {item.riIcon && (
-          <i className={clsx(item.riIcon, 'text-[16px] leading-none shrink-0',
-            isActive ? 'text-orange-500' : 'text-gray-400',
-          )} />
-        )}
-        <span>{item.label}</span>
-      </Link>
-    </li>
+      style={isActive ? { backgroundColor: activeBg, color: '#0f1928' } : undefined}
+    >
+      {/* Left accent bar (expanded active) */}
+      {isActive && !collapsed && (
+        <span
+          className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full"
+          style={{ backgroundColor: activeColor }}
+        />
+      )}
+      {/* Right pip (collapsed active) */}
+      {isActive && collapsed && (
+        <span
+          className="absolute -right-0.5 top-1/2 -translate-y-1/2 w-1 h-4 rounded-full"
+          style={{ backgroundColor: activeColor }}
+        />
+      )}
+      {item.icon
+        ? <i
+            className={`${item.icon} text-[16px] leading-none shrink-0`}
+            style={{ color: isActive ? activeColor : undefined }}
+          />
+        : <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+      }
+      {!collapsed && <span>{item.label}</span>}
+    </Link>
   );
 }
