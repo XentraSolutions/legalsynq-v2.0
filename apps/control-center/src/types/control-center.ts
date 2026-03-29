@@ -161,10 +161,11 @@ export interface AuditLogEntry {
 
 export interface PlatformSetting {
   key:          string;
-  value:        string;
-  description:  string;
-  isSecret:     boolean;
-  updatedAtUtc: string;
+  label:        string;
+  value:        string | number | boolean;
+  type:         'boolean' | 'string' | 'number';
+  description?: string;
+  editable:     boolean;
 }
 
 // ── Monitoring ────────────────────────────────────────────────────────────────

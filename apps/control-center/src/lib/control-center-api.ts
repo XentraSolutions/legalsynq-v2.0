@@ -11,6 +11,7 @@ import type {
   ProductCode,
   EntitlementStatus,
   AuditLogEntry,
+  PlatformSetting,
   PagedResponse,
   TenantType,
 } from '@/types/control-center';
@@ -615,6 +616,52 @@ const MOCK_AUDIT_LOGS = ([
   },
 ] as AuditLogEntry[]).sort((a, b) => b.createdAtUtc.localeCompare(a.createdAtUtc)); // newest first
 
+// ── Mock platform settings ─────────────────────────────────────────────────────
+// TODO: replace with GET/POST /identity/api/admin/settings
+
+const MOCK_SETTINGS_STORE: PlatformSetting[] = [
+  {
+    key:         'allowTenantSelfSignup',
+    label:       'Allow Tenant Self-Signup',
+    value:       false,
+    type:        'boolean',
+    description: 'Permit new tenants to register themselves without a platform-admin invitation.',
+    editable:    true,
+  },
+  {
+    key:         'enableCareConnectMap',
+    label:       'Enable CareConnect Map',
+    value:       true,
+    type:        'boolean',
+    description: 'Display the provider-network map view inside the CareConnect product.',
+    editable:    true,
+  },
+  {
+    key:         'enableSynqPayoutBeta',
+    label:       'Enable SynqPayout Beta',
+    value:       false,
+    type:        'boolean',
+    description: 'Activate the SynqPayout disbursement feature for beta-enrolled tenants.',
+    editable:    true,
+  },
+  {
+    key:         'supportEmailAddress',
+    label:       'Support Email Address',
+    value:       'support@legalsynq.com',
+    type:        'string',
+    description: 'Destination address for all platform-generated support contact requests.',
+    editable:    true,
+  },
+  {
+    key:         'defaultSessionTimeoutMinutes',
+    label:       'Default Session Timeout (Minutes)',
+    value:       60,
+    type:        'number',
+    description: 'Idle-session duration in minutes before a user is automatically signed out.',
+    editable:    true,
+  },
+];
+
 // ── Server-side API ───────────────────────────────────────────────────────────
 // Use in Server Components and Server Actions only.
 
@@ -775,6 +822,21 @@ export const controlCenterServerApi = {
       const items      = filtered.slice(start, start + pageSize);
 
       return Promise.resolve({ items, totalCount });
+    },
+  },
+
+  settings: {
+    // TODO: replace with GET/POST /identity/api/admin/settings
+    list: (): Promise<PlatformSetting[]> =>
+      Promise.resolve(MOCK_SETTINGS_STORE.map(s => ({ ...s }))),
+
+    update: (key: string, value: string | number | boolean): Promise<PlatformSetting> => {
+      const idx = MOCK_SETTINGS_STORE.findIndex(s => s.key === key);
+      if (idx === -1) return Promise.reject(new Error(`Unknown setting key: ${key}`));
+      const setting = MOCK_SETTINGS_STORE[idx];
+      if (!setting.editable) return Promise.reject(new Error(`Setting '${key}' is read-only.`));
+      MOCK_SETTINGS_STORE[idx] = { ...setting, value };
+      return Promise.resolve({ ...MOCK_SETTINGS_STORE[idx] });
     },
   },
 };
