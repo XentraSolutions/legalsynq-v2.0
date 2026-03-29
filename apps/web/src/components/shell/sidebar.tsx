@@ -61,7 +61,7 @@ function SidebarItem({ item, pathname }: { item: NavItem; pathname: string }) {
 
       {item.icon && (
         <i
-          className={`${item.icon} text-lg`}
+          className={`${item.icon} text-[16px] leading-none shrink-0`}
           style={{ color: isActive ? '#f97316' : undefined }}
         />
       )}

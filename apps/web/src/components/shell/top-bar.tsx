@@ -56,14 +56,14 @@ export function TopBar() {
               key={def.id}
               href={def.routePrefix}
               className={[
-                'flex items-center gap-2 px-4 text-sm font-medium transition-colors border-b-2 select-none',
+                'flex items-center gap-1.5 px-3.5 text-xs font-medium transition-colors border-b-2 select-none',
                 isActive
                   ? 'text-white border-orange-500'
                   : 'text-slate-400 hover:text-white border-transparent hover:border-white/20',
               ].join(' ')}
             >
               <i
-                className={`${def.riIcon} text-[17px] leading-none`}
+                className={`${def.riIcon} text-sm leading-none`}
                 style={{ color: isActive ? '#f97316' : 'inherit' }}
               />
               <span>{def.label}</span>
