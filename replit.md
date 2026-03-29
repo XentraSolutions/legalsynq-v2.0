@@ -35,13 +35,17 @@ apps/web/
     hooks/
       use-session.ts            ← useSession() / useRequiredSession()
       use-tenant-branding.ts    ← re-exports useTenantBranding()
+    contexts/
+      product-context.tsx         ← ProductProvider + useProduct() — infers activeProductId from pathname
+    lib/
+      product-config.ts           ← PRODUCT_DEFS array + inferProductIdFromPath() (single source of truth for product→route mapping)
     components/
       shell/
-        app-shell.tsx             ← TopBar + Sidebar + main content wrapper
-        top-bar.tsx               ← tenant logo, org badge, product switcher, user menu
-        sidebar.tsx               ← role-driven nav groups from buildNavGroups()
+        app-shell.tsx             ← ProductProvider wrapper + TopBar + Sidebar + main content
+        top-bar.tsx               ← dark top bar (bg-slate-900): branding | org context | product tabs | user menu (Jira-style)
+        sidebar.tsx               ← product-filtered sidebar: shows only activeGroup nav items, product icon header
         org-badge.tsx             ← orgType label + orgName display
-        product-switcher.tsx      ← product tab links (Phase 1: display-only)
+        product-switcher.tsx      ← SUPERSEDED — logic now inline in top-bar.tsx (kept for safety, can be deleted)
       careconnect/
         status-badge.tsx              ← StatusBadge + UrgencyBadge (colour-coded by value)
         provider-card.tsx             ← clickable provider list card
