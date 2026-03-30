@@ -1381,6 +1381,77 @@ Both `PlatformAuditEventService.DTOs.AuditEventQueryRequest` (legacy) and `Platf
 
 ---
 
+## Platform Audit Service — Step 10: Tamper-Evident Hashing ✅
+
+**Analysis doc:** `analysis/step10_hashing.md`
+**Integrity spec:** `apps/services/platform-audit-event-service/Docs/integrity-model.md`
+
+### Key design gap fixed
+
+`PreviousHash` was stored on each record (linked-list pointer) but was NOT included in the canonical hash payload. `Hash(N)` did not depend on `Hash(N-1)`. The chain was a linked list, not a cryptographic chain.
+
+After Step 10: `PreviousHash` is position 10 in the canonical field set, so `Hash(N) = f(canonical_fields(N) + Hash(N-1))`. Modifying any record now invalidates all subsequent hashes.
+
+### `AuditRecordHasher.cs` — full rewrite
+
+**Two-stage pipeline (payload builder separated from hash function):**
+
+```
+Stage 1 — BuildPayload()       public, deterministic, no crypto
+Stage 2 — ComputeSha256()      public, keyless SHA-256
+          ComputeHmacSha256()  public, HMAC-SHA256 with secret
+```
+
+**Canonical field order (fixed, breaking to change):**
+```
+AuditId | EventType | SourceSystem | TenantId | ActorId |
+EntityType | EntityId | Action | OccurredAtUtc | RecordedAtUtc | PreviousHash
+```
+
+**`BuildPayload(AuditEventRecord record)` overload** — rebuilds payload from persisted record including `record.PreviousHash`; used by `Verify()` on read.
+
+**`Verify(record, algorithm, hmacSecret?)`** — constant-time `FixedTimeEquals` comparison; supports both `SHA-256` and `HMAC-SHA256`; returns false for null Hash, unknown algorithm, or missing HMAC secret.
+
+### `AuditEventIngestionService.cs` — pipeline update
+
+New fields: `_algorithm`, `_signingEnabled`.
+
+Signing enabled when:
+- `Algorithm = "SHA-256"` → always (keyless, portable)
+- `Algorithm = "HMAC-SHA256"` → only when `HmacKeyBase64` is set (silent skip in dev)
+
+**Step 3 guard:** now uses `_signingEnabled` (not `_hmacSecret is not null`)
+
+**Step 4 — new call sequence:**
+```csharp
+payload = AuditRecordHasher.BuildPayload(..., previousHash: previousHash)
+hash    = algorithm == "SHA-256"
+          ? ComputeSha256(payload)
+          : ComputeHmacSha256(payload, _hmacSecret!)
+```
+
+Constructor logs `"Audit integrity signing ENABLED — Algorithm=..."` or a `Warning` when disabled.
+
+### `IntegrityOptions.cs`
+
+- `Algorithm` property now documents `"SHA-256"` and `"HMAC-SHA256"` with activation rules.
+
+### `appsettings.Development.json`
+
+- Added explicit `Algorithm: HMAC-SHA256` for clarity.
+
+### Algorithm support matrix
+
+| Algorithm     | Key required | Integrity | Authentication |
+|---------------|-------------|-----------|----------------|
+| `SHA-256`     | No          | ✓         | ✗              |
+| `HMAC-SHA256` | Yes         | ✓         | ✓              |
+
+### Build status after Step 10
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
 ## Control Center Admin Refresh ✅
 
 **Scope:** Full admin dashboard overhaul — infrastructure layer + new pages + sidebar badges.

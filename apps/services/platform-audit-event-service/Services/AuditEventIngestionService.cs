@@ -16,18 +16,27 @@ namespace PlatformAuditEventService.Services;
 ///   2. AuditId + time     — generate AuditId (Guid.NewGuid) and capture RecordedAtUtc (server UTC).
 ///   3. Chain lookup       — fetch PreviousHash from the (TenantId, SourceSystem) chain head.
 ///                           Skipped when integrity signing is disabled.
-///   4. Hash computation   — HMAC-SHA256 over canonical fields; needs AuditId + RecordedAtUtc
-///                           computed in step 2 so the hash covers the exact persisted values.
-///                           Skipped when integrity signing is disabled.
+///   4. Payload + hash     — AuditRecordHasher.BuildPayload() assembles the canonical string
+///                           (includes PreviousHash so Hash(N) depends on Hash(N-1));
+///                           the selected algorithm then hashes it. Skipped when signing disabled.
 ///   5. Entity mapping     — AuditEventRecordMapper.ToEntity receives all values including hashes.
 ///   6. Append             — IAuditEventRecordRepository.AppendAsync (append-only, no updates).
 ///   7. Result             — IngestItemResult { Accepted, AuditId } or rejection with reason.
 ///
 /// Integrity signing:
-///   Enabled when <c>IntegrityOptions.HmacKeyBase64</c> is non-null and non-empty.
-///   When disabled, Hash and PreviousHash are null on the persisted record.
-///   The service never throws due to a missing key — it silently omits hashes.
-///   This allows development and staging environments to run without configuring a key.
+///   Enabled when either of these conditions holds:
+///     - Integrity:Algorithm = "SHA-256"       → keyless, always enabled, portable.
+///     - Integrity:Algorithm = "HMAC-SHA256"   → enabled only when HmacKeyBase64 is set.
+///       When the key is absent in HMAC-SHA256 mode, signing is silently skipped so that
+///       development environments can run without configuring a secret.
+///
+///   When signing is disabled: Hash and PreviousHash are null on the persisted record.
+///
+/// Chain integrity:
+///   PreviousHash is included in the canonical payload for Hash computation.
+///   This means Hash(N) is a function of Hash(N-1), creating a singly-linked
+///   cryptographic chain: modifying any historical record invalidates all subsequent
+///   hashes in the same (TenantId, SourceSystem) chain.
 ///
 /// Replay records:
 ///   <see cref="IngestAuditEventRequest.IsReplay"/> = true marks the record as a replay of a
@@ -74,7 +83,9 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
 
     private readonly IAuditEventRecordRepository         _records;
     private readonly IntegrityOptions                    _integrity;
+    private readonly string                              _algorithm;
     private readonly byte[]?                             _hmacSecret;
+    private readonly bool                                _signingEnabled;
     private readonly ILogger<AuditEventIngestionService> _logger;
 
     // ── Constructor ───────────────────────────────────────────────────────────
@@ -88,11 +99,37 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
         _integrity = integrityOptions.Value;
         _logger    = logger;
 
-        // Integrity signing is optional. When the key is absent (development or staging
-        // environments where tamper-evidence is not required), signing is silently skipped.
+        // Resolve algorithm — default to HMAC-SHA256 when not specified.
+        _algorithm = string.IsNullOrWhiteSpace(_integrity.Algorithm)
+            ? AuditRecordHasher.AlgoHmacSha256
+            : _integrity.Algorithm;
+
+        // Decode HMAC secret when configured (required for HMAC-SHA256 mode).
         _hmacSecret = _integrity.HmacKeyBase64 is { Length: > 0 }
             ? Convert.FromBase64String(_integrity.HmacKeyBase64)
             : null;
+
+        // Signing is enabled when:
+        //   Algorithm = "SHA-256"     → always (keyless, no secret needed), or
+        //   Algorithm = "HMAC-SHA256" → only when HmacKeyBase64 is configured.
+        // When HMAC-SHA256 is selected but no key is set, signing is silently skipped
+        // so development and staging environments can run without secrets management.
+        _signingEnabled =
+            _algorithm.Equals(AuditRecordHasher.AlgoSha256, StringComparison.OrdinalIgnoreCase) ||
+            _hmacSecret is not null;
+
+        if (_signingEnabled)
+        {
+            _logger.LogInformation(
+                "Audit integrity signing ENABLED — Algorithm={Algorithm}", _algorithm);
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Audit integrity signing DISABLED — Algorithm={Algorithm} but HmacKeyBase64 is absent. " +
+                "Set Integrity:Algorithm to SHA-256 for keyless signing, or supply a key for HMAC-SHA256.",
+                _algorithm);
+        }
     }
 
     // ── IAuditEventIngestionService ───────────────────────────────────────────
@@ -214,12 +251,16 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
         // ── Step 3: Integrity chain lookup ────────────────────────────────────
         //
         // Fetch the hash from the most recently persisted record in the same
-        // (TenantId, SourceSystem) chain. This becomes PreviousHash on the new record,
-        // forming a singly-linked hash chain that can be audited for gaps or insertions.
+        // (TenantId, SourceSystem) chain.  This becomes PreviousHash on the new record
+        // and is ALSO included in the hash payload (Step 4), creating a singly-linked
+        // cryptographic chain: Hash(N) depends on Hash(N-1).
         //
-        // Skipped entirely when integrity signing is disabled (no HMAC key configured).
+        // A null PreviousHash means this is the genesis record for the chain —
+        // it still gets a Hash, but its payload includes an empty PreviousHash field.
+        //
+        // Skipped entirely when integrity signing is disabled.
         string? previousHash = null;
-        if (_hmacSecret is not null)
+        if (_signingEnabled)
         {
             var chainHead = await _records.GetLatestInChainAsync(
                 req.Scope.TenantId, req.SourceSystem, ct);
@@ -227,30 +268,41 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
             previousHash = chainHead?.Hash;
         }
 
-        // ── Step 4: Integrity hash computation ────────────────────────────────
+        // ── Step 4: Payload assembly + hash computation ────────────────────────
         //
-        // Computed from the canonical field set over the values that will be persisted.
-        // AuditId and RecordedAtUtc are generated in step 2 and are known here before
-        // the entity is created, avoiding any chicken-and-egg ordering problem.
+        // BuildPayload() produces the canonical pipe-delimited string including PreviousHash.
+        // Including PreviousHash binds Hash(N) to Hash(N-1): any historical modification
+        // invalidates all subsequent hashes in the chain.
         //
-        // Skipped when signing is disabled.
+        // AuditId and RecordedAtUtc are generated in Step 2 and passed here so the hash
+        // covers the exact values that will be persisted — no chicken-and-egg problem.
+        //
+        // Algorithm dispatch:
+        //   "SHA-256"     → ComputeSha256()      (keyless, portable, always available)
+        //   "HMAC-SHA256" → ComputeHmacSha256()  (requires _hmacSecret; checked at startup)
+        //
+        // Skipped when signing is disabled (_signingEnabled = false).
         string? hash = null;
-        if (_hmacSecret is not null)
+        if (_signingEnabled)
         {
             var occurredAtUtc = req.OccurredAtUtc ?? now;  // must match ToEntity logic
 
-            hash = AuditRecordHasher.Compute(
-                auditId:        auditId,
-                eventType:      req.EventType,
-                sourceSystem:   req.SourceSystem,
-                tenantId:       req.Scope.TenantId,
-                actorId:        req.Actor.Id,
-                entityType:     req.Entity?.Type,
-                entityId:       req.Entity?.Id,
-                action:         req.Action,
-                occurredAtUtc:  occurredAtUtc,
-                recordedAtUtc:  now,
-                hmacSecret:     _hmacSecret);
+            var payload = AuditRecordHasher.BuildPayload(
+                auditId:       auditId,
+                eventType:     req.EventType,
+                sourceSystem:  req.SourceSystem,
+                tenantId:      req.Scope.TenantId,
+                actorId:       req.Actor.Id,
+                entityType:    req.Entity?.Type,
+                entityId:      req.Entity?.Id,
+                action:        req.Action,
+                occurredAtUtc: occurredAtUtc,
+                recordedAtUtc: now,
+                previousHash:  previousHash);   // ← binds this hash to predecessor in chain
+
+            hash = _algorithm.Equals(AuditRecordHasher.AlgoSha256, StringComparison.OrdinalIgnoreCase)
+                ? AuditRecordHasher.ComputeSha256(payload)
+                : AuditRecordHasher.ComputeHmacSha256(payload, _hmacSecret!);
         }
 
         // ── Step 5: Entity construction ───────────────────────────────────────

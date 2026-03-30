@@ -19,8 +19,19 @@ public sealed class IntegrityOptions
     public string? HmacKeyBase64 { get; set; }
 
     /// <summary>
-    /// Hash algorithm. Currently only "HMAC-SHA256" is supported.
-    /// Reserved for future algorithm agility.
+    /// Hash algorithm applied to the canonical payload string.
+    ///
+    /// Supported values:
+    ///   "HMAC-SHA256" (default) — HMAC-SHA256 using the secret from HmacKeyBase64.
+    ///       Provides integrity AND authentication. Required for production.
+    ///       When HmacKeyBase64 is absent, signing is silently skipped (development mode).
+    ///   "SHA-256"               — Keyless SHA-256. Provides integrity but not authentication.
+    ///       Always active; no secret required. Suitable for development and CI environments.
+    ///
+    /// PreviousHash is included in the canonical payload for both algorithms, so Hash(N)
+    /// depends on Hash(N-1) forming a singly-linked cryptographic chain.
+    ///
+    /// Environment variable override: Integrity__Algorithm
     /// </summary>
     public string Algorithm { get; set; } = "HMAC-SHA256";
 

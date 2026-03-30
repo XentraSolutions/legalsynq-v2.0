@@ -1,1 +1,10 @@
-{}
+{
+  "/org-types/page": "app/org-types/page.js",
+  "/careconnect-integrity/page": "app/careconnect-integrity/page.js",
+  "/settings/page": "app/settings/page.js",
+  "/domains/page": "app/domains/page.js",
+  "/support/page": "app/support/page.js",
+  "/page": "app/page.js",
+  "/login/page": "app/login/page.js",
+  "/platform-readiness/page": "app/platform-readiness/page.js"
+}
