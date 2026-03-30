@@ -53,6 +53,8 @@ import type {
   ProductRelTypeRule,
   LegacyCoverageReport,
   PlatformReadinessSummary,
+  CareConnectIntegrityReport,
+  ScopedRoleAssignment,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -793,6 +795,68 @@ export function mapPlatformReadiness(raw: unknown): PlatformReadinessSummary {
         tenant:       num(sb, 'tenant',        'tenant',       0),
       };
     })(),
+  };
+}
+
+// ── CareConnect Integrity mapper ──────────────────────────────────────────────
+
+/**
+ * mapCareConnectIntegrity — normalises the raw GET /careconnect/api/admin/integrity response.
+ *
+ * The backend never throws — failing queries produce -1 for that counter.
+ * The mapper preserves -1 values so the UI can distinguish "0 issues" from
+ * "query failed" and render an appropriate warning.
+ */
+export function mapCareConnectIntegrity(raw: unknown): CareConnectIntegrityReport {
+  const r    = asObj(raw);
+  const refs = asObj(r['referrals']    ?? {});
+  const apps = asObj(r['appointments'] ?? {});
+  const prov = asObj(r['providers']    ?? {});
+  const facs = asObj(r['facilities']   ?? {});
+
+  return {
+    generatedAtUtc: str(r, 'generated_at_utc', 'generatedAtUtc', new Date().toISOString()),
+    clean:          bool(r, 'clean', 'clean', false),
+
+    referrals: {
+      withOrgPairButNullRelationship: num(refs, 'with_org_pair_but_null_relationship',
+                                          'withOrgPairButNullRelationship', -1),
+    },
+
+    appointments: {
+      missingRelationshipWhereReferralHasOne: num(apps,
+        'missing_relationship_where_referral_has_one',
+        'missingRelationshipWhereReferralHasOne', -1),
+    },
+
+    providers: {
+      withoutOrganizationId: num(prov, 'without_organization_id', 'withoutOrganizationId', -1),
+    },
+
+    facilities: {
+      withoutOrganizationId: num(facs, 'without_organization_id', 'withoutOrganizationId', -1),
+    },
+  };
+}
+
+// ── ScopedRoleAssignment mapper ───────────────────────────────────────────────
+
+/**
+ * mapScopedRoleAssignment — normalises a single ScopedRoleAssignment record.
+ * Returned per-item by GET /identity/api/admin/users/{id}/scoped-roles.
+ */
+export function mapScopedRoleAssignment(raw: unknown): ScopedRoleAssignment {
+  const r = asObj(raw);
+  return {
+    id:             str(r, 'id',              'id',             ''),
+    userId:         str(r, 'user_id',         'userId',         ''),
+    roleId:         str(r, 'role_id',         'roleId',         ''),
+    roleName:       str(r, 'role_name',       'roleName',       ''),
+    scopeType:      str(r, 'scope_type',      'scopeType',      'Global'),
+    scopeEntityId:  r['scope_entity_id'] as string | undefined
+                    ?? r['scopeEntityId'] as string | undefined,
+    isActive:       bool(r, 'is_active',      'isActive',       true),
+    createdAtUtc:   str(r, 'created_at_utc',  'createdAtUtc',   new Date().toISOString()),
   };
 }
 

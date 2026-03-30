@@ -54,9 +54,11 @@ export interface PlatformSession {
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 export interface NavItem {
-  href:  string;
-  label: string;
-  icon?: string;
+  href:   string;
+  label:  string;
+  icon?:  string;
+  /** Optional status badge displayed next to the nav label in expanded mode. */
+  badge?: 'LIVE' | 'MOCKUP' | 'IN PROGRESS';
 }
 
 /** A labelled section of nav items — mirrors the web app NavSection. */

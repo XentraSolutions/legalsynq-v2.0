@@ -476,6 +476,58 @@ export interface PlatformReadinessSummary {
   scopedAssignmentsByScope: ScopedAssignmentsByScope;
 }
 
+// ── CareConnect Integrity Report ──────────────────────────────────────────────
+
+/**
+ * Integrity counters for the CareConnect service.
+ * Returned by GET /careconnect/api/admin/integrity.
+ *
+ * Counts of -1 indicate a query failure for that counter (the backend never
+ * throws — it sets -1 so the dashboard always renders).
+ */
+export interface CareConnectIntegrityReport {
+  generatedAtUtc: string;
+  /** True when all four counters are 0. */
+  clean: boolean;
+
+  referrals: {
+    /** Referrals where both org IDs are set but OrganizationRelationshipId is null. */
+    withOrgPairButNullRelationship: number;
+  };
+
+  appointments: {
+    /** Appointments missing a relationship ID when the linked referral has one. */
+    missingRelationshipWhereReferralHasOne: number;
+  };
+
+  providers: {
+    /** Active providers without an Identity OrganizationId link. */
+    withoutOrganizationId: number;
+  };
+
+  facilities: {
+    /** Active facilities without an Identity OrganizationId link. */
+    withoutOrganizationId: number;
+  };
+}
+
+// ── Scoped Role Assignment (Phase G) ──────────────────────────────────────────
+
+/**
+ * A scoped role assignment for a user.
+ * Returned by GET /identity/api/admin/users/{id}/scoped-roles.
+ */
+export interface ScopedRoleAssignment {
+  id:             string;
+  userId:         string;
+  roleId:         string;
+  roleName:       string;
+  scopeType:      string;
+  scopeEntityId?: string;
+  isActive:       boolean;
+  createdAtUtc:   string;
+}
+
 // ── Shared ────────────────────────────────────────────────────────────────────
 
 export interface PagedResponse<T> {

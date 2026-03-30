@@ -344,6 +344,8 @@ export const CACHE_TAGS = {
   legacyCoverage:       'cc:legacy-coverage',
   // Phase 8 — platform readiness summary
   platformReadiness:    'cc:platform-readiness',
+  // CareConnect — integrity report
+  ccIntegrity:          'cc:careconnect-integrity',
 } as const;
 
 export type CacheTag = typeof CACHE_TAGS[keyof typeof CACHE_TAGS];

@@ -157,7 +157,25 @@ function SidebarItem({
           />
         : <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
       }
-      {!collapsed && <span>{item.label}</span>}
+      {!collapsed && (
+        <span className="flex-1 min-w-0 flex items-center gap-1.5">
+          <span className="truncate">{item.label}</span>
+          {item.badge && <NavBadge badge={item.badge} />}
+        </span>
+      )}
     </Link>
+  );
+}
+
+function NavBadge({ badge }: { badge: NonNullable<NavItem['badge']> }) {
+  const styles: Record<string, string> = {
+    'LIVE':        'bg-emerald-100 text-emerald-700',
+    'IN PROGRESS': 'bg-amber-100   text-amber-700',
+    'MOCKUP':      'bg-gray-100    text-gray-500',
+  };
+  return (
+    <span className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none ${styles[badge] ?? styles['MOCKUP']}`}>
+      {badge}
+    </span>
   );
 }

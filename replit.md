@@ -1378,3 +1378,60 @@ Both `PlatformAuditEventService.DTOs.AuditEventQueryRequest` (legacy) and `Platf
 
 ### Build status — Step 7
 - PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
+## Control Center Admin Refresh ✅
+
+**Scope:** Full admin dashboard overhaul — infrastructure layer + new pages + sidebar badges.
+
+### Infrastructure layer (all additive)
+
+#### `types/control-center.ts`
+- Added `CareConnectIntegrityReport` interface (generatedAtUtc, clean, referrals/appointments/providers/facilities counters; -1 = query failure)
+- Added `ScopedRoleAssignment` interface (per-user Phase G SRA record)
+
+#### `types/index.ts`
+- Added `badge?: 'LIVE' | 'MOCKUP' | 'IN PROGRESS'` to `NavItem`
+
+#### `lib/api-client.ts`
+- Added `ccIntegrity: 'cc:careconnect-integrity'` to `CACHE_TAGS`
+
+#### `lib/api-mappers.ts`
+- Added `mapCareConnectIntegrity(raw)` — preserves -1 values for failed queries
+- Added `mapScopedRoleAssignment(raw)` — snake_case and camelCase both handled
+
+#### `lib/control-center-api.ts`
+- Added `careConnectIntegrity.get()` — GET `/careconnect/api/admin/integrity`, 10 s cache, `cc:careconnect-integrity` tag
+- Added `scopedRoles.getByUser(userId)` — GET `/identity/api/admin/users/{id}/scoped-roles`, 30 s cache
+
+### Navigation layer
+
+#### `lib/routes.ts`
+- Added `dashboard`, `platformReadiness`, `scopedRoles`, `careConnectIntegrity`, `domains` routes
+- Ordered: overview → platform → identity → relationships → product rules → careconnect → operations → catalog → system
+
+#### `lib/nav.ts`
+- Full rewrite: 10 nav sections; badge annotations: `Scoped Roles` (MOCKUP), `Tenant Domains` (MOCKUP), `Products` (MOCKUP), `Monitoring` (IN PROGRESS), all others unlabelled (LIVE by implication)
+
+#### `components/shell/cc-sidebar.tsx`
+- Added `NavBadge` pill sub-component (LIVE=emerald, IN PROGRESS=amber, MOCKUP=gray)
+- Nav items now render badge pill in expanded mode only (`item.badge && <NavBadge />`)
+
+### New components
+- **`components/platform/platform-readiness-card.tsx`** — full breakdown: Phase G, OrgType coverage bar, ProductRole eligibility bar, org relationship counts, SRA by scope type. Coverage bars colour: ≥90% green, ≥60% amber, else red.
+- **`components/careconnect/integrity-report-card.tsx`** — four counters with LIVE status labels. -1 renders "query failed" pill. Remediation callout when issues exist.
+
+### New pages
+- **`/platform-readiness`** (LIVE) — pulls `controlCenterServerApi.platformReadiness.get()`, renders `PlatformReadinessCard`
+- **`/careconnect-integrity`** (LIVE) — pulls `controlCenterServerApi.careConnectIntegrity.get()`, renders `IntegrityReportCard`
+- **`/scoped-roles`** (MOCKUP) — explains Phase G completion; links to per-user user detail; illustrative mockup table with disabled controls + footnote
+- **`/domains`** (MOCKUP) — tenant domain management placeholder; disabled form controls; illustrative data with row-level opacity
+
+### Updated pages
+- **`/` (root)** — full admin dashboard grid: seven `SectionCard` sections (Platform, Identity, Relationships, Product Rules, CareConnect, Operations, Mockup/Not-yet-wired) each with `NavLink` rows that carry LIVE/IN PROGRESS/MOCKUP status badges; sign-in CTA at bottom
+- **`/products`** — added MOCKUP badge, amber info callout linking to Tenant detail
+
+### Build status after Control Center Admin Refresh
+- control-center (tsc --noEmit): ✅ 0 errors, 0 warnings
+- Workflow: ✅ running (fast refresh 727 ms)

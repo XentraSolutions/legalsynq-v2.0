@@ -74,6 +74,8 @@ import {
   mapProductRelTypeRule,
   mapLegacyCoverageReport,
   mapPlatformReadiness,
+  mapCareConnectIntegrity,
+  mapScopedRoleAssignment,
 }                                       from '@/lib/api-mappers';
 import type {
   TenantSummary,
@@ -99,6 +101,8 @@ import type {
   ProductRelTypeRule,
   LegacyCoverageReport,
   PlatformReadinessSummary,
+  CareConnectIntegrityReport,
+  ScopedRoleAssignment,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -777,6 +781,45 @@ export const controlCenterServerApi = {
         [CACHE_TAGS.platformReadiness],
       );
       return mapPlatformReadiness(raw);
+    },
+  },
+
+  // ── CareConnect Integrity ────────────────────────────────────────────────────
+  /**
+   * GET /careconnect/api/admin/integrity
+   *
+   * Returns operational integrity counters for CareConnect entities.
+   * The backend never throws — query failures produce -1 for that counter.
+   *
+   * Cache: 10 s  Tag: cc:careconnect-integrity
+   *   Short TTL — integrity issues should surface quickly in the admin dashboard.
+   */
+  careConnectIntegrity: {
+    get: async (): Promise<CareConnectIntegrityReport> => {
+      const raw = await apiClient.get<unknown>(
+        '/careconnect/api/admin/integrity',
+        10,
+        [CACHE_TAGS.ccIntegrity],
+      );
+      return mapCareConnectIntegrity(raw);
+    },
+  },
+
+  // ── Scoped Role Assignments (per-user) ───────────────────────────────────────
+  /**
+   * GET /identity/api/admin/users/{id}/scoped-roles
+   *
+   * Returns all active ScopedRoleAssignments for a specific user.
+   * There is no global list endpoint — scoped roles are always user-scoped.
+   */
+  scopedRoles: {
+    getByUser: async (userId: string): Promise<ScopedRoleAssignment[]> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(userId)}/scoped-roles`,
+        30,
+        [CACHE_TAGS.users],
+      );
+      return Array.isArray(raw) ? raw.map(mapScopedRoleAssignment) : [];
     },
   },
 

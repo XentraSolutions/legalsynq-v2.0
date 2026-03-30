@@ -1,52 +1,91 @@
 import type { NavSection } from '@/types';
 
 /**
- * Control Center sidebar navigation — NavSection[] matching the web app structure.
- * All routes are host-root paths (no /control-center prefix — standalone app).
+ * Control Center sidebar navigation — NavSection[] with status badges.
+ *
+ * Badge values:
+ *   LIVE        — fully wired to a working backend endpoint
+ *   IN PROGRESS — partially wired or mixed live/mock data
+ *   MOCKUP      — no real backend wiring; placeholder UI only
+ *
+ * Sections are ordered: LIVE functionality first, MOCKUP last.
  */
 export const CC_NAV: NavSection[] = [
   {
     heading: 'OVERVIEW',
     items: [
-      { href: '/tenants',    label: 'Dashboard', icon: 'ri-dashboard-3-line' },
+      { href: '/', label: 'Dashboard', icon: 'ri-dashboard-3-line' },
     ],
   },
+
+  {
+    heading: 'PLATFORM',
+    items: [
+      { href: '/platform-readiness', label: 'Platform Readiness', icon: 'ri-checkbox-circle-line' },
+      { href: '/legacy-coverage',    label: 'Legacy Coverage',    icon: 'ri-history-fill'         },
+    ],
+  },
+
+  {
+    heading: 'IDENTITY',
+    items: [
+      { href: '/tenants',      label: 'Tenants',          icon: 'ri-building-2-line'      },
+      { href: '/tenant-users', label: 'Users',            icon: 'ri-group-line'           },
+      { href: '/roles',        label: 'Roles',            icon: 'ri-shield-keyhole-line'  },
+      { href: '/scoped-roles', label: 'Scoped Roles',     icon: 'ri-focus-3-line', badge: 'MOCKUP' },
+      { href: '/org-types',    label: 'Org Types',        icon: 'ri-building-4-line'      },
+    ],
+  },
+
+  {
+    heading: 'RELATIONSHIPS',
+    items: [
+      { href: '/relationship-types', label: 'Relationship Types', icon: 'ri-links-line'         },
+      { href: '/org-relationships',  label: 'Org Relationships',  icon: 'ri-share-circle-line'  },
+    ],
+  },
+
+  {
+    heading: 'PRODUCT RULES',
+    items: [
+      { href: '/product-rules', label: 'Access Rules', icon: 'ri-shield-check-line' },
+    ],
+  },
+
+  {
+    heading: 'CARECONNECT',
+    items: [
+      { href: '/careconnect-integrity', label: 'Integrity', icon: 'ri-heart-pulse-line' },
+    ],
+  },
+
   {
     heading: 'TENANTS',
     items: [
-      { href: '/tenants',      label: 'All Tenants',  icon: 'ri-building-2-line' },
-      { href: '/tenant-users', label: 'Tenant Users', icon: 'ri-group-line'      },
+      { href: '/domains', label: 'Tenant Domains', icon: 'ri-global-line', badge: 'MOCKUP' },
     ],
   },
-  {
-    heading: 'ACCESS CONTROL',
-    items: [
-      { href: '/roles',    label: 'Roles & Permissions',  icon: 'ri-shield-keyhole-line' },
-      { href: '/products', label: 'Product Entitlements', icon: 'ri-apps-line'           },
-    ],
-  },
+
   {
     heading: 'OPERATIONS',
     items: [
-      { href: '/support',    label: 'Support Tools', icon: 'ri-customer-service-2-line' },
-      { href: '/audit-logs', label: 'Audit Logs',    icon: 'ri-file-list-3-line'        },
-      { href: '/monitoring', label: 'Monitoring',    icon: 'ri-pulse-line'              },
+      { href: '/support',    label: 'Support Tools', icon: 'ri-customer-service-2-line'        },
+      { href: '/audit-logs', label: 'Audit Logs',    icon: 'ri-file-list-3-line'               },
+      { href: '/monitoring', label: 'Monitoring',    icon: 'ri-pulse-line', badge: 'IN PROGRESS' },
     ],
   },
+
   {
-    heading: 'ORGANIZATION GRAPH',
+    heading: 'CATALOG',
     items: [
-      { href: '/org-types',          label: 'Org Types',         icon: 'ri-building-4-line'          },
-      { href: '/relationship-types', label: 'Relationship Types', icon: 'ri-links-line'               },
-      { href: '/org-relationships',  label: 'Org Relationships',  icon: 'ri-share-circle-line'        },
-      { href: '/product-rules',      label: 'Product Rules',      icon: 'ri-shield-check-line'        },
+      { href: '/products', label: 'Products', icon: 'ri-apps-line', badge: 'MOCKUP' },
     ],
   },
+
   {
-    heading: 'CONFIGURATION',
+    heading: 'SYSTEM',
     items: [
-      { href: '/settings',        label: 'Platform Settings', icon: 'ri-settings-3-line'   },
-      { href: '/legacy-coverage', label: 'Legacy Coverage',   icon: 'ri-history-fill'      },
+      { href: '/settings', label: 'Platform Settings', icon: 'ri-settings-3-line' },
     ],
   },
 ];

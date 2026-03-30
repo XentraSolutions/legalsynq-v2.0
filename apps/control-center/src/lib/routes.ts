@@ -7,7 +7,20 @@
  * All routes are host-root paths (no path prefix — this is a standalone app).
  */
 export const Routes = {
-  // ── Top-level sections ────────────────────────────────────────────────────
+  // ── Overview ──────────────────────────────────────────────────────────────
+
+  /** / — Admin dashboard */
+  dashboard: '/',
+
+  // ── Platform diagnostics ──────────────────────────────────────────────────
+
+  /** /platform-readiness — Platform readiness summary */
+  platformReadiness: '/platform-readiness',
+
+  /** /legacy-coverage — Legacy migration coverage report */
+  legacyCoverage: '/legacy-coverage',
+
+  // ── Identity ──────────────────────────────────────────────────────────────
 
   /** /tenants — Tenants list */
   tenants: '/tenants',
@@ -18,8 +31,31 @@ export const Routes = {
   /** /roles — Roles & permissions list */
   roles: '/roles',
 
-  /** /products — Product entitlements */
-  products: '/products',
+  /** /scoped-roles — Scoped role assignments (Phase G) */
+  scopedRoles: '/scoped-roles',
+
+  /** /org-types — Organization type catalog */
+  orgTypes: '/org-types',
+
+  // ── Relationships ─────────────────────────────────────────────────────────
+
+  /** /relationship-types — Relationship type catalog */
+  relationshipTypes: '/relationship-types',
+
+  /** /org-relationships — Organization relationship graph */
+  orgRelationships: '/org-relationships',
+
+  // ── Product rules ─────────────────────────────────────────────────────────
+
+  /** /product-rules — Product access rules (org-type + rel-type) */
+  productRules: '/product-rules',
+
+  // ── CareConnect ───────────────────────────────────────────────────────────
+
+  /** /careconnect-integrity — CareConnect entity integrity report */
+  careConnectIntegrity: '/careconnect-integrity',
+
+  // ── Operations ────────────────────────────────────────────────────────────
 
   /** /support — Support tools */
   support: '/support',
@@ -30,27 +66,18 @@ export const Routes = {
   /** /monitoring — Service health */
   monitoring: '/monitoring',
 
+  // ── Catalog (mockup) ──────────────────────────────────────────────────────
+
+  /** /products — Product entitlements */
+  products: '/products',
+
+  /** /domains — Tenant domain management (mockup) */
+  domains: '/domains',
+
+  // ── System ────────────────────────────────────────────────────────────────
+
   /** /settings — Platform settings */
   settings: '/settings',
-
-  // ── Platform catalog ──────────────────────────────────────────────────────
-
-  /** /org-types — Organization type catalog */
-  orgTypes: '/org-types',
-
-  /** /relationship-types — Relationship type catalog */
-  relationshipTypes: '/relationship-types',
-
-  /** /org-relationships — Organization relationship graph */
-  orgRelationships: '/org-relationships',
-
-  /** /product-rules — Product access rules (org-type + rel-type) */
-  productRules: '/product-rules',
-
-  // ── Step 4 ────────────────────────────────────────────────────────────────
-
-  /** /legacy-coverage — Legacy migration coverage report */
-  legacyCoverage: '/legacy-coverage',
 
   // ── Dynamic route builders ────────────────────────────────────────────────
 
