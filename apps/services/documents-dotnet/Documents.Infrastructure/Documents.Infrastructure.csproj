@@ -21,6 +21,7 @@
     </PackageReference>
     <!-- AWS S3 -->
     <PackageReference Include="AWSSDK.S3" Version="3.7.310.0" />
+    <PackageReference Include="prometheus-net" Version="8.2.1" />
     <!-- Redis -->
     <PackageReference Include="StackExchange.Redis" Version="2.7.33" />
     <!-- JWT validation -->

@@ -1,18 +1,23 @@
 using System.Threading.Channels;
 using Documents.Domain.Entities;
 using Documents.Domain.Interfaces;
+using Documents.Infrastructure.Observability;
 using Microsoft.Extensions.Logging;
 
 namespace Documents.Infrastructure.Scanner;
 
 /// <summary>
 /// In-process, bounded Channel-based scan job queue.
-/// Thread-safe for concurrent producers (API handlers) and a single consumer (background worker).
-/// Can be replaced with a Redis Streams or SQS adapter by swapping the IScanJobQueue registration.
+/// Suitable for local development and single-instance deployments.
+/// Jobs are LOST on process restart — use RedisScanJobQueue for production.
+///
+/// Backpressure strategy: TryEnqueueAsync returns false immediately if the
+/// channel is full (DropWrite mode), giving the caller the chance to fail fast
+/// rather than blocking the HTTP request indefinitely.
 /// </summary>
 public sealed class InMemoryScanJobQueue : IScanJobQueue
 {
-    private readonly Channel<ScanJob>            _channel;
+    private readonly Channel<ScanJobLease>         _channel;
     private readonly ILogger<InMemoryScanJobQueue> _log;
 
     public int Count => _channel.Reader.Count;
@@ -23,36 +28,75 @@ public sealed class InMemoryScanJobQueue : IScanJobQueue
     {
         _log = log;
 
+        // DropWrite mode: TryWrite returns false when full — no blocking.
         var opts = new BoundedChannelOptions(capacity)
         {
-            FullMode     = BoundedChannelFullMode.Wait,
-            SingleReader = true,
+            FullMode     = BoundedChannelFullMode.DropWrite,
+            SingleReader = false,  // multiple workers allowed
             SingleWriter = false,
         };
 
-        _channel = Channel.CreateBounded<ScanJob>(opts);
+        _channel = Channel.CreateBounded<ScanJobLease>(opts);
     }
 
-    public async ValueTask EnqueueAsync(ScanJob job, CancellationToken ct = default)
+    public ValueTask<bool> TryEnqueueAsync(ScanJob job, CancellationToken ct = default)
     {
-        await _channel.Writer.WriteAsync(job, ct);
-        _log.LogDebug("ScanQueue: enqueued job for Document={DocId} Version={VersionId}",
-            job.DocumentId, job.VersionId);
+        var lease = new ScanJobLease { Job = job, MessageId = string.Empty };
+        var written = _channel.Writer.TryWrite(lease);
+
+        if (written)
+        {
+            ScanMetrics.ScanJobsEnqueued.Inc();
+            ScanMetrics.ScanQueueDepth.Set(_channel.Reader.Count);
+            _log.LogDebug("ScanQueue(mem): enqueued Document={DocId} Version={VersionId} Attempt={Attempt}",
+                job.DocumentId, job.VersionId, job.AttemptCount);
+        }
+        else
+        {
+            ScanMetrics.ScanQueueSaturations.Inc();
+            _log.LogWarning("ScanQueue(mem): queue full — Document={DocId} rejected", job.DocumentId);
+        }
+
+        return ValueTask.FromResult(written);
     }
 
-    public async ValueTask<ScanJob?> DequeueAsync(CancellationToken ct = default)
+    public async ValueTask<ScanJobLease?> DequeueAsync(string consumerId, CancellationToken ct = default)
     {
         try
         {
             return await _channel.Reader.ReadAsync(ct);
         }
-        catch (ChannelClosedException)
+        catch (ChannelClosedException) { return null; }
+        catch (OperationCanceledException) { return null; }
+    }
+
+    public ValueTask AcknowledgeAsync(ScanJobLease lease, CancellationToken ct = default)
+        => ValueTask.CompletedTask;  // no persistence in-memory
+
+    public async ValueTask NackAsync(ScanJobLease lease, CancellationToken ct = default)
+    {
+        // Re-enqueue with incremented attempt count for retry
+        var src = lease.Job;
+        var retryJob = new ScanJob
         {
-            return null;
-        }
-        catch (OperationCanceledException)
+            DocumentId   = src.DocumentId,
+            TenantId     = src.TenantId,
+            VersionId    = src.VersionId,
+            StorageKey   = src.StorageKey,
+            FileName     = src.FileName,
+            MimeType     = src.MimeType,
+            EnqueuedAt   = DateTime.UtcNow,
+            AttemptCount = src.AttemptCount + 1,
+        };
+        var retryLease = new ScanJobLease { Job = retryJob, MessageId = string.Empty };
+
+        var written = _channel.Writer.TryWrite(retryLease);
+        if (!written)
         {
-            return null;
+            _log.LogError(
+                "ScanQueue(mem): failed to re-enqueue retry for Document={DocId} — queue full",
+                lease.Job.DocumentId);
         }
+        await ValueTask.CompletedTask;
     }
 }

@@ -1,3 +1,4 @@
+using Documents.Application.Exceptions;
 using Documents.Domain.Entities;
 using Documents.Domain.Enums;
 using Documents.Domain.Interfaces;
@@ -10,6 +11,9 @@ namespace Documents.Application.Services;
 /// Application-layer coordinator for the asynchronous scan workflow.
 /// Called by DocumentService after upload to enqueue a scan job.
 /// The actual scan is performed by DocumentScanWorker (background worker).
+///
+/// Backpressure: TryEnqueueAsync is non-blocking. If the queue is full,
+/// QueueSaturationException is thrown → mapped to HTTP 503 by middleware.
 /// </summary>
 public sealed class ScanOrchestrationService
 {
@@ -29,6 +33,7 @@ public sealed class ScanOrchestrationService
 
     /// <summary>
     /// Enqueue an antivirus scan for a newly uploaded document (no version).
+    /// Throws QueueSaturationException (→ HTTP 503) if the queue is full.
     /// </summary>
     public async Task EnqueueDocumentScanAsync(
         Document       doc,
@@ -47,19 +52,12 @@ public sealed class ScanOrchestrationService
             MimeType   = mimeType,
         };
 
-        await _queue.EnqueueAsync(job, ct);
-
-        _log.LogInformation(
-            "Scan enqueued: Document={DocId} Tenant={TenantId} File={File}",
-            doc.Id, doc.TenantId, fileName);
-
-        await _audit.LogAsync(
-            AuditEvent.ScanRequested, ctx, doc.Id,
-            detail: new { fileName, mimeType, queueDepth = _queue.Count });
+        await EnqueueInternalAsync(job, ctx, doc.Id, fileName, mimeType, ct);
     }
 
     /// <summary>
     /// Enqueue an antivirus scan for a newly uploaded document version.
+    /// Throws QueueSaturationException (→ HTTP 503) if the queue is full.
     /// </summary>
     public async Task EnqueueVersionScanAsync(
         DocumentVersion version,
@@ -79,14 +77,42 @@ public sealed class ScanOrchestrationService
             MimeType   = mimeType,
         };
 
-        await _queue.EnqueueAsync(job, ct);
+        await EnqueueInternalAsync(job, ctx, parentDoc.Id, fileName, mimeType, ct,
+            versionId: version.Id);
+    }
+
+    // ── Internal ─────────────────────────────────────────────────────────────
+
+    private async Task EnqueueInternalAsync(
+        ScanJob           job,
+        RequestContext    ctx,
+        Guid              documentId,
+        string            fileName,
+        string            mimeType,
+        CancellationToken ct,
+        Guid?             versionId = null)
+    {
+        // Queue depth before enqueue (for audit trail)
+        var queueDepthBefore = _queue.Count;
+
+        // Non-blocking fail-fast enqueue — queue tracks its own metrics
+        var enqueued = await _queue.TryEnqueueAsync(job, ct);
+
+        if (!enqueued)
+        {
+            _log.LogError(
+                "Scan queue saturated: Document={DocId} Tenant={TenantId} QueueDepth~={Depth} — upload rejected",
+                documentId, job.TenantId, queueDepthBefore);
+
+            throw new QueueSaturationException();
+        }
 
         _log.LogInformation(
-            "Scan enqueued: Document={DocId} Version={VersionId} Tenant={TenantId} File={File}",
-            parentDoc.Id, version.Id, parentDoc.TenantId, fileName);
+            "Scan enqueued: Document={DocId} Version={VersionId} Tenant={TenantId} File={File} QueueDepth={Depth}",
+            documentId, versionId, job.TenantId, fileName, _queue.Count);
 
         await _audit.LogAsync(
-            AuditEvent.ScanRequested, ctx, parentDoc.Id,
-            detail: new { versionId = version.Id, fileName, mimeType, queueDepth = _queue.Count });
+            AuditEvent.ScanRequested, ctx, documentId,
+            detail: new { fileName, mimeType, versionId, queueDepth = _queue.Count });
     }
 }

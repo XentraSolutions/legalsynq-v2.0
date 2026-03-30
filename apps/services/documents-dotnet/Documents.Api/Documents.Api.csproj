@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <!-- Swagger / OpenAPI -->
+    <PackageReference Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
     <!-- FluentValidation ASP.NET Core integration -->
     <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />

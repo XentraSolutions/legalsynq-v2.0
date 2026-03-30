@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Prometheus;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -26,7 +27,7 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Host.UseSerilog();
 
-// ── Infrastructure ────────────────────────────────────────────────────────────
+// ── Infrastructure (repositories, storage, scanner, queue, health checks) ─────
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // ── Background scan worker ────────────────────────────────────────────────────
@@ -47,7 +48,6 @@ builder.Services
 
         if (!string.IsNullOrWhiteSpace(jwksUri))
         {
-            // RS256/ES256 via JWKS (production)
             options.Authority              = issuer;
             options.MetadataAddress        = jwksUri;
             options.RequireHttpsMetadata   = !builder.Environment.IsDevelopment();
@@ -63,7 +63,6 @@ builder.Services
         }
         else if (!string.IsNullOrWhiteSpace(signingKey))
         {
-            // HS256 symmetric key (development / testing)
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
@@ -166,7 +165,6 @@ builder.Services.AddSwaggerGen(c =>
         }] = Array.Empty<string>(),
     });
 
-    // Map IFormFile parameters for multipart upload endpoints
     c.MapType<IFormFile>(() => new OpenApiSchema { Type = "string", Format = "binary" });
 });
 
@@ -195,6 +193,12 @@ app.UseCorrelationId();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSerilogRequestLogging();
 
+// ── Prometheus HTTP metrics (request count, duration, in-flight) ──────────────
+app.UseHttpMetrics(options =>
+{
+    options.ReduceStatusCodeCardinality();
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -210,7 +214,10 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// ── Endpoints ─────────────────────────────────────────────────────────────────
+// ── Prometheus metrics endpoint ────────────────────────────────────────────────
+app.MapMetrics("/metrics").AllowAnonymous();
+
+// ── Health + business endpoints ───────────────────────────────────────────────
 app.MapHealthEndpoints();
 app.MapDocumentEndpoints();
 app.MapAccessEndpoints();

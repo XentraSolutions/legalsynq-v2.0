@@ -1,5 +1,6 @@
 using Documents.Application.Services;
 using Documents.Domain.Interfaces;
+using Documents.Infrastructure.Health;
 using Documents.Infrastructure.TokenStore;
 using Documents.Infrastructure.Database;
 using Documents.Infrastructure.Scanner;
@@ -7,6 +8,7 @@ using Documents.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using StackExchange.Redis;
 
 namespace Documents.Infrastructure;
@@ -26,9 +28,9 @@ public static class DependencyInjection
                 npg.MigrationsAssembly(typeof(DocsDbContext).Assembly.FullName)));
 
         // ── Repositories ─────────────────────────────────────────────────────
-        services.AddScoped<IDocumentRepository, DocumentRepository>();
+        services.AddScoped<IDocumentRepository,        DocumentRepository>();
         services.AddScoped<IDocumentVersionRepository, DocumentVersionRepository>();
-        services.AddScoped<IAuditRepository, AuditRepository>();
+        services.AddScoped<IAuditRepository,           AuditRepository>();
 
         // ── Storage provider ─────────────────────────────────────────────────
         var storageProvider = config["Storage:Provider"] ?? "local";
@@ -53,8 +55,30 @@ public static class DependencyInjection
             _        => sp.GetRequiredService<NullScannerProvider>(),
         });
 
-        // ── Scan job queue (singleton — shared between API handlers and worker)
-        services.AddSingleton<IScanJobQueue, InMemoryScanJobQueue>();
+        // ── Scan worker options ───────────────────────────────────────────────
+        services.Configure<ScanWorkerOptions>(config.GetSection("ScanWorker"));
+        var workerOpts = config.GetSection("ScanWorker").Get<ScanWorkerOptions>() ?? new();
+
+        // ── Scan job queue ────────────────────────────────────────────────────
+        if (workerOpts.QueueProvider.Equals("redis", StringComparison.OrdinalIgnoreCase))
+        {
+            var redisUrl = config["Redis:Url"]
+                ?? throw new InvalidOperationException("Redis:Url required when ScanWorker:QueueProvider=redis");
+
+            if (!services.Any(s => s.ServiceType == typeof(IConnectionMultiplexer)))
+                services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisUrl));
+
+            services.AddSingleton<IScanJobQueue, RedisScanJobQueue>();
+        }
+        else
+        {
+            services.AddSingleton<IScanJobQueue>(sp =>
+            {
+                var log      = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<InMemoryScanJobQueue>>();
+                var capacity = workerOpts.QueueCapacity;
+                return new InMemoryScanJobQueue(log, capacity);
+            });
+        }
 
         // ── Access token store ───────────────────────────────────────────────
         var tokenStore = config["AccessToken:Store"] ?? "memory";
@@ -62,14 +86,21 @@ public static class DependencyInjection
         {
             var redisUrl = config["Redis:Url"]
                 ?? throw new InvalidOperationException("Redis:Url required when AccessToken:Store=redis");
-            services.AddSingleton<IConnectionMultiplexer>(_ =>
-                ConnectionMultiplexer.Connect(redisUrl));
+
+            if (!services.Any(s => s.ServiceType == typeof(IConnectionMultiplexer)))
+                services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisUrl));
+
             services.AddSingleton<IAccessTokenStore, RedisAccessTokenStore>();
         }
         else
         {
             services.AddSingleton<IAccessTokenStore, InMemoryAccessTokenStore>();
         }
+
+        // ── Health checks ─────────────────────────────────────────────────────
+        services.AddHealthChecks()
+            .AddCheck<DatabaseHealthCheck>("database", failureStatus: HealthStatus.Unhealthy, tags: new[] { "ready", "live" })
+            .AddCheck<ClamAvHealthCheck>  ("clamav",   failureStatus: HealthStatus.Degraded,  tags: new[] { "ready" });
 
         // ── Application services ─────────────────────────────────────────────
         services.Configure<DocumentServiceOptions>(config.GetSection("Documents"));

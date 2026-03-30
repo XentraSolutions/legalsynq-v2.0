@@ -73,6 +73,19 @@ public sealed class TokenInvalidException : DocumentsException
     public TokenInvalidException(string message) : base(message) { }
 }
 
+/// <summary>
+/// Thrown when the scan job queue is saturated and cannot accept new jobs.
+/// Maps to HTTP 503 — clients should back off and retry the upload.
+/// </summary>
+public sealed class QueueSaturationException : DocumentsException
+{
+    public override int    StatusCode => 503;
+    public override string ErrorCode  => "QUEUE_SATURATED";
+
+    public QueueSaturationException()
+        : base("Scan queue is saturated — upload rejected. Retry after a short delay.") { }
+}
+
 public sealed class ValidationException : DocumentsException
 {
     public override int    StatusCode => 400;

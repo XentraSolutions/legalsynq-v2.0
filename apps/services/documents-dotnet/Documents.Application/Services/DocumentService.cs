@@ -307,7 +307,23 @@ public sealed class DocumentService
             ?? throw new NotFoundException("Document", documentId);
 
         await AssertDocumentTenantScopeAsync(ctx, doc);
-        _scan.EnforceCleanScan(doc, _opts.RequireCleanScanForAccess);
+
+        // Enforce scan gate — emit SCAN_ACCESS_DENIED audit if blocked
+        try
+        {
+            _scan.EnforceCleanScan(doc, _opts.RequireCleanScanForAccess);
+        }
+        catch (ScanBlockedException)
+        {
+            await _audit.LogAsync(AuditEvent.ScanAccessDenied, ctx, documentId,
+                outcome: "DENIED",
+                detail: new
+                {
+                    scanStatus       = doc.ScanStatus.ToString(),
+                    requireCleanScan = _opts.RequireCleanScanForAccess,
+                });
+            throw;
+        }
 
         return await _storage.GenerateSignedUrlAsync(
             doc.StorageKey,

@@ -35,6 +35,25 @@ public sealed class ExceptionHandlingMiddleware
 
         switch (ex)
         {
+            // ── Specific DocumentsException subtypes (must come before base) ──
+
+            // 503 — scan queue saturated; client must back off and retry
+            case QueueSaturationException qse:
+                statusCode = 503;
+                _log.LogWarning(
+                    "Scan queue saturation: upload rejected correlationId={CorrelationId}", correlationId);
+                body = new
+                {
+                    error      = qse.ErrorCode,
+                    message    = qse.Message,
+                    retryAfter = 30,
+                    correlationId,
+                };
+                ctx.Response.Headers["Retry-After"] = "30";
+                break;
+
+            // ── Generic DocumentsException (all remaining subtypes) ───────────
+
             case DocumentsException de:
                 statusCode = de.StatusCode;
 
@@ -48,11 +67,15 @@ public sealed class ExceptionHandlingMiddleware
                     : new { error = de.ErrorCode, message = de.Message, correlationId };
                 break;
 
+            // ── Auth failure ──────────────────────────────────────────────────
+
             case UnauthorizedAccessException ue:
                 statusCode = 401;
                 _log.LogWarning("Authentication failure: {Message}", ue.Message);
                 body = new { error = "AUTHENTICATION_REQUIRED", message = "Bearer token required", correlationId };
                 break;
+
+            // ── Catch-all ─────────────────────────────────────────────────────
 
             default:
                 statusCode = 500;
