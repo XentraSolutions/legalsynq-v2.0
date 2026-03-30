@@ -37,21 +37,39 @@ public class AuthService : IAuthService
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
-        var tenant = await _tenantRepository.GetByCodeAsync(request.TenantCode.ToUpperInvariant().Trim(), ct);
-        if (tenant is null || !tenant.IsActive)
-            throw new UnauthorizedAccessException();
+        // Canonical audit helpers — used when a login failure must be emitted before re-throwing.
+        // fire-and-observe: never awaited, never allowed to gate the primary auth response.
+        var tenantCodeNorm  = request.TenantCode.ToUpperInvariant().Trim();
+        var emailNorm       = request.Email.ToLowerInvariant().Trim();
 
-        var normalizedEmail = request.Email.ToLowerInvariant().Trim();
+        var tenant = await _tenantRepository.GetByCodeAsync(tenantCodeNorm, ct);
+        if (tenant is null || !tenant.IsActive)
+        {
+            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotFound");
+            throw new UnauthorizedAccessException();
+        }
+
+        var normalizedEmail = emailNorm;
         var user = await _userRepository.GetByTenantAndEmailAsync(tenant.Id, normalizedEmail, ct);
         if (user is null || !user.IsActive)
+        {
+            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: null, reason: "UserNotFound");
             throw new UnauthorizedAccessException();
+        }
 
         var valid = _passwordHasher.Verify(request.Password, user.PasswordHash);
         if (!valid)
+        {
+            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "InvalidCredentials");
             throw new UnauthorizedAccessException();
+        }
 
-        var userWithRoles = await _userRepository.GetByIdWithRolesAsync(user.Id, ct)
-            ?? throw new UnauthorizedAccessException();
+        var userWithRoles = await _userRepository.GetByIdWithRolesAsync(user.Id, ct);
+        if (userWithRoles is null)
+        {
+            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "RoleLookupFailed");
+            throw new UnauthorizedAccessException();
+        }
 
         // Phase G: ScopedRoleAssignments (GLOBAL) is the sole authoritative role source.
         // UserRoles table has been dropped (migration 20260330200004).
@@ -213,7 +231,58 @@ public class AuthService : IAuthService
         return Task.FromResult(response);
     }
 
-    // ── Eligibility helpers ───────────────────────────────────────────────────
+    // ── Canonical audit helpers ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Emits a <c>identity.user.login.failed</c> canonical audit event.
+    ///
+    /// Fire-and-observe: the returned Task is discarded. This method never throws,
+    /// never awaits the ingestion call, and never gates the primary auth failure response.
+    ///
+    /// The failure reason is stored as metadata only. The HTTP response to the caller
+    /// never reveals which specific check failed (tenant/user/password) — the caller
+    /// always receives 401 Unauthorized.
+    ///
+    /// HIPAA §164.312(b): failed login attempts are a required audit event.
+    /// </summary>
+    private void EmitLoginFailed(string email, string tenantCode, string? userId, string reason)
+    {
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.login.failed",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "auth-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = null,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId,
+                Type = ActorType.User,
+                Name = email,
+            },
+            Entity      = userId is not null ? new AuditEventEntityDto { Type = "User", Id = userId } : null,
+            Action      = "LoginFailed",
+            Description = $"Failed login attempt for '{email}' in tenant '{tenantCode}'.",
+            Outcome     = "failure",
+            Metadata    = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                tenantCode,
+                failureReason = reason,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.login.failed", email),
+            Tags = ["auth", "login", "failure", "security"],
+        });
+    }
+
+    // ── Eligibility helpers ────────────────────────────────────────────────────
 
     private enum EligibilityPath { DbRule, Unrestricted }
 

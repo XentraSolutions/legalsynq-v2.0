@@ -2,6 +2,8 @@ using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using PlatformAuditEventService.Authorization;
 using PlatformAuditEventService.DTOs;
+using PlatformAuditEventService.DTOs.Ingest;
+using PlatformAuditEventService.Enums;
 using PlatformAuditEventService.Services;
 using PlatformAuditEventService.Utilities;
 
@@ -9,6 +11,9 @@ using PlatformAuditEventService.Utilities;
 using AuditEventQueryRequest   = PlatformAuditEventService.DTOs.Query.AuditEventQueryRequest;
 using AuditEventQueryResponse  = PlatformAuditEventService.DTOs.Query.AuditEventQueryResponse;
 using AuditEventRecordResponse = PlatformAuditEventService.DTOs.Query.AuditEventRecordResponse;
+
+// Disambiguate internal ingest DTO from external client DTO aliases.
+using IngestRequest = PlatformAuditEventService.DTOs.Ingest.IngestAuditEventRequest;
 
 namespace PlatformAuditEventService.Controllers;
 
@@ -39,20 +44,23 @@ namespace PlatformAuditEventService.Controllers;
 public sealed class AuditEventQueryController : ControllerBase
 {
     private readonly IAuditEventQueryService             _queryService;
+    private readonly IAuditEventIngestionService         _ingestionService;
     private readonly IQueryAuthorizer                    _authorizer;
     private readonly IValidator<AuditEventQueryRequest>  _queryValidator;
     private readonly ILogger<AuditEventQueryController>  _logger;
 
     public AuditEventQueryController(
         IAuditEventQueryService            queryService,
+        IAuditEventIngestionService        ingestionService,
         IQueryAuthorizer                   authorizer,
         IValidator<AuditEventQueryRequest> queryValidator,
         ILogger<AuditEventQueryController> logger)
     {
-        _queryService   = queryService;
-        _authorizer     = authorizer;
-        _queryValidator = queryValidator;
-        _logger         = logger;
+        _queryService     = queryService;
+        _ingestionService = ingestionService;
+        _authorizer       = authorizer;
+        _queryValidator   = queryValidator;
+        _logger           = logger;
     }
 
     // ── GET /audit/events ─────────────────────────────────────────────────────
@@ -406,14 +414,20 @@ public sealed class AuditEventQueryController : ControllerBase
                 : QueryCallerContext.Anonymous();
 
     /// <summary>
-    /// Emits a structured "audit log accessed" entry at Information level.
+    /// Emits a structured "audit log accessed" entry at Information level AND
+    /// ingests a canonical <c>audit.log.accessed</c> event into the audit store.
     ///
-    /// HIPAA §164.312(b) requires systems to track access to audit logs as part of
-    /// the audit controls standard. This satisfies the audit-of-audit requirement
-    /// by recording who queried what records and when.
+    /// HIPAA §164.312(b): access to audit logs is itself an auditable event.
     ///
-    /// Fields captured: UserId, TenantId, Scope, AuthMode, Action (endpoint),
-    /// RecordsAccessed, ContextId (entity/actor/tenant/audit ID if applicable), TraceId.
+    /// Recursion safety guarantee:
+    ///   This method calls <see cref="IAuditEventIngestionService.IngestSingleAsync"/>
+    ///   which writes directly to the database repository. The ingestion pipeline never
+    ///   calls any query endpoint — there is no call cycle. The fire-and-observe pattern
+    ///   (discarded Task) ensures this never gates the query response.
+    ///
+    /// Suppression: audit.log.accessed events are themselves never re-audited.
+    ///   The ingest pipeline does not trigger LogAuditAccess for its own writes.
+    ///   This is enforced architecturally: the ingestion path does not call this controller.
     /// </summary>
     private void LogAuditAccess(
         string              action,
@@ -434,5 +448,47 @@ public sealed class AuditEventQueryController : ControllerBase
             recordsAccessed,
             contextId          ?? "(none)",
             traceId            ?? "(no-trace)");
+
+        // Canonical audit-of-audit: emit to the persistent audit store.
+        // Fire-and-observe — the Task is intentionally discarded.
+        // This event is stored exactly like any other ingest event (same pipeline, same table),
+        // but it will not trigger a further LogAuditAccess call because the ingest path
+        // never calls the query controller.
+        var now = DateTimeOffset.UtcNow;
+        _ = _ingestionService.IngestSingleAsync(new IngestRequest
+        {
+            EventType       = "audit.log.accessed",
+            EventCategory   = EventCategory.Access,
+            SourceSystem    = "platform-audit-event-service",
+            SourceService   = "audit-query-api",
+            Visibility      = VisibilityScope.Platform,
+            Severity        = SeverityLevel.Info,
+            OccurredAtUtc   = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = caller.TenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = caller.UserId,
+                Type = ActorType.User,
+                Name = caller.UserId ?? "(anonymous)",
+            },
+            Action      = action,
+            Description = $"Audit log queried: {action} — {recordsAccessed} record(s) accessed.",
+            Metadata    = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                endpoint       = action,
+                recordsAccessed,
+                contextId      = contextId ?? "(none)",
+                callerScope    = caller.Scope.ToString(),
+                callerAuthMode = caller.AuthMode,
+                traceId        = traceId ?? "(none)",
+            }),
+            CorrelationId  = traceId,
+            IdempotencyKey = $"audit-access:{traceId ?? Guid.NewGuid().ToString("N")}:{action}",
+            Tags           = ["audit-of-audit", "access"],
+        });
     }
 }

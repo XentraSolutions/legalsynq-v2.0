@@ -104,12 +104,35 @@ try
             Log.Information("Persistence: MySQL | Provider={Provider}", dbOpts.ServerVersion);
             break;
 
+        case "Sqlite":
+        {
+            // Durable, zero-config, file-backed storage for development.
+            // EnsureCreated() is used instead of MigrateAsync() because the existing migrations
+            // are MySQL-specific (Pomelo). A fresh SQLite schema is created from the EF model.
+            // NOT for production — use MySQL with MigrateOnStartup for production.
+            var sqliteCs = dbOpts.ConnectionString
+                ?? $"Data Source={dbOpts.SqliteFilePath}";
+
+            builder.Services.AddDbContextFactory<AuditEventDbContext>(opts =>
+            {
+                opts.UseSqlite(sqliteCs);
+
+                if (dbOpts.EnableDetailedErrors)
+                    opts.EnableDetailedErrors();
+            });
+
+            builder.Services.AddScoped<IAuditEventRepository, EfAuditEventRepository>();
+            Log.Information(
+                "Persistence: SQLite (dev only) | ConnectionString={Cs}", sqliteCs);
+            break;
+        }
+
         default: // "InMemory"
             builder.Services.AddDbContextFactory<AuditEventDbContext>(opts =>
                 opts.UseInMemoryDatabase("AuditEventDb"));
 
             builder.Services.AddSingleton<IAuditEventRepository, InMemoryAuditEventRepository>();
-            Log.Warning("Persistence: InMemory — data is not durable. Set Database:Provider=MySQL for production.");
+            Log.Warning("Persistence: InMemory — data is not durable. Set Database:Provider=Sqlite (dev) or MySQL (prod).");
             break;
     }
 
@@ -571,6 +594,30 @@ try
     if (dbOpts.Provider == "MySQL" && dbOpts.MigrateOnStartup)
     {
         await RunMigrationsAsync(app.Services, app.Logger);
+    }
+
+    // ── SQLite: EnsureCreated (dev only) ─────────────────────────────────────
+    // Migrations are MySQL-specific (Pomelo). For SQLite, EnsureCreated() creates the
+    // schema from the EF Core model on first boot. Subsequent starts are no-ops when
+    // the file already exists. This gives development environments durable persistence
+    // without requiring the MySQL stack.
+    if (dbOpts.Provider == "Sqlite")
+    {
+        try
+        {
+            await using var scope  = app.Services.CreateAsyncScope();
+            var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AuditEventDbContext>>();
+            await using var db     = await factory.CreateDbContextAsync();
+            await db.Database.EnsureCreatedAsync();
+            app.Logger.LogInformation(
+                "SQLite schema verified/created. File={File}",
+                dbOpts.ConnectionString ?? $"Data Source={dbOpts.SqliteFilePath}");
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogError(ex,
+                "SQLite EnsureCreated failed. Service will start but DB operations will fail.");
+        }
     }
 
     // ── Middleware pipeline ───────────────────────────────────────────────────

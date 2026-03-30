@@ -1,12 +1,14 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PlatformAuditEventService.Configuration;
 using PlatformAuditEventService.Data;
+using PlatformAuditEventService.Repositories;
 using PlatformAuditEventService.Services;
 using Serilog;
 
@@ -50,19 +52,61 @@ public class AuditServiceFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Development");
 
+        // Override Database:Provider to "InMemory" so that Program.cs registers
+        // InMemoryAuditEventRepository (Singleton) rather than EfAuditEventRepository
+        // (Scoped). This matches the pre-SQLite test baseline and keeps tests isolated
+        // from the dev-only appsettings.Development.json Sqlite configuration.
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Database:Provider"] = "InMemory",
+            });
+        });
+
         var dbName = $"AuditEventDb-Test-{Guid.NewGuid():N}";
 
         builder.ConfigureServices(services =>
         {
             // Replace EF Core factory with a fresh isolated InMemory database so that
             // each factory instance (and thus each test class) starts with an empty store.
+            //
+            // Problem: AddDbContextFactory uses TryAddSingleton for DbContextOptions<T>,
+            // meaning the FIRST registration wins. When appsettings.Development.json has
+            // Provider=Sqlite, Program.cs registers Sqlite options first. A second call to
+            // AddDbContextFactory for InMemory is a no-op for the options descriptor, so
+            // the underlying DbContext still uses Sqlite despite the factory being replaced.
+            //
+            // Fix: Remove ALL EF Core descriptors related to AuditEventDbContext (both
+            // the factory AND the options) so that our InMemory re-registration takes full
+            // effect and every repository that uses IDbContextFactory<AuditEventDbContext>
+            // gets a genuine in-process, isolated store.
+            var dbContextTypes = new HashSet<Type>
+            {
+                typeof(IDbContextFactory<AuditEventDbContext>),
+                typeof(DbContextOptions<AuditEventDbContext>),
+                typeof(DbContextOptions),
+            };
             var existing = services
-                .Where(d => d.ServiceType == typeof(IDbContextFactory<AuditEventDbContext>))
+                .Where(d =>
+                    dbContextTypes.Contains(d.ServiceType) ||
+                    (d.ServiceType.IsGenericType &&
+                     d.ServiceType.GetGenericArguments().Any(a => a == typeof(AuditEventDbContext))))
                 .ToList();
             foreach (var d in existing) services.Remove(d);
 
             services.AddDbContextFactory<AuditEventDbContext>(
                 opts => opts.UseInMemoryDatabase(dbName));
+
+            // When appsettings.Development.json uses Provider=Sqlite, Program.cs registers
+            // EfAuditEventRepository (Scoped) as IAuditEventRepository. Replace it with the
+            // thread-safe InMemoryAuditEventRepository (Singleton) so that tests always run
+            // against an in-process store — exactly the same baseline as Provider=InMemory.
+            var repoDescriptors = services
+                .Where(d => d.ServiceType == typeof(IAuditEventRepository))
+                .ToList();
+            foreach (var d in repoDescriptors) services.Remove(d);
+            services.AddSingleton<IAuditEventRepository, InMemoryAuditEventRepository>();
 
             // Override Export:Provider → "None" so tests don't write to filesystem.
             services.Configure<ExportOptions>(opts => opts.Provider = "None");

@@ -11,10 +11,21 @@ public sealed class DatabaseOptions
 
     /// <summary>
     /// Persistence provider.
-    /// Allowed values: "InMemory" (dev/test only) | "MySQL"
+    /// Allowed values:
+    ///   "InMemory" — ephemeral, for tests only. Data lost on restart. Never use in production.
+    ///   "Sqlite"   — durable, zero-config, file-backed. Development only. Schema created via EnsureCreated.
+    ///   "MySQL"    — production-grade. Requires Database:ConnectionString and a configured server.
     /// Environment variable: Database__Provider
     /// </summary>
     public string Provider { get; set; } = "InMemory";
+
+    /// <summary>
+    /// SQLite database file path (used only when Provider = "Sqlite").
+    /// Relative paths resolve from the working directory.
+    /// Default: "audit-events-dev.db" (creates file in the service working directory).
+    /// Override: Database__SqliteFilePath=... or Database__ConnectionString=Data Source=...
+    /// </summary>
+    public string SqliteFilePath { get; set; } = "audit-events-dev.db";
 
     /// <summary>
     /// MySQL connection string.

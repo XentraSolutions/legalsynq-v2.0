@@ -3,6 +3,11 @@ using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
+using LegalSynq.AuditClient;
+using LegalSynq.AuditClient.DTOs;
+using LegalSynq.AuditClient.Enums;
+using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
+using System.Text.Json;
 
 namespace CareConnect.Application.Services;
 
@@ -13,19 +18,22 @@ public class AppointmentService : IAppointmentService
     private readonly IAppointmentStatusHistoryRepository _history;
     private readonly IReferralRepository _referrals;
     private readonly INotificationService _notifications;
+    private readonly IAuditEventClient _auditClient;
 
     public AppointmentService(
         IAppointmentSlotRepository slots,
         IAppointmentRepository appointments,
         IAppointmentStatusHistoryRepository history,
         IReferralRepository referrals,
-        INotificationService notifications)
+        INotificationService notifications,
+        IAuditEventClient auditClient)
     {
         _slots         = slots;
         _appointments  = appointments;
         _history       = history;
         _referrals     = referrals;
         _notifications = notifications;
+        _auditClient   = auditClient;
     }
 
     public async Task<PagedResponse<SlotResponse>> SearchSlotsAsync(
@@ -112,6 +120,46 @@ public class AppointmentService : IAppointmentService
             organizationRelationshipId: referral.OrganizationRelationshipId);
 
         await _appointments.SaveBookingAsync(slot, appointment, ct);
+
+        // Canonical audit: careconnect.appointment.scheduled — fire-and-observe, never gates booking.
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.appointment.scheduled",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "appointment-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = tenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId?.ToString(),
+                Type = ActorType.User,
+                Name = userId?.ToString() ?? "(system)",
+            },
+            Entity  = new AuditEventEntityDto { Type = "Appointment", Id = appointment.Id.ToString() },
+            Action  = "AppointmentScheduled",
+            Description = $"Appointment scheduled for referral '{request.ReferralId}' on slot '{request.AppointmentSlotId}'.",
+            Outcome = "success",
+            Metadata = JsonSerializer.Serialize(new
+            {
+                appointmentId = appointment.Id,
+                referralId    = request.ReferralId,
+                slotId        = slot.Id,
+                providerId    = slot.ProviderId,
+                facilityId    = slot.FacilityId,
+                startAtUtc    = slot.StartAtUtc,
+                tenantId,
+            }),
+            IdempotencyKey = IdempotencyKey.For("care-connect", "careconnect.appointment.scheduled", appointment.Id.ToString()),
+            Tags = ["appointment", "scheduled"],
+        });
 
         // Notification hook: AppointmentScheduled + AppointmentReminder.
         try { await _notifications.CreateAppointmentScheduledAsync(tenantId, appointment.Id, slot.StartAtUtc, userId, ct); }

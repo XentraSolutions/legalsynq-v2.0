@@ -3,7 +3,12 @@ using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
+using LegalSynq.AuditClient;
+using LegalSynq.AuditClient.DTOs;
+using LegalSynq.AuditClient.Enums;
+using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace CareConnect.Application.Services;
@@ -14,6 +19,7 @@ public class ReferralService : IReferralService
     private readonly IProviderRepository _providers;
     private readonly INotificationService _notifications;
     private readonly IOrganizationRelationshipResolver _relationshipResolver;
+    private readonly IAuditEventClient _auditClient;
     private readonly ILogger<ReferralService> _logger;
 
     public ReferralService(
@@ -21,12 +27,14 @@ public class ReferralService : IReferralService
         IProviderRepository providers,
         INotificationService notifications,
         IOrganizationRelationshipResolver relationshipResolver,
+        IAuditEventClient auditClient,
         ILogger<ReferralService> logger)
     {
         _referrals            = referrals;
         _providers            = providers;
         _notifications        = notifications;
         _relationshipResolver = relationshipResolver;
+        _auditClient          = auditClient;
         _logger               = logger;
     }
 
@@ -102,6 +110,47 @@ public class ReferralService : IReferralService
             organizationRelationshipId: orgRelationshipId);
 
         await _referrals.AddAsync(referral, ct);
+
+        // Canonical audit: careconnect.referral.created — fire-and-observe, never gates creation.
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.created",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType      = ScopeType.Tenant,
+                TenantId       = tenantId.ToString(),
+                OrganizationId = request.ReferringOrganizationId?.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId?.ToString(),
+                Type = ActorType.User,
+                Name = userId?.ToString() ?? "(system)",
+            },
+            Entity      = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action      = "ReferralCreated",
+            Description = $"Referral created for '{request.ClientFirstName} {request.ClientLastName}' requesting '{request.RequestedService}'.",
+            Outcome     = "success",
+            Metadata    = JsonSerializer.Serialize(new
+            {
+                referralId            = referral.Id,
+                tenantId,
+                providerId            = request.ProviderId,
+                requestedService      = request.RequestedService,
+                urgency               = request.Urgency,
+                referringOrganizationId = request.ReferringOrganizationId,
+                receivingOrganizationId = request.ReceivingOrganizationId,
+            }),
+            IdempotencyKey = IdempotencyKey.For("care-connect", "careconnect.referral.created", referral.Id.ToString()),
+            Tags = ["referral", "created"],
+        });
 
         var loaded = await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
         return ToResponse(loaded!);

@@ -71,6 +71,7 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
   let canonicalResult: { items: CanonicalAuditEvent[]; totalCount: number } | null = null;
   let fetchError:      string | null = null;
   let actualMode:      AuditReadMode = MODE;
+  let canonicalFallbackReason: string | null = null;
 
   if (MODE === 'canonical') {
     try {
@@ -90,7 +91,9 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
       fetchError = err instanceof Error ? err.message : 'Failed to load canonical audit logs.';
     }
   } else if (MODE === 'hybrid') {
-    // Try canonical first; silently fall back to legacy on any error.
+    // Try canonical first; fall back to legacy on error.
+    // IMPORTANT: canonical failures are now logged and surfaced in the UI.
+    // Operators must not rely on silent fallback to mask upstream problems.
     try {
       canonicalResult = await controlCenterServerApi.auditCanonical.list({
         page, pageSize: PAGE_SIZE,
@@ -104,8 +107,20 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
         dateTo:        dateTo        || undefined,
         search:        search        || undefined,
       });
-    } catch {
+    } catch (canonicalErr) {
+      // Log the canonical failure clearly — operators must see this in server logs.
+      const reason = canonicalErr instanceof Error
+        ? canonicalErr.message
+        : 'Canonical audit service unavailable';
+      console.error(
+        `[AUDIT_HYBRID_FALLBACK] Canonical fetch failed — falling back to legacy. ` +
+        `Reason: ${reason}`,
+        canonicalErr,
+      );
+
       actualMode = 'legacy';
+      canonicalFallbackReason = reason;
+
       try {
         legacyResult = await controlCenterServerApi.audit.list({
           page, pageSize: PAGE_SIZE,
@@ -311,6 +326,20 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
         {fetchError && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
             {fetchError}
+          </div>
+        )}
+
+        {/* Hybrid fallback warning — shown when canonical fetch failed and legacy was used */}
+        {MODE === 'hybrid' && canonicalFallbackReason && !fetchError && (
+          <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 text-sm text-amber-800">
+            <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+            </svg>
+            <span>
+              <strong className="font-semibold">Canonical audit service unavailable —</strong>{' '}
+              displaying legacy audit data. Check that the Platform Audit Event Service is running on port 5007.
+              {' '}<span className="text-amber-600 font-mono text-xs break-all">{canonicalFallbackReason}</span>
+            </span>
           </div>
         )}
 
