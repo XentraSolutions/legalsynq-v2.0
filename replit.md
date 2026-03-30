@@ -1508,6 +1508,76 @@ Body shape is `ApiResponse<BatchIngestResponse>` for 200/207/422 — always insp
 
 ---
 
+## Platform Audit Service — Step 12: Service-to-Service Ingest Auth ✅
+
+**Analysis doc:** `analysis/step12_ingest_auth.md`
+**Operator reference:** `apps/services/platform-audit-event-service/Docs/ingest-auth.md`
+
+### Design
+
+- **`IIngestAuthenticator`** — pluggable auth interface. One implementation per mode.
+- **`ServiceTokenAuthenticator`** — ServiceToken mode; constant-time registry scan; per-service named tokens.
+- **`NullIngestAuthenticator`** — None mode; dev pass-through; always accepted.
+- **`IngestAuthMiddleware`** — path-scoped to `/internal/audit/*`; delegates to authenticator; short-circuits with 401/403; stores `ServiceAuthContext` in `HttpContext.Items`.
+- **`ServiceAuthContext`** — read-only identity carrier available to controllers post-auth.
+- **`IngestAuthHeaders`** — centralized header name constants (`x-service-token`, `x-source-system`, `x-source-service`).
+
+### Headers
+
+| Header | Mode | Purpose |
+|--------|------|---------|
+| `x-service-token` | ServiceToken — required | Shared secret credential |
+| `x-source-system` | Optional | Logging + allowlist enforcement |
+| `x-source-service` | Optional | Logging only |
+
+### Modes
+
+| Mode | Implementation | When |
+|------|---------------|------|
+| `"None"` | `NullIngestAuthenticator` | Development/test only |
+| `"ServiceToken"` | `ServiceTokenAuthenticator` | Staging + production |
+| `"Bearer"` | (planned) | JWT / OIDC |
+| `"MtlsHeader"` | (planned) | Proxy-forwarded client cert |
+| `"MeshInternal"` | (planned) | Istio/Linkerd SPIFFE |
+
+### Security properties
+
+- Constant-time comparison via `CryptographicOperations.FixedTimeEquals`
+- Full-registry scan (no early exit) — response time independent of match position
+- Length normalization before comparison — prevents token length timing leak
+- Per-service revocation (`Enabled: false` on individual entries)
+- Per-service token rotation (add new → deploy → remove old)
+- Startup WARNING when Mode=None or registry is empty
+
+### Extension path (adding JWT)
+
+1. Implement `IIngestAuthenticator` in `JwtIngestAuthenticator`
+2. Register singleton + add `"Bearer"` case to the factory switch in `Program.cs`
+3. No middleware, controller, or validator changes needed
+
+### `appsettings.json` additions
+
+- `ServiceTokens: []` (named token registry)
+- `RequireSourceSystemHeader: false`
+- `AllowedSources: []`
+
+### `appsettings.Development.json`
+
+- Three dev token entries (identity-service, fund-service, care-connect-api) — Mode remains `"None"` so tokens are unused in development but wired for testing
+
+### Files created
+
+`Configuration/ServiceTokenEntry.cs`, `Services/IIngestAuthenticator.cs`, `Services/AuthResult` (inside interface file), `Services/ServiceAuthContext.cs`, `Services/IngestAuthHeaders.cs`, `Services/NullIngestAuthenticator.cs`, `Services/ServiceTokenAuthenticator.cs`, `Middleware/IngestAuthMiddleware.cs`
+
+### Files updated
+
+`Configuration/IngestAuthOptions.cs` (new fields + mode docs), `Program.cs` (DI + middleware), `appsettings.json`, `appsettings.Development.json`, `Docs/ingest-auth.md` (new), `README.md` (rewritten)
+
+### Build status after Step 12
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
 ## Control Center Admin Refresh ✅
 
 **Scope:** Full admin dashboard overhaul — infrastructure layer + new pages + sidebar badges.

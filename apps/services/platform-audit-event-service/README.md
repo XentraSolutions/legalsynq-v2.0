@@ -1,16 +1,30 @@
 # Platform Audit/Event Service
 
-Platform Audit/Event Service is a standalone, independently deployable, and portable platform service that ingests business, security, access, administrative, and system activity from distributed systems, normalizes it into a canonical event model, and persists immutable, tamper-evident audit records. It exposes secure, role-aware retrieval interfaces for administrative systems, tenant applications, individual users, reporting tools, compliance workflows, and future downstream consumers.
+Standalone, independently deployable microservice for ingesting, storing, querying, and exporting
+tamper-evident audit records from distributed systems in the LegalSynq platform.
 
 ---
 
 ## Purpose
 
-- Receive activity feeds from distributed microservices
-- Normalize them into a canonical audit/event model
-- Persist immutable, tamper-evident records with HMAC-SHA256 integrity hashing
+- Receive activity feeds from distributed microservices via authenticated internal endpoints
+- Normalize events into a canonical audit model with rich context (scope, actor, entity, action)
+- Persist immutable, tamper-evident records with HMAC-SHA256 cryptographic hash chain integrity
 - Support secure retrieval for platform admin, tenant, user, reporting, and compliance interfaces
-- Provide an event-ready foundation for future integrations and downstream consumers
+- Provide an event-ready foundation for future export, streaming, and downstream consumer integrations
+
+---
+
+## Quick Start
+
+```bash
+cd apps/services/platform-audit-event-service
+dotnet run
+# Swagger UI: http://localhost:5007/swagger
+# Health:     http://localhost:5007/health
+```
+
+No additional setup needed for development — runs with in-memory storage and no auth by default.
 
 ---
 
@@ -18,21 +32,30 @@ Platform Audit/Event Service is a standalone, independently deployable, and port
 
 ```
 platform-audit-event-service/
-├── Controllers/         HealthController, AuditEventsController
-├── Services/            IAuditEventService, AuditEventService
-├── Repositories/        IAuditEventRepository, InMemoryAuditEventRepository, EfAuditEventRepository
-├── Models/              AuditEvent (sealed record), EventCategory, EventSeverity, EventOutcome
-├── DTOs/                IngestAuditEventRequest, AuditEventResponse, ApiResponse<T>, PagedResult<T>
-├── Validators/          IngestAuditEventRequestValidator (FluentValidation)
-├── Middleware/          ExceptionMiddleware, CorrelationIdMiddleware
-├── Jobs/                RetentionPolicyJob (placeholder)
-├── Utilities/           IntegrityHasher, AuditEventMapper, TraceIdAccessor
-├── Data/                AuditEventDbContext, DesignTimeDbContextFactory
+├── Controllers/         AuditEventIngestController (POST /internal/audit/*)
+│                        AuditEventsController (legacy GET/POST /api/auditevents)
+│                        HealthController
+├── Middleware/          ExceptionMiddleware, CorrelationIdMiddleware, IngestAuthMiddleware
+├── Services/            IAuditEventIngestionService, AuditEventIngestionService
+│                        IIngestAuthenticator, ServiceTokenAuthenticator, NullIngestAuthenticator
+│                        ServiceAuthContext, IngestAuthHeaders
+├── Repositories/        IAuditEventRecordRepository, EfAuditEventRecordRepository
+│                        IAuditEventRepository (legacy), InMemoryAuditEventRepository
+├── Models/              AuditEventRecord (new), AuditEvent (legacy)
+│                        Enums: EventCategory, SeverityLevel, ActorType, ScopeType, VisibilityScope
+├── DTOs/
+│   ├── Ingest/          IngestAuditEventRequest, BatchIngestRequest, BatchIngestResponse, IngestItemResult
+│   ├── Query/           AuditEventQueryRequest, AuditEventRecordResponse
+│   └── ApiResponse<T>, PagedResult<T>
+├── Validators/          IngestAuditEventRequestValidator, BatchIngestRequestValidator
+│                        AuditEventScopeDtoValidator, AuditEventActorDtoValidator, AuditEventEntityDtoValidator
+├── Utilities/           AuditRecordHasher (SHA-256 + HMAC-SHA256 chain), TraceIdAccessor
+├── Data/                AuditEventDbContext, EF Core entity configurations
 ├── Configuration/       AuditServiceOptions, DatabaseOptions, IntegrityOptions,
-│                        IngestAuthOptions, QueryAuthOptions, RetentionOptions, ExportOptions
-├── Docs/                architecture_overview.md
-├── Examples/            Sample ingestion payloads
-├── analysis/            Step-by-step implementation reports
+│                        IngestAuthOptions, ServiceTokenEntry, QueryAuthOptions,
+│                        RetentionOptions, ExportOptions
+├── Docs/                architecture_overview.md, canonical-event-contract.md,
+│                        integrity-model.md, ingest-auth.md
 ├── Program.cs
 ├── appsettings.json
 └── appsettings.Development.json
@@ -42,179 +65,166 @@ platform-audit-event-service/
 
 ## API Endpoints
 
-| Method | Path                    | Description                                   |
-|--------|-------------------------|-----------------------------------------------|
-| GET    | `/HealthCheck`          | Service health, version, and event count      |
-| GET    | `/health`               | ASP.NET Core built-in health endpoint         |
-| POST   | `/api/auditevents`      | Ingest a single audit event                   |
-| GET    | `/api/auditevents/{id}` | Retrieve one event by ID                      |
-| GET    | `/api/auditevents`      | Query events with filters + pagination        |
-| GET    | `/swagger`              | Swagger UI (Development or when ExposeSwagger=true) |
+### Internal Ingestion (`/internal/audit/*`)
+
+Machine-to-machine endpoints for trusted source systems. Requires authentication in non-dev modes.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/internal/audit/events` | Ingest a single audit event |
+| `POST` | `/internal/audit/events/batch` | Ingest a batch (1–500 events) |
+
+**Auth header:** `x-service-token: <token>` (in ServiceToken mode)
+**Optional headers:** `x-source-system`, `x-source-service`
+
+See [Docs/ingest-auth.md](Docs/ingest-auth.md) for the full auth flow and extension guide.
+
+### Legacy API (`/api/auditevents/*`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/auditevents` | Ingest event (legacy model) |
+| `GET` | `/api/auditevents/{id}` | Retrieve by ID |
+| `GET` | `/api/auditevents` | Query with filters + pagination |
+
+### Utility
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Liveness probe |
+| `GET` | `/swagger` | API docs (dev / ExposeSwagger=true) |
 
 ---
 
-## Canonical Event Model
+## Ingest Auth Quick Reference
 
-| Field           | Required | Description                                                      |
-|-----------------|----------|------------------------------------------------------------------|
-| `source`        | Yes      | Originating service (e.g. `identity-service`)                    |
-| `eventType`     | Yes      | Dot-notation code (e.g. `user.login`, `document.uploaded`)       |
-| `category`      | Yes      | `security` \| `access` \| `business` \| `admin` \| `system`     |
-| `severity`      | Yes      | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` \| `CRITICAL`            |
-| `description`   | Yes      | Human-readable description                                       |
-| `outcome`       | Yes      | `SUCCESS` \| `FAILURE` \| `PARTIAL` \| `UNKNOWN`                |
-| `tenantId`      | No       | Scoping tenant (null for platform-level events)                  |
-| `actorId`       | No       | Acting user or service principal                                 |
-| `targetType`    | No       | Resource type (e.g. `User`, `Document`)                          |
-| `targetId`      | No       | Resource identifier                                              |
-| `correlationId` | No       | Distributed trace / request correlation ID                       |
-| `metadata`      | No       | Arbitrary JSON string for extended context                       |
-| `integrityHash` | Auto     | HMAC-SHA256 over canonical fields — computed at ingest           |
-| `occurredAtUtc` | No       | Time in source system (defaults to ingest time if omitted)       |
+| Mode | Header | Use case |
+|------|--------|---------|
+| `None` (default) | None required | Local development only. Never use in production. |
+| `ServiceToken` | `x-service-token: <token>` | Staging and production — one token per service. |
+| `Bearer` (planned) | `Authorization: Bearer <jwt>` | JWT-based identity infrastructure. |
+
+```bash
+# Test single ingest (dev mode — no auth)
+curl -X POST http://localhost:5007/internal/audit/events \
+  -H "Content-Type: application/json" \
+  -H "x-source-system: identity-service" \
+  -d '{
+    "eventType": "user.login.succeeded",
+    "eventCategory": "Security",
+    "sourceSystem": "identity-service",
+    "sourceService": "auth-api",
+    "scope": { "scopeType": "Tenant", "tenantId": "tenant-001" },
+    "actor": { "type": "User", "id": "user-42", "name": "Alice" },
+    "action": "LoginSucceeded",
+    "description": "User authenticated successfully.",
+    "occurredAtUtc": "2026-03-30T12:00:00Z",
+    "severity": "Info",
+    "visibility": "Tenant"
+  }'
+
+# Test with token (ServiceToken mode)
+curl -X POST http://localhost:5007/internal/audit/events \
+  -H "Content-Type: application/json" \
+  -H "x-service-token: dev-service-token-identity-REPLACE-IN-PROD" \
+  -H "x-source-system: identity-service" \
+  -d '{ ... }'
+```
 
 ---
 
 ## Configuration Reference
 
-### Quick-start (Development — InMemory)
+All config is in `appsettings.json` with environment overrides via `appsettings.{Env}.json` or env vars (`__` separator).
 
-No additional configuration required. The service starts with InMemory storage by default.
+### IngestAuth
 
-### Quick-start (Production — MySQL)
+| Key | Default | Description |
+|-----|---------|-------------|
+| `Mode` | `"None"` | Auth mode: `None` \| `ServiceToken` \| `Bearer` (planned) |
+| `ServiceTokens` | `[]` | Named token registry for ServiceToken mode |
+| `RequireSourceSystemHeader` | `false` | Enforce `x-source-system` header presence |
+| `AllowedSources` | `[]` | Source allowlist. Empty = allow any. |
 
-Set these environment variables:
-
+**Production token injection:**
 ```bash
-# Required
-Database__Provider=MySQL
-ConnectionStrings__AuditEventDb="Server=<host>;Port=3306;Database=audit_event_db;User=<user>;Password=<pass>;SslMode=Required;"
-Integrity__HmacKeyBase64=<base64-32-byte-key>   # openssl rand -base64 32
-
-# Recommended
-Database__VerifyConnectionOnStartup=true
-Integrity__VerifyOnRead=true
-AuditService__AllowedCorsOrigins__0=https://your-portal.example.com
+IngestAuth__Mode=ServiceToken
+IngestAuth__ServiceTokens__0__Token=$(openssl rand -base64 32)
+IngestAuth__ServiceTokens__0__ServiceName=identity-service
+IngestAuth__ServiceTokens__0__Enabled=true
 ```
 
-### Full configuration sections
+### Integrity
 
-#### `AuditService`
+| Key | Default | Description |
+|-----|---------|-------------|
+| `Algorithm` | `"HMAC-SHA256"` | `SHA-256` (keyless) or `HMAC-SHA256` (keyed) |
+| `HmacKeyBase64` | `""` | 32-byte base64 HMAC key. Required for HMAC-SHA256. |
+| `VerifyOnRead` | `false` | Recompute hash on every read |
+| `FlagTamperedRecords` | `true` | Include tamper flag in query responses |
 
-| Key | Default | Notes |
-|-----|---------|-------|
-| `ServiceName` | "Platform Audit/Event Service" | Shown in Swagger/health |
-| `Version` | "1.0.0" | Shown in Swagger |
-| `ExposeSwagger` | false | Force Swagger outside Development |
-| `AllowedCorsOrigins` | [] | Empty = deny all cross-origin |
+```bash
+Integrity__Algorithm=HMAC-SHA256
+Integrity__HmacKeyBase64=$(openssl rand -base64 32)
+```
 
-#### `Database`
+### Database
 
-| Key | Default | Notes |
-|-----|---------|-------|
-| `Provider` | "InMemory" | "InMemory" or "MySQL" |
-| `ConnectionString` | null | Overridden by `ConnectionStrings:AuditEventDb` |
-| `ServerVersion` | "8.0.0-mysql" | Pomelo server version hint |
-| `MaxPoolSize` | 100 | |
-| `CommandTimeoutSeconds` | 60 | |
-| `MigrateOnStartup` | false | Run migrations at startup (opt-in) |
-| `VerifyConnectionOnStartup` | true | Non-fatal probe at startup |
-| `StartupProbeTimeoutSeconds` | 10 | |
-| `EnableSensitiveDataLogging` | false | NEVER true in production |
-| `EnableDetailedErrors` | false | Dev only |
+| Key | Default | Description |
+|-----|---------|-------------|
+| `Provider` | `"InMemory"` | `InMemory` or `MySQL` |
+| `ConnectionString` | `null` | MySQL connection string |
+| `MigrateOnStartup` | `false` | Run EF migrations at startup |
+| `VerifyConnectionOnStartup` | `true` | Non-fatal connectivity probe |
 
-#### `Integrity`
+---
 
-| Key | Default | Notes |
-|-----|---------|-------|
-| `HmacKeyBase64` | "" | **Required**. 32-byte base64 key. |
-| `VerifyOnRead` | false | Verify hash on every read |
-| `FlagTamperedRecords` | true | Flag mismatches in responses |
+## Hash Chain Integrity
 
-#### `IngestAuth`
+Every persisted `AuditEventRecord` carries:
 
-| Key | Default | Notes |
-|-----|---------|-------|
-| `Mode` | "None" | "None" \| "ApiKey" \| "Bearer" |
-| `ApiKey` | null | Required when Mode=ApiKey |
-| `ApiKeyHeader` | "X-Api-Key" | |
-| `AllowedSources` | [] | Restrict by source value |
+- **`Hash`** — canonical hash of this record's fields plus `PreviousHash`.
+- **`PreviousHash`** — hash of the preceding record in the same `(TenantId, SourceSystem)` chain.
 
-#### `QueryAuth`
+This forms a singly-linked cryptographic chain: modifying any record invalidates all subsequent hashes.
 
-| Key | Default | Notes |
-|-----|---------|-------|
-| `Mode` | "None" | "None" \| "ApiKey" \| "Bearer" |
-| `PlatformAdminRoles` | ["platform-audit-admin"] | Cross-tenant access |
-| `TenantAdminRoles` | ["tenant-admin","compliance-officer"] | Scoped access |
-| `EnforceTenantScope` | true | Restrict to caller's tenantId claim |
-| `MaxPageSize` | 500 | Hard cap on page size |
-
-#### `Retention`
-
-| Key | Default | Notes |
-|-----|---------|-------|
-| `DefaultRetentionDays` | 0 | 0 = indefinite |
-| `CategoryOverrides` | {} | e.g. `{"system": 90}` |
-| `JobEnabled` | false | Enable retention job |
-| `JobCronUtc` | "0 2 * * *" | Daily 02:00 UTC |
-
-#### `Export`
-
-| Key | Default | Notes |
-|-----|---------|-------|
-| `Provider` | "None" | "None" \| "Local" \| "S3" \| "AzureBlob" |
-| `MaxRecordsPerFile` | 100000 | |
-| `SupportedFormats` | ["Json","Csv","Ndjson"] | |
+See [Docs/integrity-model.md](Docs/integrity-model.md) for the complete specification.
 
 ---
 
 ## Database Migrations
 
 ```bash
-cd apps/services/platform-audit-event-service
-
-# Create initial migration
+# Create migration
 ConnectionStrings__AuditEventDb="<conn>" \
   dotnet ef migrations add InitialAuditSchema --output-dir Data/Migrations
 
-# Apply to database
+# Apply
 ConnectionStrings__AuditEventDb="<conn>" \
   dotnet ef database update
 ```
 
 ---
 
-## Run Instructions
+## Production Checklist
 
-```bash
-cd apps/services/platform-audit-event-service
-
-# Restore packages
-dotnet restore
-
-# Development run (InMemory, port 5007)
-dotnet run
-
-# With MySQL
-Database__Provider=MySQL \
-ConnectionStrings__AuditEventDb="<conn>" \
-Integrity__HmacKeyBase64="$(openssl rand -base64 32)" \
-dotnet run
-```
-
-- Swagger UI: `http://localhost:5007/swagger`
-- Health check: `http://localhost:5007/HealthCheck`
+- [ ] `Database__Provider=MySQL` with connection string
+- [ ] `Integrity__HmacKeyBase64` injected via secrets manager (never commit)
+- [ ] `IngestAuth__Mode=ServiceToken` with at least one `ServiceTokens` entry
+- [ ] Service tokens injected via environment variables (never committed)
+- [ ] `QueryAuth__Mode=Bearer` or appropriate auth for query surface
+- [ ] `AuditService__AllowedCorsOrigins` set to known origins
+- [ ] `Integrity__VerifyOnRead=true` for compliance environments
+- [ ] `EnableSensitiveDataLogging=false` and `EnableDetailedErrors=false`
+- [ ] `AuditService__ExposeSwagger=false`
 
 ---
 
-## Production Checklist
+## Documentation Index
 
-- [ ] Set `Database__Provider=MySQL` and provide connection string
-- [ ] Generate and inject `Integrity__HmacKeyBase64` via secrets manager (never commit)
-- [ ] Run `dotnet ef database update` before deploying (or set `MigrateOnStartup=true` with a controlled rollout)
-- [ ] Set `IngestAuth__Mode=ApiKey` or `Bearer` — never run `Mode=None` publicly
-- [ ] Set `QueryAuth__Mode=Bearer` with role enforcement
-- [ ] Set `AuditService__AllowedCorsOrigins` to known origins (remove `*`)
-- [ ] Set `Integrity__VerifyOnRead=true` for compliance environments
-- [ ] Disable `EnableSensitiveDataLogging` and `EnableDetailedErrors`
-- [ ] Set `AuditService__ExposeSwagger=false` (Swagger is Development-only by default)
+| File | Contents |
+|------|---------|
+| [Docs/architecture_overview.md](Docs/architecture_overview.md) | System design, service boundaries |
+| [Docs/canonical-event-contract.md](Docs/canonical-event-contract.md) | Event schema, field definitions |
+| [Docs/integrity-model.md](Docs/integrity-model.md) | Hash chain spec, algorithm reference |
+| [Docs/ingest-auth.md](Docs/ingest-auth.md) | Auth flow, headers, modes, extension guide |

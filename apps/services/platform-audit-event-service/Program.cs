@@ -12,6 +12,9 @@ using PlatformAuditEventService.Repositories;
 using PlatformAuditEventService.Services;
 using PlatformAuditEventService.Validators;
 
+// Disambiguate legacy IngestAuditEventRequest
+using IngestAuditEventRequest = PlatformAuditEventService.DTOs.Ingest.IngestAuditEventRequest;
+
 // ── Bootstrap logger ─────────────────────────────────────────────────────────
 // Captures startup errors before full Serilog is configured from appsettings.
 Log.Logger = new LoggerConfiguration()
@@ -165,6 +168,40 @@ try
     // implementation in place of EfAuditEventRecordRepository above.
     builder.Services.AddScoped<IAuditEventIngestionService, AuditEventIngestionService>();
 
+    // ── Ingest authentication ─────────────────────────────────────────────────
+    // Concrete authenticators registered as singletons (stateless after construction).
+    // IIngestAuthenticator resolves to the implementation matching IngestAuth:Mode.
+    //
+    // To add a new auth mode (e.g. Bearer/JWT):
+    //   1. Implement IIngestAuthenticator in a new class.
+    //   2. Add builder.Services.AddSingleton<YourAuthenticator>() here.
+    //   3. Add a case to the switch below.
+    //   4. Document the new mode in Docs/ingest-auth.md.
+    builder.Services.AddSingleton<NullIngestAuthenticator>();
+    builder.Services.AddSingleton<ServiceTokenAuthenticator>();
+
+    var ingestAuthMode = cfg.GetSection(IngestAuthOptions.SectionName)["Mode"] ?? "None";
+
+    builder.Services.AddSingleton<IIngestAuthenticator>(sp => ingestAuthMode switch
+    {
+        "ServiceToken" => sp.GetRequiredService<ServiceTokenAuthenticator>(),
+        // Future modes registered here:
+        // "Bearer"    => sp.GetRequiredService<JwtIngestAuthenticator>(),
+        // "MtlsHeader"=> sp.GetRequiredService<MtlsIngestAuthenticator>(),
+        _              => sp.GetRequiredService<NullIngestAuthenticator>(),
+    });
+
+    if (ingestAuthMode.Equals("None", StringComparison.OrdinalIgnoreCase))
+    {
+        Log.Warning(
+            "IngestAuth:Mode = 'None' — ingest endpoints are unauthenticated. " +
+            "Set Mode=ServiceToken and configure IngestAuth:ServiceTokens for any non-development environment.");
+    }
+    else
+    {
+        Log.Information("IngestAuth:Mode = {Mode} — ingest endpoint authentication active.", ingestAuthMode);
+    }
+
     // ── CORS ──────────────────────────────────────────────────────────────────
     var allowedOrigins = svcOpts.AllowedCorsOrigins;
     builder.Services.AddCors(opts =>
@@ -205,6 +242,10 @@ try
     // ── Middleware pipeline ───────────────────────────────────────────────────
     app.UseMiddleware<ExceptionMiddleware>();
     app.UseMiddleware<CorrelationIdMiddleware>();
+
+    // IngestAuthMiddleware must run after CorrelationId (so TraceId is available for
+    // error responses) and before Serilog request logging (so auth outcomes appear in logs).
+    app.UseMiddleware<IngestAuthMiddleware>();
 
     app.UseSerilogRequestLogging(opts =>
     {
