@@ -60,6 +60,16 @@ public class AuthService : IAuthService
         List<string> productRoles = [];
         if (org is not null)
         {
+            // Phase I: warn when the OrgType string fallback path will be taken during
+            // product-role eligibility checks.  After migration 200005 this should never
+            // fire; if it does, the admin should re-run the backfill migration.
+            if (!org.OrganizationTypeId.HasValue)
+                _logger.LogWarning(
+                    "Organization {OrgId} has no OrganizationTypeId set; " +
+                    "product-role eligibility will use the OrgType string fallback. " +
+                    "Run migration 200005 (PhaseI_BackfillOrganizationTypeId) to resolve.",
+                    org.Id);
+
             // Phase F: resolve product roles exclusively via ProductOrganizationTypeRule (DB-backed).
             // EligibleOrgType legacy fallback removed — see migration 20260330200003.
             int dbRuleCount       = 0;

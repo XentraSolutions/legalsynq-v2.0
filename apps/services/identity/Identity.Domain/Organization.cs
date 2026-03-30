@@ -28,6 +28,26 @@ public class Organization
     private Organization() { }
 
     /// <summary>
+    /// Phase I canonical create: OrganizationTypeId is the primary input.
+    /// OrgType is derived from OrgTypeMapper and kept for backward compatibility.
+    /// Use this overload when the catalog ID is already resolved.
+    /// </summary>
+    public static Organization Create(
+        Guid    tenantId,
+        string  name,
+        Guid    organizationTypeId,
+        string? displayName     = null,
+        Guid?   createdByUserId = null)
+    {
+        var orgTypeCode = OrgTypeMapper.TryResolveCode(organizationTypeId)
+            ?? throw new ArgumentException(
+                $"OrganizationTypeId '{organizationTypeId}' is not in the OrgTypeMapper catalog.",
+                nameof(organizationTypeId));
+
+        return Create(tenantId, name, orgTypeCode, organizationTypeId, displayName, createdByUserId);
+    }
+
+    /// <summary>
     /// Legacy create: accepts OrgType string only (backward compatible).
     /// OrgType must be valid per the static OrgType class.
     /// Callers should prefer the overload that also supplies organizationTypeId.
@@ -88,6 +108,16 @@ public class Organization
     /// </summary>
     public void AssignOrganizationType(Guid organizationTypeId, string orgTypeCode)
     {
+        // Phase I: enforce catalog consistency — if OrgTypeMapper knows this ID,
+        // prefer the catalog-derived code over any caller-supplied string so that
+        // OrgType column never drifts away from OrganizationTypeId.
+        var catalogCode = OrgTypeMapper.TryResolveCode(organizationTypeId);
+        if (catalogCode is not null &&
+            !string.Equals(catalogCode, orgTypeCode, StringComparison.OrdinalIgnoreCase))
+        {
+            orgTypeCode = catalogCode;
+        }
+
         OrganizationTypeId = organizationTypeId;
         // Keep OrgType string in sync so JWT claims remain backward-compatible.
         if (!string.IsNullOrWhiteSpace(orgTypeCode))

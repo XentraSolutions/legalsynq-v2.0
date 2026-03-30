@@ -1,3 +1,4 @@
+using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -67,8 +68,11 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/platform-readiness", GetPlatformReadiness);
 
         // ── Role assignment ───────────────────────────────────────────────────
-        routes.MapPost("/api/admin/users/{id:guid}/roles",              AssignRole);
-        routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}", RevokeRole);
+        routes.MapPost("/api/admin/users/{id:guid}/roles",                  AssignRole);
+        routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}",  RevokeRole);
+
+        // Phase I: scoped role summary for a user (non-global scope visibility)
+        routes.MapGet("/api/admin/users/{id:guid}/scoped-roles",            GetScopedRoles);
 
         return routes;
     }
@@ -902,13 +906,22 @@ public static class AdminEndpoints
     /// <summary>
     /// POST /api/admin/users/{id}/roles
     ///
-    /// Assigns a role to a user.  Writes a GLOBAL ScopedRoleAssignment.
+    /// Assigns a role to a user.
+    ///
     /// Phase G: UserRoles table dropped — ScopedRoleAssignments is the sole store.
+    /// Phase I: extended to support non-GLOBAL scope types.
     ///
-    /// Body: { "roleId": "guid" }
+    /// Body: { "roleId": "guid", "scopeType": "GLOBAL|ORGANIZATION|PRODUCT|RELATIONSHIP|TENANT",
+    ///         "organizationId"?: "guid", "productId"?: "guid",
+    ///         "organizationRelationshipId"?: "guid" }
     ///
-    /// Returns 201 Created on success, 404 if user or role not found,
-    /// 409 Conflict if the role is already assigned to the user.
+    /// scopeType defaults to GLOBAL when omitted (backward compatible).
+    /// ORGANIZATION scope requires organizationId.
+    /// PRODUCT scope requires productId.
+    /// RELATIONSHIP scope requires organizationRelationshipId.
+    ///
+    /// Returns 201 Created on success, 400 for scope validation errors,
+    /// 404 if user or role not found, 409 Conflict if the same scoped assignment exists.
     /// </summary>
     private static async Task<IResult> AssignRole(
         Guid                 id,
@@ -922,22 +935,65 @@ public static class AdminEndpoints
         var role = await db.Roles.FindAsync(body.RoleId);
         if (role is null) return Results.NotFound(new { error = $"Role '{body.RoleId}' not found." });
 
-        // Step 6 Phase B: existence check now uses ScopedRoleAssignments (primary).
+        // Phase I: validate scope context
+        var scopeType = body.ScopeType ?? ScopedRoleAssignment.ScopeTypes.Global;
+        if (!ScopedRoleAssignment.ScopeTypes.IsValid(scopeType))
+            return Results.BadRequest(new { error = $"Invalid ScopeType '{scopeType}'. Valid values: {string.Join(", ", ScopedRoleAssignment.ScopeTypes.All)}." });
+
+        if (scopeType == ScopedRoleAssignment.ScopeTypes.Organization && !body.OrganizationId.HasValue)
+            return Results.BadRequest(new { error = "OrganizationId is required when ScopeType is ORGANIZATION." });
+
+        if (scopeType == ScopedRoleAssignment.ScopeTypes.Product && !body.ProductId.HasValue)
+            return Results.BadRequest(new { error = "ProductId is required when ScopeType is PRODUCT." });
+
+        if (scopeType == ScopedRoleAssignment.ScopeTypes.Relationship && !body.OrganizationRelationshipId.HasValue)
+            return Results.BadRequest(new { error = "OrganizationRelationshipId is required when ScopeType is RELATIONSHIP." });
+
+        // Validate referenced entities for non-global scopes
+        if (body.OrganizationId.HasValue)
+        {
+            var orgExists = await db.Organizations.AnyAsync(o => o.Id == body.OrganizationId.Value);
+            if (!orgExists)
+                return Results.NotFound(new { error = $"Organization '{body.OrganizationId.Value}' not found." });
+        }
+        if (body.ProductId.HasValue)
+        {
+            var productExists = await db.Products.AnyAsync(p => p.Id == body.ProductId.Value);
+            if (!productExists)
+                return Results.NotFound(new { error = $"Product '{body.ProductId.Value}' not found." });
+        }
+        if (body.OrganizationRelationshipId.HasValue)
+        {
+            var relExists = await db.OrganizationRelationships.AnyAsync(r => r.Id == body.OrganizationRelationshipId.Value && r.IsActive);
+            if (!relExists)
+                return Results.NotFound(new { error = $"Active OrganizationRelationship '{body.OrganizationRelationshipId.Value}' not found." });
+        }
+
+        // Conflict check: same user + same role + same scope type + same scope context
         var alreadyAssigned = await db.ScopedRoleAssignments
-            .AnyAsync(s => s.UserId == id && s.RoleId == body.RoleId && s.IsActive
-                        && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global);
+            .AnyAsync(s =>
+                s.UserId     == id &&
+                s.RoleId     == body.RoleId &&
+                s.IsActive   &&
+                s.ScopeType  == scopeType &&
+                s.OrganizationId           == body.OrganizationId &&
+                s.ProductId                == body.ProductId &&
+                s.OrganizationRelationshipId == body.OrganizationRelationshipId);
         if (alreadyAssigned)
-            return Results.Conflict(new { error = "Role is already assigned to this user." });
+            return Results.Conflict(new { error = "An identical scoped role assignment already exists for this user." });
 
         var now = DateTime.UtcNow;
 
-        // Phase G: single write — ScopedRoleAssignment only. UserRoles table dropped.
+        // Phase G/I: single write — ScopedRoleAssignment only.
         var sra = ScopedRoleAssignment.Create(
-            userId:           id,
-            roleId:           body.RoleId,
-            scopeType:        ScopedRoleAssignment.ScopeTypes.Global,
-            tenantId:         user.TenantId,
-            assignedByUserId: body.AssignedByUserId);
+            userId:                    id,
+            roleId:                    body.RoleId,
+            scopeType:                 scopeType,
+            tenantId:                  user.TenantId,
+            organizationId:            body.OrganizationId,
+            organizationRelationshipId: body.OrganizationRelationshipId,
+            productId:                 body.ProductId,
+            assignedByUserId:          body.AssignedByUserId);
         db.ScopedRoleAssignments.Add(sra);
 
         await db.SaveChangesAsync();
@@ -946,12 +1002,57 @@ public static class AdminEndpoints
             $"/api/admin/users/{id}/roles/{body.RoleId}",
             new
             {
-                userId    = id,
-                roleId    = body.RoleId,
-                roleName  = role.Name,
-                scopeType = "GLOBAL",
-                assignedAtUtc = now,
+                assignmentId              = sra.Id,
+                userId                    = id,
+                roleId                    = body.RoleId,
+                roleName                  = role.Name,
+                scopeType                 = scopeType,
+                organizationId            = body.OrganizationId,
+                productId                 = body.ProductId,
+                organizationRelationshipId = body.OrganizationRelationshipId,
+                assignedAtUtc             = now,
             });
+    }
+
+    /// <summary>
+    /// GET /api/admin/users/{id}/scoped-roles
+    ///
+    /// Phase I: returns all active scoped role assignments for a user, grouped by
+    /// scope type.  Demonstrates real non-global scope visibility at the API layer.
+    ///
+    /// Returns 200 with the scoped role summary, 404 if the user is not found.
+    /// </summary>
+    private static async Task<IResult> GetScopedRoles(
+        Guid                        id,
+        IScopedAuthorizationService scopedAuth,
+        IdentityDbContext            db,
+        CancellationToken            ct)
+    {
+        var exists = await db.Users.AnyAsync(u => u.Id == id, ct);
+        if (!exists) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        var summary = await scopedAuth.GetScopedRoleSummaryAsync(id, ct);
+
+        return Results.Ok(new
+        {
+            userId      = summary.UserId,
+            totalActive = summary.TotalActive,
+            assignments = summary.Assignments.Select(a => new
+            {
+                assignmentId               = a.AssignmentId,
+                roleName                   = a.RoleName,
+                scopeType                  = a.ScopeType,
+                organizationId             = a.OrganizationId,
+                productId                  = a.ProductId,
+                organizationRelationshipId = a.OrganizationRelationshipId,
+                tenantId                   = a.TenantId,
+            }),
+            byScope = summary.Assignments
+                .GroupBy(a => a.ScopeType)
+                .ToDictionary(
+                    g => g.Key.ToLowerInvariant(),
+                    g => g.Count()),
+        });
     }
 
     /// <summary>
@@ -1042,6 +1143,24 @@ public static class AdminEndpoints
         var totalOrgRelationships   = await db.OrganizationRelationships.CountAsync(ct);
         var activeOrgRelationships  = await db.OrganizationRelationships.CountAsync(r => r.IsActive, ct);
 
+        // ── 5. Phase I: scoped assignments by scope type ──────────────────────
+        // Shows how many active SRAs exist per scope level.  After Phase I,
+        // non-GLOBAL counts above zero prove the schema is being exercised at runtime.
+        var scopeTypeCounts = await db.ScopedRoleAssignments
+            .Where(s => s.IsActive)
+            .GroupBy(s => s.ScopeType)
+            .Select(g => new { ScopeType = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        int ScopeCount(string t) =>
+            scopeTypeCounts.FirstOrDefault(g => g.ScopeType == t)?.Count ?? 0;
+
+        var scopedGlobal       = ScopeCount(ScopedRoleAssignment.ScopeTypes.Global);
+        var scopedOrg          = ScopeCount(ScopedRoleAssignment.ScopeTypes.Organization);
+        var scopedProduct      = ScopeCount(ScopedRoleAssignment.ScopeTypes.Product);
+        var scopedRelationship = ScopeCount(ScopedRoleAssignment.ScopeTypes.Relationship);
+        var scopedTenant       = ScopeCount(ScopedRoleAssignment.ScopeTypes.Tenant);
+
         return Results.Ok(new
         {
             generatedAtUtc = now,
@@ -1080,12 +1199,30 @@ public static class AdminEndpoints
                 total  = totalOrgRelationships,
                 active = activeOrgRelationships,
             },
+
+            // Phase I: active SRAs by scope type — non-zero org/product/relationship
+            // values confirm that real non-global scope enforcement is in use.
+            scopedAssignmentsByScope = new
+            {
+                global       = scopedGlobal,
+                organization = scopedOrg,
+                product      = scopedProduct,
+                relationship = scopedRelationship,
+                tenant       = scopedTenant,
+            },
         });
     }
 
     // ── Request / response DTOs (private, scoped to AdminEndpoints) ─────────
 
-    private record AssignRoleRequest(Guid RoleId, Guid? AssignedByUserId = null);
+    private record AssignRoleRequest(
+        Guid    RoleId,
+        Guid?   AssignedByUserId             = null,
+        /// <summary>Defaults to GLOBAL when omitted. Valid: GLOBAL, ORGANIZATION, PRODUCT, RELATIONSHIP, TENANT.</summary>
+        string? ScopeType                    = null,
+        Guid?   OrganizationId               = null,
+        Guid?   ProductId                    = null,
+        Guid?   OrganizationRelationshipId   = null);
     private record EntitlementRequest(string ProductCode, bool Enabled);
     private record CreateOrgRelationshipRequest(
         Guid  SourceOrganizationId,

@@ -107,6 +107,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "healthy" })).AllowAnonymo
 app.MapGet("/info",   () => Results.Ok(new { service = "CareConnect", version = "1.0.0" })).AllowAnonymous();
 
 // API endpoints
+app.MapCareConnectIntegrityEndpoints();
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
 app.MapCategoryEndpoints();

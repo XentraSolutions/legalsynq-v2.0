@@ -450,15 +450,30 @@ export interface OrgRelationshipCoverage {
 }
 
 /**
+ * Phase I: active ScopedRoleAssignments broken down by scope type.
+ * Non-zero organization/product/relationship values confirm real non-global
+ * scope enforcement is in use at runtime.
+ */
+export interface ScopedAssignmentsByScope {
+  global:       number;
+  organization: number;
+  product:      number;
+  relationship: number;
+  tenant:       number;
+}
+
+/**
  * Full platform readiness summary.
  * Returned by GET /identity/api/admin/platform-readiness.
  */
 export interface PlatformReadinessSummary {
-  generatedAtUtc:        string;
-  phaseGCompletion:      PhaseGCompletion;
-  orgTypeCoverage:       OrgTypeCoverage;
-  productRoleEligibility: ProductRoleEligibilityCoverage;
-  orgRelationships:      OrgRelationshipCoverage;
+  generatedAtUtc:          string;
+  phaseGCompletion:        PhaseGCompletion;
+  orgTypeCoverage:         OrgTypeCoverage;
+  productRoleEligibility:  ProductRoleEligibilityCoverage;
+  orgRelationships:        OrgRelationshipCoverage;
+  /** Phase I: SRA counts by scope type. */
+  scopedAssignmentsByScope: ScopedAssignmentsByScope;
 }
 
 // ── Shared ────────────────────────────────────────────────────────────────────

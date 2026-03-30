@@ -781,6 +781,18 @@ export function mapPlatformReadiness(raw: unknown): PlatformReadinessSummary {
       total:  num(orRaw, 'total',  'total',  0),
       active: num(orRaw, 'active', 'active', 0),
     },
+
+    // Phase I: scoped assignment counts by scope type
+    scopedAssignmentsByScope: (() => {
+      const sb = asObj(r['scopedAssignmentsByScope'] ?? r['scoped_assignments_by_scope'] ?? {});
+      return {
+        global:       num(sb, 'global',       'global',       0),
+        organization: num(sb, 'organization',  'organization', 0),
+        product:      num(sb, 'product',       'product',      0),
+        relationship: num(sb, 'relationship',  'relationship', 0),
+        tenant:       num(sb, 'tenant',        'tenant',       0),
+      };
+    })(),
   };
 }
 

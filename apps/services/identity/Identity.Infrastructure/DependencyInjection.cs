@@ -43,6 +43,9 @@ public static class DependencyInjection
         services.AddScoped<AuthorizationService>();
         services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 
+        // Phase I: scoped authorization service (real non-global scope checks)
+        services.AddScoped<IScopedAuthorizationService, ScopedAuthorizationService>();
+
         return services;
     }
 }
