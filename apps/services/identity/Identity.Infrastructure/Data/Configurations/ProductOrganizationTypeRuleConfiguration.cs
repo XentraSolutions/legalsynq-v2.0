@@ -29,7 +29,7 @@ public class ProductOrganizationTypeRuleConfiguration : IEntityTypeConfiguration
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(r => r.ProductRole)
-            .WithMany()
+            .WithMany(pr => pr.OrgTypeRules)
             .HasForeignKey(r => r.ProductRoleId)
             .OnDelete(DeleteBehavior.Restrict);
 
