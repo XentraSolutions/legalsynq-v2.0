@@ -22,7 +22,7 @@ namespace PlatformAuditEventService.Services;
 ///   same HTTP request context. This keeps v1 simple and avoids requiring a
 ///   background worker or message queue. For very large exports, callers should
 ///   apply narrow time-range filters to stay within HTTP timeout budgets.
-///   Future: extract <see cref="ProcessJobAsync"/> into a BackgroundService or
+///   Future: extract <c>ProcessJobAsync</c> into a BackgroundService or
 ///   a Quartz.NET job for true async processing.
 ///
 /// Authorization delegation:
@@ -138,6 +138,60 @@ public sealed class AuditExportService : IAuditExportService
     {
         var job = await _jobRepository.GetByExportIdAsync(exportId, ct);
         return job is null ? null : MapToResponse(job);
+    }
+
+    /// <inheritdoc/>
+    public async Task ProcessJobAsync(Guid exportId, CancellationToken ct = default)
+    {
+        var job = await _jobRepository.GetByExportIdAsync(exportId, ct);
+        if (job is null)
+        {
+            _logger.LogWarning(
+                "ProcessJobAsync: ExportId={ExportId} not found. Skipping.", exportId);
+            return;
+        }
+
+        // Skip jobs already in a terminal state
+        if (job.Status is ExportStatus.Completed or ExportStatus.Failed
+                       or ExportStatus.Cancelled or ExportStatus.Expired)
+        {
+            _logger.LogDebug(
+                "ProcessJobAsync: ExportId={ExportId} already in terminal state {Status}. Skipping.",
+                exportId, job.Status);
+            return;
+        }
+
+        // Deserialise the stored filter
+        AuditEventQueryRequest queryFilter;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(job.FilterJson))
+                throw new InvalidOperationException("FilterJson is null or empty.");
+
+            queryFilter = System.Text.Json.JsonSerializer.Deserialize<AuditEventQueryRequest>(
+                job.FilterJson, _filterSerializerOpts)
+                ?? throw new InvalidOperationException("Deserialised filter was null.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "ProcessJobAsync: failed to deserialise FilterJson for ExportId={ExportId}.",
+                exportId);
+
+            job.Status       = ExportStatus.Failed;
+            job.ErrorMessage = $"FilterJson deserialisation failed: {ex.Message}";
+            job.CompletedAtUtc = DateTimeOffset.UtcNow;
+            await _jobRepository.UpdateAsync(job, ct);
+            return;
+        }
+
+        // Use safe defaults for background processing (no live HTTP caller context)
+        var writerOpts = new ExportWriterOptions(
+            IncludeHashes:         _queryAuthOpts.ExposeIntegrityHash,
+            IncludeStateSnapshots: true,
+            IncludeTags:           true);
+
+        await ProcessJobAsync(job, queryFilter, writerOpts, ct);
     }
 
     // ── Private: processing ───────────────────────────────────────────────────

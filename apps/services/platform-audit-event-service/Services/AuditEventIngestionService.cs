@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using PlatformAuditEventService.Configuration;
 using PlatformAuditEventService.DTOs.Ingest;
+using PlatformAuditEventService.Entities;
 using PlatformAuditEventService.Mappers;
 using PlatformAuditEventService.Repositories;
 using PlatformAuditEventService.Services.Forwarding;
@@ -79,6 +81,28 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
     /// a prior item in the same batch failed. This item was never attempted.
     /// </summary>
     public const string ReasonSkipped                 = "Skipped";
+
+    // ── Hash-chain concurrency locks ──────────────────────────────────────────
+    //
+    // Each (TenantId, SourceSystem) pair has its own SemaphoreSlim(1,1) to ensure
+    // that the chain-lookup → hash-compute → append sequence is atomic per chain.
+    //
+    // Without this lock, two concurrent ingest requests for the same chain could both
+    // read the same PreviousHash from GetLatestInChainAsync, compute independent hashes,
+    // and append with the same PreviousHash — breaking the singly-linked cryptographic chain.
+    //
+    // Memory: The dictionary grows at most O(TenantCount × SourceSystemCount). For an
+    // enterprise with hundreds of tenants and dozens of source systems, this is bounded
+    // and acceptable. There is no eviction policy; the process lifetime is the boundary.
+    //
+    // Thread-safety: ConcurrentDictionary.GetOrAdd is thread-safe for concurrent readers.
+    // The SemaphoreSlim instances are never removed — safe to hold a reference and Wait/Release.
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _chainLocks = new();
+
+    private static SemaphoreSlim GetChainLock(string? tenantId, string sourceSystem) =>
+        _chainLocks.GetOrAdd(
+            $"{tenantId ?? ""}:{sourceSystem}",
+            _ => new SemaphoreSlim(1, 1));
 
     // ── Fields ────────────────────────────────────────────────────────────────
 
@@ -253,140 +277,86 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
         var auditId = Guid.NewGuid();
         var now     = DateTimeOffset.UtcNow;
 
-        // ── Step 3: Integrity chain lookup ────────────────────────────────────
+        // ── Steps 3–6: Chain-locked critical section ─────────────────────────
         //
-        // Fetch the hash from the most recently persisted record in the same
-        // (TenantId, SourceSystem) chain.  This becomes PreviousHash on the new record
-        // and is ALSO included in the hash payload (Step 4), creating a singly-linked
-        // cryptographic chain: Hash(N) depends on Hash(N-1).
+        // The hash chain relies on a read-then-write pattern:
+        //   Step 3: read chain head  →  Step 4: compute hash (includes PreviousHash)  →
+        //   Step 5: build entity     →  Step 6: append to DB
         //
-        // A null PreviousHash means this is the genesis record for the chain —
-        // it still gets a Hash, but its payload includes an empty PreviousHash field.
+        // Concurrent ingest for the same (TenantId, SourceSystem) chain would allow two
+        // requests to read the same chain head, each compute a hash against it, and append
+        // two records with identical PreviousHash — breaking the singly-linked chain.
         //
-        // Skipped entirely when integrity signing is disabled.
-        string? previousHash = null;
-        if (_signingEnabled)
-        {
-            var chainHead = await _records.GetLatestInChainAsync(
-                req.Scope.TenantId, req.SourceSystem, ct);
+        // A per-chain SemaphoreSlim(1,1) serialises the critical section so that only
+        // one request progresses through Steps 3–6 per chain at a time.
+        // Step 7 (forwarding) is performed AFTER releasing the lock to maximise throughput.
+        var chainLock = GetChainLock(req.Scope.TenantId, req.SourceSystem);
+        await chainLock.WaitAsync(ct);
 
-            previousHash = chainHead?.Hash;
-        }
+        AuditEventRecord? persisted = null;
+        IngestItemResult? earlyResult = null;
 
-        // ── Step 4: Payload assembly + hash computation ────────────────────────
-        //
-        // BuildPayload() produces the canonical pipe-delimited string including PreviousHash.
-        // Including PreviousHash binds Hash(N) to Hash(N-1): any historical modification
-        // invalidates all subsequent hashes in the chain.
-        //
-        // AuditId and RecordedAtUtc are generated in Step 2 and passed here so the hash
-        // covers the exact values that will be persisted — no chicken-and-egg problem.
-        //
-        // Algorithm dispatch:
-        //   "SHA-256"     → ComputeSha256()      (keyless, portable, always available)
-        //   "HMAC-SHA256" → ComputeHmacSha256()  (requires _hmacSecret; checked at startup)
-        //
-        // Skipped when signing is disabled (_signingEnabled = false).
-        string? hash = null;
-        if (_signingEnabled)
-        {
-            var occurredAtUtc = req.OccurredAtUtc ?? now;  // must match ToEntity logic
-
-            var payload = AuditRecordHasher.BuildPayload(
-                auditId:       auditId,
-                eventType:     req.EventType,
-                sourceSystem:  req.SourceSystem,
-                tenantId:      req.Scope.TenantId,
-                actorId:       req.Actor.Id,
-                entityType:    req.Entity?.Type,
-                entityId:      req.Entity?.Id,
-                action:        req.Action,
-                occurredAtUtc: occurredAtUtc,
-                recordedAtUtc: now,
-                previousHash:  previousHash);   // ← binds this hash to predecessor in chain
-
-            hash = _algorithm.Equals(AuditRecordHasher.AlgoSha256, StringComparison.OrdinalIgnoreCase)
-                ? AuditRecordHasher.ComputeSha256(payload)
-                : AuditRecordHasher.ComputeHmacSha256(payload, _hmacSecret!);
-        }
-
-        // ── Step 5: Entity construction ───────────────────────────────────────
-        //
-        // The mapper is a pure structural translation — no I/O, no side-effects.
-        // We supply all externally-generated values (auditId, correlationId override,
-        // hashes) so the mapper can construct the fully-initialised init-only entity
-        // in a single allocation.
-        //
-        // CorrelationId fallback: if the item has no CorrelationId, use the batch-level
-        // BatchCorrelationId so the entire batch is traceable as a unit.
-        var correlationIdOverride = req.CorrelationId is null
-            ? batchCorrelationFallback
-            : null;    // item's own key wins; don't override it
-
-        var entity = AuditEventRecordMapper.ToEntity(
-            req,
-            auditId:              auditId,
-            now:                  now,
-            correlationIdOverride: correlationIdOverride,
-            hash:                 hash,
-            previousHash:         previousHash);
-
-        // ── Step 6: Append-only persistence ───────────────────────────────────
-        //
-        // AppendAsync enforces insert-only semantics (no UPDATE, no UPSERT).
-        // DbUpdateException with a unique-constraint violation on IdempotencyKey
-        // is caught and translated to DuplicateIdempotencyKey to handle the rare
-        // concurrent duplicate submission that slips past the step-1 probe.
         try
         {
-            var persisted = await _records.AppendAsync(entity, ct);
+            // ── Step 3: Integrity chain lookup ────────────────────────────────
+            string? previousHash = null;
+            if (_signingEnabled)
+            {
+                var chainHead = await _records.GetLatestInChainAsync(
+                    req.Scope.TenantId, req.SourceSystem, ct);
+                previousHash = chainHead?.Hash;
+            }
+
+            // ── Step 4: Payload assembly + hash computation ───────────────────
+            string? hash = null;
+            if (_signingEnabled)
+            {
+                var occurredAtUtc = req.OccurredAtUtc ?? now;
+
+                var payload = AuditRecordHasher.BuildPayload(
+                    auditId:       auditId,
+                    eventType:     req.EventType,
+                    sourceSystem:  req.SourceSystem,
+                    tenantId:      req.Scope.TenantId,
+                    actorId:       req.Actor.Id,
+                    entityType:    req.Entity?.Type,
+                    entityId:      req.Entity?.Id,
+                    action:        req.Action,
+                    occurredAtUtc: occurredAtUtc,
+                    recordedAtUtc: now,
+                    previousHash:  previousHash);
+
+                hash = _algorithm.Equals(AuditRecordHasher.AlgoSha256, StringComparison.OrdinalIgnoreCase)
+                    ? AuditRecordHasher.ComputeSha256(payload)
+                    : AuditRecordHasher.ComputeHmacSha256(payload, _hmacSecret!);
+            }
+
+            // ── Step 5: Entity construction ───────────────────────────────────
+            var correlationIdOverride = req.CorrelationId is null ? batchCorrelationFallback : null;
+
+            var entity = AuditEventRecordMapper.ToEntity(
+                req,
+                auditId:               auditId,
+                now:                   now,
+                correlationIdOverride: correlationIdOverride,
+                hash:                  hash,
+                previousHash:          previousHash);
+
+            // ── Step 6: Append-only persistence ──────────────────────────────
+            persisted = await _records.AppendAsync(entity, ct);
 
             _logger.LogInformation(
                 "AuditEvent ingested: AuditId={AuditId} EventType={EventType} " +
-                "SourceSystem={SourceSystem} TenantId={TenantId} IsReplay={IsReplay} " +
-                "Signed={Signed}",
+                "SourceSystem={SourceSystem} TenantId={TenantId} IsReplay={IsReplay} Signed={Signed}",
                 persisted.AuditId, persisted.EventType, persisted.SourceSystem,
                 persisted.TenantId, persisted.IsReplay, hash is not null);
-
-            // ── Step 7: Event forwarding (post-persist, best-effort) ──────────
-            //
-            // Forwarding is a secondary concern: persistence is the primary
-            // responsibility. The inner try-catch ensures that any forwarding
-            // failure is logged as a Warning but never causes this ingest
-            // response to fail. The append-only audit record is already durable
-            // at this point regardless of what happens here.
-            try
-            {
-                await _forwarder.ForwardAsync(persisted, ct);
-            }
-            catch (Exception fwdEx)
-            {
-                _logger.LogWarning(fwdEx,
-                    "Event forwarding failed (non-fatal): AuditId={AuditId} " +
-                    "EventType={EventType} SourceSystem={SourceSystem}. " +
-                    "The record was persisted successfully. Forwarding is best-effort " +
-                    "and will not be retried for this request.",
-                    persisted.AuditId, persisted.EventType, persisted.SourceSystem);
-            }
-
-            return new IngestItemResult
-            {
-                Index          = index,
-                EventType      = req.EventType,
-                IdempotencyKey = req.IdempotencyKey,
-                Accepted       = true,
-                AuditId        = persisted.AuditId,
-            };
         }
         catch (DbUpdateException dbEx) when (IsUniqueConstraintViolation(dbEx))
         {
-            // Race condition: two concurrent requests with the same IdempotencyKey both
-            // passed the step-1 probe before either committed. The unique index wins.
             _logger.LogWarning(
                 "Concurrent duplicate IdempotencyKey detected at commit: Key={Key} EventType={EventType}",
                 req.IdempotencyKey, req.EventType);
-
-            return Rejected(index, req, ReasonDuplicateIdempotencyKey);
+            earlyResult = Rejected(index, req, ReasonDuplicateIdempotencyKey);
         }
         catch (Exception ex)
         {
@@ -394,9 +364,42 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
                 "Persistence failure for AuditEvent: AuditId={AuditId} EventType={EventType} " +
                 "SourceSystem={SourceSystem}",
                 auditId, req.EventType, req.SourceSystem);
-
-            return Rejected(index, req, ReasonPersistenceError);
+            earlyResult = Rejected(index, req, ReasonPersistenceError);
         }
+        finally
+        {
+            chainLock.Release();
+        }
+
+        // Return early (rejection) if persistence failed inside the lock.
+        if (earlyResult is not null)
+            return earlyResult;
+
+        // ── Step 7: Event forwarding (post-lock, best-effort) ────────────────
+        //
+        // Forwarding happens outside the chain lock so it does not block concurrent
+        // ingest for the same chain during broker I/O. The record is already durable.
+        try
+        {
+            await _forwarder.ForwardAsync(persisted!, ct);
+        }
+        catch (Exception fwdEx)
+        {
+            _logger.LogWarning(fwdEx,
+                "Event forwarding failed (non-fatal): AuditId={AuditId} " +
+                "EventType={EventType} SourceSystem={SourceSystem}. " +
+                "The record was persisted successfully. Forwarding is best-effort.",
+                persisted!.AuditId, persisted.EventType, persisted.SourceSystem);
+        }
+
+        return new IngestItemResult
+        {
+            Index          = index,
+            EventType      = req.EventType,
+            IdempotencyKey = req.IdempotencyKey,
+            Accepted       = true,
+            AuditId        = persisted!.AuditId,
+        };
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

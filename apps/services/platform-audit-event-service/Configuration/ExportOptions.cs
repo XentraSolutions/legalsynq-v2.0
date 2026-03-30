@@ -65,4 +65,25 @@ public sealed class ExportOptions
     /// Export file name prefix. Final name: {Prefix}_{Timestamp}_{Page}.{ext}
     /// </summary>
     public string FileNamePrefix { get; set; } = "audit-export";
+
+    // ── Background processing (ExportProcessingJob) ───────────────────────────
+
+    /// <summary>
+    /// How often the background export worker polls for pending jobs (in seconds).
+    /// Default: 30.
+    /// </summary>
+    public int ProcessingIntervalSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Maximum number of export jobs the background worker processes per tick.
+    /// Default: 4.
+    /// </summary>
+    public int MaxConcurrentExports { get; set; } = 4;
+
+    /// <summary>
+    /// How long a job may remain in the Processing state before the worker considers it
+    /// stalled and resets it to Pending for retry (in minutes).
+    /// Default: 30.
+    /// </summary>
+    public int StalledJobTimeoutMinutes { get; set; } = 30;
 }

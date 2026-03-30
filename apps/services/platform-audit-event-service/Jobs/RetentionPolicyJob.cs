@@ -1,55 +1,68 @@
 using Microsoft.Extensions.Options;
 using PlatformAuditEventService.Configuration;
 using PlatformAuditEventService.DTOs.Retention;
+using PlatformAuditEventService.Entities;
+using PlatformAuditEventService.Repositories;
 using PlatformAuditEventService.Services;
+using PlatformAuditEventService.Services.Archival;
+using System.Runtime.CompilerServices;
 
 namespace PlatformAuditEventService.Jobs;
 
 /// <summary>
-/// Scheduled retention policy evaluation and (future) enforcement job.
+/// Retention policy evaluation and enforcement job.
 ///
-/// v1 behaviour — evaluation only, no side effects:
-///   1. Checks whether the job is enabled (<c>Retention:JobEnabled</c>).
-///   2. Calls <see cref="IRetentionService.EvaluateAsync"/> to classify a sample
-///      of the oldest records into storage tiers (Hot / Warm / Cold / Indefinite).
-///   3. Logs a structured summary of the evaluation result.
-///   4. Issues a Warning log when Cold-tier (expired) records are found, pointing
-///      operators to the configuration needed to activate archival.
-///   5. Returns without modifying, archiving, or deleting any records.
+/// Phase 1 (always runs, read-only):
+///   Calls <see cref="IRetentionService.EvaluateAsync"/> to classify a sample of the oldest
+///   records into storage tiers (Hot / Warm / Cold / Indefinite / LegalHold).
+///   Logs a structured summary. Never modifies data.
 ///
-/// Future activation path:
-///   1. Set <c>Retention:ArchiveBeforeDelete=true</c> and configure
-///      <c>Archival:Strategy</c> to a real provider (S3, AzureBlob, LocalCopy).
-///   2. Set <c>Retention:DryRun=false</c> after validating the archival pipeline.
-///   3. Register this job as a <see cref="Microsoft.Extensions.Hosting.BackgroundService"/>
-///      (simple) or as a Quartz.NET trigger (production scheduling with cron support).
+/// Phase 2 (active enforcement — opt-in, controlled by DryRun flag):
+///   Runs only when <c>Retention:DryRun=false</c> AND Cold-tier records exist.
+///   For each batch of eligible records:
+///     1. Pre-checks for active legal holds (skips held records).
+///     2. Archives the batch if <c>Retention:ArchiveBeforeDelete=true</c> via IArchivalProvider.
+///     3. Deletes successfully archived (or unarchived if ArchiveBeforeDelete=false) records.
+///
+/// Safety:
+///   - DryRun defaults to true in all environments. Set DryRun=false to activate.
+///   - LegalHold pre-check prevents deletion of held records regardless of tier classification.
+///   - MaxDeletesPerRun caps total deletes per job run to bound database load.
+///   - DeleteBatchSize controls DB batch size to avoid long table-lock periods.
 ///
 /// Scheduling:
-///   The cron expression in <c>Retention:JobCronUtc</c> (default: "0 2 * * *" = 02:00 UTC daily)
-///   is informational in v1 — this job does not wire its own scheduler. Future integration
-///   with Quartz.NET should register this job using that expression.
+///   <see cref="RetentionHostedService"/> drives this job on the interval defined by
+///   <c>Retention:RetentionIntervalHours</c>.
 /// </summary>
 public sealed class RetentionPolicyJob
 {
     private readonly IRetentionService             _retentionService;
+    private readonly IAuditEventRecordRepository   _recordRepository;
+    private readonly ILegalHoldRepository          _holdRepository;
+    private readonly IArchivalProvider             _archival;
     private readonly RetentionOptions              _opts;
     private readonly ILogger<RetentionPolicyJob>   _logger;
 
     public RetentionPolicyJob(
         IRetentionService             retentionService,
+        IAuditEventRecordRepository   recordRepository,
+        ILegalHoldRepository          holdRepository,
+        IArchivalProvider             archival,
         IOptions<RetentionOptions>    opts,
         ILogger<RetentionPolicyJob>   logger)
     {
         _retentionService = retentionService;
+        _recordRepository = recordRepository;
+        _holdRepository   = holdRepository;
+        _archival         = archival;
         _opts             = opts.Value;
         _logger           = logger;
     }
 
     /// <summary>
     /// Execute one retention policy run.
-    ///
-    /// In v1, this is always a dry-run evaluation. Archival and deletion
-    /// are not performed regardless of configuration.
+    /// Phase 1 always runs (evaluation/read-only).
+    /// Phase 2 runs when DryRun=false and Cold-tier records exist.
     /// </summary>
     public async Task ExecuteAsync(CancellationToken ct = default)
     {
@@ -61,10 +74,12 @@ public sealed class RetentionPolicyJob
         }
 
         _logger.LogInformation(
-            "RetentionPolicyJob: starting evaluation. " +
-            "DryRun={DryRun} ArchiveBeforeDelete={Archive} HotDays={Hot} DefaultDays={Default}",
+            "RetentionPolicyJob: starting. " +
+            "DryRun={DryRun} ArchiveBeforeDelete={Archive} HotDays={Hot} DefaultDays={Default} " +
+            "LegalHoldEnabled={LegalHold}",
             _opts.DryRun, _opts.ArchiveBeforeDelete, _opts.HotRetentionDays,
-            _opts.DefaultRetentionDays <= 0 ? "indefinite" : _opts.DefaultRetentionDays.ToString());
+            _opts.DefaultRetentionDays <= 0 ? "indefinite" : _opts.DefaultRetentionDays.ToString(),
+            _opts.LegalHoldEnabled);
 
         // ── Phase 1: Policy evaluation (always runs, always read-only) ────────
         var result = await _retentionService.EvaluateAsync(
@@ -77,23 +92,20 @@ public sealed class RetentionPolicyJob
         _logger.LogInformation(
             "RetentionPolicyJob evaluation: " +
             "TotalInStore={Total} Sampled={Sampled} | " +
-            "Hot={Hot} Warm={Warm} Cold={Cold} Indefinite={Indefinite}",
+            "Hot={Hot} Warm={Warm} Cold={Cold} Indefinite={Indefinite} LegalHold={LegalHold}",
             result.TotalRecordsInStore, result.SampleRecordsClassified,
             result.RecordsInHotTier, result.RecordsInWarmTier,
-            result.RecordsInColdTier, result.RecordsIndefinite);
+            result.RecordsInColdTier, result.RecordsIndefinite, result.RecordsOnLegalHold);
 
         _logger.LogInformation(
             "RetentionPolicyJob policy: {PolicySummary}", result.PolicySummary);
 
-        // ── Warning: expired records found ────────────────────────────────────
         if (result.RecordsExpiredInSample > 0)
         {
             _logger.LogWarning(
                 "RetentionPolicyJob: {ExpiredCount} records in sample are in the Cold tier " +
-                "(past their retention window). No action taken. " +
-                "To activate archival: set Retention:ArchiveBeforeDelete=true, configure " +
-                "Archival:Strategy, and set Retention:DryRun=false.",
-                result.RecordsExpiredInSample);
+                "(past their retention window). DryRun={DryRun}.",
+                result.RecordsExpiredInSample, _opts.DryRun);
 
             foreach (var (category, count) in result.ExpiredByCategory)
             {
@@ -103,15 +115,178 @@ public sealed class RetentionPolicyJob
             }
         }
 
-        // ── Phase 2: Archival (future — not implemented in v1) ────────────────
-        if (!_opts.DryRun && _opts.ArchiveBeforeDelete)
+        // ── Phase 2: Archival + deletion enforcement ──────────────────────────
+        if (_opts.DryRun)
         {
-            _logger.LogWarning(
-                "RetentionPolicyJob: DryRun=false and ArchiveBeforeDelete=true are set, " +
-                "but archival execution is not implemented in v1. " +
-                "Cold-tier records were NOT archived or deleted this run.");
+            if (result.RecordsExpiredInSample > 0)
+            {
+                _logger.LogInformation(
+                    "RetentionPolicyJob: DryRun=true — no records were archived or deleted. " +
+                    "Set Retention:DryRun=false to activate enforcement.");
+            }
+
+            _logger.LogInformation("RetentionPolicyJob: run complete (dry-run).");
+            return;
         }
 
+        if (result.RecordsInColdTier == 0)
+        {
+            _logger.LogInformation(
+                "RetentionPolicyJob: no Cold-tier records found — nothing to enforce.");
+            _logger.LogInformation("RetentionPolicyJob: run complete.");
+            return;
+        }
+
+        // Guard: indefinite retention (DefaultRetentionDays <= 0) must never delete.
+        if (_opts.DefaultRetentionDays <= 0)
+        {
+            _logger.LogWarning(
+                "RetentionPolicyJob: DefaultRetentionDays={Days} (indefinite) — " +
+                "Phase 2 enforcement skipped for safety.",
+                _opts.DefaultRetentionDays);
+            return;
+        }
+
+        var cutoff    = DateTimeOffset.UtcNow.AddDays(-_opts.DefaultRetentionDays);
+        var batchSize = Math.Max(1, _opts.DeleteBatchSize);
+        var remaining = _opts.MaxDeletesPerRun > 0 ? _opts.MaxDeletesPerRun : int.MaxValue;
+
+        long totalArchived = 0;
+        long totalDeleted  = 0;
+        long totalHeld     = 0;
+        long totalFailed   = 0;
+
+        _logger.LogWarning(
+            "RetentionPolicyJob: ENFORCEMENT ACTIVE — DryRun=false. " +
+            "Cutoff={Cutoff:o} MaxDeletesPerRun={Max} BatchSize={Batch} " +
+            "ArchiveBeforeDelete={Archive} Provider={Provider}",
+            cutoff, _opts.MaxDeletesPerRun, batchSize,
+            _opts.ArchiveBeforeDelete, _archival.ProviderName);
+
+        while (remaining > 0 && !ct.IsCancellationRequested)
+        {
+            var thisBatch  = Math.Min(remaining, batchSize);
+            var candidates = await _recordRepository.GetOldestEligibleAsync(cutoff, thisBatch, ct);
+
+            if (candidates.Count == 0)
+                break;
+
+            // ── Legal hold pre-check ──────────────────────────────────────────
+            HashSet<Guid> heldAuditIds = [];
+            if (_opts.LegalHoldEnabled)
+            {
+                var ids = candidates.Select(r => r.AuditId).ToList();
+                heldAuditIds = await _holdRepository.GetActiveHoldAuditIdsAsync(ids, ct);
+                totalHeld += heldAuditIds.Count;
+
+                if (heldAuditIds.Count > 0)
+                {
+                    _logger.LogWarning(
+                        "RetentionPolicyJob: {HeldCount}/{Total} records in batch skipped — " +
+                        "active legal hold prevents deletion.",
+                        heldAuditIds.Count, candidates.Count);
+                }
+            }
+
+            var toProcess = candidates
+                .Where(r => !heldAuditIds.Contains(r.AuditId))
+                .ToList();
+
+            if (toProcess.Count == 0)
+            {
+                // All candidates in this batch are held — stop to avoid an infinite loop.
+                _logger.LogWarning(
+                    "RetentionPolicyJob: all remaining candidates are on legal hold. Stopping enforcement.");
+                break;
+            }
+
+            // ── Archive before delete ─────────────────────────────────────────
+            List<long> idsToDelete;
+
+            if (_opts.ArchiveBeforeDelete)
+            {
+                var archiveContext = new ArchivalContext
+                {
+                    ArchiveJobId    = Guid.NewGuid().ToString("N"),
+                    WindowFrom      = toProcess.Min(r => r.RecordedAtUtc),
+                    WindowTo        = toProcess.Max(r => r.RecordedAtUtc).AddTicks(1),
+                    InitiatedBy     = "RetentionPolicyJob",
+                    InitiatedAtUtc  = DateTimeOffset.UtcNow,
+                };
+
+                ArchivalResult archivalResult;
+                try
+                {
+                    archivalResult = await _archival.ArchiveAsync(
+                        ToAsyncEnumerable(toProcess, ct),
+                        archiveContext,
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    totalFailed += toProcess.Count;
+                    _logger.LogError(ex,
+                        "RetentionPolicyJob: archival threw for batch of {Count} records — " +
+                        "records NOT deleted. ArchiveJobId={JobId}",
+                        toProcess.Count, archiveContext.ArchiveJobId);
+                    break;
+                }
+
+                if (!archivalResult.IsSuccess)
+                {
+                    totalFailed += toProcess.Count;
+                    _logger.LogError(
+                        "RetentionPolicyJob: archival reported failure for batch of {Count} records — " +
+                        "records NOT deleted. Provider={Provider} Error={Error}",
+                        toProcess.Count, archivalResult.ProviderName, archivalResult.ErrorMessage);
+                    break;
+                }
+
+                totalArchived += archivalResult.RecordsArchived;
+                idsToDelete    = toProcess.Select(r => r.Id).ToList();
+
+                _logger.LogInformation(
+                    "RetentionPolicyJob: archived {Count} records to {Provider} → {Ref}",
+                    archivalResult.RecordsArchived, archivalResult.ProviderName,
+                    archivalResult.DestinationReference ?? "(none)");
+            }
+            else
+            {
+                idsToDelete = toProcess.Select(r => r.Id).ToList();
+            }
+
+            // ── Delete confirmed records ──────────────────────────────────────
+            if (idsToDelete.Count > 0)
+            {
+                var deleted = await _recordRepository.DeleteBatchAsync(idsToDelete, ct);
+                totalDeleted += deleted;
+                remaining    -= deleted;
+            }
+        }
+
+        _logger.LogWarning(
+            "RetentionPolicyJob: ENFORCEMENT COMPLETE — " +
+            "Archived={Archived} Deleted={Deleted} Held={Held} Failed={Failed}",
+            totalArchived, totalDeleted, totalHeld, totalFailed);
+
         _logger.LogInformation("RetentionPolicyJob: run complete.");
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Wraps a synchronous list as an <see cref="IAsyncEnumerable{T}"/> for use with
+    /// <see cref="IArchivalProvider.ArchiveAsync"/>. Respects cancellation between items.
+    /// </summary>
+    private static async IAsyncEnumerable<AuditEventRecord> ToAsyncEnumerable(
+        IEnumerable<AuditEventRecord>          records,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        foreach (var record in records)
+        {
+            ct.ThrowIfCancellationRequested();
+            yield return record;
+            await Task.Yield();
+        }
     }
 }

@@ -84,18 +84,30 @@ public sealed class RetentionOptions
     // ── Legal hold (future) ───────────────────────────────────────────────────
 
     /// <summary>
-    /// When true, the retention service will check a record's legal hold status
-    /// before classifying it for archival or deletion.
+    /// When true, the retention service checks the LegalHolds table before archiving or deleting
+    /// any record. Records with an active hold (ReleasedAtUtc IS NULL) are classified as
+    /// <see cref="Enums.StorageTier.LegalHold"/> and skipped regardless of their age.
     ///
-    /// v1: this flag is reserved for future use. No per-record hold tracking
-    /// is implemented. Records are not classified as <see cref="Enums.StorageTier.LegalHold"/>
-    /// in v1 regardless of this setting.
-    ///
-    /// Production readiness for legal hold requires:
-    ///   - A <c>LegalHold</c> entity in the database (holdId, auditId, heldBy,
-    ///     heldAtUtc, releasedAtUtc, legalAuthority).
-    ///   - A pre-check in <c>IRetentionService.ComputeExpirationDate</c>.
-    ///   - A compliance workflow for hold creation and release (out of scope for v1).
+    /// Requires the LegalHolds table to exist in the database (apply migrations first).
+    /// Default: false (safe — no hold checks performed if the table is not yet migrated).
     /// </summary>
     public bool LegalHoldEnabled { get; set; } = false;
+
+    // ── Scheduling ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Interval in hours between retention job runs when hosted as a BackgroundService.
+    /// Default: 24 (daily). Must be > 0.
+    /// Applies to <see cref="Jobs.RetentionHostedService"/>.
+    /// </summary>
+    public int RetentionIntervalHours { get; set; } = 24;
+
+    // ── Batch delete ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Number of records to delete per database batch in Phase 2 enforcement.
+    /// Smaller batches reduce table-lock duration and spread I/O over time.
+    /// Default: 1 000.
+    /// </summary>
+    public int DeleteBatchSize { get; set; } = 1_000;
 }

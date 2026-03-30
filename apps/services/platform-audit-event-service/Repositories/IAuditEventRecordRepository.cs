@@ -115,4 +115,36 @@ public interface IAuditEventRecordRepository
     IAsyncEnumerable<AuditEventRecord> StreamForExportAsync(
         AuditRecordQueryRequest filter,
         CancellationToken ct = default);
+
+    // ── Retention enforcement ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Return the oldest records whose RecordedAtUtc is before the given cutoff,
+    /// ordered oldest-first (RecordedAtUtc ASC).
+    ///
+    /// Used by the retention pipeline to identify records eligible for archival
+    /// or deletion. The caller is responsible for pre-checking legal holds on each
+    /// returned record before passing it to the archival or deletion pipeline.
+    ///
+    /// Returns at most <paramref name="batchSize"/> records per call.
+    /// </summary>
+    Task<IReadOnlyList<AuditEventRecord>> GetOldestEligibleAsync(
+        DateTimeOffset    beforeRecordedAtUtc,
+        int               batchSize,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Delete records whose primary key is in the provided set.
+    ///
+    /// DANGER: This is a destructive operation. Only call after confirming:
+    ///   1. The record has been successfully archived (ArchivalResult.IsSuccess = true).
+    ///   2. The record has no active legal hold.
+    ///   3. Retention:DryRun = false.
+    ///
+    /// Returns the count of actually deleted rows.
+    /// Uses EF Core ExecuteDeleteAsync for efficiency (no entity tracking required).
+    /// </summary>
+    Task<int> DeleteBatchAsync(
+        IReadOnlyList<long> ids,
+        CancellationToken   ct = default);
 }

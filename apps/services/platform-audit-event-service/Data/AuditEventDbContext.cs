@@ -28,6 +28,8 @@ namespace PlatformAuditEventService.Data;
 ///   AuditExportJobs          — async export job tracking
 ///   IntegrityCheckpoints     — aggregate hash snapshots for tamper detection
 ///   IngestSourceRegistrations — advisory source registry
+///   LegalHolds               — compliance-driven retention holds
+///   OutboxMessages           — transactional outbox for durable event forwarding
 /// </summary>
 public sealed class AuditEventDbContext : DbContext
 {
@@ -50,6 +52,12 @@ public sealed class AuditEventDbContext : DbContext
 
     /// <summary>Advisory registry of known ingest sources.</summary>
     public DbSet<IngestSourceRegistration> IngestSourceRegistrations => Set<IngestSourceRegistration>();
+
+    /// <summary>Legal holds placed on audit event records by compliance officers.</summary>
+    public DbSet<LegalHold> LegalHolds => Set<LegalHold>();
+
+    /// <summary>Transactional outbox messages pending delivery to downstream brokers.</summary>
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     // ── Model configuration ────────────────────────────────────────────────────
 

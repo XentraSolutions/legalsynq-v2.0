@@ -45,4 +45,18 @@ public interface IAuditExportService
     Task<ExportStatusResponse?> GetStatusAsync(
         Guid              exportId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Process an export job that is already in the database (Pending or Processing state).
+    ///
+    /// Called by <see cref="Jobs.ExportProcessingJob"/> when processing export jobs asynchronously
+    /// in a background worker instead of synchronously within an HTTP request.
+    ///
+    /// Fetches the job by ExportId, deserialises the stored FilterJson, and drives the
+    /// Pending → Processing → Completed/Failed state machine.
+    ///
+    /// Returns without throwing — any job-level failure transitions the job to Failed.
+    /// Returns without action when the job is not found or is already in a terminal state.
+    /// </summary>
+    Task ProcessJobAsync(Guid exportId, CancellationToken ct = default);
 }

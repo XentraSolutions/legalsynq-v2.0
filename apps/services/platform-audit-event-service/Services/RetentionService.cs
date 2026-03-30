@@ -29,27 +29,28 @@ namespace PlatformAuditEventService.Services;
 ///   primary store and classifies each. The total record count in the store is
 ///   fetched via a fast aggregate query. All operations are read-only.
 ///
-/// Legal hold (v1 notice):
-///   Legal hold is not implemented in v1. The <c>Retention:LegalHoldEnabled</c>
-///   flag is exposed for configuration documentation but has no effect on
-///   runtime behavior. A future implementation requires:
-///   - A <c>LegalHold</c> entity tracking hold start/end + authority.
-///   - A pre-check in <see cref="ComputeExpirationDate"/> and <see cref="ClassifyTier"/>.
-///   - Integration with a compliance workflow for hold creation and release.
+/// Legal hold enforcement (Step 23):
+///   When <c>Retention:LegalHoldEnabled=true</c>, <see cref="EvaluateAsync"/> batch-checks
+///   all Cold-tier records in the sample against the LegalHolds table. Records with active holds
+///   are reclassified to <see cref="StorageTier.LegalHold"/> and counted separately.
+///   The retention enforcement job uses the same check before archiving or deleting any record.
 /// </summary>
 public sealed class RetentionService : IRetentionService
 {
     private readonly RetentionOptions                   _opts;
     private readonly IAuditEventRecordRepository        _recordRepository;
+    private readonly ILegalHoldRepository               _holdRepository;
     private readonly ILogger<RetentionService>          _logger;
 
     public RetentionService(
         IOptions<RetentionOptions>          opts,
         IAuditEventRecordRepository         recordRepository,
+        ILegalHoldRepository                holdRepository,
         ILogger<RetentionService>           logger)
     {
         _opts             = opts.Value;
         _recordRepository = recordRepository;
+        _holdRepository   = holdRepository;
         _logger           = logger;
     }
 
@@ -131,8 +132,23 @@ public sealed class RetentionService : IRetentionService
 
         if (request.SampleLimit > 0)
         {
-            var sampleQuery = BuildSampleQuery(request);
+            var sampleQuery  = BuildSampleQuery(request);
             var sampleResult = await _recordRepository.QueryAsync(sampleQuery, ct);
+
+            // ── Batch legal hold check ────────────────────────────────────────
+            // Pre-fetch active holds for Cold-tier candidates to avoid per-record queries.
+            HashSet<Guid> heldAuditIds = [];
+            if (_opts.LegalHoldEnabled)
+            {
+                var coldCandidateIds = sampleResult.Items
+                    .Where(r => ClassifyTier(r) == StorageTier.Cold)
+                    .Select(r => r.AuditId)
+                    .ToList();
+
+                if (coldCandidateIds.Count > 0)
+                    heldAuditIds = await _holdRepository.GetActiveHoldAuditIdsAsync(coldCandidateIds, ct);
+            }
+            // ─────────────────────────────────────────────────────────────────
 
             foreach (var record in sampleResult.Items)
             {
@@ -143,6 +159,13 @@ public sealed class RetentionService : IRetentionService
                     oldestRecordedAt = record.RecordedAtUtc;
 
                 var tier = ClassifyTier(record);
+
+                // Legal hold overrides Cold → reclassify to LegalHold
+                if (tier == StorageTier.Cold && _opts.LegalHoldEnabled
+                    && heldAuditIds.Contains(record.AuditId))
+                {
+                    tier = StorageTier.LegalHold;
+                }
 
                 switch (tier)
                 {

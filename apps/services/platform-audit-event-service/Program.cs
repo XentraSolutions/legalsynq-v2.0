@@ -1,12 +1,16 @@
 using System.Text.Json.Serialization;
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Events;
 using PlatformAuditEventService.Authorization;
 using PlatformAuditEventService.Configuration;
 using PlatformAuditEventService.Data;
+using PlatformAuditEventService.Enums;
 using PlatformAuditEventService.DTOs;
 using PlatformAuditEventService.Jobs;
 using PlatformAuditEventService.Middleware;
@@ -51,10 +55,13 @@ try
     builder.Services.Configure<RetentionOptions>(cfg.GetSection(RetentionOptions.SectionName));
     builder.Services.Configure<ArchivalOptions>(cfg.GetSection(ArchivalOptions.SectionName));
     builder.Services.Configure<ExportOptions>(cfg.GetSection(ExportOptions.SectionName));
+    builder.Services.Configure<JwtOptions>(cfg.GetSection(JwtOptions.SectionName));
 
     // Eager-read options we need during startup wiring
-    var svcOpts = cfg.GetSection(AuditServiceOptions.SectionName).Get<AuditServiceOptions>()  ?? new();
-    var dbOpts  = cfg.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>()          ?? new();
+    var svcOpts      = cfg.GetSection(AuditServiceOptions.SectionName).Get<AuditServiceOptions>() ?? new();
+    var dbOpts       = cfg.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>()         ?? new();
+    var queryAuthMode = cfg.GetSection(QueryAuthOptions.SectionName)["Mode"] ?? "None";
+    var ingestAuthMode = cfg.GetSection(IngestAuthOptions.SectionName)["Mode"] ?? "None";
 
     // ── Resolve connection string ─────────────────────────────────────────────
     // Priority order:
@@ -107,10 +114,15 @@ try
     }
 
     // ── New entity repositories (EF-backed for both MySQL and InMemory modes) ─
-    builder.Services.AddScoped<IAuditEventRecordRepository, EfAuditEventRecordRepository>();
-    builder.Services.AddScoped<IAuditExportJobRepository,   EfAuditExportJobRepository>();
-    builder.Services.AddScoped<IIntegrityCheckpointRepository,     EfIntegrityCheckpointRepository>();
-    builder.Services.AddScoped<IIngestSourceRegistrationRepository, EfIngestSourceRegistrationRepository>();
+    builder.Services.AddScoped<IAuditEventRecordRepository,          EfAuditEventRecordRepository>();
+    builder.Services.AddScoped<IAuditExportJobRepository,            EfAuditExportJobRepository>();
+    builder.Services.AddScoped<IIntegrityCheckpointRepository,       EfIntegrityCheckpointRepository>();
+    builder.Services.AddScoped<IIngestSourceRegistrationRepository,  EfIngestSourceRegistrationRepository>();
+
+    // ── Step 23: Legal hold + outbox repositories ─────────────────────────────
+    // Scoped — each request/job gets its own EF DbContext via the factory.
+    builder.Services.AddScoped<ILegalHoldRepository,    EfLegalHoldRepository>();
+    builder.Services.AddScoped<IOutboxMessageRepository, EfOutboxMessageRepository>();
 
     // ── Controllers + API behavior ────────────────────────────────────────────
     // JsonStringEnumConverter ensures all typed enums (EventCategory, SeverityLevel,
@@ -185,6 +197,10 @@ try
     // Applies QueryAuth options (page-size cap, hash exposure) and maps entities → response DTOs.
     builder.Services.AddScoped<IAuditEventQueryService, AuditEventQueryService>();
 
+    // ── Step 23: Legal hold service ──────────────────────────────────────────
+    // Scoped — depends on ILegalHoldRepository which is Scoped.
+    builder.Services.AddScoped<ILegalHoldService, LegalHoldService>();
+
     // ── Integrity checkpoint pipeline ─────────────────────────────────────────
     // Generates aggregate hashes over time windows of audit event records.
     // Registered as Scoped — uses scoped repositories (EF DbContext).
@@ -218,29 +234,49 @@ try
     // IRetentionService: Scoped — uses scoped repositories (EF DbContext).
     builder.Services.AddScoped<IRetentionService, RetentionService>();
 
-    // IArchivalProvider: Singleton — stateless after construction; provider
-    // selection is driven by Archival:Strategy.  Swap by registering a different
-    // implementation here (e.g. S3ArchivalProvider, AzureBlobArchivalProvider).
-    // Provider=NoOp → NoOpArchivalProvider (safe default; logs without writing).
-    builder.Services.AddSingleton<IArchivalProvider, NoOpArchivalProvider>();
+    // ── Step 23: Archival provider selection ─────────────────────────────────
+    // Strategy=Local     → LocalArchivalProvider  (NDJSON files; good for dev + on-prem)
+    // Strategy=S3        → S3ArchivalProvider     (stub — add AWSSDK.S3 to complete)
+    // Strategy=NoOp/other → NoOpArchivalProvider  (safe default; logs, writes nothing)
+    var archivalOpts  = cfg.GetSection(ArchivalOptions.SectionName).Get<ArchivalOptions>() ?? new();
 
-    // RetentionPolicyJob: Transient — each invocation gets fresh scoped services
-    // via IServiceScopeFactory when wired to a hosted/scheduled job runner.
+    switch (archivalOpts.Strategy)
+    {
+        case ArchivalStrategy.LocalCopy:
+            builder.Services.AddSingleton<IArchivalProvider, LocalArchivalProvider>();
+            Log.Information("Archival:Strategy = LocalCopy — NDJSON archival to local filesystem.");
+            break;
+        case ArchivalStrategy.S3:
+            builder.Services.AddSingleton<IArchivalProvider, S3ArchivalProvider>();
+            Log.Warning("Archival:Strategy = S3 — S3ArchivalProvider is a stub. Implement AWSSDK.S3 upload before activating.");
+            break;
+        default:
+            builder.Services.AddSingleton<IArchivalProvider, NoOpArchivalProvider>();
+            Log.Warning(
+                "Archival:Strategy = {Strategy} — NoOpArchivalProvider active. " +
+                "Set Archival:Strategy=LocalCopy (or S3) to enable durable archival.",
+                archivalOpts.Strategy);
+            break;
+    }
+
+    // RetentionPolicyJob: Transient — each run gets its own instance.
+    // Background execution is driven by RetentionHostedService.
     builder.Services.AddTransient<RetentionPolicyJob>();
 
     var retentionOpts = cfg.GetSection(RetentionOptions.SectionName).Get<RetentionOptions>() ?? new();
-    var archivalOpts  = cfg.GetSection(ArchivalOptions.SectionName).Get<ArchivalOptions>()   ?? new();
 
     if (!retentionOpts.JobEnabled)
         Log.Warning("Retention:JobEnabled = false — retention policy job is inactive. " +
-                    "Set Retention:JobEnabled=true and configure a scheduler to activate.");
+                    "Set Retention:JobEnabled=true to activate.");
     else
         Log.Information(
-            "Retention: job enabled. DryRun={DryRun} DefaultDays={Default} HotDays={Hot} ArchivalStrategy={Archival}",
+            "Retention: job enabled. DryRun={DryRun} DefaultDays={Default} HotDays={Hot} " +
+            "ArchivalStrategy={Archival} LegalHoldEnabled={LegalHold}",
             retentionOpts.DryRun,
             retentionOpts.DefaultRetentionDays <= 0 ? "indefinite" : retentionOpts.DefaultRetentionDays.ToString(),
             retentionOpts.HotRetentionDays,
-            archivalOpts.Strategy);
+            archivalOpts.Strategy,
+            retentionOpts.LegalHoldEnabled);
 
     // ── Event Forwarding ──────────────────────────────────────────────────────
     // Both interfaces are Singleton — stateless after construction, thread-safe.
@@ -277,6 +313,131 @@ try
             fwdOpts.ForwardCategories.Count == 0 ? "(all)" : string.Join(",", fwdOpts.ForwardCategories),
             fwdOpts.ForwardReplayRecords);
 
+    // ── Step 23: JWT Bearer authentication ───────────────────────────────────
+    // Registered when QueryAuth:Mode = "Bearer".
+    // The middleware populates HttpContext.User from the JWT so ClaimsCallerResolver
+    // can read identity claims (tenantId, actorId, scope) from the validated token.
+    //
+    // When Mode=None (development), authentication middleware is still registered
+    // but the AnonymousCallerResolver is selected — no JWT is required.
+    //
+    // To activate: set QueryAuth:Mode=Bearer and configure:
+    //   Jwt:Authority  (OIDC authority URL)
+    //   Jwt:Audience   (expected aud claim)
+    var jwtOpts = cfg.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new();
+
+    var authBuilder = builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme);
+
+    if (queryAuthMode.Equals("Bearer", StringComparison.OrdinalIgnoreCase))
+    {
+        if (jwtOpts.RequireConfigurationInBearerMode)
+        {
+            if (string.IsNullOrWhiteSpace(jwtOpts.Authority))
+                throw new InvalidOperationException(
+                    "QueryAuth:Mode=Bearer requires Jwt:Authority to be configured. " +
+                    "Set Jwt__Authority environment variable or configure Jwt:Authority in appsettings.");
+
+            if (string.IsNullOrWhiteSpace(jwtOpts.Audience))
+                throw new InvalidOperationException(
+                    "QueryAuth:Mode=Bearer requires Jwt:Audience to be configured. " +
+                    "Set Jwt__Audience environment variable or configure Jwt:Audience in appsettings.");
+        }
+
+        authBuilder.AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            options.Authority           = jwtOpts.Authority;
+            options.Audience            = jwtOpts.Audience;
+            options.RequireHttpsMetadata = jwtOpts.RequireHttpsMetadata;
+
+            options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            {
+                ValidateIssuer    = jwtOpts.ValidateIssuer,
+                ValidateAudience  = jwtOpts.ValidateAudience,
+                ValidateLifetime  = jwtOpts.ValidateLifetime,
+                ValidAudience     = jwtOpts.Audience,
+                ValidIssuer       = jwtOpts.Authority,
+                ValidIssuers      = jwtOpts.ValidIssuers.Count > 0
+                    ? jwtOpts.ValidIssuers
+                    : null,
+            };
+        });
+
+        Log.Information(
+            "JWT Bearer: configured. Authority={Authority} Audience={Audience} " +
+            "RequireHttps={Https} ValidateAudience={Aud} ValidateIssuer={Iss}",
+            jwtOpts.Authority, jwtOpts.Audience,
+            jwtOpts.RequireHttpsMetadata, jwtOpts.ValidateAudience, jwtOpts.ValidateIssuer);
+    }
+    else
+    {
+        // Mode=None: register a no-op JWT scheme so the middleware stack is consistent
+        // and UseAuthentication() does not fail.
+        authBuilder.AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, _ => { });
+        Log.Debug("JWT Bearer: registered as no-op (QueryAuth:Mode != Bearer).");
+    }
+
+    // ── Step 23: Background hosted services ──────────────────────────────────
+    // All four BackgroundService subclasses are registered here.
+    // They start automatically when the host starts and stop with the host.
+    //
+    // RetentionHostedService    — drives RetentionPolicyJob on a timer.
+    // IntegrityCheckpointHostedService — auto-checkpoints when AutoCheckpointEnabled=true.
+    // ExportProcessingJob       — background worker for async export queue processing.
+    // OutboxRelayHostedService  — relays OutboxMessages to IIntegrationEventPublisher.
+    builder.Services.AddHostedService<RetentionHostedService>();
+    builder.Services.AddHostedService<IntegrityCheckpointHostedService>();
+    builder.Services.AddHostedService<ExportProcessingJob>();
+    builder.Services.AddHostedService<OutboxRelayHostedService>();
+    Log.Information("Background services: RetentionHostedService, IntegrityCheckpointHostedService, " +
+                    "ExportProcessingJob, OutboxRelayHostedService registered.");
+
+    // ── OpenTelemetry tracing ─────────────────────────────────────────────────
+    // Provides distributed trace context for all inbound HTTP requests and any
+    // outbound HttpClient calls.  Trace data is exported:
+    //   • Console exporter  — enabled in Development for local debugging.
+    //   • OTLP exporter     — enabled when OpenTelemetry:OtlpEndpoint is set.
+    //                         Compatible with Jaeger, Zipkin, Tempo, Honeycomb, etc.
+    //
+    // To route traces to a collector in production:
+    //   Set OpenTelemetry:OtlpEndpoint=http://otel-collector:4317 in the environment.
+    var serviceVersion = typeof(Program).Assembly.GetName().Version?.ToString() ?? "1.0.0";
+
+    builder.Services.AddOpenTelemetry()
+        .WithTracing(tracing =>
+        {
+            tracing
+                .SetResourceBuilder(
+                    ResourceBuilder.CreateDefault()
+                        .AddService(
+                            serviceName:    "platform-audit-event-service",
+                            serviceVersion: serviceVersion))
+                .AddAspNetCoreInstrumentation(o =>
+                {
+                    // Record exception details on the trace span.
+                    o.RecordException = true;
+                    // Skip health check spans to reduce noise.
+                    o.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health");
+                })
+                .AddHttpClientInstrumentation();
+
+            if (builder.Environment.IsDevelopment())
+                tracing.AddConsoleExporter();
+
+            var otlpEndpoint = cfg["OpenTelemetry:OtlpEndpoint"];
+            if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+            {
+                tracing.AddOtlpExporter(o =>
+                    o.Endpoint = new Uri(otlpEndpoint));
+                Log.Information("OpenTelemetry: OTLP exporter → {Endpoint}", otlpEndpoint);
+            }
+            else
+            {
+                Log.Debug("OpenTelemetry: OTLP exporter not configured " +
+                          "(set OpenTelemetry:OtlpEndpoint to enable).");
+            }
+        });
+
     // ── Query authorization ───────────────────────────────────────────────────
     // All resolvers registered as singletons (stateless after construction).
     // IQueryCallerResolver resolves to the implementation matching QueryAuth:Mode.
@@ -288,8 +449,6 @@ try
     //   4. Document the new mode in Docs/query-authorization-model.md.
     builder.Services.AddSingleton<AnonymousCallerResolver>();
     builder.Services.AddSingleton<ClaimsCallerResolver>();
-
-    var queryAuthMode = cfg.GetSection(QueryAuthOptions.SectionName)["Mode"] ?? "None";
 
     builder.Services.AddSingleton<IQueryCallerResolver>(sp => queryAuthMode switch
     {
@@ -327,8 +486,6 @@ try
     //   4. Document the new mode in Docs/ingest-auth.md.
     builder.Services.AddSingleton<NullIngestAuthenticator>();
     builder.Services.AddSingleton<ServiceTokenAuthenticator>();
-
-    var ingestAuthMode = cfg.GetSection(IngestAuthOptions.SectionName)["Mode"] ?? "None";
 
     builder.Services.AddSingleton<IIngestAuthenticator>(sp => ingestAuthMode switch
     {
@@ -469,6 +626,9 @@ try
         });
     }
 
+    // UseAuthentication populates HttpContext.User from the JWT Bearer token.
+    // Must come before UseAuthorization and all middleware that reads User claims.
+    app.UseAuthentication();
     app.UseAuthorization();
     app.MapControllers();
     app.MapHealthChecks("/health");

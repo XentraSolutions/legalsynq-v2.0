@@ -47,4 +47,18 @@ public sealed class NoOpIntegrationEventPublisher : IIntegrationEventPublisher
 
         return ValueTask.CompletedTask;
     }
+
+    /// <inheritdoc/>
+    public ValueTask PublishRawAsync(
+        string            eventType,
+        string            payloadJson,
+        CancellationToken ct = default)
+    {
+        _logger.LogDebug(
+            "NoOpPublisher.PublishRawAsync: EventType={EventType} PayloadLength={Length}. " +
+            "No message sent (BrokerType=NoOp).",
+            eventType, payloadJson.Length);
+
+        return ValueTask.CompletedTask;
+    }
 }

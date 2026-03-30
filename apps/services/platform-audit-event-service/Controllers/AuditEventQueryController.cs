@@ -92,6 +92,7 @@ public sealed class AuditEventQueryController : ControllerBase
             "GET /audit/events → TotalCount={Total} TraceId={TraceId}",
             result.TotalCount, traceId);
 
+        LogAuditAccess("GET /audit/events", GetCaller(), result.Items.Count, traceId);
         return Ok(ApiResponse<AuditEventQueryResponse>.Ok(result, traceId: traceId));
     }
 
@@ -130,6 +131,7 @@ public sealed class AuditEventQueryController : ControllerBase
                 traceId: traceId));
         }
 
+        LogAuditAccess("GET /audit/events/{auditId}", GetCaller(), 1, traceId, contextId: auditId.ToString());
         return Ok(ApiResponse<AuditEventRecordResponse>.Ok(record, traceId: traceId));
     }
 
@@ -171,6 +173,8 @@ public sealed class AuditEventQueryController : ControllerBase
         var result  = await _queryService.QueryAsync(query, ct);
         var traceId = TraceIdAccessor.Current();
 
+        LogAuditAccess("GET /audit/entity/{entityType}/{entityId}", GetCaller(), result.Items.Count, traceId,
+            contextId: $"{entityType}/{entityId}");
         return Ok(ApiResponse<AuditEventQueryResponse>.Ok(result, traceId: traceId));
     }
 
@@ -207,6 +211,7 @@ public sealed class AuditEventQueryController : ControllerBase
         var result  = await _queryService.QueryAsync(query, ct);
         var traceId = TraceIdAccessor.Current();
 
+        LogAuditAccess("GET /audit/actor/{actorId}", GetCaller(), result.Items.Count, traceId, contextId: actorId);
         return Ok(ApiResponse<AuditEventQueryResponse>.Ok(result, traceId: traceId));
     }
 
@@ -245,6 +250,7 @@ public sealed class AuditEventQueryController : ControllerBase
         var result  = await _queryService.QueryAsync(query, ct);
         var traceId = TraceIdAccessor.Current();
 
+        LogAuditAccess("GET /audit/user/{userId}", GetCaller(), result.Items.Count, traceId, contextId: userId);
         return Ok(ApiResponse<AuditEventQueryResponse>.Ok(result, traceId: traceId));
     }
 
@@ -282,6 +288,7 @@ public sealed class AuditEventQueryController : ControllerBase
         var result  = await _queryService.QueryAsync(query, ct);
         var traceId = TraceIdAccessor.Current();
 
+        LogAuditAccess("GET /audit/tenant/{tenantId}", GetCaller(), result.Items.Count, traceId, contextId: tenantId);
         return Ok(ApiResponse<AuditEventQueryResponse>.Ok(result, traceId: traceId));
     }
 
@@ -318,6 +325,8 @@ public sealed class AuditEventQueryController : ControllerBase
         var result  = await _queryService.QueryAsync(query, ct);
         var traceId = TraceIdAccessor.Current();
 
+        LogAuditAccess("GET /audit/organization/{organizationId}", GetCaller(), result.Items.Count, traceId,
+            contextId: organizationId);
         return Ok(ApiResponse<AuditEventQueryResponse>.Ok(result, traceId: traceId));
     }
 
@@ -383,5 +392,47 @@ public sealed class AuditEventQueryController : ControllerBase
                 StatusCode(StatusCodes.Status403Forbidden,
                     ApiResponse<object>.Fail(result.DenialReason!, traceId: traceId)),
         };
+    }
+
+    /// <summary>
+    /// Returns the caller context for the current request.
+    /// Reads from HttpContext.Items (populated by QueryAuthMiddleware).
+    /// Falls back to Anonymous when middleware is bypassed (tests, health checks).
+    /// </summary>
+    private IQueryCallerContext GetCaller() =>
+        HttpContext.Items.TryGetValue(QueryCallerContext.ItemKey, out var raw)
+            && raw is IQueryCallerContext ctx
+                ? ctx
+                : QueryCallerContext.Anonymous();
+
+    /// <summary>
+    /// Emits a structured "audit log accessed" entry at Information level.
+    ///
+    /// HIPAA §164.312(b) requires systems to track access to audit logs as part of
+    /// the audit controls standard. This satisfies the audit-of-audit requirement
+    /// by recording who queried what records and when.
+    ///
+    /// Fields captured: UserId, TenantId, Scope, AuthMode, Action (endpoint),
+    /// RecordsAccessed, ContextId (entity/actor/tenant/audit ID if applicable), TraceId.
+    /// </summary>
+    private void LogAuditAccess(
+        string              action,
+        IQueryCallerContext caller,
+        int                 recordsAccessed,
+        string?             traceId,
+        string?             contextId = null)
+    {
+        _logger.LogInformation(
+            "AUDIT_LOG_ACCESSED: Action={Action} UserId={UserId} TenantId={TenantId} " +
+            "Scope={Scope} AuthMode={AuthMode} RecordsAccessed={Count} " +
+            "ContextId={ContextId} TraceId={TraceId}",
+            action,
+            caller.UserId      ?? "(anonymous)",
+            caller.TenantId    ?? "(platform)",
+            caller.Scope,
+            caller.AuthMode,
+            recordsAccessed,
+            contextId          ?? "(none)",
+            traceId            ?? "(no-trace)");
     }
 }

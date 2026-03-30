@@ -215,6 +215,44 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
         }
     }
 
+    // ── Retention enforcement ──────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<AuditEventRecord>> GetOldestEligibleAsync(
+        DateTimeOffset    beforeRecordedAtUtc,
+        int               batchSize,
+        CancellationToken ct = default)
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+        return await db.AuditEventRecords
+            .AsNoTracking()
+            .Where(r => r.RecordedAtUtc < beforeRecordedAtUtc)
+            .OrderBy(r => r.RecordedAtUtc)
+            .ThenBy(r => r.Id)
+            .Take(batchSize)
+            .ToListAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> DeleteBatchAsync(
+        IReadOnlyList<long> ids,
+        CancellationToken   ct = default)
+    {
+        if (ids.Count == 0) return 0;
+
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+
+        var deleted = await db.AuditEventRecords
+            .Where(r => ids.Contains(r.Id))
+            .ExecuteDeleteAsync(ct);
+
+        _logger.LogWarning(
+            "RETENTION DELETE: deleted {Count} audit event records from primary store.",
+            deleted);
+
+        return deleted;
+    }
+
     // ── Shared filter + sort pipeline ─────────────────────────────────────────
 
     /// <summary>

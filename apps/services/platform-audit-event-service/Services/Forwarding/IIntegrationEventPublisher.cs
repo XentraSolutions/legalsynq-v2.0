@@ -69,4 +69,21 @@ public interface IIntegrationEventPublisher
     ValueTask PublishAsync<TPayload>(
         IntegrationEvent<TPayload> integrationEvent,
         CancellationToken          ct = default);
+
+    /// <summary>
+    /// Publish a raw pre-serialized JSON payload without a typed envelope.
+    ///
+    /// Used by <see cref="Jobs.OutboxRelayHostedService"/> to re-deliver outbox messages
+    /// whose payload was serialised at ingest time. The eventType is used for broker routing.
+    ///
+    /// Implementations may forward the raw JSON directly to the broker or wrap it in
+    /// a broker-specific envelope. Consumers must be able to deserialise the raw payload.
+    ///
+    /// This method is separate from <see cref="PublishAsync{TPayload}"/> to avoid
+    /// re-deserialising the payload from the outbox just to re-serialise it.
+    /// </summary>
+    ValueTask PublishRawAsync(
+        string            eventType,
+        string            payloadJson,
+        CancellationToken ct = default);
 }

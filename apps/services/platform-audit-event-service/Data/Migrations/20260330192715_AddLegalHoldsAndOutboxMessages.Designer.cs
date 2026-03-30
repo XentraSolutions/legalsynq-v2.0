@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PlatformAuditEventService.Data;
 
@@ -10,9 +11,11 @@ using PlatformAuditEventService.Data;
 namespace PlatformAuditEventService.Data.Migrations
 {
     [DbContext(typeof(AuditEventDbContext))]
-    partial class AuditEventDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260330192715_AddLegalHoldsAndOutboxMessages")]
+    partial class AddLegalHoldsAndOutboxMessages
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

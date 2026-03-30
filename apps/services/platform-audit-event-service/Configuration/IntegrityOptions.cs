@@ -49,4 +49,21 @@ public sealed class IntegrityOptions
     /// Only applies when VerifyOnRead = true.
     /// </summary>
     public bool FlagTamperedRecords { get; set; } = true;
+
+    // ── Background checkpoint scheduling ──────────────────────────────────────
+
+    /// <summary>
+    /// When true, <see cref="Jobs.IntegrityCheckpointHostedService"/> will run
+    /// checkpoint generation automatically on the configured interval.
+    /// Default: false (opt-in).
+    /// Environment variable: Integrity__AutoCheckpointEnabled
+    /// </summary>
+    public bool AutoCheckpointEnabled { get; set; } = false;
+
+    /// <summary>
+    /// Interval in minutes between automatic checkpoint runs.
+    /// Default: 60 (hourly).
+    /// Environment variable: Integrity__CheckpointIntervalMinutes
+    /// </summary>
+    public int CheckpointIntervalMinutes { get; set; } = 60;
 }
