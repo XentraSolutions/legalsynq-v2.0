@@ -341,6 +341,7 @@ export const CACHE_TAGS = {
   orgRelationships:     'cc:org-relationships',
   productOrgTypeRules:  'cc:product-org-type-rules',
   productRelTypeRules:  'cc:product-rel-type-rules',
+  legacyCoverage:       'cc:legacy-coverage',
 } as const;
 
 export type CacheTag = typeof CACHE_TAGS[keyof typeof CACHE_TAGS];

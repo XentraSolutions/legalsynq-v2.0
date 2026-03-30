@@ -45,7 +45,8 @@ export const CC_NAV: NavSection[] = [
   {
     heading: 'CONFIGURATION',
     items: [
-      { href: '/settings', label: 'Platform Settings', icon: 'ri-settings-3-line' },
+      { href: '/settings',        label: 'Platform Settings', icon: 'ri-settings-3-line'   },
+      { href: '/legacy-coverage', label: 'Legacy Coverage',   icon: 'ri-history-fill'      },
     ],
   },
 ];

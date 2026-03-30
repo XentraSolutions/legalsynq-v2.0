@@ -54,8 +54,13 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/organization-relationships",    CreateOrganizationRelationship);
         routes.MapDelete("/api/admin/organization-relationships/{id:guid}", DeactivateOrganizationRelationship);
 
-        routes.MapGet("/api/admin/product-org-type-rules",         ListProductOrgTypeRules);
+        routes.MapGet("/api/admin/product-org-type-rules",          ListProductOrgTypeRules);
+        // Two URL variants served by the same handler — client uses the short form.
         routes.MapGet("/api/admin/product-relationship-type-rules", ListProductRelationshipTypeRules);
+        routes.MapGet("/api/admin/product-rel-type-rules",          ListProductRelationshipTypeRules);
+
+        // ── Legacy coverage (Step 4) ──────────────────────────────────────────
+        routes.MapGet("/api/admin/legacy-coverage", GetLegacyCoverage);
 
         return routes;
     }
@@ -719,6 +724,8 @@ public static class AdminEndpoints
 
     private static async Task<IResult> ListProductOrgTypeRules(IdentityDbContext db)
     {
+        // Response: plain array — client does Array.isArray(raw) check.
+        // Field names must match api-mappers.ts mapProductOrgTypeRule camelCase keys.
         var items = await db.ProductOrganizationTypeRules
             .Include(r => r.Product)
             .Include(r => r.ProductRole)
@@ -728,20 +735,21 @@ public static class AdminEndpoints
                 .ThenBy(r => r.ProductRole.Code)
             .Select(r => new
             {
-                id                  = r.Id,
-                productId           = r.ProductId,
-                productCode         = r.Product.Code,
-                productRoleId       = r.ProductRoleId,
-                productRoleCode     = r.ProductRole.Code,
-                organizationTypeId  = r.OrganizationTypeId,
-                orgTypeCode         = r.OrganizationType.Code,
-                orgTypeDisplayName  = r.OrganizationType.DisplayName,
-                isActive            = r.IsActive,
-                createdAtUtc        = r.CreatedAtUtc,
+                id                   = r.Id,
+                productId            = r.ProductId,
+                productCode          = r.Product.Code,
+                productRoleId        = r.ProductRoleId,
+                productRoleCode      = r.ProductRole.Code,
+                productRoleName      = r.ProductRole.Name,
+                organizationTypeId   = r.OrganizationTypeId,
+                organizationTypeCode = r.OrganizationType.Code,         // mapper expects this name
+                organizationTypeName = r.OrganizationType.DisplayName,
+                isActive             = r.IsActive,
+                createdAtUtc         = r.CreatedAtUtc,
             })
             .ToListAsync();
 
-        return Results.Ok(new { items, totalCount = items.Count });
+        return Results.Ok(items);   // plain array, not { items, totalCount }
     }
 
     // =========================================================================
@@ -750,6 +758,8 @@ public static class AdminEndpoints
 
     private static async Task<IResult> ListProductRelationshipTypeRules(IdentityDbContext db)
     {
+        // Registered under both /product-relationship-type-rules (canonical) and
+        // /product-rel-type-rules (short alias used by the control-center client).
         var items = await db.ProductRelationshipTypeRules
             .Include(r => r.Product)
             .Include(r => r.RelationshipType)
@@ -758,18 +768,135 @@ public static class AdminEndpoints
                 .ThenBy(r => r.RelationshipType.Code)
             .Select(r => new
             {
-                id                    = r.Id,
-                productId             = r.ProductId,
-                productCode           = r.Product.Code,
-                relationshipTypeId    = r.RelationshipTypeId,
-                relationshipTypeCode  = r.RelationshipType.Code,
-                relationshipTypeDisplayName = r.RelationshipType.DisplayName,
-                isActive              = r.IsActive,
-                createdAtUtc          = r.CreatedAtUtc,
+                id                   = r.Id,
+                productId            = r.ProductId,
+                productCode          = r.Product.Code,
+                relationshipTypeId   = r.RelationshipTypeId,
+                relationshipTypeCode = r.RelationshipType.Code,
+                relationshipTypeName = r.RelationshipType.DisplayName,
+                isActive             = r.IsActive,
+                createdAtUtc         = r.CreatedAtUtc,
             })
             .ToListAsync();
 
-        return Results.Ok(new { items, totalCount = items.Count });
+        return Results.Ok(items);   // plain array, not { items, totalCount }
+    }
+
+    // =========================================================================
+    // LEGACY COVERAGE  (Step 4)
+    // =========================================================================
+
+    /// <summary>
+    /// GET /api/admin/legacy-coverage
+    ///
+    /// Returns a point-in-time snapshot of the two active legacy migration paths:
+    ///
+    ///   1. EligibleOrgType → ProductOrganizationTypeRule (eligibility rules migration)
+    ///      - How many active ProductRoles still rely on the legacy EligibleOrgType string
+    ///        with no corresponding active OrgTypeRule row (must reach 0 before Phase F).
+    ///
+    ///   2. UserRoles → ScopedRoleAssignment dual-write adoption (role assignment migration)
+    ///      - How many users have at least one ScopedRoleAssignment (GLOBAL scope) vs
+    ///        users that only have legacy UserRole records.
+    ///
+    /// Used by the /legacy-coverage control center page to track cutover progress.
+    /// </summary>
+    private static async Task<IResult> GetLegacyCoverage(IdentityDbContext db)
+    {
+        // ── 1. EligibleOrgType eligibility migration ──────────────────────────
+
+        // All active ProductRoles (with or without EligibleOrgType restriction)
+        var allActiveRoles = await db.ProductRoles
+            .Where(pr => pr.IsActive)
+            .Select(pr => new
+            {
+                pr.Id,
+                pr.Code,
+                pr.EligibleOrgType,
+            })
+            .ToListAsync();
+
+        // ProductRole IDs that have at least one active OrgTypeRule (DB path)
+        var rolesWithDbRules = await db.ProductOrganizationTypeRules
+            .Where(r => r.IsActive)
+            .Select(r => r.ProductRoleId)
+            .Distinct()
+            .ToListAsync();
+
+        var dbRuleSet = new HashSet<Guid>(rolesWithDbRules);
+
+        // Breakdown by eligibility path
+        int withDbRuleOnly   = 0;   // Has OrgTypeRule(s), no EligibleOrgType — fully modern
+        int withBothPaths    = 0;   // Has OrgTypeRule(s) AND EligibleOrgType — transitional
+        int legacyStringOnly = 0;   // Has EligibleOrgType, no OrgTypeRule — needs migration
+        int unrestricted     = 0;   // No EligibleOrgType, no OrgTypeRule — intentionally open
+
+        var uncoveredRoles = new List<object>();
+
+        foreach (var pr in allActiveRoles)
+        {
+            var hasDbRule = dbRuleSet.Contains(pr.Id);
+            var hasLegacy = pr.EligibleOrgType is not null;
+
+            if (hasDbRule && !hasLegacy)       withDbRuleOnly++;
+            else if (hasDbRule && hasLegacy)   withBothPaths++;
+            else if (!hasDbRule && hasLegacy)
+            {
+                legacyStringOnly++;
+                uncoveredRoles.Add(new { pr.Code, pr.EligibleOrgType });
+            }
+            else                               unrestricted++;
+        }
+
+        int totalWithRestriction = withDbRuleOnly + withBothPaths + legacyStringOnly;
+        int dbCoveredCount       = withDbRuleOnly + withBothPaths;
+        double eligibilityCoverage = totalWithRestriction > 0
+            ? Math.Round((double)dbCoveredCount / totalWithRestriction * 100, 1)
+            : 100.0;
+
+        // ── 2. ScopedRoleAssignment dual-write adoption ───────────────────────
+
+        // Users with at least one UserRole record (legacy write path)
+        var usersWithLegacyRole = await db.UserRoles
+            .Select(ur => ur.UserId)
+            .Distinct()
+            .CountAsync();
+
+        // Users with at least one active GLOBAL ScopedRoleAssignment (dual-write / modern path)
+        var usersWithScopedRole = await db.ScopedRoleAssignments
+            .Where(s => s.IsActive && s.ScopeType == "GLOBAL")
+            .Select(s => s.UserId)
+            .Distinct()
+            .CountAsync();
+
+        double dualWriteCoverage = usersWithLegacyRole > 0
+            ? Math.Round((double)usersWithScopedRole / usersWithLegacyRole * 100, 1)
+            : 100.0;
+
+        return Results.Ok(new
+        {
+            generatedAtUtc = DateTime.UtcNow,
+
+            eligibilityRules = new
+            {
+                totalActiveProductRoles  = allActiveRoles.Count,
+                withDbRuleOnly,
+                withBothPaths,           // EligibleOrgType + OrgTypeRule — safe to remove string
+                legacyStringOnly,        // ← must reach 0 before Phase F
+                unrestricted,
+                dbCoveragePct            = eligibilityCoverage,
+                uncoveredRoles,          // code + EligibleOrgType for any legacy-only roles
+            },
+
+            roleAssignments = new
+            {
+                usersWithLegacyRoles     = usersWithLegacyRole,
+                usersWithScopedRoles     = usersWithScopedRole,
+                dualWriteCoveragePct     = dualWriteCoverage,
+                // note: usersWithScopedRoles > usersWithLegacyRoles is possible once
+                // direct ScopedRoleAssignment-only writes exist in a future phase.
+            },
+        });
     }
 
     // ── Request / response DTOs (private, scoped to AdminEndpoints) ─────────

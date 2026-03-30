@@ -22,6 +22,7 @@ export function ProductOrgTypeRuleTable({ rules }: ProductOrgTypeRuleTableProps)
           <thead>
             <tr className="bg-gray-50">
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Product</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Product Role</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Allowed Org Type</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Created</th>
@@ -36,9 +37,20 @@ export function ProductOrgTypeRuleTable({ rules }: ProductOrgTypeRuleTableProps)
                   </code>
                 </td>
                 <td className="px-4 py-3">
+                  <code className="text-xs font-mono bg-violet-50 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded">
+                    {r.productRoleCode || '—'}
+                  </code>
+                  {r.productRoleName && (
+                    <span className="ml-1.5 text-xs text-gray-400">{r.productRoleName}</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
                   <code className="text-xs font-mono bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">
                     {r.organizationTypeCode}
                   </code>
+                  {r.organizationTypeName && (
+                    <span className="ml-1.5 text-xs text-gray-400">{r.organizationTypeName}</span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <RuleStatusBadge active={r.isActive} />

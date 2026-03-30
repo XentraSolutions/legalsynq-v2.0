@@ -47,6 +47,11 @@ export const Routes = {
   /** /product-rules — Product access rules (org-type + rel-type) */
   productRules: '/product-rules',
 
+  // ── Step 4 ────────────────────────────────────────────────────────────────
+
+  /** /legacy-coverage — Legacy migration coverage report */
+  legacyCoverage: '/legacy-coverage',
+
   // ── Dynamic route builders ────────────────────────────────────────────────
 
   /** /tenants/:id — Tenant detail */

@@ -51,6 +51,7 @@ import type {
   OrgRelationshipStatus,
   ProductOrgTypeRule,
   ProductRelTypeRule,
+  LegacyCoverageReport,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -654,13 +655,17 @@ export function mapOrgRelationship(raw: unknown): OrgRelationship {
 export function mapProductOrgTypeRule(raw: unknown): ProductOrgTypeRule {
   const r = asObj(raw);
   return {
-    id:                     str(r, 'id',                       'id',                    '', 'mapProductOrgTypeRule.id'),
-    productId:              str(r, 'product_id',               'productId',             ''),
-    productCode:            str(r, 'product_code',             'productCode',           ''),
-    organizationTypeId:     str(r, 'organization_type_id',     'organizationTypeId',    ''),
-    organizationTypeCode:   str(r, 'organization_type_code',   'organizationTypeCode',  ''),
-    isActive:               bool(r, 'is_active',               'isActive',              true),
-    createdAtUtc:           str(r, 'created_at',               'createdAtUtc',          new Date().toISOString()),
+    id:                   str(r, 'id',                     'id',                   '', 'mapProductOrgTypeRule.id'),
+    productId:            str(r, 'product_id',             'productId',            ''),
+    productCode:          str(r, 'product_code',           'productCode',          ''),
+    productRoleId:        str(r, 'product_role_id',        'productRoleId',        ''),
+    productRoleCode:      str(r, 'product_role_code',      'productRoleCode',      ''),
+    productRoleName:      str(r, 'product_role_name',      'productRoleName',      ''),
+    organizationTypeId:   str(r, 'organization_type_id',   'organizationTypeId',   ''),
+    organizationTypeCode: str(r, 'organization_type_code', 'organizationTypeCode', ''),
+    organizationTypeName: str(r, 'organization_type_name', 'organizationTypeName', ''),
+    isActive:             bool(r, 'is_active',             'isActive',             true),
+    createdAtUtc:         str(r, 'created_at',             'createdAtUtc',         new Date().toISOString()),
   };
 }
 
@@ -672,13 +677,57 @@ export function mapProductOrgTypeRule(raw: unknown): ProductOrgTypeRule {
 export function mapProductRelTypeRule(raw: unknown): ProductRelTypeRule {
   const r = asObj(raw);
   return {
-    id:                    str(r, 'id',                      'id',                   '', 'mapProductRelTypeRule.id'),
-    productId:             str(r, 'product_id',              'productId',            ''),
-    productCode:           str(r, 'product_code',            'productCode',          ''),
-    relationshipTypeId:    str(r, 'relationship_type_id',    'relationshipTypeId',   ''),
-    relationshipTypeCode:  str(r, 'relationship_type_code',  'relationshipTypeCode', ''),
-    isActive:              bool(r, 'is_active',              'isActive',             true),
-    createdAtUtc:          str(r, 'created_at',              'createdAtUtc',         new Date().toISOString()),
+    id:                   str(r, 'id',                     'id',                   '', 'mapProductRelTypeRule.id'),
+    productId:            str(r, 'product_id',             'productId',            ''),
+    productCode:          str(r, 'product_code',           'productCode',          ''),
+    relationshipTypeId:   str(r, 'relationship_type_id',   'relationshipTypeId',   ''),
+    relationshipTypeCode: str(r, 'relationship_type_code', 'relationshipTypeCode', ''),
+    relationshipTypeName: str(r, 'relationship_type_name', 'relationshipTypeName', ''),
+    isActive:             bool(r, 'is_active',             'isActive',             true),
+    createdAtUtc:         str(r, 'created_at',             'createdAtUtc',         new Date().toISOString()),
+  };
+}
+
+// ── Legacy Coverage mapper (Step 4) ───────────────────────────────────────────
+
+/**
+ * mapLegacyCoverageReport — normalises a raw backend legacy-coverage response.
+ * Returned by GET /identity/api/admin/legacy-coverage.
+ */
+export function mapLegacyCoverageReport(raw: unknown): LegacyCoverageReport {
+  const r = asObj(raw);
+
+  const erRaw = asObj(r['eligibilityRules'] ?? r['eligibility_rules'] ?? {});
+  const raRaw = asObj(r['roleAssignments']  ?? r['role_assignments']  ?? {});
+
+  const uncoveredRaw = Array.isArray(erRaw['uncoveredRoles'] ?? erRaw['uncovered_roles'])
+    ? (erRaw['uncoveredRoles'] ?? erRaw['uncovered_roles']) as unknown[]
+    : [];
+
+  return {
+    generatedAtUtc: str(r, 'generated_at_utc', 'generatedAtUtc', new Date().toISOString()),
+
+    eligibilityRules: {
+      totalActiveProductRoles: num(erRaw, 'total_active_product_roles', 'totalActiveProductRoles', 0),
+      withDbRuleOnly:          num(erRaw, 'with_db_rule_only',          'withDbRuleOnly',          0),
+      withBothPaths:           num(erRaw, 'with_both_paths',            'withBothPaths',            0),
+      legacyStringOnly:        num(erRaw, 'legacy_string_only',         'legacyStringOnly',         0),
+      unrestricted:            num(erRaw, 'unrestricted',               'unrestricted',             0),
+      dbCoveragePct:           num(erRaw, 'db_coverage_pct',            'dbCoveragePct',            100),
+      uncoveredRoles: uncoveredRaw.map(u => {
+        const ur = asObj(u);
+        return {
+          code:            str(ur, 'code',              'code',            ''),
+          eligibleOrgType: str(ur, 'eligible_org_type', 'eligibleOrgType', ''),
+        };
+      }),
+    },
+
+    roleAssignments: {
+      usersWithLegacyRoles:  num(raRaw, 'users_with_legacy_roles',  'usersWithLegacyRoles',  0),
+      usersWithScopedRoles:  num(raRaw, 'users_with_scoped_roles',  'usersWithScopedRoles',  0),
+      dualWriteCoveragePct:  num(raRaw, 'dual_write_coverage_pct',  'dualWriteCoveragePct',  0),
+    },
   };
 }
 

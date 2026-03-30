@@ -72,6 +72,7 @@ import {
   mapOrgRelationship,
   mapProductOrgTypeRule,
   mapProductRelTypeRule,
+  mapLegacyCoverageReport,
 }                                       from '@/lib/api-mappers';
 import type {
   TenantSummary,
@@ -95,6 +96,7 @@ import type {
   OrgRelationship,
   ProductOrgTypeRule,
   ProductRelTypeRule,
+  LegacyCoverageReport,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -728,6 +730,28 @@ export const controlCenterServerApi = {
         [CACHE_TAGS.productRelTypeRules],
       );
       return Array.isArray(raw) ? raw.map(mapProductRelTypeRule) : [];
+    },
+  },
+
+  // ── Legacy Coverage (Step 4) ──────────────────────────────────────────────
+  /**
+   * GET /identity/api/admin/legacy-coverage
+   *
+   * Returns a point-in-time snapshot of legacy migration path adoption:
+   *   • EligibleOrgType → OrgTypeRule coverage %
+   *   • UserRole → ScopedRoleAssignment dual-write adoption %
+   *
+   * Short TTL (10 s) — this is a diagnostic/admin page, not a hot-path.
+   * Cache tag: cc:legacy-coverage.
+   */
+  legacyCoverage: {
+    get: async (): Promise<LegacyCoverageReport> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/legacy-coverage`,
+        10,
+        [CACHE_TAGS.legacyCoverage],
+      );
+      return mapLegacyCoverageReport(raw);
     },
   },
 

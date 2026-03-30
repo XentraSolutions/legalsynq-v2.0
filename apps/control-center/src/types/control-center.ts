@@ -346,13 +346,18 @@ export interface OrgRelationship {
  * Returned by GET /identity/api/admin/product-org-type-rules.
  */
 export interface ProductOrgTypeRule {
-  id:                 string;
-  productId:          string;
-  productCode:        string;
-  organizationTypeId: string;
+  id:                  string;
+  productId:           string;
+  productCode:         string;
+  /** Role code within the product (e.g. CARECONNECT_REFERRER). */
+  productRoleId:       string;
+  productRoleCode:     string;
+  productRoleName:     string;
+  organizationTypeId:  string;
   organizationTypeCode: string;
-  isActive:           boolean;
-  createdAtUtc:       string;
+  organizationTypeName: string;
+  isActive:            boolean;
+  createdAtUtc:        string;
 }
 
 // ── Product–RelType Rules (Phase E) ──────────────────────────────────────────
@@ -367,8 +372,45 @@ export interface ProductRelTypeRule {
   productCode:         string;
   relationshipTypeId:  string;
   relationshipTypeCode: string;
+  relationshipTypeName: string;
   isActive:            boolean;
   createdAtUtc:        string;
+}
+
+// ── Legacy coverage (Step 4) ──────────────────────────────────────────────────
+
+/** One uncovered ProductRole — has EligibleOrgType but no active OrgTypeRule. */
+export interface UncoveredRole {
+  code:            string;
+  eligibleOrgType: string;
+}
+
+/** Breakdown of eligibility-rule migration paths. */
+export interface EligibilityRulesCoverage {
+  totalActiveProductRoles: number;
+  withDbRuleOnly:          number;   // modern path only
+  withBothPaths:           number;   // transitional (has both string + DB rule)
+  legacyStringOnly:        number;   // must reach 0 before Phase F
+  unrestricted:            number;   // no restriction at all
+  dbCoveragePct:           number;
+  uncoveredRoles:          UncoveredRole[];
+}
+
+/** Breakdown of ScopedRoleAssignment dual-write adoption. */
+export interface RoleAssignmentsCoverage {
+  usersWithLegacyRoles:   number;
+  usersWithScopedRoles:   number;
+  dualWriteCoveragePct:   number;
+}
+
+/**
+ * Point-in-time legacy migration snapshot.
+ * Returned by GET /identity/api/admin/legacy-coverage.
+ */
+export interface LegacyCoverageReport {
+  generatedAtUtc:  string;
+  eligibilityRules: EligibilityRulesCoverage;
+  roleAssignments:  RoleAssignmentsCoverage;
 }
 
 // ── Shared ────────────────────────────────────────────────────────────────────
