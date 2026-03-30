@@ -1626,6 +1626,58 @@ Path segment takes precedence over matching query-string param. All scoped endpo
 
 ---
 
+## Platform Audit Service — Step 14: Query Authorization Foundations ✅
+
+**10 new files, 5 files updated. 0 errors, 0 warnings.**
+
+### CallerScope enum (6 values, ordered by privilege)
+`Unknown(0)` → `UserSelf(1)` → `TenantUser(2)` → `Restricted(3)` → `OrganizationAdmin(4)` → `TenantAdmin(5)` → `PlatformAdmin(6)`
+
+### Authorization pipeline
+- **`QueryAuthMiddleware`** — path-scoped to `/audit/*`; resolves caller context; issues 401 when Mode≠None and caller is unresolved
+- **`IQueryCallerResolver`** — contract; `AnonymousCallerResolver` (Mode=None, dev only) and `ClaimsCallerResolver` (Mode=Bearer, reads `HttpContext.User.Claims`)
+- **`IQueryAuthorizer` / `QueryAuthorizer`** — Phase 1: access check (cross-tenant, unknown scope, self-scope without UserId); Phase 2: constraint application (overrides TenantId, OrgId, ActorId, MaxVisibility)
+- **`QueryCallerContext`** — immutable record stored in `HttpContext.Items`; factory helpers `Anonymous()`, `Authenticated()`, `Failed()`
+- **`QueryAuthorizationResult`** — carries IsAuthorized, DenialReason, StatusCode
+
+### Configuration additions to `QueryAuthOptions`
+`OrganizationAdminRoles`, `RestrictedRoles`, `TenantUserRoles`, `UserSelfRoles`, `TenantIdClaimType`, `OrganizationIdClaimType`, `UserIdClaimType`, `RoleClaimType`
+
+### Provider-neutral design
+All claim type names are config-driven. Switching from Auth0 → Entra ID → Keycloak requires only appsettings changes, not code changes.
+
+### Build status after Step 14
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
+## Platform Audit Service — Step 15: Integrity Checkpoint Support ✅
+
+**7 new files, 5 files updated. 0 errors, 0 warnings.**
+
+### Checkpoint generation algorithm
+1. Stream `Hash` values from `AuditEventRecord` rows where `RecordedAtUtc ∈ [from, to)`, ordered by `Id` ASC.
+2. Concatenate hashes in order; null hashes → empty string (preserves positional count accuracy).
+3. Apply configured algorithm (HMAC-SHA256 or SHA-256 fallback) to concatenated string.
+4. Persist as `IntegrityCheckpoint` (append-only, never updated).
+
+### New endpoints
+- `GET  /audit/integrity/checkpoints` — paginated list; optional `type`, `from`, `to` filters; requires TenantAdmin+ scope
+- `POST /audit/integrity/checkpoints/generate` — on-demand generation; requires PlatformAdmin scope; returns HTTP 201
+
+### New services / jobs
+- **`IIntegrityCheckpointService` / `IntegrityCheckpointService`** — streaming hash aggregation + persistence
+- **`IntegrityCheckpointJob`** — placeholder for scheduled generation (Quartz.NET / BackgroundService pattern documented)
+
+### New repository methods
+- `IAuditEventRecordRepository.StreamHashesForWindowAsync(from, to)` — projects only `Hash` field for efficiency
+- `IIntegrityCheckpointRepository.ListAsync(type?, from?, to?, page, pageSize)` — multi-filter paginated list
+
+### Build status after Step 15
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
 ## Control Center Admin Refresh ✅
 
 **Scope:** Full admin dashboard overhaul — infrastructure layer + new pages + sidebar badges.

@@ -8,6 +8,7 @@ using PlatformAuditEventService.Authorization;
 using PlatformAuditEventService.Configuration;
 using PlatformAuditEventService.Data;
 using PlatformAuditEventService.DTOs;
+using PlatformAuditEventService.Jobs;
 using PlatformAuditEventService.Middleware;
 using PlatformAuditEventService.Repositories;
 using PlatformAuditEventService.Services;
@@ -178,6 +179,15 @@ try
     // Canonical query/retrieval pipeline — read-only surface.
     // Applies QueryAuth options (page-size cap, hash exposure) and maps entities → response DTOs.
     builder.Services.AddScoped<IAuditEventQueryService, AuditEventQueryService>();
+
+    // ── Integrity checkpoint pipeline ─────────────────────────────────────────
+    // Generates aggregate hashes over time windows of audit event records.
+    // Registered as Scoped — uses scoped repositories (EF DbContext).
+    builder.Services.AddScoped<IIntegrityCheckpointService, IntegrityCheckpointService>();
+
+    // Job placeholder — registered as transient; instantiated only when invoked.
+    // Future: register as BackgroundService or via Quartz.NET for scheduled runs.
+    builder.Services.AddTransient<IntegrityCheckpointJob>();
 
     // ── Query authorization ───────────────────────────────────────────────────
     // All resolvers registered as singletons (stateless after construction).

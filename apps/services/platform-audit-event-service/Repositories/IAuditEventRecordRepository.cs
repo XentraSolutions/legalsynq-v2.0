@@ -74,6 +74,27 @@ public interface IAuditEventRecordRepository
         CancellationToken ct = default);
 
     /// <summary>
+    /// Stream the <c>Hash</c> values of all audit event records whose
+    /// <c>RecordedAtUtc</c> falls within <c>[from, to)</c>, in ascending
+    /// surrogate-Id (insertion) order.
+    ///
+    /// Intended for integrity checkpoint generation. Yields only the hash field
+    /// to minimise data transfer — full records are not needed for aggregate hash computation.
+    ///
+    /// Null hashes (records ingested when signing was disabled) are yielded as-is.
+    /// The caller is responsible for handling them (typically treated as empty string
+    /// in the concatenation to preserve positional count accuracy).
+    ///
+    /// Caller must consume the enumerable within the scope of a single request /
+    /// background job — the underlying DbContext is disposed when enumeration completes
+    /// or the cancellation token fires.
+    /// </summary>
+    IAsyncEnumerable<string?> StreamHashesForWindowAsync(
+        DateTimeOffset fromRecordedAtUtc,
+        DateTimeOffset toRecordedAtUtc,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Stream filtered audit event records as an async enumerable.
     ///
     /// Intended for the export worker, which must iterate potentially millions of

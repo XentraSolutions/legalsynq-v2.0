@@ -106,4 +106,45 @@ public sealed class EfIntegrityCheckpointRepository : IIntegrityCheckpointReposi
             PageSize   = pageSize,
         };
     }
+
+    public async Task<PagedResult<IntegrityCheckpoint>> ListAsync(
+        string?         checkpointType,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        int             page,
+        int             pageSize,
+        CancellationToken ct = default)
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+
+        var query = db.IntegrityCheckpoints.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(checkpointType))
+            query = query.Where(c => c.CheckpointType == checkpointType);
+
+        if (from.HasValue)
+            query = query.Where(c => c.CreatedAtUtc >= from.Value);
+
+        if (to.HasValue)
+            query = query.Where(c => c.CreatedAtUtc <= to.Value);
+
+        query = query.OrderByDescending(c => c.CreatedAtUtc);
+
+        var total    = await query.CountAsync(ct);
+        pageSize     = Math.Max(1, Math.Min(pageSize, 200));
+        page         = Math.Max(1, page);
+
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<IntegrityCheckpoint>
+        {
+            Items      = items,
+            TotalCount = total,
+            Page       = page,
+            PageSize   = pageSize,
+        };
+    }
 }

@@ -52,4 +52,22 @@ public interface IIntegrityCheckpointRepository
         int page,
         int pageSize,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Paginated, multi-filter list of checkpoints — newest first.
+    ///
+    /// All filter parameters are optional:
+    /// <list type="bullet">
+    ///   <item><paramref name="checkpointType"/>: exact match on <see cref="IntegrityCheckpoint.CheckpointType"/>; pass null to include all types.</item>
+    ///   <item><paramref name="from"/>: include only checkpoints with <c>CreatedAtUtc &gt;= from</c>.</item>
+    ///   <item><paramref name="to"/>: include only checkpoints with <c>CreatedAtUtc &lt;= to</c>.</item>
+    /// </list>
+    /// </summary>
+    Task<PagedResult<IntegrityCheckpoint>> ListAsync(
+        string?        checkpointType,
+        DateTimeOffset? from,
+        DateTimeOffset? to,
+        int            page,
+        int            pageSize,
+        CancellationToken ct = default);
 }

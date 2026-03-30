@@ -164,6 +164,30 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
         };
     }
 
+    // ── Checkpoint hash streaming ──────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    public async IAsyncEnumerable<string?> StreamHashesForWindowAsync(
+        DateTimeOffset fromRecordedAtUtc,
+        DateTimeOffset toRecordedAtUtc,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+
+        // Project only the Hash field — no need to load full entities for checkpoint generation.
+        // Order by Id (surrogate auto-increment) for deterministic insertion-order traversal.
+        var query = db.AuditEventRecords
+            .AsNoTracking()
+            .Where(r => r.RecordedAtUtc >= fromRecordedAtUtc && r.RecordedAtUtc < toRecordedAtUtc)
+            .OrderBy(r => r.Id)
+            .Select(r => r.Hash);
+
+        await foreach (var hash in query.AsAsyncEnumerable().WithCancellation(ct))
+        {
+            yield return hash;
+        }
+    }
+
     // ── Streaming export ───────────────────────────────────────────────────────
 
     /// <inheritdoc/>
