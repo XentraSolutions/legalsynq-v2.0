@@ -1678,6 +1678,43 @@ All claim type names are config-driven. Switching from Auth0 → Entra ID → Ke
 
 ---
 
+## Platform Audit Service — Step 16: Export Capability ✅
+
+**8 new files, 5 files updated. 0 errors, 0 warnings.**
+
+### Endpoints
+- `POST /audit/exports` — Submit export job; processes synchronously in v1; returns 202 with terminal status
+- `GET  /audit/exports/{exportId}` — Poll job status (immediate in v1; designed for async in future)
+
+### Output formats
+- **JSON** — Full envelope `{ exportId, exportedAtUtc, format, records:[...] }`; camelCase, null fields omitted
+- **NDJSON** — One JSON object per line, no envelope; best for streaming data pipelines
+- **CSV** — RFC 4180 header + flat rows; nested JSON fields inlined as strings
+
+### Conditional field groups (per-request flags)
+| Flag | Fields controlled |
+|---|---|
+| `includeStateSnapshots` | `beforeJson`, `afterJson` |
+| `includeHashes` | `hash`, `previousHash` (also requires `QueryAuth:ExposeIntegrityHash=true`) |
+| `includeTags` | `tags` |
+
+### Job lifecycle
+`Pending → Processing → Completed | Failed` — all transitions happen within the POST request in v1. Terminal state is returned in the response. GET endpoint is ready for async polling in future releases.
+
+### Storage abstraction
+`IExportStorageProvider` → `LocalExportStorageProvider` (v1). Swap to `S3ExportStorageProvider` / `AzureBlobExportStorageProvider` by registering a different implementation in Program.cs — no other changes needed.
+
+### Authorization
+Delegates to `IQueryAuthorizer` — same scope constraints as query endpoints. TenantAdmin can export their tenant; PlatformAdmin can export any scope; cross-tenant requests denied.
+
+### Entity change: `AuditExportJob.RecordCount`
+Added nullable `long? RecordCount` to track the number of records written. EF configuration and `UpdateAsync` selective-update pattern both updated.
+
+### Build status after Step 16
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
 ## Control Center Admin Refresh ✅
 
 **Scope:** Full admin dashboard overhaul — infrastructure layer + new pages + sidebar badges.

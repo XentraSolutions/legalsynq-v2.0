@@ -10,6 +10,7 @@ using PlatformAuditEventService.Data;
 using PlatformAuditEventService.DTOs;
 using PlatformAuditEventService.Jobs;
 using PlatformAuditEventService.Middleware;
+using PlatformAuditEventService.Services.Export;
 using PlatformAuditEventService.Repositories;
 using PlatformAuditEventService.Services;
 using PlatformAuditEventService.Validators;
@@ -188,6 +189,26 @@ try
     // Job placeholder — registered as transient; instantiated only when invoked.
     // Future: register as BackgroundService or via Quartz.NET for scheduled runs.
     builder.Services.AddTransient<IntegrityCheckpointJob>();
+
+    // ── Export pipeline ───────────────────────────────────────────────────────
+    // Storage provider is always registered; the controller gates on Provider=None
+    // and returns 503 before any service call is made.
+    //
+    // To swap the backing store: register a different IExportStorageProvider here.
+    // Provider=Local  → LocalExportStorageProvider (file system)
+    // Provider=S3     → (future) S3ExportStorageProvider
+    // Provider=AzureBlob → (future) AzureBlobExportStorageProvider
+    var exportProvider = cfg.GetSection(ExportOptions.SectionName)["Provider"] ?? "None";
+
+    builder.Services.AddSingleton<IExportStorageProvider, LocalExportStorageProvider>();
+
+    // Registered as Scoped — uses scoped repositories (EF DbContext) for streaming.
+    builder.Services.AddScoped<IAuditExportService, AuditExportService>();
+
+    if (exportProvider.Equals("None", StringComparison.OrdinalIgnoreCase))
+        Log.Warning("Export:Provider = 'None' — export endpoints are disabled. Set Provider=Local (or S3/AzureBlob) to enable.");
+    else
+        Log.Information("Export:Provider = {Provider} — export endpoints active.", exportProvider);
 
     // ── Query authorization ───────────────────────────────────────────────────
     // All resolvers registered as singletons (stateless after construction).

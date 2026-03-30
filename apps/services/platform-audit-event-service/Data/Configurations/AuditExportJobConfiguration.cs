@@ -85,6 +85,10 @@ public sealed class AuditExportJobConfiguration : IEntityTypeConfiguration<Audit
         entity.Property(e => e.CompletedAtUtc)
             .HasColumnType("datetime(6)");
 
+        // Set when Status=Completed; null otherwise.
+        entity.Property(e => e.RecordCount)
+            .HasColumnType("bigint");
+
         // ── Indexes ───────────────────────────────────────────────────────────
 
         // Public identifier — unique

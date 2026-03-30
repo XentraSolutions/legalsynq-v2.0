@@ -62,6 +62,7 @@ public sealed class EfAuditExportJobRepository : IAuditExportJobRepository
         entry.Property(j => j.FilePath).IsModified       = true;
         entry.Property(j => j.ErrorMessage).IsModified   = true;
         entry.Property(j => j.CompletedAtUtc).IsModified = true;
+        entry.Property(j => j.RecordCount).IsModified    = true;
 
         await db.SaveChangesAsync(ct);
 

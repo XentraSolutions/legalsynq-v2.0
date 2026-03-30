@@ -93,4 +93,11 @@ public sealed class AuditExportJob
     /// Null while Pending or Processing.
     /// </summary>
     public DateTimeOffset? CompletedAtUtc { get; set; }
+
+    /// <summary>
+    /// Number of records written into the export file.
+    /// Set by the export worker when Status transitions to Completed.
+    /// Null while Pending, Processing, or when the job Failed.
+    /// </summary>
+    public long? RecordCount { get; set; }
 }
