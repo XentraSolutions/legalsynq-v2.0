@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
@@ -96,8 +97,22 @@ try
             break;
     }
 
+    // ── New entity repositories (EF-backed for both MySQL and InMemory modes) ─
+    builder.Services.AddScoped<IAuditEventRecordRepository, EfAuditEventRecordRepository>();
+    builder.Services.AddScoped<IAuditExportJobRepository,   EfAuditExportJobRepository>();
+    builder.Services.AddScoped<IIntegrityCheckpointRepository,     EfIntegrityCheckpointRepository>();
+    builder.Services.AddScoped<IIngestSourceRegistrationRepository, EfIngestSourceRegistrationRepository>();
+
     // ── Controllers + API behavior ────────────────────────────────────────────
-    builder.Services.AddControllers();
+    // JsonStringEnumConverter ensures all typed enums (EventCategory, SeverityLevel,
+    // ActorType, ScopeType, VisibilityScope, ExportStatus) serialise as strings in
+    // both request binding and response output — keeps payloads human-readable
+    // without requiring callers to know the underlying tinyint values.
+    builder.Services.AddControllers()
+        .AddJsonOptions(opts =>
+        {
+            opts.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        });
     builder.Services.AddEndpointsApiExplorer();
 
     // ── Swagger / OpenAPI ─────────────────────────────────────────────────────

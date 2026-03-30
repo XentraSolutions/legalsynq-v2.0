@@ -1317,3 +1317,64 @@ DbContext now uses `ApplyConfigurationsFromAssembly` — new entity configuratio
 
 ### Build status — Step 5
 - PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+## Platform Audit/Event Service — Step 6 EF Core Migrations (2026-03-30)
+
+### DesignTimeDbContextFactory fix
+Replaced `ServerVersion.AutoDetect(connectionString)` (requires live MySQL) with `new MySqlServerVersion(new Version(8, 0, 0))` — migration generation now works fully offline without a database connection.
+
+### Migration generated
+- `Data/Migrations/20260330140138_InitialSchema.cs` — creates 4 new tables, all indexes
+- `AuditEventDbContextModelSnapshot.cs` — EF model snapshot tracking all 5 entities
+- `analysis/deploy_InitialSchema_idempotent.sql` — idempotent SQL script for production deployment
+
+### AuditEvents exclusion strategy
+The legacy `AuditEvents` table is tracked in the EF model snapshot (so the ORM knows about it) but is intentionally **excluded from the migration `Up()`/`Down()` methods** — it pre-exists in production databases and was not created by this service. For fresh databases, the table must be created separately before this migration is applied.
+
+### Tables created by InitialSchema
+| Table | PK | Public ID | Notes |
+|---|---|---|---|
+| `AuditEventRecords` | bigint AI | `AuditId` char(36) UNIQUE | 16 indexes; mediumtext for JSON fields |
+| `AuditExportJobs` | bigint AI | `ExportId` char(36) UNIQUE | 6 indexes |
+| `IntegrityCheckpoints` | bigint AI | — | 4 indexes |
+| `IngestSourceRegistrations` | bigint AI | — | 2 indexes; (SourceSystem, SourceService) UNIQUE |
+
+### Production deployment
+```bash
+# Idempotent SQL (safe to run multiple times):
+dotnet ef migrations script --idempotent -o migration.sql
+# Apply:
+ConnectionStrings__AuditEventDb="..." dotnet ef database update
+```
+
+### Build status — Step 6
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings (migration compiles cleanly)
+
+## Platform Audit/Event Service — Step 7 Repositories + Mapper (2026-03-30)
+
+### JsonStringEnumConverter (Program.cs)
+`AddControllers().AddJsonOptions(...)` now globally registers `JsonStringEnumConverter` — all typed enums (`EventCategory`, `SeverityLevel`, `ActorType`, `ScopeType`, `VisibilityScope`, `ExportStatus`) serialize as strings in both requests and responses.
+
+### AuditEventRecordMapper
+`Mappers/AuditEventRecordMapper.cs` — static class, no DI needed. Maps `IngestAuditEventRequest` → `AuditEventRecord`:
+- `AuditId` = `Guid.NewGuid()` (TODO: upgrade to UUIDv7)
+- `PlatformId` parsed from `Scope.PlatformId` string → `Guid?`
+- `TagsJson` serialized from `Tags` list → compact JSON array string
+- `Hash`/`PreviousHash` left `null` — populated by ingest service after idempotency check
+
+### New repository interfaces (4)
+| Interface | Methods |
+|---|---|
+| `IAuditEventRecordRepository` | AppendAsync, GetByAuditIdAsync, ExistsIdempotencyKeyAsync, QueryAsync, CountAsync, GetLatestInChainAsync |
+| `IAuditExportJobRepository` | CreateAsync, GetByExportIdAsync, UpdateAsync, ListByRequesterAsync, ListActiveAsync |
+| `IIntegrityCheckpointRepository` | AppendAsync, GetByIdAsync, GetLatestAsync, GetByWindowAsync, ListByTypeAsync |
+| `IIngestSourceRegistrationRepository` | UpsertAsync, GetBySourceAsync, ListActiveAsync, ListAllAsync, SetActiveAsync |
+
+### New EF implementations (4)
+All use `IDbContextFactory<AuditEventDbContext>` (short-lived contexts per operation). Registered in DI as `AddScoped` — work for both MySQL and InMemory providers.
+
+### Namespace disambiguation
+Both `PlatformAuditEventService.DTOs.AuditEventQueryRequest` (legacy) and `PlatformAuditEventService.DTOs.Query.AuditEventQueryRequest` (new) exist. The record repository files use a `using AuditRecordQueryRequest = ...` alias to avoid CS0104 ambiguous reference.
+
+### Build status — Step 7
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
