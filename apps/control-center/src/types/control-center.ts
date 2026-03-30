@@ -157,6 +157,30 @@ export interface AuditLogEntry {
   createdAtUtc: string;
 }
 
+/** Source mode for the audit log page. Set via AUDIT_READ_MODE env var. */
+export type AuditReadMode = 'legacy' | 'canonical' | 'hybrid';
+
+/** Canonical event from the Platform Audit Event Service query API. */
+export interface CanonicalAuditEvent {
+  id:            string;
+  source:        string;
+  eventType:     string;
+  category:      string;
+  severity:      string;
+  tenantId?:     string;
+  actorId?:      string;
+  actorLabel?:   string;
+  targetType?:   string;
+  targetId?:     string;
+  description:   string;
+  outcome:       string;
+  ipAddress?:    string;
+  correlationId?: string;
+  metadata?:     string;
+  occurredAtUtc: string;
+  ingestedAtUtc: string;
+}
+
 // ── Platform Settings ─────────────────────────────────────────────────────────
 
 export interface PlatformSetting {

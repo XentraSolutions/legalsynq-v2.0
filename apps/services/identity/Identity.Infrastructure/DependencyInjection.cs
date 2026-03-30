@@ -7,6 +7,7 @@ using Identity.Infrastructure.Auth;
 using Identity.Infrastructure.Data;
 using Identity.Infrastructure.Repositories;
 using Identity.Infrastructure.Services;
+using LegalSynq.AuditClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,6 +33,8 @@ public static class DependencyInjection
 
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+        services.AddAuditEventClient(configuration);
 
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IAuthService, AuthService>();

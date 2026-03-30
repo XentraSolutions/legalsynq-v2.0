@@ -55,6 +55,7 @@ import type {
   PlatformReadinessSummary,
   CareConnectIntegrityReport,
   ScopedRoleAssignment,
+  CanonicalAuditEvent,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -882,5 +883,37 @@ export function mapPagedResponse<T>(
     totalCount: num(r, 'total_count', 'totalCount', 0),
     page:       num(r, 'page',        'page',        1),
     pageSize:   num(r, 'page_size',   'pageSize',    20),
+  };
+}
+
+// ── CanonicalAuditEvent mapper ────────────────────────────────────────────────
+
+/**
+ * mapCanonicalAuditEvent — normalises a raw record from the Platform Audit Event
+ * Service query API (GET /audit/events).
+ *
+ * Maps the AuditEventRecordResponse wire shape to the CanonicalAuditEvent frontend type.
+ * Field name conventions: camelCase from the service (JsonNamingPolicy.CamelCase).
+ */
+export function mapCanonicalAuditEvent(raw: unknown): CanonicalAuditEvent {
+  const r = asObj(raw);
+  return {
+    id:            str(r, 'id',           'id',           ''),
+    source:        str(r, 'source',       'source',       ''),
+    eventType:     str(r, 'event_type',   'eventType',    ''),
+    category:      str(r, 'category',     'category',     ''),
+    severity:      str(r, 'severity',     'severity',     'info'),
+    tenantId:      r['tenantId']      as string | undefined,
+    actorId:       r['actorId']       as string | undefined,
+    actorLabel:    r['actorLabel']    as string | undefined,
+    targetType:    r['targetType']    as string | undefined,
+    targetId:      r['targetId']      as string | undefined,
+    description:   str(r, 'description', 'description', ''),
+    outcome:       str(r, 'outcome',     'outcome',      ''),
+    ipAddress:     r['ipAddress']     as string | undefined,
+    correlationId: r['correlationId'] as string | undefined,
+    metadata:      r['metadata']      as string | undefined,
+    occurredAtUtc: str(r, 'occurred_at_utc', 'occurredAtUtc', new Date().toISOString()),
+    ingestedAtUtc: str(r, 'ingested_at_utc', 'ingestedAtUtc', new Date().toISOString()),
   };
 }

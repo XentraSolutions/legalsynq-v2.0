@@ -1,7 +1,11 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
 using Identity.Domain;
+using LegalSynq.AuditClient;
+using LegalSynq.AuditClient.DTOs;
+using LegalSynq.AuditClient.Enums;
 using Microsoft.Extensions.Logging;
 
 namespace Identity.Application.Services;
@@ -12,6 +16,7 @@ public class AuthService : IAuthService
     private readonly ITenantRepository _tenantRepository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IAuditEventClient _auditClient;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -19,12 +24,14 @@ public class AuthService : IAuthService
         ITenantRepository tenantRepository,
         IPasswordHasher passwordHasher,
         IJwtTokenService jwtTokenService,
+        IAuditEventClient auditClient,
         ILogger<AuthService> logger)
     {
         _userRepository = userRepository;
         _tenantRepository = tenantRepository;
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
+        _auditClient = auditClient;
         _logger = logger;
     }
 
@@ -125,6 +132,36 @@ public class AuthService : IAuthService
             org?.Id,
             orgTypeForResponse,
             productRoles);
+
+        // Canonical audit: fire-and-observe — never throw, never gate login on audit success.
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "user.login.succeeded",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "auth-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = tenant.Id.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userWithRoles.Id.ToString(),
+                Type = ActorType.User,
+                Name = $"{userWithRoles.FirstName} {userWithRoles.LastName}".Trim(),
+            },
+            Entity = new AuditEventEntityDto { Type = "User", Id = userWithRoles.Id.ToString() },
+            Action      = "LoginSucceeded",
+            Description = $"User {userWithRoles.Email} authenticated successfully in tenant {tenant.Code}.",
+            Metadata    = JsonSerializer.Serialize(new { tenantCode = tenant.Code, email = userWithRoles.Email }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "user.login.succeeded", userWithRoles.Id.ToString()),
+            Tags = ["auth", "login"],
+        });
 
         return new LoginResponse(token, expiresAtUtc, userResponse);
     }

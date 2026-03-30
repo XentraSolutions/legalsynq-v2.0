@@ -1,62 +1,161 @@
-import { requirePlatformAdmin } from '@/lib/auth-guards';
-import { getTenantContext } from '@/lib/auth';
-import { controlCenterServerApi } from '@/lib/control-center-api';
-import { CCShell } from '@/components/shell/cc-shell';
-import { AuditLogTable } from '@/components/audit-logs/audit-log-table';
-import type { AuditLogEntry } from '@/types/control-center';
+import { requirePlatformAdmin }      from '@/lib/auth-guards';
+import { getTenantContext }           from '@/lib/auth';
+import { controlCenterServerApi }     from '@/lib/control-center-api';
+import { CCShell }                    from '@/components/shell/cc-shell';
+import { AuditLogTable }              from '@/components/audit-logs/audit-log-table';
+import { CanonicalAuditTable }        from '@/components/audit-logs/canonical-audit-table';
+import type { AuditLogEntry, CanonicalAuditEvent, AuditReadMode } from '@/types/control-center';
 
 interface AuditLogsPageProps {
   searchParams: {
-    search?:     string;
-    entityType?: string;
-    actor?:      string;
-    page?:       string;
+    search?:        string;
+    entityType?:    string;
+    actor?:         string;
+    eventType?:     string;
+    severity?:      string;
+    category?:      string;
+    correlationId?: string;
+    dateFrom?:      string;
+    dateTo?:        string;
+    page?:          string;
   };
 }
 
 const PAGE_SIZE = 15;
 
 /**
- * /audit-logs — System-wide audit log viewer.
+ * Resolved from AUDIT_READ_MODE env at build/request time.
+ *   legacy    → GET /identity/api/admin/audit              (default — backwards compatible)
+ *   canonical → GET /audit-service/audit/events            (Platform Audit Event Service)
+ *   hybrid    → canonical first, falls back to legacy on error
+ */
+const MODE: AuditReadMode =
+  (process.env['AUDIT_READ_MODE'] as AuditReadMode | undefined) ?? 'legacy';
+
+const MODE_LABELS: Record<AuditReadMode, string> = {
+  legacy:    'Legacy (Identity DB)',
+  canonical: 'Canonical (Audit Service)',
+  hybrid:    'Hybrid',
+};
+
+const MODE_COLORS: Record<AuditReadMode, string> = {
+  legacy:    'bg-gray-100 text-gray-600 border border-gray-200',
+  canonical: 'bg-blue-100 text-blue-700 border border-blue-300',
+  hybrid:    'bg-violet-100 text-violet-700 border border-violet-300',
+};
+
+/**
+ * /audit-logs — System-wide audit log viewer with canonical/legacy hybrid support.
  *
- * Access: PlatformAdmin only.
- * Read-only — no mutations on this page.
- *
- * Filtering is handled server-side via URL searchParams (plain GET form).
- * Data: served from mock stub in controlCenterServerApi.audit.list().
- * TODO: When GET /identity/api/admin/audit is live, the stub auto-wires —
- *       no page change needed, only the API method in control-center-api.ts.
+ * Access: PlatformAdmin only. Read-only.
+ * Filtering: server-side via URL searchParams (plain GET form, no JS required).
  */
 export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps) {
   const session   = await requirePlatformAdmin();
   const tenantCtx = getTenantContext();
 
-  const search     = searchParams.search     ?? '';
-  const entityType = searchParams.entityType ?? '';
-  const actor      = searchParams.actor      ?? '';
-  const page       = Math.max(1, parseInt(searchParams.page ?? '1', 10));
+  const search        = searchParams.search        ?? '';
+  const entityType    = searchParams.entityType    ?? '';
+  const actor         = searchParams.actor         ?? '';
+  const eventType     = searchParams.eventType     ?? '';
+  const severity      = searchParams.severity      ?? '';
+  const category      = searchParams.category      ?? '';
+  const correlationId = searchParams.correlationId ?? '';
+  const dateFrom      = searchParams.dateFrom      ?? '';
+  const dateTo        = searchParams.dateTo        ?? '';
+  const page          = Math.max(1, parseInt(searchParams.page ?? '1', 10));
 
-  let result: { items: AuditLogEntry[]; totalCount: number } | null = null;
-  let fetchError: string | null = null;
+  // ── Data fetching ───────────────────────────────────────────────────────────
 
-  try {
-    result = await controlCenterServerApi.audit.list({
-      page,
-      pageSize:   PAGE_SIZE,
-      search:     search     || undefined,
-      entityType: entityType || undefined,
-      actor:      actor      || undefined,
-      tenantId:   tenantCtx?.tenantId,
-    });
-  } catch (err) {
-    fetchError = err instanceof Error ? err.message : 'Failed to load audit logs.';
+  let legacyResult:    { items: AuditLogEntry[];       totalCount: number } | null = null;
+  let canonicalResult: { items: CanonicalAuditEvent[]; totalCount: number } | null = null;
+  let fetchError:      string | null = null;
+  let actualMode:      AuditReadMode = MODE;
+
+  if (MODE === 'canonical') {
+    try {
+      canonicalResult = await controlCenterServerApi.auditCanonical.list({
+        page, pageSize: PAGE_SIZE,
+        tenantId:      tenantCtx?.tenantId,
+        eventType:     eventType     || undefined,
+        severity:      severity      || undefined,
+        category:      category      || undefined,
+        actorId:       actor         || undefined,
+        correlationId: correlationId || undefined,
+        dateFrom:      dateFrom      || undefined,
+        dateTo:        dateTo        || undefined,
+        search:        search        || undefined,
+      });
+    } catch (err) {
+      fetchError = err instanceof Error ? err.message : 'Failed to load canonical audit logs.';
+    }
+  } else if (MODE === 'hybrid') {
+    // Try canonical first; silently fall back to legacy on any error.
+    try {
+      canonicalResult = await controlCenterServerApi.auditCanonical.list({
+        page, pageSize: PAGE_SIZE,
+        tenantId:      tenantCtx?.tenantId,
+        eventType:     eventType     || undefined,
+        severity:      severity      || undefined,
+        category:      category      || undefined,
+        actorId:       actor         || undefined,
+        correlationId: correlationId || undefined,
+        dateFrom:      dateFrom      || undefined,
+        dateTo:        dateTo        || undefined,
+        search:        search        || undefined,
+      });
+    } catch {
+      actualMode = 'legacy';
+      try {
+        legacyResult = await controlCenterServerApi.audit.list({
+          page, pageSize: PAGE_SIZE,
+          search:     search     || undefined,
+          entityType: entityType || undefined,
+          actor:      actor      || undefined,
+          tenantId:   tenantCtx?.tenantId,
+        });
+      } catch (err2) {
+        fetchError = err2 instanceof Error ? err2.message : 'Failed to load audit logs.';
+      }
+    }
+  } else {
+    // legacy (default)
+    try {
+      legacyResult = await controlCenterServerApi.audit.list({
+        page, pageSize: PAGE_SIZE,
+        search:     search     || undefined,
+        entityType: entityType || undefined,
+        actor:      actor      || undefined,
+        tenantId:   tenantCtx?.tenantId,
+      });
+    } catch (err) {
+      fetchError = err instanceof Error ? err.message : 'Failed to load audit logs.';
+    }
   }
 
-  const totalCount  = result?.totalCount ?? 0;
-  const totalPages  = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const hasFilters  = !!(search || entityType || actor);
-  const startItem   = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const endItem     = Math.min(page * PAGE_SIZE, totalCount);
+  const totalCount = canonicalResult?.totalCount ?? legacyResult?.totalCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const hasFilters = !!(search || entityType || actor || eventType || severity || category || correlationId || dateFrom || dateTo);
+  const startItem  = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const endItem    = Math.min(page * PAGE_SIZE, totalCount);
+  const isCanonical = !!canonicalResult;
+
+  // Build pagination href (preserves all active filters)
+  function paginationHref(p: number) {
+    const params = new URLSearchParams();
+    if (search)        params.set('search',        search);
+    if (entityType)    params.set('entityType',    entityType);
+    if (actor)         params.set('actor',         actor);
+    if (eventType)     params.set('eventType',     eventType);
+    if (severity)      params.set('severity',      severity);
+    if (category)      params.set('category',      category);
+    if (correlationId) params.set('correlationId', correlationId);
+    if (dateFrom)      params.set('dateFrom',      dateFrom);
+    if (dateTo)        params.set('dateTo',        dateTo);
+    if (p > 1)         params.set('page',          String(p));
+    const qs = params.toString();
+    return `/audit-logs${qs ? `?${qs}` : ''}`;
+  }
 
   return (
     <CCShell userEmail={session.email}>
@@ -64,11 +163,14 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
 
         {/* Page header */}
         <div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-xl font-semibold text-gray-900">Audit Logs</h1>
-            <span className="inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
-              IN PROGRESS
+
+            {/* Source-mode badge */}
+            <span className={`inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full ${MODE_COLORS[actualMode]}`}>
+              {MODE_LABELS[actualMode]}
             </span>
+
             {tenantCtx && (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[11px] font-semibold text-amber-700">
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
@@ -86,118 +188,161 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
         {/* Filter bar (native GET form — no JS required) */}
         <form method="GET" action="/audit-logs" className="flex flex-wrap items-end gap-3">
 
-          {/* Full-text search */}
-          <div className="flex-1 min-w-48">
-            <label htmlFor="search" className="block text-xs font-medium text-gray-600 mb-1">
-              Search
-            </label>
-            <input
-              id="search"
-              name="search"
-              type="search"
-              defaultValue={search}
+          <div className="flex-1 min-w-40">
+            <label htmlFor="search" className="block text-xs font-medium text-gray-600 mb-1">Search</label>
+            <input id="search" name="search" type="search" defaultValue={search}
               placeholder="Action, entity, actor…"
-              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            />
+              className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
 
-          {/* Entity type filter */}
-          <div className="w-44">
-            <label htmlFor="entityType" className="block text-xs font-medium text-gray-600 mb-1">
-              Entity Type
-            </label>
-            <select
-              id="entityType"
-              name="entityType"
-              defaultValue={entityType}
-              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-            >
-              <option value="">All types</option>
-              <option value="User">User</option>
-              <option value="Tenant">Tenant</option>
-              <option value="Entitlement">Entitlement</option>
-              <option value="Role">Role</option>
-              <option value="System">System</option>
-            </select>
-          </div>
+          {/* Canonical / Hybrid filters */}
+          {(MODE === 'canonical' || MODE === 'hybrid') && (
+            <>
+              <div className="w-40">
+                <label htmlFor="eventType" className="block text-xs font-medium text-gray-600 mb-1">Event Type</label>
+                <input id="eventType" name="eventType" defaultValue={eventType}
+                  placeholder="user.login.succeeded"
+                  className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
 
-          {/* Actor filter */}
-          <div className="w-52">
-            <label htmlFor="actor" className="block text-xs font-medium text-gray-600 mb-1">
-              Actor
-            </label>
-            <input
-              id="actor"
-              name="actor"
-              type="search"
-              defaultValue={actor}
-              placeholder="Email or service name…"
-              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-            />
-          </div>
+              <div className="w-32">
+                <label htmlFor="category" className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+                <select id="category" name="category" defaultValue={category}
+                  className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">All</option>
+                  <option value="security">Security</option>
+                  <option value="access">Access</option>
+                  <option value="business">Business</option>
+                  <option value="administrative">Administrative</option>
+                  <option value="compliance">Compliance</option>
+                  <option value="dataChange">Data Change</option>
+                </select>
+              </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="submit"
-              className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1"
-            >
+              <div className="w-28">
+                <label htmlFor="severity" className="block text-xs font-medium text-gray-600 mb-1">Severity</label>
+                <select id="severity" name="severity" defaultValue={severity}
+                  className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">All</option>
+                  <option value="info">Info</option>
+                  <option value="warn">Warn</option>
+                  <option value="error">Error</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+
+              <div className="w-44">
+                <label htmlFor="correlationId" className="block text-xs font-medium text-gray-600 mb-1">Correlation ID</label>
+                <input id="correlationId" name="correlationId" defaultValue={correlationId}
+                  placeholder="req-xxxxxxxx"
+                  className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+
+              <div className="w-36">
+                <label htmlFor="dateFrom" className="block text-xs font-medium text-gray-600 mb-1">From</label>
+                <input id="dateFrom" name="dateFrom" type="date" defaultValue={dateFrom}
+                  className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+
+              <div className="w-36">
+                <label htmlFor="dateTo" className="block text-xs font-medium text-gray-600 mb-1">To</label>
+                <input id="dateTo" name="dateTo" type="date" defaultValue={dateTo}
+                  className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </>
+          )}
+
+          {/* Legacy-only filters */}
+          {MODE === 'legacy' && (
+            <>
+              <div className="w-44">
+                <label htmlFor="entityType" className="block text-xs font-medium text-gray-600 mb-1">Entity Type</label>
+                <select id="entityType" name="entityType" defaultValue={entityType}
+                  className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <option value="">All types</option>
+                  <option value="User">User</option>
+                  <option value="Tenant">Tenant</option>
+                  <option value="Entitlement">Entitlement</option>
+                  <option value="Role">Role</option>
+                  <option value="System">System</option>
+                </select>
+              </div>
+
+              <div className="w-52">
+                <label htmlFor="actor" className="block text-xs font-medium text-gray-600 mb-1">Actor</label>
+                <input id="actor" name="actor" type="search" defaultValue={actor}
+                  placeholder="Email or service name…"
+                  className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center gap-2 pb-0.5">
+            <button type="submit"
+              className="h-9 px-4 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1">
               Filter
             </button>
             {hasFilters && (
-              <a
-                href="/audit-logs"
-                className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-300 hover:border-gray-400 rounded-md transition-colors"
-              >
+              <a href="/audit-logs"
+                className="inline-flex items-center h-9 px-3 text-sm font-medium text-gray-600 hover:text-gray-900 bg-white border border-gray-300 hover:border-gray-400 rounded-md transition-colors">
                 Clear
               </a>
             )}
           </div>
         </form>
 
-        {/* Active filter summary */}
+        {/* Active filter chips */}
         {hasFilters && !fetchError && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <span>Showing results for</span>
-            {search     && <FilterChip label={`"${search}"`} />}
-            {entityType && <FilterChip label={`type: ${entityType}`} />}
-            {actor      && <FilterChip label={`actor: ${actor}`} />}
+          <div className="flex items-center flex-wrap gap-2 text-sm text-gray-500">
+            <span>Filters:</span>
+            {search        && <FilterChip label={`"${search}"`} />}
+            {entityType    && <FilterChip label={`type: ${entityType}`} />}
+            {actor         && <FilterChip label={`actor: ${actor}`} />}
+            {eventType     && <FilterChip label={`event: ${eventType}`} />}
+            {severity      && <FilterChip label={`severity: ${severity}`} />}
+            {category      && <FilterChip label={`category: ${category}`} />}
+            {correlationId && <FilterChip label={`corr: ${correlationId}`} />}
+            {dateFrom      && <FilterChip label={`from: ${dateFrom}`} />}
+            {dateTo        && <FilterChip label={`to: ${dateTo}`} />}
           </div>
         )}
 
-        {/* Error state */}
+        {/* Error banner */}
         {fetchError && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
             {fetchError}
           </div>
         )}
 
-        {/* Result count + table */}
-        {result && (
-          <>
-            <div className="flex items-center justify-between text-xs text-gray-400">
-              <span>
-                {totalCount === 0
-                  ? 'No entries found'
-                  : `Showing ${startItem}–${endItem} of ${totalCount} event${totalCount !== 1 ? 's' : ''}`}
-              </span>
-              {totalPages > 1 && (
-                <span>Page {page} of {totalPages}</span>
-              )}
-            </div>
+        {/* Result count header */}
+        {!fetchError && (canonicalResult || legacyResult) && (
+          <div className="flex items-center justify-between text-xs text-gray-400">
+            <span>
+              {totalCount === 0
+                ? 'No matching events'
+                : `Showing ${startItem}–${endItem} of ${totalCount.toLocaleString()} event${totalCount !== 1 ? 's' : ''}`}
+            </span>
+            {totalPages > 1 && <span>Page {page} of {totalPages}</span>}
+          </div>
+        )}
 
-            <AuditLogTable entries={result.items} />
+        {/* Table — canonical path */}
+        {!fetchError && canonicalResult && (
+          <CanonicalAuditTable entries={canonicalResult.items} />
+        )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <Pagination
-                page={page}
-                totalPages={totalPages}
-                search={search}
-                entityType={entityType}
-                actor={actor}
-              />
-            )}
-          </>
+        {/* Table — legacy path */}
+        {!fetchError && legacyResult && (
+          <AuditLogTable entries={legacyResult.items} />
+        )}
+
+        {/* Pagination */}
+        {!fetchError && totalPages > 1 && (
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            buildHref={paginationHref}
+          />
         )}
 
       </div>
@@ -215,25 +360,15 @@ function FilterChip({ label }: { label: string }) {
   );
 }
 
-interface PaginationProps {
-  page:        number;
-  totalPages:  number;
-  search:      string;
-  entityType:  string;
-  actor:       string;
-}
-
-function Pagination({ page, totalPages, search, entityType, actor }: PaginationProps) {
-  function buildHref(p: number) {
-    const params = new URLSearchParams();
-    if (search)     params.set('search',     search);
-    if (entityType) params.set('entityType', entityType);
-    if (actor)      params.set('actor',      actor);
-    if (p > 1)      params.set('page',       String(p));
-    const qs = params.toString();
-    return `/audit-logs${qs ? `?${qs}` : ''}`;
-  }
-
+function Pagination({
+  page,
+  totalPages,
+  buildHref,
+}: {
+  page:       number;
+  totalPages: number;
+  buildHref:  (p: number) => string;
+}) {
   const pages: (number | '…')[] = buildPageRange(page, totalPages);
 
   return (

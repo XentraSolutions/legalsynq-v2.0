@@ -61,6 +61,7 @@ import {
   mapRoleSummary,
   mapRoleDetail,
   mapAuditLog,
+  mapCanonicalAuditEvent,
   mapSetting,
   mapMonitoring,
   mapSupportCase,
@@ -87,6 +88,7 @@ import type {
   ProductEntitlementSummary,
   ProductCode,
   AuditLogEntry,
+  CanonicalAuditEvent,
   PlatformSetting,
   MonitoringSummary,
   SupportCase,
@@ -365,6 +367,65 @@ export const controlCenterServerApi = {
         [CACHE_TAGS.audit],
       );
       const paged = mapPagedResponse(raw, mapAuditLog);
+      return { items: paged.items, totalCount: paged.totalCount };
+    },
+  },
+
+  // ── Canonical Audit (Platform Audit Event Service) ────────────────────────
+
+  auditCanonical: {
+    /**
+     * GET /audit-service/audit/events
+     *
+     * Queries the canonical Platform Audit Event Service (port 5007) via the
+     * API gateway route /audit-service/...
+     *
+     * Supports rich filtering: tenantId, eventType, category, severity, actorId,
+     * targetType, targetId, correlationId, dateFrom, dateTo, page, pageSize.
+     *
+     * Cache: 10 s  Tag: cc:audit-canonical
+     *
+     * AUDIT_READ_MODE env controls which source the audit-logs page uses:
+     *   legacy    → only GET /identity/api/admin/audit   (default)
+     *   canonical → only GET /audit-service/audit/events
+     *   hybrid    → canonical first, fall back to legacy on error
+     */
+    list: async (params: {
+      page?:          number;
+      pageSize?:      number;
+      tenantId?:      string;
+      eventType?:     string;
+      category?:      string;
+      severity?:      string;
+      actorId?:       string;
+      targetType?:    string;
+      targetId?:      string;
+      correlationId?: string;
+      dateFrom?:      string;
+      dateTo?:        string;
+      search?:        string;
+    } = {}): Promise<{ items: CanonicalAuditEvent[]; totalCount: number }> => {
+      const qs = toQs({
+        page:          params.page        ?? 1,
+        pageSize:      params.pageSize    ?? 15,
+        tenantId:      params.tenantId,
+        eventType:     params.eventType,
+        category:      params.category,
+        severity:      params.severity,
+        actorId:       params.actorId,
+        targetType:    params.targetType,
+        targetId:      params.targetId,
+        correlationId: params.correlationId,
+        dateFrom:      params.dateFrom,
+        dateTo:        params.dateTo,
+        search:        params.search,
+      });
+      const raw = await apiClient.get<unknown>(
+        `/audit-service/audit/events${qs}`,
+        10,
+        [CACHE_TAGS.auditCanonical],
+      );
+      const paged = mapPagedResponse(raw, mapCanonicalAuditEvent);
       return { items: paged.items, totalCount: paged.totalCount };
     },
   },

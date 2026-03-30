@@ -1,6 +1,10 @@
+using System.Text.Json;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
+using LegalSynq.AuditClient;
+using LegalSynq.AuditClient.DTOs;
+using LegalSynq.AuditClient.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Identity.Api.Endpoints;
@@ -927,6 +931,7 @@ public static class AdminEndpoints
         Guid                 id,
         AssignRoleRequest    body,
         IdentityDbContext    db,
+        IAuditEventClient    auditClient,
         HttpContext          ctx)
     {
         var user = await db.Users.FindAsync(id);
@@ -998,6 +1003,27 @@ public static class AdminEndpoints
 
         await db.SaveChangesAsync();
 
+        // Canonical audit — fire-and-observe, never gates the response.
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "user.role.assigned",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = auditNow,
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+            Actor = new AuditEventActorDto { Id = body.AssignedByUserId?.ToString(), Type = ActorType.User },
+            Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
+            Action      = "RoleAssigned",
+            Description = $"Role '{role.Name}' ({scopeType}) assigned to user {id}.",
+            After       = JsonSerializer.Serialize(new { roleId = body.RoleId, roleName = role.Name, scopeType, organizationId = body.OrganizationId }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "user.role.assigned", sra.Id.ToString()),
+            Tags = ["role-management", "access-control"],
+        });
+
         return Results.Created(
             $"/api/admin/users/{id}/roles/{body.RoleId}",
             new
@@ -1065,21 +1091,46 @@ public static class AdminEndpoints
     private static async Task<IResult> RevokeRole(
         Guid              id,
         Guid              roleId,
-        IdentityDbContext db)
+        IdentityDbContext db,
+        IAuditEventClient auditClient)
     {
         var user = await db.Users.FindAsync(id);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
         // Phase G: deactivate the GLOBAL ScopedRoleAssignment (sole authoritative record).
         var sra = await db.ScopedRoleAssignments
+            .Include(s => s.Role)
             .FirstOrDefaultAsync(s => s.UserId == id && s.RoleId == roleId
                                    && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global && s.IsActive);
         if (sra is null)
             return Results.NotFound(new { error = $"Role '{roleId}' is not assigned to user '{id}'." });
 
+        var roleName = sra.Role?.Name ?? roleId.ToString();
         sra.Deactivate();
 
         await db.SaveChangesAsync();
+
+        // Canonical audit — fire-and-observe, never gates the response.
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "user.role.revoked",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = auditNow,
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+            Actor = new AuditEventActorDto { Type = ActorType.User },
+            Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
+            Action      = "RoleRevoked",
+            Description = $"Role '{roleName}' revoked from user {id}.",
+            Before      = JsonSerializer.Serialize(new { roleId, roleName }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "user.role.revoked", id.ToString(), roleId.ToString()),
+            Tags = ["role-management", "access-control"],
+        });
+
         return Results.NoContent();
     }
 

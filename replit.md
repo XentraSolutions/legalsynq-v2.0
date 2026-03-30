@@ -1900,3 +1900,49 @@ Added nullable `long? RecordCount` to track the number of records written. EF co
 - `appsettings.Production.json` — production configuration baseline
 - `Docs/production-readiness-checklist.md` — 40-item deployment checklist covering auth, DB, integrity, retention, export, observability, network, and HIPAA compliance
 - `analysis/step21_hardening.md` — full issue catalogue: 14 findings, fixes, and build verification
+
+## Step 24 — Audit Cutover, Producer Integration & UI Activation (2026-03-30)
+
+### T001 — Gateway: Audit Service Routes
+Added 4 routes to `apps/services/gateway/appsettings.json`:
+- `GET /audit-service/audit/events` → query canonical events
+- `GET /audit-service/audit/export` → export
+- `GET /audit-service/health` → health probe
+- `GET /audit-service/audit/info` → service info
+New `audit-cluster` upstream → `http://localhost:5007`. Purely additive.
+
+### T002 — Shared Audit Client Library (`shared/audit-client/LegalSynq.AuditClient/`)
+- `IAuditEventClient` — `IngestAsync` / `BatchIngestAsync` contract
+- `HttpAuditEventClient` — fire-and-observe HTTP implementation (never throws on delivery failure)
+- `AuditClientOptions` — `BaseUrl`, `ServiceToken`, `TimeoutSeconds`
+- `AuditClientServiceCollectionExtensions` — `AddAuditEventClient(IConfiguration)`
+- `IdempotencyKey` — deterministic key generation (`For` / `ForWithTimestamp`)
+- DTOs: `IngestAuditEventRequest`, `BatchIngestRequest`, `IngestResult`, `BatchIngestResult`, scope/actor/entity DTOs
+- Enums: `EventCategory`, `SeverityLevel`, `ScopeType`, `ActorType`, `VisibilityScope`
+- Added to `LegalSynq.sln` under `shared` solution folder (properly registered via `dotnet sln add`)
+
+### T003 — Identity & CareConnect Producers
+- **Identity `AuthService`** — emits `user.login.succeeded` on successful authentication
+- **Identity `AdminEndpoints`** — emits `user.role.assigned` / `user.role.revoked` on admin role changes
+- **CareConnect `DependencyInjection`** — wired with `AddAuditEventClient` (ready for event emission)
+- Both services have `AuditClient` config block in `appsettings.json` (BaseUrl → `:5007`, empty ServiceToken, 5 s timeout)
+
+### T004 — Control Center UI: Canonical + Legacy Hybrid
+- **`types/control-center.ts`** — added `CanonicalAuditEvent`, `AuditReadMode` (`legacy` | `canonical` | `hybrid`)
+- **`lib/api-client.ts`** — added `auditCanonical` cache tag
+- **`lib/api-mappers.ts`** — added `mapCanonicalAuditEvent(raw)` normaliser
+- **`lib/control-center-api.ts`** — added `auditCanonical.list(params)` → `GET /audit-service/audit/events` (13 query params, 10 s cache)
+- **`app/audit-logs/page.tsx`** — AUDIT_READ_MODE-driven hybrid page: `legacy` (default) / `canonical` / `hybrid` (canonical-first with silent legacy fallback); adaptive filter UI per mode; source badge in header
+- **`components/audit-logs/canonical-audit-table.tsx`** — NEW: read-only table for canonical events with severity/category/outcome badge components
+
+### T005 — Tenant Portal: Activity Page
+- **`apps/web/src/app/(platform)/activity/page.tsx`** — Phase 1 placeholder with `requireOrg()` guard + `BlankPage`. Phase 2 (pending): canonical events scoped to tenantId.
+
+### T006 — Technical Report
+- **`docs/step-24-audit-cutover-report.md`** — full technical report: architecture diagram, change-by-task breakdown, AUDIT_READ_MODE deployment guide (4-stage cutover), HIPAA alignment table, limitations & next steps
+
+### Build Status
+- Identity API: 0 errors, 0 warnings (LegalSynq.AuditClient compiled transitively)
+- CareConnect API: 0 errors, 1 pre-existing warning
+- Control Center TypeScript: 0 errors
+- Solution file: fixed bogus placeholder GUIDs; audit client correctly registered with `dotnet sln add`

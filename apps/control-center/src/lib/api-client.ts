@@ -346,6 +346,8 @@ export const CACHE_TAGS = {
   platformReadiness:    'cc:platform-readiness',
   // CareConnect — integrity report
   ccIntegrity:          'cc:careconnect-integrity',
+  // Step 24 — canonical audit (Platform Audit Event Service)
+  auditCanonical:       'cc:audit-canonical',
 } as const;
 
 export type CacheTag = typeof CACHE_TAGS[keyof typeof CACHE_TAGS];

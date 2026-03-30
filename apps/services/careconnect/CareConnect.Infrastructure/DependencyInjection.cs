@@ -4,6 +4,7 @@ using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
 using CareConnect.Infrastructure.Repositories;
 using CareConnect.Infrastructure.Services;
+using LegalSynq.AuditClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +22,8 @@ public static class DependencyInjection
         services.Configure<IdentityServiceOptions>(
             configuration.GetSection(IdentityServiceOptions.SectionName));
         services.AddHttpClient("IdentityService");
+
+        services.AddAuditEventClient(configuration);
 
         services.AddDbContext<CareConnectDbContext>(options =>
             options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
