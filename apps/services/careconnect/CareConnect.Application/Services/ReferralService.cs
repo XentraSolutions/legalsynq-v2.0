@@ -12,15 +12,18 @@ public class ReferralService : IReferralService
     private readonly IReferralRepository _referrals;
     private readonly IProviderRepository _providers;
     private readonly INotificationService _notifications;
+    private readonly IOrganizationRelationshipResolver _relationshipResolver;
 
     public ReferralService(
         IReferralRepository referrals,
         IProviderRepository providers,
-        INotificationService notifications)
+        INotificationService notifications,
+        IOrganizationRelationshipResolver relationshipResolver)
     {
-        _referrals     = referrals;
-        _providers     = providers;
-        _notifications = notifications;
+        _referrals            = referrals;
+        _providers            = providers;
+        _notifications        = notifications;
+        _relationshipResolver = relationshipResolver;
     }
 
     public async Task<PagedResponse<ReferralResponse>> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default)
@@ -52,12 +55,23 @@ public class ReferralService : IReferralService
         var provider = await _providers.GetByIdAsync(tenantId, request.ProviderId, ct)
             ?? throw new NotFoundException($"Provider '{request.ProviderId}' was not found.");
 
+        // Phase C: resolve the Identity OrganizationRelationship when both org IDs are provided.
+        // The null resolver (default) always returns null — no runtime side-effects.
+        Guid? orgRelationshipId = null;
+        if (request.ReferringOrganizationId.HasValue && request.ReceivingOrganizationId.HasValue)
+        {
+            orgRelationshipId = await _relationshipResolver.FindActiveRelationshipAsync(
+                request.ReferringOrganizationId.Value,
+                request.ReceivingOrganizationId.Value,
+                ct);
+        }
+
         var referral = Referral.Create(
             tenantId,
-            referringOrganizationId: null,   // populated by multi-org endpoint; null = legacy path
-            receivingOrganizationId: null,   // will be derived from provider in multi-org phase
+            referringOrganizationId: request.ReferringOrganizationId,
+            receivingOrganizationId: request.ReceivingOrganizationId,
             provider.Id,
-            subjectPartyId: null,            // null = using inline fields (backward compat)
+            subjectPartyId: null,       // null = using inline fields (backward compat)
             subjectNameSnapshot: null,
             subjectDobSnapshot: null,
             request.ClientFirstName,
@@ -69,7 +83,8 @@ public class ReferralService : IReferralService
             request.RequestedService,
             request.Urgency,
             request.Notes,
-            userId);
+            userId,
+            organizationRelationshipId: orgRelationshipId);
 
         await _referrals.AddAsync(referral, ct);
 

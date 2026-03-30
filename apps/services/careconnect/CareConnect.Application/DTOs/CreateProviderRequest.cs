@@ -17,4 +17,9 @@ public class CreateProviderRequest
     public double? Latitude         { get; set; }
     public double? Longitude        { get; set; }
     public string? GeoPointSource   { get; set; }
+
+    // Phase D: optional Identity Organization FK.
+    // When supplied, the created Provider is linked to the corresponding
+    // Identity Organization via Provider.LinkOrganization.
+    public Guid? OrganizationId     { get; set; }
 }

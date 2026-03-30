@@ -1,5 +1,11 @@
 namespace Identity.Domain;
 
+/// <summary>
+/// TODO [LEGACY — Phase F]: this table predates ScopedRoleAssignment (Phase 4).
+/// ScopedRoleAssignment is the forward-looking model (with scope discriminator).
+/// UserRoleAssignment is kept for backward compatibility; do not create new records here.
+/// All rows have been back-populated into ScopedRoleAssignments via migration 20260330110004.
+/// </summary>
 public class UserRoleAssignment
 {
     public Guid Id { get; private set; }

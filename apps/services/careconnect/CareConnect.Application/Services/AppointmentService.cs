@@ -74,7 +74,7 @@ public class AppointmentService : IAppointmentService
         if (errors.Count > 0)
             throw new ValidationException("One or more validation errors occurred.", errors);
 
-        _ = await _referrals.GetByIdAsync(tenantId, request.ReferralId, ct)
+        var referral = await _referrals.GetByIdAsync(tenantId, request.ReferralId, ct)
             ?? throw new NotFoundException($"Referral '{request.ReferralId}' was not found.");
 
         var slot = await _slots.GetByIdAsync(tenantId, request.AppointmentSlotId, ct)
@@ -96,6 +96,8 @@ public class AppointmentService : IAppointmentService
 
         slot.Reserve(userId);
 
+        // Phase C: denormalize the org relationship from the referral so the appointment
+        // can be filtered/reported by org relationship without a join back to Referral.
         var appointment = Appointment.Create(
             tenantId,
             request.ReferralId,
@@ -106,7 +108,8 @@ public class AppointmentService : IAppointmentService
             slot.StartAtUtc,
             slot.EndAtUtc,
             request.Notes,
-            userId);
+            userId,
+            organizationRelationshipId: referral.OrganizationRelationshipId);
 
         await _appointments.SaveBookingAsync(slot, appointment, ct);
 

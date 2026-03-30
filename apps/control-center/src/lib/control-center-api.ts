@@ -67,6 +67,11 @@ import {
   mapSupportCaseDetail,
   mapSupportNote,
   mapPagedResponse,
+  mapOrganizationTypeItem,
+  mapRelationshipTypeItem,
+  mapOrgRelationship,
+  mapProductOrgTypeRule,
+  mapProductRelTypeRule,
 }                                       from '@/lib/api-mappers';
 import type {
   TenantSummary,
@@ -85,6 +90,11 @@ import type {
   SupportCaseStatus,
   SupportNote,
   PagedResponse,
+  OrganizationTypeItem,
+  RelationshipTypeItem,
+  OrgRelationship,
+  ProductOrgTypeRule,
+  ProductRelTypeRule,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -568,6 +578,156 @@ export const controlCenterServerApi = {
       // Purge so updated status is visible in list and detail immediately
       revalidateTag(CACHE_TAGS.support);
       return result;
+    },
+  },
+
+  // ── Organization Types (Phase E) ────────────────────────────────────────────
+  /**
+   * GET /identity/api/admin/organization-types
+   *
+   * Returns all active OrganizationType catalog entries.
+   * Cache tag: cc:org-types, TTL: 300 s (near-static reference data).
+   */
+  organizationTypes: {
+    list: async (): Promise<OrganizationTypeItem[]> => {
+      const raw = await apiClient.get<unknown>(
+        '/identity/api/admin/organization-types',
+        300,
+        [CACHE_TAGS.orgTypes],
+      );
+      return Array.isArray(raw) ? raw.map(mapOrganizationTypeItem) : [];
+    },
+
+    getById: async (id: string): Promise<OrganizationTypeItem | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/identity/api/admin/organization-types/${encodeURIComponent(id)}`,
+          300,
+          [CACHE_TAGS.orgTypes],
+        );
+        return mapOrganizationTypeItem(raw);
+      } catch (err) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
+    },
+  },
+
+  // ── Relationship Types (Phase E) ─────────────────────────────────────────────
+  /**
+   * GET /identity/api/admin/relationship-types
+   *
+   * Returns all active RelationshipType catalog entries.
+   * Cache tag: cc:rel-types, TTL: 300 s (near-static reference data).
+   */
+  relationshipTypes: {
+    list: async (): Promise<RelationshipTypeItem[]> => {
+      const raw = await apiClient.get<unknown>(
+        '/identity/api/admin/relationship-types',
+        300,
+        [CACHE_TAGS.relTypes],
+      );
+      return Array.isArray(raw) ? raw.map(mapRelationshipTypeItem) : [];
+    },
+
+    getById: async (id: string): Promise<RelationshipTypeItem | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/identity/api/admin/relationship-types/${encodeURIComponent(id)}`,
+          300,
+          [CACHE_TAGS.relTypes],
+        );
+        return mapRelationshipTypeItem(raw);
+      } catch (err) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
+    },
+  },
+
+  // ── Organization Relationships (Phase E) ─────────────────────────────────────
+  /**
+   * GET /identity/api/admin/organization-relationships
+   *
+   * Returns all OrganizationRelationship records (optionally filtered).
+   * Cache tag: cc:org-relationships, TTL: 60 s.
+   */
+  organizationRelationships: {
+    list: async (params?: {
+      sourceOrgId?:       string;
+      targetOrgId?:       string;
+      relationshipTypeId?: string;
+      activeOnly?:        boolean;
+      page?:              number;
+      pageSize?:          number;
+    }): Promise<PagedResponse<OrgRelationship>> => {
+      const qs  = toQs(params ?? {});
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/organization-relationships${qs}`,
+        60,
+        [CACHE_TAGS.orgRelationships],
+      );
+      return mapPagedResponse(raw, mapOrgRelationship);
+    },
+
+    getById: async (id: string): Promise<OrgRelationship | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/identity/api/admin/organization-relationships/${encodeURIComponent(id)}`,
+          60,
+          [CACHE_TAGS.orgRelationships],
+        );
+        return mapOrgRelationship(raw);
+      } catch (err) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
+    },
+  },
+
+  // ── Product–OrgType Rules (Phase E) ──────────────────────────────────────────
+  /**
+   * GET /identity/api/admin/product-org-type-rules
+   *
+   * Returns all ProductOrganizationTypeRule entries.
+   * Cache tag: cc:product-org-type-rules, TTL: 300 s.
+   */
+  productOrgTypeRules: {
+    list: async (params?: {
+      productId?:          string;
+      organizationTypeId?: string;
+      activeOnly?:         boolean;
+    }): Promise<ProductOrgTypeRule[]> => {
+      const qs  = toQs(params ?? {});
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/product-org-type-rules${qs}`,
+        300,
+        [CACHE_TAGS.productOrgTypeRules],
+      );
+      return Array.isArray(raw) ? raw.map(mapProductOrgTypeRule) : [];
+    },
+  },
+
+  // ── Product–RelType Rules (Phase E) ──────────────────────────────────────────
+  /**
+   * GET /identity/api/admin/product-rel-type-rules
+   *
+   * Returns all ProductRelationshipTypeRule entries.
+   * Cache tag: cc:product-rel-type-rules, TTL: 300 s.
+   */
+  productRelTypeRules: {
+    list: async (params?: {
+      productId?:         string;
+      relationshipTypeId?: string;
+      activeOnly?:        boolean;
+    }): Promise<ProductRelTypeRule[]> => {
+      const qs  = toQs(params ?? {});
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/product-rel-type-rules${qs}`,
+        300,
+        [CACHE_TAGS.productRelTypeRules],
+      );
+      return Array.isArray(raw) ? raw.map(mapProductRelTypeRule) : [];
     },
   },
 

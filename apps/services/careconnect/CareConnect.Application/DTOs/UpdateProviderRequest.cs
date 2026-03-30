@@ -17,4 +17,8 @@ public class UpdateProviderRequest
     public double? Latitude         { get; set; }
     public double? Longitude        { get; set; }
     public string? GeoPointSource   { get; set; }
+
+    // Phase D: optional Identity Organization FK.
+    // When supplied, Provider.LinkOrganization is called during the update.
+    public Guid? OrganizationId     { get; set; }
 }

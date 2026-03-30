@@ -19,6 +19,16 @@ public class Facility : AuditableEntity
 
     public List<ProviderFacility> ProviderFacilities { get; private set; } = new();
 
+    /// <summary>
+    /// Phase D: link this facility to the corresponding Identity Organization.
+    /// Sets the soft FK OrganizationId so cross-service identity can be resolved.
+    /// </summary>
+    public void LinkOrganization(Guid organizationId)
+    {
+        OrganizationId = organizationId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     private Facility() { }
 
     public static Facility Create(

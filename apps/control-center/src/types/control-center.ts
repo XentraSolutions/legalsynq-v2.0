@@ -287,6 +287,90 @@ export interface UserImpersonationSession {
   startedAtUtc:          string;
 }
 
+// ── Organization Types (Phase E) ──────────────────────────────────────────────
+
+/**
+ * A catalog entry for an organization type in the Identity service.
+ * Returned by GET /identity/api/admin/organization-types.
+ */
+export interface OrganizationTypeItem {
+  id:          string;
+  code:        string;
+  name:        string;
+  description: string;
+  isActive:    boolean;
+  createdAtUtc: string;
+}
+
+// ── Relationship Types (Phase E) ──────────────────────────────────────────────
+
+/**
+ * A catalog entry for a relationship type (e.g. Referral, Partnership).
+ * Returned by GET /identity/api/admin/relationship-types.
+ */
+export interface RelationshipTypeItem {
+  id:          string;
+  code:        string;
+  name:        string;
+  description: string;
+  isActive:    boolean;
+  createdAtUtc: string;
+}
+
+// ── Organization Relationships (Phase E) ──────────────────────────────────────
+
+/** Live status of an organization-to-organization relationship. */
+export type OrgRelationshipStatus = 'Active' | 'Inactive' | 'Pending';
+
+/**
+ * A directed relationship between two organizations in the Identity graph.
+ * Returned by GET /identity/api/admin/organization-relationships.
+ */
+export interface OrgRelationship {
+  id:                   string;
+  sourceOrganizationId: string;
+  targetOrganizationId: string;
+  relationshipTypeId:   string;
+  relationshipTypeCode: string;
+  status:               OrgRelationshipStatus;
+  effectiveFromUtc?:    string;
+  effectiveToUtc?:      string;
+  createdAtUtc:         string;
+  updatedAtUtc:         string;
+}
+
+// ── Product–OrgType Rules (Phase E) ──────────────────────────────────────────
+
+/**
+ * A rule that permits a given OrganizationType to access a Product.
+ * Returned by GET /identity/api/admin/product-org-type-rules.
+ */
+export interface ProductOrgTypeRule {
+  id:                 string;
+  productId:          string;
+  productCode:        string;
+  organizationTypeId: string;
+  organizationTypeCode: string;
+  isActive:           boolean;
+  createdAtUtc:       string;
+}
+
+// ── Product–RelType Rules (Phase E) ──────────────────────────────────────────
+
+/**
+ * A rule that permits a given RelationshipType to be used for a Product.
+ * Returned by GET /identity/api/admin/product-rel-type-rules.
+ */
+export interface ProductRelTypeRule {
+  id:                  string;
+  productId:           string;
+  productCode:         string;
+  relationshipTypeId:  string;
+  relationshipTypeCode: string;
+  isActive:            boolean;
+  createdAtUtc:        string;
+}
+
 // ── Shared ────────────────────────────────────────────────────────────────────
 
 export interface PagedResponse<T> {

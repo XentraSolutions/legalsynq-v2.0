@@ -27,6 +27,16 @@ public class Provider : AuditableEntity
 
     public List<ProviderCategory> ProviderCategories { get; private set; } = new();
 
+    /// <summary>
+    /// Phase D: link this provider record to the corresponding Identity Organization.
+    /// Sets the soft FK OrganizationId so cross-service identity can be resolved.
+    /// </summary>
+    public void LinkOrganization(Guid organizationId)
+    {
+        OrganizationId = organizationId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     private Provider() { }
 
     public static Provider Create(

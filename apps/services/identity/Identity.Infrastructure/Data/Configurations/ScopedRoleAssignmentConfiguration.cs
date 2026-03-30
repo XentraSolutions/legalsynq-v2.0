@@ -32,7 +32,7 @@ public class ScopedRoleAssignmentConfiguration : IEntityTypeConfiguration<Scoped
         builder.HasIndex(a => a.OrganizationRelationshipId);
 
         builder.HasOne(a => a.User)
-            .WithMany()
+            .WithMany(u => u.ScopedRoleAssignments)
             .HasForeignKey(a => a.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 

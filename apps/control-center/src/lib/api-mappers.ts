@@ -45,6 +45,12 @@ import type {
   SupportCaseStatus,
   SupportCasePriority,
   PagedResponse,
+  OrganizationTypeItem,
+  RelationshipTypeItem,
+  OrgRelationship,
+  OrgRelationshipStatus,
+  ProductOrgTypeRule,
+  ProductRelTypeRule,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -578,6 +584,101 @@ export function mapSupportCaseDetail(raw: unknown): SupportCaseDetail {
   return {
     ...base,
     notes: asArr(r['notes']).map(mapSupportNote),
+  };
+}
+
+// ── Organization Type mapper (Phase E) ───────────────────────────────────────
+
+/**
+ * mapOrganizationTypeItem — normalises a raw backend OrganizationType catalog entry.
+ * Handles: is_active/isActive, created_at/createdAtUtc
+ */
+export function mapOrganizationTypeItem(raw: unknown): OrganizationTypeItem {
+  const r = asObj(raw);
+  return {
+    id:          str(r, 'id',           'id',           '', 'mapOrganizationTypeItem.id'),
+    code:        str(r, 'code',         'code',         ''),
+    name:        str(r, 'name',         'name',         ''),
+    description: str(r, 'description',  'description',  ''),
+    isActive:    bool(r, 'is_active',   'isActive',     true),
+    createdAtUtc: str(r, 'created_at',  'createdAtUtc', new Date().toISOString()),
+  };
+}
+
+// ── Relationship Type mapper (Phase E) ────────────────────────────────────────
+
+/**
+ * mapRelationshipTypeItem — normalises a raw backend RelationshipType catalog entry.
+ */
+export function mapRelationshipTypeItem(raw: unknown): RelationshipTypeItem {
+  const r = asObj(raw);
+  return {
+    id:          str(r, 'id',           'id',           '', 'mapRelationshipTypeItem.id'),
+    code:        str(r, 'code',         'code',         ''),
+    name:        str(r, 'name',         'name',         ''),
+    description: str(r, 'description',  'description',  ''),
+    isActive:    bool(r, 'is_active',   'isActive',     true),
+    createdAtUtc: str(r, 'created_at',  'createdAtUtc', new Date().toISOString()),
+  };
+}
+
+// ── Organization Relationship mapper (Phase E) ────────────────────────────────
+
+const ORG_REL_STATUSES: readonly OrgRelationshipStatus[] = ['Active', 'Inactive', 'Pending'];
+
+/**
+ * mapOrgRelationship — normalises a raw backend OrganizationRelationship entry.
+ * Handles snake_case/camelCase for all FK and timestamp fields.
+ */
+export function mapOrgRelationship(raw: unknown): OrgRelationship {
+  const r = asObj(raw);
+  return {
+    id:                   str(r, 'id',                      'id',                   '', 'mapOrgRelationship.id'),
+    sourceOrganizationId: str(r, 'source_organization_id',  'sourceOrganizationId', ''),
+    targetOrganizationId: str(r, 'target_organization_id',  'targetOrganizationId', ''),
+    relationshipTypeId:   str(r, 'relationship_type_id',    'relationshipTypeId',   ''),
+    relationshipTypeCode: str(r, 'relationship_type_code',  'relationshipTypeCode', ''),
+    status:               oneOf(r, 'status', 'status', ORG_REL_STATUSES, 'Inactive', 'mapOrgRelationship.status'),
+    effectiveFromUtc:     optStr(r, 'effective_from', 'effectiveFromUtc'),
+    effectiveToUtc:       optStr(r, 'effective_to',   'effectiveToUtc'),
+    createdAtUtc:         str(r, 'created_at',  'createdAtUtc', new Date().toISOString()),
+    updatedAtUtc:         str(r, 'updated_at',  'updatedAtUtc', new Date().toISOString()),
+  };
+}
+
+// ── Product–OrgType Rule mapper (Phase E) ────────────────────────────────────
+
+/**
+ * mapProductOrgTypeRule — normalises a raw backend ProductOrganizationTypeRule entry.
+ */
+export function mapProductOrgTypeRule(raw: unknown): ProductOrgTypeRule {
+  const r = asObj(raw);
+  return {
+    id:                     str(r, 'id',                       'id',                    '', 'mapProductOrgTypeRule.id'),
+    productId:              str(r, 'product_id',               'productId',             ''),
+    productCode:            str(r, 'product_code',             'productCode',           ''),
+    organizationTypeId:     str(r, 'organization_type_id',     'organizationTypeId',    ''),
+    organizationTypeCode:   str(r, 'organization_type_code',   'organizationTypeCode',  ''),
+    isActive:               bool(r, 'is_active',               'isActive',              true),
+    createdAtUtc:           str(r, 'created_at',               'createdAtUtc',          new Date().toISOString()),
+  };
+}
+
+// ── Product–RelType Rule mapper (Phase E) ─────────────────────────────────────
+
+/**
+ * mapProductRelTypeRule — normalises a raw backend ProductRelationshipTypeRule entry.
+ */
+export function mapProductRelTypeRule(raw: unknown): ProductRelTypeRule {
+  const r = asObj(raw);
+  return {
+    id:                    str(r, 'id',                      'id',                   '', 'mapProductRelTypeRule.id'),
+    productId:             str(r, 'product_id',              'productId',            ''),
+    productCode:           str(r, 'product_code',            'productCode',          ''),
+    relationshipTypeId:    str(r, 'relationship_type_id',    'relationshipTypeId',   ''),
+    relationshipTypeCode:  str(r, 'relationship_type_code',  'relationshipTypeCode', ''),
+    isActive:              bool(r, 'is_active',              'isActive',             true),
+    createdAtUtc:          str(r, 'created_at',              'createdAtUtc',         new Date().toISOString()),
   };
 }
 

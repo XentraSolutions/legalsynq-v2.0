@@ -328,13 +328,19 @@ export const apiClient = {
  * TODO: add Redis or edge caching (tags would serve as Redis key prefixes)
  */
 export const CACHE_TAGS = {
-  tenants:    'cc:tenants',
-  users:      'cc:users',
-  roles:      'cc:roles',
-  audit:      'cc:audit',
-  settings:   'cc:settings',
-  monitoring: 'cc:monitoring',
-  support:    'cc:support',
+  tenants:              'cc:tenants',
+  users:                'cc:users',
+  roles:                'cc:roles',
+  audit:                'cc:audit',
+  settings:             'cc:settings',
+  monitoring:           'cc:monitoring',
+  support:              'cc:support',
+  // Phase E — organization catalog & relationship graph
+  orgTypes:             'cc:org-types',
+  relTypes:             'cc:rel-types',
+  orgRelationships:     'cc:org-relationships',
+  productOrgTypeRules:  'cc:product-org-type-rules',
+  productRelTypeRules:  'cc:product-rel-type-rules',
 } as const;
 
 export type CacheTag = typeof CACHE_TAGS[keyof typeof CACHE_TAGS];

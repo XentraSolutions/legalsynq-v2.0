@@ -66,7 +66,10 @@ public class Referral : AuditableEntity
     private Referral() { }
 
     /// <summary>
-    /// Create a referral with full multi-org participant context.
+    /// Create a referral with full multi-org context.
+    /// If both referringOrganizationId and receivingOrganizationId are known and a matching
+    /// OrganizationRelationship exists in Identity, pass organizationRelationshipId to link
+    /// this referral to the formal relationship graph.
     /// </summary>
     public static Referral Create(
         Guid tenantId,
@@ -85,34 +88,46 @@ public class Referral : AuditableEntity
         string requestedService,
         string urgency,
         string? notes,
-        Guid? createdByUserId)
+        Guid? createdByUserId,
+        Guid? organizationRelationshipId = null)
     {
         var now = DateTime.UtcNow;
         return new Referral
         {
-            Id                     = Guid.NewGuid(),
-            TenantId               = tenantId,
-            ReferringOrganizationId = referringOrganizationId,
-            ReceivingOrganizationId = receivingOrganizationId,
-            ProviderId             = providerId,
-            SubjectPartyId         = subjectPartyId,
-            SubjectNameSnapshot    = subjectNameSnapshot?.Trim(),
-            SubjectDobSnapshot     = subjectDobSnapshot,
-            ClientFirstName        = clientFirstName.Trim(),
-            ClientLastName         = clientLastName.Trim(),
-            ClientDob              = clientDob,
-            ClientPhone            = clientPhone.Trim(),
-            ClientEmail            = clientEmail.Trim(),
-            CaseNumber             = caseNumber?.Trim(),
-            RequestedService       = requestedService.Trim(),
-            Urgency                = urgency,
-            Status                 = ValidStatuses.New,
-            Notes                  = notes?.Trim(),
-            CreatedByUserId        = createdByUserId,
-            UpdatedByUserId        = createdByUserId,
-            CreatedAtUtc           = now,
-            UpdatedAtUtc           = now
+            Id                       = Guid.NewGuid(),
+            TenantId                 = tenantId,
+            ReferringOrganizationId  = referringOrganizationId,
+            ReceivingOrganizationId  = receivingOrganizationId,
+            ProviderId               = providerId,
+            OrganizationRelationshipId = organizationRelationshipId,
+            SubjectPartyId           = subjectPartyId,
+            SubjectNameSnapshot      = subjectNameSnapshot?.Trim(),
+            SubjectDobSnapshot       = subjectDobSnapshot,
+            ClientFirstName          = clientFirstName.Trim(),
+            ClientLastName           = clientLastName.Trim(),
+            ClientDob                = clientDob,
+            ClientPhone              = clientPhone.Trim(),
+            ClientEmail              = clientEmail.Trim(),
+            CaseNumber               = caseNumber?.Trim(),
+            RequestedService         = requestedService.Trim(),
+            Urgency                  = urgency,
+            Status                   = ValidStatuses.New,
+            Notes                    = notes?.Trim(),
+            CreatedByUserId          = createdByUserId,
+            UpdatedByUserId          = createdByUserId,
+            CreatedAtUtc             = now,
+            UpdatedAtUtc             = now
         };
+    }
+
+    /// <summary>
+    /// Phase C: link this referral to a formal OrganizationRelationship after creation.
+    /// Used when the relationship is resolved asynchronously or after an import/backfill.
+    /// </summary>
+    public void SetOrganizationRelationshipId(Guid organizationRelationshipId)
+    {
+        OrganizationRelationshipId = organizationRelationshipId;
+        UpdatedAtUtc = DateTime.UtcNow;
     }
 
     public void Update(string requestedService, string urgency, string status, string? notes, Guid? updatedByUserId)

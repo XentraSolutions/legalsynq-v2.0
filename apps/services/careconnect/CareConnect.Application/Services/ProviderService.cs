@@ -72,6 +72,13 @@ public class ProviderService : IProviderService
 
         await _providers.AddAsync(provider, ct);
 
+        // Phase D: link to Identity Organization if supplied.
+        if (request.OrganizationId.HasValue)
+        {
+            provider.LinkOrganization(request.OrganizationId.Value);
+            await _providers.UpdateAsync(provider, ct);
+        }
+
         if (request.CategoryIds.Count > 0)
             await _providers.SyncCategoriesAsync(provider.Id, request.CategoryIds, ct);
 
@@ -102,6 +109,10 @@ public class ProviderService : IProviderService
             request.Latitude,
             request.Longitude,
             request.GeoPointSource);
+
+        // Phase D: link to Identity Organization if supplied.
+        if (request.OrganizationId.HasValue)
+            provider.LinkOrganization(request.OrganizationId.Value);
 
         await _providers.UpdateAsync(provider, ct);
         await _providers.SyncCategoriesAsync(provider.Id, request.CategoryIds, ct);

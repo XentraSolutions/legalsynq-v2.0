@@ -631,3 +631,71 @@ Analysis report: `analysis/step1_platform-foundation-upgrade.md`
 ### Build status after all 6 phases
 - Identity.Api: ✅ 0 errors, 0 warnings
 - CareConnect.Api: ✅ 0 errors, 0 regressions (1 pre-existing CS0168)
+
+---
+
+## Platform Foundation — Continuation Phases A–F (COMPLETE)
+
+### Phase A — Organization.Create overload ✅
+- `Organization.Create(string name, string orgType, Guid? organizationTypeId)` overload added
+- `Organization.AssignOrganizationType(Guid, string)` instance method for post-create / backfill assignment
+
+### Phase B — DB-backed eligibility activation ✅
+- `User.ScopedRoleAssignments` nav collection + EF `WithMany` config
+- `UserRepository.GetByIdWithRolesAsync` includes ScopedRoleAssignments→Role
+- `UserRepository.GetPrimaryOrgMembershipAsync` includes OrganizationTypeRef
+- `AuthService.LoginAsync` merges GLOBAL-scoped assignments into roleNames
+- `AuthService.IsEligible` uses `OrganizationTypeId` comparison with legacy string fallback
+- `JwtTokenService` emits `org_type_id` claim when `OrganizationTypeId` is set
+
+### Phase C — CareConnect relationship persistence ✅
+- `IOrganizationRelationshipResolver` interface in `CareConnect.Application.Interfaces`
+- `OrganizationRelationshipNullResolver` stub in `CareConnect.Infrastructure.Services` (safe default; replace with HTTP resolver when Identity endpoint is stable)
+- `Referral.Create` extended with optional `organizationRelationshipId` param
+- `Referral.SetOrganizationRelationshipId(Guid)` instance method for post-create / backfill
+- `Appointment.Create` extended with optional `organizationRelationshipId` param (denormalized from Referral)
+- `Appointment.SetOrganizationRelationshipId(Guid)` instance method
+- `CreateReferralRequest` extended with `ReferringOrganizationId?` and `ReceivingOrganizationId?`
+- `ReferralService.CreateAsync` resolves org relationship via resolver, passes IDs through to `Referral.Create`
+- `AppointmentService.CreateAppointmentAsync` denormalizes `OrganizationRelationshipId` from loaded Referral
+- `OrganizationRelationshipNullResolver` registered in `CareConnect.Infrastructure.DependencyInjection`
+
+### Phase D — Provider/Facility identity alignment ✅
+- `Provider.LinkOrganization(Guid)` instance method
+- `Facility.LinkOrganization(Guid)` instance method
+- `CreateProviderRequest.OrganizationId?` optional field
+- `UpdateProviderRequest.OrganizationId?` optional field
+- `ProviderService.CreateAsync` calls `LinkOrganization` when `OrganizationId` is supplied
+- `ProviderService.UpdateAsync` calls `LinkOrganization` when `OrganizationId` is supplied
+
+### Phase E — Control-center frontend compatibility ✅
+**Types added to `src/types/control-center.ts`:**
+- `OrganizationTypeItem` — catalog entry
+- `RelationshipTypeItem` — catalog entry
+- `OrgRelationshipStatus` — `Active | Inactive | Pending`
+- `OrgRelationship` — directed org→org relationship
+- `ProductOrgTypeRule` — product access rule by org type
+- `ProductRelTypeRule` — product access rule by relationship type
+
+**Mappers added to `src/lib/api-mappers.ts`:**
+- `mapOrganizationTypeItem`, `mapRelationshipTypeItem`
+- `mapOrgRelationship`, `mapProductOrgTypeRule`, `mapProductRelTypeRule`
+
+**API namespaces added to `src/lib/control-center-api.ts`:**
+- `organizationTypes.list()`, `organizationTypes.getById(id)`
+- `relationshipTypes.list()`, `relationshipTypes.getById(id)`
+- `organizationRelationships.list(params?)`, `organizationRelationships.getById(id)`
+- `productOrgTypeRules.list(params?)`
+- `productRelTypeRules.list(params?)`
+
+**Cache tags added to `src/lib/api-client.ts` CACHE_TAGS:**
+- `orgTypes`, `relTypes`, `orgRelationships`, `productOrgTypeRules`, `productRelTypeRules`
+
+### Phase F — Legacy deprecation notices ✅
+- `ProductRole.EligibleOrgType` — XML `/// TODO [LEGACY — Phase F]` doc comment added
+- `UserRoleAssignment` class — XML `/// TODO [LEGACY — Phase F]` doc comment added
+
+### Build status after all Phases A–F
+- Identity.Api: ✅ 0 errors, 0 warnings
+- CareConnect.Api: ✅ 0 errors, 1 pre-existing CS0168 warning (unrelated)
+- control-center TypeScript: ✅ 0 errors (`npx tsc --noEmit` clean)

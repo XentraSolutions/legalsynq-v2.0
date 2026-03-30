@@ -17,6 +17,9 @@ public class User
     public ICollection<UserOrganizationMembership> OrganizationMemberships { get; private set; } = [];
     public ICollection<UserRoleAssignment> RoleAssignments { get; private set; } = [];
 
+    // Phase 4: scoped role assignments (replaces UserRoleAssignment as primary source)
+    public ICollection<ScopedRoleAssignment> ScopedRoleAssignments { get; private set; } = [];
+
     private User() { }
 
     public static User Create(

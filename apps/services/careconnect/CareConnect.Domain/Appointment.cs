@@ -61,6 +61,21 @@ public class Appointment : AuditableEntity
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// Phase C: link this appointment to a formal OrganizationRelationship.
+    /// Typically denormalized from the linked Referral at create time.
+    /// </summary>
+    public void SetOrganizationRelationshipId(Guid organizationRelationshipId)
+    {
+        OrganizationRelationshipId = organizationRelationshipId;
+        UpdatedByUserId = null;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Create an appointment, optionally linking it to the org relationship that
+    /// sourced the referral (denormalized from Referral.OrganizationRelationshipId).
+    /// </summary>
     public static Appointment Create(
         Guid tenantId,
         Guid referralId,
@@ -71,7 +86,8 @@ public class Appointment : AuditableEntity
         DateTime scheduledStartAtUtc,
         DateTime scheduledEndAtUtc,
         string? notes,
-        Guid? createdByUserId)
+        Guid? createdByUserId,
+        Guid? organizationRelationshipId = null)
     {
         return new Appointment
         {
@@ -84,6 +100,7 @@ public class Appointment : AuditableEntity
             AppointmentSlotId = appointmentSlotId,
             ScheduledStartAtUtc = scheduledStartAtUtc,
             ScheduledEndAtUtc = scheduledEndAtUtc,
+            OrganizationRelationshipId = organizationRelationshipId,
             Status = AppointmentStatus.Scheduled,
             Notes = notes?.Trim(),
             CreatedByUserId = createdByUserId,

@@ -46,8 +46,14 @@ public class JwtTokenService : IJwtTokenService
 
         if (organization is not null)
         {
-            claims.Add(new Claim("org_id", organization.Id.ToString()));
+            claims.Add(new Claim("org_id",   organization.Id.ToString()));
             claims.Add(new Claim("org_type", organization.OrgType));
+
+            // Phase 1: also emit the canonical OrganizationTypeId when available.
+            // Consumers that understand the new catalog can use this instead of the string.
+            // Legacy consumers that only read org_type are unaffected.
+            if (organization.OrganizationTypeId.HasValue)
+                claims.Add(new Claim("org_type_id", organization.OrganizationTypeId.Value.ToString()));
         }
 
         foreach (var pr in productRoles ?? [])

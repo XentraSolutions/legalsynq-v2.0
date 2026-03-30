@@ -12,4 +12,10 @@ public class CreateReferralRequest
     public string RequestedService { get; set; } = string.Empty;
     public string Urgency { get; set; } = string.Empty;
     public string? Notes { get; set; }
+
+    // Phase C: optional multi-org context.
+    // When both are supplied, the service attempts to resolve the active
+    // OrganizationRelationship in Identity and set it on the created referral.
+    public Guid? ReferringOrganizationId { get; set; }
+    public Guid? ReceivingOrganizationId { get; set; }
 }

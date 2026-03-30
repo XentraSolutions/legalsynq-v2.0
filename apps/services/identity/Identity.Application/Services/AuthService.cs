@@ -42,7 +42,20 @@ public class AuthService : IAuthService
         var userWithRoles = await _userRepository.GetByIdWithRolesAsync(user.Id, ct)
             ?? throw new UnauthorizedAccessException();
 
+        // Primary role source: UserRoles (flat user→role mapping)
         var roleNames = userWithRoles.UserRoles.Select(ur => ur.Role.Name).ToList();
+
+        // Phase 4: merge GLOBAL-scoped ScopedRoleAssignments into role names (additive).
+        // ORGANIZATION/PRODUCT/RELATIONSHIP-scoped assignments are intentionally excluded
+        // here; they will be used for fine-grained authorization in future phases.
+        var scopedGlobalRoles = userWithRoles.ScopedRoleAssignments
+            .Where(s => s.IsActive && s.ScopeType == Domain.ScopedRoleAssignment.ScopeTypes.Global)
+            .Select(s => s.Role.Name)
+            .ToList();
+
+        foreach (var r in scopedGlobalRoles)
+            if (!roleNames.Contains(r, StringComparer.OrdinalIgnoreCase))
+                roleNames.Add(r);
 
         // Load org membership and compute product roles
         var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);
@@ -135,21 +148,35 @@ public class AuthService : IAuthService
 
     /// <summary>
     /// Returns true when the given product role is eligible for the organization.
-    /// Checks the new DB-backed rule table first (Phase 3); falls back to the legacy
-    /// EligibleOrgType string so existing data keeps working during the migration window.
+    ///
+    /// Resolution order (most specific → least specific):
+    ///   1. Phase 3 DB-backed rule table via OrgTypeRules nav property.
+    ///      - If org.OrganizationTypeId is set: match by ID (authoritative, no string drift).
+    ///      - Else: match by OrgType code string (transitional fallback within Phase 3).
+    ///   2. Legacy EligibleOrgType string on ProductRole (pre-Phase 3 data).
+    ///      - TODO: retire when all tenants are fully migrated to OrgTypeRules.
     /// </summary>
     private static bool IsEligible(ProductRole pr, Organization org)
     {
-        // Phase 3: new rule table check (loaded via navigation property if present)
+        // Phase 3: DB-backed rule table is the primary path when rules are loaded
         if (pr.OrgTypeRules is { Count: > 0 })
         {
             return pr.OrgTypeRules.Any(r =>
-                r.IsActive &&
-                r.OrganizationType is not null &&
-                r.OrganizationType.Code == org.OrgType);
+            {
+                if (!r.IsActive || r.OrganizationType is null) return false;
+
+                // Prefer OrganizationTypeId comparison (Phase 1 canonical FK)
+                if (org.OrganizationTypeId.HasValue)
+                    return r.OrganizationTypeId == org.OrganizationTypeId.Value;
+
+                // Fallback: code string comparison (pre-Phase 1 orgs)
+                return r.OrganizationType.Code == org.OrgType;
+            });
         }
 
-        // Transitional fallback: legacy EligibleOrgType string comparison
+        // TODO [LEGACY]: retire EligibleOrgType string once all ProductRoles have OrgTypeRules
+        //   and all Organizations have OrganizationTypeId backfilled.
+        //   Tracked: Platform Foundation Upgrade — Phase F.
         return pr.EligibleOrgType is null || pr.EligibleOrgType == org.OrgType;
     }
 }

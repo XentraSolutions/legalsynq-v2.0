@@ -7,6 +7,11 @@ public class ProductRole
     public string Code { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
     public string? Description { get; private set; }
+    /// <summary>
+    /// TODO [LEGACY — Phase F]: retire this field once all ProductRoles have OrgTypeRules seeded
+    /// and AuthService IsEligible fully uses the ProductOrganizationTypeRule table.
+    /// Keep populated for backward compatibility; do not use in new code.
+    /// </summary>
     public string? EligibleOrgType { get; private set; }
     public bool IsActive { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }

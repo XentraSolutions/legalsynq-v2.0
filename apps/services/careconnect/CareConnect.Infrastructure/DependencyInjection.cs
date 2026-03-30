@@ -3,6 +3,7 @@ using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
 using CareConnect.Infrastructure.Repositories;
+using CareConnect.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,6 +50,10 @@ public static class DependencyInjection
         services.AddScoped<IReferralAttachmentService, ReferralAttachmentService>();
         services.AddScoped<IAppointmentAttachmentService, AppointmentAttachmentService>();
         services.AddScoped<INotificationService, NotificationService>();
+
+        // Phase C: null resolver — replace with HttpOrganizationRelationshipResolver
+        // once the Identity admin endpoint for relationship lookup is stable.
+        services.AddScoped<IOrganizationRelationshipResolver, OrganizationRelationshipNullResolver>();
 
         return services;
     }

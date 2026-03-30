@@ -16,8 +16,13 @@ public class UserRepository : IUserRepository
 
     public Task<User?> GetByIdWithRolesAsync(Guid id, CancellationToken ct = default) =>
         _db.Users
+            // Primary role source (flat user→role mapping)
             .Include(u => u.UserRoles)
                 .ThenInclude(ur => ur.Role)
+            // Phase 4: also load active ScopedRoleAssignments so GLOBAL-scoped roles
+            // can be merged into the JWT role claims alongside UserRoles.
+            .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive))
+                .ThenInclude(s => s.Role)
             .FirstOrDefaultAsync(u => u.Id == id, ct);
 
     public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default) =>
@@ -47,13 +52,16 @@ public class UserRepository : IUserRepository
     public Task<UserOrganizationMembership?> GetPrimaryOrgMembershipAsync(
         Guid userId, CancellationToken ct = default) =>
         _db.UserOrganizationMemberships
+            // Chain 1: products → roles → Phase 3 org-type eligibility rules
             .Include(m => m.Organization)
                 .ThenInclude(o => o.OrganizationProducts)
                     .ThenInclude(op => op.Product)
                         .ThenInclude(p => p.ProductRoles)
-                            // Phase 3: load DB-backed org-type eligibility rules
                             .ThenInclude(pr => pr.OrgTypeRules)
                                 .ThenInclude(r => r.OrganizationType)
+            // Chain 2: Phase 1 — canonical OrganizationType catalog record on the org itself
+            .Include(m => m.Organization)
+                .ThenInclude(o => o.OrganizationTypeRef)
             .Where(m => m.UserId == userId && m.IsActive)
             .OrderBy(m => m.JoinedAtUtc)
             .FirstOrDefaultAsync(ct);
