@@ -546,3 +546,7 @@ static async Task RunMigrationsAsync(IServiceProvider services, Microsoft.Extens
         throw;
     }
 }
+
+// Expose the compiler-generated Program class so WebApplicationFactory<Program> in the
+// integration test project can reference it without an InternalsVisibleTo attribute.
+public partial class Program { }

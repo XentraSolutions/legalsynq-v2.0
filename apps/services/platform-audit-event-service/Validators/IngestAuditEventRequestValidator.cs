@@ -89,9 +89,14 @@ public sealed class IngestAuditEventRequestValidator : AbstractValidator<IngestA
             .WithMessage("Severity must be a valid severity level: Debug, Info, Notice, Warn, Error, Critical, or Alert.");
 
         // ── Required: OccurredAtUtc ───────────────────────────────────────────
+        // The NotNull check is intentionally a separate rule chain from the range guards.
+        // Placing .When(x => x.OccurredAtUtc.HasValue) on the NotNull rule would make it
+        // unreachable (it only fires when the value is non-null, which negates the null check).
         RuleFor(x => x.OccurredAtUtc)
             .NotNull()
-            .WithMessage("OccurredAtUtc is required.")
+            .WithMessage("OccurredAtUtc is required.");
+
+        RuleFor(x => x.OccurredAtUtc)
             .Must(ts => ts!.Value <= DateTimeOffset.UtcNow.Add(FutureTolerance))
             .WithMessage($"OccurredAtUtc must not be more than {FutureTolerance.TotalMinutes:0} minutes in the future.")
             .Must(ts => ts!.Value >= DateTimeOffset.UtcNow.Subtract(MaxEventAge))

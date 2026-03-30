@@ -28,6 +28,42 @@ No additional setup needed for development — runs with in-memory storage and n
 
 ---
 
+## Running the Tests
+
+The integration test suite uses xUnit + FluentAssertions + `WebApplicationFactory`. All 48 tests
+run against a fully wired-up in-memory service instance — no external dependencies required.
+
+```bash
+cd apps/services/platform-audit-event-service.Tests
+dotnet test
+```
+
+Expected result:
+```
+Passed!  - Failed: 0, Passed: 48, Skipped: 0, Total: 48
+```
+
+Run a single test class:
+```bash
+dotnet test --filter "FullyQualifiedName~AuthorizationTests"
+```
+
+Run with verbose output:
+```bash
+dotnet test --logger "console;verbosity=normal"
+```
+
+| Test class | Tests | What it covers |
+|---|---|---|
+| `HealthEndpointTests` | 5 | `/health` and `/health/detail` shape |
+| `IngestEndpointTests` | 13 | Valid ingest, validation rules, idempotency |
+| `BatchIngestTests` | 7 | Batch accept/reject/partial |
+| `QueryEndpointTests` | 9 | Filtering, pagination, validation |
+| `ExportEndpointTests` | 4 | Export service-unavailable when no provider |
+| `AuthorizationTests` | 7 | ServiceToken auth (401/401/201), unprotected routes |
+
+---
+
 ## Architecture
 
 ```
