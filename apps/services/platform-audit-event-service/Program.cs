@@ -12,6 +12,7 @@ using PlatformAuditEventService.Jobs;
 using PlatformAuditEventService.Middleware;
 using PlatformAuditEventService.Services.Archival;
 using PlatformAuditEventService.Services.Export;
+using PlatformAuditEventService.Services.Forwarding;
 using PlatformAuditEventService.Repositories;
 using PlatformAuditEventService.Services;
 using PlatformAuditEventService.Validators;
@@ -239,6 +240,41 @@ try
             retentionOpts.DefaultRetentionDays <= 0 ? "indefinite" : retentionOpts.DefaultRetentionDays.ToString(),
             retentionOpts.HotRetentionDays,
             archivalOpts.Strategy);
+
+    // ── Event Forwarding ──────────────────────────────────────────────────────
+    // Both interfaces are Singleton — stateless after construction, thread-safe.
+    // AuditEventIngestionService is Scoped and may safely depend on Singletons.
+    //
+    // IIntegrationEventPublisher: broker-level delivery.
+    //   v1: NoOpIntegrationEventPublisher — logs, sends nothing.
+    //   Upgrade path: register RabbitMqIntegrationEventPublisher (or equivalent)
+    //   here when a broker is provisioned; no changes elsewhere are needed.
+    //
+    // IAuditEventForwarder: domain-level concern — filters by category/type/severity,
+    //   maps AuditEventRecord → AuditRecordIntegrationEvent, calls publisher.
+    //   v1: NoOpAuditEventForwarder — honours all filters; delegates to NoOp publisher.
+    builder.Services.Configure<EventForwardingOptions>(
+        cfg.GetSection(EventForwardingOptions.SectionName));
+
+    builder.Services.AddSingleton<IIntegrationEventPublisher, NoOpIntegrationEventPublisher>();
+    builder.Services.AddSingleton<IAuditEventForwarder, NoOpAuditEventForwarder>();
+
+    var fwdOpts = cfg.GetSection(EventForwardingOptions.SectionName)
+                     .Get<EventForwardingOptions>() ?? new();
+
+    if (!fwdOpts.Enabled)
+        Log.Warning(
+            "EventForwarding:Enabled = false — audit event forwarding is inactive. " +
+            "Set EventForwarding:Enabled=true and configure EventForwarding:BrokerType " +
+            "to activate downstream publishing.");
+    else
+        Log.Information(
+            "EventForwarding: enabled. BrokerType={Broker} MinSeverity={Severity} " +
+            "ForwardCategories={Categories} ForwardReplayRecords={Replays}",
+            fwdOpts.BrokerType,
+            fwdOpts.MinSeverity,
+            fwdOpts.ForwardCategories.Count == 0 ? "(all)" : string.Join(",", fwdOpts.ForwardCategories),
+            fwdOpts.ForwardReplayRecords);
 
     // ── Query authorization ───────────────────────────────────────────────────
     // All resolvers registered as singletons (stateless after construction).

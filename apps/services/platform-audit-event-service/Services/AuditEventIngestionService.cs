@@ -4,6 +4,7 @@ using PlatformAuditEventService.Configuration;
 using PlatformAuditEventService.DTOs.Ingest;
 using PlatformAuditEventService.Mappers;
 using PlatformAuditEventService.Repositories;
+using PlatformAuditEventService.Services.Forwarding;
 using PlatformAuditEventService.Utilities;
 
 namespace PlatformAuditEventService.Services;
@@ -86,6 +87,7 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
     private readonly string                              _algorithm;
     private readonly byte[]?                             _hmacSecret;
     private readonly bool                                _signingEnabled;
+    private readonly IAuditEventForwarder                _forwarder;
     private readonly ILogger<AuditEventIngestionService> _logger;
 
     // ── Constructor ───────────────────────────────────────────────────────────
@@ -93,10 +95,12 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
     public AuditEventIngestionService(
         IAuditEventRecordRepository         records,
         IOptions<IntegrityOptions>          integrityOptions,
+        IAuditEventForwarder                forwarder,
         ILogger<AuditEventIngestionService> logger)
     {
         _records   = records;
         _integrity = integrityOptions.Value;
+        _forwarder = forwarder;
         _logger    = logger;
 
         // Resolve algorithm — default to HMAC-SHA256 when not specified.
@@ -343,6 +347,27 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
                 "Signed={Signed}",
                 persisted.AuditId, persisted.EventType, persisted.SourceSystem,
                 persisted.TenantId, persisted.IsReplay, hash is not null);
+
+            // ── Step 7: Event forwarding (post-persist, best-effort) ──────────
+            //
+            // Forwarding is a secondary concern: persistence is the primary
+            // responsibility. The inner try-catch ensures that any forwarding
+            // failure is logged as a Warning but never causes this ingest
+            // response to fail. The append-only audit record is already durable
+            // at this point regardless of what happens here.
+            try
+            {
+                await _forwarder.ForwardAsync(persisted, ct);
+            }
+            catch (Exception fwdEx)
+            {
+                _logger.LogWarning(fwdEx,
+                    "Event forwarding failed (non-fatal): AuditId={AuditId} " +
+                    "EventType={EventType} SourceSystem={SourceSystem}. " +
+                    "The record was persisted successfully. Forwarding is best-effort " +
+                    "and will not be retried for this request.",
+                    persisted.AuditId, persisted.EventType, persisted.SourceSystem);
+            }
 
             return new IngestItemResult
             {

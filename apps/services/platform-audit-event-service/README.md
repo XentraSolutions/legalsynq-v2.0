@@ -234,6 +234,52 @@ See [Docs/retention-and-archival.md](Docs/retention-and-archival.md) for the ful
 
 ---
 
+## Event Forwarding
+
+The service ships with a lightweight two-layer event forwarding abstraction. When enabled, it publishes an `AuditRecordIntegrationEvent` to downstream systems after each record is successfully persisted.
+
+**v1 behaviour: forwarding is disabled by default (`Enabled=false`). No messages are sent.**
+
+### Design guarantees
+
+| Guarantee | Detail |
+|---|---|
+| Post-persist only | Forwarding triggers after `AppendAsync` succeeds |
+| Best-effort | A forwarding failure logs a `Warning`; the ingest `201` response is unaffected |
+| Read-only | The forwarder never modifies records or calls write methods |
+| No hashes in payload | `Hash`/`PreviousHash` are excluded from the integration event |
+
+### Integration event payload (`AuditRecordIntegrationEvent`)
+
+Includes: `AuditId`, `EventType`, `EventCategory`, `Severity`, `SourceSystem`, `TenantId`, `OrganizationId`, `ActorId`, `ActorType`, `EntityType`, `EntityId`, `Action`, `OccurredAtUtc`, `RecordedAtUtc`, `CorrelationId`, `IsReplay`.
+
+### Configuration
+
+```json
+"EventForwarding": {
+  "Enabled": false,
+  "BrokerType": "NoOp",
+  "SubjectPrefix": "legalsynq.audit.",
+  "ForwardCategories": [],
+  "ForwardEventTypePrefixes": [],
+  "MinSeverity": "Info",
+  "ForwardReplayRecords": false
+}
+```
+
+### Activation checklist (before enabling forwarding)
+
+- [ ] Choose a broker and implement `IIntegrationEventPublisher` (or use `InMemory` for in-process fanout)
+- [ ] Register the publisher in `Program.cs` based on `BrokerType`
+- [ ] Set `EventForwarding:Enabled=true`
+- [ ] Configure `ConnectionString` and `TopicOrExchangeName` via environment variable
+- [ ] Set category/type/severity filters to restrict forwarding scope
+- [ ] Ensure downstream consumers are idempotent (`IsReplay=true` records are skipped by default)
+
+See [Docs/event-forwarding-model.md](Docs/event-forwarding-model.md) for the full architecture reference and broker compatibility notes.
+
+---
+
 ## Hash Chain Integrity
 
 Every persisted `AuditEventRecord` carries:
