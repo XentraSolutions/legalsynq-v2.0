@@ -14,6 +14,18 @@ public sealed class ClamAvOptions
     public int    ChunkSizeBytes { get; set; } = 2 * 1024 * 1024; // 2 MB
 
     public ClamAvCircuitBreakerOptions CircuitBreaker { get; set; } = new();
+
+    /// <summary>
+    /// Maximum number of hours the ClamAV virus-definition database may be old before the
+    /// signature-freshness health check reports Degraded. Does NOT block scanning.
+    /// </summary>
+    public int SignatureMaxAgeHours { get; set; } = 24;
+
+    /// <summary>
+    /// ClamAV-level technical limit: files larger than this (MB) cannot be safely scanned.
+    /// Used at startup validation to compare against the application-level MaxScannableFileSizeMb.
+    /// </summary>
+    public int MaxScannableFileSizeMb { get; set; } = 25;
 }
 
 /// <summary>

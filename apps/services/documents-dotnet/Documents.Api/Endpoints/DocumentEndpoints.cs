@@ -1,9 +1,12 @@
 using Documents.Api.Middleware;
 using Documents.Application.DTOs;
+using Documents.Application.Exceptions;
 using Documents.Application.Models;
 using Documents.Application.Services;
 using Documents.Infrastructure.Auth;
+using Documents.Infrastructure.Observability;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Documents.Api.Endpoints;
 
@@ -19,6 +22,7 @@ public static class DocumentEndpoints
         docs.MapPost("/", async (
             HttpContext    ctx,
             DocumentService svc,
+            IOptions<DocumentServiceOptions> docOpts,
             CancellationToken ct) =>
         {
             var principal = JwtPrincipalExtractor.Extract(ctx.User);
@@ -47,6 +51,30 @@ public static class DocumentEndpoints
             var file = form.Files["file"];
             if (file is null || file.Length == 0)
                 return Results.BadRequest(new { error = "FILE_VALIDATION_ERROR", message = "File is required and must not be empty" });
+
+            // ── Early upload-size check (before any service or storage I/O) ──
+            var uploadLimitBytes = (long)docOpts.Value.MaxUploadSizeMb * 1_048_576L;
+            if (file.Length > uploadLimitBytes)
+            {
+                ScanMetrics.UploadFileTooLargeTotal.Inc();
+                var corrId = ctx.GetCorrelationId();
+                ctx.RequestServices
+                    .GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("DocumentEndpoints")
+                    .LogWarning(
+                        "Upload rejected — file too large (early): File={File} SizeBytes={Size} LimitMb={Limit} CorrelationId={Corr}",
+                        file.FileName, file.Length, docOpts.Value.MaxUploadSizeMb, corrId);
+                return Results.Json(
+                    new
+                    {
+                        error         = "FILE_TOO_LARGE",
+                        message       = $"File size {file.Length:N0} bytes ({file.Length / 1_048_576.0:F1} MB) exceeds the maximum upload limit of {docOpts.Value.MaxUploadSizeMb} MB",
+                        fileSizeBytes = file.Length,
+                        limitMb       = docOpts.Value.MaxUploadSizeMb,
+                        correlationId = corrId,
+                    },
+                    statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
 
             var req = new CreateDocumentRequest
             {
@@ -138,7 +166,9 @@ public static class DocumentEndpoints
 
         // ── POST /documents/{id}/versions ─────────────────────────────────────
         docs.MapPost("/{id:guid}/versions", async (
-            Guid id, HttpContext ctx, DocumentService svc, CancellationToken ct) =>
+            Guid id, HttpContext ctx, DocumentService svc,
+            IOptions<DocumentServiceOptions> docOpts,
+            CancellationToken ct) =>
         {
             var principal = JwtPrincipalExtractor.Extract(ctx.User);
             var reqCtx    = BuildContext(ctx, principal);
@@ -150,6 +180,30 @@ public static class DocumentEndpoints
             var file  = form.Files["file"];
             if (file is null || file.Length == 0)
                 return Results.BadRequest(new { error = "FILE_VALIDATION_ERROR", message = "File is required and must not be empty" });
+
+            // ── Early upload-size check (before any service or storage I/O) ──
+            var versionUploadLimitBytes = (long)docOpts.Value.MaxUploadSizeMb * 1_048_576L;
+            if (file.Length > versionUploadLimitBytes)
+            {
+                ScanMetrics.UploadFileTooLargeTotal.Inc();
+                var corrId = ctx.GetCorrelationId();
+                ctx.RequestServices
+                    .GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("DocumentEndpoints")
+                    .LogWarning(
+                        "Version upload rejected — file too large (early): File={File} SizeBytes={Size} LimitMb={Limit} CorrelationId={Corr}",
+                        file.FileName, file.Length, docOpts.Value.MaxUploadSizeMb, corrId);
+                return Results.Json(
+                    new
+                    {
+                        error         = "FILE_TOO_LARGE",
+                        message       = $"File size {file.Length:N0} bytes ({file.Length / 1_048_576.0:F1} MB) exceeds the maximum upload limit of {docOpts.Value.MaxUploadSizeMb} MB",
+                        fileSizeBytes = file.Length,
+                        limitMb       = docOpts.Value.MaxUploadSizeMb,
+                        correlationId = corrId,
+                    },
+                    statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
 
             var req = new UploadDocumentVersionRequest { Label = form["label"].ToString() is { Length: > 0 } l ? l : null };
 

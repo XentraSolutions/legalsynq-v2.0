@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 namespace Documents.Infrastructure;
@@ -106,10 +107,14 @@ public static class DependencyInjection
             services.AddSingleton<IAccessTokenStore, InMemoryAccessTokenStore>();
         }
 
+        // ── ClamAV signature freshness monitor (singleton, cached 5 min) ─────
+        services.AddSingleton<ClamAvSignatureFreshnessMonitor>();
+
         // ── Health checks ─────────────────────────────────────────────────────
         services.AddHealthChecks()
-            .AddCheck<DatabaseHealthCheck>("database", failureStatus: HealthStatus.Unhealthy, tags: new[] { "ready", "live" })
-            .AddCheck<ClamAvHealthCheck>  ("clamav",   failureStatus: HealthStatus.Degraded,  tags: new[] { "ready" });
+            .AddCheck<DatabaseHealthCheck>         ("database",           failureStatus: HealthStatus.Unhealthy, tags: new[] { "ready", "live" })
+            .AddCheck<ClamAvHealthCheck>            ("clamav",             failureStatus: HealthStatus.Degraded,  tags: new[] { "ready" })
+            .AddCheck<ClamAvSignatureHealthCheck>   ("clamav-signatures",  failureStatus: HealthStatus.Degraded,  tags: new[] { "ready" });
 
         // ── Application services ─────────────────────────────────────────────
         services.Configure<DocumentServiceOptions>(config.GetSection("Documents"));
@@ -120,6 +125,46 @@ public static class DependencyInjection
         services.AddScoped<DocumentService>();
         services.AddScoped<AccessTokenService>();
 
+        // ── Startup configuration validation ─────────────────────────────────
+        ValidateFileSizeConfiguration(config);
+
         return services;
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Validates that file-size configuration is internally consistent.
+    /// Fails startup on contradictory settings (upload limit > scan limit).
+    /// Warns when application scan limit exceeds the ClamAV technical limit.
+    /// </summary>
+    private static void ValidateFileSizeConfiguration(IConfiguration config)
+    {
+        var docOpts    = config.GetSection("Documents").Get<DocumentServiceOptions>() ?? new();
+        var clamAvOpts = config.GetSection("Scanner:ClamAv").Get<ClamAvOptions>()     ?? new();
+
+        // HARD FAIL: upload limit must not exceed scan limit (documents would be accepted but never scannable)
+        if (docOpts.MaxUploadSizeMb > docOpts.MaxScannableFileSizeMb)
+        {
+            throw new InvalidOperationException(
+                $"Configuration error: Documents:MaxUploadSizeMb ({docOpts.MaxUploadSizeMb} MB) " +
+                $"exceeds Documents:MaxScannableFileSizeMb ({docOpts.MaxScannableFileSizeMb} MB). " +
+                $"Files could be uploaded but never scanned. " +
+                $"Reduce MaxUploadSizeMb or raise MaxScannableFileSizeMb.");
+        }
+
+        // WARN: application scan limit exceeds ClamAV's own configured technical limit
+        if (docOpts.MaxScannableFileSizeMb > clamAvOpts.MaxScannableFileSizeMb)
+        {
+            // Use a temporary logger factory since the DI container isn't built yet
+            using var logFactory = LoggerFactory.Create(b => b.AddConsole());
+            var log = logFactory.CreateLogger(nameof(DependencyInjection));
+            log.LogWarning(
+                "Configuration advisory: Documents:MaxScannableFileSizeMb ({AppLimit} MB) exceeds " +
+                "Scanner:ClamAv:MaxScannableFileSizeMb ({ClamAvLimit} MB). " +
+                "ClamAV may reject scans for files between these limits. " +
+                "Ensure ClamAV's StreamMaxLength is aligned.",
+                docOpts.MaxScannableFileSizeMb, clamAvOpts.MaxScannableFileSizeMb);
+        }
     }
 }

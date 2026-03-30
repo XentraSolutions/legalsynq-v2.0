@@ -13,6 +13,20 @@ public sealed class DocumentServiceOptions
 {
     public bool RequireCleanScanForAccess { get; set; } = false;
     public int  SignedUrlTtlSeconds       { get; set; } = 30;
+
+    /// <summary>
+    /// Maximum file size (MB) accepted at the upload API layer.
+    /// Requests exceeding this limit are rejected with HTTP 413 before any storage is allocated.
+    /// Must be ≤ MaxScannableFileSizeMb.
+    /// </summary>
+    public int MaxUploadSizeMb { get; set; } = 25;
+
+    /// <summary>
+    /// Maximum file size (MB) that may be submitted for antivirus scanning.
+    /// Files exceeding this limit are rejected with HTTP 422 before enqueueing.
+    /// Operators should align this with ClamAV's configured StreamMaxLength.
+    /// </summary>
+    public int MaxScannableFileSizeMb { get; set; } = 25;
 }
 
 public sealed class DocumentService
@@ -74,6 +88,22 @@ public sealed class DocumentService
         AssertTenantScope(ctx.Principal, req.TenantId);
         AssertPermission(ctx.Principal, "write");
         ValidateMimeType(mimeType);
+
+        // ── File size enforcement ─────────────────────────────────────────────
+        // 413: upload limit (fast-path at API layer; this is the service-layer safety net)
+        var uploadLimitBytes  = (long)_opts.MaxUploadSizeMb * 1_048_576L;
+        if (fileSizeBytes > uploadLimitBytes)
+            throw new FileTooLargeException(fileSizeBytes, _opts.MaxUploadSizeMb);
+
+        // 422: scan-compatibility limit — reject before any storage I/O
+        var scanLimitBytes = (long)_opts.MaxScannableFileSizeMb * 1_048_576L;
+        if (fileSizeBytes > scanLimitBytes)
+        {
+            _log.LogWarning(
+                "Scan-size policy rejection: File={File} SizeBytes={Size} LimitMb={Limit} CorrelationId={Corr}",
+                fileName, fileSizeBytes, _opts.MaxScannableFileSizeMb, ctx.CorrelationId);
+            throw new FileSizeExceedsScanLimitException(fileSizeBytes, _opts.MaxScannableFileSizeMb);
+        }
 
         // Store in quarantine prefix — scan status starts as Pending
         var storageKey    = BuildQuarantineKey(req.TenantId, req.DocumentTypeId, fileName);
@@ -233,6 +263,20 @@ public sealed class DocumentService
 
         await AssertDocumentTenantScopeAsync(ctx, doc);
         ValidateMimeType(mimeType);
+
+        // ── File size enforcement (mirrors CreateAsync) ───────────────────────
+        var uploadLimitBytesV = (long)_opts.MaxUploadSizeMb * 1_048_576L;
+        if (fileSizeBytes > uploadLimitBytesV)
+            throw new FileTooLargeException(fileSizeBytes, _opts.MaxUploadSizeMb);
+
+        var scanLimitBytesV = (long)_opts.MaxScannableFileSizeMb * 1_048_576L;
+        if (fileSizeBytes > scanLimitBytesV)
+        {
+            _log.LogWarning(
+                "Scan-size policy rejection (version): File={File} SizeBytes={Size} LimitMb={Limit} CorrelationId={Corr}",
+                fileName, fileSizeBytes, _opts.MaxScannableFileSizeMb, ctx.CorrelationId);
+            throw new FileSizeExceedsScanLimitException(fileSizeBytes, _opts.MaxScannableFileSizeMb);
+        }
 
         // Store in quarantine prefix — scan status starts as Pending
         var storageKey    = BuildQuarantineKey(doc.TenantId, doc.DocumentTypeId, fileName);

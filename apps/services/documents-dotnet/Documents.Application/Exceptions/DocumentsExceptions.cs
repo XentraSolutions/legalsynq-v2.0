@@ -99,3 +99,44 @@ public sealed class ValidationException : DocumentsException
         Details = details;
     }
 }
+
+/// <summary>
+/// Thrown when an uploaded file exceeds the configured <c>Documents:MaxUploadSizeMb</c> limit.
+/// Maps to HTTP 413 — client should reduce file size.
+/// </summary>
+public sealed class FileTooLargeException : DocumentsException
+{
+    public override int    StatusCode => 413;
+    public override string ErrorCode  => "FILE_TOO_LARGE";
+
+    public long FileSizeBytes { get; }
+    public int  LimitMb       { get; }
+
+    public FileTooLargeException(long fileSizeBytes, int limitMb)
+        : base($"File size {fileSizeBytes:N0} bytes ({fileSizeBytes / 1_048_576.0:F1} MB) exceeds the maximum upload limit of {limitMb} MB")
+    {
+        FileSizeBytes = fileSizeBytes;
+        LimitMb       = limitMb;
+    }
+}
+
+/// <summary>
+/// Thrown when a file exceeds the configured <c>Documents:MaxScannableFileSizeMb</c> limit
+/// and therefore cannot be safely submitted for virus scanning.
+/// Maps to HTTP 422 — the file cannot be processed at its current size.
+/// </summary>
+public sealed class FileSizeExceedsScanLimitException : DocumentsException
+{
+    public override int    StatusCode => 422;
+    public override string ErrorCode  => "FILE_EXCEEDS_SCAN_LIMIT";
+
+    public long FileSizeBytes { get; }
+    public int  LimitMb       { get; }
+
+    public FileSizeExceedsScanLimitException(long fileSizeBytes, int limitMb)
+        : base($"File size {fileSizeBytes:N0} bytes ({fileSizeBytes / 1_048_576.0:F1} MB) exceeds the maximum scannable limit of {limitMb} MB")
+    {
+        FileSizeBytes = fileSizeBytes;
+        LimitMb       = limitMb;
+    }
+}

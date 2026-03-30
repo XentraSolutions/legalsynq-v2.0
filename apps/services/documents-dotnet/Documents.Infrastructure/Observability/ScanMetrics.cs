@@ -81,4 +81,23 @@ public static class ScanMetrics
     public static readonly Counter ClamAvCircuitShortCircuitTotal = Metrics.CreateCounter(
         "docs_clamav_circuit_short_circuit_total",
         "Total ClamAV scan calls short-circuited by the open circuit breaker.");
+
+    // ── Signature freshness ───────────────────────────────────────────────────
+
+    /// <summary>Age of the ClamAV signature database in seconds (from the VERSION command db-date field).</summary>
+    public static readonly Gauge ClamAvSignatureAgeSeconds = Metrics.CreateGauge(
+        "docs_clamav_signature_age_seconds",
+        "Age of the ClamAV virus-definition database in seconds. Updated on each freshness check.");
+
+    // ── File size policy ──────────────────────────────────────────────────────
+
+    /// <summary>Files rejected at the upload layer because they exceed the MaxUploadSizeMb limit.</summary>
+    public static readonly Counter UploadFileTooLargeTotal = Metrics.CreateCounter(
+        "docs_upload_file_too_large_total",
+        "Total upload requests rejected because the file exceeded the configured MaxUploadSizeMb limit.");
+
+    /// <summary>Files rejected at the scan-compatibility layer because they exceed the MaxScannableFileSizeMb limit.</summary>
+    public static readonly Counter ScanSizeRejectedTotal = Metrics.CreateCounter(
+        "docs_scan_size_rejected_total",
+        "Total files rejected before scanning because they exceeded the configured MaxScannableFileSizeMb limit.");
 }

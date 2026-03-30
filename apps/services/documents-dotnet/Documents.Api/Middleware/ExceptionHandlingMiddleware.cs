@@ -1,4 +1,5 @@
 using Documents.Application.Exceptions;
+using Documents.Infrastructure.Observability;
 using System.Text.Json;
 
 namespace Documents.Api.Middleware;
@@ -36,6 +37,40 @@ public sealed class ExceptionHandlingMiddleware
         switch (ex)
         {
             // ── Specific DocumentsException subtypes (must come before base) ──
+
+            // 413 — file exceeds upload size limit
+            case FileTooLargeException fte:
+                statusCode = 413;
+                ScanMetrics.UploadFileTooLargeTotal.Inc();
+                _log.LogWarning(
+                    "Upload rejected — file too large: SizeBytes={Size} LimitMb={Limit} CorrelationId={Corr}",
+                    fte.FileSizeBytes, fte.LimitMb, correlationId);
+                body = new
+                {
+                    error         = fte.ErrorCode,
+                    message       = fte.Message,
+                    fileSizeBytes = fte.FileSizeBytes,
+                    limitMb       = fte.LimitMb,
+                    correlationId,
+                };
+                break;
+
+            // 422 — file exceeds scanner size limit
+            case FileSizeExceedsScanLimitException fse:
+                statusCode = 422;
+                ScanMetrics.ScanSizeRejectedTotal.Inc();
+                _log.LogWarning(
+                    "Scan-size rejection: SizeBytes={Size} LimitMb={Limit} CorrelationId={Corr}",
+                    fse.FileSizeBytes, fse.LimitMb, correlationId);
+                body = new
+                {
+                    error         = fse.ErrorCode,
+                    message       = fse.Message,
+                    fileSizeBytes = fse.FileSizeBytes,
+                    limitMb       = fse.LimitMb,
+                    correlationId,
+                };
+                break;
 
             // 503 — scan queue saturated; client must back off and retry
             case QueueSaturationException qse:
