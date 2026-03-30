@@ -148,6 +148,12 @@ try
     // ── Domain services ───────────────────────────────────────────────────────
     builder.Services.AddScoped<IAuditEventService, AuditEventService>();
 
+    // Canonical ingestion pipeline — targets AuditEventRecord + IAuditEventRecordRepository.
+    // Replaces the legacy AuditEventService for all new ingest surface area.
+    // To switch transports (queued / outbox), register a different IAuditEventRecordRepository
+    // implementation in place of EfAuditEventRecordRepository above.
+    builder.Services.AddScoped<IAuditEventIngestionService, AuditEventIngestionService>();
+
     // ── CORS ──────────────────────────────────────────────────────────────────
     var allowedOrigins = svcOpts.AllowedCorsOrigins;
     builder.Services.AddCors(opts =>

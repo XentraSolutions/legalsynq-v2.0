@@ -1,1 +1,9 @@
-{}
+{
+  "/tenant-users/page": "app/tenant-users/page.js",
+  "/tenants/[id]/page": "app/tenants/[id]/page.js",
+  "/product-rules/page": "app/product-rules/page.js",
+  "/org-relationships/page": "app/org-relationships/page.js",
+  "/relationship-types/page": "app/relationship-types/page.js",
+  "/org-types/page": "app/org-types/page.js",
+  "/monitoring/page": "app/monitoring/page.js"
+}
