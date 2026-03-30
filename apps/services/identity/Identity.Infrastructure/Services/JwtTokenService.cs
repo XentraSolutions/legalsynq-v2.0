@@ -46,12 +46,16 @@ public class JwtTokenService : IJwtTokenService
 
         if (organization is not null)
         {
-            claims.Add(new Claim("org_id",   organization.Id.ToString()));
-            claims.Add(new Claim("org_type", organization.OrgType));
+            claims.Add(new Claim("org_id", organization.Id.ToString()));
 
-            // Phase 1: also emit the canonical OrganizationTypeId when available.
-            // Consumers that understand the new catalog can use this instead of the string.
-            // Legacy consumers that only read org_type are unaffected.
+            // Phase H: derive org_type code from the canonical OrganizationTypeId FK first;
+            // fall back to the stored OrgType string for compatibility with old rows.
+            // TODO [Phase H — remove OrgType string]: once column is dropped, always use OrgTypeMapper.
+            var orgTypeCode = Identity.Domain.OrgTypeMapper.TryResolveCode(organization.OrganizationTypeId)
+                ?? organization.OrgType;
+            claims.Add(new Claim("org_type", orgTypeCode));
+
+            // Also emit the canonical OrganizationTypeId for consumers that understand the catalog.
             if (organization.OrganizationTypeId.HasValue)
                 claims.Add(new Claim("org_type_id", organization.OrganizationTypeId.Value.ToString()));
         }

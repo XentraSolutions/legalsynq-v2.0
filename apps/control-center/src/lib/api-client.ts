@@ -342,6 +342,8 @@ export const CACHE_TAGS = {
   productOrgTypeRules:  'cc:product-org-type-rules',
   productRelTypeRules:  'cc:product-rel-type-rules',
   legacyCoverage:       'cc:legacy-coverage',
+  // Phase 8 — platform readiness summary
+  platformReadiness:    'cc:platform-readiness',
 } as const;
 
 export type CacheTag = typeof CACHE_TAGS[keyof typeof CACHE_TAGS];

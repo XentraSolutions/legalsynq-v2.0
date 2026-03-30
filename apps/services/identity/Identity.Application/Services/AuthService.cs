@@ -97,6 +97,13 @@ public class AuthService : IAuthService
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
             userWithRoles, tenant, roleNames, org, productRoles);
 
+        // Phase H: derive org_type code from OrganizationTypeId FK (authoritative) when available;
+        // fall back to the stored OrgType string for compatibility.
+        // TODO [Phase H — remove OrgType string]: remove OrgType string from UserResponse once column is dropped.
+        var orgTypeForResponse = org is not null
+            ? (Domain.OrgTypeMapper.TryResolveCode(org.OrganizationTypeId) ?? org.OrgType)
+            : null;
+
         var userResponse = new UserResponse(
             userWithRoles.Id,
             userWithRoles.TenantId,
@@ -106,7 +113,7 @@ public class AuthService : IAuthService
             userWithRoles.IsActive,
             roleNames,
             org?.Id,
-            org?.OrgType,
+            orgTypeForResponse,
             productRoles);
 
         return new LoginResponse(token, expiresAtUtc, userResponse);

@@ -3,6 +3,7 @@ using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
+using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 
 namespace CareConnect.Application.Services;
@@ -13,17 +14,20 @@ public class ReferralService : IReferralService
     private readonly IProviderRepository _providers;
     private readonly INotificationService _notifications;
     private readonly IOrganizationRelationshipResolver _relationshipResolver;
+    private readonly ILogger<ReferralService> _logger;
 
     public ReferralService(
         IReferralRepository referrals,
         IProviderRepository providers,
         INotificationService notifications,
-        IOrganizationRelationshipResolver relationshipResolver)
+        IOrganizationRelationshipResolver relationshipResolver,
+        ILogger<ReferralService> logger)
     {
         _referrals            = referrals;
         _providers            = providers;
         _notifications        = notifications;
         _relationshipResolver = relationshipResolver;
+        _logger               = logger;
     }
 
     public async Task<PagedResponse<ReferralResponse>> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default)
@@ -64,6 +68,17 @@ public class ReferralService : IReferralService
                 request.ReferringOrganizationId.Value,
                 request.ReceivingOrganizationId.Value,
                 ct);
+
+            // Phase H: log when both org IDs were supplied but no active relationship was resolved.
+            // This indicates either a missing OrganizationRelationship record in Identity or a
+            // wrong org ID pair — the referral will still be created but without relationship linkage.
+            if (orgRelationshipId is null)
+                _logger.LogWarning(
+                    "Referral org-relationship resolution: no active OrganizationRelationship found " +
+                    "between ReferringOrg={ReferringOrgId} and ReceivingOrg={ReceivingOrgId}. " +
+                    "Referral will be created without OrganizationRelationshipId.",
+                    request.ReferringOrganizationId.Value,
+                    request.ReceivingOrganizationId.Value);
         }
 
         var referral = Referral.Create(

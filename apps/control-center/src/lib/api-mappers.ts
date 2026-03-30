@@ -52,6 +52,7 @@ import type {
   ProductOrgTypeRule,
   ProductRelTypeRule,
   LegacyCoverageReport,
+  PlatformReadinessSummary,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -693,6 +694,10 @@ export function mapProductRelTypeRule(raw: unknown): ProductRelTypeRule {
 /**
  * mapLegacyCoverageReport — normalises a raw backend legacy-coverage response.
  * Returned by GET /identity/api/admin/legacy-coverage.
+ *
+ * Phase G update: roleAssignments now uses the retired dual-write shape.
+ * Legacy fields (usersWithLegacyRoles, usersWithGapCount, dualWriteCoveragePct)
+ * are no longer emitted by the backend; Phase G fields are read instead.
  */
 export function mapLegacyCoverageReport(raw: unknown): LegacyCoverageReport {
   const r = asObj(raw);
@@ -723,11 +728,58 @@ export function mapLegacyCoverageReport(raw: unknown): LegacyCoverageReport {
       }),
     },
 
+    // Phase G shape — dual-write fields retired; SRA is sole role source.
     roleAssignments: {
-      usersWithLegacyRoles:  num(raRaw, 'users_with_legacy_roles',  'usersWithLegacyRoles',  0),
-      usersWithScopedRoles:  num(raRaw, 'users_with_scoped_roles',  'usersWithScopedRoles',  0),
-      usersWithGapCount:     num(raRaw, 'users_with_gap_count',     'usersWithGapCount',     0),
-      dualWriteCoveragePct:  num(raRaw, 'dual_write_coverage_pct',  'dualWriteCoveragePct',  0),
+      userRolesRetired:             bool(raRaw, 'user_roles_retired',               'userRolesRetired',             true),
+      usersWithScopedRoles:         num(raRaw,  'users_with_scoped_roles',          'usersWithScopedRoles',         0),
+      totalActiveScopedAssignments: num(raRaw,  'total_active_scoped_assignments',  'totalActiveScopedAssignments', 0),
+    },
+  };
+}
+
+// ── Platform Readiness mapper (Phase 8) ───────────────────────────────────────
+
+/**
+ * mapPlatformReadiness — normalises a raw platform-readiness response.
+ * Returned by GET /identity/api/admin/platform-readiness.
+ */
+export function mapPlatformReadiness(raw: unknown): PlatformReadinessSummary {
+  const r    = asObj(raw);
+  const pgRaw = asObj(r['phaseGCompletion']       ?? r['phase_g_completion']       ?? {});
+  const otRaw = asObj(r['orgTypeCoverage']         ?? r['org_type_coverage']        ?? {});
+  const prRaw = asObj(r['productRoleEligibility']  ?? r['product_role_eligibility'] ?? {});
+  const orRaw = asObj(r['orgRelationships']        ?? r['org_relationships']        ?? {});
+
+  return {
+    generatedAtUtc: str(r, 'generated_at_utc', 'generatedAtUtc', new Date().toISOString()),
+
+    phaseGCompletion: {
+      userRolesRetired:             bool(pgRaw, 'user_roles_retired',               'userRolesRetired',             true),
+      soleRoleSourceIsSra:          bool(pgRaw, 'sole_role_source_is_sra',          'soleRoleSourceIsSra',          true),
+      totalActiveScopedAssignments: num(pgRaw,  'total_active_scoped_assignments',  'totalActiveScopedAssignments', 0),
+      globalScopedAssignments:      num(pgRaw,  'global_scoped_assignments',        'globalScopedAssignments',      0),
+      usersWithScopedRole:          num(pgRaw,  'users_with_scoped_role',           'usersWithScopedRole',          0),
+    },
+
+    orgTypeCoverage: {
+      totalActiveOrgs:            num(otRaw,  'total_active_orgs',             'totalActiveOrgs',            0),
+      orgsWithOrganizationTypeId: num(otRaw,  'orgs_with_organization_type_id','orgsWithOrganizationTypeId', 0),
+      orgsWithMissingTypeId:      num(otRaw,  'orgs_with_missing_type_id',     'orgsWithMissingTypeId',      0),
+      orgsWithCodeMismatch:       num(otRaw,  'orgs_with_code_mismatch',       'orgsWithCodeMismatch',       0),
+      consistent:                 bool(otRaw, 'consistent',                    'consistent',                 true),
+      coveragePct:                num(otRaw,  'coverage_pct',                  'coveragePct',                100),
+    },
+
+    productRoleEligibility: {
+      totalActiveProductRoles: num(prRaw, 'total_active_product_roles', 'totalActiveProductRoles', 0),
+      withOrgTypeRule:         num(prRaw, 'with_org_type_rule',         'withOrgTypeRule',         0),
+      unrestricted:            num(prRaw, 'unrestricted',               'unrestricted',            0),
+      coveragePct:             num(prRaw, 'coverage_pct',               'coveragePct',             100),
+    },
+
+    orgRelationships: {
+      total:  num(orRaw, 'total',  'total',  0),
+      active: num(orRaw, 'active', 'active', 0),
     },
   };
 }

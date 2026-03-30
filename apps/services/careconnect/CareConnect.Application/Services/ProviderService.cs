@@ -83,6 +83,16 @@ public class ProviderService : IProviderService
                 "Provider {ProviderId} linking to Identity Organization {OrganizationId}.",
                 provider.Id, request.OrganizationId.Value);
         }
+        else
+        {
+            // Phase H: warn when a Provider is created without an Identity org link.
+            // An unlinked provider cannot participate in org-scoped authorization or
+            // cross-service referral relationship resolution.
+            _logger.LogInformation(
+                "Provider {ProviderId} created without an Identity Organization link (OrganizationId not supplied). " +
+                "Supply OrganizationId on create or update to enable cross-service org-scoped features.",
+                provider.Id);
+        }
 
         await _providers.AddAsync(provider, ct);
 

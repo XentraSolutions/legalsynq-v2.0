@@ -396,14 +396,16 @@ export interface EligibilityRulesCoverage {
   uncoveredRoles:          UncoveredRole[];
 }
 
-/** Breakdown of ScopedRoleAssignment dual-write adoption. */
+/**
+ * Phase G shape — UserRoles / UserRoleAssignments tables are retired.
+ * Legacy dual-write fields (usersWithLegacyRoles, usersWithGapCount,
+ * dualWriteCoveragePct) have been removed; SRA is the sole role source.
+ */
 export interface RoleAssignmentsCoverage {
-  usersWithLegacyRoles:   number;
-  usersWithScopedRoles:   number;
-  /** Users with a UserRole record but no matching GLOBAL ScopedRoleAssignment.
-   *  Should reach 0 after migration 20260330200002 backfill. */
-  usersWithGapCount:      number;
-  dualWriteCoveragePct:   number;
+  /** Phase G: UserRoles and UserRoleAssignments tables have been dropped. */
+  userRolesRetired:             boolean;
+  usersWithScopedRoles:         number;
+  totalActiveScopedAssignments: number;
 }
 
 /**
@@ -414,6 +416,49 @@ export interface LegacyCoverageReport {
   generatedAtUtc:  string;
   eligibilityRules: EligibilityRulesCoverage;
   roleAssignments:  RoleAssignmentsCoverage;
+}
+
+// ── Platform Readiness (Phase 8) ──────────────────────────────────────────────
+
+export interface PhaseGCompletion {
+  userRolesRetired:             boolean;
+  soleRoleSourceIsSra:          boolean;
+  totalActiveScopedAssignments: number;
+  globalScopedAssignments:      number;
+  usersWithScopedRole:          number;
+}
+
+export interface OrgTypeCoverage {
+  totalActiveOrgs:            number;
+  orgsWithOrganizationTypeId: number;
+  orgsWithMissingTypeId:      number;
+  orgsWithCodeMismatch:       number;
+  consistent:                 boolean;
+  coveragePct:                number;
+}
+
+export interface ProductRoleEligibilityCoverage {
+  totalActiveProductRoles: number;
+  withOrgTypeRule:         number;
+  unrestricted:            number;
+  coveragePct:             number;
+}
+
+export interface OrgRelationshipCoverage {
+  total:  number;
+  active: number;
+}
+
+/**
+ * Full platform readiness summary.
+ * Returned by GET /identity/api/admin/platform-readiness.
+ */
+export interface PlatformReadinessSummary {
+  generatedAtUtc:        string;
+  phaseGCompletion:      PhaseGCompletion;
+  orgTypeCoverage:       OrgTypeCoverage;
+  productRoleEligibility: ProductRoleEligibilityCoverage;
+  orgRelationships:      OrgRelationshipCoverage;
 }
 
 // ── Shared ────────────────────────────────────────────────────────────────────

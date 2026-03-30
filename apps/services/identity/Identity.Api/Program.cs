@@ -111,6 +111,42 @@ try
     app.Logger.LogInformation(
         "Phase G role check: {Assignments} active GLOBAL ScopedRoleAssignment(s) across {Users} user(s).",
         scopedTotal, scopedUsers);
+
+    // 3. Org type consistency: flag organizations where OrganizationTypeId FK is null
+    //    but OrgType string is populated, or where the FK code doesn't match the string.
+    var orgTypeCheckRows = await db.Organizations
+        .Where(o => o.IsActive)
+        .Select(o => new { o.Id, o.OrgType, o.OrganizationTypeId })
+        .ToListAsync();
+
+    var orgsWithMissingTypeId = orgTypeCheckRows
+        .Count(o => o.OrganizationTypeId == null && !string.IsNullOrWhiteSpace(o.OrgType));
+
+    var orgsWithCodeMismatch = orgTypeCheckRows
+        .Count(o =>
+        {
+            if (o.OrganizationTypeId == null) return false;
+            var expectedCode = Identity.Domain.OrgTypeMapper.TryResolveCode(o.OrganizationTypeId);
+            return expectedCode is not null &&
+                   !string.Equals(expectedCode, o.OrgType, StringComparison.OrdinalIgnoreCase);
+        });
+
+    if (orgsWithMissingTypeId > 0)
+        app.Logger.LogWarning(
+            "OrgType consistency: {Count} active org(s) have OrgType string but no OrganizationTypeId. " +
+            "Run a backfill migration (or update via Organization.Create) to populate the FK.",
+            orgsWithMissingTypeId);
+
+    if (orgsWithCodeMismatch > 0)
+        app.Logger.LogWarning(
+            "OrgType consistency: {Count} active org(s) have an OrganizationTypeId whose OrgTypeMapper " +
+            "code does not match the stored OrgType string. Investigate and reconcile.",
+            orgsWithCodeMismatch);
+
+    if (orgsWithMissingTypeId == 0 && orgsWithCodeMismatch == 0)
+        app.Logger.LogInformation(
+            "OrgType consistency check passed — {Total} active org(s) all have consistent OrganizationTypeId and OrgType.",
+            orgTypeCheckRows.Count);
 }
 catch (Exception ex)
 {

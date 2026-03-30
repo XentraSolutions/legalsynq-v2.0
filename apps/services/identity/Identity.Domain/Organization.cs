@@ -60,6 +60,11 @@ public class Organization
         if (!Identity.Domain.OrgType.IsValid(orgType))
             throw new ArgumentException($"Invalid OrgType: {orgType}", nameof(orgType));
 
+        // Phase H: auto-resolve OrganizationTypeId from the OrgType code when not explicitly
+        // supplied. Ensures the FK is always populated for any recognized OrgType string.
+        // TODO [Phase H — remove OrgType string]: once string column is dropped, callers pass only ID.
+        var resolvedTypeId = organizationTypeId ?? OrgTypeMapper.TryResolve(orgType);
+
         var now = DateTime.UtcNow;
         return new Organization
         {
@@ -67,8 +72,8 @@ public class Organization
             TenantId           = tenantId,
             Name               = name.Trim(),
             DisplayName        = displayName?.Trim(),
-            OrgType            = orgType,
-            OrganizationTypeId = organizationTypeId,
+            OrgType            = orgType,                   // TODO [Phase H — remove OrgType string]
+            OrganizationTypeId = resolvedTypeId,
             IsActive           = true,
             CreatedAtUtc       = now,
             UpdatedAtUtc       = now,

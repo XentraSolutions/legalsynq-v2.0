@@ -61,6 +61,43 @@ if (app.Environment.IsDevelopment())
     db.Database.Migrate();
 }
 
+// ── Phase H startup diagnostic: provider/facility Identity linkage health ─────
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<CareConnectDbContext>();
+
+    var totalProviders           = await db.Providers.CountAsync(p => p.IsActive);
+    var providersWithoutOrgLink  = await db.Providers.CountAsync(p => p.IsActive && p.OrganizationId == null);
+    var totalFacilities          = await db.Facilities.CountAsync(f => f.IsActive);
+    var facilitiesWithoutOrgLink = await db.Facilities.CountAsync(f => f.IsActive && f.OrganizationId == null);
+
+    if (providersWithoutOrgLink > 0)
+        app.Logger.LogWarning(
+            "Linkage health: {Count}/{Total} active Provider(s) have no Identity Organization link (OrganizationId is null). " +
+            "These providers cannot participate in cross-service org-scoped authorization.",
+            providersWithoutOrgLink, totalProviders);
+    else
+        app.Logger.LogInformation(
+            "Linkage health: all {Total} active Provider(s) have an Identity Organization link.",
+            totalProviders);
+
+    if (facilitiesWithoutOrgLink > 0)
+        app.Logger.LogWarning(
+            "Linkage health: {Count}/{Total} active Facility(ies) have no Identity Organization link (OrganizationId is null). " +
+            "These facilities cannot participate in cross-service org-scoped authorization.",
+            facilitiesWithoutOrgLink, totalFacilities);
+    else
+        app.Logger.LogInformation(
+            "Linkage health: all {Total} active Facility(ies) have an Identity Organization link.",
+            totalFacilities);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex,
+        "CareConnect Phase H startup diagnostic skipped — could not query the database at startup.");
+}
+
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();

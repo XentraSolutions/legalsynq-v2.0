@@ -73,6 +73,7 @@ import {
   mapProductOrgTypeRule,
   mapProductRelTypeRule,
   mapLegacyCoverageReport,
+  mapPlatformReadiness,
 }                                       from '@/lib/api-mappers';
 import type {
   TenantSummary,
@@ -97,6 +98,7 @@ import type {
   ProductOrgTypeRule,
   ProductRelTypeRule,
   LegacyCoverageReport,
+  PlatformReadinessSummary,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -733,15 +735,14 @@ export const controlCenterServerApi = {
     },
   },
 
-  // ── Legacy Coverage (Step 4) ──────────────────────────────────────────────
+  // ── Legacy Coverage (Phase G) ──────────────────────────────────────────────
   /**
    * GET /identity/api/admin/legacy-coverage
    *
-   * Returns a point-in-time snapshot of legacy migration path adoption:
-   *   • EligibleOrgType → OrgTypeRule coverage %
-   *   • UserRole → ScopedRoleAssignment dual-write adoption %
+   * Returns a point-in-time snapshot of eligibility-rule migration coverage.
+   * Phase G: roleAssignments now reflects the SRA-only (retired dual-write) shape.
    *
-   * Short TTL (10 s) — this is a diagnostic/admin page, not a hot-path.
+   * Short TTL (10 s) — diagnostic/admin page, not a hot-path.
    * Cache tag: cc:legacy-coverage.
    */
   legacyCoverage: {
@@ -752,6 +753,30 @@ export const controlCenterServerApi = {
         [CACHE_TAGS.legacyCoverage],
       );
       return mapLegacyCoverageReport(raw);
+    },
+  },
+
+  // ── Platform Readiness (Phase 8) ──────────────────────────────────────────
+  /**
+   * GET /identity/api/admin/platform-readiness
+   *
+   * Returns a cross-domain readiness summary covering:
+   *   • Phase G completion (UserRoles retired, SRA sole source)
+   *   • OrgType consistency (OrganizationTypeId FK coverage)
+   *   • ProductRole eligibility coverage (OrgTypeRule %)
+   *   • Organization relationship statistics
+   *
+   * Short TTL (30 s) — diagnostic dashboard endpoint.
+   * Cache tag: cc:platform-readiness.
+   */
+  platformReadiness: {
+    get: async (): Promise<PlatformReadinessSummary> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/platform-readiness`,
+        30,
+        [CACHE_TAGS.platformReadiness],
+      );
+      return mapPlatformReadiness(raw);
     },
   },
 

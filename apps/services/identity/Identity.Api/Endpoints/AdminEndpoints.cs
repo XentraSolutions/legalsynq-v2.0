@@ -60,10 +60,13 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/product-relationship-type-rules", ListProductRelationshipTypeRules);
         routes.MapGet("/api/admin/product-rel-type-rules",          ListProductRelationshipTypeRules);
 
-        // ── Legacy coverage (Step 4 / Phase F) ───────────────────────────────
+        // ── Legacy coverage (Phase G) ────────────────────────────────────────
         routes.MapGet("/api/admin/legacy-coverage", GetLegacyCoverage);
 
-        // ── Role assignment (Step 5 dual-write) ───────────────────────────────
+        // ── Platform readiness summary (Phase 8) ─────────────────────────────
+        routes.MapGet("/api/admin/platform-readiness", GetPlatformReadiness);
+
+        // ── Role assignment ───────────────────────────────────────────────────
         routes.MapPost("/api/admin/users/{id:guid}/roles",              AssignRole);
         routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}", RevokeRole);
 
@@ -977,6 +980,107 @@ public static class AdminEndpoints
 
         await db.SaveChangesAsync();
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// GET /api/admin/platform-readiness
+    ///
+    /// Returns a cross-domain readiness summary covering Phase G completion status,
+    /// OrgType consistency, product-role eligibility coverage, and role assignment
+    /// depth — for the platform operations dashboard.
+    ///
+    /// Returns 200 with the readiness payload (never 404/500 — issues surface as
+    /// degraded/false flags inside the response so the dashboard always renders).
+    /// </summary>
+    private static async Task<IResult> GetPlatformReadiness(
+        IdentityDbContext db,
+        CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+
+        // ── 1. Phase G completion ─────────────────────────────────────────────
+        // Phase G removed UserRoles / UserRoleAssignments tables and established
+        // ScopedRoleAssignments (GLOBAL scope) as the sole authoritative role source.
+        var totalScopedActive   = await db.ScopedRoleAssignments.CountAsync(s => s.IsActive,              ct);
+        var globalScopedActive  = await db.ScopedRoleAssignments.CountAsync(s => s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global, ct);
+        var usersWithScopedRole = await db.ScopedRoleAssignments
+            .Where(s => s.IsActive)
+            .Select(s => s.UserId)
+            .Distinct()
+            .CountAsync(ct);
+
+        // ── 2. OrgType consistency ────────────────────────────────────────────
+        var orgRows = await db.Organizations
+            .Where(o => o.IsActive)
+            .Select(o => new { o.OrganizationTypeId, o.OrgType })
+            .ToListAsync(ct);
+
+        var totalActiveOrgs       = orgRows.Count;
+        var orgsWithTypeId        = orgRows.Count(o => o.OrganizationTypeId.HasValue);
+        var orgsWithMissingTypeId = orgRows.Count(o => o.OrganizationTypeId == null && !string.IsNullOrWhiteSpace(o.OrgType));
+        var orgsWithCodeMismatch  = orgRows.Count(o =>
+        {
+            if (o.OrganizationTypeId == null) return false;
+            var code = OrgTypeMapper.TryResolveCode(o.OrganizationTypeId);
+            return code is not null && !string.Equals(code, o.OrgType, StringComparison.OrdinalIgnoreCase);
+        });
+        var orgTypeConsistent = orgsWithMissingTypeId == 0 && orgsWithCodeMismatch == 0;
+
+        // ── 3. ProductRole eligibility coverage ──────────────────────────────
+        var totalActiveProductRoles = await db.ProductRoles.CountAsync(r => r.IsActive, ct);
+        var productRolesWithOrgRule = await db.ProductOrganizationTypeRules
+            .Where(r => r.IsActive)
+            .Select(r => r.ProductRoleId)
+            .Distinct()
+            .CountAsync(ct);
+        var productRolesUnrestricted = totalActiveProductRoles - productRolesWithOrgRule;
+        var eligibilityCoveragePct   = totalActiveProductRoles == 0
+            ? 100.0
+            : Math.Round((double)productRolesWithOrgRule / totalActiveProductRoles * 100.0, 1);
+
+        // ── 4. Org-relationship coverage ──────────────────────────────────────
+        var totalOrgRelationships   = await db.OrganizationRelationships.CountAsync(ct);
+        var activeOrgRelationships  = await db.OrganizationRelationships.CountAsync(r => r.IsActive, ct);
+
+        return Results.Ok(new
+        {
+            generatedAtUtc = now,
+
+            phaseGCompletion = new
+            {
+                userRolesRetired              = true,      // migration 200004 executed — tables dropped
+                soleRoleSourceIsSra           = true,
+                totalActiveScopedAssignments  = totalScopedActive,
+                globalScopedAssignments       = globalScopedActive,
+                usersWithScopedRole,
+            },
+
+            orgTypeCoverage = new
+            {
+                totalActiveOrgs,
+                orgsWithOrganizationTypeId = orgsWithTypeId,
+                orgsWithMissingTypeId,
+                orgsWithCodeMismatch,
+                consistent                 = orgTypeConsistent,
+                coveragePct                = totalActiveOrgs == 0
+                    ? 100.0
+                    : Math.Round((double)orgsWithTypeId / totalActiveOrgs * 100.0, 1),
+            },
+
+            productRoleEligibility = new
+            {
+                totalActiveProductRoles,
+                withOrgTypeRule     = productRolesWithOrgRule,
+                unrestricted        = productRolesUnrestricted,
+                coveragePct         = eligibilityCoveragePct,
+            },
+
+            orgRelationships = new
+            {
+                total  = totalOrgRelationships,
+                active = activeOrgRelationships,
+            },
+        });
     }
 
     // ── Request / response DTOs (private, scoped to AdminEndpoints) ─────────

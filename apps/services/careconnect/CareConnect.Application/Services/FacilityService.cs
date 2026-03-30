@@ -47,6 +47,16 @@ public class FacilityService : IFacilityService
                 "Facility {FacilityId} linked to Identity Organization {OrganizationId} on create.",
                 facility.Id, request.OrganizationId.Value);
         }
+        else
+        {
+            // Phase H: warn when a Facility is created without an Identity org link.
+            // An unlinked facility cannot participate in org-scoped authorization or
+            // cross-service relationship resolution.
+            _logger.LogInformation(
+                "Facility {FacilityId} created without an Identity Organization link (OrganizationId not supplied). " +
+                "Supply OrganizationId on create or update to enable cross-service org-scoped features.",
+                facility.Id);
+        }
 
         await _facilities.AddAsync(facility, ct);
         return ToResponse(facility);

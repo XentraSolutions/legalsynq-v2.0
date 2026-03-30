@@ -169,40 +169,37 @@ export function LegacyCoverageCard({ report }: LegacyCoverageCardProps) {
         <UncoveredRolesTable rows={er.uncoveredRoles} />
       </div>
 
-      {/* ── Role assignment dual-write card ──────────────────────────────── */}
+      {/* ── Role assignment (Phase G — SRA only) card ─────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
         <div>
           <h2 className="text-base font-semibold text-gray-900">
-            Role Assignment Dual-Write Adoption
+            Role Assignment — Phase G Complete
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            UserRole → ScopedRoleAssignment (GLOBAL scope). Target: <strong>gap = 0</strong> and <strong>100%</strong> coverage before retiring legacy write path.
+            UserRoles and UserRoleAssignments tables retired. ScopedRoleAssignments (GLOBAL scope) is now the sole authoritative role source.
           </p>
         </div>
 
-        <CoverageBar pct={ra.dualWriteCoveragePct} />
+        <CoverageBar pct={ra.userRolesRetired ? 100 : 0} />
 
         <div className="divide-y divide-gray-50">
-          <StatRow label="Users with legacy UserRole records"     value={ra.usersWithLegacyRoles} />
           <StatRow
-            label="Users with ScopedRoleAssignment (GLOBAL)"
-            value={ra.usersWithScopedRoles}
-            pill={ra.dualWriteCoveragePct >= 100 ? 'complete' : 'in progress'}
+            label="UserRoles table retired (Phase G)"
+            value={ra.userRolesRetired ? 'Yes' : 'No'}
+            pill={ra.userRolesRetired ? 'complete' : 'pending'}
             pillColour={
-              ra.dualWriteCoveragePct >= 100
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-amber-100 text-amber-700'
-            }
-          />
-          <StatRow
-            label="Coverage gap (UserRole without ScopedAssignment)"
-            value={ra.usersWithGapCount}
-            pill={ra.usersWithGapCount === 0 ? 'closed' : 'open'}
-            pillColour={
-              ra.usersWithGapCount === 0
+              ra.userRolesRetired
                 ? 'bg-emerald-100 text-emerald-700'
                 : 'bg-red-100 text-red-700'
             }
+          />
+          <StatRow
+            label="Users with ScopedRoleAssignment (GLOBAL)"
+            value={ra.usersWithScopedRoles}
+          />
+          <StatRow
+            label="Total active ScopedRoleAssignments"
+            value={ra.totalActiveScopedAssignments}
           />
         </div>
       </div>

@@ -862,7 +862,39 @@ Analysis: `analysis/step6_final-convergence-and-relationship-activation.md`
 ### Build status after Step 7
 - Identity.Api: ✅ 0 errors (verified with `dotnet build`)
 
-### Phase H candidates (future)
-- Drop `Organization.OrgType` string column (superseded by `OrganizationTypeId` FK + `OrgTypeMapper`)
-- Derive JWT `org_type` claim from `OrgTypeMapper(org.OrganizationTypeId)` instead of raw string
-- Update Control Center UI for Phase G `GetLegacyCoverage` response shape
+---
+
+## Step 8 — Phase H: Hardening Pass ✅
+
+**Analysis doc:** `analysis/step8_hardening-pass.md`
+
+### Completed actions
+
+#### Identity backend
+- **`Organization.Create()`:** Auto-resolves `OrganizationTypeId` via `OrgTypeMapper.TryResolve(orgType)` when not explicitly supplied
+- **`JwtTokenService.cs`:** `org_type` JWT claim now derived from `OrgTypeMapper.TryResolveCode(org.OrganizationTypeId) ?? org.OrgType` (ID-first, string fallback)
+- **`AuthService.LoginAsync`:** `orgTypeForResponse` derived from `OrgTypeMapper` (ID-first, string fallback)
+- **`Identity.Api/Program.cs`:** Added check 3 — OrgType consistency diagnostic (warns on orgs with missing `OrganizationTypeId` or FK/string code mismatch)
+- **`AdminEndpoints.cs`:** Added `GET /api/admin/platform-readiness` — cross-domain readiness summary (Phase G completion, OrgType consistency, ProductRole eligibility, org relationship stats)
+
+#### CareConnect backend
+- **`ProviderService.CreateAsync`:** Logs `Information` when `OrganizationId` not supplied (unlinked provider warning)
+- **`FacilityService.CreateAsync`:** Logs `Information` when `OrganizationId` not supplied (unlinked facility warning)
+- **`ReferralService`:** Added `ILogger<ReferralService>`; logs `Warning` when both org IDs supplied but no active `OrganizationRelationship` resolved
+- **`CareConnect.Api/Program.cs`:** Added Phase H startup diagnostic — counts providers/facilities without Identity org link
+
+#### Control Center (TypeScript)
+- **`types/control-center.ts`:** `RoleAssignmentsCoverage` updated to Phase G shape (`userRolesRetired`, `usersWithScopedRoles`, `totalActiveScopedAssignments`); added `PlatformReadinessSummary` and sub-types
+- **`lib/api-mappers.ts`:** `mapLegacyCoverageReport` roleAssignments updated to Phase G shape; added `mapPlatformReadiness`
+- **`lib/api-client.ts`:** Added `platformReadiness: 'cc:platform-readiness'` to `CACHE_TAGS`
+- **`lib/control-center-api.ts`:** Added `platformReadiness.get()` method
+- **`components/platform/legacy-coverage-card.tsx`:** Renders Phase G SRA-only stats instead of deprecated dual-write fields
+
+### Build status after Step 8
+- Identity.Api: ✅ 0 errors, 0 warnings
+- CareConnect.Api: ✅ 0 errors, 1 pre-existing warning (CS0168 in ExceptionHandlingMiddleware)
+- control-center (tsc --noEmit): ✅ 0 errors
+
+### Remaining Phase H / Phase I candidates
+- Drop `Organization.OrgType` string column (all OrgType string fallback paths marked `// TODO [Phase H — remove OrgType string]`)
+- Write backfill migration to populate `OrganizationTypeId` for any existing orgs with only an `OrgType` string
