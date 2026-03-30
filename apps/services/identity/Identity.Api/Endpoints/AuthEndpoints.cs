@@ -1,5 +1,9 @@
+using System.Security.Claims;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
+using LegalSynq.AuditClient;
+using LegalSynq.AuditClient.DTOs;
+using LegalSynq.AuditClient.Enums;
 
 namespace Identity.Api.Endpoints;
 
@@ -51,8 +55,54 @@ public static class AuthEndpoints
         // ── POST /api/auth/logout ────────────────────────────────────────────
         // Anonymous (JWT may already be expired at logout time).
         // Backend is stateless — real logout is cookie deletion on the Next.js BFF.
-        // Endpoint exists for forward-compatibility (refresh-token revocation, audit).
-        app.MapPost("/api/auth/logout", (HttpContext _) => Results.NoContent())
-            .AllowAnonymous();
+        // Emits identity.user.logout for HIPAA audit trail completeness.
+        app.MapPost("/api/auth/logout", (
+            HttpContext       httpContext,
+            IAuditEventClient auditClient) =>
+        {
+            // Extract identity from the JWT claim if still present in the request.
+            // The token may be expired — we read claims without re-validating the signature.
+            var principal  = httpContext.User;
+            var userId     = principal.FindFirstValue(ClaimTypes.NameIdentifier)
+                          ?? principal.FindFirstValue("sub");
+            var tenantId   = principal.FindFirstValue("tenant_id");
+            var email      = principal.FindFirstValue(ClaimTypes.Email)
+                          ?? principal.FindFirstValue("email");
+            var name       = principal.FindFirstValue(ClaimTypes.Name)
+                          ?? principal.FindFirstValue("name")
+                          ?? email;
+
+            // Fire-and-observe: emit audit event without gating the logout response.
+            var now = DateTimeOffset.UtcNow;
+            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "identity.user.logout",
+                EventCategory = EventCategory.Security,
+                SourceSystem  = "identity-service",
+                SourceService = "auth-api",
+                Visibility    = VisibilityScope.Tenant,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = now,
+                Scope = new AuditEventScopeDto
+                {
+                    ScopeType = ScopeType.Tenant,
+                    TenantId  = tenantId,
+                },
+                Actor = new AuditEventActorDto
+                {
+                    Id   = userId,
+                    Type = ActorType.User,
+                    Name = name,
+                },
+                Entity      = userId is not null ? new AuditEventEntityDto { Type = "User", Id = userId } : null,
+                Action      = "Logout",
+                Description = $"User '{email ?? userId ?? "unknown"}' logged out.",
+                IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.logout", userId ?? email ?? "anonymous"),
+                Tags = ["auth", "logout", "session"],
+            });
+
+            return Results.NoContent();
+        })
+        .AllowAnonymous();
     }
 }

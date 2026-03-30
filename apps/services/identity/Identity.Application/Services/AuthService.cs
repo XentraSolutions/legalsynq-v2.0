@@ -155,7 +155,7 @@ public class AuthService : IAuthService
         var now = DateTimeOffset.UtcNow;
         _ = _auditClient.IngestAsync(new IngestAuditEventRequest
         {
-            EventType     = "user.login.succeeded",
+            EventType     = "identity.user.login.succeeded",
             EventCategory = EventCategory.Security,
             SourceSystem  = "identity-service",
             SourceService = "auth-api",
@@ -177,7 +177,7 @@ public class AuthService : IAuthService
             Action      = "LoginSucceeded",
             Description = $"User {userWithRoles.Email} authenticated successfully in tenant {tenant.Code}.",
             Metadata    = JsonSerializer.Serialize(new { tenantCode = tenant.Code, email = userWithRoles.Email }),
-            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "user.login.succeeded", userWithRoles.Id.ToString()),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.login.succeeded", userWithRoles.Id.ToString()),
             Tags = ["auth", "login"],
         });
 
@@ -271,7 +271,6 @@ public class AuthService : IAuthService
             Entity      = userId is not null ? new AuditEventEntityDto { Type = "User", Id = userId } : null,
             Action      = "LoginFailed",
             Description = $"Failed login attempt for '{email}' in tenant '{tenantCode}'.",
-            Outcome     = "failure",
             Metadata    = System.Text.Json.JsonSerializer.Serialize(new
             {
                 tenantCode,

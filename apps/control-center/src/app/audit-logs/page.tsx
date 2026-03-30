@@ -2,8 +2,8 @@ import { requirePlatformAdmin }      from '@/lib/auth-guards';
 import { getTenantContext }           from '@/lib/auth';
 import { controlCenterServerApi }     from '@/lib/control-center-api';
 import { CCShell }                    from '@/components/shell/cc-shell';
-import { AuditLogTable }              from '@/components/audit-logs/audit-log-table';
-import { CanonicalAuditTable }        from '@/components/audit-logs/canonical-audit-table';
+import { AuditLogTable }                    from '@/components/audit-logs/audit-log-table';
+import { CanonicalAuditTableInteractive }  from '@/components/audit-logs/canonical-audit-table-interactive';
 import type { AuditLogEntry, CanonicalAuditEvent, AuditReadMode } from '@/types/control-center';
 
 interface AuditLogsPageProps {
@@ -355,9 +355,9 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
           </div>
         )}
 
-        {/* Table — canonical path */}
+        {/* Table — canonical path (interactive: row click opens detail panel) */}
         {!fetchError && canonicalResult && (
-          <CanonicalAuditTable entries={canonicalResult.items} />
+          <CanonicalAuditTableInteractive entries={canonicalResult.items} />
         )}
 
         {/* Table — legacy path */}

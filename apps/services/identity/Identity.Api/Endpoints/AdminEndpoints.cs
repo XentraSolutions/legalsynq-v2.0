@@ -1007,7 +1007,7 @@ public static class AdminEndpoints
         var auditNow = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
         {
-            EventType     = "user.role.assigned",
+            EventType     = "identity.role.assigned",
             EventCategory = EventCategory.Administrative,
             SourceSystem  = "identity-service",
             SourceService = "admin-api",
@@ -1020,7 +1020,7 @@ public static class AdminEndpoints
             Action      = "RoleAssigned",
             Description = $"Role '{role.Name}' ({scopeType}) assigned to user {id}.",
             After       = JsonSerializer.Serialize(new { roleId = body.RoleId, roleName = role.Name, scopeType, organizationId = body.OrganizationId }),
-            IdempotencyKey = IdempotencyKey.For("identity-service", "user.role.assigned", sra.Id.ToString()),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.role.assigned", sra.Id.ToString()),
             Tags = ["role-management", "access-control"],
         });
 
@@ -1114,7 +1114,7 @@ public static class AdminEndpoints
         var auditNow = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
         {
-            EventType     = "user.role.revoked",
+            EventType     = "identity.role.removed",
             EventCategory = EventCategory.Administrative,
             SourceSystem  = "identity-service",
             SourceService = "admin-api",
@@ -1124,10 +1124,10 @@ public static class AdminEndpoints
             Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
             Actor = new AuditEventActorDto { Type = ActorType.User },
             Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
-            Action      = "RoleRevoked",
-            Description = $"Role '{roleName}' revoked from user {id}.",
+            Action      = "RoleRemoved",
+            Description = $"Role '{roleName}' removed from user {id}.",
             Before      = JsonSerializer.Serialize(new { roleId, roleName }),
-            IdempotencyKey = IdempotencyKey.For("identity-service", "user.role.revoked", id.ToString(), roleId.ToString()),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.role.removed", id.ToString(), roleId.ToString()),
             Tags = ["role-management", "access-control"],
         });
 

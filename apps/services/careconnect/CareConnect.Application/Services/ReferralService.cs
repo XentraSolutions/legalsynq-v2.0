@@ -190,6 +190,39 @@ public class ReferralService : IReferralService
             catch { /* Notification failure must not break the referral update. */ }
         }
 
+        // Canonical audit: careconnect.referral.updated — fire-and-observe.
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.updated",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-service",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = auditNow,
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId?.ToString(),
+                Type = userId.HasValue ? ActorType.User : ActorType.System,
+            },
+            Entity = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action      = statusChanged ? "ReferralStatusChanged" : "ReferralUpdated",
+            Description = statusChanged
+                ? $"Referral {referral.Id} status changed to '{request.Status}'."
+                : $"Referral {referral.Id} updated.",
+            After       = JsonSerializer.Serialize(new
+            {
+                status = request.Status,
+                requestedService = request.RequestedService,
+                urgency = request.Urgency,
+                statusChanged,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "care-connect", "careconnect.referral.updated", referral.Id.ToString()),
+            Tags = ["referral", "clinical", "status-change"],
+        });
+
         var loaded = await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
         return ToResponse(loaded!);
     }

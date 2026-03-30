@@ -297,6 +297,37 @@ public class AppointmentService : IAppointmentService
         try { await _notifications.CreateAppointmentCancelledAsync(tenantId, appointment.Id, userId, ct); }
         catch { /* Notification failure must not break the cancellation. */ }
 
+        // Canonical audit: careconnect.appointment.cancelled — fire-and-observe.
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.appointment.cancelled",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "appointment-service",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = auditNow,
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId?.ToString(),
+                Type = userId.HasValue ? ActorType.User : ActorType.System,
+            },
+            Entity = new AuditEventEntityDto { Type = "Appointment", Id = appointment.Id.ToString() },
+            Action      = "AppointmentCancelled",
+            Description = $"Appointment {appointment.Id} cancelled. Previous status: '{oldStatus}'.",
+            Before      = JsonSerializer.Serialize(new { status = oldStatus.ToString() }),
+            After       = JsonSerializer.Serialize(new
+            {
+                status       = AppointmentStatus.Cancelled.ToString(),
+                notes        = request.Notes,
+                slotReleased = slot is not null,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "care-connect", "careconnect.appointment.cancelled", appointment.Id.ToString()),
+            Tags = ["appointment", "clinical", "cancellation"],
+        });
+
         var loaded = await _appointments.GetByIdAsync(tenantId, appointment.Id, ct);
         return ToAppointmentResponse(loaded!);
     }
