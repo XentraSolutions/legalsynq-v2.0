@@ -8,6 +8,10 @@
     <AssemblyName>PlatformAuditEventService</AssemblyName>
     <Optimize>true</Optimize>
     <WarningsAsErrors>CS8600;CS8602;CS8603;CS8604;CS8625</WarningsAsErrors>
+    <!-- Emit XML documentation so Swashbuckle surfaces controller/action summaries -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Suppress CS1591 (missing XML comments) — only controllers/DTOs need full coverage -->
+    <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

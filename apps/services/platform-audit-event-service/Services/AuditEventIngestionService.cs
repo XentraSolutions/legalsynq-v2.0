@@ -211,6 +211,7 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
     /// BatchCorrelationId from the enclosing batch request, used as a CorrelationId fallback
     /// when the individual item does not supply one. Null for single-event ingest.
     /// </param>
+    /// <param name="ct">Cancellation token.</param>
     private async Task<IngestItemResult> IngestOneAsync(
         IngestAuditEventRequest req,
         int                     index,

@@ -125,7 +125,11 @@ try
             Description =
                 "Standalone, independently deployable service that ingests business, security, " +
                 "access, administrative, and system activity from distributed systems, normalizes " +
-                "it into a canonical event model, and persists immutable, tamper-evident audit records.",
+                "it into a canonical event model, and persists immutable, tamper-evident audit records.\n\n" +
+                "**Endpoint groups:**\n" +
+                "- `/internal/audit/events` — Machine-to-machine ingestion (single + batch). Internal only.\n" +
+                "- `/api/auditevents` — Legacy event ingestion and query (to be superseded).\n" +
+                "- `/health` — Service liveness and event count probe.",
             Contact = new OpenApiContact
             {
                 Name  = "LegalSynq Platform Team",
@@ -134,6 +138,13 @@ try
         });
         c.DescribeAllParametersInCamelCase();
         c.UseInlineDefinitionsForEnums();
+
+        // Wire up XML documentation — surfaces controller/action <summary> comments
+        // and <response> codes in the Swagger UI "Description" and response sections.
+        var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+        var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+        if (File.Exists(xmlPath))
+            c.IncludeXmlComments(xmlPath);
     });
 
     // ── Validation ────────────────────────────────────────────────────────────

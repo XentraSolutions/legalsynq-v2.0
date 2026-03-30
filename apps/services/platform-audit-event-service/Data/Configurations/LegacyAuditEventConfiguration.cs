@@ -10,7 +10,7 @@ namespace PlatformAuditEventService.Data.Configurations;
 /// This configuration is extracted verbatim from the original inline OnModelCreating
 /// block to keep DbContext clean while preserving backward compatibility.
 /// The <see cref="AuditEvent"/> entity backs the existing service layer (InMemory provider)
-/// and will be superseded by <see cref="AuditEventRecord"/> when the service layer is
+/// and will be superseded by the <c>AuditEventRecord</c> entity when the service layer is
 /// re-wired to the new entity model.
 /// </summary>
 internal sealed class LegacyAuditEventConfiguration : IEntityTypeConfiguration<AuditEvent>

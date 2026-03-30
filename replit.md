@@ -1452,6 +1452,62 @@ Constructor logs `"Audit integrity signing ENABLED — Algorithm=..."` or a `War
 
 ---
 
+## Platform Audit Service — Step 11: Ingestion API Layer ✅
+
+**Analysis doc:** `analysis/step11_ingest_api.md`
+
+### New file: `Controllers/AuditEventIngestController.cs`
+
+Route prefix: `/internal/audit` — machine-to-machine, internal source systems only.
+
+**Endpoints:**
+
+| Method | Path | Action |
+|--------|------|--------|
+| POST | `/internal/audit/events` | `IngestSingle` — single event ingest |
+| POST | `/internal/audit/events/batch` | `IngestBatch` — batch event ingest (1–500 events) |
+
+**Dependencies injected:**
+- `IAuditEventIngestionService` — full ingest pipeline (idempotency, hashing, chain, persist)
+- `IValidator<IngestAuditEventRequest>` — structural validation for single endpoint
+- `IValidator<BatchIngestRequest>` — structural + per-item validation for batch endpoint
+- `ILogger<AuditEventIngestController>` — debug logging on validation failure
+
+### Status code matrix
+
+**Single endpoint (`POST /internal/audit/events`):**
+
+| Code | Trigger |
+|------|---------|
+| 201 Created | `IngestItemResult.Accepted = true` — AuditId in body, Location header set |
+| 400 Bad Request | FluentValidation failed before service call |
+| 409 Conflict | `RejectionReason = "DuplicateIdempotencyKey"` |
+| 503 Service Unavailable | `RejectionReason = "PersistenceError"` — retry with backoff |
+| 422 Unprocessable Entity | Unknown rejection reason |
+
+**Batch endpoint (`POST /internal/audit/events/batch`):**
+
+| Code | Trigger |
+|------|---------|
+| 200 OK | All events accepted |
+| 207 Multi-Status | Some accepted, some rejected — inspect per-item `Results` |
+| 400 Bad Request | Outer validator failed (batch shape or per-item structural errors with `Events[n].Field` prefix) |
+| 422 Unprocessable Entity | Zero events accepted |
+
+Body shape is `ApiResponse<BatchIngestResponse>` for 200/207/422 — always inspect `Results`.
+
+### Swagger updates
+
+- `PlatformAuditEventService.csproj`: `GenerateDocumentationFile=true` + `NoWarn 1591`
+- `Program.cs`: `IncludeXmlComments()` wired; Swagger description updated with endpoint group index
+- XML doc comments (`<summary>`, `<response>`) on both actions surface in Swagger UI
+- Pre-existing malformed XML cref warnings fixed: `ExportStatus.cs`, `LegacyAuditEventConfiguration.cs`, `AuditEventIngestionService.IngestOneAsync`
+
+### Build status after Step 11
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
 ## Control Center Admin Refresh ✅
 
 **Scope:** Full admin dashboard overhaul — infrastructure layer + new pages + sidebar badges.

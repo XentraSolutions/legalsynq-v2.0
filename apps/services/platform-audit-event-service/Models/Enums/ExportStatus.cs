@@ -1,7 +1,7 @@
 namespace PlatformAuditEventService.Enums;
 
 /// <summary>
-/// Lifecycle state of an <see cref="../Entities/AuditExportJob.cs"/>.
+/// Lifecycle state of an export job.
 /// Transitions: Pending → Processing → Completed | Failed.
 /// Terminal states: Completed, Failed, Cancelled, Expired.
 /// </summary>
