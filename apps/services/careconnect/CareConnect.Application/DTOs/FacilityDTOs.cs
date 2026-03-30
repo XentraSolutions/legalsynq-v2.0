@@ -9,6 +9,11 @@ public class CreateFacilityRequest
     public string PostalCode { get; set; } = string.Empty;
     public string? Phone { get; set; }
     public bool IsActive { get; set; } = true;
+
+    // Phase 4: optional Identity Organization linkage.
+    // When supplied, the service calls Facility.LinkOrganization so the
+    // facility can be resolved cross-service by its canonical org ID.
+    public Guid? OrganizationId { get; set; }
 }
 
 public class UpdateFacilityRequest
@@ -20,6 +25,10 @@ public class UpdateFacilityRequest
     public string PostalCode { get; set; } = string.Empty;
     public string? Phone { get; set; }
     public bool IsActive { get; set; }
+
+    // Phase 4: optional Identity Organization linkage.
+    // Allows backfilling OrganizationId via an update call without recreating the facility.
+    public Guid? OrganizationId { get; set; }
 }
 
 public class FacilityResponse
@@ -33,4 +42,8 @@ public class FacilityResponse
     public string PostalCode { get; init; } = string.Empty;
     public string? Phone { get; init; }
     public bool IsActive { get; init; }
+
+    // Phase 4: canonical Identity Organization FK. Null for legacy facilities
+    // that predate the org-alignment migration.
+    public Guid? OrganizationId { get; init; }
 }

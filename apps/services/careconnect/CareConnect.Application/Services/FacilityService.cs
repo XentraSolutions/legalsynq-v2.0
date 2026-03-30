@@ -36,6 +36,10 @@ public class FacilityService : IFacilityService
             request.IsActive,
             userId);
 
+        // Phase 4: link to Identity Organization when provided.
+        if (request.OrganizationId.HasValue)
+            facility.LinkOrganization(request.OrganizationId.Value);
+
         await _facilities.AddAsync(facility, ct);
         return ToResponse(facility);
     }
@@ -48,6 +52,11 @@ public class FacilityService : IFacilityService
         Validate(request.Name, request.AddressLine1, request.City, request.State, request.PostalCode, request.Phone);
 
         facility.Update(request.Name, request.AddressLine1, request.City, request.State, request.PostalCode, request.Phone, request.IsActive, userId);
+
+        // Phase 4: apply org linkage when provided (supports backfill via update).
+        if (request.OrganizationId.HasValue)
+            facility.LinkOrganization(request.OrganizationId.Value);
+
         await _facilities.UpdateAsync(facility, ct);
         return ToResponse(facility);
     }
@@ -90,6 +99,7 @@ public class FacilityService : IFacilityService
         State = f.State,
         PostalCode = f.PostalCode,
         Phone = f.Phone,
-        IsActive = f.IsActive
+        IsActive = f.IsActive,
+        OrganizationId = f.OrganizationId
     };
 }

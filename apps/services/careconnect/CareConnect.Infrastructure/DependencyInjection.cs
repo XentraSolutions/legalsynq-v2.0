@@ -17,6 +17,11 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("CareConnectDb")
             ?? throw new InvalidOperationException("Connection string 'CareConnectDb' is not configured.");
 
+        // Phase 1 (step 3): Identity service options + named HTTP client for relationship resolution
+        services.Configure<IdentityServiceOptions>(
+            configuration.GetSection(IdentityServiceOptions.SectionName));
+        services.AddHttpClient("IdentityService");
+
         services.AddDbContext<CareConnectDbContext>(options =>
             options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
 
@@ -51,9 +56,12 @@ public static class DependencyInjection
         services.AddScoped<IAppointmentAttachmentService, AppointmentAttachmentService>();
         services.AddScoped<INotificationService, NotificationService>();
 
-        // Phase C: null resolver — replace with HttpOrganizationRelationshipResolver
-        // once the Identity admin endpoint for relationship lookup is stable.
-        services.AddScoped<IOrganizationRelationshipResolver, OrganizationRelationshipNullResolver>();
+        // Phase 1 (step 3): HTTP resolver is now the default.
+        // It is fail-safe: returns null on any network error, timeout, or 4xx/5xx.
+        // When IdentityService:BaseUrl is not set it skips the HTTP call automatically.
+        // OrganizationRelationshipNullResolver is retained as an alternative DI
+        // registration for integration tests that do not need real Identity calls.
+        services.AddScoped<IOrganizationRelationshipResolver, HttpOrganizationRelationshipResolver>();
 
         return services;
     }

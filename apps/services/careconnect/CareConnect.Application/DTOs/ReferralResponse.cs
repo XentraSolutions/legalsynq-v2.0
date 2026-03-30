@@ -18,4 +18,10 @@ public class ReferralResponse
     public string? Notes { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
+
+    // Phase C / Phase 5: org context fields.
+    // Null when the referral was created without org IDs or before Phase C.
+    public Guid? ReferringOrganizationId { get; set; }
+    public Guid? ReceivingOrganizationId { get; set; }
+    public Guid? OrganizationRelationshipId { get; set; }
 }

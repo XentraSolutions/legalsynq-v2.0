@@ -220,7 +220,11 @@ public class ReferralService : IReferralService
         Status = r.Status,
         Notes = r.Notes,
         CreatedAtUtc = r.CreatedAtUtc,
-        UpdatedAtUtc = r.UpdatedAtUtc
+        UpdatedAtUtc = r.UpdatedAtUtc,
+        // Phase 5: expose org context fields resolved at creation time
+        ReferringOrganizationId = r.ReferringOrganizationId,
+        ReceivingOrganizationId = r.ReceivingOrganizationId,
+        OrganizationRelationshipId = r.OrganizationRelationshipId
     };
 
     private static ReferralStatusHistoryResponse ToHistoryResponse(ReferralStatusHistory h) => new()

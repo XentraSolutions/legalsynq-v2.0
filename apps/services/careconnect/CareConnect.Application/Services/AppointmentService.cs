@@ -383,6 +383,8 @@ public class AppointmentService : IAppointmentService
         Status = a.Status,
         Notes = a.Notes,
         CreatedAtUtc = a.CreatedAtUtc,
-        UpdatedAtUtc = a.UpdatedAtUtc
+        UpdatedAtUtc = a.UpdatedAtUtc,
+        // Phase 5: denormalized org relationship — populated at creation from Referral
+        OrganizationRelationshipId = a.OrganizationRelationshipId
     };
 }

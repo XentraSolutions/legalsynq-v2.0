@@ -43,6 +43,10 @@ public class UserRepository : IUserRepository
     {
         await _db.Users.AddAsync(user, ct);
 
+        // TODO [LEGACY — Phase F]: UserRoles maps to user_roles (UserRole join entity),
+        // which is the simple user-to-role table predating ScopedRoleAssignment.
+        // New callers should create ScopedRoleAssignment (scope=GLOBAL) instead.
+        // This path is retained for backward compatibility — do not add new callers.
         foreach (var roleId in roleIds)
             await _db.UserRoles.AddAsync(UserRole.Create(user.Id, roleId), ct);
 

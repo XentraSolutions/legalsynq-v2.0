@@ -53,6 +53,10 @@ public class AppointmentResponse
     public string? Notes { get; init; }
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; init; }
+
+    // Phase 5: denormalized from Referral at appointment creation time.
+    // Null for appointments created before Phase C/5.
+    public Guid? OrganizationRelationshipId { get; init; }
 }
 
 public class AppointmentSearchParams

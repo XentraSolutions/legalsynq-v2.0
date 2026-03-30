@@ -30,6 +30,14 @@ public class CurrentRequestContext : ICurrentRequestContext
 
     public string? OrgType => User?.FindFirstValue("org_type");
 
+    /// <summary>
+    /// Phase B: canonical OrganizationType catalog ID emitted by JwtTokenService
+    /// as the "org_type_id" claim. Null when the token predates Phase B or the org
+    /// has no OrganizationType assigned yet. Prefer over OrgType in new code.
+    /// </summary>
+    public Guid? OrgTypeId =>
+        Guid.TryParse(User?.FindFirstValue("org_type_id"), out var otid) ? otid : null;
+
     public IReadOnlyCollection<string> Roles =>
         User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList().AsReadOnly()
         ?? (IReadOnlyCollection<string>)Array.Empty<string>();
