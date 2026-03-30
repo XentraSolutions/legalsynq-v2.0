@@ -1200,3 +1200,42 @@ When `Database:VerifyConnectionOnStartup=true` (default): runs `CanConnectAsync(
 
 ### Build status — Step 2
 - PlatformAuditEventService: ✅ 0 errors, 0 warnings (Release build)
+
+---
+
+## Platform Audit/Event Service — Step 3 Core Data Model (2026-03-30)
+
+### Namespaces
+- Entities: `PlatformAuditEventService.Entities` (files in `Models/Entities/`)
+- Enums: `PlatformAuditEventService.Enums` (files in `Models/Enums/`)
+- Existing static constant classes: `PlatformAuditEventService.Models` (preserved, no conflict)
+
+### Entities
+| Entity | Fields | Mutability | Purpose |
+|---|---|---|---|
+| `AuditEventRecord` | 38 | All `init` (append-only) | Canonical audit event persistence model |
+| `AuditExportJob` | 12 | Identity fields `init`, lifecycle fields `set` | Async export job tracking |
+| `IntegrityCheckpoint` | 7 | All `init` | Aggregate hash snapshot over a time window |
+| `IngestSourceRegistration` | 6 | Identity fields `init`, IsActive/Notes `set` | Advisory source registry |
+
+### Enums
+| Enum | Values | Notes |
+|---|---|---|
+| `EventCategory` | 9 | Security, Access, Business, Administrative, System, Compliance, DataChange, Integration, Performance |
+| `SeverityLevel` | 7 | Debug → Info → Notice → Warn → Error → Critical → Alert (numeric ordering) |
+| `VisibilityScope` | 5 | Platform, Tenant, Organization, User, Internal |
+| `ScopeType` | 6 | Global, Platform, Tenant, Organization, User, Service |
+| `ActorType` | 7 | User, ServiceAccount, System, Api, Scheduler, Anonymous, Support |
+| `ExportStatus` | 6 | Pending, Processing, Completed, Failed, Cancelled, Expired |
+
+### Key design points
+- `long Id` + `Guid AuditId/ExportId` pattern: DB-efficient surrogate PK + stable public identifier
+- `DateTimeOffset` throughout (not `DateTime`) — preserves UTC offset, avoids `DateTimeKind` ambiguity
+- All `AuditEventRecord` fields are `init`-only — append-only contract enforced at compiler level
+- `PreviousHash` forms a scoped chain per (TenantId, SourceSystem) — avoids global write serialization
+- JSON columns (BeforeJson, AfterJson, MetadataJson, TagsJson, FilterJson) stored as raw text — schema-agnostic
+- `IntegrityCheckpoint.CheckpointType` is an open string — custom cadences without schema migrations
+- `IngestSourceRegistration` is advisory only — does not gate ingestion; hooks for future per-source config
+
+### Build status — Step 3
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
