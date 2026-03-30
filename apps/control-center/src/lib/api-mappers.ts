@@ -726,6 +726,7 @@ export function mapLegacyCoverageReport(raw: unknown): LegacyCoverageReport {
     roleAssignments: {
       usersWithLegacyRoles:  num(raRaw, 'users_with_legacy_roles',  'usersWithLegacyRoles',  0),
       usersWithScopedRoles:  num(raRaw, 'users_with_scoped_roles',  'usersWithScopedRoles',  0),
+      usersWithGapCount:     num(raRaw, 'users_with_gap_count',     'usersWithGapCount',     0),
       dualWriteCoveragePct:  num(raRaw, 'dual_write_coverage_pct',  'dualWriteCoveragePct',  0),
     },
   };

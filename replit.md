@@ -752,3 +752,49 @@ Analysis report: `analysis/step1_platform-foundation-upgrade.md`
 - Identity.Api: ✅ 0 errors, 0 warnings
 - CareConnect.Api: ✅ 0 errors, 1 pre-existing CS0168 warning (unrelated)
 - control-center TypeScript: ✅ 0 errors (`npx tsc --noEmit` clean)
+
+## Step 5 — Phase F Retirement + ScopedRoleAssignment Coverage ✅
+
+### 5.1 Phase F — EligibleOrgType column retirement (COMPLETE)
+
+**Gate conditions (both verified before proceeding):**
+- `legacyStringOnly = 0` — confirmed prior to Step 5 (all restricted roles had OrgTypeRules)
+- All 7 restricted ProductRoles had confirmed active `ProductOrganizationTypeRule` rows (Phase E)
+
+**Three migrations applied in sequence:**
+1. `20260330200001_NullifyEligibleOrgType.cs` — nulls `EligibleOrgType` for all 7 restricted ProductRoles; moves state from `withBothPaths=7` to `withDbRuleOnly=7`
+2. `20260330200002_BackfillScopedRoleAssignmentsFromUserRoles.cs` — closes the coverage gap: backfills `ScopedRoleAssignments` (GLOBAL scope) from `UserRoles` for any user not already covered by the previous backfill (migration 20260330110004 only sourced from `UserRoleAssignments`)
+3. `20260330200003_PhaseFRetirement_DropEligibleOrgTypeColumn.cs` — drops the `EligibleOrgType` column from `ProductRoles` table + its composite index
+
+**C# code changes:**
+- `ProductRole.cs` — `EligibleOrgType` property removed; `Create()` factory signature simplified (no `eligibleOrgType` param)
+- `ProductRoleConfiguration.cs` — removed `HasMaxLength(50)` + `HasIndex(ProductId, EligibleOrgType)`; all `HasData` entries updated to omit the field
+- `AuthService.cs` — Path 2 (legacy EligibleOrgType check) removed from `IsEligibleWithPath`; `EligibilityPath.LegacyString` enum value removed; legacy login logging removed
+- `ProductOrganizationTypeRule.cs` — doc comment updated to reflect Phase F complete
+- `Program.cs` — startup diagnostic replaced: now verifies OrgTypeRule coverage + ScopedRoleAssignment dual-write gap
+- `IdentityDbContextModelSnapshot.cs` — `EligibleOrgType` property, index, and seed data references removed
+
+### 5.2 Role assignment admin endpoints (NEW)
+
+**`POST /api/admin/users/{id}/roles`** — assigns a role (dual-write: `UserRole` + `ScopedRoleAssignment` GLOBAL); returns 201 Created with roleId, roleName, assignedAtUtc
+**`DELETE /api/admin/users/{id}/roles/{roleId}`** — revokes a role (deactivates `ScopedRoleAssignment`, removes `UserRole`); returns 204 No Content
+- Both endpoints registered in `MapAdminEndpoints`
+- `AssignRoleRequest` DTO added (private, scoped to `AdminEndpoints`)
+
+### 5.3 Coverage endpoint improvements
+
+**`GET /api/admin/legacy-coverage` updated:**
+- Eligibility section: `withBothPaths = 0` and `legacyStringOnly = 0` are now hardcoded constants (Phase F complete); `dbCoveragePct` recalculated from OrgTypeRule coverage
+- Role assignments section: new `usersWithGapCount` field — count of users with `UserRole` but no matching GLOBAL `ScopedRoleAssignment` (should reach 0 after migration 20260330200002)
+- Both sections use `ToHashSetAsync()` for O(1) set lookups
+
+### 5.4 TypeScript + UI updates
+
+- `types/control-center.ts` — `RoleAssignmentsCoverage` gains `usersWithGapCount: number`; `EligibilityRulesCoverage` comments updated to reflect Phase F state
+- `lib/api-mappers.ts` — `mapLegacyCoverageReport` maps `usersWithGapCount`
+- `components/platform/legacy-coverage-card.tsx` — Phase F badge on eligibility card; `withBothPaths`/`legacyStringOnly` show "retired" pill at 0; new "Coverage gap" stat row in role assignments section
+- `app/legacy-coverage/page.tsx` — info banner updated to emerald "Phase F complete" status; doc comment updated
+
+### Build status after Step 5
+- Identity.Api: ✅ 0 errors, 0 warnings
+- control-center TypeScript: ✅ 0 errors (`npx tsc --noEmit` clean)

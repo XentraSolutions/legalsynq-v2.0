@@ -70,45 +70,61 @@ if (app.Environment.IsDevelopment())
     }
 }
 
-// ── Startup diagnostic: EligibleOrgType ↔ OrgTypeRules coverage ───────────
-// Warns when any ProductRole still relies on the legacy EligibleOrgType string
-// without a corresponding active ProductOrganizationTypeRule row.
-// All 7 seeded ProductRoles have full OrgTypeRule coverage as of Step 4.
-// This check catches any future gaps introduced during active development.
+// ── Startup diagnostic: Phase F retirement status ────────────────────────────
+// Phase F COMPLETE: EligibleOrgType column dropped (migration 20260330200003).
+// This diagnostic now verifies OrgTypeRule coverage and ScopedRoleAssignment
+// dual-write gap rather than the legacy EligibleOrgType field.
 try
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
 
-    var uncoveredRoles = await db.Set<Identity.Domain.ProductRole>()
-        .Where(pr => pr.IsActive && pr.EligibleOrgType != null)
+    // 1. Verify all restricted ProductRoles have OrgTypeRule coverage.
+    var unrestrictedRoleCount = await db.Set<Identity.Domain.ProductRole>()
+        .Where(pr => pr.IsActive)
         .Where(pr => !db.Set<Identity.Domain.ProductOrganizationTypeRule>()
             .Any(r => r.ProductRoleId == pr.Id && r.IsActive))
-        .Select(pr => new { pr.Code, pr.EligibleOrgType })
-        .ToListAsync();
+        .CountAsync();
 
-    if (uncoveredRoles.Count > 0)
+    if (unrestrictedRoleCount > 0)
     {
-        foreach (var r in uncoveredRoles)
-        {
-            app.Logger.LogWarning(
-                "ProductRole '{Code}' has EligibleOrgType='{OrgType}' but no active " +
-                "ProductOrganizationTypeRule row. Add a seed rule for this role to retire " +
-                "the legacy string-based eligibility fallback.",
-                r.Code, r.EligibleOrgType);
-        }
+        app.Logger.LogWarning(
+            "{Count} active ProductRole(s) have no ProductOrganizationTypeRule rows and are " +
+            "therefore unrestricted. If restriction was intended, add OrgTypeRule seed data.",
+            unrestrictedRoleCount);
     }
     else
     {
         app.Logger.LogInformation(
-            "EligibleOrgType coverage check passed — all active ProductRoles with " +
-            "EligibleOrgType have matching ProductOrganizationTypeRule rows.");
+            "Phase F eligibility check passed — all {Count} active ProductRole(s) " +
+            "with OrgTypeRule coverage are accounted for.",
+            await db.Set<Identity.Domain.ProductRole>().Where(pr => pr.IsActive).CountAsync());
+    }
+
+    // 2. Verify ScopedRoleAssignment dual-write gap is closed.
+    var roleGap = await db.UserRoles
+        .Where(ur => !db.ScopedRoleAssignments
+            .Any(s => s.UserId == ur.UserId && s.RoleId == ur.RoleId && s.ScopeType == "GLOBAL" && s.IsActive))
+        .CountAsync();
+
+    if (roleGap > 0)
+    {
+        app.Logger.LogWarning(
+            "ScopedRoleAssignment gap: {Count} UserRole record(s) have no matching GLOBAL " +
+            "ScopedRoleAssignment. Run migration 20260330200002 to close the gap.",
+            roleGap);
+    }
+    else
+    {
+        app.Logger.LogInformation(
+            "Phase F role-assignment check passed — all UserRole records have " +
+            "matching GLOBAL ScopedRoleAssignments.");
     }
 }
 catch (Exception ex)
 {
     app.Logger.LogWarning(ex,
-        "EligibleOrgType coverage check skipped — could not query the database at startup.");
+        "Phase F startup diagnostic skipped — could not query the database at startup.");
 }
 
 // ── Middleware pipeline ───────────────────────────────────────────────────

@@ -388,10 +388,10 @@ export interface UncoveredRole {
 /** Breakdown of eligibility-rule migration paths. */
 export interface EligibilityRulesCoverage {
   totalActiveProductRoles: number;
-  withDbRuleOnly:          number;   // modern path only
-  withBothPaths:           number;   // transitional (has both string + DB rule)
-  legacyStringOnly:        number;   // must reach 0 before Phase F
-  unrestricted:            number;   // no restriction at all
+  withDbRuleOnly:          number;   // modern path: OrgTypeRule only (Phase F goal)
+  withBothPaths:           number;   // Phase F: always 0 — EligibleOrgType column dropped
+  legacyStringOnly:        number;   // Phase F: always 0 — EligibleOrgType column dropped
+  unrestricted:            number;   // no restriction at all (intentional)
   dbCoveragePct:           number;
   uncoveredRoles:          UncoveredRole[];
 }
@@ -400,6 +400,9 @@ export interface EligibilityRulesCoverage {
 export interface RoleAssignmentsCoverage {
   usersWithLegacyRoles:   number;
   usersWithScopedRoles:   number;
+  /** Users with a UserRole record but no matching GLOBAL ScopedRoleAssignment.
+   *  Should reach 0 after migration 20260330200002 backfill. */
+  usersWithGapCount:      number;
   dualWriteCoveragePct:   number;
 }
 

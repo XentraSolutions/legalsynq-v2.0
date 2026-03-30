@@ -4,21 +4,22 @@ import { CCShell }                           from '@/components/shell/cc-shell';
 import { LegacyCoverageCard }               from '@/components/platform/legacy-coverage-card';
 
 /**
- * /legacy-coverage — Legacy Migration Coverage Report (Step 4)
+ * /legacy-coverage — Legacy Migration Coverage Report (Step 5 / Phase F)
  *
  * Access: PlatformAdmin only.
  *
- * Shows a point-in-time snapshot of two active legacy migration paths:
+ * Shows a point-in-time snapshot of the two active legacy migration streams:
  *
- *   1. EligibleOrgType → ProductOrganizationTypeRule
- *      Tracks how many ProductRoles have been fully migrated to the DB-rule
- *      eligibility path vs still relying on the legacy EligibleOrgType string.
- *      Phase F can only begin once legacyStringOnly === 0.
+ *   1. Eligibility rules (Phase F COMPLETE):
+ *      - EligibleOrgType column dropped (migration 20260330200003).
+ *      - All 7 restricted ProductRoles now exclusively use ProductOrganizationTypeRules.
+ *      - legacyStringOnly = 0, withBothPaths = 0, dbCoveragePct = 100%.
  *
- *   2. UserRoles → ScopedRoleAssignment (GLOBAL scope)
- *      Tracks dual-write adoption from AuthService. Once all users have
- *      ScopedRoleAssignment records the legacy UserRoles write path can be
- *      removed.
+ *   2. UserRoles → ScopedRoleAssignment (GLOBAL scope) — ongoing:
+ *      - Tracks dual-write adoption. usersWithGapCount must reach 0 and
+ *        dualWriteCoveragePct must reach 100% before the legacy UserRoles
+ *        write path can be removed.
+ *      - Backfill handled by migration 20260330200002.
  *
  * Data: GET /identity/api/admin/legacy-coverage (cached 10 s, tag: cc:legacy-coverage).
  */
@@ -47,15 +48,19 @@ export default async function LegacyCoveragePage() {
           </p>
         </div>
 
-        {/* Action bar — contextual help */}
-        <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-xs text-blue-700">
-          <span className="shrink-0 mt-0.5">ℹ️</span>
+        {/* Action bar — Phase F status */}
+        <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 text-xs text-emerald-800">
+          <span className="shrink-0 mt-0.5 text-emerald-600">✓</span>
           <div>
-            <strong>Migration targets:</strong> Eligibility rules must have{' '}
-            <code className="bg-blue-100 px-1 rounded">legacyStringOnly = 0</code> before Phase F
-            can begin. Role-assignment dual-write must reach{' '}
-            <code className="bg-blue-100 px-1 rounded">100%</code> before the legacy{' '}
-            <code className="bg-blue-100 px-1 rounded">UserRole</code> write path is retired.
+            <strong>Phase F complete:</strong> The{' '}
+            <code className="bg-emerald-100 px-1 rounded">EligibleOrgType</code> column has been
+            dropped and all eligibility rules use{' '}
+            <code className="bg-emerald-100 px-1 rounded">ProductOrganizationTypeRules</code>.
+            The remaining target is role-assignment dual-write{' '}
+            <code className="bg-emerald-100 px-1 rounded">gap = 0</code> and{' '}
+            <code className="bg-emerald-100 px-1 rounded">100%</code> coverage before retiring the
+            legacy{' '}
+            <code className="bg-emerald-100 px-1 rounded">UserRole</code> write path.
             This page auto-refreshes every 10 seconds.
           </div>
         </div>

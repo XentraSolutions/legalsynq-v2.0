@@ -68,10 +68,9 @@ public class AuthService : IAuthService
         List<string> productRoles = [];
         if (org is not null)
         {
-            // Phase 3: resolve product roles via ProductOrganizationTypeRule (DB-backed).
-            // Track which eligibility path was used for each role for observability.
-            int dbRuleCount      = 0;
-            int legacyCount      = 0;
+            // Phase F: resolve product roles exclusively via ProductOrganizationTypeRule (DB-backed).
+            // EligibleOrgType legacy fallback removed — see migration 20260330200003.
+            int dbRuleCount       = 0;
             int unrestrictedCount = 0;
 
             var eligibleCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -88,7 +87,6 @@ public class AuthService : IAuthService
                         switch (path)
                         {
                             case EligibilityPath.DbRule:       dbRuleCount++;       break;
-                            case EligibilityPath.LegacyString: legacyCount++;       break;
                             case EligibilityPath.Unrestricted: unrestrictedCount++; break;
                         }
                     }
@@ -100,17 +98,8 @@ public class AuthService : IAuthService
             // Log eligibility resolution summary — once per login, structured, non-noisy.
             _logger.LogDebug(
                 "Product role eligibility resolved for user={UserId} org={OrgId}: " +
-                "{TotalRoles} role(s) — DB-rule={DbRule}, legacy-string={Legacy}, unrestricted={Unrestricted}.",
-                user.Id, org.Id, productRoles.Count, dbRuleCount, legacyCount, unrestrictedCount);
-
-            if (legacyCount > 0)
-            {
-                _logger.LogInformation(
-                    "Legacy EligibleOrgType fallback used for {Count} product role(s) during login " +
-                    "for user={UserId} org={OrgId} orgType={OrgType}. " +
-                    "Seed ProductOrganizationTypeRule rows to remove this fallback.",
-                    legacyCount, user.Id, org.Id, org.OrgType);
-            }
+                "{TotalRoles} role(s) — DB-rule={DbRule}, unrestricted={Unrestricted}.",
+                user.Id, org.Id, productRoles.Count, dbRuleCount, unrestrictedCount);
         }
 
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
@@ -180,23 +169,24 @@ public class AuthService : IAuthService
 
     // ── Eligibility helpers ───────────────────────────────────────────────────
 
-    private enum EligibilityPath { DbRule, LegacyString, Unrestricted }
+    private enum EligibilityPath { DbRule, Unrestricted }
 
     /// <summary>
     /// Returns whether the given product role is eligible for the organization,
     /// and which eligibility path was used (for observability/logging).
     ///
-    /// Resolution order (most specific → least specific):
-    ///   1. Phase 3 DB-backed rule table via OrgTypeRules nav property.
+    /// Phase F: EligibleOrgType column removed (migration 20260330200003).
+    /// Eligibility is now exclusively controlled by ProductOrganizationTypeRules.
+    ///
+    /// Resolution order:
+    ///   1. DB-backed rule table (OrgTypeRules nav property).
     ///      - If org.OrganizationTypeId is set: match by ID (authoritative, no string drift).
     ///      - Else: match by OrgType code string (transitional fallback within Phase 3).
-    ///   2. Legacy EligibleOrgType string on ProductRole (pre-Phase 3 data).
-    ///      - TODO [LEGACY]: retire when all ProductRoles have OrgTypeRules seeded.
-    ///   3. No restriction configured → allow (unrestricted).
+    ///   2. No OrgTypeRules configured → allow (unrestricted).
     /// </summary>
     private static (bool Eligible, EligibilityPath Path) IsEligibleWithPath(ProductRole pr, Organization org)
     {
-        // Path 1: DB-backed rule table
+        // Path 1: DB-backed rule table (Phase 3+)
         if (pr.OrgTypeRules is { Count: > 0 })
         {
             var matched = pr.OrgTypeRules.Any(r =>
@@ -209,13 +199,7 @@ public class AuthService : IAuthService
             return (matched, EligibilityPath.DbRule);
         }
 
-        // Path 2: legacy EligibleOrgType string
-        // TODO [LEGACY — Phase F]: retire once all ProductRoles have OrgTypeRules seeded
-        //   and all Organizations have OrganizationTypeId backfilled.
-        if (pr.EligibleOrgType is not null)
-            return (pr.EligibleOrgType == org.OrgType, EligibilityPath.LegacyString);
-
-        // Path 3: no restriction configured — unrestricted
+        // Path 2: no OrgTypeRules → unrestricted access
         return (true, EligibilityPath.Unrestricted);
     }
 }

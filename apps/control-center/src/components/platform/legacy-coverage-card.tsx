@@ -118,13 +118,19 @@ export function LegacyCoverageCard({ report }: LegacyCoverageCardProps) {
 
       {/* ── Eligibility rules card ────────────────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">
-            Eligibility Rules Migration
-          </h2>
-          <p className="text-xs text-gray-400 mt-0.5">
-            EligibleOrgType string → ProductOrganizationTypeRule row. Target: <strong>legacyStringOnly = 0</strong> before Phase F.
-          </p>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">
+              Eligibility Rules Migration
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              ProductOrganizationTypeRule coverage. <strong>Phase F complete</strong> —
+              EligibleOrgType column dropped, all roles use DB-backed rules.
+            </p>
+          </div>
+          <span className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+            Phase F done
+          </span>
         </div>
 
         <CoverageBar pct={er.dbCoveragePct} />
@@ -140,13 +146,17 @@ export function LegacyCoverageCard({ report }: LegacyCoverageCardProps) {
           <StatRow
             label="Both paths (transitional)"
             value={er.withBothPaths}
-            pill="transitional"
-            pillColour="bg-amber-100 text-amber-700"
+            pill={er.withBothPaths === 0 ? 'retired' : 'transitional'}
+            pillColour={
+              er.withBothPaths === 0
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-amber-100 text-amber-700'
+            }
           />
           <StatRow
             label="Legacy string only"
             value={er.legacyStringOnly}
-            pill={er.legacyStringOnly === 0 ? 'done' : 'needs work'}
+            pill={er.legacyStringOnly === 0 ? 'retired' : 'needs work'}
             pillColour={
               er.legacyStringOnly === 0
                 ? 'bg-emerald-100 text-emerald-700'
@@ -166,7 +176,7 @@ export function LegacyCoverageCard({ report }: LegacyCoverageCardProps) {
             Role Assignment Dual-Write Adoption
           </h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            UserRole → ScopedRoleAssignment (GLOBAL scope). Target: <strong>100%</strong> before retiring legacy write path.
+            UserRole → ScopedRoleAssignment (GLOBAL scope). Target: <strong>gap = 0</strong> and <strong>100%</strong> coverage before retiring legacy write path.
           </p>
         </div>
 
@@ -182,6 +192,16 @@ export function LegacyCoverageCard({ report }: LegacyCoverageCardProps) {
               ra.dualWriteCoveragePct >= 100
                 ? 'bg-emerald-100 text-emerald-700'
                 : 'bg-amber-100 text-amber-700'
+            }
+          />
+          <StatRow
+            label="Coverage gap (UserRole without ScopedAssignment)"
+            value={ra.usersWithGapCount}
+            pill={ra.usersWithGapCount === 0 ? 'closed' : 'open'}
+            pillColour={
+              ra.usersWithGapCount === 0
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-red-100 text-red-700'
             }
           />
         </div>

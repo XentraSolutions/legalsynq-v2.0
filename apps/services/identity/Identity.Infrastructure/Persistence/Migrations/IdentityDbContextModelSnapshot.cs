@@ -186,33 +186,32 @@ namespace Identity.Infrastructure.Persistence.Migrations
                 });
 
             // ── ProductRole ──────────────────────────────────────────────────
+            // EligibleOrgType removed in migration 20260330200003_PhaseFRetirement.
             modelBuilder.Entity("Identity.Domain.ProductRole", b =>
                 {
                     b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("char(36)");
                     b.Property<string>("Code").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
                     b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
                     b.Property<string>("Description").HasMaxLength(1000).HasColumnType("varchar(1000)");
-                    b.Property<string>("EligibleOrgType").HasMaxLength(50).HasColumnType("varchar(50)");
                     b.Property<bool>("IsActive").HasColumnType("tinyint(1)");
                     b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnType("varchar(200)");
                     b.Property<Guid>("ProductId").HasColumnType("char(36)");
                     b.HasKey("Id");
                     b.HasIndex("Code").IsUnique();
-                    b.HasIndex("ProductId", "EligibleOrgType");
                     b.ToTable("ProductRoles", (string)null);
                     var cc = new Guid("10000000-0000-0000-0000-000000000003");
                     var sl = new Guid("10000000-0000-0000-0000-000000000002");
                     var sf = new Guid("10000000-0000-0000-0000-000000000001");
                     var at = new DateTime(2024,1,1,0,0,0,0,DateTimeKind.Utc);
                     b.HasData(
-                        new { Id = new Guid("50000000-0000-0000-0000-000000000001"), Code = "CARECONNECT_REFERRER",      CreatedAtUtc = at, Description = "Law firm that refers clients to providers",                     EligibleOrgType = (string)"LAW_FIRM",   IsActive = true, Name = "CareConnect Referrer",      ProductId = cc },
-                        new { Id = new Guid("50000000-0000-0000-0000-000000000002"), Code = "CARECONNECT_RECEIVER",      CreatedAtUtc = at, Description = "Provider that receives referrals",                             EligibleOrgType = (string)"PROVIDER",   IsActive = true, Name = "CareConnect Receiver",      ProductId = cc },
-                        new { Id = new Guid("50000000-0000-0000-0000-000000000003"), Code = "SYNQLIEN_SELLER",           CreatedAtUtc = at, Description = "Law firm that creates and offers liens",                        EligibleOrgType = (string)"LAW_FIRM",   IsActive = true, Name = "SynqLien Seller",           ProductId = sl },
-                        new { Id = new Guid("50000000-0000-0000-0000-000000000004"), Code = "SYNQLIEN_BUYER",            CreatedAtUtc = at, Description = "Lien owner that purchases liens",                              EligibleOrgType = (string)"LIEN_OWNER", IsActive = true, Name = "SynqLien Buyer",            ProductId = sl },
-                        new { Id = new Guid("50000000-0000-0000-0000-000000000005"), Code = "SYNQLIEN_HOLDER",           CreatedAtUtc = at, Description = "Lien owner that services and settles liens",                   EligibleOrgType = (string)"LIEN_OWNER", IsActive = true, Name = "SynqLien Holder",           ProductId = sl },
-                        new { Id = new Guid("50000000-0000-0000-0000-000000000006"), Code = "SYNQFUND_REFERRER",         CreatedAtUtc = at, Description = "Law firm that submits fund applications on behalf of clients",  EligibleOrgType = (string)"LAW_FIRM",   IsActive = true, Name = "SynqFund Referrer",         ProductId = sf },
-                        new { Id = new Guid("50000000-0000-0000-0000-000000000007"), Code = "SYNQFUND_FUNDER",           CreatedAtUtc = at, Description = "Funder that evaluates and funds applications",                 EligibleOrgType = (string)"FUNDER",     IsActive = true, Name = "SynqFund Funder",           ProductId = sf },
-                        new { Id = new Guid("50000000-0000-0000-0000-000000000008"), Code = "SYNQFUND_APPLICANT_PORTAL", CreatedAtUtc = at, Description = "Limited read-only portal access for fund applicants",          EligibleOrgType = (string)null,        IsActive = true, Name = "SynqFund Applicant Portal", ProductId = sf }
+                        new { Id = new Guid("50000000-0000-0000-0000-000000000001"), Code = "CARECONNECT_REFERRER",      CreatedAtUtc = at, Description = "Law firm that refers clients to providers",                    IsActive = true, Name = "CareConnect Referrer",      ProductId = cc },
+                        new { Id = new Guid("50000000-0000-0000-0000-000000000002"), Code = "CARECONNECT_RECEIVER",      CreatedAtUtc = at, Description = "Provider that receives referrals",                            IsActive = true, Name = "CareConnect Receiver",      ProductId = cc },
+                        new { Id = new Guid("50000000-0000-0000-0000-000000000003"), Code = "SYNQLIEN_SELLER",           CreatedAtUtc = at, Description = "Law firm that creates and offers liens",                       IsActive = true, Name = "SynqLien Seller",           ProductId = sl },
+                        new { Id = new Guid("50000000-0000-0000-0000-000000000004"), Code = "SYNQLIEN_BUYER",            CreatedAtUtc = at, Description = "Lien owner that purchases liens",                             IsActive = true, Name = "SynqLien Buyer",            ProductId = sl },
+                        new { Id = new Guid("50000000-0000-0000-0000-000000000005"), Code = "SYNQLIEN_HOLDER",           CreatedAtUtc = at, Description = "Lien owner that services and settles liens",                  IsActive = true, Name = "SynqLien Holder",           ProductId = sl },
+                        new { Id = new Guid("50000000-0000-0000-0000-000000000006"), Code = "SYNQFUND_REFERRER",         CreatedAtUtc = at, Description = "Law firm that submits fund applications on behalf of clients", IsActive = true, Name = "SynqFund Referrer",         ProductId = sf },
+                        new { Id = new Guid("50000000-0000-0000-0000-000000000007"), Code = "SYNQFUND_FUNDER",           CreatedAtUtc = at, Description = "Funder that evaluates and funds applications",                IsActive = true, Name = "SynqFund Funder",           ProductId = sf },
+                        new { Id = new Guid("50000000-0000-0000-0000-000000000008"), Code = "SYNQFUND_APPLICANT_PORTAL", CreatedAtUtc = at, Description = "Limited read-only portal access for fund applicants",         IsActive = true, Name = "SynqFund Applicant Portal", ProductId = sf }
                     );
                 });
 

@@ -3,7 +3,9 @@ namespace Identity.Domain;
 /// <summary>
 /// Declares which organization types are eligible for a given product role.
 /// Replaces the hard-coded EligibleOrgType string on ProductRole.
-/// Both the new rule table and the legacy EligibleOrgType field are checked
+/// Phase F COMPLETE: EligibleOrgType column dropped (migration 20260330200003).
+/// This table is now the sole source of truth for product-role eligibility.
+/// Previously both the new rule table and the legacy EligibleOrgType field were checked
 /// during the transitional migration window.
 /// </summary>
 public class ProductOrganizationTypeRule

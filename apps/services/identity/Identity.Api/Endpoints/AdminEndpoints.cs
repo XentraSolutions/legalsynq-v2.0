@@ -59,8 +59,12 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/product-relationship-type-rules", ListProductRelationshipTypeRules);
         routes.MapGet("/api/admin/product-rel-type-rules",          ListProductRelationshipTypeRules);
 
-        // ── Legacy coverage (Step 4) ──────────────────────────────────────────
+        // ── Legacy coverage (Step 4 / Phase F) ───────────────────────────────
         routes.MapGet("/api/admin/legacy-coverage", GetLegacyCoverage);
+
+        // ── Role assignment (Step 5 dual-write) ───────────────────────────────
+        routes.MapPost("/api/admin/users/{id:guid}/roles",              AssignRole);
+        routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}", RevokeRole);
 
         return routes;
     }
@@ -783,90 +787,83 @@ public static class AdminEndpoints
     }
 
     // =========================================================================
-    // LEGACY COVERAGE  (Step 4)
+    // LEGACY COVERAGE  (Step 4 / Phase F)
     // =========================================================================
 
     /// <summary>
     /// GET /api/admin/legacy-coverage
     ///
-    /// Returns a point-in-time snapshot of the two active legacy migration paths:
+    /// Returns a point-in-time snapshot of the two Phase F migration paths:
     ///
-    ///   1. EligibleOrgType → ProductOrganizationTypeRule (eligibility rules migration)
-    ///      - How many active ProductRoles still rely on the legacy EligibleOrgType string
-    ///        with no corresponding active OrgTypeRule row (must reach 0 before Phase F).
+    ///   1. Eligibility rules (Phase F COMPLETE):
+    ///      - EligibleOrgType column dropped (migration 20260330200003).
+    ///      - legacyStringOnly = 0 always. withBothPaths = 0 always.
+    ///      - All 7 restricted ProductRoles use ProductOrganizationTypeRules exclusively.
+    ///      - dbCoveragePct reflects OrgTypeRule coverage over all restricted roles.
     ///
-    ///   2. UserRoles → ScopedRoleAssignment dual-write adoption (role assignment migration)
-    ///      - How many users have at least one ScopedRoleAssignment (GLOBAL scope) vs
-    ///        users that only have legacy UserRole records.
+    ///   2. UserRoles → ScopedRoleAssignment dual-write adoption (ongoing):
+    ///      - Tracks users with legacy UserRole records vs. GLOBAL ScopedRoleAssignments.
+    ///      - Gap = usersWithLegacyRoles − usersWithScopedRoles (should reach 0 after backfill).
+    ///      - Migration 20260330200002 backfills UserRoles → ScopedRoleAssignments.
     ///
     /// Used by the /legacy-coverage control center page to track cutover progress.
     /// </summary>
     private static async Task<IResult> GetLegacyCoverage(IdentityDbContext db)
     {
-        // ── 1. EligibleOrgType eligibility migration ──────────────────────────
+        // ── 1. Eligibility rules — Phase F complete ───────────────────────────
+        // EligibleOrgType column removed; all eligibility driven by OrgTypeRules.
 
-        // All active ProductRoles (with or without EligibleOrgType restriction)
         var allActiveRoles = await db.ProductRoles
             .Where(pr => pr.IsActive)
-            .Select(pr => new
-            {
-                pr.Id,
-                pr.Code,
-                pr.EligibleOrgType,
-            })
+            .Select(pr => new { pr.Id, pr.Code })
             .ToListAsync();
 
-        // ProductRole IDs that have at least one active OrgTypeRule (DB path)
+        // ProductRole IDs that have at least one active OrgTypeRule
         var rolesWithDbRules = await db.ProductOrganizationTypeRules
             .Where(r => r.IsActive)
             .Select(r => r.ProductRoleId)
             .Distinct()
-            .ToListAsync();
+            .ToHashSetAsync();
 
-        var dbRuleSet = new HashSet<Guid>(rolesWithDbRules);
-
-        // Breakdown by eligibility path
-        int withDbRuleOnly   = 0;   // Has OrgTypeRule(s), no EligibleOrgType — fully modern
-        int withBothPaths    = 0;   // Has OrgTypeRule(s) AND EligibleOrgType — transitional
-        int legacyStringOnly = 0;   // Has EligibleOrgType, no OrgTypeRule — needs migration
-        int unrestricted     = 0;   // No EligibleOrgType, no OrgTypeRule — intentionally open
-
-        var uncoveredRoles = new List<object>();
+        int withDbRuleOnly = 0;
+        int unrestricted   = 0;
 
         foreach (var pr in allActiveRoles)
         {
-            var hasDbRule = dbRuleSet.Contains(pr.Id);
-            var hasLegacy = pr.EligibleOrgType is not null;
-
-            if (hasDbRule && !hasLegacy)       withDbRuleOnly++;
-            else if (hasDbRule && hasLegacy)   withBothPaths++;
-            else if (!hasDbRule && hasLegacy)
-            {
-                legacyStringOnly++;
-                uncoveredRoles.Add(new { pr.Code, pr.EligibleOrgType });
-            }
-            else                               unrestricted++;
+            if (rolesWithDbRules.Contains(pr.Id)) withDbRuleOnly++;
+            else                                  unrestricted++;
         }
 
-        int totalWithRestriction = withDbRuleOnly + withBothPaths + legacyStringOnly;
-        int dbCoveredCount       = withDbRuleOnly + withBothPaths;
-        double eligibilityCoverage = totalWithRestriction > 0
-            ? Math.Round((double)dbCoveredCount / totalWithRestriction * 100, 1)
+        // Phase F: these are permanently 0 — column dropped, path retired.
+        const int withBothPaths    = 0;
+        const int legacyStringOnly = 0;
+
+        double eligibilityCoverage = allActiveRoles.Count > 0
+            ? Math.Round((double)withDbRuleOnly / allActiveRoles.Count * 100, 1)
             : 100.0;
 
         // ── 2. ScopedRoleAssignment dual-write adoption ───────────────────────
 
-        // Users with at least one UserRole record (legacy write path)
+        // Users with at least one UserRole record (legacy write path — maintained for compat)
         var usersWithLegacyRole = await db.UserRoles
             .Select(ur => ur.UserId)
             .Distinct()
             .CountAsync();
 
-        // Users with at least one active GLOBAL ScopedRoleAssignment (dual-write / modern path)
+        // Users with at least one active GLOBAL ScopedRoleAssignment (primary path)
         var usersWithScopedRole = await db.ScopedRoleAssignments
             .Where(s => s.IsActive && s.ScopeType == "GLOBAL")
             .Select(s => s.UserId)
             .Distinct()
+            .CountAsync();
+
+        // Gap = users with legacy UserRole but no GLOBAL ScopedRoleAssignment.
+        // Should be 0 after migration 20260330200002_BackfillScopedRoleAssignmentsFromUserRoles.
+        var usersWithGapCount = await db.UserRoles
+            .Select(ur => ur.UserId)
+            .Distinct()
+            .Where(uid => !db.ScopedRoleAssignments
+                .Any(s => s.UserId == uid && s.ScopeType == "GLOBAL" && s.IsActive))
             .CountAsync();
 
         double dualWriteCoverage = usersWithLegacyRole > 0
@@ -881,26 +878,124 @@ public static class AdminEndpoints
             {
                 totalActiveProductRoles  = allActiveRoles.Count,
                 withDbRuleOnly,
-                withBothPaths,           // EligibleOrgType + OrgTypeRule — safe to remove string
-                legacyStringOnly,        // ← must reach 0 before Phase F
+                withBothPaths,           // Phase F: always 0 — EligibleOrgType column dropped
+                legacyStringOnly,        // Phase F: always 0 — EligibleOrgType column dropped
                 unrestricted,
                 dbCoveragePct            = eligibilityCoverage,
-                uncoveredRoles,          // code + EligibleOrgType for any legacy-only roles
+                uncoveredRoles           = Array.Empty<object>(), // Phase F: always empty
             },
 
             roleAssignments = new
             {
                 usersWithLegacyRoles     = usersWithLegacyRole,
                 usersWithScopedRoles     = usersWithScopedRole,
+                usersWithGapCount,       // users with UserRole but no ScopedRoleAssignment
                 dualWriteCoveragePct     = dualWriteCoverage,
-                // note: usersWithScopedRoles > usersWithLegacyRoles is possible once
-                // direct ScopedRoleAssignment-only writes exist in a future phase.
             },
         });
     }
 
+    // =========================================================================
+    // ROLE ASSIGNMENT  (Step 5 — dual-write admin endpoints)
+    // =========================================================================
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/roles
+    ///
+    /// Assigns a role to a user.  Dual-writes to both the legacy UserRoles join
+    /// table (backward-compat) and the modern ScopedRoleAssignments table (primary).
+    ///
+    /// Body: { "roleId": "guid" }
+    ///
+    /// Returns 201 Created on success, 404 if user or role not found,
+    /// 409 Conflict if the role is already assigned to the user.
+    /// </summary>
+    private static async Task<IResult> AssignRole(
+        Guid                 id,
+        AssignRoleRequest    body,
+        IdentityDbContext    db,
+        HttpContext          ctx)
+    {
+        var user = await db.Users.FindAsync(id);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        var role = await db.Roles.FindAsync(body.RoleId);
+        if (role is null) return Results.NotFound(new { error = $"Role '{body.RoleId}' not found." });
+
+        // Check if already assigned (UserRole is the canonical existence check)
+        var alreadyAssigned = await db.UserRoles
+            .AnyAsync(ur => ur.UserId == id && ur.RoleId == body.RoleId);
+        if (alreadyAssigned)
+            return Results.Conflict(new { error = "Role is already assigned to this user." });
+
+        var now = DateTime.UtcNow;
+
+        // Dual-write 1: legacy UserRoles join table (backward-compat — keep until UserRole
+        // table is fully retired after ScopedRoleAssignment adoption is complete).
+        var userRole = UserRole.Create(id, body.RoleId);
+        db.UserRoles.Add(userRole);
+
+        // Dual-write 2: ScopedRoleAssignment (primary, Phase 4+)
+        var sra = ScopedRoleAssignment.Create(
+            userId:           id,
+            roleId:           body.RoleId,
+            scopeType:        ScopedRoleAssignment.ScopeTypes.Global,
+            tenantId:         user.TenantId,
+            assignedByUserId: body.AssignedByUserId);
+        db.ScopedRoleAssignments.Add(sra);
+
+        await db.SaveChangesAsync();
+
+        return Results.Created(
+            $"/api/admin/users/{id}/roles/{body.RoleId}",
+            new
+            {
+                userId    = id,
+                roleId    = body.RoleId,
+                roleName  = role.Name,
+                scopeType = "GLOBAL",
+                assignedAtUtc = now,
+            });
+    }
+
+    /// <summary>
+    /// DELETE /api/admin/users/{id}/roles/{roleId}
+    ///
+    /// Revokes a role from a user.  Deactivates the ScopedRoleAssignment and
+    /// removes the UserRoles record (dual-write teardown).
+    ///
+    /// Returns 204 No Content on success, 404 if user, role, or assignment not found.
+    /// </summary>
+    private static async Task<IResult> RevokeRole(
+        Guid              id,
+        Guid              roleId,
+        IdentityDbContext db)
+    {
+        var user = await db.Users.FindAsync(id);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        // Find and remove the legacy UserRole record
+        var userRole = await db.UserRoles
+            .FirstOrDefaultAsync(ur => ur.UserId == id && ur.RoleId == roleId);
+        if (userRole is not null)
+            db.UserRoles.Remove(userRole);
+
+        // Deactivate the GLOBAL ScopedRoleAssignment
+        var sra = await db.ScopedRoleAssignments
+            .FirstOrDefaultAsync(s => s.UserId == id && s.RoleId == roleId && s.ScopeType == "GLOBAL" && s.IsActive);
+        if (sra is not null)
+            sra.Deactivate();
+
+        if (userRole is null && sra is null)
+            return Results.NotFound(new { error = $"Role '{roleId}' is not assigned to user '{id}'." });
+
+        await db.SaveChangesAsync();
+        return Results.NoContent();
+    }
+
     // ── Request / response DTOs (private, scoped to AdminEndpoints) ─────────
 
+    private record AssignRoleRequest(Guid RoleId, Guid? AssignedByUserId = null);
     private record EntitlementRequest(string ProductCode, bool Enabled);
     private record CreateOrgRelationshipRequest(
         Guid  SourceOrganizationId,
