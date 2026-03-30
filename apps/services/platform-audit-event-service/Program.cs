@@ -144,7 +144,8 @@ try
                 "- `/audit/organization/{organizationId}` — Organization-scoped event history.\n" +
                 "- `/internal/audit/events` — Machine-to-machine ingestion (single + batch). Internal only.\n" +
                 "- `/api/auditevents` — Legacy event ingestion and query (to be superseded).\n" +
-                "- `/health` — Service liveness and event count probe.",
+                "- `/health` — Lightweight liveness probe (k8s / orchestrator).\n" +
+                "- `/health/detail` — Rich diagnostic response: service name, version, and live event count.",
             Contact = new OpenApiContact
             {
                 Name  = "LegalSynq Platform Team",
@@ -374,6 +375,35 @@ try
     // ── Build ─────────────────────────────────────────────────────────────────
     var app = builder.Build();
 
+    // ── Production security assertions ───────────────────────────────────────
+    // Elevate auth-mode "None" warnings to Error in Production so they are
+    // clearly visible in log aggregation dashboards and alerting pipelines.
+    // These conditions are valid in Development/Staging but must never reach prod.
+    if (app.Environment.IsProduction())
+    {
+        if (ingestAuthMode.Equals("None", StringComparison.OrdinalIgnoreCase))
+            Log.Error(
+                "SECURITY: IngestAuth:Mode = 'None' in Production. " +
+                "Ingest endpoints are completely unauthenticated. " +
+                "Set IngestAuth__Mode=ServiceToken and configure service tokens immediately.");
+
+        if (queryAuthMode.Equals("None", StringComparison.OrdinalIgnoreCase))
+            Log.Error(
+                "SECURITY: QueryAuth:Mode = 'None' in Production. " +
+                "All callers receive PlatformAdmin scope. " +
+                "Set QueryAuth__Mode=Bearer and configure JWT claim types immediately.");
+
+        if (dbOpts.EnableSensitiveDataLogging)
+            Log.Error(
+                "SECURITY: Database:EnableSensitiveDataLogging = true in Production. " +
+                "Disable immediately — EF Core will log SQL parameter values including secrets.");
+
+        if (dbOpts.EnableDetailedErrors)
+            Log.Warning(
+                "Database:EnableDetailedErrors = true in Production. " +
+                "Disable to prevent internal error details from leaking to clients.");
+    }
+
     // ── Startup DB verification (non-fatal probe) ─────────────────────────────
     if (dbOpts.Provider == "MySQL" && dbOpts.VerifyConnectionOnStartup)
     {
@@ -389,6 +419,21 @@ try
     // ── Middleware pipeline ───────────────────────────────────────────────────
     app.UseMiddleware<ExceptionMiddleware>();
     app.UseMiddleware<CorrelationIdMiddleware>();
+
+    // Security response headers — applied to every response regardless of route.
+    // These instruct browsers and proxies on safe content handling:
+    //   nosniff      — prevents MIME-type sniffing attacks.
+    //   DENY         — blocks this service's responses from being embedded in frames.
+    //   strict-origin — limits Referer header exposure on cross-origin navigations.
+    //   X-XSS: 0     — disables the legacy XSS filter (CSP is the modern replacement).
+    app.Use(async (ctx, next) =>
+    {
+        ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        ctx.Response.Headers["X-Frame-Options"]        = "DENY";
+        ctx.Response.Headers["Referrer-Policy"]        = "strict-origin-when-cross-origin";
+        ctx.Response.Headers["X-XSS-Protection"]       = "0";
+        await next(ctx);
+    });
 
     // IngestAuthMiddleware must run after CorrelationId (so TraceId is available for
     // error responses) and before Serilog request logging (so auth outcomes appear in logs).

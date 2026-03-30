@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using PlatformAuditEventService.Authorization;
 using PlatformAuditEventService.DTOs;
@@ -24,6 +25,13 @@ namespace PlatformAuditEventService.Controllers;
 /// Scoped endpoints (entity, actor, user, tenant, organization) accept additional
 /// filter parameters from the query string. Path segments always take precedence
 /// over the corresponding query-string field.
+///
+/// Step 21 hardening:
+///   Query parameters are now validated via FluentValidation before authorization.
+///   This catches invalid enum values, inverted time ranges, oversized strings, and
+///   out-of-range pagination values before they reach the service layer.
+///   Validation runs after path params are merged into the query object so that
+///   path-derived values (entityType, actorId, etc.) are also length-checked.
 /// </summary>
 [ApiController]
 [Route("audit")]
@@ -32,16 +40,19 @@ public sealed class AuditEventQueryController : ControllerBase
 {
     private readonly IAuditEventQueryService             _queryService;
     private readonly IQueryAuthorizer                    _authorizer;
+    private readonly IValidator<AuditEventQueryRequest>  _queryValidator;
     private readonly ILogger<AuditEventQueryController>  _logger;
 
     public AuditEventQueryController(
         IAuditEventQueryService            queryService,
         IQueryAuthorizer                   authorizer,
+        IValidator<AuditEventQueryRequest> queryValidator,
         ILogger<AuditEventQueryController> logger)
     {
-        _queryService = queryService;
-        _authorizer   = authorizer;
-        _logger       = logger;
+        _queryService   = queryService;
+        _authorizer     = authorizer;
+        _queryValidator = queryValidator;
+        _logger         = logger;
     }
 
     // ── GET /audit/events ─────────────────────────────────────────────────────
@@ -68,6 +79,9 @@ public sealed class AuditEventQueryController : ControllerBase
         [FromQuery] AuditEventQueryRequest query,
         CancellationToken ct)
     {
+        var validationDeny = await ValidateQueryAsync(query, ct);
+        if (validationDeny is not null) return validationDeny;
+
         var deny = AuthorizeQuery(query);
         if (deny is not null) return deny;
 
@@ -130,10 +144,12 @@ public sealed class AuditEventQueryController : ControllerBase
     /// <param name="query">Additional filters and pagination parameters.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <response code="200">Query succeeded.</response>
+    /// <response code="400">Invalid query parameters.</response>
     /// <response code="401">No valid credentials were presented.</response>
     /// <response code="403">Caller's scope is insufficient.</response>
     [HttpGet("entity/{entityType}/{entityId}")]
     [ProducesResponseType(typeof(ApiResponse<AuditEventQueryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetEntityEvents(
@@ -142,8 +158,12 @@ public sealed class AuditEventQueryController : ControllerBase
         [FromQuery] AuditEventQueryRequest query,
         CancellationToken ct)
     {
+        // Merge path params first so the validator can check their lengths.
         query.EntityType = entityType;
         query.EntityId   = entityId;
+
+        var validationDeny = await ValidateQueryAsync(query, ct);
+        if (validationDeny is not null) return validationDeny;
 
         var deny = AuthorizeQuery(query);
         if (deny is not null) return deny;
@@ -163,10 +183,12 @@ public sealed class AuditEventQueryController : ControllerBase
     /// <param name="query">Additional filters and pagination parameters.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <response code="200">Query succeeded.</response>
+    /// <response code="400">Invalid query parameters.</response>
     /// <response code="401">No valid credentials were presented.</response>
     /// <response code="403">Caller's scope is insufficient.</response>
     [HttpGet("actor/{actorId}")]
     [ProducesResponseType(typeof(ApiResponse<AuditEventQueryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetActorEvents(
@@ -175,6 +197,9 @@ public sealed class AuditEventQueryController : ControllerBase
         CancellationToken ct)
     {
         query.ActorId = actorId;
+
+        var validationDeny = await ValidateQueryAsync(query, ct);
+        if (validationDeny is not null) return validationDeny;
 
         var deny = AuthorizeQuery(query);
         if (deny is not null) return deny;
@@ -195,10 +220,12 @@ public sealed class AuditEventQueryController : ControllerBase
     /// <param name="query">Additional filters and pagination parameters.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <response code="200">Query succeeded.</response>
+    /// <response code="400">Invalid query parameters.</response>
     /// <response code="401">No valid credentials were presented.</response>
     /// <response code="403">Caller's scope is insufficient.</response>
     [HttpGet("user/{userId}")]
     [ProducesResponseType(typeof(ApiResponse<AuditEventQueryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetUserEvents(
@@ -208,6 +235,9 @@ public sealed class AuditEventQueryController : ControllerBase
     {
         query.ActorId   = userId;
         query.ActorType = Enums.ActorType.User;
+
+        var validationDeny = await ValidateQueryAsync(query, ct);
+        if (validationDeny is not null) return validationDeny;
 
         var deny = AuthorizeQuery(query);
         if (deny is not null) return deny;
@@ -228,10 +258,12 @@ public sealed class AuditEventQueryController : ControllerBase
     /// <param name="query">Additional filters and pagination parameters.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <response code="200">Query succeeded.</response>
+    /// <response code="400">Invalid query parameters.</response>
     /// <response code="401">No valid credentials were presented.</response>
     /// <response code="403">Caller's scope is insufficient or tenant mismatch.</response>
     [HttpGet("tenant/{tenantId}")]
     [ProducesResponseType(typeof(ApiResponse<AuditEventQueryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetTenantEvents(
@@ -240,6 +272,9 @@ public sealed class AuditEventQueryController : ControllerBase
         CancellationToken ct)
     {
         query.TenantId = tenantId;
+
+        var validationDeny = await ValidateQueryAsync(query, ct);
+        if (validationDeny is not null) return validationDeny;
 
         var deny = AuthorizeQuery(query);
         if (deny is not null) return deny;
@@ -259,10 +294,12 @@ public sealed class AuditEventQueryController : ControllerBase
     /// <param name="query">Additional filters and pagination parameters.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <response code="200">Query succeeded.</response>
+    /// <response code="400">Invalid query parameters.</response>
     /// <response code="401">No valid credentials were presented.</response>
     /// <response code="403">Caller's scope is insufficient.</response>
     [HttpGet("organization/{organizationId}")]
     [ProducesResponseType(typeof(ApiResponse<AuditEventQueryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiResponse<object>),                  StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> GetOrganizationEvents(
@@ -271,6 +308,9 @@ public sealed class AuditEventQueryController : ControllerBase
         CancellationToken ct)
     {
         query.OrganizationId = organizationId;
+
+        var validationDeny = await ValidateQueryAsync(query, ct);
+        if (validationDeny is not null) return validationDeny;
 
         var deny = AuthorizeQuery(query);
         if (deny is not null) return deny;
@@ -281,7 +321,33 @@ public sealed class AuditEventQueryController : ControllerBase
         return Ok(ApiResponse<AuditEventQueryResponse>.Ok(result, traceId: traceId));
     }
 
-    // ── Private authorization helper ──────────────────────────────────────────
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Runs FluentValidation against the query object.
+    /// Returns a 400 BadRequest IActionResult on failure; null when the query is valid.
+    ///
+    /// Call this after merging any path segment values into the query so that
+    /// path-derived fields (entityType, actorId, etc.) are also validated.
+    /// </summary>
+    private async Task<IActionResult?> ValidateQueryAsync(
+        AuditEventQueryRequest query,
+        CancellationToken      ct)
+    {
+        var validation = await _queryValidator.ValidateAsync(query, ct);
+        if (validation.IsValid) return null;
+
+        var traceId = TraceIdAccessor.Current();
+
+        _logger.LogDebug(
+            "Query validation failed. Errors={Errors} TraceId={TraceId}",
+            validation.Errors.Select(e => e.ErrorMessage).ToList(),
+            traceId);
+
+        return BadRequest(ApiResponse<object>.ValidationFail(
+            validation.Errors.Select(e => e.ErrorMessage).ToList(),
+            traceId: traceId));
+    }
 
     /// <summary>
     /// Resolves the caller context from HttpContext.Items, calls the authorizer,

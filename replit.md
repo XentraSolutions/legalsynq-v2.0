@@ -1836,3 +1836,37 @@ Added nullable `long? RecordCount` to track the number of records written. EF co
 ### Build status after Control Center Admin Refresh
 - control-center (tsc --noEmit): ✅ 0 errors, 0 warnings
 - Workflow: ✅ running (fast refresh 727 ms)
+
+---
+
+## Platform Audit Service — Step 21: Production Hardening Pass ✅
+
+**Build:** 0 errors, 0 warnings  
+**Files changed:** 8 modified, 2 new config/docs, 2 new analysis docs
+
+### Security fixes
+- **`ExceptionMiddleware`** — internal `ex.Message` is no longer forwarded to API clients; all error response bodies use static, caller-safe strings. Exception detail remains in server logs only.
+- **`ExceptionMiddleware`** — `UnauthorizedAccessException` now correctly maps to HTTP 403 (access denied), not 401 (unauthenticated).
+- **`ExceptionMiddleware`** — added `JsonStringEnumConverter` to the middleware JSON options so exception-path responses serialize enums as strings, consistent with the controller pipeline.
+- **`CorrelationIdMiddleware`** — incoming `X-Correlation-ID` header is now sanitized: max 100 chars, alphanumeric / hyphen / underscore only. Out-of-spec values are discarded and a fresh GUID is generated.
+- **`Program.cs`** — security response headers added to every response: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-XSS-Protection: 0`.
+- **`Program.cs`** — `IngestAuth:Mode = "None"` and `QueryAuth:Mode = "None"` now emit `Log.Error` (not Warning) in Production so they surface in alerting pipelines.
+
+### Observability fixes
+- **`CorrelationIdMiddleware`** — correlation ID pushed into `Serilog.Context.LogContext` so every log entry in the request scope automatically carries `CorrelationId` as a structured property.
+- **`appsettings.json`** — Serilog console output template updated to `[{Timestamp} {Level}] [{CorrelationId}] {SourceContext}: {Message}`.
+- **`ExceptionMiddleware`** — client errors (4xx) now logged at Warning; server faults (5xx) at Error.
+
+### API contract consistency
+- **`AuditExportController`** — all 5 error paths previously returning `new { error = "..." }` anonymous objects now return `ApiResponse<T>` envelope. Success paths (202 and 200) also wrapped in `ApiResponse<T>.Ok`.
+
+### Configuration / hardening
+- **`HealthController`** — `Service` and `Version` now sourced from `IOptions<AuditServiceOptions>` instead of hardcoded literals.
+- **`HealthController`** — route changed from `/health` to `/health/detail` to resolve ambiguous endpoint match with `app.MapHealthChecks("/health")`. `/health` is the lightweight k8s probe; `/health/detail` is the rich diagnostic endpoint.
+- **`AuditEventQueryController`** — `IValidator<AuditEventQueryRequest>` now injected and called in all 6 query actions (after path params are merged, before authorization). Returns 400 `ApiResponse.ValidationFail` on invalid input.
+- **`appsettings.Production.json`** (new) — hardened production baseline: MySQL provider, HMAC-SHA256 signing, ServiceToken ingest auth, Bearer query auth, Serilog ISO-8601 timestamps. Secrets documented as env-var only.
+
+### New files
+- `appsettings.Production.json` — production configuration baseline
+- `Docs/production-readiness-checklist.md` — 40-item deployment checklist covering auth, DB, integrity, retention, export, observability, network, and HIPAA compliance
+- `analysis/step21_hardening.md` — full issue catalogue: 14 findings, fixes, and build verification

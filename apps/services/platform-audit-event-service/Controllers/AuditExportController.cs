@@ -3,8 +3,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using PlatformAuditEventService.Authorization;
 using PlatformAuditEventService.Configuration;
+using PlatformAuditEventService.DTOs;
 using PlatformAuditEventService.DTOs.Export;
 using PlatformAuditEventService.Services;
+using PlatformAuditEventService.Utilities;
 
 namespace PlatformAuditEventService.Controllers;
 
@@ -25,14 +27,18 @@ namespace PlatformAuditEventService.Controllers;
 ///   Set Export:Provider = "Local" (dev) or "S3" / "AzureBlob" (production) to enable.
 ///
 /// Response codes:
-///   POST: 202 Accepted  — job created and processed; body = ExportStatusResponse.
+///   POST: 202 Accepted  — job created and processed; body = ApiResponse&lt;ExportStatusResponse&gt;.
 ///         400 Bad Request — validation failure or unsupported format.
 ///         401 / 403       — authentication / scope failure.
 ///         503 Service Unavailable — export not configured.
 ///
-///   GET:  200 OK        — job found; body = ExportStatusResponse.
+///   GET:  200 OK        — job found; body = ApiResponse&lt;ExportStatusResponse&gt;.
 ///         404 Not Found — no job with the given exportId.
 ///         503 Service Unavailable — export not configured.
+///
+/// Step 21 hardening:
+///   All error paths now return the ApiResponse&lt;T&gt; envelope for client-contract
+///   consistency. Raw anonymous objects have been replaced throughout.
 /// </summary>
 [ApiController]
 [Route("audit")]
@@ -69,15 +75,17 @@ public sealed class AuditExportController : ControllerBase
     /// non-PlatformAdmin callers.
     /// </summary>
     [HttpPost("exports")]
-    [ProducesResponseType(typeof(ExportStatusResponse), StatusCodes.Status202Accepted)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType(typeof(ApiResponse<ExportStatusResponse>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResponse<object>),               StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse<object>),               StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>),               StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>),               StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Submit(
         [FromBody] ExportRequest request,
         CancellationToken        ct)
     {
+        var traceId = TraceIdAccessor.Current();
+
         if (!IsExportEnabled(out var disabledResult))
             return disabledResult!;
 
@@ -85,21 +93,18 @@ public sealed class AuditExportController : ControllerBase
         var validation = await _validator.ValidateAsync(request, ct);
         if (!validation.IsValid)
         {
-            return BadRequest(new
-            {
-                error  = "One or more validation errors occurred.",
-                errors = validation.Errors.Select(e => e.ErrorMessage).ToList(),
-            });
+            return BadRequest(ApiResponse<object>.ValidationFail(
+                validation.Errors.Select(e => e.ErrorMessage).ToList(),
+                traceId: traceId));
         }
 
         // Instance-level format gate (in addition to static validator list)
         if (!_exportOpts.SupportedFormats.Contains(request.Format, StringComparer.Ordinal))
         {
-            return BadRequest(new
-            {
-                error = $"Format '{request.Format}' is not enabled on this instance. " +
-                        $"Supported: {string.Join(", ", _exportOpts.SupportedFormats)}."
-            });
+            return BadRequest(ApiResponse<object>.Fail(
+                $"Format '{request.Format}' is not enabled on this instance. " +
+                $"Supported: {string.Join(", ", _exportOpts.SupportedFormats)}.",
+                traceId: traceId));
         }
 
         // ── Caller context (set by QueryAuthMiddleware) ────────────────────────
@@ -110,17 +115,23 @@ public sealed class AuditExportController : ControllerBase
         try
         {
             var result = await _exportService.SubmitAsync(request, caller, ct);
-            return StatusCode(StatusCodes.Status202Accepted, result);
+            return StatusCode(StatusCodes.Status202Accepted,
+                ApiResponse<ExportStatusResponse>.Ok(result, traceId: traceId));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(
-                "Export access denied for ExportRequest. Scope={Scope} Reason={Reason}",
-                caller.Scope, ex.Message);
+                "Export access denied for ExportRequest. Scope={Scope} TraceId={TraceId}",
+                caller.Scope, traceId);
+
+            // Do not forward ex.Message to the client — log it only.
+            _ = ex;
 
             return caller.IsAuthenticated
-                ? StatusCode(StatusCodes.Status403Forbidden,  new { error = ex.Message })
-                : StatusCode(StatusCodes.Status401Unauthorized, new { error = "Authentication required." });
+                ? StatusCode(StatusCodes.Status403Forbidden,
+                    ApiResponse<object>.Fail("Access denied.", traceId: traceId))
+                : StatusCode(StatusCodes.Status401Unauthorized,
+                    ApiResponse<object>.Fail("Authentication is required to submit an export.", traceId: traceId));
         }
     }
 
@@ -136,13 +147,15 @@ public sealed class AuditExportController : ControllerBase
     /// reaches a terminal state (Completed, Failed, Cancelled, Expired).
     /// </summary>
     [HttpGet("exports/{exportId:guid}")]
-    [ProducesResponseType(typeof(ExportStatusResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    [ProducesResponseType(typeof(ApiResponse<ExportStatusResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>),               StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse<object>),               StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> GetStatus(
         Guid              exportId,
         CancellationToken ct)
     {
+        var traceId = TraceIdAccessor.Current();
+
         if (!IsExportEnabled(out var disabledResult))
             return disabledResult!;
 
@@ -150,27 +163,30 @@ public sealed class AuditExportController : ControllerBase
 
         if (result is null)
         {
-            return NotFound(new { error = $"Export job '{exportId}' not found." });
+            return NotFound(ApiResponse<object>.Fail(
+                $"Export job '{exportId}' not found.",
+                traceId: traceId));
         }
 
-        return Ok(result);
+        return Ok(ApiResponse<ExportStatusResponse>.Ok(result, traceId: traceId));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns false and sets <paramref name="result"/> to a 503 response when
+    /// Returns false and sets <paramref name="result"/> to a 503 ApiResponse when
     /// Export:Provider = "None". Returns true when the export subsystem is active.
     /// </summary>
     private bool IsExportEnabled(out IActionResult? result)
     {
         if (_exportOpts.Provider.Equals("None", StringComparison.OrdinalIgnoreCase))
         {
-            result = StatusCode(StatusCodes.Status503ServiceUnavailable, new
-            {
-                error = "The export service is not enabled on this instance. " +
-                        "Set Export:Provider to 'Local', 'S3', or 'AzureBlob' to activate."
-            });
+            var traceId = TraceIdAccessor.Current();
+            result = StatusCode(StatusCodes.Status503ServiceUnavailable,
+                ApiResponse<object>.Fail(
+                    "The export service is not enabled on this instance. " +
+                    "Set Export:Provider to 'Local', 'S3', or 'AzureBlob' to activate.",
+                    traceId: traceId));
             return false;
         }
 
