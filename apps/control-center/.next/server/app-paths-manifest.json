@@ -1,1 +1,10 @@
-{}
+{
+  "/page": "app/page.js",
+  "/login/page": "app/login/page.js",
+  "/api/auth/login/route": "app/api/auth/login/route.js",
+  "/tenants/page": "app/tenants/page.js",
+  "/audit-logs/page": "app/audit-logs/page.js",
+  "/tenant-users/page": "app/tenant-users/page.js",
+  "/products/page": "app/products/page.js",
+  "/roles/page": "app/roles/page.js"
+}

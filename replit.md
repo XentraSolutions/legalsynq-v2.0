@@ -1106,3 +1106,56 @@ IDs and 1 CareConnect migration ID were inserted into `__EFMigrationsHistory` to
 ### Key file modified
 - `apps/services/identity/Identity.Api/DesignTimeDbContextFactory.cs` — reads
   `ConnectionStrings__IdentityDb` env var instead of hardcoded localhost fallback
+
+---
+
+## Platform Audit/Event Service — Step 1 Scaffold (2026-03-30)
+
+### Location
+`apps/services/platform-audit-event-service/`
+
+### Purpose
+Standalone, independently deployable, portable audit/event service. Ingests business, security,
+access, administrative, and system activity from distributed systems, normalizes into a canonical
+event model, and persists immutable tamper-evident records. Not tied to any product, tenant model,
+UI, or identity provider.
+
+### Port
+`5007` (planned — not yet wired into gateway)
+
+### Project structure
+```
+PlatformAuditEventService.csproj    .NET 8 Web API, single-project
+Controllers/    HealthController (GET /HealthCheck), AuditEventsController (POST/GET)
+Services/       IAuditEventService + AuditEventService
+Repositories/   IAuditEventRepository + InMemoryAuditEventRepository (dev adapter)
+Models/         AuditEvent (record), EventCategory, EventSeverity, EventOutcome
+DTOs/           IngestAuditEventRequest, AuditEventResponse, ApiResponse<T>, PagedResult<T>
+Validators/     IngestAuditEventRequestValidator (FluentValidation)
+Middleware/     ExceptionMiddleware, CorrelationIdMiddleware
+Utilities/      IntegrityHasher (HMAC-SHA256), AuditEventMapper, TraceIdAccessor
+Data/           AuditEventDbContext (EF Core, InMemory placeholder)
+Configuration/  AuditServiceOptions (IntegrityHmacKeyBase64, PersistenceProvider, MaxPageSize)
+Jobs/           RetentionPolicyJob (placeholder)
+Docs/           architecture_overview.md
+Examples/       Sample ingestion payloads (minimal, full, security-failure)
+analysis/       step1_scaffold.md
+```
+
+### Key design decisions
+- `AuditEvent` is a `sealed record` — immutable, supports `with` expressions
+- Append-only repository interface — no update or delete methods
+- HMAC-SHA256 integrity hash over canonical pipe-delimited fields per record
+- `ApiResponse<T>` envelope on all endpoints (success, data, message, traceId, errors)
+- `ExceptionMiddleware` first in pipeline — catches all unhandled exceptions → structured JSON
+- `CorrelationIdMiddleware` — reads/writes `X-Correlation-ID` header
+- Serilog with bootstrap logger to capture startup errors
+- InMemory persistence for scaffold; `AuditEventDbContext` ready for durable migration
+
+### NuGet packages
+Swashbuckle.AspNetCore 6.5.0 · FluentValidation.AspNetCore 11.3.0 · Serilog.AspNetCore 8.0.1 ·
+Serilog.Sinks.Console 5.0.1 · Serilog.Enrichers.Environment 2.3.0 · Serilog.Enrichers.Thread 3.1.0 ·
+Microsoft.EntityFrameworkCore 8.0.0 · Microsoft.EntityFrameworkCore.InMemory 8.0.0
+
+### Build status — Step 1
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
