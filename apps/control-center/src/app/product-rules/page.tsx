@@ -38,11 +38,16 @@ export default async function ProductRulesPage() {
     <CCShell userEmail={session.email}>
       <div className="space-y-8">
         {/* Page header */}
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Product Access Rules</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            Controls which organization types and relationship types unlock product roles during login.
-          </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Product Access Rules</h1>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Controls which organization types and relationship types unlock product roles during login.
+            </p>
+          </div>
+          <span className="shrink-0 inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
+            LIVE
+          </span>
         </div>
 
         {/* Error banner */}

@@ -38,7 +38,12 @@ export default async function SettingsPage() {
 
           {/* Page header */}
           <div className="mb-6">
-            <h1 className="text-xl font-semibold text-gray-900">Platform Settings</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-semibold text-gray-900">Platform Settings</h1>
+              <span className="inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
+                IN PROGRESS
+              </span>
+            </div>
             <p className="text-sm text-gray-500 mt-1">
               Manage platform-wide feature flags and system configuration values.
             </p>

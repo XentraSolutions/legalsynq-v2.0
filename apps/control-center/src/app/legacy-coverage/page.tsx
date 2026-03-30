@@ -40,12 +40,17 @@ export default async function LegacyCoveragePage() {
       <div className="space-y-4">
 
         {/* Header */}
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Legacy Migration Coverage</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
-            Real-time snapshot of legacy path adoption across two active migration streams.
-            Both metrics must reach 100% before the legacy write paths can be removed.
-          </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Legacy Migration Coverage</h1>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Real-time snapshot of legacy path adoption across two active migration streams.
+              Both metrics must reach 100% before the legacy write paths can be removed.
+            </p>
+          </div>
+          <span className="shrink-0 inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
+            LIVE
+          </span>
         </div>
 
         {/* Action bar — Phase F status */}

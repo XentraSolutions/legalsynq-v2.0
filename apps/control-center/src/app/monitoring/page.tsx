@@ -42,7 +42,12 @@ export default async function MonitoringPage() {
           {/* Page header */}
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold text-gray-900">System Health</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-semibold text-gray-900">System Health</h1>
+                <span className="inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
+                  IN PROGRESS
+                </span>
+              </div>
               <p className="text-sm text-gray-500 mt-1">
                 Real-time view of platform service status and active alerts.
               </p>

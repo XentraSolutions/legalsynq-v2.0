@@ -64,6 +64,9 @@ export default async function SupportPage({ searchParams }: SupportPageProps) {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-xl font-semibold text-gray-900">Support Tools</h1>
+                <span className="inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
+                  IN PROGRESS
+                </span>
                 {tenantCtx && (
                   <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[11px] font-semibold text-amber-700">
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />

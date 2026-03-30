@@ -29,7 +29,6 @@ export const CC_NAV: NavSection[] = [
   {
     heading: 'IDENTITY',
     items: [
-      { href: '/tenants',      label: 'Tenants',          icon: 'ri-building-2-line'      },
       { href: '/tenant-users', label: 'Users',            icon: 'ri-group-line'           },
       { href: '/roles',        label: 'Roles',            icon: 'ri-shield-keyhole-line'  },
       { href: '/scoped-roles', label: 'Scoped Roles',     icon: 'ri-focus-3-line', badge: 'MOCKUP' },
@@ -62,6 +61,7 @@ export const CC_NAV: NavSection[] = [
   {
     heading: 'TENANTS',
     items: [
+      { href: '/tenants', label: 'Tenants',       icon: 'ri-building-2-line'                    },
       { href: '/domains', label: 'Tenant Domains', icon: 'ri-global-line', badge: 'MOCKUP' },
     ],
   },
@@ -69,9 +69,9 @@ export const CC_NAV: NavSection[] = [
   {
     heading: 'OPERATIONS',
     items: [
-      { href: '/support',    label: 'Support Tools', icon: 'ri-customer-service-2-line'        },
-      { href: '/audit-logs', label: 'Audit Logs',    icon: 'ri-file-list-3-line'               },
-      { href: '/monitoring', label: 'Monitoring',    icon: 'ri-pulse-line', badge: 'IN PROGRESS' },
+      { href: '/support',    label: 'Support Tools', icon: 'ri-customer-service-2-line', badge: 'IN PROGRESS' },
+      { href: '/audit-logs', label: 'Audit Logs',    icon: 'ri-file-list-3-line',        badge: 'IN PROGRESS' },
+      { href: '/monitoring', label: 'Monitoring',    icon: 'ri-pulse-line',              badge: 'IN PROGRESS' },
     ],
   },
 
@@ -85,7 +85,7 @@ export const CC_NAV: NavSection[] = [
   {
     heading: 'SYSTEM',
     items: [
-      { href: '/settings', label: 'Platform Settings', icon: 'ri-settings-3-line' },
+      { href: '/settings', label: 'Platform Settings', icon: 'ri-settings-3-line', badge: 'IN PROGRESS' },
     ],
   },
 ];

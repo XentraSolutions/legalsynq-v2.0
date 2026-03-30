@@ -31,11 +31,16 @@ export default async function RelationshipTypesPage() {
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">Relationship Types</h1>
-            <p className="mt-0.5 text-sm text-gray-500">
-              Edge types in the organization graph — used by org relationships and product rel-type rules.
-            </p>
+          <div className="flex items-start gap-3">
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">Relationship Types</h1>
+              <p className="mt-0.5 text-sm text-gray-500">
+                Edge types in the organization graph — used by org relationships and product rel-type rules.
+              </p>
+            </div>
+            <span className="shrink-0 mt-0.5 inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
+              LIVE
+            </span>
           </div>
           <button
             type="button"

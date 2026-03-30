@@ -1839,6 +1839,36 @@ Added nullable `long? RecordCount` to track the number of records written. EF co
 
 ---
 
+## Control Center Admin Refresh — Step 11 ✅
+
+**Scope:** Functional completion pass — nav reorganisation, status badges aligned to backend capabilities.
+**Constraint:** No visual redesign; existing layout, shell, branding, and theme preserved.
+
+### Navigation (`apps/control-center/src/lib/nav.ts`)
+- Moved **Tenants** out of the IDENTITY section into its own TENANTS section (alongside Tenant Domains)
+- Added `IN PROGRESS` badge to **Support Tools**, **Audit Logs**, and **Platform Settings** (previously unlabelled)
+- **Monitoring** already carried `IN PROGRESS`; no change needed
+
+### Page header badges added
+| Page | Badge | File |
+|------|-------|------|
+| Legacy Migration Coverage | LIVE | `app/legacy-coverage/page.tsx` |
+| Organization Types | LIVE | `app/org-types/page.tsx` |
+| Relationship Types | LIVE | `app/relationship-types/page.tsx` |
+| Organization Relationships | LIVE | `app/org-relationships/page.tsx` |
+| Product Access Rules | LIVE | `app/product-rules/page.tsx` |
+| Audit Logs | IN PROGRESS | `app/audit-logs/page.tsx` |
+| Support Tools | IN PROGRESS | `app/support/page.tsx` |
+| System Health | IN PROGRESS | `app/monitoring/page.tsx` |
+| Platform Settings | IN PROGRESS | `app/settings/page.tsx` |
+
+### Verification
+- `tsc --noEmit` (control-center): ✅ 0 errors
+- All mappers and types confirmed aligned with Phase G backend shapes
+- Analysis report: `analysis/step11_control-center-admin-refresh.md`
+
+---
+
 ## Platform Audit Service — Step 21: Production Hardening Pass ✅
 
 **Build:** 0 errors, 0 warnings  
