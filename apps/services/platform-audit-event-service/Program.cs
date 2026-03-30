@@ -137,7 +137,13 @@ try
     });
 
     // ── Validation ────────────────────────────────────────────────────────────
-    builder.Services.AddScoped<IValidator<IngestAuditEventRequest>, IngestAuditEventRequestValidator>();
+    // Auto-discovers and registers all AbstractValidator<T> implementations
+    // in this assembly. Registered as Scoped by default.
+    // Covers: IngestAuditEventRequestValidator, BatchIngestRequestValidator,
+    //         AuditEventQueryRequestValidator, ExportRequestValidator,
+    //         AuditEventScopeDtoValidator, AuditEventActorDtoValidator,
+    //         AuditEventEntityDtoValidator
+    builder.Services.AddValidatorsFromAssemblyContaining<IngestAuditEventRequestValidator>();
 
     // ── Domain services ───────────────────────────────────────────────────────
     builder.Services.AddScoped<IAuditEventService, AuditEventService>();
