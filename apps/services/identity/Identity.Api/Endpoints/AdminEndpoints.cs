@@ -225,8 +225,6 @@ public static class AdminEndpoints
     {
         var q = db.Users
             .Include(u => u.Tenant)
-            .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -240,6 +238,8 @@ public static class AdminEndpoints
 
         var total = await q.CountAsync();
 
+        // Step 6 Phase B: role resolved via ScopedRoleAssignments (GLOBAL-scoped, primary).
+        // Correlated subquery; EF Core translates to a single SQL query.
         var users = await q
             .OrderBy(u => u.Email)
             .Skip((page - 1) * pageSize)
@@ -250,7 +250,11 @@ public static class AdminEndpoints
                 firstName  = u.FirstName,
                 lastName   = u.LastName,
                 email      = u.Email,
-                role       = u.UserRoles.Select(ur => ur.Role.Name).FirstOrDefault() ?? "User",
+                role       = db.ScopedRoleAssignments
+                               .Where(s => s.UserId == u.Id && s.IsActive
+                                        && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
+                               .Select(s => s.Role!.Name)
+                               .FirstOrDefault() ?? "User",
                 status     = u.IsActive ? "Active" : "Inactive",
                 tenantId   = u.TenantId,
                 tenantCode = u.Tenant.Code,
@@ -269,10 +273,11 @@ public static class AdminEndpoints
 
     private static async Task<IResult> GetUser(Guid id, IdentityDbContext db)
     {
+        // Step 6 Phase B: ScopedRoleAssignments (GLOBAL) is the primary role source.
         var u = await db.Users
             .Include(u => u.Tenant)
-            .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
+            .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global))
+                .ThenInclude(s => s.Role)
             .FirstOrDefaultAsync(u => u.Id == id);
 
         if (u is null) return Results.NotFound();
@@ -283,7 +288,7 @@ public static class AdminEndpoints
             firstName         = u.FirstName,
             lastName          = u.LastName,
             email             = u.Email,
-            role              = u.UserRoles.Select(ur => ur.Role.Name).FirstOrDefault() ?? "User",
+            role              = u.ScopedRoleAssignments.Select(s => s.Role.Name).FirstOrDefault() ?? "User",
             status            = u.IsActive ? "Active" : "Inactive",
             tenantId          = u.TenantId,
             tenantCode        = u.Tenant.Code,
@@ -305,8 +310,8 @@ public static class AdminEndpoints
     {
         var total = await db.Roles.CountAsync();
 
+        // Step 6 Phase B: userCount via ScopedRoleAssignments (GLOBAL-scoped, primary).
         var roles = await db.Roles
-            .Include(r => r.UserRoles)
             .OrderBy(r => r.Name)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -315,7 +320,9 @@ public static class AdminEndpoints
                 id          = r.Id,
                 name        = r.Name,
                 description = r.Description ?? "",
-                userCount   = r.UserRoles.Count,
+                userCount   = db.ScopedRoleAssignments.Count(
+                                  s => s.RoleId == r.Id && s.IsActive
+                                    && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global),
                 permissions = new string[] { },
             })
             .ToListAsync();
@@ -332,17 +339,21 @@ public static class AdminEndpoints
     private static async Task<IResult> GetRole(Guid id, IdentityDbContext db)
     {
         var r = await db.Roles
-            .Include(r => r.UserRoles)
             .FirstOrDefaultAsync(r => r.Id == id);
 
         if (r is null) return Results.NotFound();
+
+        // Step 6 Phase B: userCount via ScopedRoleAssignments (GLOBAL-scoped, primary).
+        var userCount = await db.ScopedRoleAssignments
+            .CountAsync(s => s.RoleId == id && s.IsActive
+                          && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global);
 
         return Results.Ok(new
         {
             id                  = r.Id,
             name                = r.Name,
             description         = r.Description ?? "",
-            userCount           = r.UserRoles.Count,
+            userCount,
             permissions         = new string[] { },
             resolvedPermissions = new object[] { },
             createdAtUtc        = r.CreatedAtUtc,
@@ -924,16 +935,18 @@ public static class AdminEndpoints
         var role = await db.Roles.FindAsync(body.RoleId);
         if (role is null) return Results.NotFound(new { error = $"Role '{body.RoleId}' not found." });
 
-        // Check if already assigned (UserRole is the canonical existence check)
-        var alreadyAssigned = await db.UserRoles
-            .AnyAsync(ur => ur.UserId == id && ur.RoleId == body.RoleId);
+        // Step 6 Phase B: existence check now uses ScopedRoleAssignments (primary).
+        var alreadyAssigned = await db.ScopedRoleAssignments
+            .AnyAsync(s => s.UserId == id && s.RoleId == body.RoleId && s.IsActive
+                        && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global);
         if (alreadyAssigned)
             return Results.Conflict(new { error = "Role is already assigned to this user." });
 
         var now = DateTime.UtcNow;
 
-        // Dual-write 1: legacy UserRoles join table (backward-compat — keep until UserRole
-        // table is fully retired after ScopedRoleAssignment adoption is complete).
+        // TODO [Phase G — UserRoles Retirement]: Remove this dual-write once ScopedRoleAssignment
+        //   coverage is 100% on all environments and the dual-write period ends.
+        //   At that point, only the ScopedRoleAssignment insert below is needed.
         var userRole = UserRole.Create(id, body.RoleId);
         db.UserRoles.Add(userRole);
 
@@ -976,15 +989,18 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync(id);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
-        // Find and remove the legacy UserRole record
+        // TODO [Phase G — UserRoles Retirement]: Remove this UserRoles teardown once
+        //   the dual-write period ends. Only the ScopedRoleAssignment deactivation below
+        //   will be needed after the UserRoles table is retired.
         var userRole = await db.UserRoles
             .FirstOrDefaultAsync(ur => ur.UserId == id && ur.RoleId == roleId);
         if (userRole is not null)
             db.UserRoles.Remove(userRole);
 
-        // Deactivate the GLOBAL ScopedRoleAssignment
+        // Primary revocation: deactivate the GLOBAL ScopedRoleAssignment.
         var sra = await db.ScopedRoleAssignments
-            .FirstOrDefaultAsync(s => s.UserId == id && s.RoleId == roleId && s.ScopeType == "GLOBAL" && s.IsActive);
+            .FirstOrDefaultAsync(s => s.UserId == id && s.RoleId == roleId
+                                   && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global && s.IsActive);
         if (sra is not null)
             sra.Deactivate();
 

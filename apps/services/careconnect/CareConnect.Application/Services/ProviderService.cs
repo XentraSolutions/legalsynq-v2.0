@@ -73,17 +73,18 @@ public class ProviderService : IProviderService
             request.Longitude,
             request.GeoPointSource);
 
-        await _providers.AddAsync(provider, ct);
-
-        // Phase D: link to Identity Organization if supplied.
+        // Phase D / Step 6: link to Identity Organization before persisting so that
+        // the OrganizationId is captured in the initial INSERT, eliminating the
+        // redundant UPDATE that previously followed AddAsync.
         if (request.OrganizationId.HasValue)
         {
             provider.LinkOrganization(request.OrganizationId.Value);
-            await _providers.UpdateAsync(provider, ct);
             _logger.LogDebug(
-                "Provider {ProviderId} linked to Identity Organization {OrganizationId}.",
+                "Provider {ProviderId} linking to Identity Organization {OrganizationId}.",
                 provider.Id, request.OrganizationId.Value);
         }
+
+        await _providers.AddAsync(provider, ct);
 
         if (request.CategoryIds.Count > 0)
             await _providers.SyncCategoriesAsync(provider.Id, request.CategoryIds, ct);

@@ -798,3 +798,41 @@ Analysis report: `analysis/step1_platform-foundation-upgrade.md`
 ### Build status after Step 5
 - Identity.Api: ✅ 0 errors, 0 warnings
 - control-center TypeScript: ✅ 0 errors (`npx tsc --noEmit` clean)
+
+---
+
+## Step 6 — Final Convergence and Relationship Activation
+
+Analysis: `analysis/step6_final-convergence-and-relationship-activation.md`
+
+### Phase A — OrganizationType as authoritative write model
+- `Organization.Update()` now accepts optional `organizationTypeId` + `orgTypeCode`; delegates to `AssignOrganizationType()` keeping string and FK in sync
+- **New:** `Identity.Domain/OrgTypeMapper.cs` — centralized `OrgType code ↔ OrganizationTypeId` mapping helper (`TryResolve`, `TryResolveCode`, `AllCodes`)
+
+### Phase B — UserRoles eliminated from all read paths
+- `AuthService.LoginAsync` — ScopedRoleAssignments (GLOBAL) is now primary role source; UserRoles is fallback-with-warning only
+- `UserRepository.GetByIdWithRolesAsync` — ScopedRoleAssignments listed first; UserRoles retained with `TODO [Phase G]` marker
+- `UserRepository.GetAllWithRolesAsync` — ScopedRoleAssignments Include added (was missing entirely)
+- `AdminEndpoints.ListUsers` — role name from correlated ScopedRoleAssignment subquery (no UserRoles Include)
+- `AdminEndpoints.GetUser` — filtered ScopedRoleAssignments Include replaces UserRoles Include
+- `AdminEndpoints.ListRoles` — `userCount` from ScopedRoleAssignment count subquery
+- `AdminEndpoints.GetRole` — `userCount` from async ScopedRoleAssignment count
+- `AdminEndpoints.AssignRole` — existence check migrated to ScopedRoleAssignment
+
+### Phase C — OrganizationRelationship in CareConnect workflows
+- Confirmed **already complete**: `ReferralService` calls `HttpOrganizationRelationshipResolver` and sets `OrganizationRelationshipId`; `AppointmentService` denormalizes it from parent Referral. No code changes required.
+
+### Phase D — Provider and Facility identity linkage
+- `ProviderService.CreateAsync` — `LinkOrganization()` moved **before** `AddAsync`; eliminates the redundant second `UpdateAsync` call (aligns with FacilityService pattern)
+
+### Phase E — Control Center minimal UI
+- Confirmed **already complete**: all list pages (org types, relationship types, org relationships, product rules), API client methods, types, and routes already wired. No code changes required.
+
+### Phase F — UserRoles retirement preparation
+- All UserRoles write paths now carry `// TODO [Phase G — UserRoles Retirement]` markers: `UserRepository.AddAsync`, `AdminEndpoints.AssignRole`, `AdminEndpoints.RevokeRole`
+- Full removal plan documented in analysis report (checklist of 14 items)
+
+### Build status after Step 6
+- Identity.Api: ✅ 0 errors, 0 warnings
+- CareConnect.Api: ✅ 0 errors (1 pre-existing warning unrelated to Step 6)
+- control-center TypeScript: ✅ 0 errors

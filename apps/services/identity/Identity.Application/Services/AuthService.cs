@@ -46,20 +46,31 @@ public class AuthService : IAuthService
         var userWithRoles = await _userRepository.GetByIdWithRolesAsync(user.Id, ct)
             ?? throw new UnauthorizedAccessException();
 
-        // Primary role source: UserRoles (flat user→role mapping)
-        var roleNames = userWithRoles.UserRoles.Select(ur => ur.Role.Name).ToList();
-
-        // Phase 4: merge GLOBAL-scoped ScopedRoleAssignments into role names (additive).
-        // ORGANIZATION/PRODUCT/RELATIONSHIP-scoped assignments are intentionally excluded
-        // here; they will be used for fine-grained authorization in future phases.
+        // Step 6 Phase B: ScopedRoleAssignments (GLOBAL) is now the primary role source.
+        // UserRoles is the fallback during the dual-write window; it will be removed
+        // once all environments have run migration 20260330200002.
         var scopedGlobalRoles = userWithRoles.ScopedRoleAssignments
             .Where(s => s.IsActive && s.ScopeType == Domain.ScopedRoleAssignment.ScopeTypes.Global)
             .Select(s => s.Role.Name)
             .ToList();
 
-        foreach (var r in scopedGlobalRoles)
-            if (!roleNames.Contains(r, StringComparer.OrdinalIgnoreCase))
-                roleNames.Add(r);
+        List<string> roleNames;
+        if (scopedGlobalRoles.Count > 0)
+        {
+            roleNames = scopedGlobalRoles;
+        }
+        else
+        {
+            // Fallback: UserRoles legacy table.  Only reached for users who existed
+            // before Step 4 dual-write AND were not covered by the backfill migration.
+            roleNames = userWithRoles.UserRoles.Select(ur => ur.Role.Name).ToList();
+            if (roleNames.Count > 0)
+                _logger.LogWarning(
+                    "User {UserId} has no active ScopedRoleAssignments; " +
+                    "fell back to legacy UserRoles. " +
+                    "Ensure migration 20260330200002 has run on this environment.",
+                    user.Id);
+        }
 
         // Load org membership and compute product roles
         var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);

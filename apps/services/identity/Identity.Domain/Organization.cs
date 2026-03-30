@@ -91,13 +91,24 @@ public class Organization
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    public void Update(string name, string? displayName, Guid? updatedByUserId)
+    /// <summary>
+    /// Updates mutable display fields.  Supply organizationTypeId to set (or correct)
+    /// the typed FK at the same time; omit to leave it unchanged.
+    /// When organizationTypeId is provided the orgType string is kept in sync so
+    /// JWT claims remain backward-compatible.
+    /// </summary>
+    public void Update(string name, string? displayName, Guid? updatedByUserId,
+        Guid?   organizationTypeId = null,
+        string? orgTypeCode        = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         Name = name.Trim();
         DisplayName = displayName?.Trim();
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
+
+        if (organizationTypeId.HasValue)
+            AssignOrganizationType(organizationTypeId.Value, orgTypeCode ?? OrgType);
     }
 
     public void Deactivate(Guid? updatedByUserId)
