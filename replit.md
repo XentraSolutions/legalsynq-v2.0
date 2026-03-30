@@ -1239,3 +1239,40 @@ When `Database:VerifyConnectionOnStartup=true` (default): runs `CanConnectAsync(
 
 ### Build status — Step 3
 - PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
+## Platform Audit/Event Service — Step 4 DTOs (2026-03-30)
+
+### Namespace layout
+| Sub-namespace | Directory | Purpose |
+|---|---|---|
+| `DTOs.Ingest` | `DTOs/Ingest/` | Ingest request, batch, per-item result |
+| `DTOs.Query` | `DTOs/Query/` | Filter request, record response, paginated response |
+| `DTOs.Export` | `DTOs/Export/` | Export job creation and status |
+| `DTOs.Integrity` | `DTOs/Integrity/` | Checkpoint read model |
+| `DTOs` (existing) | `DTOs/` | ApiResponse&lt;T&gt;, PagedResult&lt;T&gt; — unchanged |
+
+### New files (14)
+**Ingest:** AuditEventScopeDto, AuditEventActorDto, AuditEventEntityDto, IngestAuditEventRequest, BatchIngestRequest, IngestItemResult, BatchIngestResponse  
+**Query:** AuditEventQueryRequest, AuditEventActorResponseDto, AuditEventEntityResponseDto, AuditEventScopeResponseDto, AuditEventRecordResponse, AuditEventQueryResponse  
+**Export:** ExportRequest, ExportStatusResponse  
+**Integrity:** IntegrityCheckpointResponse
+
+### Key design notes
+- Existing root DTOs preserved — still used by old AuditEvent service layer
+- IngestAuditEventRequest uses nested Scope/Actor/Entity objects (vs. flat old version)
+- All categorical fields use typed enums from `PlatformAuditEventService.Enums` — requires `JsonStringEnumConverter` in Program.cs
+- `BatchIngestResponse.HasErrors` + `ExportStatusResponse.IsTerminal`/`IsAvailable` are computed convenience properties
+- `AuditEventQueryResponse` includes `EarliestOccurredAtUtc`/`LatestOccurredAtUtc` for UI time-range rendering
+- `IntegrityCheckpointResponse.IsValid` is nullable (null=never verified, true=clean, false=tamper detected)
+- Field naming conventions: DTO uses `Before`/`After`/`Metadata`/`Visibility`; entity uses `BeforeJson`/`AfterJson`/`MetadataJson`/`VisibilityScope`
+
+### Pending (Step 5)
+- Register `JsonStringEnumConverter` globally in `Program.cs`
+- FluentValidation for `DTOs.Ingest.IngestAuditEventRequest`, `BatchIngestRequest`, `ExportRequest`
+- Mapper: `IngestAuditEventRequest` → `AuditEventRecord` (flatten nested objects, handle Guid parse, Tags serialization)
+- Controller wiring to new DTOs
+
+### Build status — Step 4
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
