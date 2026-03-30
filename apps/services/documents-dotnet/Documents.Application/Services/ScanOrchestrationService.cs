@@ -44,12 +44,13 @@ public sealed class ScanOrchestrationService
     {
         var job = new ScanJob
         {
-            DocumentId = doc.Id,
-            TenantId   = doc.TenantId,
-            VersionId  = null,
-            StorageKey = doc.StorageKey,
-            FileName   = fileName,
-            MimeType   = mimeType,
+            DocumentId    = doc.Id,
+            TenantId      = doc.TenantId,
+            VersionId     = null,
+            StorageKey    = doc.StorageKey,
+            FileName      = fileName,
+            MimeType      = mimeType,
+            CorrelationId = ctx.CorrelationId,
         };
 
         await EnqueueInternalAsync(job, ctx, doc.Id, fileName, mimeType, ct);
@@ -69,12 +70,13 @@ public sealed class ScanOrchestrationService
     {
         var job = new ScanJob
         {
-            DocumentId = parentDoc.Id,
-            TenantId   = parentDoc.TenantId,
-            VersionId  = version.Id,
-            StorageKey = version.StorageKey,
-            FileName   = fileName,
-            MimeType   = mimeType,
+            DocumentId    = parentDoc.Id,
+            TenantId      = parentDoc.TenantId,
+            VersionId     = version.Id,
+            StorageKey    = version.StorageKey,
+            FileName      = fileName,
+            MimeType      = mimeType,
+            CorrelationId = ctx.CorrelationId,
         };
 
         await EnqueueInternalAsync(job, ctx, parentDoc.Id, fileName, mimeType, ct,

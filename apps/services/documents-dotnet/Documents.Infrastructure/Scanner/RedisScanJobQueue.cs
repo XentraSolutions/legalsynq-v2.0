@@ -1,10 +1,10 @@
 using Documents.Domain.Entities;
 using Documents.Domain.Interfaces;
 using Documents.Infrastructure.Observability;
+using Documents.Infrastructure.Redis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
-using System.Text.Json;
 
 namespace Documents.Infrastructure.Scanner;
 
@@ -18,10 +18,15 @@ namespace Documents.Infrastructure.Scanner;
 ///
 /// Jobs survive service restarts. Multiple worker instances can share
 /// the same consumer group safely.
+///
+/// Redis operations are wrapped in <see cref="RedisResiliencePipeline"/> so Redis
+/// degradation opens the circuit breaker and fast-fails rather than creating
+/// uncontrolled command storms.
 /// </summary>
 public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
 {
     private readonly IConnectionMultiplexer        _redis;
+    private readonly RedisResiliencePipeline       _resilience;
     private readonly ScanWorkerOptions             _opts;
     private readonly ILogger<RedisScanJobQueue>    _log;
     private readonly string _streamKey;
@@ -40,14 +45,16 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
 
     public RedisScanJobQueue(
         IConnectionMultiplexer      redis,
+        RedisResiliencePipeline     resilience,
         IOptions<ScanWorkerOptions> opts,
         ILogger<RedisScanJobQueue>  log)
     {
-        _redis     = redis;
-        _opts      = opts.Value;
-        _log       = log;
-        _streamKey = _opts.StreamKey;
-        _groupName = _opts.ConsumerGroup;
+        _redis      = redis;
+        _resilience = resilience;
+        _opts       = opts.Value;
+        _log        = log;
+        _streamKey  = _opts.StreamKey;
+        _groupName  = _opts.ConsumerGroup;
     }
 
     // ── Enqueue ──────────────────────────────────────────────────────────────
@@ -58,17 +65,21 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
 
         try
         {
-            var db = _redis.GetDatabase();
+            var db     = _redis.GetDatabase();
             var fields = SerializeJob(job);
 
-            var msgId = await db.StreamAddAsync(
-                _streamKey,
-                fields,
-                maxLength: _opts.StreamMaxLength > 0 ? _opts.StreamMaxLength : null,
-                useApproximateMaxLength: true);
+            // Execute XADD through the circuit breaker.
+            // BrokenCircuitException propagates to the outer catch → returns false (fail fast).
+            var msgId = await _resilience.ExecuteAsync(async () =>
+                await db.StreamAddAsync(
+                    _streamKey,
+                    fields,
+                    maxLength: _opts.StreamMaxLength > 0 ? _opts.StreamMaxLength : null,
+                    useApproximateMaxLength: true));
 
-            _log.LogDebug("RedisScanQueue: XADD {StreamKey} {MsgId} Document={DocId}",
-                _streamKey, msgId, job.DocumentId);
+            _log.LogDebug(
+                "RedisScanQueue: XADD {StreamKey} {MsgId} Document={DocId} Corr={Corr}",
+                _streamKey, msgId, job.DocumentId, job.CorrelationId);
 
             var enqueued = msgId != RedisValue.Null;
             if (enqueued)
@@ -80,9 +91,11 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "RedisScanQueue: XADD failed for Document={DocId}", job.DocumentId);
+            _log.LogError(ex,
+                "RedisScanQueue: XADD failed for Document={DocId} Corr={Corr}",
+                job.DocumentId, job.CorrelationId);
             ScanMetrics.ScanQueueSaturations.Inc();
-            Observability.RedisMetrics.RedisConnectionFailures.Inc();
+            RedisMetrics.RedisConnectionFailures.Inc();
             return false;
         }
     }
@@ -93,35 +106,49 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
     {
         await EnsureConsumerGroupAsync();
 
-        var db = _redis.GetDatabase();
-
-        // 1. First try to reclaim stale/pending messages from crashed consumers
+        var db      = _redis.GetDatabase();
         var staleMs = (long)TimeSpan.FromSeconds(_opts.ClaimStaleJobsAfterSeconds).TotalMilliseconds;
-        var claimed = await db.StreamAutoClaimAsync(_streamKey, _groupName, consumerId, staleMs, "0-0", count: 1);
 
-        if (claimed.ClaimedEntries is { Length: > 0 } claimedEntries)
+        // 1. Try to reclaim stale/pending messages from crashed consumers via XAUTOCLAIM.
+        //    Wrapped in resilience pipeline — BrokenCircuitException bubbles up to
+        //    RunWorkerLoopAsync which has its own outer catch + delay.
+        try
         {
-            var entry = claimedEntries[0];
-            var job   = DeserializeJob(entry);
-            if (job is not null)
+            var claimed = await _resilience.ExecuteAsync(async () =>
+                await db.StreamAutoClaimAsync(_streamKey, _groupName, consumerId, staleMs, "0-0", count: 1));
+
+            if (claimed.ClaimedEntries is { Length: > 0 } claimedEntries)
             {
-                _log.LogInformation("RedisScanQueue: reclaimed stale job {MsgId} Document={DocId} Attempt={Attempt}",
-                    entry.Id, job.DocumentId, job.AttemptCount);
-                Observability.RedisMetrics.RedisStreamReclaims.Inc();
-                return new ScanJobLease { Job = job, MessageId = entry.Id.ToString() };
+                var entry = claimedEntries[0];
+                var job   = DeserializeJob(entry);
+                if (job is not null)
+                {
+                    _log.LogInformation(
+                        "RedisScanQueue: reclaimed stale job {MsgId} Document={DocId} Attempt={Attempt} Corr={Corr}",
+                        entry.Id, job.DocumentId, job.AttemptCount, job.CorrelationId);
+                    RedisMetrics.RedisStreamReclaims.Inc();
+                    return new ScanJobLease { Job = job, MessageId = entry.Id.ToString() };
+                }
             }
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogError(ex, "RedisScanQueue: XAUTOCLAIM error");
+            RedisMetrics.RedisConnectionFailures.Inc();
+            // Fall through to XREADGROUP polling
+        }
 
-        // 2. Block waiting for new messages (5 second poll interval to check cancellation)
+        // 2. Block-poll for new messages (5 s poll interval to check cancellation)
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                var entries = await db.StreamReadGroupAsync(
-                    _streamKey, _groupName, consumerId,
-                    position: ">",
-                    count: 1,
-                    noAck: false);
+                var entries = await _resilience.ExecuteAsync(async () =>
+                    await db.StreamReadGroupAsync(
+                        _streamKey, _groupName, consumerId,
+                        position: ">",
+                        count: 1,
+                        noAck: false));
 
                 if (entries is { Length: > 0 })
                 {
@@ -129,8 +156,9 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
                     var job   = DeserializeJob(entry);
                     if (job is not null)
                     {
-                        _log.LogDebug("RedisScanQueue: XREADGROUP {MsgId} Document={DocId}",
-                            entry.Id, job.DocumentId);
+                        _log.LogDebug(
+                            "RedisScanQueue: XREADGROUP {MsgId} Document={DocId} Corr={Corr}",
+                            entry.Id, job.DocumentId, job.CorrelationId);
                         return new ScanJobLease { Job = job, MessageId = entry.Id.ToString() };
                     }
 
@@ -146,7 +174,7 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
             catch (Exception ex)
             {
                 _log.LogError(ex, "RedisScanQueue: XREADGROUP error");
-                Observability.RedisMetrics.RedisConnectionFailures.Inc();
+                RedisMetrics.RedisConnectionFailures.Inc();
                 await Task.Delay(3_000, ct);
             }
         }
@@ -173,19 +201,22 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
     {
         var db  = _redis.GetDatabase();
         var src = lease.Job;
+
+        // Preserve CorrelationId through retries for end-to-end traceability
         var retryJob = new ScanJob
         {
-            DocumentId   = src.DocumentId,
-            TenantId     = src.TenantId,
-            VersionId    = src.VersionId,
-            StorageKey   = src.StorageKey,
-            FileName     = src.FileName,
-            MimeType     = src.MimeType,
-            EnqueuedAt   = DateTime.UtcNow,
-            AttemptCount = src.AttemptCount + 1,
+            DocumentId    = src.DocumentId,
+            TenantId      = src.TenantId,
+            VersionId     = src.VersionId,
+            StorageKey    = src.StorageKey,
+            FileName      = src.FileName,
+            MimeType      = src.MimeType,
+            EnqueuedAt    = DateTime.UtcNow,
+            AttemptCount  = src.AttemptCount + 1,
+            CorrelationId = src.CorrelationId,
         };
 
-        // ACK original to remove from PEL, then XADD new message for retry
+        // ACK original to remove from PEL, then XADD a new message for retry
         if (!string.IsNullOrEmpty(lease.MessageId))
         {
             await db.StreamAcknowledgeAsync(_streamKey, _groupName, lease.MessageId);
@@ -197,8 +228,9 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
             maxLength: _opts.StreamMaxLength > 0 ? _opts.StreamMaxLength : null,
             useApproximateMaxLength: true);
 
-        _log.LogInformation("RedisScanQueue: re-enqueued retry attempt={Attempt} Document={DocId}",
-            retryJob.AttemptCount, retryJob.DocumentId);
+        _log.LogInformation(
+            "RedisScanQueue: re-enqueued retry attempt={Attempt} Document={DocId} Corr={Corr}",
+            retryJob.AttemptCount, retryJob.DocumentId, retryJob.CorrelationId);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -209,14 +241,13 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
         try
         {
             var db = _redis.GetDatabase();
-            // MKSTREAM creates the stream if it doesn't exist
             await db.StreamCreateConsumerGroupAsync(_streamKey, _groupName, "0", createStream: true);
             _log.LogInformation("RedisScanQueue: consumer group '{Group}' ensured on '{Stream}'",
                 _groupName, _streamKey);
         }
         catch (RedisException rex) when (rex.Message.Contains("BUSYGROUP"))
         {
-            // Group already exists — this is expected
+            // Group already exists — expected on restart
         }
         catch (Exception ex)
         {
@@ -227,14 +258,15 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
 
     private static NameValueEntry[] SerializeJob(ScanJob job) => new[]
     {
-        new NameValueEntry("documentId",   job.DocumentId.ToString()),
-        new NameValueEntry("tenantId",     job.TenantId.ToString()),
-        new NameValueEntry("versionId",    job.VersionId?.ToString() ?? string.Empty),
-        new NameValueEntry("storageKey",   job.StorageKey),
-        new NameValueEntry("fileName",     job.FileName),
-        new NameValueEntry("mimeType",     job.MimeType),
-        new NameValueEntry("enqueuedAt",   job.EnqueuedAt.ToString("O")),
-        new NameValueEntry("attemptCount", job.AttemptCount.ToString()),
+        new NameValueEntry("documentId",    job.DocumentId.ToString()),
+        new NameValueEntry("tenantId",      job.TenantId.ToString()),
+        new NameValueEntry("versionId",     job.VersionId?.ToString() ?? string.Empty),
+        new NameValueEntry("storageKey",    job.StorageKey),
+        new NameValueEntry("fileName",      job.FileName),
+        new NameValueEntry("mimeType",      job.MimeType),
+        new NameValueEntry("enqueuedAt",    job.EnqueuedAt.ToString("O")),
+        new NameValueEntry("attemptCount",  job.AttemptCount.ToString()),
+        new NameValueEntry("correlationId", job.CorrelationId ?? string.Empty),
     };
 
     private ScanJob? DeserializeJob(StreamEntry entry)
@@ -245,15 +277,16 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
 
             return new ScanJob
             {
-                DocumentId   = Guid.Parse(fields["documentId"]),
-                TenantId     = Guid.Parse(fields["tenantId"]),
-                VersionId    = string.IsNullOrEmpty(fields.GetValueOrDefault("versionId"))
-                               ? null : Guid.Parse(fields["versionId"]),
-                StorageKey   = fields["storageKey"],
-                FileName     = fields["fileName"],
-                MimeType     = fields["mimeType"],
-                EnqueuedAt   = DateTime.Parse(fields.GetValueOrDefault("enqueuedAt") ?? DateTime.UtcNow.ToString("O")),
-                AttemptCount = int.Parse(fields.GetValueOrDefault("attemptCount") ?? "0"),
+                DocumentId    = Guid.Parse(fields["documentId"]),
+                TenantId      = Guid.Parse(fields["tenantId"]),
+                VersionId     = string.IsNullOrEmpty(fields.GetValueOrDefault("versionId"))
+                                ? null : Guid.Parse(fields["versionId"]),
+                StorageKey    = fields["storageKey"],
+                FileName      = fields["fileName"],
+                MimeType      = fields["mimeType"],
+                EnqueuedAt    = DateTime.Parse(fields.GetValueOrDefault("enqueuedAt") ?? DateTime.UtcNow.ToString("O")),
+                AttemptCount  = int.Parse(fields.GetValueOrDefault("attemptCount") ?? "0"),
+                CorrelationId = fields.GetValueOrDefault("correlationId") is { Length: > 0 } c ? c : null,
             };
         }
         catch (Exception ex)
@@ -263,5 +296,5 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
         }
     }
 
-    public void Dispose() { /* IConnectionMultiplexer is shared singleton — not disposed here */ }
+    public void Dispose() { /* IConnectionMultiplexer is a shared singleton — not disposed here */ }
 }

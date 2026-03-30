@@ -584,6 +584,26 @@ Enterprise hardening phases in `apps/services/documents-dotnet/analysis/`:
 - `dotnet_enterprise_phase5_clamav_hardening.md` — ClamAV PING/PONG health, timeout isolation, fail-closed review
 - `dotnet_enterprise_final_summary.md` — complete architecture, production deployment guidance, remaining risks
 
+Phase 4 Final Hardening in `apps/services/documents-dotnet/analysis/`:
+- `dotnet_phase4_final_hardening.md` — Redis circuit breaker, durable Redis Streams publisher, correlation propagation, production runbook, alert rules
+
+### Phase 4 Final Hardening Summary (COMPLETE — 0 errors, 0 regressions)
+
+| Capability | Implementation |
+|---|---|
+| Redis circuit breaker | `RedisResiliencePipeline` (Polly `AdvancedCircuitBreaker`) shared by queue + publishers; state 0/1/2 exposed via `docs_redis_circuit_state` gauge |
+| Durable event delivery | `RedisStreamScanCompletionPublisher` — XADD to `documents:scan:completed` stream; configurable `StreamKey` + `StreamMaxLength`; set `Provider=redis-stream` |
+| Correlation propagation | `ScanJob.CorrelationId` carries HTTP `X-Correlation-Id` from upload → Redis queue fields → worker logs → `DocumentScanCompletedEvent.CorrelationId` |
+| Health check enhancement | `RedisHealthCheck` injects `RedisResiliencePipeline`; reports `circuit=<state>` in description; returns `Degraded` when circuit open |
+| New Prometheus metrics | `docs_redis_circuit_state`, `docs_redis_circuit_open_total`, `docs_redis_circuit_short_circuit_total`, `docs_scan_completion_stream_publish_total`, `docs_scan_completion_stream_publish_failures_total` |
+| Config additions | `Redis:CircuitBreaker` (FailureThreshold/BreakDuration/SamplingDuration/MinThroughput); `Notifications:ScanCompletion:Redis:StreamKey` + `StreamMaxLength` |
+
+**Notification provider options (choose in `Notifications:ScanCompletion:Provider`):**
+- `"log"` — structured log only (default, zero dependencies)
+- `"redis"` — Redis Pub/Sub at-most-once
+- `"redis-stream"` — **RECOMMENDED for production** — Redis Streams XADD, durable + replayable
+- `"none"` — disabled
+
 ---
 
 ## Platform Foundation Upgrade (6-Phase — COMPLETE)

@@ -30,6 +30,23 @@ public static class RedisMetrics
         "docs_redis_stream_reclaims_total",
         "Total scan jobs reclaimed from crashed consumers via XAUTOCLAIM.");
 
+    // ── Redis circuit breaker ─────────────────────────────────────────────────
+
+    /// <summary>Current Redis circuit state: 0=closed (normal), 1=open (failing), 2=half-open (probing).</summary>
+    public static readonly Gauge RedisCircuitState = Metrics.CreateGauge(
+        "docs_redis_circuit_state",
+        "Current Redis circuit breaker state: 0=closed, 1=open, 2=half-open.");
+
+    /// <summary>Total times the Redis circuit has transitioned to OPEN due to repeated failures.</summary>
+    public static readonly Counter RedisCircuitOpenTotal = Metrics.CreateCounter(
+        "docs_redis_circuit_open_total",
+        "Total times the Redis circuit breaker has opened due to repeated failures.");
+
+    /// <summary>Total Redis operations fast-failed because the circuit was OPEN.</summary>
+    public static readonly Counter RedisCircuitShortCircuitTotal = Metrics.CreateCounter(
+        "docs_redis_circuit_short_circuit_total",
+        "Total Redis operations fast-failed due to an open circuit breaker.");
+
     // ── Scan completion notifications ─────────────────────────────────────────
 
     /// <summary>Total DocumentScanCompleted events emitted (regardless of delivery outcome).</summary>
@@ -47,4 +64,16 @@ public static class RedisMetrics
     public static readonly Counter ScanCompletionDeliveryFailures = Metrics.CreateCounter(
         "docs_scan_completion_delivery_failures_total",
         "Total DocumentScanCompleted event delivery failures (pipeline unaffected).");
+
+    // ── Redis Streams — durable event delivery ────────────────────────────────
+
+    /// <summary>Total DocumentScanCompleted events successfully written to Redis Stream via XADD.</summary>
+    public static readonly Counter ScanCompletionStreamPublishTotal = Metrics.CreateCounter(
+        "docs_scan_completion_stream_publish_total",
+        "Total scan completion events successfully published to Redis Stream (XADD).");
+
+    /// <summary>Total XADD failures for scan completion events (circuit open, Redis down, etc.).</summary>
+    public static readonly Counter ScanCompletionStreamPublishFailures = Metrics.CreateCounter(
+        "docs_scan_completion_stream_publish_failures_total",
+        "Total failures publishing scan completion events to Redis Stream.");
 }

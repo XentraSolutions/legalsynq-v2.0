@@ -2,6 +2,7 @@ using Documents.Application.Services;
 using Documents.Domain.Interfaces;
 using Documents.Infrastructure.Health;
 using Documents.Infrastructure.Notifications;
+using Documents.Infrastructure.Redis;
 using Documents.Infrastructure.TokenStore;
 using Documents.Infrastructure.Database;
 using Documents.Infrastructure.Scanner;
@@ -111,8 +112,21 @@ public static class DependencyInjection
         // ── ClamAV signature freshness monitor (singleton, cached 5 min) ─────
         services.AddSingleton<ClamAvSignatureFreshnessMonitor>();
 
-        // ── Health checks ─────────────────────────────────────────────────────
+        // ── Redis circuit breaker (registered before health checks and publishers) ──
+        // Shared by RedisScanJobQueue, RedisScanCompletionPublisher, and
+        // RedisStreamScanCompletionPublisher to present a unified circuit state.
         var redisActive = services.Any(s => s.ServiceType == typeof(IConnectionMultiplexer));
+        if (redisActive)
+        {
+            var redisCbOpts = config.GetSection("Redis:CircuitBreaker")
+                                    .Get<RedisCircuitBreakerOptions>() ?? new();
+            services.AddSingleton(sp =>
+                new RedisResiliencePipeline(
+                    redisCbOpts,
+                    sp.GetRequiredService<ILogger<RedisResiliencePipeline>>()));
+        }
+
+        // ── Health checks ─────────────────────────────────────────────────────
         var healthBuilder = services.AddHealthChecks()
             .AddCheck<DatabaseHealthCheck>       ("database",          failureStatus: HealthStatus.Unhealthy, tags: new[] { "ready", "live" })
             .AddCheck<ClamAvHealthCheck>          ("clamav",            failureStatus: HealthStatus.Degraded,  tags: new[] { "ready" })
@@ -129,23 +143,39 @@ public static class DependencyInjection
         services.Configure<NotificationOptions>(config.GetSection("Notifications"));
         var notifyProvider = config["Notifications:ScanCompletion:Provider"] ?? "log";
 
-        // Validate: redis publisher requires an active Redis connection
-        if (notifyProvider.Equals("redis", StringComparison.OrdinalIgnoreCase) && !redisActive)
+        // Validate: Redis publishers require an active Redis connection
+        var redisNotifyRequested = notifyProvider.Equals("redis", StringComparison.OrdinalIgnoreCase)
+                                || notifyProvider.Equals("redis-stream", StringComparison.OrdinalIgnoreCase);
+        if (redisNotifyRequested && !redisActive)
         {
             using var warnLog = LoggerFactory.Create(b => b.AddConsole());
             warnLog.CreateLogger(nameof(DependencyInjection)).LogWarning(
-                "Notifications:ScanCompletion:Provider=redis but no Redis connection is configured. " +
-                "Falling back to 'log' publisher. Add Redis:Url and set a Redis-backed queue or token store.");
+                "Notifications:ScanCompletion:Provider={Provider} but no Redis connection is configured. " +
+                "Falling back to 'log' publisher. Add Redis:Url and set a Redis-backed queue or token store.",
+                notifyProvider);
         }
 
         services.AddSingleton<IScanCompletionPublisher>(sp =>
             notifyProvider.ToLowerInvariant() switch
             {
-                "none" => (IScanCompletionPublisher) new NullScanCompletionPublisher(),
-                "redis" when redisActive => new RedisScanCompletionPublisher(
-                    sp.GetRequiredService<IConnectionMultiplexer>(),
-                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<NotificationOptions>>(),
-                    sp.GetRequiredService<ILogger<RedisScanCompletionPublisher>>()),
+                "none"
+                    => (IScanCompletionPublisher) new NullScanCompletionPublisher(),
+
+                "redis" when redisActive
+                    => new RedisScanCompletionPublisher(
+                        sp.GetRequiredService<IConnectionMultiplexer>(),
+                        sp.GetRequiredService<RedisResiliencePipeline>(),
+                        sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<NotificationOptions>>(),
+                        sp.GetRequiredService<ILogger<RedisScanCompletionPublisher>>()),
+
+                // Recommended production provider — durable, replayable Redis Streams
+                "redis-stream" when redisActive
+                    => new RedisStreamScanCompletionPublisher(
+                        sp.GetRequiredService<IConnectionMultiplexer>(),
+                        sp.GetRequiredService<RedisResiliencePipeline>(),
+                        sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<NotificationOptions>>(),
+                        sp.GetRequiredService<ILogger<RedisStreamScanCompletionPublisher>>()),
+
                 _ => new LogScanCompletionPublisher(
                     sp.GetRequiredService<ILogger<LogScanCompletionPublisher>>()),
             });

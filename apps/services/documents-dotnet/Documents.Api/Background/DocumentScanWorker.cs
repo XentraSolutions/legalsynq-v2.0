@@ -131,9 +131,10 @@ public sealed class DocumentScanWorker : BackgroundService
         }
 
         _log.LogInformation(
-            "Scan starting [{WorkerId}]: Document={DocId} Version={VersionId} File={File} Attempt={Attempt}/{Max}",
+            "Scan starting [{WorkerId}]: Document={DocId} Version={VersionId} File={File} " +
+            "Attempt={Attempt}/{Max} Corr={Corr}",
             workerId, job.DocumentId, job.VersionId, job.FileName,
-            job.AttemptCount + 1, _opts.MaxRetryAttempts);
+            job.AttemptCount + 1, _opts.MaxRetryAttempts, job.CorrelationId);
 
         ScanMetrics.ScanJobsStarted.Inc();
 
@@ -184,8 +185,10 @@ public sealed class DocumentScanWorker : BackgroundService
         ScanMetrics.ScanQueueDepth.Set(_queue.Count);
 
         _log.LogInformation(
-            "Scan result [{WorkerId}]: Document={DocId} Status={Status} Threats={Count} Duration={Ms}ms",
-            workerId, job.DocumentId, result.Status, result.Threats.Count, (int)sw.ElapsedMilliseconds);
+            "Scan result [{WorkerId}]: Document={DocId} Status={Status} Threats={Count} " +
+            "Duration={Ms}ms Corr={Corr}",
+            workerId, job.DocumentId, result.Status, result.Threats.Count,
+            (int)sw.ElapsedMilliseconds, job.CorrelationId);
 
         // 4. Persist scan result
         await SetScanStatusAsync(job, result.Status, result.Threats, result.DurationMs, result.EngineVersion, ct);
@@ -366,6 +369,7 @@ public sealed class DocumentScanWorker : BackgroundService
                 AttemptCount  = attemptCount,
                 EngineVersion = engineVersion,
                 FileName      = job.FileName,
+                CorrelationId = job.CorrelationId,
             };
 
             await _publisher.PublishAsync(evt, ct);
