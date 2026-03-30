@@ -12,6 +12,11 @@ namespace PlatformAuditEventService.Repositories;
 /// Export jobs have a mutable lifecycle. Write operations (Create, Update) open
 /// short-lived contexts to keep transaction scope minimal and avoid stale-tracking
 /// issues between the create and update calls from the export worker.
+///
+/// UpdateAsync uses Attach + selective property marking to avoid a redundant
+/// SELECT before updating lifecycle fields (Status, FilePath, ErrorMessage,
+/// CompletedAtUtc).  The caller is responsible for providing the full entity
+/// with all immutable fields populated correctly.
 /// </summary>
 public sealed class EfAuditExportJobRepository : IAuditExportJobRepository
 {
@@ -25,6 +30,8 @@ public sealed class EfAuditExportJobRepository : IAuditExportJobRepository
         _contextFactory = contextFactory;
         _logger         = logger;
     }
+
+    // ── Write ──────────────────────────────────────────────────────────────────
 
     public async Task<AuditExportJob> CreateAsync(
         AuditExportJob job,
@@ -41,24 +48,14 @@ public sealed class EfAuditExportJobRepository : IAuditExportJobRepository
         return job;
     }
 
-    public async Task<AuditExportJob?> GetByExportIdAsync(
-        Guid exportId,
-        CancellationToken ct = default)
-    {
-        await using var db = await _contextFactory.CreateDbContextAsync(ct);
-        return await db.AuditExportJobs
-            .AsNoTracking()
-            .FirstOrDefaultAsync(j => j.ExportId == exportId, ct);
-    }
-
     public async Task<AuditExportJob> UpdateAsync(
         AuditExportJob job,
         CancellationToken ct = default)
     {
         await using var db = await _contextFactory.CreateDbContextAsync(ct);
 
-        // Attach the detached entity and mark mutable fields as modified.
-        // This pattern avoids a redundant SELECT before updating lifecycle fields.
+        // Attach the detached entity and mark only mutable lifecycle fields as modified.
+        // This avoids a redundant SELECT and prevents overwriting immutable fields.
         db.AuditExportJobs.Attach(job);
         var entry = db.Entry(job);
         entry.Property(j => j.Status).IsModified         = true;
@@ -75,6 +72,20 @@ public sealed class EfAuditExportJobRepository : IAuditExportJobRepository
         return job;
     }
 
+    // ── Point lookup ───────────────────────────────────────────────────────────
+
+    public async Task<AuditExportJob?> GetByExportIdAsync(
+        Guid exportId,
+        CancellationToken ct = default)
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+        return await db.AuditExportJobs
+            .AsNoTracking()
+            .FirstOrDefaultAsync(j => j.ExportId == exportId, ct);
+    }
+
+    // ── List operations ────────────────────────────────────────────────────────
+
     public async Task<PagedResult<AuditExportJob>> ListByRequesterAsync(
         string requestedBy,
         int page,
@@ -88,7 +99,7 @@ public sealed class EfAuditExportJobRepository : IAuditExportJobRepository
             .Where(j => j.RequestedBy == requestedBy)
             .OrderByDescending(j => j.CreatedAtUtc);
 
-        var total = await query.CountAsync(ct);   // int — matches PagedResult<T>.TotalCount
+        var total = await query.CountAsync(ct);
         pageSize  = Math.Max(1, Math.Min(pageSize, 200));
         page      = Math.Max(1, page);
 
@@ -115,5 +126,40 @@ public sealed class EfAuditExportJobRepository : IAuditExportJobRepository
             .Where(j => j.Status == ExportStatus.Pending || j.Status == ExportStatus.Processing)
             .OrderBy(j => j.CreatedAtUtc)
             .ToListAsync(ct);
+    }
+
+    public async Task<PagedResult<AuditExportJob>> ListByStatusAsync(
+        IReadOnlyList<ExportStatus> statuses,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+
+        IQueryable<AuditExportJob> query = db.AuditExportJobs
+            .AsNoTracking();
+
+        // Empty statuses list → all statuses (no filter applied)
+        if (statuses is { Count: > 0 })
+            query = query.Where(j => statuses.Contains(j.Status));
+
+        query = query.OrderByDescending(j => j.CreatedAtUtc);
+
+        var total = await query.CountAsync(ct);
+        pageSize  = Math.Max(1, Math.Min(pageSize, 200));
+        page      = Math.Max(1, page);
+
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<AuditExportJob>
+        {
+            Items      = items,
+            TotalCount = total,
+            Page       = page,
+            PageSize   = pageSize,
+        };
     }
 }

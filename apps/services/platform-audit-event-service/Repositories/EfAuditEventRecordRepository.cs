@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using PlatformAuditEventService.Data;
 using PlatformAuditEventService.DTOs;
@@ -14,6 +15,17 @@ namespace PlatformAuditEventService.Repositories;
 /// All queries use AsNoTracking() for read performance.
 /// Writes use short-lived DbContext instances from the factory to keep
 /// the transaction scope minimal.
+///
+/// Filter logic is centralised in <see cref="ApplyFilters"/> and shared between
+/// the paginated <see cref="QueryAsync"/> and the streaming
+/// <see cref="StreamForExportAsync"/> methods to guarantee consistent behaviour.
+///
+/// Visibility semantics in <see cref="ApplyFilters"/>:
+///   The VisibilityScope enum is ordered from most-restricted (Platform=1) to
+///   most-permissive (User=4) with Internal(5) never queryable.
+///   MaxVisibility represents the *least-restricted* scope the caller may see.
+///   Example: MaxVisibility=Tenant(2) → return records with scope ∈ {Tenant, Org, User}.
+///   Internal records are always excluded regardless of the MaxVisibility value.
 /// </summary>
 public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
 {
@@ -27,6 +39,8 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
         _contextFactory = contextFactory;
         _logger         = logger;
     }
+
+    // ── Write ──────────────────────────────────────────────────────────────────
 
     public async Task<AuditEventRecord> AppendAsync(
         AuditEventRecord record,
@@ -42,6 +56,8 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
 
         return record;
     }
+
+    // ── Point lookups ──────────────────────────────────────────────────────────
 
     public async Task<AuditEventRecord?> GetByAuditIdAsync(
         Guid auditId,
@@ -66,119 +82,6 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
             .AnyAsync(r => r.IdempotencyKey == key, ct);
     }
 
-    public async Task<PagedResult<AuditEventRecord>> QueryAsync(
-        AuditRecordQueryRequest q,
-        CancellationToken ct = default)
-    {
-        await using var db = await _contextFactory.CreateDbContextAsync(ct);
-
-        var query = db.AuditEventRecords.AsNoTracking();
-
-        // ── Scope filters ──────────────────────────────────────────────────────
-        if (!string.IsNullOrWhiteSpace(q.TenantId))
-            query = query.Where(r => r.TenantId == q.TenantId);
-
-        if (!string.IsNullOrWhiteSpace(q.OrganizationId))
-            query = query.Where(r => r.OrganizationId == q.OrganizationId);
-
-        // ── Classification filters ─────────────────────────────────────────────
-        if (q.Category.HasValue)
-            query = query.Where(r => r.EventCategory == q.Category.Value);
-
-        if (q.MinSeverity.HasValue)
-            query = query.Where(r => r.Severity >= q.MinSeverity.Value);
-
-        if (q.MaxSeverity.HasValue)
-            query = query.Where(r => r.Severity <= q.MaxSeverity.Value);
-
-        if (q.EventTypes is { Count: > 0 })
-            query = query.Where(r => q.EventTypes.Contains(r.EventType));
-
-        if (!string.IsNullOrWhiteSpace(q.SourceSystem))
-            query = query.Where(r => r.SourceSystem == q.SourceSystem);
-
-        if (!string.IsNullOrWhiteSpace(q.SourceService))
-            query = query.Where(r => r.SourceService == q.SourceService);
-
-        // ── Actor / identity filters ───────────────────────────────────────────
-        if (!string.IsNullOrWhiteSpace(q.ActorId))
-            query = query.Where(r => r.ActorId == q.ActorId);
-
-        if (q.ActorType.HasValue)
-            query = query.Where(r => r.ActorType == q.ActorType.Value);
-
-        // ── Entity / resource filters ──────────────────────────────────────────
-        if (!string.IsNullOrWhiteSpace(q.EntityType))
-            query = query.Where(r => r.EntityType == q.EntityType);
-
-        if (!string.IsNullOrWhiteSpace(q.EntityId))
-            query = query.Where(r => r.EntityId == q.EntityId);
-
-        // ── Correlation filters ────────────────────────────────────────────────
-        if (!string.IsNullOrWhiteSpace(q.CorrelationId))
-            query = query.Where(r => r.CorrelationId == q.CorrelationId);
-
-        if (!string.IsNullOrWhiteSpace(q.SessionId))
-            query = query.Where(r => r.SessionId == q.SessionId);
-
-        // ── Time range ─────────────────────────────────────────────────────────
-        if (q.From.HasValue)
-            query = query.Where(r => r.OccurredAtUtc >= q.From.Value);
-
-        if (q.To.HasValue)
-            query = query.Where(r => r.OccurredAtUtc < q.To.Value);
-
-        // ── Visibility ─────────────────────────────────────────────────────────
-        if (q.MaxVisibility.HasValue)
-            query = query.Where(r => r.VisibilityScope <= q.MaxVisibility.Value);
-
-        // ── Text search ────────────────────────────────────────────────────────
-        if (!string.IsNullOrWhiteSpace(q.DescriptionContains))
-            query = query.Where(r => r.Description.Contains(q.DescriptionContains));
-
-        // ── Sorting ────────────────────────────────────────────────────────────
-        var desc = q.SortDescending;
-        query = q.SortBy?.ToLowerInvariant() switch
-        {
-            "recordedat" or "recordedatutc" =>
-                desc ? query.OrderByDescending(r => r.RecordedAtUtc)
-                     : query.OrderBy(r => r.RecordedAtUtc),
-            "severity" =>
-                desc ? query.OrderByDescending(r => r.Severity)
-                     : query.OrderBy(r => r.Severity),
-            "sourcesystem" =>
-                desc ? query.OrderByDescending(r => r.SourceSystem)
-                     : query.OrderBy(r => r.SourceSystem),
-            _ =>
-                desc ? query.OrderByDescending(r => r.OccurredAtUtc)
-                     : query.OrderBy(r => r.OccurredAtUtc),
-        };
-
-        // ── Pagination ─────────────────────────────────────────────────────────
-        var total    = await query.CountAsync(ct);   // int — matches PagedResult<T>.TotalCount
-        var pageSize = Math.Max(1, Math.Min(q.PageSize, 500));
-        var page     = Math.Max(1, q.Page);
-
-        var items = await query
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(ct);
-
-        return new PagedResult<AuditEventRecord>
-        {
-            Items      = items,
-            TotalCount = total,
-            Page       = page,
-            PageSize   = pageSize,
-        };
-    }
-
-    public async Task<long> CountAsync(CancellationToken ct = default)
-    {
-        await using var db = await _contextFactory.CreateDbContextAsync(ct);
-        return await db.AuditEventRecords.LongCountAsync(ct);
-    }
-
     public async Task<AuditEventRecord?> GetLatestInChainAsync(
         string? tenantId,
         string sourceSystem,
@@ -193,8 +96,188 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
         if (tenantId is not null)
             query = query.Where(r => r.TenantId == tenantId);
 
+        // Id is the auto-increment surrogate — ordering by it gives insertion order,
+        // which is the correct semantic for "most recent record in the chain".
         return await query
             .OrderByDescending(r => r.Id)
             .FirstOrDefaultAsync(ct);
+    }
+
+    // ── Aggregate ──────────────────────────────────────────────────────────────
+
+    public async Task<long> CountAsync(CancellationToken ct = default)
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+        return await db.AuditEventRecords.LongCountAsync(ct);
+    }
+
+    // ── Paginated query ────────────────────────────────────────────────────────
+
+    public async Task<PagedResult<AuditEventRecord>> QueryAsync(
+        AuditRecordQueryRequest q,
+        CancellationToken ct = default)
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+
+        var filtered = ApplyFilters(db.AuditEventRecords.AsNoTracking(), q);
+        var sorted   = ApplySorting(filtered, q);
+
+        var total    = await sorted.CountAsync(ct);
+        var pageSize = Math.Max(1, Math.Min(q.PageSize, 500));
+        var page     = Math.Max(1, q.Page);
+
+        var items = await sorted
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return new PagedResult<AuditEventRecord>
+        {
+            Items      = items,
+            TotalCount = total,
+            Page       = page,
+            PageSize   = pageSize,
+        };
+    }
+
+    // ── Streaming export ───────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The DbContext lifetime spans the full enumeration — it is disposed when the
+    /// caller's <c>await foreach</c> completes or when <paramref name="ct"/> fires.
+    /// Do not capture the yielded records outside the loop scope; they hold no
+    /// navigation-property proxies (AsNoTracking is always applied).
+    /// </remarks>
+    public async IAsyncEnumerable<AuditEventRecord> StreamForExportAsync(
+        AuditRecordQueryRequest filter,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        // DbContext is held open for the entire enumeration.
+        // The factory pattern ensures it does not conflict with other operations.
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+
+        var query = ApplyFilters(db.AuditEventRecords.AsNoTracking(), filter)
+            .OrderBy(r => r.OccurredAtUtc)
+            .ThenBy(r => r.Id);   // Insertion-order tie-breaker → deterministic export
+
+        await foreach (var record in query.AsAsyncEnumerable().WithCancellation(ct))
+        {
+            yield return record;
+        }
+    }
+
+    // ── Shared filter + sort pipeline ─────────────────────────────────────────
+
+    /// <summary>
+    /// Applies all predicate filters from <paramref name="q"/> to the source queryable.
+    /// Does not apply sorting or pagination — callers handle those separately.
+    ///
+    /// Visibility rule: Internal-scoped records are always excluded.
+    /// When MaxVisibility is supplied, only records with VisibilityScope ≥ MaxVisibility
+    /// are returned (i.e. at least as permissive as the caller's allowed maximum).
+    /// </summary>
+    private static IQueryable<AuditEventRecord> ApplyFilters(
+        IQueryable<AuditEventRecord> source,
+        AuditRecordQueryRequest q)
+    {
+        // ── Scope ──────────────────────────────────────────────────────────────
+        if (!string.IsNullOrWhiteSpace(q.TenantId))
+            source = source.Where(r => r.TenantId == q.TenantId);
+
+        if (!string.IsNullOrWhiteSpace(q.OrganizationId))
+            source = source.Where(r => r.OrganizationId == q.OrganizationId);
+
+        // ── Classification ─────────────────────────────────────────────────────
+        if (q.Category.HasValue)
+            source = source.Where(r => r.EventCategory == q.Category.Value);
+
+        if (q.MinSeverity.HasValue)
+            source = source.Where(r => r.Severity >= q.MinSeverity.Value);
+
+        if (q.MaxSeverity.HasValue)
+            source = source.Where(r => r.Severity <= q.MaxSeverity.Value);
+
+        if (q.EventTypes is { Count: > 0 })
+            source = source.Where(r => q.EventTypes.Contains(r.EventType));
+
+        if (!string.IsNullOrWhiteSpace(q.SourceSystem))
+            source = source.Where(r => r.SourceSystem == q.SourceSystem);
+
+        if (!string.IsNullOrWhiteSpace(q.SourceService))
+            source = source.Where(r => r.SourceService == q.SourceService);
+
+        // ── Actor / identity ───────────────────────────────────────────────────
+        if (!string.IsNullOrWhiteSpace(q.ActorId))
+            source = source.Where(r => r.ActorId == q.ActorId);
+
+        if (q.ActorType.HasValue)
+            source = source.Where(r => r.ActorType == q.ActorType.Value);
+
+        // ── Entity / resource ──────────────────────────────────────────────────
+        if (!string.IsNullOrWhiteSpace(q.EntityType))
+            source = source.Where(r => r.EntityType == q.EntityType);
+
+        if (!string.IsNullOrWhiteSpace(q.EntityId))
+            source = source.Where(r => r.EntityId == q.EntityId);
+
+        // ── Correlation ────────────────────────────────────────────────────────
+        if (!string.IsNullOrWhiteSpace(q.CorrelationId))
+            source = source.Where(r => r.CorrelationId == q.CorrelationId);
+
+        if (!string.IsNullOrWhiteSpace(q.SessionId))
+            source = source.Where(r => r.SessionId == q.SessionId);
+
+        // ── Time range ─────────────────────────────────────────────────────────
+        if (q.From.HasValue)
+            source = source.Where(r => r.OccurredAtUtc >= q.From.Value);
+
+        if (q.To.HasValue)
+            source = source.Where(r => r.OccurredAtUtc < q.To.Value);
+
+        // ── Visibility ─────────────────────────────────────────────────────────
+        // Internal (5) is never queryable regardless of caller role.
+        // When MaxVisibility is supplied: return records with VisibilityScope ≥ MaxVisibility,
+        // meaning at least as permissive as the caller's allowed level.
+        // Example: MaxVisibility=Tenant(2) → VisibilityScope ∈ {Tenant(2), Org(3), User(4)}.
+        //          Platform(1) records are excluded — they require super-admin access.
+        if (q.MaxVisibility.HasValue)
+        {
+            source = source.Where(r =>
+                r.VisibilityScope >= q.MaxVisibility.Value &&
+                r.VisibilityScope != VisibilityScope.Internal);
+        }
+        else
+        {
+            source = source.Where(r => r.VisibilityScope != VisibilityScope.Internal);
+        }
+
+        // ── Text search ────────────────────────────────────────────────────────
+        if (!string.IsNullOrWhiteSpace(q.DescriptionContains))
+            source = source.Where(r => r.Description.Contains(q.DescriptionContains));
+
+        return source;
+    }
+
+    private static IQueryable<AuditEventRecord> ApplySorting(
+        IQueryable<AuditEventRecord> source,
+        AuditRecordQueryRequest q)
+    {
+        var desc = q.SortDescending;
+        return q.SortBy?.ToLowerInvariant() switch
+        {
+            "recordedat" or "recordedatutc" =>
+                desc ? source.OrderByDescending(r => r.RecordedAtUtc)
+                     : source.OrderBy(r => r.RecordedAtUtc),
+            "severity" =>
+                desc ? source.OrderByDescending(r => r.Severity)
+                     : source.OrderBy(r => r.Severity),
+            "sourcesystem" =>
+                desc ? source.OrderByDescending(r => r.SourceSystem)
+                     : source.OrderBy(r => r.SourceSystem),
+            _ =>
+                desc ? source.OrderByDescending(r => r.OccurredAtUtc)
+                     : source.OrderBy(r => r.OccurredAtUtc),
+        };
     }
 }

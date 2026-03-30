@@ -58,4 +58,26 @@ public interface IAuditEventRecordRepository
         string? tenantId,
         string sourceSystem,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Stream filtered audit event records as an async enumerable.
+    ///
+    /// Intended for the export worker, which must iterate potentially millions of
+    /// records without loading the full result set into memory. Unlike
+    /// <see cref="QueryAsync"/>, this method does not paginate — the caller is
+    /// responsible for writing each record to the output stream as it arrives.
+    ///
+    /// Ordering: ascending by OccurredAtUtc, then by Id (insertion order) for
+    /// deterministic, reproducible export files.
+    ///
+    /// The pagination fields (Page, PageSize, SortBy, SortDescending) on the
+    /// <paramref name="filter"/> object are ignored; only filter predicates apply.
+    ///
+    /// Caller must consume the enumerable within the scope of a single request /
+    /// background job — the underlying DbContext is disposed when the enumerable
+    /// is fully consumed or the cancellation token fires.
+    /// </summary>
+    IAsyncEnumerable<AuditEventRecord> StreamForExportAsync(
+        AuditRecordQueryRequest filter,
+        CancellationToken ct = default);
 }

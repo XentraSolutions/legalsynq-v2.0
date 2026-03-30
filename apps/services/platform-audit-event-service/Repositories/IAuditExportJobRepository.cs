@@ -1,5 +1,6 @@
 using PlatformAuditEventService.DTOs;
 using PlatformAuditEventService.Entities;
+using PlatformAuditEventService.Enums;
 
 namespace PlatformAuditEventService.Repositories;
 
@@ -46,4 +47,16 @@ public interface IAuditExportJobRepository
     /// Used by the export worker to pick up pending work.
     /// </summary>
     Task<IReadOnlyList<AuditExportJob>> ListActiveAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Paginated list of export jobs filtered to a specific set of statuses, newest first.
+    /// Useful for admin dashboards and worker monitoring (e.g. list all Failed jobs,
+    /// list all jobs for a given scope).
+    /// Pass an empty <paramref name="statuses"/> array to return all statuses.
+    /// </summary>
+    Task<PagedResult<AuditExportJob>> ListByStatusAsync(
+        IReadOnlyList<ExportStatus> statuses,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
 }
