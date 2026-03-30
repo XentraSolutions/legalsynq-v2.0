@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
+using PlatformAuditEventService.Authorization;
 using PlatformAuditEventService.Configuration;
 using PlatformAuditEventService.Data;
 using PlatformAuditEventService.DTOs;
@@ -178,6 +179,45 @@ try
     // Applies QueryAuth options (page-size cap, hash exposure) and maps entities → response DTOs.
     builder.Services.AddScoped<IAuditEventQueryService, AuditEventQueryService>();
 
+    // ── Query authorization ───────────────────────────────────────────────────
+    // All resolvers registered as singletons (stateless after construction).
+    // IQueryCallerResolver resolves to the implementation matching QueryAuth:Mode.
+    //
+    // To add a new auth mode (e.g. mTLS, API key):
+    //   1. Implement IQueryCallerResolver in a new class.
+    //   2. Add builder.Services.AddSingleton<YourResolver>() here.
+    //   3. Add a case to the switch below.
+    //   4. Document the new mode in Docs/query-authorization-model.md.
+    builder.Services.AddSingleton<AnonymousCallerResolver>();
+    builder.Services.AddSingleton<ClaimsCallerResolver>();
+
+    var queryAuthMode = cfg.GetSection(QueryAuthOptions.SectionName)["Mode"] ?? "None";
+
+    builder.Services.AddSingleton<IQueryCallerResolver>(sp => queryAuthMode switch
+    {
+        "Bearer" => sp.GetRequiredService<ClaimsCallerResolver>(),
+        // Future modes:
+        // "ApiKey"   => sp.GetRequiredService<ApiKeyCallerResolver>(),
+        // "MtlsHeader" => sp.GetRequiredService<MtlsCallerResolver>(),
+        _ => sp.GetRequiredService<AnonymousCallerResolver>(),
+    });
+
+    // IQueryAuthorizer applies scope constraints and enforces access rules.
+    // Registered as singleton — stateless, reads only from options.
+    builder.Services.AddSingleton<IQueryAuthorizer, QueryAuthorizer>();
+
+    if (queryAuthMode.Equals("None", StringComparison.OrdinalIgnoreCase))
+    {
+        Log.Warning(
+            "QueryAuth:Mode = 'None' — query endpoints are unauthenticated and " +
+            "all callers receive PlatformAdmin scope. " +
+            "Set Mode=Bearer and configure claim types for any non-development environment.");
+    }
+    else
+    {
+        Log.Information("QueryAuth:Mode = {Mode} — query endpoint authorization active.", queryAuthMode);
+    }
+
     // ── Ingest authentication ─────────────────────────────────────────────────
     // Concrete authenticators registered as singletons (stateless after construction).
     // IIngestAuthenticator resolves to the implementation matching IngestAuth:Mode.
@@ -256,6 +296,10 @@ try
     // IngestAuthMiddleware must run after CorrelationId (so TraceId is available for
     // error responses) and before Serilog request logging (so auth outcomes appear in logs).
     app.UseMiddleware<IngestAuthMiddleware>();
+
+    // QueryAuthMiddleware resolves the caller context for /audit/* endpoints.
+    // Fine-grained scope enforcement (403) is applied in the controller via IQueryAuthorizer.
+    app.UseMiddleware<QueryAuthMiddleware>();
 
     app.UseSerilogRequestLogging(opts =>
     {
