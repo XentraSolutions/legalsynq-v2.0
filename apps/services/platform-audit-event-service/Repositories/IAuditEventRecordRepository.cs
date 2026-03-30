@@ -50,6 +50,20 @@ public interface IAuditEventRecordRepository
     Task<long> CountAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Return the earliest and latest <c>OccurredAtUtc</c> across all records
+    /// that match the given filter predicates.
+    ///
+    /// Used by the query service to populate time-range metadata on paginated
+    /// responses. A single aggregate DB query is issued (GROUP BY 1).
+    ///
+    /// Returns (null, null) when no records match the filter.
+    /// The pagination and sorting fields of <paramref name="filter"/> are ignored.
+    /// </summary>
+    Task<(DateTimeOffset? Earliest, DateTimeOffset? Latest)> GetOccurredAtRangeAsync(
+        AuditRecordQueryRequest filter,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Return the most recent record in a (TenantId, SourceSystem) chain.
     /// Used by the ingest service to populate PreviousHash for chain integrity.
     /// Returns null if no prior record exists in the chain.

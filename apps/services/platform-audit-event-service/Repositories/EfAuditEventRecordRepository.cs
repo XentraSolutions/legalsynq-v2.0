@@ -111,6 +111,30 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
         return await db.AuditEventRecords.LongCountAsync(ct);
     }
 
+    // ── Time-range aggregate ───────────────────────────────────────────────────
+
+    public async Task<(DateTimeOffset? Earliest, DateTimeOffset? Latest)> GetOccurredAtRangeAsync(
+        AuditRecordQueryRequest filter,
+        CancellationToken ct = default)
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+
+        var filtered = ApplyFilters(db.AuditEventRecords.AsNoTracking(), filter);
+
+        var result = await filtered
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Earliest = g.Min(r => (DateTimeOffset?)r.OccurredAtUtc),
+                Latest   = g.Max(r => (DateTimeOffset?)r.OccurredAtUtc),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        return result is null
+            ? (null, null)
+            : (result.Earliest, result.Latest);
+    }
+
     // ── Paginated query ────────────────────────────────────────────────────────
 
     public async Task<PagedResult<AuditEventRecord>> QueryAsync(
@@ -207,6 +231,9 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
         if (!string.IsNullOrWhiteSpace(q.SourceService))
             source = source.Where(r => r.SourceService == q.SourceService);
 
+        if (!string.IsNullOrWhiteSpace(q.SourceEnvironment))
+            source = source.Where(r => r.SourceEnvironment == q.SourceEnvironment);
+
         // ── Actor / identity ───────────────────────────────────────────────────
         if (!string.IsNullOrWhiteSpace(q.ActorId))
             source = source.Where(r => r.ActorId == q.ActorId);
@@ -225,6 +252,9 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
         if (!string.IsNullOrWhiteSpace(q.CorrelationId))
             source = source.Where(r => r.CorrelationId == q.CorrelationId);
 
+        if (!string.IsNullOrWhiteSpace(q.RequestId))
+            source = source.Where(r => r.RequestId == q.RequestId);
+
         if (!string.IsNullOrWhiteSpace(q.SessionId))
             source = source.Where(r => r.SessionId == q.SessionId);
 
@@ -237,11 +267,20 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
 
         // ── Visibility ─────────────────────────────────────────────────────────
         // Internal (5) is never queryable regardless of caller role.
+        // Exact match (Visibility) takes precedence when both are supplied.
         // When MaxVisibility is supplied: return records with VisibilityScope ≥ MaxVisibility,
         // meaning at least as permissive as the caller's allowed level.
         // Example: MaxVisibility=Tenant(2) → VisibilityScope ∈ {Tenant(2), Org(3), User(4)}.
         //          Platform(1) records are excluded — they require super-admin access.
-        if (q.MaxVisibility.HasValue)
+        if (q.Visibility.HasValue)
+        {
+            // Exact match — Internal never surfaced even if explicitly requested.
+            if (q.Visibility.Value != VisibilityScope.Internal)
+                source = source.Where(r => r.VisibilityScope == q.Visibility.Value);
+            else
+                source = source.Where(_ => false); // Internal always excluded
+        }
+        else if (q.MaxVisibility.HasValue)
         {
             source = source.Where(r =>
                 r.VisibilityScope >= q.MaxVisibility.Value &&

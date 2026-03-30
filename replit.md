@@ -1578,6 +1578,54 @@ Body shape is `ApiResponse<BatchIngestResponse>` for 200/207/422 — always insp
 
 ---
 
+## Platform Audit Service — Step 13: Query Services and Retrieval APIs ✅
+
+**Analysis doc:** `analysis/step13_query_api.md`
+
+### Endpoints (controller: `/audit`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/audit/events` | Full filtered, paginated query |
+| `GET` | `/audit/events/{auditId}` | Single record by stable AuditId |
+| `GET` | `/audit/entity/{entityType}/{entityId}` | Events for a specific resource |
+| `GET` | `/audit/actor/{actorId}` | Events by a specific actor |
+| `GET` | `/audit/user/{userId}` | User events (actorType=User enforced) |
+| `GET` | `/audit/tenant/{tenantId}` | Events for a tenant |
+| `GET` | `/audit/organization/{organizationId}` | Events for an organization |
+
+### Scoped endpoint pattern
+Path segment takes precedence over matching query-string param. All scoped endpoints accept additional `[FromQuery] AuditEventQueryRequest` parameters.
+
+### Filters added in Step 13 (to `AuditEventQueryRequest`)
+- `SourceEnvironment` (string?) — exact match
+- `RequestId` (string?) — exact match
+- `Visibility` (VisibilityScope?) — exact match; takes precedence over `MaxVisibility`
+
+### Pagination
+- `page` (1-based), `pageSize` (default 50, capped by `QueryAuth:MaxPageSize`), `sortBy`, `sortDescending`
+- Response includes `totalCount`, `totalPages`, `hasNext`, `hasPrev`, `earliestOccurredAtUtc`, `latestOccurredAtUtc`
+
+### Time-range metadata
+`AuditEventQueryService` issues the paginated query and a `GROUP BY 1` aggregate (min/max `OccurredAtUtc`) in parallel, giving accurate time-range metadata without extra sequential round-trips.
+
+### Key types
+
+- **`AuditEventRecordMapper`** — `Mapping/` — static mapper: `AuditEventRecord` → `AuditEventRecordResponse`. Hash exposed conditionally. Tags deserialized from `TagsJson`. Network identifiers redactable.
+- **`IAuditEventQueryService`** / **`AuditEventQueryService`** — `Services/` — read-only pipeline. Enforces `QueryAuth:MaxPageSize`, maps entities → DTOs.
+- **`AuditEventQueryController`** — `Controllers/` — 7 GET endpoints.
+
+### Files created
+`Mapping/AuditEventRecordMapper.cs`, `Services/IAuditEventQueryService.cs`, `Services/AuditEventQueryService.cs`, `Controllers/AuditEventQueryController.cs`, `analysis/step13_query_api.md`
+
+### Files modified
+`DTOs/Query/AuditEventQueryRequest.cs` (3 new fields), `Repositories/IAuditEventRecordRepository.cs` (`GetOccurredAtRangeAsync`), `Repositories/EfAuditEventRecordRepository.cs` (new filter predicates + aggregate method), `Program.cs` (service registration + Swagger description)
+
+### Build status after Step 13
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
 ## Control Center Admin Refresh ✅
 
 **Scope:** Full admin dashboard overhaul — infrastructure layer + new pages + sidebar badges.

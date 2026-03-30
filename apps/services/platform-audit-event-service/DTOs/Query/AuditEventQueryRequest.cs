@@ -112,6 +112,19 @@ public sealed class AuditEventQueryRequest
     /// </summary>
     public DateTimeOffset? To { get; set; }
 
+    /// <summary>
+    /// Filter by source environment label. Exact match.
+    /// Example: "production", "staging".
+    /// </summary>
+    public string? SourceEnvironment { get; set; }
+
+    // ── Correlation filters ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Return all events that share an HTTP request ID.
+    /// </summary>
+    public string? RequestId { get; set; }
+
     // ── Visibility ────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -120,6 +133,13 @@ public sealed class AuditEventQueryRequest
     /// Enforced in combination with QueryAuth role claims.
     /// </summary>
     public VisibilityScope? MaxVisibility { get; set; }
+
+    /// <summary>
+    /// Exact visibility scope filter. When set, only records with this exact
+    /// <see cref="VisibilityScope"/> value are returned.
+    /// Takes precedence over <see cref="MaxVisibility"/> when both are provided.
+    /// </summary>
+    public VisibilityScope? Visibility { get; set; }
 
     // ── Text search ───────────────────────────────────────────────────────────
 

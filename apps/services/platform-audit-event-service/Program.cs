@@ -130,6 +130,12 @@ try
                 "access, administrative, and system activity from distributed systems, normalizes " +
                 "it into a canonical event model, and persists immutable, tamper-evident audit records.\n\n" +
                 "**Endpoint groups:**\n" +
+                "- `/audit/events` — Canonical query surface (filtered list + single record by AuditId).\n" +
+                "- `/audit/entity/{entityType}/{entityId}` — Entity-scoped event history.\n" +
+                "- `/audit/actor/{actorId}` — Actor-scoped event history.\n" +
+                "- `/audit/user/{userId}` — User-scoped event history (actorType=User).\n" +
+                "- `/audit/tenant/{tenantId}` — Tenant-scoped event history.\n" +
+                "- `/audit/organization/{organizationId}` — Organization-scoped event history.\n" +
                 "- `/internal/audit/events` — Machine-to-machine ingestion (single + batch). Internal only.\n" +
                 "- `/api/auditevents` — Legacy event ingestion and query (to be superseded).\n" +
                 "- `/health` — Service liveness and event count probe.",
@@ -167,6 +173,10 @@ try
     // To switch transports (queued / outbox), register a different IAuditEventRecordRepository
     // implementation in place of EfAuditEventRecordRepository above.
     builder.Services.AddScoped<IAuditEventIngestionService, AuditEventIngestionService>();
+
+    // Canonical query/retrieval pipeline — read-only surface.
+    // Applies QueryAuth options (page-size cap, hash exposure) and maps entities → response DTOs.
+    builder.Services.AddScoped<IAuditEventQueryService, AuditEventQueryService>();
 
     // ── Ingest authentication ─────────────────────────────────────────────────
     // Concrete authenticators registered as singletons (stateless after construction).
