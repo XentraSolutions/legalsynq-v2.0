@@ -1,6 +1,7 @@
 using Documents.Application.Services;
 using Documents.Domain.Interfaces;
 using Documents.Infrastructure.Health;
+using Documents.Infrastructure.Notifications;
 using Documents.Infrastructure.TokenStore;
 using Documents.Infrastructure.Database;
 using Documents.Infrastructure.Scanner;
@@ -111,10 +112,43 @@ public static class DependencyInjection
         services.AddSingleton<ClamAvSignatureFreshnessMonitor>();
 
         // ── Health checks ─────────────────────────────────────────────────────
-        services.AddHealthChecks()
-            .AddCheck<DatabaseHealthCheck>         ("database",           failureStatus: HealthStatus.Unhealthy, tags: new[] { "ready", "live" })
-            .AddCheck<ClamAvHealthCheck>            ("clamav",             failureStatus: HealthStatus.Degraded,  tags: new[] { "ready" })
-            .AddCheck<ClamAvSignatureHealthCheck>   ("clamav-signatures",  failureStatus: HealthStatus.Degraded,  tags: new[] { "ready" });
+        var redisActive = services.Any(s => s.ServiceType == typeof(IConnectionMultiplexer));
+        var healthBuilder = services.AddHealthChecks()
+            .AddCheck<DatabaseHealthCheck>       ("database",          failureStatus: HealthStatus.Unhealthy, tags: new[] { "ready", "live" })
+            .AddCheck<ClamAvHealthCheck>          ("clamav",            failureStatus: HealthStatus.Degraded,  tags: new[] { "ready" })
+            .AddCheck<ClamAvSignatureHealthCheck> ("clamav-signatures", failureStatus: HealthStatus.Degraded,  tags: new[] { "ready" });
+
+        if (redisActive)
+        {
+            healthBuilder.AddCheck<RedisHealthCheck>("redis",
+                failureStatus: HealthStatus.Unhealthy,
+                tags: new[] { "ready" });
+        }
+
+        // ── Scan completion notifications ─────────────────────────────────────
+        services.Configure<NotificationOptions>(config.GetSection("Notifications"));
+        var notifyProvider = config["Notifications:ScanCompletion:Provider"] ?? "log";
+
+        // Validate: redis publisher requires an active Redis connection
+        if (notifyProvider.Equals("redis", StringComparison.OrdinalIgnoreCase) && !redisActive)
+        {
+            using var warnLog = LoggerFactory.Create(b => b.AddConsole());
+            warnLog.CreateLogger(nameof(DependencyInjection)).LogWarning(
+                "Notifications:ScanCompletion:Provider=redis but no Redis connection is configured. " +
+                "Falling back to 'log' publisher. Add Redis:Url and set a Redis-backed queue or token store.");
+        }
+
+        services.AddSingleton<IScanCompletionPublisher>(sp =>
+            notifyProvider.ToLowerInvariant() switch
+            {
+                "none" => (IScanCompletionPublisher) new NullScanCompletionPublisher(),
+                "redis" when redisActive => new RedisScanCompletionPublisher(
+                    sp.GetRequiredService<IConnectionMultiplexer>(),
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<NotificationOptions>>(),
+                    sp.GetRequiredService<ILogger<RedisScanCompletionPublisher>>()),
+                _ => new LogScanCompletionPublisher(
+                    sp.GetRequiredService<ILogger<LogScanCompletionPublisher>>()),
+            });
 
         // ── Application services ─────────────────────────────────────────────
         services.Configure<DocumentServiceOptions>(config.GetSection("Documents"));

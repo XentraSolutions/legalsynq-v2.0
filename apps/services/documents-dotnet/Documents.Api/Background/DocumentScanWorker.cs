@@ -1,6 +1,7 @@
 using Documents.Application.Services;
 using Documents.Domain.Entities;
 using Documents.Domain.Enums;
+using Documents.Domain.Events;
 using Documents.Domain.Interfaces;
 using Documents.Infrastructure.Observability;
 using Documents.Infrastructure.Scanner;
@@ -25,27 +26,30 @@ namespace Documents.Api.Background;
 /// </summary>
 public sealed class DocumentScanWorker : BackgroundService
 {
-    private readonly IScanJobQueue              _queue;
-    private readonly IStorageProvider           _storage;
-    private readonly IFileScannerProvider       _scanner;
-    private readonly IServiceScopeFactory       _scopes;
-    private readonly ScanWorkerOptions          _opts;
+    private readonly IScanJobQueue               _queue;
+    private readonly IStorageProvider            _storage;
+    private readonly IFileScannerProvider        _scanner;
+    private readonly IScanCompletionPublisher    _publisher;
+    private readonly IServiceScopeFactory        _scopes;
+    private readonly ScanWorkerOptions           _opts;
     private readonly ILogger<DocumentScanWorker> _log;
 
     public DocumentScanWorker(
-        IScanJobQueue               queue,
-        IStorageProvider            storage,
-        IFileScannerProvider        scanner,
-        IServiceScopeFactory        scopes,
-        IOptions<ScanWorkerOptions> opts,
-        ILogger<DocumentScanWorker> log)
+        IScanJobQueue                queue,
+        IStorageProvider             storage,
+        IFileScannerProvider         scanner,
+        IScanCompletionPublisher     publisher,
+        IServiceScopeFactory         scopes,
+        IOptions<ScanWorkerOptions>  opts,
+        ILogger<DocumentScanWorker>  log)
     {
-        _queue   = queue;
-        _storage = storage;
-        _scanner = scanner;
-        _scopes  = scopes;
-        _opts    = opts.Value;
-        _log     = log;
+        _queue     = queue;
+        _storage   = storage;
+        _scanner   = scanner;
+        _publisher = publisher;
+        _scopes    = scopes;
+        _opts      = opts.Value;
+        _log       = log;
     }
 
     // ── BackgroundService entry point ─────────────────────────────────────────
@@ -121,6 +125,8 @@ public sealed class DocumentScanWorker : BackgroundService
 
             ScanMetrics.ScanJobsFailed.Inc();
             await _queue.AcknowledgeAsync(lease, ct);
+            await PublishCompletionEventAsync(job, ScanStatus.Failed, attemptCount: job.AttemptCount,
+                engineVersion: null, ct);
             return;
         }
 
@@ -218,6 +224,12 @@ public sealed class DocumentScanWorker : BackgroundService
         }
 
         await _queue.AcknowledgeAsync(lease, ct);
+
+        // Emit scan completion event for all terminal outcomes (CLEAN / INFECTED / FAILED)
+        await PublishCompletionEventAsync(job, result.Status,
+            attemptCount:  job.AttemptCount + 1,
+            engineVersion: result.EngineVersion,
+            ct);
     }
 
     // ── Retry / fail-fast ─────────────────────────────────────────────────────
@@ -244,6 +256,10 @@ public sealed class DocumentScanWorker : BackgroundService
 
             ScanMetrics.ScanJobsFailed.Inc();
             await _queue.AcknowledgeAsync(lease, ct);
+            await PublishCompletionEventAsync(job, ScanStatus.Failed,
+                attemptCount:  nextAttempt,
+                engineVersion: null,
+                ct);
             return;
         }
 
@@ -321,6 +337,45 @@ public sealed class DocumentScanWorker : BackgroundService
         catch (Exception ex)
         {
             _log.LogError(ex, "Failed to purge infected file: {Key}", job.StorageKey);
+        }
+    }
+
+    // ── Scan completion notification ─────────────────────────────────────────
+
+    /// <summary>
+    /// Publishes a <see cref="DocumentScanCompletedEvent"/> for a terminal scan outcome.
+    /// Non-throwing: any delivery error is logged and measured but never propagated.
+    /// Scan state persistence is always the primary concern.
+    /// </summary>
+    private async Task PublishCompletionEventAsync(
+        ScanJob           job,
+        ScanStatus        status,
+        int               attemptCount,
+        string?           engineVersion,
+        CancellationToken ct)
+    {
+        try
+        {
+            var evt = new DocumentScanCompletedEvent
+            {
+                DocumentId    = job.DocumentId,
+                TenantId      = job.TenantId,
+                VersionId     = job.VersionId,
+                ScanStatus    = status,
+                OccurredAt    = DateTime.UtcNow,
+                AttemptCount  = attemptCount,
+                EngineVersion = engineVersion,
+                FileName      = job.FileName,
+            };
+
+            await _publisher.PublishAsync(evt, ct);
+        }
+        catch (Exception ex)
+        {
+            // Belt-and-suspenders: publisher implementations should already swallow exceptions
+            _log.LogWarning(ex,
+                "PublishCompletionEventAsync: unhandled error for Document={DocId} Status={Status}",
+                job.DocumentId, status);
         }
     }
 

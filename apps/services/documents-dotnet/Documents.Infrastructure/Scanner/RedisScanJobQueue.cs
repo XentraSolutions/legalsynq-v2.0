@@ -82,6 +82,7 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
         {
             _log.LogError(ex, "RedisScanQueue: XADD failed for Document={DocId}", job.DocumentId);
             ScanMetrics.ScanQueueSaturations.Inc();
+            Observability.RedisMetrics.RedisConnectionFailures.Inc();
             return false;
         }
     }
@@ -104,8 +105,9 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
             var job   = DeserializeJob(entry);
             if (job is not null)
             {
-                _log.LogInformation("RedisScanQueue: reclaimed stale job {MsgId} Document={DocId}",
-                    entry.Id, job.DocumentId);
+                _log.LogInformation("RedisScanQueue: reclaimed stale job {MsgId} Document={DocId} Attempt={Attempt}",
+                    entry.Id, job.DocumentId, job.AttemptCount);
+                Observability.RedisMetrics.RedisStreamReclaims.Inc();
                 return new ScanJobLease { Job = job, MessageId = entry.Id.ToString() };
             }
         }
@@ -144,6 +146,7 @@ public sealed class RedisScanJobQueue : IScanJobQueue, IDisposable
             catch (Exception ex)
             {
                 _log.LogError(ex, "RedisScanQueue: XREADGROUP error");
+                Observability.RedisMetrics.RedisConnectionFailures.Inc();
                 await Task.Delay(3_000, ct);
             }
         }
