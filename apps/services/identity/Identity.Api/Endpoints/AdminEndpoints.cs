@@ -42,6 +42,21 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/support/{id}/notes", AddSupportNote);
         routes.MapPatch("/api/admin/support/{id}/status", UpdateSupportStatus);
 
+        // ── Platform Foundation — Phase 1-6 ──────────────────────────────
+        routes.MapGet("/api/admin/organization-types",             ListOrganizationTypes);
+        routes.MapGet("/api/admin/organization-types/{id:guid}",   GetOrganizationType);
+
+        routes.MapGet("/api/admin/relationship-types",             ListRelationshipTypes);
+        routes.MapGet("/api/admin/relationship-types/{id:guid}",   GetRelationshipType);
+
+        routes.MapGet("/api/admin/organization-relationships",     ListOrganizationRelationships);
+        routes.MapGet("/api/admin/organization-relationships/{id:guid}", GetOrganizationRelationship);
+        routes.MapPost("/api/admin/organization-relationships",    CreateOrganizationRelationship);
+        routes.MapDelete("/api/admin/organization-relationships/{id:guid}", DeactivateOrganizationRelationship);
+
+        routes.MapGet("/api/admin/product-org-type-rules",         ListProductOrgTypeRules);
+        routes.MapGet("/api/admin/product-relationship-type-rules", ListProductRelationshipTypeRules);
+
         return routes;
     }
 
@@ -474,9 +489,297 @@ public static class AdminEndpoints
             updatedAtUtc = DateTime.UtcNow,
         });
 
+    // =========================================================================
+    // ORGANIZATION TYPES  (Phase 1)
+    // =========================================================================
+
+    private static async Task<IResult> ListOrganizationTypes(IdentityDbContext db)
+    {
+        var items = await db.OrganizationTypes
+            .OrderBy(ot => ot.DisplayName)
+            .Select(ot => new
+            {
+                id          = ot.Id,
+                code        = ot.Code,
+                displayName = ot.DisplayName,
+                description = ot.Description,
+                isSystem    = ot.IsSystem,
+                isActive    = ot.IsActive,
+                createdAtUtc = ot.CreatedAtUtc,
+            })
+            .ToListAsync();
+
+        return Results.Ok(new { items, totalCount = items.Count });
+    }
+
+    private static async Task<IResult> GetOrganizationType(Guid id, IdentityDbContext db)
+    {
+        var ot = await db.OrganizationTypes.FirstOrDefaultAsync(x => x.Id == id);
+        if (ot is null) return Results.NotFound();
+
+        return Results.Ok(new
+        {
+            id          = ot.Id,
+            code        = ot.Code,
+            displayName = ot.DisplayName,
+            description = ot.Description,
+            isSystem    = ot.IsSystem,
+            isActive    = ot.IsActive,
+            createdAtUtc = ot.CreatedAtUtc,
+        });
+    }
+
+    // =========================================================================
+    // RELATIONSHIP TYPES  (Phase 2)
+    // =========================================================================
+
+    private static async Task<IResult> ListRelationshipTypes(IdentityDbContext db)
+    {
+        var items = await db.RelationshipTypes
+            .OrderBy(rt => rt.DisplayName)
+            .Select(rt => new
+            {
+                id            = rt.Id,
+                code          = rt.Code,
+                displayName   = rt.DisplayName,
+                description   = rt.Description,
+                isDirectional = rt.IsDirectional,
+                isSystem      = rt.IsSystem,
+                isActive      = rt.IsActive,
+                createdAtUtc  = rt.CreatedAtUtc,
+            })
+            .ToListAsync();
+
+        return Results.Ok(new { items, totalCount = items.Count });
+    }
+
+    private static async Task<IResult> GetRelationshipType(Guid id, IdentityDbContext db)
+    {
+        var rt = await db.RelationshipTypes.FirstOrDefaultAsync(x => x.Id == id);
+        if (rt is null) return Results.NotFound();
+
+        return Results.Ok(new
+        {
+            id            = rt.Id,
+            code          = rt.Code,
+            displayName   = rt.DisplayName,
+            description   = rt.Description,
+            isDirectional = rt.IsDirectional,
+            isSystem      = rt.IsSystem,
+            isActive      = rt.IsActive,
+            createdAtUtc  = rt.CreatedAtUtc,
+        });
+    }
+
+    // =========================================================================
+    // ORGANIZATION RELATIONSHIPS  (Phase 2)
+    // =========================================================================
+
+    private static async Task<IResult> ListOrganizationRelationships(
+        IdentityDbContext db,
+        int    page       = 1,
+        int    pageSize   = 20,
+        string tenantId   = "",
+        string sourceOrgId = "",
+        bool   activeOnly = true)
+    {
+        var q = db.OrganizationRelationships
+            .Include(r => r.SourceOrganization)
+            .Include(r => r.TargetOrganization)
+            .Include(r => r.RelationshipType)
+            .AsQueryable();
+
+        if (activeOnly)
+            q = q.Where(r => r.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var tid))
+            q = q.Where(r => r.TenantId == tid);
+
+        if (!string.IsNullOrWhiteSpace(sourceOrgId) && Guid.TryParse(sourceOrgId, out var sid))
+            q = q.Where(r => r.SourceOrganizationId == sid);
+
+        var total = await q.CountAsync();
+
+        var items = await q
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(r => new
+            {
+                id                   = r.Id,
+                tenantId             = r.TenantId,
+                sourceOrganizationId = r.SourceOrganizationId,
+                sourceOrgName        = r.SourceOrganization.DisplayName ?? r.SourceOrganization.Name,
+                targetOrganizationId = r.TargetOrganizationId,
+                targetOrgName        = r.TargetOrganization.DisplayName ?? r.TargetOrganization.Name,
+                relationshipTypeId   = r.RelationshipTypeId,
+                relationshipTypeCode = r.RelationshipType.Code,
+                relationshipTypeDisplayName = r.RelationshipType.DisplayName,
+                productId            = r.ProductId,
+                isActive             = r.IsActive,
+                establishedAtUtc     = r.EstablishedAtUtc,
+                createdAtUtc         = r.CreatedAtUtc,
+            })
+            .ToListAsync();
+
+        return Results.Ok(new { items, totalCount = total, page, pageSize });
+    }
+
+    private static async Task<IResult> GetOrganizationRelationship(Guid id, IdentityDbContext db)
+    {
+        var r = await db.OrganizationRelationships
+            .Include(x => x.SourceOrganization)
+            .Include(x => x.TargetOrganization)
+            .Include(x => x.RelationshipType)
+            .FirstOrDefaultAsync(x => x.Id == id);
+
+        if (r is null) return Results.NotFound();
+
+        return Results.Ok(new
+        {
+            id                   = r.Id,
+            tenantId             = r.TenantId,
+            sourceOrganizationId = r.SourceOrganizationId,
+            sourceOrgName        = r.SourceOrganization.DisplayName ?? r.SourceOrganization.Name,
+            targetOrganizationId = r.TargetOrganizationId,
+            targetOrgName        = r.TargetOrganization.DisplayName ?? r.TargetOrganization.Name,
+            relationshipTypeId   = r.RelationshipTypeId,
+            relationshipTypeCode = r.RelationshipType.Code,
+            productId            = r.ProductId,
+            isActive             = r.IsActive,
+            establishedAtUtc     = r.EstablishedAtUtc,
+            createdAtUtc         = r.CreatedAtUtc,
+            updatedAtUtc         = r.UpdatedAtUtc,
+        });
+    }
+
+    private static async Task<IResult> CreateOrganizationRelationship(
+        CreateOrgRelationshipRequest body,
+        IdentityDbContext db)
+    {
+        // Validate orgs exist
+        var sourceOrg = await db.Organizations.FirstOrDefaultAsync(o => o.Id == body.SourceOrganizationId);
+        if (sourceOrg is null)
+            return Results.NotFound(new { error = "Source organization not found." });
+
+        var targetOrg = await db.Organizations.FirstOrDefaultAsync(o => o.Id == body.TargetOrganizationId);
+        if (targetOrg is null)
+            return Results.NotFound(new { error = "Target organization not found." });
+
+        var relType = await db.RelationshipTypes.FirstOrDefaultAsync(rt => rt.Id == body.RelationshipTypeId);
+        if (relType is null)
+            return Results.NotFound(new { error = "Relationship type not found." });
+
+        var existing = await db.OrganizationRelationships.FirstOrDefaultAsync(r =>
+            r.TenantId == sourceOrg.TenantId &&
+            r.SourceOrganizationId == body.SourceOrganizationId &&
+            r.TargetOrganizationId == body.TargetOrganizationId &&
+            r.RelationshipTypeId == body.RelationshipTypeId);
+
+        if (existing is not null)
+            return Results.Conflict(new { error = "Relationship already exists." });
+
+        var rel = Identity.Domain.OrganizationRelationship.Create(
+            tenantId             : sourceOrg.TenantId,
+            sourceOrganizationId : body.SourceOrganizationId,
+            targetOrganizationId : body.TargetOrganizationId,
+            relationshipTypeId   : body.RelationshipTypeId,
+            productId            : body.ProductId);
+
+        db.OrganizationRelationships.Add(rel);
+        await db.SaveChangesAsync();
+
+        return Results.Created($"/api/admin/organization-relationships/{rel.Id}", new
+        {
+            id                   = rel.Id,
+            tenantId             = rel.TenantId,
+            sourceOrganizationId = rel.SourceOrganizationId,
+            targetOrganizationId = rel.TargetOrganizationId,
+            relationshipTypeId   = rel.RelationshipTypeId,
+            productId            = rel.ProductId,
+            isActive             = rel.IsActive,
+            establishedAtUtc     = rel.EstablishedAtUtc,
+        });
+    }
+
+    private static async Task<IResult> DeactivateOrganizationRelationship(Guid id, IdentityDbContext db)
+    {
+        var rel = await db.OrganizationRelationships.FirstOrDefaultAsync(r => r.Id == id);
+        if (rel is null) return Results.NotFound();
+
+        rel.Deactivate();
+        await db.SaveChangesAsync();
+
+        return Results.Ok(new { id = rel.Id, isActive = false });
+    }
+
+    // =========================================================================
+    // PRODUCT ORG-TYPE RULES  (Phase 3)
+    // =========================================================================
+
+    private static async Task<IResult> ListProductOrgTypeRules(IdentityDbContext db)
+    {
+        var items = await db.ProductOrganizationTypeRules
+            .Include(r => r.Product)
+            .Include(r => r.ProductRole)
+            .Include(r => r.OrganizationType)
+            .Where(r => r.IsActive)
+            .OrderBy(r => r.Product.Code)
+                .ThenBy(r => r.ProductRole.Code)
+            .Select(r => new
+            {
+                id                  = r.Id,
+                productId           = r.ProductId,
+                productCode         = r.Product.Code,
+                productRoleId       = r.ProductRoleId,
+                productRoleCode     = r.ProductRole.Code,
+                organizationTypeId  = r.OrganizationTypeId,
+                orgTypeCode         = r.OrganizationType.Code,
+                orgTypeDisplayName  = r.OrganizationType.DisplayName,
+                isActive            = r.IsActive,
+                createdAtUtc        = r.CreatedAtUtc,
+            })
+            .ToListAsync();
+
+        return Results.Ok(new { items, totalCount = items.Count });
+    }
+
+    // =========================================================================
+    // PRODUCT RELATIONSHIP-TYPE RULES  (Phase 2)
+    // =========================================================================
+
+    private static async Task<IResult> ListProductRelationshipTypeRules(IdentityDbContext db)
+    {
+        var items = await db.ProductRelationshipTypeRules
+            .Include(r => r.Product)
+            .Include(r => r.RelationshipType)
+            .Where(r => r.IsActive)
+            .OrderBy(r => r.Product.Code)
+                .ThenBy(r => r.RelationshipType.Code)
+            .Select(r => new
+            {
+                id                    = r.Id,
+                productId             = r.ProductId,
+                productCode           = r.Product.Code,
+                relationshipTypeId    = r.RelationshipTypeId,
+                relationshipTypeCode  = r.RelationshipType.Code,
+                relationshipTypeDisplayName = r.RelationshipType.DisplayName,
+                isActive              = r.IsActive,
+                createdAtUtc          = r.CreatedAtUtc,
+            })
+            .ToListAsync();
+
+        return Results.Ok(new { items, totalCount = items.Count });
+    }
+
     // ── Request / response DTOs (private, scoped to AdminEndpoints) ─────────
 
     private record EntitlementRequest(string ProductCode, bool Enabled);
+    private record CreateOrgRelationshipRequest(
+        Guid  SourceOrganizationId,
+        Guid  TargetOrganizationId,
+        Guid  RelationshipTypeId,
+        Guid? ProductId);
     private record SettingUpdateRequest(object Value);
     private record CreateSupportRequest(string Title, string? Priority, string? Category);
     private record SupportNoteRequest(string Message);

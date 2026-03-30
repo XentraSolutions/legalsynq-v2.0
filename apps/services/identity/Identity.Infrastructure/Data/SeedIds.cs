@@ -58,6 +58,36 @@ internal static class SeedIds
     public static readonly Guid CapLienService  = new("60000000-0000-0000-0000-000000000018");
     public static readonly Guid CapLienSettle   = new("60000000-0000-0000-0000-000000000019");
 
+    // ── Organization Types ────────────────────────────────────────────────────
+    public static readonly Guid OrgTypeInternal  = new("70000000-0000-0000-0000-000000000001");
+    public static readonly Guid OrgTypeLawFirm   = new("70000000-0000-0000-0000-000000000002");
+    public static readonly Guid OrgTypeProvider  = new("70000000-0000-0000-0000-000000000003");
+    public static readonly Guid OrgTypeFunder    = new("70000000-0000-0000-0000-000000000004");
+    public static readonly Guid OrgTypeLienOwner = new("70000000-0000-0000-0000-000000000005");
+
+    // ── Relationship Types ────────────────────────────────────────────────────
+    public static readonly Guid RelTypeRefersTo             = new("80000000-0000-0000-0000-000000000001");
+    public static readonly Guid RelTypeAcceptsReferralsFrom = new("80000000-0000-0000-0000-000000000002");
+    public static readonly Guid RelTypeFundedBy             = new("80000000-0000-0000-0000-000000000003");
+    public static readonly Guid RelTypeServicesFor          = new("80000000-0000-0000-0000-000000000004");
+    public static readonly Guid RelTypeAssignsLienTo        = new("80000000-0000-0000-0000-000000000005");
+    public static readonly Guid RelTypeMemberOfNetwork      = new("80000000-0000-0000-0000-000000000006");
+
+    // ── Product–RelationshipType Rules ────────────────────────────────────────
+    public static readonly Guid PrRelRuleCareConnectRefersTo             = new("81000000-0000-0000-0000-000000000001");
+    public static readonly Guid PrRelRuleCareConnectAcceptsReferralsFrom = new("81000000-0000-0000-0000-000000000002");
+    public static readonly Guid PrRelRuleSynqFundFundedBy                = new("81000000-0000-0000-0000-000000000003");
+    public static readonly Guid PrRelRuleSynqLienAssignsLienTo           = new("81000000-0000-0000-0000-000000000004");
+
+    // ── Product–OrgType Rules ─────────────────────────────────────────────────
+    public static readonly Guid PrOrgTypeRuleCareConnectReferrerLawFirm  = new("90000000-0000-0000-0000-000000000001");
+    public static readonly Guid PrOrgTypeRuleCareConnectReceiverProvider = new("90000000-0000-0000-0000-000000000002");
+    public static readonly Guid PrOrgTypeRuleSynqLienSellerLawFirm       = new("90000000-0000-0000-0000-000000000003");
+    public static readonly Guid PrOrgTypeRuleSynqLienBuyerLienOwner      = new("90000000-0000-0000-0000-000000000004");
+    public static readonly Guid PrOrgTypeRuleSynqLienHolderLienOwner     = new("90000000-0000-0000-0000-000000000005");
+    public static readonly Guid PrOrgTypeRuleSynqFundReferrerLawFirm     = new("90000000-0000-0000-0000-000000000006");
+    public static readonly Guid PrOrgTypeRuleSynqFundFunderFunder        = new("90000000-0000-0000-0000-000000000007");
+
     // ── Capabilities — SynqFund ───────────────────────────────────────────────
     public static readonly Guid CapApplicationCreate        = new("60000000-0000-0000-0000-000000000020");
     public static readonly Guid CapApplicationReadOwn       = new("60000000-0000-0000-0000-000000000021");

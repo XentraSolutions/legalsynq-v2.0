@@ -21,6 +21,11 @@ public class AppointmentConfiguration : IEntityTypeConfiguration<Appointment>
         builder.Property(a => a.ReceivingOrganizationId);
         builder.Property(a => a.SubjectPartyId);
 
+        // Phase 5: relationship context (denormalized from Referral at create time)
+        builder.Property(a => a.OrganizationRelationshipId);
+        builder.HasIndex(a => a.OrganizationRelationshipId)
+            .HasDatabaseName("IX_Appointments_OrganizationRelationshipId");
+
         builder.Property(a => a.ProviderId).IsRequired();
         builder.Property(a => a.FacilityId).IsRequired();
         builder.Property(a => a.ServiceOfferingId);

@@ -583,3 +583,51 @@ Enterprise hardening phases in `apps/services/documents-dotnet/analysis/`:
 - `dotnet_enterprise_phase4_audit_and_observability.md` — SCAN_ACCESS_DENIED event, 11 Prometheus metrics, health checks
 - `dotnet_enterprise_phase5_clamav_hardening.md` — ClamAV PING/PONG health, timeout isolation, fail-closed review
 - `dotnet_enterprise_final_summary.md` — complete architecture, production deployment guidance, remaining risks
+
+---
+
+## Platform Foundation Upgrade (6-Phase — COMPLETE)
+
+Analysis report: `analysis/step1_platform-foundation-upgrade.md`
+
+### New Identity Domain Entities
+| Entity | Table | Phase |
+|--------|-------|-------|
+| `OrganizationType` | `OrganizationTypes` | 1 |
+| `RelationshipType` | `RelationshipTypes` | 2 |
+| `OrganizationRelationship` | `OrganizationRelationships` | 2 |
+| `ProductRelationshipTypeRule` | `ProductRelationshipTypeRules` | 2 |
+| `ProductOrganizationTypeRule` | `ProductOrganizationTypeRules` | 3 |
+| `ScopedRoleAssignment` | `ScopedRoleAssignments` | 4 |
+
+### Identity Migrations
+```
+20260330110001_AddOrganizationTypeCatalog.cs       — OrganizationTypes table + Organization.OrganizationTypeId FK + backfill
+20260330110002_AddRelationshipGraph.cs             — RelationshipTypes + OrganizationRelationships + ProductRelationshipTypeRules + seeds
+20260330110003_AddProductOrgTypeRules.cs           — ProductOrganizationTypeRules + 7 backfilled seeds
+20260330110004_AddScopedRoleAssignment.cs          — ScopedRoleAssignments + INSERT SELECT from UserRoleAssignments
+```
+
+### CareConnect Migration
+```
+20260330110001_AlignCareConnectToPlatformIdentity.cs   — Provider.OrganizationId, Facility.OrganizationId,
+                                                          Referral.OrganizationRelationshipId, Appointment.OrganizationRelationshipId
+```
+
+### Phase 3 Activation Note
+`UserRepository.GetPrimaryOrgMembershipAsync` now eager-loads
+`ProductRole → OrgTypeRules → OrganizationType` via chained `.ThenInclude`.
+`AuthService.IsEligible` checks the rule table first; falls back to `EligibleOrgType` string (legacy compat).
+
+### New Admin Endpoints (Phase 6)
+| Method | Path |
+|--------|------|
+| GET/GET | `/api/admin/organization-types`, `/api/admin/organization-types/{id}` |
+| GET/GET | `/api/admin/relationship-types`, `/api/admin/relationship-types/{id}` |
+| GET/GET/POST/DELETE | `/api/admin/organization-relationships[/{id}]` |
+| GET | `/api/admin/product-org-type-rules` |
+| GET | `/api/admin/product-relationship-type-rules` |
+
+### Build status after all 6 phases
+- Identity.Api: ✅ 0 errors, 0 warnings
+- CareConnect.Api: ✅ 0 errors, 0 regressions (1 pre-existing CS0168)

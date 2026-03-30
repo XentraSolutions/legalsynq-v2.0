@@ -51,10 +51,15 @@ public class AuthService : IAuthService
         List<string> productRoles = [];
         if (org is not null)
         {
+            // Phase 3: resolve product roles via ProductOrganizationTypeRule (DB-backed).
+            // Each enabled product's roles are included when:
+            //   a) A matching ProductOrganizationTypeRule exists for the org's OrganizationTypeId, OR
+            //   b) (transitional fallback) the legacy EligibleOrgType string matches the org's OrgType.
+            // Both checks are OR-combined so existing tenants work without re-migration.
             productRoles = org.OrganizationProducts
                 .Where(op => op.IsEnabled)
                 .SelectMany(op => op.Product.ProductRoles)
-                .Where(pr => pr.IsActive && (pr.EligibleOrgType is null || pr.EligibleOrgType == org.OrgType))
+                .Where(pr => pr.IsActive && IsEligible(pr, org))
                 .Select(pr => pr.Code)
                 .Distinct()
                 .OrderBy(c => c)
@@ -124,5 +129,27 @@ public class AuthService : IAuthService
             ExpiresAtUtc: expiresAtUtc);
 
         return Task.FromResult(response);
+    }
+
+    // ── Eligibility helpers ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true when the given product role is eligible for the organization.
+    /// Checks the new DB-backed rule table first (Phase 3); falls back to the legacy
+    /// EligibleOrgType string so existing data keeps working during the migration window.
+    /// </summary>
+    private static bool IsEligible(ProductRole pr, Organization org)
+    {
+        // Phase 3: new rule table check (loaded via navigation property if present)
+        if (pr.OrgTypeRules is { Count: > 0 })
+        {
+            return pr.OrgTypeRules.Any(r =>
+                r.IsActive &&
+                r.OrganizationType is not null &&
+                r.OrganizationType.Code == org.OrgType);
+        }
+
+        // Transitional fallback: legacy EligibleOrgType string comparison
+        return pr.EligibleOrgType is null || pr.EligibleOrgType == org.OrgType;
     }
 }

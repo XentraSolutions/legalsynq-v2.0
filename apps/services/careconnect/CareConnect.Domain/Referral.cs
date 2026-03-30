@@ -43,6 +43,9 @@ public class Referral : AuditableEntity
     // ── Provider routing ─────────────────────────────────────────────────
     public Guid ProviderId { get; private set; }
 
+    // Phase 5: explicit relationship context linking referrer ↔ receiver orgs
+    public Guid? OrganizationRelationshipId { get; private set; }
+
     // ── Legacy inline client fields (kept during migration window) ────────
     public string ClientFirstName { get; private set; } = string.Empty;
     public string ClientLastName { get; private set; } = string.Empty;

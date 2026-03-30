@@ -33,6 +33,14 @@ public class IdentityDbContext : DbContext
     // Audit
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    // Platform Phase 1-4: org type catalog, relationship graph, scoped access
+    public DbSet<OrganizationType>              OrganizationTypes              => Set<OrganizationType>();
+    public DbSet<RelationshipType>              RelationshipTypes              => Set<RelationshipType>();
+    public DbSet<OrganizationRelationship>      OrganizationRelationships      => Set<OrganizationRelationship>();
+    public DbSet<ProductRelationshipTypeRule>   ProductRelationshipTypeRules   => Set<ProductRelationshipTypeRule>();
+    public DbSet<ProductOrganizationTypeRule>   ProductOrganizationTypeRules   => Set<ProductOrganizationTypeRule>();
+    public DbSet<ScopedRoleAssignment>          ScopedRoleAssignments          => Set<ScopedRoleAssignment>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(IdentityDbContext).Assembly);

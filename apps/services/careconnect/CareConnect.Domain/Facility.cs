@@ -14,6 +14,9 @@ public class Facility : AuditableEntity
     public string? Phone { get; private set; }
     public bool IsActive { get; private set; }
 
+    // Phase 5: link Facility to an Identity Organization (nullable during migration window)
+    public Guid? OrganizationId { get; private set; }
+
     public List<ProviderFacility> ProviderFacilities { get; private set; } = new();
 
     private Facility() { }

@@ -40,6 +40,11 @@ public class ProviderConfiguration : IEntityTypeConfiguration<Provider>
 
         builder.Property(p => p.GeoUpdatedAtUtc);
 
+        // Phase 5: nullable FK to Identity Organization
+        builder.Property(p => p.OrganizationId);
+        builder.HasIndex(p => p.OrganizationId)
+            .HasDatabaseName("IX_Providers_OrganizationId");
+
         builder.HasIndex(p => new { p.TenantId, p.Email }).IsUnique();
         builder.HasIndex(p => new { p.TenantId, p.Name });
         builder.HasIndex(p => new { p.TenantId, p.City, p.State });

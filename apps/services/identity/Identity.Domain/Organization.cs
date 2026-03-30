@@ -7,6 +7,10 @@ public class Organization
     public string Name { get; private set; } = string.Empty;
     public string? DisplayName { get; private set; }
     public string OrgType { get; private set; } = string.Empty;
+
+    // Platform Phase 1: typed org-type FK (nullable during migration window; backfilled from OrgType)
+    public Guid? OrganizationTypeId { get; private set; }
+
     public bool IsActive { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
@@ -14,10 +18,13 @@ public class Organization
     public Guid? UpdatedByUserId { get; private set; }
 
     public Tenant Tenant { get; private set; } = null!;
+    public OrganizationType? OrganizationTypeRef { get; private set; }
     public ICollection<OrganizationDomain> Domains { get; private set; } = [];
     public ICollection<OrganizationProduct> OrganizationProducts { get; private set; } = [];
     public ICollection<UserOrganizationMembership> Memberships { get; private set; } = [];
     public ICollection<UserRoleAssignment> RoleAssignments { get; private set; } = [];
+    public ICollection<OrganizationRelationship> OutgoingRelationships { get; private set; } = [];
+    public ICollection<OrganizationRelationship> IncomingRelationships { get; private set; } = [];
 
     private Organization() { }
 

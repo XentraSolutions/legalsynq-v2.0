@@ -51,6 +51,9 @@ public class UserRepository : IUserRepository
                 .ThenInclude(o => o.OrganizationProducts)
                     .ThenInclude(op => op.Product)
                         .ThenInclude(p => p.ProductRoles)
+                            // Phase 3: load DB-backed org-type eligibility rules
+                            .ThenInclude(pr => pr.OrgTypeRules)
+                                .ThenInclude(r => r.OrganizationType)
             .Where(m => m.UserId == userId && m.IsActive)
             .OrderBy(m => m.JoinedAtUtc)
             .FirstOrDefaultAsync(ct);

@@ -13,6 +13,9 @@ public class Appointment : AuditableEntity
     public Guid? ReceivingOrganizationId { get; private set; }
     public Guid? SubjectPartyId { get; private set; }
 
+    // Phase 5: explicit relationship context (denormalized from Referral at create time)
+    public Guid? OrganizationRelationshipId { get; private set; }
+
     public Guid ProviderId { get; private set; }
     public Guid FacilityId { get; private set; }
     public Guid? ServiceOfferingId { get; private set; }

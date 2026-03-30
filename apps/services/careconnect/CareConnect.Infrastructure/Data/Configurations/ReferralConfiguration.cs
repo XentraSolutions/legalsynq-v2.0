@@ -25,6 +25,11 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         // Provider routing
         builder.Property(r => r.ProviderId).IsRequired();
 
+        // Phase 5: organization relationship context (nullable; set when both orgs are linked)
+        builder.Property(r => r.OrganizationRelationshipId);
+        builder.HasIndex(r => r.OrganizationRelationshipId)
+            .HasDatabaseName("IX_Referrals_OrganizationRelationshipId");
+
         // Legacy inline client fields (kept during migration window)
         builder.Property(r => r.ClientFirstName).IsRequired().HasMaxLength(100);
         builder.Property(r => r.ClientLastName).IsRequired().HasMaxLength(100);

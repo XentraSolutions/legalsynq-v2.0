@@ -26,6 +26,11 @@ public class FacilityConfiguration : IEntityTypeConfiguration<Facility>
         builder.Property(f => f.CreatedByUserId);
         builder.Property(f => f.UpdatedByUserId);
 
+        // Phase 5: nullable FK to Identity Organization
+        builder.Property(f => f.OrganizationId);
+        builder.HasIndex(f => f.OrganizationId)
+            .HasDatabaseName("IX_Facilities_OrganizationId");
+
         builder.HasIndex(f => new { f.TenantId, f.Name });
 
         builder.HasMany(f => f.ProviderFacilities)

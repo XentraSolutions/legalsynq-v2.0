@@ -22,6 +22,9 @@ public class Provider : AuditableEntity
     public string?   GeoPointSource  { get; private set; }
     public DateTime? GeoUpdatedAtUtc { get; private set; }
 
+    // Phase 5: link Provider to an Identity Organization (nullable during migration window)
+    public Guid? OrganizationId { get; private set; }
+
     public List<ProviderCategory> ProviderCategories { get; private set; } = new();
 
     private Provider() { }

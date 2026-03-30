@@ -13,6 +13,7 @@ public class ProductRole
 
     public Product Product { get; private set; } = null!;
     public ICollection<RoleCapability> RoleCapabilities { get; private set; } = [];
+    public ICollection<ProductOrganizationTypeRule> OrgTypeRules { get; private set; } = [];
 
     private ProductRole() { }
 

@@ -25,6 +25,9 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
             .IsRequired()
             .HasMaxLength(50);
 
+        // Phase 1: typed org-type FK (nullable; backfilled in migration)
+        builder.Property(o => o.OrganizationTypeId);
+
         builder.Property(o => o.IsActive).IsRequired();
         builder.Property(o => o.CreatedAtUtc).IsRequired();
         builder.Property(o => o.UpdatedAtUtc).IsRequired();
@@ -33,10 +36,17 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
 
         builder.HasIndex(o => new { o.TenantId, o.Name }).IsUnique();
         builder.HasIndex(o => new { o.TenantId, o.OrgType });
+        builder.HasIndex(o => o.OrganizationTypeId);
 
         builder.HasOne(o => o.Tenant)
             .WithMany(t => t.Organizations)
             .HasForeignKey(o => o.TenantId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(o => o.OrganizationTypeRef)
+            .WithMany(ot => ot.Organizations)
+            .HasForeignKey(o => o.OrganizationTypeId)
+            .IsRequired(false)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasData(new
@@ -46,6 +56,7 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
             Name = "LegalSynq Platform",
             DisplayName = (string?)"LegalSynq Internal",
             OrgType = Domain.OrgType.Internal,
+            OrganizationTypeId = (Guid?)SeedIds.OrgTypeInternal,
             IsActive = true,
             CreatedAtUtc = SeedIds.SeededAt,
             UpdatedAtUtc = SeedIds.SeededAt,
