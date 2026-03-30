@@ -3,16 +3,19 @@ using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
+using Microsoft.Extensions.Logging;
 
 namespace CareConnect.Application.Services;
 
 public class FacilityService : IFacilityService
 {
     private readonly IFacilityRepository _facilities;
+    private readonly ILogger<FacilityService> _logger;
 
-    public FacilityService(IFacilityRepository facilities)
+    public FacilityService(IFacilityRepository facilities, ILogger<FacilityService> logger)
     {
         _facilities = facilities;
+        _logger     = logger;
     }
 
     public async Task<List<FacilityResponse>> GetAllAsync(Guid tenantId, CancellationToken ct = default)
@@ -38,7 +41,12 @@ public class FacilityService : IFacilityService
 
         // Phase 4: link to Identity Organization when provided.
         if (request.OrganizationId.HasValue)
+        {
             facility.LinkOrganization(request.OrganizationId.Value);
+            _logger.LogDebug(
+                "Facility {FacilityId} linked to Identity Organization {OrganizationId} on create.",
+                facility.Id, request.OrganizationId.Value);
+        }
 
         await _facilities.AddAsync(facility, ct);
         return ToResponse(facility);
@@ -55,7 +63,12 @@ public class FacilityService : IFacilityService
 
         // Phase 4: apply org linkage when provided (supports backfill via update).
         if (request.OrganizationId.HasValue)
+        {
             facility.LinkOrganization(request.OrganizationId.Value);
+            _logger.LogDebug(
+                "Facility {FacilityId} org linkage updated to Identity Organization {OrganizationId}.",
+                facility.Id, request.OrganizationId.Value);
+        }
 
         await _facilities.UpdateAsync(facility, ct);
         return ToResponse(facility);

@@ -4,6 +4,7 @@ using CareConnect.Application.Helpers;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
+using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
 
 namespace CareConnect.Application.Services;
@@ -11,10 +12,12 @@ namespace CareConnect.Application.Services;
 public class ProviderService : IProviderService
 {
     private readonly IProviderRepository _providers;
+    private readonly ILogger<ProviderService> _logger;
 
-    public ProviderService(IProviderRepository providers)
+    public ProviderService(IProviderRepository providers, ILogger<ProviderService> logger)
     {
         _providers = providers;
+        _logger    = logger;
     }
 
     public async Task<PagedResponse<ProviderResponse>> SearchAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
@@ -77,6 +80,9 @@ public class ProviderService : IProviderService
         {
             provider.LinkOrganization(request.OrganizationId.Value);
             await _providers.UpdateAsync(provider, ct);
+            _logger.LogDebug(
+                "Provider {ProviderId} linked to Identity Organization {OrganizationId}.",
+                provider.Id, request.OrganizationId.Value);
         }
 
         if (request.CategoryIds.Count > 0)
@@ -112,7 +118,12 @@ public class ProviderService : IProviderService
 
         // Phase D: link to Identity Organization if supplied.
         if (request.OrganizationId.HasValue)
+        {
             provider.LinkOrganization(request.OrganizationId.Value);
+            _logger.LogDebug(
+                "Provider {ProviderId} org linkage updated to Identity Organization {OrganizationId}.",
+                provider.Id, request.OrganizationId.Value);
+        }
 
         await _providers.UpdateAsync(provider, ct);
         await _providers.SyncCategoriesAsync(provider.Id, request.CategoryIds, ct);
@@ -219,6 +230,7 @@ public class ProviderService : IProviderService
             TenantId         = p.TenantId,
             Name             = p.Name,
             OrganizationName = p.OrganizationName,
+            OrganizationId   = p.OrganizationId,
             Email            = p.Email,
             Phone            = p.Phone,
             AddressLine1     = p.AddressLine1,

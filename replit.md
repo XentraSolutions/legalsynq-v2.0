@@ -699,3 +699,56 @@ Analysis report: `analysis/step1_platform-foundation-upgrade.md`
 - Identity.Api: ✅ 0 errors, 0 warnings
 - CareConnect.Api: ✅ 0 errors, 1 pre-existing CS0168 warning (unrelated)
 - control-center TypeScript: ✅ 0 errors (`npx tsc --noEmit` clean)
+
+---
+
+## Step 4 — Platform Hardening ✅
+
+**Report:** `analysis/step4_platform-hardening.md`
+
+### 4.1 Resolver auth header support
+- `IdentityServiceOptions` — `AuthHeaderName?` + `AuthHeaderValue?` fields added
+- `HttpOrganizationRelationshipResolver` — auth header applied per-request when both fields configured; `_isEnabled` computed once at construction; "disabled" case emits `LogWarning` once at startup (not per-call)
+- `appsettings.json` / `appsettings.Development.json` — new keys documented
+
+### 4.2 AuthService eligibility observability
+- `ILogger<AuthService>` injected
+- `IsEligible` → `IsEligibleWithPath` returns `(bool, EligibilityPath)` enum (`DbRule | LegacyString | Unrestricted`)
+- `LoginAsync` logs per-path counts; `LogInformation` fires only when legacy fallback is used
+
+### 4.3 ProviderService / FacilityService — LinkOrganization logging
+- Both services gain `ILogger<T>` (auto-injected via DI)
+- `LogDebug` emitted on `LinkOrganization()` for create and update paths
+- `ProviderResponse.OrganizationId` — `Guid?` field added to DTO and wired in `ToResponse()`
+
+### 4.4 UserRepository — dual-write ScopedRoleAssignment
+- `AddAsync` now creates a `ScopedRoleAssignment` (scope=GLOBAL) for every role assigned at user creation
+- Legacy `UserRole` rows preserved — both tables kept in sync from first write
+
+### 4.5 Identity startup diagnostic
+- `Program.cs` — on every startup, queries for ProductRoles with `EligibleOrgType` set but no active `OrgTypeRules`
+- Logs `LogInformation` when coverage is complete (current state: all 7 seeded roles covered)
+- Logs `LogWarning` per uncovered role when gaps are detected
+
+### 4.6 Control-center ORGANIZATION GRAPH pages
+
+**Routes:** `lib/routes.ts` — `orgTypes`, `relationshipTypes`, `orgRelationships`, `productRules`
+
+**Nav section:** `lib/nav.ts` — ORGANIZATION GRAPH section with 4 entries
+
+**Pages created:**
+- `app/org-types/page.tsx` — Org Type catalog list
+- `app/relationship-types/page.tsx` — Relationship Type catalog list
+- `app/org-relationships/page.tsx` — Live relationship graph with activeOnly filter + pagination
+- `app/product-rules/page.tsx` — Combined ProductOrgTypeRules + ProductRelTypeRules (parallel fetch)
+
+**Components created:**
+- `components/platform/org-type-table.tsx` — `OrgTypeTable`
+- `components/platform/relationship-type-table.tsx` — `RelationshipTypeTable`
+- `components/platform/org-relationship-table.tsx` — `OrgRelationshipTable` (with pagination)
+- `components/platform/product-rules-panel.tsx` — `ProductOrgTypeRuleTable`, `ProductRelTypeRuleTable`
+
+### Build status after Step 4
+- Identity.Api: ✅ 0 errors, 0 warnings
+- CareConnect.Api: ✅ 0 errors, 1 pre-existing CS0168 warning (unrelated)
+- control-center TypeScript: ✅ 0 errors (`npx tsc --noEmit` clean)

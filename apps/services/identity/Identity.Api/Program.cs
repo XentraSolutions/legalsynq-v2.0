@@ -70,6 +70,47 @@ if (app.Environment.IsDevelopment())
     }
 }
 
+// ── Startup diagnostic: EligibleOrgType ↔ OrgTypeRules coverage ───────────
+// Warns when any ProductRole still relies on the legacy EligibleOrgType string
+// without a corresponding active ProductOrganizationTypeRule row.
+// All 7 seeded ProductRoles have full OrgTypeRule coverage as of Step 4.
+// This check catches any future gaps introduced during active development.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+
+    var uncoveredRoles = await db.Set<Identity.Domain.ProductRole>()
+        .Where(pr => pr.IsActive && pr.EligibleOrgType != null)
+        .Where(pr => !db.Set<Identity.Domain.ProductOrganizationTypeRule>()
+            .Any(r => r.ProductRoleId == pr.Id && r.IsActive))
+        .Select(pr => new { pr.Code, pr.EligibleOrgType })
+        .ToListAsync();
+
+    if (uncoveredRoles.Count > 0)
+    {
+        foreach (var r in uncoveredRoles)
+        {
+            app.Logger.LogWarning(
+                "ProductRole '{Code}' has EligibleOrgType='{OrgType}' but no active " +
+                "ProductOrganizationTypeRule row. Add a seed rule for this role to retire " +
+                "the legacy string-based eligibility fallback.",
+                r.Code, r.EligibleOrgType);
+        }
+    }
+    else
+    {
+        app.Logger.LogInformation(
+            "EligibleOrgType coverage check passed — all active ProductRoles with " +
+            "EligibleOrgType have matching ProductOrganizationTypeRule rows.");
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex,
+        "EligibleOrgType coverage check skipped — could not query the database at startup.");
+}
+
 // ── Middleware pipeline ───────────────────────────────────────────────────
 // UseAuthentication + UseAuthorization must precede all endpoint maps
 app.UseAuthentication();

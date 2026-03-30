@@ -43,12 +43,22 @@ public class UserRepository : IUserRepository
     {
         await _db.Users.AddAsync(user, ct);
 
-        // TODO [LEGACY — Phase F]: UserRoles maps to user_roles (UserRole join entity),
-        // which is the simple user-to-role table predating ScopedRoleAssignment.
-        // New callers should create ScopedRoleAssignment (scope=GLOBAL) instead.
-        // This path is retained for backward compatibility — do not add new callers.
         foreach (var roleId in roleIds)
+        {
+            // Legacy write — preserved for backward compatibility.
+            // TODO [LEGACY — Phase F]: Remove once all read paths consume ScopedRoleAssignment exclusively.
             await _db.UserRoles.AddAsync(UserRole.Create(user.Id, roleId), ct);
+
+            // Phase 4: dual-write — also create a GLOBAL-scoped ScopedRoleAssignment for every
+            // role so the modern table is kept in sync from the first creation.
+            // This is additive; both records co-exist during the incremental migration period.
+            var scoped = ScopedRoleAssignment.Create(
+                userId:  user.Id,
+                roleId:  roleId,
+                scopeType: ScopedRoleAssignment.ScopeTypes.Global);
+
+            await _db.ScopedRoleAssignments.AddAsync(scoped, ct);
+        }
 
         await _db.SaveChangesAsync(ct);
     }

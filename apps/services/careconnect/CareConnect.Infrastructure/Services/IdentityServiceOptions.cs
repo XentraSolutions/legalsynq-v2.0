@@ -6,8 +6,10 @@ namespace CareConnect.Infrastructure.Services;
 ///
 /// Bind from appsettings via:
 ///   "IdentityService": {
-///     "BaseUrl": "http://identity-service:5001",
-///     "TimeoutSeconds": 5
+///     "BaseUrl":           "http://identity-service:5001",
+///     "TimeoutSeconds":    5,
+///     "AuthHeaderName":    "X-Service-Token",   // optional
+///     "AuthHeaderValue":   "my-secret-value"    // optional
 ///   }
 /// </summary>
 public sealed class IdentityServiceOptions
@@ -24,4 +26,17 @@ public sealed class IdentityServiceOptions
     /// Per-request HTTP timeout in seconds. Defaults to 5 s.
     /// </summary>
     public int TimeoutSeconds { get; set; } = 5;
+
+    /// <summary>
+    /// Optional service-to-service auth header name, e.g. "X-Service-Token" or "Authorization".
+    /// Applied only when both AuthHeaderName and AuthHeaderValue are non-empty.
+    /// Leave blank for environments without service-level auth.
+    /// </summary>
+    public string? AuthHeaderName { get; set; }
+
+    /// <summary>
+    /// Value of the service-to-service auth header.
+    /// Set via environment variable / secret — never commit real values to appsettings.
+    /// </summary>
+    public string? AuthHeaderValue { get; set; }
 }

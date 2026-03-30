@@ -34,6 +34,15 @@ export const CC_NAV: NavSection[] = [
     ],
   },
   {
+    heading: 'ORGANIZATION GRAPH',
+    items: [
+      { href: '/org-types',          label: 'Org Types',         icon: 'ri-building-4-line'          },
+      { href: '/relationship-types', label: 'Relationship Types', icon: 'ri-links-line'               },
+      { href: '/org-relationships',  label: 'Org Relationships',  icon: 'ri-share-circle-line'        },
+      { href: '/product-rules',      label: 'Product Rules',      icon: 'ri-shield-check-line'        },
+    ],
+  },
+  {
     heading: 'CONFIGURATION',
     items: [
       { href: '/settings', label: 'Platform Settings', icon: 'ri-settings-3-line' },

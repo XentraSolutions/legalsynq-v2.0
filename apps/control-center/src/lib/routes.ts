@@ -33,6 +33,20 @@ export const Routes = {
   /** /settings — Platform settings */
   settings: '/settings',
 
+  // ── Platform catalog ──────────────────────────────────────────────────────
+
+  /** /org-types — Organization type catalog */
+  orgTypes: '/org-types',
+
+  /** /relationship-types — Relationship type catalog */
+  relationshipTypes: '/relationship-types',
+
+  /** /org-relationships — Organization relationship graph */
+  orgRelationships: '/org-relationships',
+
+  /** /product-rules — Product access rules (org-type + rel-type) */
+  productRules: '/product-rules',
+
   // ── Dynamic route builders ────────────────────────────────────────────────
 
   /** /tenants/:id — Tenant detail */

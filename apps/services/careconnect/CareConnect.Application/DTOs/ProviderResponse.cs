@@ -6,6 +6,13 @@ public class ProviderResponse
     public Guid    TenantId          { get; set; }
     public string  Name              { get; set; } = string.Empty;
     public string? OrganizationName  { get; set; }
+
+    /// <summary>
+    /// Identity Organization ID linked via Provider.LinkOrganization().
+    /// Populated when the provider record has been linked to an org in the Identity service.
+    /// Null for providers that pre-date cross-service org linkage (Phase D).
+    /// </summary>
+    public Guid?   OrganizationId    { get; set; }
     public string  Email             { get; set; } = string.Empty;
     public string  Phone             { get; set; } = string.Empty;
     public string  AddressLine1      { get; set; } = string.Empty;
