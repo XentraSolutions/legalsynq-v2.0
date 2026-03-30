@@ -10,6 +10,7 @@ using PlatformAuditEventService.Data;
 using PlatformAuditEventService.DTOs;
 using PlatformAuditEventService.Jobs;
 using PlatformAuditEventService.Middleware;
+using PlatformAuditEventService.Services.Archival;
 using PlatformAuditEventService.Services.Export;
 using PlatformAuditEventService.Repositories;
 using PlatformAuditEventService.Services;
@@ -47,6 +48,7 @@ try
     builder.Services.Configure<IngestAuthOptions>(cfg.GetSection(IngestAuthOptions.SectionName));
     builder.Services.Configure<QueryAuthOptions>(cfg.GetSection(QueryAuthOptions.SectionName));
     builder.Services.Configure<RetentionOptions>(cfg.GetSection(RetentionOptions.SectionName));
+    builder.Services.Configure<ArchivalOptions>(cfg.GetSection(ArchivalOptions.SectionName));
     builder.Services.Configure<ExportOptions>(cfg.GetSection(ExportOptions.SectionName));
 
     // Eager-read options we need during startup wiring
@@ -209,6 +211,34 @@ try
         Log.Warning("Export:Provider = 'None' — export endpoints are disabled. Set Provider=Local (or S3/AzureBlob) to enable.");
     else
         Log.Information("Export:Provider = {Provider} — export endpoints active.", exportProvider);
+
+    // ── Retention + Archival ──────────────────────────────────────────────────
+    // IRetentionService: Scoped — uses scoped repositories (EF DbContext).
+    builder.Services.AddScoped<IRetentionService, RetentionService>();
+
+    // IArchivalProvider: Singleton — stateless after construction; provider
+    // selection is driven by Archival:Strategy.  Swap by registering a different
+    // implementation here (e.g. S3ArchivalProvider, AzureBlobArchivalProvider).
+    // Provider=NoOp → NoOpArchivalProvider (safe default; logs without writing).
+    builder.Services.AddSingleton<IArchivalProvider, NoOpArchivalProvider>();
+
+    // RetentionPolicyJob: Transient — each invocation gets fresh scoped services
+    // via IServiceScopeFactory when wired to a hosted/scheduled job runner.
+    builder.Services.AddTransient<RetentionPolicyJob>();
+
+    var retentionOpts = cfg.GetSection(RetentionOptions.SectionName).Get<RetentionOptions>() ?? new();
+    var archivalOpts  = cfg.GetSection(ArchivalOptions.SectionName).Get<ArchivalOptions>()   ?? new();
+
+    if (!retentionOpts.JobEnabled)
+        Log.Warning("Retention:JobEnabled = false — retention policy job is inactive. " +
+                    "Set Retention:JobEnabled=true and configure a scheduler to activate.");
+    else
+        Log.Information(
+            "Retention: job enabled. DryRun={DryRun} DefaultDays={Default} HotDays={Hot} ArchivalStrategy={Archival}",
+            retentionOpts.DryRun,
+            retentionOpts.DefaultRetentionDays <= 0 ? "indefinite" : retentionOpts.DefaultRetentionDays.ToString(),
+            retentionOpts.HotRetentionDays,
+            archivalOpts.Strategy);
 
     // ── Query authorization ───────────────────────────────────────────────────
     // All resolvers registered as singletons (stateless after construction).

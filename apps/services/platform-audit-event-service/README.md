@@ -179,6 +179,61 @@ Integrity__HmacKeyBase64=$(openssl rand -base64 32)
 
 ---
 
+## Retention and Archival
+
+The service ships with a retention policy evaluation engine and a pluggable archival provider abstraction.
+
+**v1 behaviour: evaluation only — no records are automatically deleted or archived.**
+
+### Storage tiers
+
+| Tier | Condition | Action |
+|---|---|---|
+| Hot | Age ≤ `Retention:HotRetentionDays` | Full access; no action |
+| Warm | Past hot window; within full retention period | Candidate for archival |
+| Cold | Past full retention period | Eligible for archival + deletion (requires explicit workflow) |
+| Indefinite | `DefaultRetentionDays = 0` | Never purge |
+| LegalHold | Explicit hold (future) | Exempt from all enforcement |
+
+### Retention policy resolution
+
+Priority order: per-tenant override → per-category override → default. A value of `0` = indefinite at any level.
+
+### Configuration
+
+```json
+"Retention": {
+  "DefaultRetentionDays": 2555,
+  "HotRetentionDays": 365,
+  "CategoryOverrides": { "Security": 3650, "Debug": 90 },
+  "TenantOverrides": {},
+  "JobEnabled": false,
+  "JobCronUtc": "0 2 * * *",
+  "MaxDeletesPerRun": 10000,
+  "ArchiveBeforeDelete": false,
+  "DryRun": true,
+  "LegalHoldEnabled": false
+},
+"Archival": {
+  "Strategy": "NoOp",
+  "BatchSize": 10000,
+  "LocalOutputPath": "archive"
+}
+```
+
+### Activation checklist (before enabling real archival)
+
+- [ ] Implement and register `IArchivalProvider` (e.g. `LocalCopyArchivalProvider`, `S3ArchivalProvider`)
+- [ ] Set `Archival:Strategy` to a non-NoOp value
+- [ ] Set `Retention:ArchiveBeforeDelete=true`
+- [ ] Confirm integrity checkpoints cover the archival window
+- [ ] Set `Retention:DryRun=false` after validating in staging
+- [ ] Wire `RetentionPolicyJob` to a cron scheduler
+
+See [Docs/retention-and-archival.md](Docs/retention-and-archival.md) for the full operator reference.
+
+---
+
 ## Hash Chain Integrity
 
 Every persisted `AuditEventRecord` carries:

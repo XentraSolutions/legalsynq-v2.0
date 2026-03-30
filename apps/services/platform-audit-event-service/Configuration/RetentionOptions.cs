@@ -48,7 +48,54 @@ public sealed class RetentionOptions
 
     /// <summary>
     /// When true, expired records are archived before deletion.
-    /// Requires ExportOptions:Provider to be configured.
+    /// Requires <c>Archival:Strategy</c> to be set to a real provider (not None or NoOp).
     /// </summary>
     public bool ArchiveBeforeDelete { get; set; } = false;
+
+    // ── Tier thresholds ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Number of days from <c>RecordedAtUtc</c> during which a record is in the
+    /// Hot storage tier and receives full primary-store access guarantees.
+    ///
+    /// After this many days, the record transitions to the Warm tier and becomes
+    /// a candidate for archival to secondary storage.
+    ///
+    /// Set to 0 to disable the Hot/Warm distinction (all non-expired records are Hot).
+    /// Default: 365 (1 year).
+    /// </summary>
+    public int HotRetentionDays { get; set; } = 365;
+
+    // ── Safety controls ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When true, the retention job evaluates and logs the policy result
+    /// without archiving or deleting any records. This is the safe default
+    /// and should remain true until the archival pipeline is fully validated
+    /// in a production environment.
+    ///
+    /// Set to false only after confirming that:
+    ///   1. <c>ArchiveBeforeDelete=true</c> and the archival provider is healthy.
+    ///   2. Integrity checkpoints cover the archival window.
+    ///   3. Legal hold checks are wired.
+    /// </summary>
+    public bool DryRun { get; set; } = true;
+
+    // ── Legal hold (future) ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// When true, the retention service will check a record's legal hold status
+    /// before classifying it for archival or deletion.
+    ///
+    /// v1: this flag is reserved for future use. No per-record hold tracking
+    /// is implemented. Records are not classified as <see cref="Enums.StorageTier.LegalHold"/>
+    /// in v1 regardless of this setting.
+    ///
+    /// Production readiness for legal hold requires:
+    ///   - A <c>LegalHold</c> entity in the database (holdId, auditId, heldBy,
+    ///     heldAtUtc, releasedAtUtc, legalAuthority).
+    ///   - A pre-check in <c>IRetentionService.ComputeExpirationDate</c>.
+    ///   - A compliance workflow for hold creation and release (out of scope for v1).
+    /// </summary>
+    public bool LegalHoldEnabled { get; set; } = false;
 }

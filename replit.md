@@ -1715,6 +1715,73 @@ Added nullable `long? RecordCount` to track the number of records written. EF co
 
 ---
 
+## Platform Audit Service — Step 17: Retention and Archival Foundations ✅
+
+**11 new files, 7 files updated. 0 errors, 0 warnings.**
+
+### What was built
+
+**Storage tier model** (`StorageTier` enum): Hot / Warm / Cold / Indefinite / LegalHold — five tiers classify where a record sits in its lifecycle.
+
+**Retention policy engine** (`IRetentionService` / `RetentionService`): all methods read-only.
+- `ResolveRetentionDays(record)` — applies priority chain: per-tenant > per-category > default
+- `ComputeExpirationDate(record)` — `RecordedAtUtc + days`, or null for indefinite
+- `ClassifyTier(record)` — returns StorageTier based on record age vs. configured windows
+- `EvaluateAsync(request, ct)` — samples up to `SampleLimit` oldest records; returns tier counts, expired-by-category breakdown, oldest record timestamp, policy summary. Always dry-run in v1.
+- `BuildPolicySummary()` — human-readable policy string for logs and evaluation results
+
+**Archival provider abstraction** (`IArchivalProvider` → `NoOpArchivalProvider`): mirrors export provider pattern. Streams records to count them, logs what would be archived, writes nothing.
+- `ArchivalContext` — carries job metadata (jobId, window, tenantId, initiator)
+- `ArchivalResult` — structured result (recordsProcessed, archived, destination, success/error)
+- `ArchivalStrategy` enum — None / NoOp / LocalCopy / S3 / AzureBlob
+- `ArchivalOptions` config — all provider-specific keys pre-defined
+
+**Evaluation DTOs**: `RetentionEvaluationRequest` (tenantId, category, sampleLimit) + `RetentionEvaluationResult` (tier counts, expired-by-category, oldest record, policy summary, isDryRun)
+
+**Retention policy job** (`RetentionPolicyJob`): replaced placeholder with structured evaluation + Warning logs for Cold-tier records + forward guidance to activate archival.
+
+**Config changes**: `RetentionOptions` gains `HotRetentionDays` (365), `DryRun` (true), `LegalHoldEnabled` (false). New `ArchivalOptions` section with all provider keys. Both appsettings files updated.
+
+### Key design decisions
+
+**Evaluation-only (DryRun=true default)** — Audit record deletion cannot be undone. The safe default lets operators observe tier distributions in production before enabling deletion.
+
+**NoOpArchivalProvider** — Wires the full DI graph and validates tier classification without any storage risk. First step to validating the pipeline before activating a real backend.
+
+**Sample-based evaluation** — Queries the N oldest records (oldest-first, capped at `SampleLimit`). Focuses on the records most likely to be expired. `CountAsync` gives the live total without a full-table scan.
+
+**Legal hold as a documented future extension** — `LegalHold` tier and `LegalHoldEnabled` config key defined; no per-record hold tracking in v1. Implementation spec documented in Docs/retention-and-archival.md and analysis/step17_retention.md.
+
+### New files
+
+| File | Role |
+|---|---|
+| `Models/Enums/StorageTier.cs` | 5-tier storage classification enum |
+| `Models/Enums/ArchivalStrategy.cs` | Archival backend enum |
+| `Configuration/ArchivalOptions.cs` | `Archival:*` config class |
+| `Services/Archival/IArchivalProvider.cs` | Storage abstraction interface |
+| `Services/Archival/ArchivalContext.cs` | Job metadata carrier |
+| `Services/Archival/ArchivalResult.cs` | Archival operation result |
+| `Services/Archival/NoOpArchivalProvider.cs` | v1 no-op provider |
+| `Services/IRetentionService.cs` | Retention service contract |
+| `Services/RetentionService.cs` | Full evaluation logic |
+| `DTOs/Retention/RetentionEvaluationRequest.cs` | Evaluation input DTO |
+| `DTOs/Retention/RetentionEvaluationResult.cs` | Evaluation output DTO |
+| `Docs/retention-and-archival.md` | Operator reference |
+| `analysis/step17_retention.md` | Implementation analysis + production hardening backlog |
+
+### Startup log
+
+```
+[WRN] Retention:JobEnabled = false — retention policy job is inactive.
+      Set Retention:JobEnabled=true and configure a scheduler to activate.
+```
+
+### Build status after Step 17
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
 ## Control Center Admin Refresh ✅
 
 **Scope:** Full admin dashboard overhaul — infrastructure layer + new pages + sidebar badges.
