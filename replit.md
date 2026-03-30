@@ -1276,3 +1276,44 @@ When `Database:VerifyConnectionOnStartup=true` (default): runs `CanConnectAsync(
 
 ### Build status — Step 4
 - PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
+## Platform Audit/Event Service — Step 5 EF Core Mappings (2026-03-30)
+
+### Architecture change
+DbContext now uses `ApplyConfigurationsFromAssembly` — new entity configurations are auto-discovered from `Data/Configurations/`. The inline `OnModelCreating` block is eliminated; all config lives in separate `IEntityTypeConfiguration<T>` classes.
+
+### Configuration files (new)
+| File | Entity | Table |
+|---|---|---|
+| `AuditEventRecordConfiguration.cs` | AuditEventRecord | `AuditEventRecords` |
+| `AuditExportJobConfiguration.cs` | AuditExportJob | `AuditExportJobs` |
+| `IntegrityCheckpointConfiguration.cs` | IntegrityCheckpoint | `IntegrityCheckpoints` |
+| `IngestSourceRegistrationConfiguration.cs` | IngestSourceRegistration | `IngestSourceRegistrations` |
+| `LegacyAuditEventConfiguration.cs` | AuditEvent (legacy) | `AuditEvents` (unchanged) |
+
+### New DbSet properties on AuditEventDbContext
+`AuditEventRecords`, `AuditExportJobs`, `IntegrityCheckpoints`, `IngestSourceRegistrations`
+
+### Column type conventions
+- Surrogate PK: `bigint` AUTO_INCREMENT
+- Public Guid identifiers: `char(36)`, UNIQUE constraint
+- Enums: `tinyint` with `HasConversion<int>()` — stable int backing values, compact, range-comparable
+- DateTimeOffset: `datetime(6)` UTC — microsecond precision; Pomelo strips offset on write
+- JSON fields: `mediumtext` for BeforeJson/AfterJson (up to 16 MB); `text` for others
+- Bool: `tinyint(1)` (Pomelo default)
+
+### Index counts
+- AuditEventRecords: 16 indexes (13 required + 3 composite high-traffic patterns)
+- AuditExportJobs: 6 indexes
+- IntegrityCheckpoints: 4 indexes
+- IngestSourceRegistrations: 2 indexes
+
+### Key constraints
+- IdempotencyKey UNIQUE with NULLs allowed — MySQL 8 treats each NULL as distinct in UNIQUE index
+- (SourceSystem, SourceService) UNIQUE — NULLs allowed (NULL SourceService = "all services")
+- No HasDefaultValueSql on required audit fields — values must come from ingest pipeline
+
+### Build status — Step 5
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings

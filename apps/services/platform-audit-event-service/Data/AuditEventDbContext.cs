@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PlatformAuditEventService.Entities;
 using PlatformAuditEventService.Models;
 
 namespace PlatformAuditEventService.Data;
@@ -7,113 +8,56 @@ namespace PlatformAuditEventService.Data;
 /// EF Core DbContext for the Platform Audit/Event Service.
 ///
 /// Provider support:
-///   - InMemory  (dev/test, registered via UseInMemoryDatabase)
-///   - MySQL 8.x (production, registered via UseMySql / Pomelo)
+///   InMemory — development/test; registered via UseInMemoryDatabase.
+///   MySQL 8.x — production; registered via UseMySql (Pomelo 8).
 ///
 /// Schema design principles:
 ///   - Append-only: no UPDATE or DELETE operations are exposed by the service layer.
-///   - All string columns have explicit MaxLength mappings matching validator rules.
-///   - Composite and covering indexes tuned for the primary query patterns:
-///     (TenantId, OccurredAtUtc), (Source, EventType), (Category, Severity, Outcome).
-///   - Id column is stored as char(36) (GUID string) for portability across providers.
+///   - All entity type configurations are in separate IEntityTypeConfiguration classes
+///     under Data/Configurations/ and are discovered via ApplyConfigurationsFromAssembly.
+///   - Enum columns are stored as tinyint with int conversion (stable, compact, indexable).
+///   - DateTimeOffset fields are stored as datetime(6) UTC; Pomelo handles the conversion.
+///   - bigint AUTO_INCREMENT surrogate PKs for clustered index efficiency;
+///     public-facing Guid identifiers are stored in char(36) unique columns.
+///   - No navigation properties on entities — relationships are resolved at the
+///     application layer to keep the domain models persistence-agnostic.
+///
+/// Tables:
+///   AuditEvents              — legacy AuditEvent model (in-service use only)
+///   AuditEventRecords        — canonical rich audit event model
+///   AuditExportJobs          — async export job tracking
+///   IntegrityCheckpoints     — aggregate hash snapshots for tamper detection
+///   IngestSourceRegistrations — advisory source registry
 /// </summary>
 public sealed class AuditEventDbContext : DbContext
 {
     public AuditEventDbContext(DbContextOptions<AuditEventDbContext> options)
         : base(options) { }
 
+    // ── DbSets ────────────────────────────────────────────────────────────────
+
+    /// <summary>Legacy audit event records (backed by the old AuditEvent model).</summary>
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+
+    /// <summary>Canonical rich audit event records (backed by AuditEventRecord).</summary>
+    public DbSet<AuditEventRecord> AuditEventRecords => Set<AuditEventRecord>();
+
+    /// <summary>Async export job tracking.</summary>
+    public DbSet<AuditExportJob> AuditExportJobs => Set<AuditExportJob>();
+
+    /// <summary>Aggregate hash snapshots for integrity verification.</summary>
+    public DbSet<IntegrityCheckpoint> IntegrityCheckpoints => Set<IntegrityCheckpoint>();
+
+    /// <summary>Advisory registry of known ingest sources.</summary>
+    public DbSet<IngestSourceRegistration> IngestSourceRegistrations => Set<IngestSourceRegistration>();
+
+    // ── Model configuration ────────────────────────────────────────────────────
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<AuditEvent>(entity =>
-        {
-            entity.ToTable("AuditEvents");
-            entity.HasKey(e => e.Id);
-
-            // ── Core identity columns ────────────────────────────────────────
-            entity.Property(e => e.Id)
-                .IsRequired()
-                .HasColumnType("char(36)")
-                .ValueGeneratedNever();
-
-            // ── Required string columns ───────────────────────────────────────
-            entity.Property(e => e.Source)
-                .IsRequired()
-                .HasMaxLength(200);
-
-            entity.Property(e => e.EventType)
-                .IsRequired()
-                .HasMaxLength(200);
-
-            entity.Property(e => e.Category)
-                .IsRequired()
-                .HasMaxLength(100);
-
-            entity.Property(e => e.Severity)
-                .IsRequired()
-                .HasMaxLength(20)
-                .HasDefaultValue("INFO");
-
-            entity.Property(e => e.Description)
-                .IsRequired()
-                .HasMaxLength(2000);
-
-            entity.Property(e => e.Outcome)
-                .IsRequired()
-                .HasMaxLength(20)
-                .HasDefaultValue("SUCCESS");
-
-            // ── Optional columns ──────────────────────────────────────────────
-            entity.Property(e => e.TenantId).HasMaxLength(100);
-            entity.Property(e => e.ActorId).HasMaxLength(200);
-            entity.Property(e => e.ActorLabel).HasMaxLength(300);
-            entity.Property(e => e.TargetType).HasMaxLength(200);
-            entity.Property(e => e.TargetId).HasMaxLength(200);
-            entity.Property(e => e.IpAddress).HasMaxLength(45);
-            entity.Property(e => e.UserAgent).HasMaxLength(500);
-            entity.Property(e => e.CorrelationId).HasMaxLength(200);
-
-            // Metadata stored as JSON text (no JSON column type assumed for portability)
-            entity.Property(e => e.Metadata)
-                .HasColumnType("text");
-
-            // HMAC-SHA256 = 64 hex chars
-            entity.Property(e => e.IntegrityHash).HasMaxLength(64);
-
-            // ── Timestamps ────────────────────────────────────────────────────
-            entity.Property(e => e.OccurredAtUtc).IsRequired();
-            entity.Property(e => e.IngestedAtUtc).IsRequired();
-
-            // ── Indexes ───────────────────────────────────────────────────────
-
-            // Primary lookup: tenant + time range (most frequent query pattern)
-            entity.HasIndex(e => new { e.TenantId, e.OccurredAtUtc })
-                .HasDatabaseName("IX_AuditEvents_TenantId_OccurredAt");
-
-            // Event type lookups (source system feeds, per-event-type dashboards)
-            entity.HasIndex(e => new { e.Source, e.EventType })
-                .HasDatabaseName("IX_AuditEvents_Source_EventType");
-
-            // Category / severity / outcome filtering (security dashboards, reports)
-            entity.HasIndex(e => new { e.Category, e.Severity, e.Outcome })
-                .HasDatabaseName("IX_AuditEvents_Category_Severity_Outcome");
-
-            // Actor audit trail
-            entity.HasIndex(e => e.ActorId)
-                .HasDatabaseName("IX_AuditEvents_ActorId");
-
-            // Target resource lookup
-            entity.HasIndex(e => new { e.TargetType, e.TargetId })
-                .HasDatabaseName("IX_AuditEvents_TargetType_TargetId");
-
-            // Correlation / distributed trace
-            entity.HasIndex(e => e.CorrelationId)
-                .HasDatabaseName("IX_AuditEvents_CorrelationId");
-
-            // Global time-based ordering (retention job, export)
-            entity.HasIndex(e => e.IngestedAtUtc)
-                .HasDatabaseName("IX_AuditEvents_IngestedAt");
-        });
+        // Discover and apply all IEntityTypeConfiguration<T> classes in this assembly.
+        // Configurations live in Data/Configurations/ and are picked up automatically
+        // without any manual registration required here.
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(AuditEventDbContext).Assembly);
     }
 }
