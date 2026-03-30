@@ -10,8 +10,9 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<IdentityDb
     {
         var optionsBuilder = new DbContextOptionsBuilder<IdentityDbContext>();
 
-        const string connectionString =
-            "server=localhost;port=3306;database=identity_db;user=root;password=yourpassword";
+        var connectionString =
+            Environment.GetEnvironmentVariable("ConnectionStrings__IdentityDb")
+            ?? "server=localhost;port=3306;database=identity_db;user=root;password=yourpassword";
 
         optionsBuilder.UseMySql(
             connectionString,

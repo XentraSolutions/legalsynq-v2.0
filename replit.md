@@ -1063,3 +1063,46 @@ Analysis: `analysis/step6_final-convergence-and-relationship-activation.md`
 - Documents.Domain: ✅ 0 errors, 0 warnings
 - Documents.Infrastructure: ✅ 0 errors, 0 warnings
 - Documents.Api: ✅ 0 errors, 1 pre-existing warning (CS1998 in Program.cs — unrelated)
+
+---
+
+## DB Schema Repair — Platform Foundation Migrations (2026-03-30)
+
+### Root cause
+Migrations `20260330110001`–`20260330200005` (Identity) and `20260330110001` (CareConnect) had
+their IDs absent from `__EFMigrationsHistory` on the live RDS instance, so EF had never executed
+their DDL. As a result, 9 tables/columns were missing, breaking login and CareConnect startup.
+
+### Fix applied
+A one-shot C# repair program connected directly to both RDS databases and executed all migration
+SQL idempotently (CREATE TABLE IF NOT EXISTS, INFORMATION_SCHEMA-conditional ALTER/INDEX,
+INSERT IGNORE, DROP TABLE IF EXISTS). After the DDL was confirmed correct, all 9 identity migration
+IDs and 1 CareConnect migration ID were inserted into `__EFMigrationsHistory` to keep EF in sync.
+
+### Objects created / corrected
+**Identity DB:**
+- `OrganizationTypes` table + seed (5 rows)
+- `Organizations.OrganizationTypeId` column + index + backfill
+- `RelationshipTypes` table + seed (6 rows)
+- `OrganizationRelationships` table
+- `ProductRelationshipTypeRules` table + seed (4 rows)
+- `ProductOrganizationTypeRules` table + seed (7 rows)
+- `ScopedRoleAssignments` table — 8 GLOBAL assignments backfilled from legacy tables
+- `ProductRoles.EligibleOrgType` column dropped (Phase F retirement)
+- `UserRoleAssignments` + `UserRoles` tables dropped (Phase G)
+
+**CareConnect DB:**
+- `Providers.OrganizationId` column + index
+- `Facilities.OrganizationId` column + index
+- `Referrals.OrganizationRelationshipId` column + index
+- `Appointments.OrganizationRelationshipId` column + index
+
+### Post-repair service health
+- Gateway (5010) ✅ — Fund (5002) ✅ — Identity (5001) ✅ — CareConnect (5003) ✅
+- Phase G diagnostics: 8 active GLOBAL ScopedRoleAssignments across 8 users ✅
+- OrgType consistency: 3 active orgs, all consistent OrganizationTypeId ✅
+- Login flow: no more `Table 'identity_db.ScopedRoleAssignments' doesn't exist` errors ✅
+
+### Key file modified
+- `apps/services/identity/Identity.Api/DesignTimeDbContextFactory.cs` — reads
+  `ConnectionStrings__IdentityDb` env var instead of hardcoded localhost fallback
