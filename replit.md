@@ -1159,3 +1159,44 @@ Microsoft.EntityFrameworkCore 8.0.0 · Microsoft.EntityFrameworkCore.InMemory 8.
 
 ### Build status — Step 1
 - PlatformAuditEventService: ✅ 0 errors, 0 warnings
+
+---
+
+## Platform Audit/Event Service — Step 2 Configuration & DB Bootstrap (2026-03-30)
+
+### New configuration classes (`Configuration/`)
+| Class | Section key | Purpose |
+|---|---|---|
+| `AuditServiceOptions` (updated) | `AuditService` | ServiceName, Version, ExposeSwagger, AllowedCorsOrigins |
+| `DatabaseOptions` (new) | `Database` | Provider (InMemory\|MySQL), ConnectionString, pool, timeouts, startup probe/migration flags |
+| `IntegrityOptions` (new) | `Integrity` | HmacKeyBase64 (moved from AuditServiceOptions), Algorithm, VerifyOnRead |
+| `IngestAuthOptions` (new) | `IngestAuth` | Mode (None\|ApiKey\|Bearer), ApiKey, AllowedSources |
+| `QueryAuthOptions` (new) | `QueryAuth` | Mode, PlatformAdminRoles, TenantAdminRoles, EnforceTenantScope |
+| `RetentionOptions` (new) | `Retention` | DefaultRetentionDays, CategoryOverrides, JobEnabled, cron |
+| `ExportOptions` (new) | `Export` | Provider (None\|Local\|S3\|AzureBlob), formats, file settings |
+
+### New data / repository files
+- `Data/DesignTimeDbContextFactory.cs` — reads `ConnectionStrings__AuditEventDb` for `dotnet ef` CLI
+- `Repositories/EfAuditEventRepository.cs` — Pomelo/MySQL `IDbContextFactory`-backed append-only repository
+
+### Key `AuditEventDbContext` additions
+- `UserAgent` varchar(500), `Metadata` text columns added
+- 7 named indexes: tenant+time, source+eventType, category+severity+outcome, actorId, targetType+targetId, correlationId, ingestedAt
+
+### Provider switching in Program.cs
+```
+Database:Provider=InMemory  →  UseInMemoryDatabase + InMemoryAuditEventRepository (Singleton)
+Database:Provider=MySQL     →  UseMySql (Pomelo 8.0.0) + EfAuditEventRepository (Scoped)
+                               + IDbContextFactory<AuditEventDbContext>
+```
+
+### Startup DB probe (non-fatal)
+When `Database:VerifyConnectionOnStartup=true` (default): runs `CanConnectAsync()` with
+`StartupProbeTimeoutSeconds` timeout; logs Warning on failure but does NOT crash the process.
+
+### NuGet packages added
+- `Pomelo.EntityFrameworkCore.MySql` 8.0.0
+- `Microsoft.EntityFrameworkCore.Design` 8.0.0 (PrivateAssets=all)
+
+### Build status — Step 2
+- PlatformAuditEventService: ✅ 0 errors, 0 warnings (Release build)

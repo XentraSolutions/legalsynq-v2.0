@@ -1,26 +1,42 @@
 namespace PlatformAuditEventService.Configuration;
 
 /// <summary>
-/// Strongly-typed configuration options for the Platform Audit/Event Service.
-/// Bound from the "AuditService" section of appsettings.
+/// Top-level service identity and behavior options.
+/// Bound from "AuditService" section in appsettings.
+/// Environment variable override prefix: AuditService__
+///
+/// This class covers service-level settings only.
+/// See DatabaseOptions, IntegrityOptions, IngestAuthOptions, QueryAuthOptions,
+/// RetentionOptions, and ExportOptions for domain-specific configuration areas.
 /// </summary>
 public sealed class AuditServiceOptions
 {
     public const string SectionName = "AuditService";
 
-    /// <summary>
-    /// Base64-encoded 256-bit HMAC secret for computing tamper-evident integrity hashes.
-    /// Must be set to a cryptographically random value in production.
-    /// </summary>
-    public string? IntegrityHmacKeyBase64 { get; set; }
+    /// <summary>Service display name included in health responses and logs.</summary>
+    public string ServiceName { get; set; } = "Platform Audit/Event Service";
+
+    /// <summary>Service version string.</summary>
+    public string Version { get; set; } = "1.0.0";
 
     /// <summary>
-    /// Persistence provider: "InMemory" (default, dev only) | "SqlServer" | "PostgreSQL" | "CosmosDb".
+    /// Environment tag surfaced in health checks and Swagger info.
+    /// Defaults to ASPNETCORE_ENVIRONMENT when not explicitly set.
     /// </summary>
-    public string PersistenceProvider { get; set; } = "InMemory";
+    public string? EnvironmentTag { get; set; }
 
     /// <summary>
-    /// Maximum allowed PageSize on query requests.
+    /// When true, Swagger UI is accessible regardless of environment.
+    /// Defaults to false — UI is only shown in Development unless overridden.
+    /// NEVER set to true in public-facing production deployments.
+    /// Environment variable: AuditService__ExposeSwagger
     /// </summary>
-    public int MaxPageSize { get; set; } = 500;
+    public bool ExposeSwagger { get; set; } = false;
+
+    /// <summary>
+    /// Allowed CORS origins. Empty = deny all cross-origin requests.
+    /// Use ["*"] in development only — restrict to known origins in production.
+    /// Environment variable: AuditService__AllowedCorsOrigins__0, __1, ...
+    /// </summary>
+    public List<string> AllowedCorsOrigins { get; set; } = [];
 }
