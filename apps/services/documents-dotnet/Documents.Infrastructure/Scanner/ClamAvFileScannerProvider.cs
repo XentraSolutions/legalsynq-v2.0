@@ -12,6 +12,27 @@ public sealed class ClamAvOptions
     public int    Port        { get; set; } = 3310;
     public int    TimeoutMs   { get; set; } = 30_000;
     public int    ChunkSizeBytes { get; set; } = 2 * 1024 * 1024; // 2 MB
+
+    public ClamAvCircuitBreakerOptions CircuitBreaker { get; set; } = new();
+}
+
+/// <summary>
+/// Configuration for the Polly advanced circuit breaker that wraps <see cref="ClamAvFileScannerProvider"/>.
+/// Binds from Scanner:ClamAv:CircuitBreaker in appsettings.
+/// </summary>
+public sealed class ClamAvCircuitBreakerOptions
+{
+    /// <summary>Number of failures (within the sampling window) required before opening the circuit.</summary>
+    public int FailureThreshold        { get; set; } = 5;
+
+    /// <summary>How long (seconds) the circuit stays OPEN before entering HALF-OPEN.</summary>
+    public int BreakDurationSeconds    { get; set; } = 30;
+
+    /// <summary>Rolling window (seconds) over which the failure rate is measured.</summary>
+    public int SamplingDurationSeconds { get; set; } = 60;
+
+    /// <summary>Minimum number of calls within the sampling window before the circuit can trip.</summary>
+    public int MinimumThroughput       { get; set; } = 5;
 }
 
 /// <summary>

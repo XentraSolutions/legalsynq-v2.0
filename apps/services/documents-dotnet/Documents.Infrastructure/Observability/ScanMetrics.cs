@@ -64,4 +64,21 @@ public static class ScanMetrics
     public static readonly Gauge ClamAvHealthy = Metrics.CreateGauge(
         "docs_clamav_healthy",
         "1 if ClamAV daemon is reachable and responding, 0 otherwise.");
+
+    // ── Circuit breaker ───────────────────────────────────────────────────────
+
+    /// <summary>Current circuit state: 0=closed (normal), 1=open (failing), 2=half-open (probing).</summary>
+    public static readonly Gauge ClamAvCircuitState = Metrics.CreateGauge(
+        "docs_clamav_circuit_state",
+        "Current ClamAV circuit breaker state: 0=closed, 1=open, 2=half-open.");
+
+    /// <summary>Total number of times the circuit has transitioned to OPEN.</summary>
+    public static readonly Counter ClamAvCircuitOpenTotal = Metrics.CreateCounter(
+        "docs_clamav_circuit_open_total",
+        "Total times the ClamAV circuit breaker has opened due to repeated failures.");
+
+    /// <summary>Total scan calls that were short-circuited because the circuit was OPEN.</summary>
+    public static readonly Counter ClamAvCircuitShortCircuitTotal = Metrics.CreateCounter(
+        "docs_clamav_circuit_short_circuit_total",
+        "Total ClamAV scan calls short-circuited by the open circuit breaker.");
 }

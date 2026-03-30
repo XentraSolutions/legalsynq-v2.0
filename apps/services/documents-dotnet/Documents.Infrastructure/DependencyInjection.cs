@@ -48,11 +48,20 @@ public static class DependencyInjection
         services.AddSingleton<NullScannerProvider>();
         services.AddSingleton<MockScannerProvider>();
         services.AddSingleton<ClamAvFileScannerProvider>();
-        services.AddSingleton<IFileScannerProvider>(sp => scannerProvider switch
+        services.AddSingleton<IFileScannerProvider>(sp =>
         {
-            "clamav" => sp.GetRequiredService<ClamAvFileScannerProvider>(),
-            "mock"   => sp.GetRequiredService<MockScannerProvider>(),
-            _        => sp.GetRequiredService<NullScannerProvider>(),
+            if (!scannerProvider.Equals("clamav", StringComparison.OrdinalIgnoreCase))
+            {
+                return scannerProvider.Equals("mock", StringComparison.OrdinalIgnoreCase)
+                    ? sp.GetRequiredService<MockScannerProvider>()
+                    : (IFileScannerProvider)sp.GetRequiredService<NullScannerProvider>();
+            }
+
+            // Wrap ClamAV with the circuit breaker (infrastructure layer only, no leakage into controllers)
+            var inner      = sp.GetRequiredService<ClamAvFileScannerProvider>();
+            var clamavOpts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ClamAvOptions>>().Value;
+            var cbLog      = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CircuitBreakerScannerProvider>>();
+            return new CircuitBreakerScannerProvider(inner, clamavOpts.CircuitBreaker, cbLog);
         });
 
         // ── Scan worker options ───────────────────────────────────────────────
