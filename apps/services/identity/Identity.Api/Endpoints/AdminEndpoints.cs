@@ -855,33 +855,17 @@ public static class AdminEndpoints
             ? Math.Round((double)withDbRuleOnly / allActiveRoles.Count * 100, 1)
             : 100.0;
 
-        // ── 2. ScopedRoleAssignment dual-write adoption ───────────────────────
+        // ── 2. ScopedRoleAssignment adoption — Phase G complete ──────────────
 
-        // Users with at least one UserRole record (legacy write path — maintained for compat)
-        var usersWithLegacyRole = await db.UserRoles
-            .Select(ur => ur.UserId)
-            .Distinct()
-            .CountAsync();
-
-        // Users with at least one active GLOBAL ScopedRoleAssignment (primary path)
+        // Phase G: UserRoles table dropped. Count authoritative scoped assignments.
         var usersWithScopedRole = await db.ScopedRoleAssignments
-            .Where(s => s.IsActive && s.ScopeType == "GLOBAL")
+            .Where(s => s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
             .Select(s => s.UserId)
             .Distinct()
             .CountAsync();
 
-        // Gap = users with legacy UserRole but no GLOBAL ScopedRoleAssignment.
-        // Should be 0 after migration 20260330200002_BackfillScopedRoleAssignmentsFromUserRoles.
-        var usersWithGapCount = await db.UserRoles
-            .Select(ur => ur.UserId)
-            .Distinct()
-            .Where(uid => !db.ScopedRoleAssignments
-                .Any(s => s.UserId == uid && s.ScopeType == "GLOBAL" && s.IsActive))
-            .CountAsync();
-
-        double dualWriteCoverage = usersWithLegacyRole > 0
-            ? Math.Round((double)usersWithScopedRole / usersWithLegacyRole * 100, 1)
-            : 100.0;
+        var totalScopedAssignments = await db.ScopedRoleAssignments
+            .CountAsync(s => s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global);
 
         return Results.Ok(new
         {
@@ -891,19 +875,19 @@ public static class AdminEndpoints
             {
                 totalActiveProductRoles  = allActiveRoles.Count,
                 withDbRuleOnly,
-                withBothPaths,           // Phase F: always 0 — EligibleOrgType column dropped
-                legacyStringOnly,        // Phase F: always 0 — EligibleOrgType column dropped
+                withBothPaths,           // Phase F+G: always 0 — EligibleOrgType column dropped
+                legacyStringOnly,        // Phase F+G: always 0 — EligibleOrgType column dropped
                 unrestricted,
                 dbCoveragePct            = eligibilityCoverage,
-                uncoveredRoles           = Array.Empty<object>(), // Phase F: always empty
             },
 
             roleAssignments = new
             {
-                usersWithLegacyRoles     = usersWithLegacyRole,
-                usersWithScopedRoles     = usersWithScopedRole,
-                usersWithGapCount,       // users with UserRole but no ScopedRoleAssignment
-                dualWriteCoveragePct     = dualWriteCoverage,
+                usersWithScopedRoles        = usersWithScopedRole,
+                totalActiveScopedAssignments = totalScopedAssignments,
+                // Phase G: UserRoles table retired. Gap metric no longer applicable.
+                userRolesRetired            = true,
+                dualWriteCoveragePct        = 100.0,
             },
         });
     }
@@ -915,8 +899,8 @@ public static class AdminEndpoints
     /// <summary>
     /// POST /api/admin/users/{id}/roles
     ///
-    /// Assigns a role to a user.  Dual-writes to both the legacy UserRoles join
-    /// table (backward-compat) and the modern ScopedRoleAssignments table (primary).
+    /// Assigns a role to a user.  Writes a GLOBAL ScopedRoleAssignment.
+    /// Phase G: UserRoles table dropped — ScopedRoleAssignments is the sole store.
     ///
     /// Body: { "roleId": "guid" }
     ///
@@ -944,13 +928,7 @@ public static class AdminEndpoints
 
         var now = DateTime.UtcNow;
 
-        // TODO [Phase G — UserRoles Retirement]: Remove this dual-write once ScopedRoleAssignment
-        //   coverage is 100% on all environments and the dual-write period ends.
-        //   At that point, only the ScopedRoleAssignment insert below is needed.
-        var userRole = UserRole.Create(id, body.RoleId);
-        db.UserRoles.Add(userRole);
-
-        // Dual-write 2: ScopedRoleAssignment (primary, Phase 4+)
+        // Phase G: single write — ScopedRoleAssignment only. UserRoles table dropped.
         var sra = ScopedRoleAssignment.Create(
             userId:           id,
             roleId:           body.RoleId,
@@ -976,10 +954,9 @@ public static class AdminEndpoints
     /// <summary>
     /// DELETE /api/admin/users/{id}/roles/{roleId}
     ///
-    /// Revokes a role from a user.  Deactivates the ScopedRoleAssignment and
-    /// removes the UserRoles record (dual-write teardown).
+    /// Revokes a role from a user.  Deactivates the GLOBAL ScopedRoleAssignment.
     ///
-    /// Returns 204 No Content on success, 404 if user, role, or assignment not found.
+    /// Returns 204 No Content on success, 404 if user or assignment not found.
     /// </summary>
     private static async Task<IResult> RevokeRole(
         Guid              id,
@@ -989,23 +966,14 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync(id);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
-        // TODO [Phase G — UserRoles Retirement]: Remove this UserRoles teardown once
-        //   the dual-write period ends. Only the ScopedRoleAssignment deactivation below
-        //   will be needed after the UserRoles table is retired.
-        var userRole = await db.UserRoles
-            .FirstOrDefaultAsync(ur => ur.UserId == id && ur.RoleId == roleId);
-        if (userRole is not null)
-            db.UserRoles.Remove(userRole);
-
-        // Primary revocation: deactivate the GLOBAL ScopedRoleAssignment.
+        // Phase G: deactivate the GLOBAL ScopedRoleAssignment (sole authoritative record).
         var sra = await db.ScopedRoleAssignments
             .FirstOrDefaultAsync(s => s.UserId == id && s.RoleId == roleId
                                    && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global && s.IsActive);
-        if (sra is not null)
-            sra.Deactivate();
-
-        if (userRole is null && sra is null)
+        if (sra is null)
             return Results.NotFound(new { error = $"Role '{roleId}' is not assigned to user '{id}'." });
+
+        sra.Deactivate();
 
         await db.SaveChangesAsync();
         return Results.NoContent();

@@ -70,10 +70,9 @@ if (app.Environment.IsDevelopment())
     }
 }
 
-// ── Startup diagnostic: Phase F retirement status ────────────────────────────
-// Phase F COMPLETE: EligibleOrgType column dropped (migration 20260330200003).
-// This diagnostic now verifies OrgTypeRule coverage and ScopedRoleAssignment
-// dual-write gap rather than the legacy EligibleOrgType field.
+// ── Startup diagnostic: Phase G authorization status ─────────────────────────
+// Phase G COMPLETE: UserRoles + UserRoleAssignments tables dropped.
+// Diagnostics verify OrgTypeRule coverage and ScopedRoleAssignment counts.
 try
 {
     using var scope = app.Services.CreateScope();
@@ -95,36 +94,28 @@ try
     }
     else
     {
+        var totalActive = await db.Set<Identity.Domain.ProductRole>().CountAsync(pr => pr.IsActive);
         app.Logger.LogInformation(
-            "Phase F eligibility check passed — all {Count} active ProductRole(s) " +
-            "with OrgTypeRule coverage are accounted for.",
-            await db.Set<Identity.Domain.ProductRole>().Where(pr => pr.IsActive).CountAsync());
+            "Phase G eligibility check passed — {Count} active ProductRole(s), all OrgTypeRule-covered.",
+            totalActive);
     }
 
-    // 2. Verify ScopedRoleAssignment dual-write gap is closed.
-    var roleGap = await db.UserRoles
-        .Where(ur => !db.ScopedRoleAssignments
-            .Any(s => s.UserId == ur.UserId && s.RoleId == ur.RoleId && s.ScopeType == "GLOBAL" && s.IsActive))
+    // 2. Log ScopedRoleAssignment totals (Phase G: sole authoritative role source).
+    var scopedTotal = await db.ScopedRoleAssignments
+        .CountAsync(s => s.IsActive && s.ScopeType == "GLOBAL");
+    var scopedUsers = await db.ScopedRoleAssignments
+        .Where(s => s.IsActive && s.ScopeType == "GLOBAL")
+        .Select(s => s.UserId)
+        .Distinct()
         .CountAsync();
-
-    if (roleGap > 0)
-    {
-        app.Logger.LogWarning(
-            "ScopedRoleAssignment gap: {Count} UserRole record(s) have no matching GLOBAL " +
-            "ScopedRoleAssignment. Run migration 20260330200002 to close the gap.",
-            roleGap);
-    }
-    else
-    {
-        app.Logger.LogInformation(
-            "Phase F role-assignment check passed — all UserRole records have " +
-            "matching GLOBAL ScopedRoleAssignments.");
-    }
+    app.Logger.LogInformation(
+        "Phase G role check: {Assignments} active GLOBAL ScopedRoleAssignment(s) across {Users} user(s).",
+        scopedTotal, scopedUsers);
 }
 catch (Exception ex)
 {
     app.Logger.LogWarning(ex,
-        "Phase F startup diagnostic skipped — could not query the database at startup.");
+        "Phase G startup diagnostic skipped — could not query the database at startup.");
 }
 
 // ── Middleware pipeline ───────────────────────────────────────────────────

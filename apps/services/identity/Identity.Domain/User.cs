@@ -13,11 +13,9 @@ public class User
     public DateTime UpdatedAtUtc { get; private set; }
 
     public Tenant Tenant { get; private set; } = null!;
-    public ICollection<UserRole> UserRoles { get; private set; } = [];
     public ICollection<UserOrganizationMembership> OrganizationMemberships { get; private set; } = [];
-    public ICollection<UserRoleAssignment> RoleAssignments { get; private set; } = [];
 
-    // Phase 4: scoped role assignments (replaces UserRoleAssignment as primary source)
+    // Phase 4+: scoped role assignments — sole authoritative role source (Phase G).
     public ICollection<ScopedRoleAssignment> ScopedRoleAssignments { get; private set; } = [];
 
     private User() { }

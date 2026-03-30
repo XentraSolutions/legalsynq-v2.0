@@ -22,7 +22,6 @@ public class Organization
     public ICollection<OrganizationDomain> Domains { get; private set; } = [];
     public ICollection<OrganizationProduct> OrganizationProducts { get; private set; } = [];
     public ICollection<UserOrganizationMembership> Memberships { get; private set; } = [];
-    public ICollection<UserRoleAssignment> RoleAssignments { get; private set; } = [];
     public ICollection<OrganizationRelationship> OutgoingRelationships { get; private set; } = [];
     public ICollection<OrganizationRelationship> IncomingRelationships { get; private set; } = [];
 

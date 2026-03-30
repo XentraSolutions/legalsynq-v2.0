@@ -16,15 +16,9 @@ public class UserRepository : IUserRepository
 
     public Task<User?> GetByIdWithRolesAsync(Guid id, CancellationToken ct = default) =>
         _db.Users
-            // Step 6 Phase B: ScopedRoleAssignments (GLOBAL) is now the primary role source.
-            // UserRoles kept for fallback until all environments run migration 20260330200002.
+            // Phase G: ScopedRoleAssignments is the sole authoritative role source.
             .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive))
                 .ThenInclude(s => s.Role)
-            // Fallback source: legacy UserRoles.
-            // TODO [Phase G — UserRoles Retirement]: Remove this Include once ScopedRoleAssignment
-            //   coverage is confirmed at 100% on all environments and the dual-write period ends.
-            .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
             .FirstOrDefaultAsync(u => u.Id == id, ct);
 
     public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default) =>
@@ -35,13 +29,9 @@ public class UserRepository : IUserRepository
 
     public Task<List<User>> GetAllWithRolesAsync(CancellationToken ct = default) =>
         _db.Users
-            // Step 6 Phase B: load ScopedRoleAssignments as primary source.
+            // Phase G: ScopedRoleAssignments is the sole authoritative role source.
             .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive))
                 .ThenInclude(s => s.Role)
-            // TODO [Phase G — UserRoles Retirement]: Remove once ScopedRoleAssignment
-            //   coverage is confirmed 100% on all environments.
-            .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
             .OrderBy(u => u.LastName)
             .ThenBy(u => u.FirstName)
             .ToListAsync(ct);
@@ -52,17 +42,11 @@ public class UserRepository : IUserRepository
 
         foreach (var roleId in roleIds)
         {
-            // TODO [Phase G — UserRoles Retirement]: Remove this UserRoles write once all environments
-            //   have run migration 20260330200002 and ScopedRoleAssignment coverage is 100%.
-            //   After removal: only the ScopedRoleAssignment insert below is needed.
-            await _db.UserRoles.AddAsync(UserRole.Create(user.Id, roleId), ct);
-
-            // Phase 4: dual-write — also create a GLOBAL-scoped ScopedRoleAssignment for every
-            // role so the modern table is kept in sync from the first creation.
-            // This is additive; both records co-exist during the incremental migration period.
+            // Phase G: single write — ScopedRoleAssignment only.
+            // UserRoles table dropped by migration 20260330200004.
             var scoped = ScopedRoleAssignment.Create(
-                userId:  user.Id,
-                roleId:  roleId,
+                userId:    user.Id,
+                roleId:    roleId,
                 scopeType: ScopedRoleAssignment.ScopeTypes.Global);
 
             await _db.ScopedRoleAssignments.AddAsync(scoped, ct);

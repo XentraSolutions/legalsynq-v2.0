@@ -357,33 +357,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.ToTable("UserOrganizationMemberships", (string)null);
                 });
 
-            // ── UserRole ─────────────────────────────────────────────────────
-            modelBuilder.Entity("Identity.Domain.UserRole", b =>
-                {
-                    b.Property<Guid>("UserId").HasColumnType("char(36)");
-                    b.Property<Guid>("RoleId").HasColumnType("char(36)");
-                    b.Property<DateTime>("AssignedAtUtc").HasColumnType("datetime(6)");
-                    b.HasKey("UserId", "RoleId");
-                    b.HasIndex("RoleId");
-                    b.ToTable("UserRoles", (string)null);
-                });
-
-            // ── UserRoleAssignment ────────────────────────────────────────────
-            modelBuilder.Entity("Identity.Domain.UserRoleAssignment", b =>
-                {
-                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("char(36)");
-                    b.Property<Guid?>("AssignedByUserId").HasColumnType("char(36)");
-                    b.Property<DateTime>("AssignedAtUtc").HasColumnType("datetime(6)");
-                    b.Property<Guid?>("OrganizationId").HasColumnType("char(36)");
-                    b.Property<Guid>("RoleId").HasColumnType("char(36)");
-                    b.Property<Guid>("UserId").HasColumnType("char(36)");
-                    b.HasKey("Id");
-                    b.HasIndex("OrganizationId");
-                    b.HasIndex("RoleId");
-                    b.HasIndex("UserId", "RoleId", "OrganizationId").IsUnique();
-                    b.ToTable("UserRoleAssignments", (string)null);
-                });
-
             // ── Relationships ─────────────────────────────────────────────────
 
             modelBuilder.Entity("Identity.Domain.Capability", b =>
@@ -520,43 +493,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Identity.Domain.UserRole", b =>
-                {
-                    b.HasOne("Identity.Domain.Role", "Role")
-                        .WithMany("UserRoles")
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                    b.HasOne("Identity.Domain.User", "User")
-                        .WithMany("UserRoles")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                    b.Navigation("Role");
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Identity.Domain.UserRoleAssignment", b =>
-                {
-                    b.HasOne("Identity.Domain.Organization", "Organization")
-                        .WithMany("RoleAssignments")
-                        .HasForeignKey("OrganizationId")
-                        .OnDelete(DeleteBehavior.SetNull);
-                    b.HasOne("Identity.Domain.Role", "Role")
-                        .WithMany("RoleAssignments")
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                    b.HasOne("Identity.Domain.User", "User")
-                        .WithMany("RoleAssignments")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                    b.Navigation("Organization");
-                    b.Navigation("Role");
-                    b.Navigation("User");
-                });
-
             // ── Navigations ───────────────────────────────────────────────────
 
             modelBuilder.Entity("Identity.Domain.Capability", b => { b.Navigation("RoleCapabilities"); });
@@ -566,7 +502,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Navigation("Domains");
                     b.Navigation("Memberships");
                     b.Navigation("OrganizationProducts");
-                    b.Navigation("RoleAssignments");
                 });
 
             modelBuilder.Entity("Identity.Domain.Product", b =>
@@ -581,8 +516,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Identity.Domain.Role", b =>
                 {
-                    b.Navigation("RoleAssignments");
-                    b.Navigation("UserRoles");
+                    b.Navigation("ScopedRoleAssignments");
                 });
 
             modelBuilder.Entity("Identity.Domain.Tenant", b =>
@@ -596,8 +530,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Identity.Domain.User", b =>
                 {
                     b.Navigation("OrganizationMemberships");
-                    b.Navigation("RoleAssignments");
-                    b.Navigation("UserRoles");
+                    b.Navigation("ScopedRoleAssignments");
                 });
 #pragma warning restore 612, 618
         }

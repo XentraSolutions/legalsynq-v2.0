@@ -46,31 +46,12 @@ public class AuthService : IAuthService
         var userWithRoles = await _userRepository.GetByIdWithRolesAsync(user.Id, ct)
             ?? throw new UnauthorizedAccessException();
 
-        // Step 6 Phase B: ScopedRoleAssignments (GLOBAL) is now the primary role source.
-        // UserRoles is the fallback during the dual-write window; it will be removed
-        // once all environments have run migration 20260330200002.
-        var scopedGlobalRoles = userWithRoles.ScopedRoleAssignments
+        // Phase G: ScopedRoleAssignments (GLOBAL) is the sole authoritative role source.
+        // UserRoles table has been dropped (migration 20260330200004).
+        var roleNames = userWithRoles.ScopedRoleAssignments
             .Where(s => s.IsActive && s.ScopeType == Domain.ScopedRoleAssignment.ScopeTypes.Global)
             .Select(s => s.Role.Name)
             .ToList();
-
-        List<string> roleNames;
-        if (scopedGlobalRoles.Count > 0)
-        {
-            roleNames = scopedGlobalRoles;
-        }
-        else
-        {
-            // Fallback: UserRoles legacy table.  Only reached for users who existed
-            // before Step 4 dual-write AND were not covered by the backfill migration.
-            roleNames = userWithRoles.UserRoles.Select(ur => ur.Role.Name).ToList();
-            if (roleNames.Count > 0)
-                _logger.LogWarning(
-                    "User {UserId} has no active ScopedRoleAssignments; " +
-                    "fell back to legacy UserRoles. " +
-                    "Ensure migration 20260330200002 has run on this environment.",
-                    user.Id);
-        }
 
         // Load org membership and compute product roles
         var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);

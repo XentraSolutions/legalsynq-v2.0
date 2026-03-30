@@ -829,10 +829,40 @@ Analysis: `analysis/step6_final-convergence-and-relationship-activation.md`
 - Confirmed **already complete**: all list pages (org types, relationship types, org relationships, product rules), API client methods, types, and routes already wired. No code changes required.
 
 ### Phase F — UserRoles retirement preparation
-- All UserRoles write paths now carry `// TODO [Phase G — UserRoles Retirement]` markers: `UserRepository.AddAsync`, `AdminEndpoints.AssignRole`, `AdminEndpoints.RevokeRole`
+- All UserRoles write paths were marked `// TODO [Phase G — UserRoles Retirement]`: `UserRepository.AddAsync`, `AdminEndpoints.AssignRole`, `AdminEndpoints.RevokeRole`
 - Full removal plan documented in analysis report (checklist of 14 items)
+- All TODO markers resolved in Phase G (Step 7)
 
 ### Build status after Step 6
 - Identity.Api: ✅ 0 errors, 0 warnings
 - CareConnect.Api: ✅ 0 errors (1 pre-existing warning unrelated to Step 6)
 - control-center TypeScript: ✅ 0 errors
+
+---
+
+## Step 7 — Phase G: UserRoles & UserRoleAssignment Table Retirement ✅
+
+**Migration:** `20260330200004_PhaseG_DropUserRolesAndUserRoleAssignments`
+
+### Completed actions
+- **Deleted domain entities:** `UserRole.cs`, `UserRoleAssignment.cs`
+- **Deleted EF configs:** `UserRoleConfiguration.cs`, `UserRoleAssignmentConfiguration.cs`
+- **`User.cs` / `Role.cs` / `Organization.cs`:** Removed all `UserRoles` and `RoleAssignments` navigation collections
+- **`IdentityDbContext.cs`:** Removed `UserRoles` + `UserRoleAssignments` DbSets and `OnModelCreating` registrations
+- **`UserRepository.cs`:** Single `ScopedRoleAssignment` write in `AddAsync` (dual-write removed)
+- **`AuthService.cs`:** Removed `UserRoles` fallback; sole role source is `ScopedRoleAssignments`
+- **`UserService.ToResponse`:** Roles from `ScopedRoleAssignments` (GLOBAL, IsActive) — not `UserRoles`
+- **`AdminEndpoints.AssignRole`:** Single SRA write only
+- **`AdminEndpoints.RevokeRole`:** SRA deactivate only — no `UserRoles` teardown
+- **`AdminEndpoints.GetLegacyCoverage`:** Phase G response shape; `userRolesRetired: true`, `dualWriteCoveragePct: 100.0`
+- **`Program.cs`:** Startup diagnostic queries SRA counts; no `UserRoles` gap check
+- **Model snapshot:** Entity, relationship, and navigation blocks for `UserRole` + `UserRoleAssignment` removed
+- **New migration `200004`:** `DROP TABLE UserRoleAssignments; DROP TABLE UserRoles;`
+
+### Build status after Step 7
+- Identity.Api: ✅ 0 errors (verified with `dotnet build`)
+
+### Phase H candidates (future)
+- Drop `Organization.OrgType` string column (superseded by `OrganizationTypeId` FK + `OrgTypeMapper`)
+- Derive JWT `org_type` claim from `OrgTypeMapper(org.OrganizationTypeId)` instead of raw string
+- Update Control Center UI for Phase G `GetLegacyCoverage` response shape

@@ -7,12 +7,10 @@ public class IdentityDbContext : DbContext
 {
     public IdentityDbContext(DbContextOptions<IdentityDbContext> options) : base(options) { }
 
-    // Existing
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantDomain> TenantDomains => Set<TenantDomain>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Role> Roles => Set<Role>();
-    public DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<TenantProduct> TenantProducts => Set<TenantProduct>();
 
@@ -28,12 +26,11 @@ public class IdentityDbContext : DbContext
 
     // User organization membership
     public DbSet<UserOrganizationMembership> UserOrganizationMemberships => Set<UserOrganizationMembership>();
-    public DbSet<UserRoleAssignment> UserRoleAssignments => Set<UserRoleAssignment>();
 
     // Audit
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
-    // Platform Phase 1-4: org type catalog, relationship graph, scoped access
+    // Platform Phase 1–4 (authoritative models)
     public DbSet<OrganizationType>              OrganizationTypes              => Set<OrganizationType>();
     public DbSet<RelationshipType>              RelationshipTypes              => Set<RelationshipType>();
     public DbSet<OrganizationRelationship>      OrganizationRelationships      => Set<OrganizationRelationship>();

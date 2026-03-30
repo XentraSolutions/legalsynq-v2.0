@@ -65,5 +65,8 @@ public class UserService : IUserService
         user.FirstName,
         user.LastName,
         user.IsActive,
-        user.UserRoles.Select(ur => ur.Role.Name).ToList());
+        user.ScopedRoleAssignments
+            .Where(s => s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
+            .Select(s => s.Role.Name)
+            .ToList());
 }
