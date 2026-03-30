@@ -1,3 +1,4 @@
+using Identity.Domain;
 using Identity.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -819,11 +820,12 @@ public static class AdminEndpoints
             .ToListAsync();
 
         // ProductRole IDs that have at least one active OrgTypeRule
-        var rolesWithDbRules = await db.ProductOrganizationTypeRules
+        var rolesWithDbRuleList = await db.ProductOrganizationTypeRules
             .Where(r => r.IsActive)
             .Select(r => r.ProductRoleId)
             .Distinct()
-            .ToHashSetAsync();
+            .ToListAsync();
+        var rolesWithDbRules = new HashSet<Guid>(rolesWithDbRuleList);
 
         int withDbRuleOnly = 0;
         int unrestricted   = 0;
