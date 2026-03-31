@@ -248,6 +248,7 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
           <div className="py-1.5">
             <ProfileMenuItem href="/profile"  icon="ri-user-3-line"     label="Profile"           onClick={() => setOpen(false)} />
             <ProfileMenuItem href="/settings" icon="ri-settings-3-line"  label="Account Settings" onClick={() => setOpen(false)} />
+            <ProfileMenuItem href="/activity" icon="ri-history-line"     label="Activity Log"      onClick={() => setOpen(false)} />
           </div>
 
           <div className="border-t border-gray-100" />

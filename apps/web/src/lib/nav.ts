@@ -96,6 +96,15 @@ export function orgTypeLabel(orgType: string | undefined): string {
   return orgType ? (labels[orgType] ?? orgType) : 'No Organization';
 }
 
+// ── Global bottom nav (always shown at the foot of every product sidebar) ─────
+
+export const GLOBAL_BOTTOM_NAV: NavSection = {
+  heading: 'ACCOUNT',
+  items: [
+    { href: '/activity', label: 'Activity Log', icon: 'ri-history-line' },
+  ],
+};
+
 // ── Legacy stub ───────────────────────────────────────────────────────────────
 
 export function buildNavGroups(_session: PlatformSession) {

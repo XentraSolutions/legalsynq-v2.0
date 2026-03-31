@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useProduct } from '@/contexts/product-context';
 import { useSettings } from '@/contexts/settings-context';
-import { PRODUCT_NAV, PRODUCT_META } from '@/lib/nav';
+import { PRODUCT_NAV, PRODUCT_META, GLOBAL_BOTTOM_NAV } from '@/lib/nav';
 import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
 
@@ -111,6 +111,27 @@ export function Sidebar() {
             </nav>
           </div>
         ))}
+      </div>
+
+      {/* ── Global bottom section (Account / Activity Log) ─────────────────── */}
+      <div className="shrink-0 border-t border-gray-100 py-2">
+        {GLOBAL_BOTTOM_NAV.heading && !collapsed && (
+          <p className="px-5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none">
+            {GLOBAL_BOTTOM_NAV.heading}
+          </p>
+        )}
+        <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
+          {GLOBAL_BOTTOM_NAV.items.map(item => (
+            <SidebarItem
+              key={item.href}
+              item={item}
+              pathname={pathname}
+              collapsed={collapsed}
+              activeColor={nav.activeColor}
+              activeBg={nav.activeBg}
+            />
+          ))}
+        </nav>
       </div>
     </aside>
   );
