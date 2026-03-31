@@ -6,21 +6,12 @@ import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { ReferralDetailPanel } from '@/components/careconnect/referral-detail-panel';
 import { ReferralStatusActions } from '@/components/careconnect/referral-status-actions';
+import { ReferralTimeline } from '@/components/careconnect/referral-timeline';
 
 interface ReferralDetailPageProps {
   params: { id: string };
 }
 
-/**
- * /careconnect/referrals/[id] — Referral detail.
- *
- * Access: CARECONNECT_REFERRER or CARECONNECT_RECEIVER.
- *   The backend enforces that the caller's org is either the referring or
- *   receiving org — a 403 on a valid ID means the user's org is not a participant.
- *
- * Rendering: Server Component — no interactive mutations on this page.
- *   Status updates (future) will be a Client Component modal or a Server Action.
- */
 export default async function ReferralDetailPage({ params }: ReferralDetailPageProps) {
   const session = await requireOrg();
 
@@ -43,7 +34,6 @@ export default async function ReferralDetailPage({ params }: ReferralDetailPageP
   } catch (err) {
     if (err instanceof ServerApiError) {
       if (err.isNotFound) notFound();
-      // 403: user's org is not a participant in this referral
       if (err.isForbidden) {
         fetchError = 'You do not have access to this referral. Your organization is not a participant.';
       } else {
@@ -96,6 +86,16 @@ export default async function ReferralDetailPage({ params }: ReferralDetailPageP
           isReceiver={isReceiver}
           isReferrer={isReferrer}
         />
+      )}
+
+      {/* Referral activity timeline */}
+      {referral && (
+        <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
+            Activity
+          </h3>
+          <ReferralTimeline referralId={referral.id} />
+        </div>
       )}
     </div>
   );

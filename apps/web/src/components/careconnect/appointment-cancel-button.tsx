@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
+import { useToast } from '@/lib/toast-context';
 import type { AppointmentDetail } from '@/types/careconnect';
 
 interface AppointmentCancelButtonProps {
@@ -14,11 +15,13 @@ interface AppointmentCancelButtonProps {
  * Cancel button for appointment detail page.
  *
  * Calls POST /api/appointments/{id}/cancel.
- * Shows a confirmation inline with an optional notes field.
- * Only rendered for non-terminal statuses (Scheduled / Confirmed).
+ * Shows a confirmation dialog with an optional notes field.
+ * Shows a toast notification on success or failure.
+ * Only rendered for non-terminal statuses.
  */
 export function AppointmentCancelButton({ appointment }: AppointmentCancelButtonProps) {
   const router = useRouter();
+  const { show: showToast } = useToast();
 
   const isTerminal = ['Cancelled', 'Completed', 'NoShow'].includes(appointment.status);
   const [confirming, setConfirming] = useState(false);
@@ -33,6 +36,7 @@ export function AppointmentCancelButton({ appointment }: AppointmentCancelButton
     setError(null);
     try {
       await careConnectApi.appointments.cancel(appointment.id, { notes: notes.trim() || undefined });
+      showToast('Appointment cancelled.', 'success');
       router.refresh();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -42,6 +46,7 @@ export function AppointmentCancelButton({ appointment }: AppointmentCancelButton
       } else {
         setError('Failed to cancel the appointment. Please try again.');
       }
+      showToast('Failed to cancel appointment.', 'error');
     } finally {
       setLoading(false);
     }
@@ -49,7 +54,7 @@ export function AppointmentCancelButton({ appointment }: AppointmentCancelButton
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 space-y-3">
-      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</h3>
+      <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Cancel</h3>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2 text-sm text-red-700">

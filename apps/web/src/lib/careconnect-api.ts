@@ -8,6 +8,7 @@ import type {
   AvailabilitySearchParams,
   ReferralSummary,
   ReferralDetail,
+  ReferralHistoryItem,
   CreateReferralRequest,
   ReferralSearchParams,
   AppointmentSummary,
@@ -67,6 +68,10 @@ export const careConnectApi = {
     /** PUT /api/referrals/{id} — update status (Accept / Decline / Cancel / etc.) */
     update: (id: string, body: { requestedService: string; urgency: string; status: string; notes?: string }) =>
       apiClient.put<ReferralDetail>(`/careconnect/api/referrals/${id}`, body),
+
+    /** GET /api/referrals/{id}/history — status change audit log */
+    getHistory: (id: string) =>
+      apiClient.get<ReferralHistoryItem[]>(`/careconnect/api/referrals/${id}/history`),
   },
 
   appointments: {
@@ -84,5 +89,13 @@ export const careConnectApi = {
     /** POST /api/appointments/{id}/cancel */
     cancel: (id: string, body: { notes?: string } = {}) =>
       apiClient.post<AppointmentDetail>(`/careconnect/api/appointments/${id}/cancel`, body),
+
+    /** PUT /api/appointments/{id} — update status (Confirm, NoShow, etc.) */
+    update: (id: string, body: { status: string; notes?: string }) =>
+      apiClient.put<AppointmentDetail>(`/careconnect/api/appointments/${id}`, body),
+
+    /** POST /api/appointments/{id}/reschedule */
+    reschedule: (id: string, body: { newAppointmentSlotId: string; notes?: string }) =>
+      apiClient.post<AppointmentDetail>(`/careconnect/api/appointments/${id}/reschedule`, body),
   },
 };

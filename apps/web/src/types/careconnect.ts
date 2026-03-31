@@ -62,6 +62,18 @@ export interface ProviderMarker {
   categories:         string[];
 }
 
+// ── Referral history ─────────────────────────────────────────────────────────
+
+export interface ReferralHistoryItem {
+  id:              string;
+  referralId:      string;
+  oldStatus:       string;
+  newStatus:       string;
+  changedByUserId?: string;
+  changedAtUtc:    string;
+  notes?:          string;
+}
+
 // ── Referral ──────────────────────────────────────────────────────────────────
 
 export const ReferralStatus = {

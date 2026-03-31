@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
+import { useToast } from '@/lib/toast-context';
 import type { ReferralDetail } from '@/types/careconnect';
 
 interface ReferralStatusActionsProps {
@@ -12,30 +13,39 @@ interface ReferralStatusActionsProps {
   isReferrer: boolean;
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  Accepted:  'Referral accepted.',
+  Declined:  'Referral declined.',
+  Cancelled: 'Referral cancelled.',
+};
+
 /**
  * Inline status-action buttons for a referral detail page.
  *
  * Receiver (provider):
- *   - New / Received / Contacted → Accept | Decline
+ *   - New / Received / Contacted → Accept | Decline (with optional notes)
  *
  * Referrer (law firm):
- *   - Non-terminal statuses → Cancel
+ *   - Non-terminal statuses → Cancel (with confirmation)
  *
- * Uses PUT /api/referrals/{id} which routes through ReferralWorkflowRules on the backend.
- * The backend enforces allowed transitions; we only show contextually-relevant buttons.
+ * Uses PUT /api/referrals/{id} which routes through ReferralWorkflowRules.
+ * All actions show toast notifications on success or failure.
  */
 export function ReferralStatusActions({ referral, isReceiver, isReferrer }: ReferralStatusActionsProps) {
   const router = useRouter();
+  const { show: showToast } = useToast();
 
   const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [error,   setError]   = useState<string | null>(null);
   const [notes,   setNotes]   = useState('');
-  const [showDeclineNotes, setShowDeclineNotes] = useState(false);
+
+  // Confirm flows
+  const [showDeclineNotes,  setShowDeclineNotes]  = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const currentStatus = optimisticStatus ?? referral.status;
-
-  const isTerminal = ['Completed', 'Cancelled', 'Declined'].includes(currentStatus);
+  const isTerminal    = ['Completed', 'Cancelled', 'Declined'].includes(currentStatus);
   if (isTerminal) return null;
 
   async function doUpdate(toStatus: string, notesValue?: string) {
@@ -50,6 +60,7 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
         status:           toStatus,
         notes:            notesValue || undefined,
       });
+      showToast(STATUS_LABELS[toStatus] ?? 'Referral updated.', 'success');
       router.refresh();
     } catch (err) {
       setOptimisticStatus(null);
@@ -60,6 +71,7 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
       } else {
         setError('Failed to update referral status. Please try again.');
       }
+      showToast('Failed to update referral.', 'error');
     } finally {
       setLoading(null);
     }
@@ -81,11 +93,11 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
         </div>
       )}
 
-      {/* Receiver: Accept / Decline inline */}
+      {/* Receiver: Accept / Decline */}
       {(canAccept || canDecline) && (
         <div className="space-y-3">
           <div className="flex items-center gap-3 flex-wrap">
-            {canAccept && (
+            {canAccept && !showDeclineNotes && (
               <button
                 onClick={() => doUpdate('Accepted')}
                 disabled={!!loading}
@@ -132,7 +144,7 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
                   disabled={!!loading}
                   className="text-sm text-gray-500 hover:text-gray-800 transition-colors"
                 >
-                  Cancel
+                  Go back
                 </button>
               </div>
             </div>
@@ -140,16 +152,40 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
         </div>
       )}
 
-      {/* Referrer or Receiver: Cancel referral */}
+      {/* Cancel — with inline confirmation dialog */}
       {canCancel && (
         <div className="pt-1 border-t border-gray-100">
-          <button
-            onClick={() => doUpdate('Cancelled')}
-            disabled={!!loading}
-            className="text-sm text-gray-500 hover:text-gray-800 transition-colors disabled:opacity-50"
-          >
-            {loading === 'Cancelled' ? 'Cancelling…' : 'Cancel Referral'}
-          </button>
+          {!showCancelConfirm ? (
+            <button
+              onClick={() => setShowCancelConfirm(true)}
+              disabled={!!loading}
+              className="text-sm text-gray-500 hover:text-gray-800 transition-colors disabled:opacity-50"
+            >
+              Cancel Referral
+            </button>
+          ) : (
+            <div className="space-y-2 border border-gray-200 rounded-md p-3 bg-gray-50">
+              <p className="text-sm font-medium text-gray-800">
+                Cancel this referral?
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => doUpdate('Cancelled')}
+                  disabled={!!loading}
+                  className="bg-gray-700 text-white text-sm font-medium px-4 py-1.5 rounded-md hover:bg-gray-900 disabled:opacity-60 transition-colors"
+                >
+                  {loading === 'Cancelled' ? 'Cancelling…' : 'Yes, Cancel'}
+                </button>
+                <button
+                  onClick={() => setShowCancelConfirm(false)}
+                  disabled={!!loading}
+                  className="text-sm text-gray-500 hover:text-gray-800 transition-colors"
+                >
+                  Keep Referral
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -9,17 +9,12 @@ import type { ReferralSummary, AppointmentSummary } from '@/types/careconnect';
  * /careconnect/dashboard — Role-aware landing page.
  *
  * CARECONNECT_REFERRER (law firm):
- *   - Active referrals (first 5, excluding Completed/Cancelled)
- *   - Upcoming appointments (first 5, status Scheduled/Confirmed)
- *   - CTA: Find Providers
+ *   Stats: Active referrals | Upcoming appts (7 days) | Completed referrals | Declined referrals
+ *   Content: Active referral list + upcoming appointments
  *
  * CARECONNECT_RECEIVER (provider):
- *   - Pending referrals (status New, first 5)
- *   - Today's appointments (status Scheduled/Confirmed)
- *   - CTA: Referral Inbox
- *
- * TenantAdmin bypass: admins without an explicit product role see the
- * referrer view as a best-effort fallback (they can still access all CareConnect pages).
+ *   Stats: New referrals | Today's appts | Accepted referrals | Completed referrals
+ *   Content: Pending referral inbox + today's schedule
  */
 
 function formatDate(iso: string): string {
@@ -50,6 +45,14 @@ function isToday(iso: string): boolean {
   );
 }
 
+function isWithinDays(iso: string, days: number): boolean {
+  const d   = new Date(iso);
+  const now = new Date();
+  const end = new Date(now);
+  end.setDate(end.getDate() + days);
+  return d >= now && d <= end;
+}
+
 function SectionCard({ title, viewAllHref, viewAllLabel, children }: {
   title:        string;
   viewAllHref:  string;
@@ -60,10 +63,7 @@ function SectionCard({ title, viewAllHref, viewAllLabel, children }: {
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
         <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-        <Link
-          href={viewAllHref}
-          className="text-xs text-primary font-medium hover:underline"
-        >
+        <Link href={viewAllHref} className="text-xs text-primary font-medium hover:underline">
           {viewAllLabel} →
         </Link>
       </div>
@@ -151,45 +151,89 @@ export default async function DashboardPage() {
 
   const showReferrerView = isReferrer || (!isReferrer && !isReceiver);
 
-  // ── Fetch data (best-effort, failures show empty state rather than error) ──
+  // ── Fetch data ──────────────────────────────────────────────────────────────
+  // Best-effort: failures silently fall back to 0/empty rather than breaking the page.
 
-  let referrals: ReferralSummary[]    = [];
+  let referrals:    ReferralSummary[]    = [];
   let appointments: AppointmentSummary[] = [];
 
-  if (showReferrerView) {
-    // Referrer: active referrals (not Completed/Cancelled/Declined) + upcoming scheduled appts
-    const [refResult, apptResult] = await Promise.allSettled([
-      careConnectServerApi.referrals.search({ pageSize: 5 }),
-      careConnectServerApi.appointments.search({ status: 'Scheduled', pageSize: 5 }),
-    ]);
+  // Secondary stat counters
+  let completedReferralCount = 0;
+  let declinedReferralCount  = 0;
+  let acceptedReferralCount  = 0;
+  let upcomingApptCount      = 0;
 
-    if (refResult.status === 'fulfilled') {
-      referrals = refResult.value.items.filter(
-        r => r.status !== 'Completed' && r.status !== 'Cancelled' && r.status !== 'Declined',
+  if (showReferrerView) {
+    const [activeRef, completedRef, declinedRef, scheduledAppt, confirmedAppt] =
+      await Promise.allSettled([
+        careConnectServerApi.referrals.search({ pageSize: 5 }),
+        careConnectServerApi.referrals.search({ status: 'Completed', pageSize: 1 }),
+        careConnectServerApi.referrals.search({ status: 'Declined',  pageSize: 1 }),
+        careConnectServerApi.appointments.search({ status: 'Scheduled', pageSize: 20 }),
+        careConnectServerApi.appointments.search({ status: 'Confirmed', pageSize: 20 }),
+      ]);
+
+    if (activeRef.status === 'fulfilled') {
+      referrals = activeRef.value.items.filter(
+        r => !['Completed', 'Cancelled', 'Declined'].includes(r.status),
       ).slice(0, 5);
     }
-    if (apptResult.status === 'fulfilled') {
-      appointments = apptResult.value.items;
+    if (completedRef.status === 'fulfilled') {
+      completedReferralCount = completedRef.value.totalCount;
     }
-  } else {
-    // Receiver: new/pending referrals + today's appointments
-    const [refResult, apptResult] = await Promise.allSettled([
-      careConnectServerApi.referrals.search({ status: 'New', pageSize: 5 }),
-      careConnectServerApi.appointments.search({ pageSize: 20 }),
-    ]);
+    if (declinedRef.status === 'fulfilled') {
+      declinedReferralCount = declinedRef.value.totalCount;
+    }
 
-    if (refResult.status === 'fulfilled') {
-      referrals = refResult.value.items;
+    // Merge scheduled + confirmed, filter to next 7 days, deduplicate
+    const apptMap = new Map<string, AppointmentSummary>();
+    if (scheduledAppt.status === 'fulfilled') {
+      scheduledAppt.value.items.forEach(a => apptMap.set(a.id, a));
     }
-    if (apptResult.status === 'fulfilled') {
-      appointments = apptResult.value.items
-        .filter(a => isToday(a.scheduledAtUtc) && (a.status === 'Scheduled' || a.status === 'Confirmed'))
-        .slice(0, 5);
+    if (confirmedAppt.status === 'fulfilled') {
+      confirmedAppt.value.items.forEach(a => apptMap.set(a.id, a));
     }
+    appointments   = [...apptMap.values()]
+      .filter(a => isWithinDays(a.scheduledAtUtc, 7))
+      .sort((a, b) => new Date(a.scheduledAtUtc).getTime() - new Date(b.scheduledAtUtc).getTime())
+      .slice(0, 5);
+    upcomingApptCount = apptMap.size;
+
+  } else {
+    // Receiver
+    const [newRef, acceptedRef, completedRef, scheduledAppt, confirmedAppt] =
+      await Promise.allSettled([
+        careConnectServerApi.referrals.search({ status: 'New',       pageSize: 5 }),
+        careConnectServerApi.referrals.search({ status: 'Accepted',  pageSize: 1 }),
+        careConnectServerApi.referrals.search({ status: 'Completed', pageSize: 1 }),
+        careConnectServerApi.appointments.search({ status: 'Scheduled', pageSize: 50 }),
+        careConnectServerApi.appointments.search({ status: 'Confirmed', pageSize: 50 }),
+      ]);
+
+    if (newRef.status === 'fulfilled') {
+      referrals = newRef.value.items;
+    }
+    if (acceptedRef.status === 'fulfilled') {
+      acceptedReferralCount = acceptedRef.value.totalCount;
+    }
+    if (completedRef.status === 'fulfilled') {
+      completedReferralCount = completedRef.value.totalCount;
+    }
+
+    const apptMap = new Map<string, AppointmentSummary>();
+    if (scheduledAppt.status === 'fulfilled') {
+      scheduledAppt.value.items.forEach(a => apptMap.set(a.id, a));
+    }
+    if (confirmedAppt.status === 'fulfilled') {
+      confirmedAppt.value.items.forEach(a => apptMap.set(a.id, a));
+    }
+    appointments = [...apptMap.values()]
+      .filter(a => isToday(a.scheduledAtUtc))
+      .sort((a, b) => new Date(a.scheduledAtUtc).getTime() - new Date(b.scheduledAtUtc).getTime())
+      .slice(0, 5);
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -203,7 +247,6 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        {/* Primary CTA */}
         {showReferrerView ? (
           <Link
             href="/careconnect/providers"
@@ -225,22 +268,22 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {showReferrerView ? (
           <>
-            <StatCard label="Active Referrals"  value={referrals.length}    href="/careconnect/referrals" />
-            <StatCard label="Upcoming Appts"    value={appointments.length} href="/careconnect/appointments" />
-            <StatCard label="New This Week"     value="—" href="/careconnect/referrals?status=New" />
-            <StatCard label="Completed"         value="—" href="/careconnect/referrals?status=Completed" />
+            <StatCard label="Active Referrals"   value={referrals.length}        href="/careconnect/referrals" />
+            <StatCard label="Upcoming (7 days)"  value={upcomingApptCount}       href="/careconnect/appointments" />
+            <StatCard label="Completed"          value={completedReferralCount}   href="/careconnect/referrals?status=Completed" />
+            <StatCard label="Declined"           value={declinedReferralCount}    href="/careconnect/referrals?status=Declined" />
           </>
         ) : (
           <>
-            <StatCard label="Pending Referrals" value={referrals.length}    href="/careconnect/referrals?status=New" />
-            <StatCard label="Today's Appts"     value={appointments.length} href="/careconnect/appointments" />
-            <StatCard label="Accepted"          value="—" href="/careconnect/referrals?status=Accepted" />
-            <StatCard label="Completed"         value="—" href="/careconnect/referrals?status=Completed" />
+            <StatCard label="Pending Referrals"  value={referrals.length}         href="/careconnect/referrals?status=New" />
+            <StatCard label="Today's Appts"      value={appointments.length}      href="/careconnect/appointments" />
+            <StatCard label="Accepted"           value={acceptedReferralCount}    href="/careconnect/referrals?status=Accepted" />
+            <StatCard label="Completed"          value={completedReferralCount}   href="/careconnect/referrals?status=Completed" />
           </>
         )}
       </div>
 
-      {/* Main panels — side-by-side on lg */}
+      {/* Main panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {showReferrerView ? (
           <>
@@ -281,7 +324,7 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      {/* Quick actions row */}
+      {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {showReferrerView ? (
           <>
@@ -291,9 +334,9 @@ export default async function DashboardPage() {
           </>
         ) : (
           <>
-            <QuickAction href="/careconnect/referrals"    icon="ri-mail-line"         label="Referral Inbox"    desc="Review and accept incoming referrals" />
-            <QuickAction href="/careconnect/appointments" icon="ri-calendar-check-line" label="Schedule"       desc="View today's and upcoming appointments" />
-            <QuickAction href="/careconnect/providers"    icon="ri-hospital-line"     label="Provider Network"  desc="Browse providers in the network" />
+            <QuickAction href="/careconnect/referrals"    icon="ri-mail-line"           label="Referral Inbox"   desc="Review and accept incoming referrals" />
+            <QuickAction href="/careconnect/appointments" icon="ri-calendar-check-line" label="Schedule"         desc="View today's and upcoming appointments" />
+            <QuickAction href="/careconnect/providers"    icon="ri-hospital-line"       label="Provider Network" desc="Browse providers in the network" />
           </>
         )}
       </div>

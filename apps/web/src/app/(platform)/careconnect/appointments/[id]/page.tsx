@@ -5,22 +5,13 @@ import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { AppointmentDetailPanel } from '@/components/careconnect/appointment-detail-panel';
+import { AppointmentActions } from '@/components/careconnect/appointment-actions';
 import { AppointmentCancelButton } from '@/components/careconnect/appointment-cancel-button';
 
 interface AppointmentDetailPageProps {
   params: { id: string };
 }
 
-/**
- * /careconnect/appointments/[id] — Appointment detail.
- *
- * Access: CARECONNECT_REFERRER or CARECONNECT_RECEIVER.
- *   Backend enforces org-participant check; a 403 on a valid ID means the
- *   caller's org is neither the referring nor the receiving org.
- *
- * Rendering: Server Component.
- *   Status changes (Confirm / Cancel / NoShow) are Phase 2 — Server Actions.
- */
 export default async function AppointmentDetailPage({ params }: AppointmentDetailPageProps) {
   const session = await requireOrg();
 
@@ -64,7 +55,6 @@ export default async function AppointmentDetailPage({ params }: AppointmentDetai
           ← Back to Appointments
         </Link>
 
-        {/* Link back to the source referral if present */}
         {appointment?.referralId && (
           <Link
             href={`/careconnect/referrals/${appointment.referralId}`}
@@ -83,7 +73,16 @@ export default async function AppointmentDetailPage({ params }: AppointmentDetai
 
       {appointment && <AppointmentDetailPanel appointment={appointment} />}
 
-      {/* Cancel action — available to referrers and receivers for non-terminal appointments */}
+      {/* Confirm / NoShow / Reschedule actions */}
+      {appointment && (
+        <AppointmentActions
+          appointment={appointment}
+          isReceiver={isReceiver}
+          isReferrer={isReferrer}
+        />
+      )}
+
+      {/* Cancel — separate panel below other actions */}
       {appointment && (isReferrer || isReceiver) && (
         <AppointmentCancelButton appointment={appointment} />
       )}
