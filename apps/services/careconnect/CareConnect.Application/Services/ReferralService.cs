@@ -67,7 +67,10 @@ public class ReferralService : IReferralService
     {
         ValidateCreate(request);
 
-        var provider = await _providers.GetByIdAsync(tenantId, request.ProviderId, ct)
+        // Providers are a platform-wide marketplace (cross-tenant discoverable).
+        // Use GetByIdCrossAsync so a referral can target any active provider regardless
+        // of whether their TenantId matches the referrer's tenant.
+        var provider = await _providers.GetByIdCrossAsync(request.ProviderId, ct)
             ?? throw new NotFoundException($"Provider '{request.ProviderId}' was not found.");
 
         // Phase C: resolve the Identity OrganizationRelationship when both org IDs are provided.

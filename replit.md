@@ -542,6 +542,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
   - `careconnect-api.ts` — `referrals.acceptByToken(id, token)` method.
   - `dashboard/page.tsx` — fixed 30-day **Referral Activity** section (4 cards: Total, Pending, Accepted, Acceptance Rate); only visible for referrer role.
 - **14 new tests** in `ReferralEmailServiceTests.cs`: token round-trip, URL-safe encoding, expiry, HMAC tampering, wrong-secret, malformed inputs, dev-fallback.
+- **Bug fix (post-completion):** `ReferralService.CreateAsync` was using `_providers.GetByIdAsync(tenantId, ...)` which filters by `TenantId`. Since providers are a platform-wide marketplace (`BuildBaseQuery` deliberately ignores TenantId), cross-tenant provider lookups returned null → `NotFoundException` → 404. Fixed by switching to `_providers.GetByIdCrossAsync(id)` — consistent with `ProviderService`, `SearchAsync`, and the marketplace design intent.
 
 ## CareConnect Provider Geo / Map-Ready Discovery
 
