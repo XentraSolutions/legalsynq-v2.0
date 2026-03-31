@@ -65,12 +65,12 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
 
 // ── Product metadata ──────────────────────────────────────────────────────────
 
-export const PRODUCT_META: Record<string, { label: string; icon: string; color: string }> = {
-  careconnect: { label: 'Synq CareConnect', icon: 'ri-shield-cross-line',  color: '#2563eb' },
-  fund:        { label: 'Synq Funds',        icon: 'ri-bank-line',           color: '#16a34a' },
-  lien:        { label: 'Synq Liens',        icon: 'ri-stack-line',          color: '#7c3aed' },
-  ai:          { label: 'Synq AI',           icon: 'ri-robot-line',          color: '#d97706' },
-  insights:    { label: 'Synq Insights',     icon: 'ri-bar-chart-2-line',    color: '#0891b2' },
+export const PRODUCT_META: Record<string, { label: string; icon: string; color: string; iconSrc: string }> = {
+  careconnect: { label: 'Synq CareConnect', icon: 'ri-shield-cross-line',  color: '#2563eb', iconSrc: '/product-icons/synqconnect.png' },
+  fund:        { label: 'Synq Funds',        icon: 'ri-bank-line',           color: '#16a34a', iconSrc: '/product-icons/synqfund.png'    },
+  lien:        { label: 'Synq Liens',        icon: 'ri-stack-line',          color: '#7c3aed', iconSrc: '/product-icons/synqlien.png'    },
+  ai:          { label: 'Synq AI',           icon: 'ri-robot-line',          color: '#d97706', iconSrc: '/product-icons/synqai.png'      },
+  insights:    { label: 'Synq Insights',     icon: 'ri-bar-chart-2-line',    color: '#0891b2', iconSrc: '/product-icons/synqinsight.png' },
 };
 
 // ── Infer product from pathname ───────────────────────────────────────────────

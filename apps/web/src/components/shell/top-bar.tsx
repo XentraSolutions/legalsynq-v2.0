@@ -11,44 +11,39 @@ import { orgTypeLabel } from '@/lib/nav';
 
 const ALL_PRODUCTS = [
   {
-    id: 'careconnect',
-    label: 'Synq CareConnect',
-    href: '/careconnect/dashboard',
-    icon: 'ri-shield-cross-line',
-    color: '#2563eb',
-    bg:    '#eff6ff',
+    id:      'careconnect',
+    label:   'Synq CareConnect',
+    href:    '/careconnect/dashboard',
+    iconSrc: '/product-icons/synqconnect.png',
+    bg:      '#eff6ff',
   },
   {
-    id: 'fund',
-    label: 'Synq Funds',
-    href: '/fund/dashboard',
-    icon: 'ri-bank-line',
-    color: '#16a34a',
-    bg:    '#f0fdf4',
+    id:      'fund',
+    label:   'Synq Funds',
+    href:    '/fund/dashboard',
+    iconSrc: '/product-icons/synqfund.png',
+    bg:      '#f0fdf4',
   },
   {
-    id: 'lien',
-    label: 'Synq Liens',
-    href: '/lien/dashboard',
-    icon: 'ri-file-stack-line',
-    color: '#7c3aed',
-    bg:    '#f5f3ff',
+    id:      'lien',
+    label:   'Synq Liens',
+    href:    '/lien/dashboard',
+    iconSrc: '/product-icons/synqlien.png',
+    bg:      '#f5f3ff',
   },
   {
-    id: 'ai',
-    label: 'Synq AI',
-    href: '/ai/dashboard',
-    icon: 'ri-robot-line',
-    color: '#d97706',
-    bg:    '#fffbeb',
+    id:      'ai',
+    label:   'Synq AI',
+    href:    '/ai/dashboard',
+    iconSrc: '/product-icons/synqai.png',
+    bg:      '#fffbeb',
   },
   {
-    id: 'insights',
-    label: 'Synq Insights',
-    href: '/insights/dashboard',
-    icon: 'ri-bar-chart-2-line',
-    color: '#0891b2',
-    bg:    '#ecfeff',
+    id:      'insights',
+    label:   'Synq Insights',
+    href:    '/insights/dashboard',
+    iconSrc: '/product-icons/synqinsight.png',
+    bg:      '#ecfeff',
   },
 ] as const;
 
@@ -157,9 +152,11 @@ function AppSwitcher() {
                   className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
                   style={{ backgroundColor: product.bg }}
                 >
-                  <i
-                    className={`${product.icon} text-[18px] leading-none`}
-                    style={{ color: product.color }}
+                  <img
+                    src={product.iconSrc}
+                    alt=""
+                    aria-hidden
+                    className="w-5 h-5 object-contain"
                   />
                 </div>
                 <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900 transition-colors">

@@ -63,7 +63,10 @@ export function Sidebar() {
       )}>
         {!collapsed && meta && (
           <div className="flex items-center gap-2 min-w-0">
-            <i className={`${meta.icon} text-[15px]`} style={{ color: nav.activeColor }} />
+            {meta.iconSrc
+              ? <img src={meta.iconSrc} alt="" aria-hidden className="w-4 h-4 shrink-0 object-contain" />
+              : <i className={`${meta.icon} text-[15px]`} style={{ color: nav.activeColor }} />
+            }
             <span className="text-[12px] font-semibold text-gray-700 truncate">{meta.label}</span>
           </div>
         )}

@@ -77,7 +77,7 @@ function ProductCard({
   id, meta, items,
 }: {
   id: string;
-  meta: { label: string; icon: string; color: string };
+  meta: { label: string; icon: string; color: string; iconSrc: string };
   items: { href: string; label: string }[];
 }) {
   const bgMap: Record<string, string> = {
@@ -99,7 +99,10 @@ function ProductCard({
         className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-4"
         style={{ backgroundColor: bg }}
       >
-        <i className={`${meta.icon} text-lg`} style={{ color: meta.color }} />
+        {meta.iconSrc
+          ? <img src={meta.iconSrc} alt="" aria-hidden className="w-6 h-6 object-contain" />
+          : <i className={`${meta.icon} text-lg`} style={{ color: meta.color }} />
+        }
       </div>
 
       <p className="text-sm font-bold text-[#0f1928] group-hover:text-orange-600 transition-colors">
