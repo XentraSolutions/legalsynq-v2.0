@@ -6,15 +6,34 @@ public class Referral : AuditableEntity
 {
     public static class ValidStatuses
     {
+        // ── Canonical statuses (source of truth) ─────────────────────────
         public const string New       = "New";
-        public const string Received  = "Received";
-        public const string Contacted = "Contacted";
+        public const string Accepted  = "Accepted";
         public const string Scheduled = "Scheduled";
         public const string Completed = "Completed";
+        public const string Declined  = "Declined";
         public const string Cancelled = "Cancelled";
 
         public static readonly IReadOnlyList<string> All =
-            new[] { New, Received, Contacted, Scheduled, Completed, Cancelled };
+            new[] { New, Accepted, Scheduled, Completed, Declined, Cancelled };
+
+        // ── Legacy compat aliases (read-only, accepted on ingest, never produced) ─
+        public static class Legacy
+        {
+            public const string Received  = "Received";
+            public const string Contacted = "Contacted";
+
+            /// <summary>
+            /// Maps a legacy status string to its canonical equivalent.
+            /// Returns the input unchanged when it is already canonical.
+            /// </summary>
+            public static string Normalize(string status) => status switch
+            {
+                Received  => Accepted,
+                Contacted => Accepted,
+                _         => status
+            };
+        }
     }
 
     public static class ValidUrgencies

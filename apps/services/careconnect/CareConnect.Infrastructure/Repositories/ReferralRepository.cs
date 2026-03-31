@@ -49,6 +49,13 @@ public class ReferralRepository : IReferralRepository
         if (query.CreatedTo.HasValue)
             q = q.Where(r => r.CreatedAtUtc <= query.CreatedTo.Value);
 
+        // Org-participant scoping: filter by referring or receiving org when provided.
+        if (query.ReferringOrgId.HasValue)
+            q = q.Where(r => r.ReferringOrganizationId == query.ReferringOrgId.Value);
+
+        if (query.ReceivingOrgId.HasValue)
+            q = q.Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
+
         var totalCount = await q.CountAsync(ct);
 
         var skip = (query.Page - 1) * query.PageSize;

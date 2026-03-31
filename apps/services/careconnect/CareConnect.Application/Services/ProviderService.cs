@@ -12,11 +12,16 @@ namespace CareConnect.Application.Services;
 public class ProviderService : IProviderService
 {
     private readonly IProviderRepository _providers;
+    private readonly IAppointmentSlotRepository _slots;
     private readonly ILogger<ProviderService> _logger;
 
-    public ProviderService(IProviderRepository providers, ILogger<ProviderService> logger)
+    public ProviderService(
+        IProviderRepository providers,
+        IAppointmentSlotRepository slots,
+        ILogger<ProviderService> logger)
     {
         _providers = providers;
+        _slots     = slots;
         _logger    = logger;
     }
 
@@ -141,6 +146,64 @@ public class ProviderService : IProviderService
 
         var loaded = await _providers.GetByIdAsync(tenantId, provider.Id, ct);
         return ToResponse(loaded!);
+    }
+
+    public async Task<ProviderAvailabilityResponse> GetAvailabilityAsync(
+        Guid tenantId,
+        Guid providerId,
+        DateTime from,
+        DateTime to,
+        Guid? serviceOfferingId = null,
+        Guid? facilityId = null,
+        CancellationToken ct = default)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (from >= to)
+            errors["from"] = new[] { "From must be earlier than To." };
+        if ((to - from).TotalDays > 90)
+            errors["to"] = new[] { "Availability window must not exceed 90 days." };
+        if (errors.Count > 0)
+            throw new ValidationException("One or more validation errors occurred.", errors);
+
+        var provider = await _providers.GetByIdAsync(tenantId, providerId, ct)
+            ?? throw new NotFoundException($"Provider '{providerId}' was not found.");
+
+        var allSlots = await _slots.GetOpenByProviderInRangeAsync(tenantId, providerId, from, to, ct);
+
+        // Apply optional filters in memory (the repository returns all open slots in range).
+        var filtered = allSlots
+            .Where(s => !serviceOfferingId.HasValue || s.ServiceOfferingId == serviceOfferingId)
+            .Where(s => !facilityId.HasValue || s.FacilityId == facilityId)
+            .OrderBy(s => s.StartAtUtc)
+            .ToList();
+
+        // Derive header-level facility/service from first slot when single-dimension filtering.
+        var firstSlot = filtered.FirstOrDefault();
+
+        var slots = filtered.Select(s => new AvailableSlotSummary
+        {
+            Id                  = s.Id,
+            StartAtUtc          = s.StartAtUtc,
+            EndAtUtc            = s.EndAtUtc,
+            AvailableCount      = Math.Max(0, s.Capacity - s.ReservedCount),
+            FacilityId          = s.FacilityId,
+            FacilityName        = s.Facility?.Name ?? string.Empty,
+            ServiceOfferingId   = s.ServiceOfferingId,
+            ServiceOfferingName = s.ServiceOffering?.Name,
+        }).ToList();
+
+        return new ProviderAvailabilityResponse
+        {
+            ProviderId          = providerId,
+            ProviderName        = provider.Name,
+            From                = from,
+            To                  = to,
+            FacilityId          = facilityId ?? firstSlot?.FacilityId,
+            FacilityName        = firstSlot?.Facility?.Name,
+            ServiceOfferingId   = serviceOfferingId ?? firstSlot?.ServiceOfferingId,
+            ServiceOfferingName = firstSlot?.ServiceOffering?.Name,
+            Slots               = slots,
+        };
     }
 
     private static void ValidateSearchGeo(GetProvidersQuery query)

@@ -1,7 +1,9 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
+using CareConnect.Domain;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CareConnect.Api.Endpoints;
@@ -16,21 +18,32 @@ public static class ReferralEndpoints
             [AsParameters] ReferralSearchParams p,
             IReferralService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
+            // Referrers see their org's outbound referrals; receivers see addressed referrals.
+            // Admins and PlatformAdmin see all (no org filter applied by helper since they bypass).
+            var isReceiver = await authSvc.IsAuthorizedAsync(ctx, CapabilityCodes.ReferralReadAddressed, ct);
+
             var query = new GetReferralsQuery
             {
-                Status      = p.Status,
-                ProviderId  = p.ProviderId,
-                ClientName  = p.ClientName,
-                CaseNumber  = p.CaseNumber,
-                Urgency     = p.Urgency,
-                CreatedFrom = p.CreatedFrom,
-                CreatedTo   = p.CreatedTo,
-                Page        = p.Page ?? 1,
-                PageSize    = p.PageSize ?? 20
+                Status             = p.Status,
+                ProviderId         = p.ProviderId,
+                ClientName         = p.ClientName,
+                CaseNumber         = p.CaseNumber,
+                Urgency            = p.Urgency,
+                CreatedFrom        = p.CreatedFrom,
+                CreatedTo          = p.CreatedTo,
+                Page               = p.Page ?? 1,
+                PageSize           = p.PageSize ?? 20,
+                ReferringOrgId     = (!isReceiver && !ctx.IsPlatformAdmin
+                                       && !ctx.Roles.Contains(Roles.TenantAdmin))
+                                     ? ctx.OrgId : null,
+                ReceivingOrgId     = (isReceiver && !ctx.IsPlatformAdmin
+                                       && !ctx.Roles.Contains(Roles.TenantAdmin))
+                                     ? ctx.OrgId : null,
             };
 
             var result = await service.SearchAsync(tenantId, query, ct);
@@ -66,26 +79,34 @@ public static class ReferralEndpoints
             [FromBody] CreateReferralRequest request,
             IReferralService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
             var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/referrals/{referral.Id}", referral);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.AuthenticatedUser);
 
         group.MapPut("/{id:guid}", async (
             Guid id,
             [FromBody] UpdateReferralRequest request,
             IReferralService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+
+            // Determine the required capability based on the target status.
+            var requiredCapability = ReferralWorkflowRules.RequiredCapabilityFor(request.Status);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredCapability, ct);
+
             var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(referral);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.AuthenticatedUser);
     }
 }
 

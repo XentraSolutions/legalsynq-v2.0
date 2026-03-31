@@ -1,5 +1,6 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
@@ -16,9 +17,11 @@ public static class ProviderEndpoints
             [AsParameters] ProviderSearchParams p,
             IProviderService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderSearch, ct);
 
             var query = new GetProvidersQuery
             {
@@ -48,9 +51,11 @@ public static class ProviderEndpoints
             [AsParameters] ProviderSearchParams p,
             IProviderService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderMap, ct);
 
             var query = new GetProvidersQuery
             {
@@ -80,9 +85,11 @@ public static class ProviderEndpoints
             Guid id,
             IProviderService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderSearch, ct);
             var provider = await service.GetByIdAsync(tenantId, id, ct);
             return Results.Ok(provider);
         })
@@ -92,26 +99,46 @@ public static class ProviderEndpoints
             [FromBody] CreateProviderRequest request,
             IProviderService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderManage, ct);
             var provider = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/providers/{provider.Id}", provider);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.AuthenticatedUser);
 
         group.MapPut("/{id:guid}", async (
             Guid id,
             [FromBody] UpdateProviderRequest request,
             IProviderService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderManage, ct);
             var provider = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(provider);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.AuthenticatedUser);
+
+        // ── Availability endpoint ──────────────────────────────────────────
+        group.MapGet("/{providerId:guid}/availability", async (
+            Guid providerId,
+            [AsParameters] ProviderAvailabilityParams p,
+            IProviderService service,
+            ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderSearch, ct);
+            var result = await service.GetAvailabilityAsync(tenantId, providerId, p.From, p.To, p.ServiceOfferingId, p.FacilityId, ct);
+            return Results.Ok(result);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser);
     }
 }
 
@@ -132,4 +159,12 @@ internal sealed class ProviderSearchParams
     public double? SouthLat           { get; init; }
     public double? EastLng            { get; init; }
     public double? WestLng            { get; init; }
+}
+
+internal sealed class ProviderAvailabilityParams
+{
+    public DateTime  From              { get; init; }
+    public DateTime  To                { get; init; }
+    public Guid?     ServiceOfferingId { get; init; }
+    public Guid?     FacilityId        { get; init; }
 }

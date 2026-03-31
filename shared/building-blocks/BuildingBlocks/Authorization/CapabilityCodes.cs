@@ -9,11 +9,16 @@ public static class CapabilityCodes
     public const string ReferralReadAddressed  = "referral:read:addressed";
     public const string ReferralAccept         = "referral:accept";
     public const string ReferralDecline        = "referral:decline";
+    public const string ReferralUpdateStatus   = "referral:update_status";
     public const string ProviderSearch         = "provider:search";
     public const string ProviderMap            = "provider:map";
+    public const string ProviderManage         = "provider:manage";
     public const string AppointmentCreate      = "appointment:create";
     public const string AppointmentUpdate      = "appointment:update";
+    public const string AppointmentManage      = "appointment:manage";
     public const string AppointmentReadOwn     = "appointment:read:own";
+    public const string ScheduleManage         = "schedule:manage";
+    public const string DashboardRead          = "dashboard:read";
 
     // ── SynqLien ─────────────────────────────────────────────────────────────
     public const string LienCreate    = "lien:create";

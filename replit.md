@@ -382,37 +382,42 @@ Migration `AddUpdatedByUserId` added nullable `UpdatedByUserId char(36)` column.
 | `GET /careconnect/health` | GET | Public | CareConnect health |
 | `GET /careconnect/info` | GET | Public | CareConnect info |
 | `GET /careconnect/api/categories` | GET | Bearer (AuthenticatedUser) | List active categories |
-| `GET /careconnect/api/providers` | GET | Bearer (AuthenticatedUser) | List providers (tenant-scoped) |
-| `GET /careconnect/api/providers/{id}` | GET | Bearer (AuthenticatedUser) | Get provider by ID |
-| `POST /careconnect/api/providers` | POST | Bearer + PlatformOrTenantAdmin | Create provider |
-| `PUT /careconnect/api/providers/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update provider |
-| `GET /careconnect/api/referrals` | GET | Bearer (AuthenticatedUser) | List referrals (tenant-scoped) |
+| `GET /careconnect/api/providers` | GET | Bearer + `provider:search` capability | List providers (tenant-scoped) |
+| `GET /careconnect/api/providers/map` | GET | Bearer + `provider:map` capability | Provider map markers |
+| `GET /careconnect/api/providers/{id}` | GET | Bearer + `provider:search` capability | Get provider by ID |
+| `GET /careconnect/api/providers/{id}/availability` | GET | Bearer + `provider:search` capability | Provider open slots summary (from/to, up to 90 days) |
+| `POST /careconnect/api/providers` | POST | Bearer + `provider:manage` capability | Create provider |
+| `PUT /careconnect/api/providers/{id}` | PUT | Bearer + `provider:manage` capability | Update provider |
+| `GET /careconnect/api/referrals` | GET | Bearer (AuthenticatedUser, org-scoped) | List referrals (org-participant scoped) |
 | `GET /careconnect/api/referrals/{id}` | GET | Bearer (AuthenticatedUser) | Get referral by ID |
-| `POST /careconnect/api/referrals` | POST | Bearer + PlatformOrTenantAdmin | Create referral |
-| `PUT /careconnect/api/referrals/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update referral |
-| `GET /careconnect/api/slots` | GET | Bearer (AuthenticatedUser) | List slots (tenant-scoped, filterable) |
-| `POST /careconnect/api/providers/{id}/slots/generate` | POST | Bearer + PlatformOrTenantAdmin | Generate slots from templates |
-| `POST /careconnect/api/appointments` | POST | Bearer + PlatformOrTenantAdmin | Book appointment |
+| `POST /careconnect/api/referrals` | POST | Bearer + `referral:create` capability | Create referral |
+| `PUT /careconnect/api/referrals/{id}` | PUT | Bearer + status-driven capability | Update referral (accept→`referral:accept`, decline→`referral:decline`, cancel→`referral:cancel`) |
+| `GET /careconnect/api/slots` | GET | Bearer + `appointment:create` capability | List slots (tenant-scoped, filterable) |
+| `POST /careconnect/api/providers/{id}/slots/generate` | POST | Bearer + `schedule:manage` capability | Generate slots from templates |
+| `POST /careconnect/api/appointments` | POST | Bearer + `appointment:create` capability | Book appointment |
 | `GET /careconnect/api/appointments` | GET | Bearer (AuthenticatedUser) | List appointments |
 | `GET /careconnect/api/appointments/{id}` | GET | Bearer (AuthenticatedUser) | Get appointment |
-| `PUT /careconnect/api/appointments/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update status/notes |
-| `POST /careconnect/api/appointments/{id}/cancel` | POST | Bearer + PlatformOrTenantAdmin | Cancel appointment |
-| `POST /careconnect/api/appointments/{id}/reschedule` | POST | Bearer + PlatformOrTenantAdmin | Reschedule appointment |
+| `PUT /careconnect/api/appointments/{id}` | PUT | Bearer + `appointment:update` capability | Update status/notes |
+| `POST /careconnect/api/appointments/{id}/cancel` | POST | Bearer + `appointment:manage` capability | Cancel appointment |
+| `POST /careconnect/api/appointments/{id}/reschedule` | POST | Bearer + `appointment:manage` capability | Reschedule appointment |
 | `GET /careconnect/api/appointments/{id}/history` | GET | Bearer (AuthenticatedUser) | Appointment status history |
+| `GET /careconnect/api/providers/{id}/availability-templates` | GET | Bearer + `schedule:manage` capability | List availability templates |
+| `POST /careconnect/api/providers/{id}/availability-templates` | POST | Bearer + `schedule:manage` capability | Create availability template |
+| `PUT /careconnect/api/availability-templates/{id}` | PUT | Bearer + `schedule:manage` capability | Update availability template |
 | `GET /careconnect/api/providers/{id}/availability-exceptions` | GET | Bearer (AuthenticatedUser) | List provider exceptions |
-| `POST /careconnect/api/providers/{id}/availability-exceptions` | POST | Bearer + PlatformOrTenantAdmin | Create exception |
-| `PUT /careconnect/api/availability-exceptions/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update exception |
-| `POST /careconnect/api/providers/{id}/slots/apply-exceptions` | POST | Bearer + PlatformOrTenantAdmin | Block slots overlapping active exceptions |
+| `POST /careconnect/api/providers/{id}/availability-exceptions` | POST | Bearer + `schedule:manage` capability | Create exception |
+| `PUT /careconnect/api/availability-exceptions/{id}` | PUT | Bearer + `schedule:manage` capability | Update exception |
+| `POST /careconnect/api/providers/{id}/slots/apply-exceptions` | POST | Bearer + `schedule:manage` capability | Block slots overlapping active exceptions |
 | `GET /careconnect/api/referrals/{id}/notes` | GET | Bearer (AuthenticatedUser) | List referral notes (newest first) |
-| `POST /careconnect/api/referrals/{id}/notes` | POST | Bearer + PlatformOrTenantAdmin | Create referral note |
-| `PUT /careconnect/api/referral-notes/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update referral note |
+| `POST /careconnect/api/referrals/{id}/notes` | POST | Bearer + `referral:create` capability | Create referral note |
+| `PUT /careconnect/api/referral-notes/{id}` | PUT | Bearer + `referral:update_status` capability | Update referral note |
 | `GET /careconnect/api/appointments/{id}/notes` | GET | Bearer (AuthenticatedUser) | List appointment notes (newest first) |
-| `POST /careconnect/api/appointments/{id}/notes` | POST | Bearer + PlatformOrTenantAdmin | Create appointment note |
-| `PUT /careconnect/api/appointment-notes/{id}` | PUT | Bearer + PlatformOrTenantAdmin | Update appointment note |
+| `POST /careconnect/api/appointments/{id}/notes` | POST | Bearer + `appointment:create` capability | Create appointment note |
+| `PUT /careconnect/api/appointment-notes/{id}` | PUT | Bearer + `appointment:update` capability | Update appointment note |
 | `GET /careconnect/api/referrals/{id}/attachments` | GET | Bearer (AuthenticatedUser) | List referral attachment metadata (newest first) |
-| `POST /careconnect/api/referrals/{id}/attachments` | POST | Bearer + PlatformOrTenantAdmin | Create referral attachment metadata |
+| `POST /careconnect/api/referrals/{id}/attachments` | POST | Bearer + `referral:create` capability | Create referral attachment metadata |
 | `GET /careconnect/api/appointments/{id}/attachments` | GET | Bearer (AuthenticatedUser) | List appointment attachment metadata (newest first) |
-| `POST /careconnect/api/appointments/{id}/attachments` | POST | Bearer + PlatformOrTenantAdmin | Create appointment attachment metadata |
+| `POST /careconnect/api/appointments/{id}/attachments` | POST | Bearer + `appointment:create` capability | Create appointment attachment metadata |
 | `GET /careconnect/api/notifications` | GET | Bearer (AuthenticatedUser) | List notifications (filterable: status, notificationType, relatedEntityType, relatedEntityId, scheduledFrom, scheduledTo, page, pageSize) |
 | `GET /careconnect/api/notifications/{id}` | GET | Bearer (AuthenticatedUser) | Get notification by id |
 
@@ -456,12 +461,37 @@ dotnet tool run dotnet-ef migrations add <Name> \
 - **EF migrations via RDS:** EF tools hang due to RDS latency. Write migrations manually (`.cs` + `.Designer.cs` + Snapshot update) and rely on `db.Database.Migrate()` on startup.
 - **double? geo columns:** Entity `double?` fields mapped to `decimal(10,7)` — migrations must use `AddColumn<double>`, snapshot must use `b.Property<double?>()`
 
+## CareConnect Capability-Based Authorization
+
+Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass capability checks; all other users are evaluated against a static role→capability map.
+
+**Key classes:**
+- `CareConnectCapabilityService` (Infrastructure/Services) — singleton, static `Dictionary<string,HashSet<string>>` keyed by `ProductRoleCodes`
+- `CareConnectAuthHelper.RequireAsync()` (Application/Authorization) — PlatformAdmin bypass → TenantAdmin bypass → capability check
+- `CapabilityCodes` (BuildingBlocks) — all capability string constants
+
+**Role → Capability mapping:**
+
+| Product Role | Capabilities |
+|---|---|
+| `CARECONNECT_REFERRER` | `referral:create`, `referral:read:own`, `referral:cancel`, `provider:search`, `provider:map`, `appointment:create`, `appointment:read:own`, `dashboard:read` |
+| `CARECONNECT_RECEIVER` | `referral:read:addressed`, `referral:accept`, `referral:decline`, `appointment:create`, `appointment:update`, `appointment:manage`, `appointment:read:own`, `schedule:manage`, `provider:search`, `provider:map`, `dashboard:read` |
+
+**Status models (canonical):**
+- Referral: `New → Accepted → Scheduled → Completed/Cancelled`; `New → Declined`. Legacy: `Received`/`Contacted` normalize to `Accepted` via `Referral.ValidStatuses.Legacy.Normalize()`.
+- Appointment: `Pending → Confirmed → Completed/Cancelled`; `Rescheduled` as real status. `Scheduled` retained as backward-compat alias.
+
+**Org-scoped referral list:** `GET /api/referrals` applies `ReferringOrgId`/`ReceivingOrgId` filters from JWT `org_id` claim based on user's product roles. Admins see all.
+
+**xUnit test suite:** `CareConnect.Tests` — 94 tests covering `CareConnectCapabilityService`, `ReferralWorkflowRules`, `AppointmentWorkflowRules`. All passing.
+
 ## CareConnect Provider Geo / Map-Ready Discovery
 
 - **Radius search:** `latitude` + `longitude` + `radiusMiles` (max 100 mi). Bounding-box filter in `ProviderGeoHelper.BoundingBox`.
 - **Viewport search:** `southLat` + `northLat` + `westLng` + `eastLng`. northLat must be >= southLat.
 - **Conflict rule:** Radius + viewport together → 400 validation error on `search` key.
 - **`GET /api/providers/map`:** Returns `ProviderMarkerResponse[]`, capped at 500 markers, only geo-located providers. Shares all filter params with the list endpoint.
+- **`GET /api/providers/{id}/availability`:** Returns `ProviderAvailabilityResponse` with open slot summaries for a date range (max 90 days). Optional `facilityId`/`serviceOfferingId` filters. Requires `provider:search` capability.
 - **Display fields (both endpoints):** `DisplayLabel = OrganizationName ?? Name`; `MarkerSubtitle = "City, State[ · PrimaryCategory]"`; `PrimaryCategory` = first category alphabetically.
 - **`BuildBaseQuery`:** Shared LINQ filter builder in `ProviderRepository` used by both `SearchAsync` and `GetMarkersAsync` to avoid duplication.
 
@@ -628,10 +658,12 @@ Analysis report: `analysis/step1_platform-foundation-upgrade.md`
 20260330110004_AddScopedRoleAssignment.cs          — ScopedRoleAssignments + INSERT SELECT from UserRoleAssignments
 ```
 
-### CareConnect Migration
+### CareConnect Migrations
 ```
 20260330110001_AlignCareConnectToPlatformIdentity.cs   — Provider.OrganizationId, Facility.OrganizationId,
                                                           Referral.OrganizationRelationshipId, Appointment.OrganizationRelationshipId
+20260331200000_NormalizeStatusValues.cs                — Referral: Received/Contacted→Accepted; Appointment: Scheduled→Pending;
+                                                          applies to main tables + history tables
 ```
 
 ### Phase 3 Activation Note

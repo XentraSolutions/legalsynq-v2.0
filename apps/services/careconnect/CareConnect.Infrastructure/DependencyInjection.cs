@@ -1,3 +1,4 @@
+using BuildingBlocks.Authorization;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
@@ -65,6 +66,11 @@ public static class DependencyInjection
         // OrganizationRelationshipNullResolver is retained as an alternative DI
         // registration for integration tests that do not need real Identity calls.
         services.AddScoped<IOrganizationRelationshipResolver, HttpOrganizationRelationshipResolver>();
+
+        // Capability-based authorization: static product-role → capability map for CareConnect.
+        // AuthorizationService is registered as Scoped (it depends on ICurrentRequestContext).
+        services.AddSingleton<ICapabilityService, CareConnectCapabilityService>();
+        services.AddScoped<AuthorizationService>();
 
         return services;
     }

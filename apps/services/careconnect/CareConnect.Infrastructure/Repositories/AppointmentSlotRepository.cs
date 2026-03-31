@@ -106,6 +106,9 @@ public class AppointmentSlotRepository : IAppointmentSlotRepository
                      && s.Status == SlotStatus.Open
                      && s.StartAtUtc < to
                      && s.EndAtUtc > from)
+            .Include(s => s.Facility)
+            .Include(s => s.ServiceOffering)
+            .OrderBy(s => s.StartAtUtc)
             .ToListAsync(ct);
     }
 

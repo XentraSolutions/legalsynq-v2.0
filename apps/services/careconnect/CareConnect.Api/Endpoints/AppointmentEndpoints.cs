@@ -1,5 +1,6 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
@@ -14,13 +15,15 @@ public static class AppointmentEndpoints
             [FromBody] CreateAppointmentRequest request,
             IAppointmentService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentCreate, ct);
             var appointment = await service.CreateAppointmentAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/appointments/{appointment.Id}", appointment);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.AuthenticatedUser);
 
         app.MapGet("/api/appointments", async (
             [AsParameters] AppointmentSearchParams query,
@@ -51,39 +54,45 @@ public static class AppointmentEndpoints
             [FromBody] UpdateAppointmentRequest request,
             IAppointmentService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentUpdate, ct);
             var appointment = await service.UpdateAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.AuthenticatedUser);
 
         app.MapPost("/api/appointments/{id:guid}/cancel", async (
             Guid id,
             [FromBody] CancelAppointmentRequest request,
             IAppointmentService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentManage, ct);
             var appointment = await service.CancelAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.AuthenticatedUser);
 
         app.MapPost("/api/appointments/{id:guid}/reschedule", async (
             Guid id,
             [FromBody] RescheduleAppointmentRequest request,
             IAppointmentService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentManage, ct);
             var appointment = await service.RescheduleAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.AuthenticatedUser);
 
         app.MapGet("/api/appointments/{id:guid}/history", async (
             Guid id,

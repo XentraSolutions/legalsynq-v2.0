@@ -1,5 +1,6 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
@@ -14,9 +15,11 @@ public static class AvailabilityTemplateEndpoints
             Guid providerId,
             IAvailabilityTemplateService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ScheduleManage, ct);
             var templates = await service.GetByProviderAsync(tenantId, providerId, ct);
             return Results.Ok(templates);
         })
@@ -27,25 +30,29 @@ public static class AvailabilityTemplateEndpoints
             [FromBody] CreateAvailabilityTemplateRequest request,
             IAvailabilityTemplateService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ScheduleManage, ct);
             var template = await service.CreateAsync(tenantId, providerId, ctx.UserId, request, ct);
             return Results.Created($"/api/availability-templates/{template.Id}", template);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.AuthenticatedUser);
 
         app.MapPut("/api/availability-templates/{id:guid}", async (
             Guid id,
             [FromBody] UpdateAvailabilityTemplateRequest request,
             IAvailabilityTemplateService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ScheduleManage, ct);
             var template = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(template);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.AuthenticatedUser);
     }
 }
