@@ -70,6 +70,9 @@ public static class DependencyInjection
         services.AddScoped<IIdentityOrganizationService, HttpIdentityOrganizationService>();
         services.AddScoped<IAutoProvisionService, AutoProvisionService>();
 
+        // LSCC-011: Activation funnel analytics
+        services.AddScoped<IActivationFunnelAnalyticsService, ActivationFunnelAnalyticsService>();
+
         // LSCC-005: Email notification dispatch
         services.AddScoped<ISmtpEmailSender, SmtpEmailSender>();
         services.AddScoped<IReferralEmailService, ReferralEmailService>();

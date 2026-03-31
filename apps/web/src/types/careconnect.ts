@@ -344,3 +344,34 @@ export interface ActivationRequestDetail {
   createdAtUtc:           string;
   isAlreadyActive:        boolean;
 }
+
+// ── LSCC-011: Activation Funnel Analytics ──────────────────────────────────
+
+export interface FunnelCounts {
+  referralsSent:          number;
+  referralsAccepted:      number;
+  activationStarted:      number;
+  autoProvisionSucceeded: number;
+  adminApproved:          number;
+  fallbackPending:        number;
+  totalPendingSnapshot:   number;
+  totalApprovedSnapshot:  number;
+  referralViewed:         number | null;
+}
+
+export interface FunnelRates {
+  activationRate:           number;
+  autoProvisionSuccessRate: number;
+  fallbackRate:             number;
+  overallApprovalRate:      number;
+  referralAcceptanceRate:   number;
+  viewRate:                 number | null;
+}
+
+export interface ActivationFunnelMetrics {
+  startDate: string;
+  endDate:   string;
+  isEmpty:   boolean;
+  counts:    FunnelCounts;
+  rates:     FunnelRates;
+}

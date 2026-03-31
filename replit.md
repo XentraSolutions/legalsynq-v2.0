@@ -2380,3 +2380,45 @@ Frontend-only UX overhaul of the CareConnect referral experience.
 ### Result
 - Activity Log IP Address column now shows the real client IP for login/logout events instead of `—`.
 - Both successful and failed login attempts include the IP, supporting HIPAA §164.312(b) and NIST SP 800-92 requirements for contextual access logging.
+
+---
+
+## Step 37 — LSCC-011 Activation Funnel Analytics (2026-03-31)
+
+Admin-only dashboard showing provider activation funnel metrics derived entirely from existing
+`Referrals` + `ActivationRequests` tables — no new analytics tables or event pipelines.
+
+### Design
+- **6 parallel DB queries** at request time: ReferralsSent, ReferralsAccepted, ActivationStarted,
+  AutoProvisionSucceeded (ApprovedByUserId IS NULL proxy), AdminApproved, FallbackPending + 2 snapshots
+- **Rate math** is static/pure (`internal static ComputeRates` + `SafeRate`) — fully tested without DB
+- `ReferralViewed` and direct `AutoProvisionFailed` are audit-log only, returned as `null` / shown as `—`
+- **URL-based date filter** (`?days=7|30|90`) — presets only; backend supports custom ranges
+
+### New Files — Backend
+- `CareConnect.Application/DTOs/ActivationFunnelDto.cs` — `FunnelCounts`, `FunnelRates`, `ActivationFunnelMetrics`
+- `CareConnect.Application/Interfaces/IActivationFunnelAnalyticsService.cs`
+- `CareConnect.Infrastructure/Services/ActivationFunnelAnalyticsService.cs`
+- `CareConnect.Infrastructure/Properties/AssemblyInfo.cs` — `InternalsVisibleTo("CareConnect.Tests")`
+- `CareConnect.Api/Endpoints/AnalyticsEndpoints.cs` — `GET /api/admin/analytics/funnel?days=30`
+- `CareConnect.Tests/Application/ActivationFunnelAnalyticsTests.cs` — 19 tests, 100% pass
+
+### New Files — Frontend
+- `apps/web/src/app/(platform)/careconnect/admin/analytics/activation/page.tsx` — server component
+- `apps/web/src/app/(platform)/careconnect/admin/analytics/activation/date-filter.tsx` — client component
+
+### Modified Files
+- `CareConnect.Api/Program.cs` — `app.MapAnalyticsEndpoints()`
+- `apps/web/src/types/careconnect.ts` — `FunnelCounts`, `FunnelRates`, `ActivationFunnelMetrics`
+- `apps/web/src/lib/careconnect-server-api.ts` — `analytics.getFunnel()`
+- `CareConnect.Infrastructure/Data/Migrations/20260331204551_AddActivationRequestQueue.cs` —
+  Made fully idempotent (all `DropIndex`, `AddColumn`, `CreateTable`, `CreateIndex` wrapped in
+  conditional SQL guards using `information_schema`) because MySQL DDL is non-transactional and
+  a prior partially-applied run left schema changes without committing `__EFMigrationsHistory`
+
+### Report
+- `analysis/LSCC-011-report.md`
+
+### Test Results
+- 19/19 LSCC-011 tests pass
+- Total suite: 360 pass (pre-existing 5 ProviderAvailability failures unchanged)

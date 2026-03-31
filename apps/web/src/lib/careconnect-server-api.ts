@@ -15,6 +15,7 @@ import type {
   AppointmentDetail,
   AppointmentSearchParams,
   PagedResponse,
+  ActivationFunnelMetrics,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -82,6 +83,14 @@ export const careConnectServerApi = {
     getById: (id: string) =>
       serverApi.get<ActivationRequestDetail>(
         `/careconnect/api/admin/activations/${id}`,
+      ),
+  },
+
+  // LSCC-011: Activation funnel analytics (admin-only)
+  analytics: {
+    getFunnel: (params: { days?: number; startDate?: string; endDate?: string } = {}) =>
+      serverApi.get<ActivationFunnelMetrics>(
+        `/careconnect/api/admin/analytics/funnel${toQs(params as Record<string, unknown>)}`,
       ),
   },
 };

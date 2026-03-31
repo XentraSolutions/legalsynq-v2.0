@@ -11,13 +11,27 @@ namespace CareConnect.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_ReferralNotes_ReferralId",
-                table: "ReferralNotes");
+            // Use conditional SQL — these indexes may have already been dropped
+            // by a prior schema change and would fail with a hard DropIndex call.
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.statistics
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='ReferralNotes'
+                     AND INDEX_NAME='IX_ReferralNotes_ReferralId') > 0,
+                  'ALTER TABLE `ReferralNotes` DROP INDEX `IX_ReferralNotes_ReferralId`',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.DropIndex(
-                name: "IX_CareConnectNotifications_Status_NextRetryAfterUtc",
-                table: "CareConnectNotifications");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.statistics
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='CareConnectNotifications'
+                     AND INDEX_NAME='IX_CareConnectNotifications_Status_NextRetryAfterUtc') > 0,
+                  'ALTER TABLE `CareConnectNotifications` DROP INDEX `IX_CareConnectNotifications_Status_NextRetryAfterUtc`',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
             migrationBuilder.AlterColumn<int>(
                 name: "TokenVersion",
@@ -52,19 +66,27 @@ namespace CareConnect.Infrastructure.Data.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4")
                 .OldAnnotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.AddColumn<Guid>(
-                name: "OrganizationRelationshipId",
-                table: "Referrals",
-                type: "char(36)",
-                nullable: true,
-                collation: "ascii_general_ci");
+            // AddColumn calls wrapped in IF NOT EXISTS checks (MySQL DDL is not transactional;
+            // a previous failed run may have committed these columns already).
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.columns
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Referrals'
+                     AND COLUMN_NAME='OrganizationRelationshipId') = 0,
+                  'ALTER TABLE `Referrals` ADD COLUMN `OrganizationRelationshipId` char(36) COLLATE ascii_general_ci NULL',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.AddColumn<Guid>(
-                name: "OrganizationId",
-                table: "Providers",
-                type: "char(36)",
-                nullable: true,
-                collation: "ascii_general_ci");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.columns
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Providers'
+                     AND COLUMN_NAME='OrganizationId') = 0,
+                  'ALTER TABLE `Providers` ADD COLUMN `OrganizationId` char(36) COLLATE ascii_general_ci NULL',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
             migrationBuilder.AlterColumn<string>(
                 name: "SsnLast4",
@@ -92,12 +114,15 @@ namespace CareConnect.Infrastructure.Data.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4")
                 .OldAnnotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.AddColumn<Guid>(
-                name: "OrganizationId",
-                table: "Facilities",
-                type: "char(36)",
-                nullable: true,
-                collation: "ascii_general_ci");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.columns
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Facilities'
+                     AND COLUMN_NAME='OrganizationId') = 0,
+                  'ALTER TABLE `Facilities` ADD COLUMN `OrganizationId` char(36) COLLATE ascii_general_ci NULL',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
             migrationBuilder.AlterColumn<string>(
                 name: "TriggerSource",
@@ -120,102 +145,125 @@ namespace CareConnect.Infrastructure.Data.Migrations
                 oldType: "int",
                 oldDefaultValue: 0);
 
-            migrationBuilder.AddColumn<Guid>(
-                name: "OrganizationRelationshipId",
-                table: "Appointments",
-                type: "char(36)",
-                nullable: true,
-                collation: "ascii_general_ci");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.columns
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Appointments'
+                     AND COLUMN_NAME='OrganizationRelationshipId') = 0,
+                  'ALTER TABLE `Appointments` ADD COLUMN `OrganizationRelationshipId` char(36) COLLATE ascii_general_ci NULL',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.CreateTable(
-                name: "ActivationRequests",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    ReferralId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    ProviderId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    ProviderName = table.Column<string>(type: "varchar(200)", maxLength: 200, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    ProviderEmail = table.Column<string>(type: "varchar(320)", maxLength: 320, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    RequesterName = table.Column<string>(type: "varchar(200)", maxLength: 200, nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    RequesterEmail = table.Column<string>(type: "varchar(320)", maxLength: 320, nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    ClientName = table.Column<string>(type: "varchar(250)", maxLength: 250, nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    ReferringFirmName = table.Column<string>(type: "varchar(300)", maxLength: 300, nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    RequestedService = table.Column<string>(type: "varchar(300)", maxLength: 300, nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    Status = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    ApprovedByUserId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci"),
-                    ApprovedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: true),
-                    LinkedOrganizationId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci"),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    CreatedByUserId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci"),
-                    UpdatedByUserId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_ActivationRequests", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_ActivationRequests_Providers_ProviderId",
-                        column: x => x.ProviderId,
-                        principalTable: "Providers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_ActivationRequests_Referrals_ReferralId",
-                        column: x => x.ReferralId,
-                        principalTable: "Referrals",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
+            // ActivationRequests table — idempotent via CREATE TABLE IF NOT EXISTS
+            migrationBuilder.Sql(@"
+                CREATE TABLE IF NOT EXISTS `ActivationRequests` (
+                    `Id`                   char(36) COLLATE ascii_general_ci NOT NULL,
+                    `TenantId`             char(36) COLLATE ascii_general_ci NOT NULL,
+                    `ReferralId`           char(36) COLLATE ascii_general_ci NOT NULL,
+                    `ProviderId`           char(36) COLLATE ascii_general_ci NOT NULL,
+                    `ProviderName`         varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+                    `ProviderEmail`        varchar(320) CHARACTER SET utf8mb4 NOT NULL,
+                    `RequesterName`        varchar(200) CHARACTER SET utf8mb4 NULL,
+                    `RequesterEmail`       varchar(320) CHARACTER SET utf8mb4 NULL,
+                    `ClientName`           varchar(250) CHARACTER SET utf8mb4 NULL,
+                    `ReferringFirmName`    varchar(300) CHARACTER SET utf8mb4 NULL,
+                    `RequestedService`     varchar(300) CHARACTER SET utf8mb4 NULL,
+                    `Status`               varchar(20)  CHARACTER SET utf8mb4 NOT NULL,
+                    `ApprovedByUserId`     char(36) COLLATE ascii_general_ci NULL,
+                    `ApprovedAtUtc`        datetime(6) NULL,
+                    `LinkedOrganizationId` char(36) COLLATE ascii_general_ci NULL,
+                    `CreatedAtUtc`         datetime(6) NOT NULL,
+                    `UpdatedAtUtc`         datetime(6) NOT NULL,
+                    `CreatedByUserId`      char(36) COLLATE ascii_general_ci NULL,
+                    `UpdatedByUserId`      char(36) COLLATE ascii_general_ci NULL,
+                    PRIMARY KEY (`Id`),
+                    CONSTRAINT `FK_ActivationRequests_Providers_ProviderId`
+                        FOREIGN KEY (`ProviderId`) REFERENCES `Providers` (`Id`) ON DELETE RESTRICT,
+                    CONSTRAINT `FK_ActivationRequests_Referrals_ReferralId`
+                        FOREIGN KEY (`ReferralId`) REFERENCES `Referrals` (`Id`) ON DELETE RESTRICT
+                ) CHARACTER SET utf8mb4;");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Referrals_OrganizationRelationshipId",
-                table: "Referrals",
-                column: "OrganizationRelationshipId");
+            // All CreateIndex calls wrapped in IF NOT EXISTS guards
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.statistics
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Referrals'
+                     AND INDEX_NAME='IX_Referrals_OrganizationRelationshipId') = 0,
+                  'CREATE INDEX `IX_Referrals_OrganizationRelationshipId` ON `Referrals` (`OrganizationRelationshipId`)',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Providers_OrganizationId",
-                table: "Providers",
-                column: "OrganizationId");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.statistics
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Providers'
+                     AND INDEX_NAME='IX_Providers_OrganizationId') = 0,
+                  'CREATE INDEX `IX_Providers_OrganizationId` ON `Providers` (`OrganizationId`)',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Providers_TenantId_City_State",
-                table: "Providers",
-                columns: new[] { "TenantId", "City", "State" });
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.statistics
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Providers'
+                     AND INDEX_NAME='IX_Providers_TenantId_City_State') = 0,
+                  'CREATE INDEX `IX_Providers_TenantId_City_State` ON `Providers` (`TenantId`, `City`, `State`)',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Facilities_OrganizationId",
-                table: "Facilities",
-                column: "OrganizationId");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.statistics
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Facilities'
+                     AND INDEX_NAME='IX_Facilities_OrganizationId') = 0,
+                  'CREATE INDEX `IX_Facilities_OrganizationId` ON `Facilities` (`OrganizationId`)',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Appointments_OrganizationRelationshipId",
-                table: "Appointments",
-                column: "OrganizationRelationshipId");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.statistics
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='Appointments'
+                     AND INDEX_NAME='IX_Appointments_OrganizationRelationshipId') = 0,
+                  'CREATE INDEX `IX_Appointments_OrganizationRelationshipId` ON `Appointments` (`OrganizationRelationshipId`)',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_ActivationRequests_ProviderId",
-                table: "ActivationRequests",
-                column: "ProviderId");
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.statistics
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='ActivationRequests'
+                     AND INDEX_NAME='IX_ActivationRequests_ProviderId') = 0,
+                  'CREATE INDEX `IX_ActivationRequests_ProviderId` ON `ActivationRequests` (`ProviderId`)',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_ActivationRequests_ReferralId_ProviderId",
-                table: "ActivationRequests",
-                columns: new[] { "ReferralId", "ProviderId" });
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.statistics
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='ActivationRequests'
+                     AND INDEX_NAME='IX_ActivationRequests_ReferralId_ProviderId') = 0,
+                  'CREATE INDEX `IX_ActivationRequests_ReferralId_ProviderId` ON `ActivationRequests` (`ReferralId`, `ProviderId`)',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_ActivationRequests_Status_CreatedAt",
-                table: "ActivationRequests",
-                columns: new[] { "Status", "CreatedAtUtc" });
+            migrationBuilder.Sql(@"
+                SET @dbname = DATABASE();
+                SET @s = IF(
+                  (SELECT COUNT(*) FROM information_schema.statistics
+                   WHERE TABLE_SCHEMA=@dbname AND TABLE_NAME='ActivationRequests'
+                     AND INDEX_NAME='IX_ActivationRequests_Status_CreatedAt') = 0,
+                  'CREATE INDEX `IX_ActivationRequests_Status_CreatedAt` ON `ActivationRequests` (`Status`, `CreatedAtUtc`)',
+                  'SELECT 1');
+                PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;");
         }
 
         /// <inheritdoc />

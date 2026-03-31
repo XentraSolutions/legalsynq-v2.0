@@ -111,6 +111,7 @@ app.MapCareConnectIntegrityEndpoints();
 app.MapProviderAdminEndpoints();
 app.MapAdminBackfillEndpoints();
 app.MapActivationAdminEndpoints(); // LSCC-009
+app.MapAnalyticsEndpoints();      // LSCC-011
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
 app.MapCategoryEndpoints();
