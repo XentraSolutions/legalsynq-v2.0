@@ -71,6 +71,10 @@ public static class AdminEndpoints
         // ── Platform readiness summary (Phase 8) ─────────────────────────────
         routes.MapGet("/api/admin/platform-readiness", GetPlatformReadiness);
 
+        // ── User lifecycle ────────────────────────────────────────────────────
+        // Step 27 (Phase B): user deactivation — emits identity.user.deactivated.
+        routes.MapPatch("/api/admin/users/{id:guid}/deactivate",            DeactivateUser);
+
         // ── Role assignment ───────────────────────────────────────────────────
         routes.MapPost("/api/admin/users/{id:guid}/roles",                  AssignRole);
         routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}",  RevokeRole);
@@ -308,6 +312,70 @@ public static class AdminEndpoints
             updatedAtUtc      = u.UpdatedAtUtc,
             isLocked          = false,
         });
+    }
+
+    // =========================================================================
+    // USER LIFECYCLE
+    // =========================================================================
+
+    /// <summary>
+    /// PATCH /api/admin/users/{id}/deactivate
+    ///
+    /// Sets the user's IsActive flag to false and emits the canonical
+    /// identity.user.deactivated audit event (HIPAA-required lifecycle record).
+    ///
+    /// Idempotent: if the user is already inactive, returns 204 without re-emitting.
+    /// Returns 404 if the user does not exist.
+    /// </summary>
+    private static async Task<IResult> DeactivateUser(
+        Guid              id,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        CancellationToken ct)
+    {
+        var user = await db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (user is null) return Results.NotFound();
+
+        // Deactivate() is idempotent — returns false if already inactive.
+        var changed = user.Deactivate();
+        if (!changed) return Results.NoContent();
+
+        await db.SaveChangesAsync(ct);
+
+        // Canonical audit: identity.user.deactivated — fire-and-observe.
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.deactivated",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = user.TenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Type = ActorType.System,
+                Name = "admin-api",
+            },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "UserDeactivated",
+            Description = $"User '{user.Email}' deactivated in tenant {user.TenantId}.",
+            Before      = JsonSerializer.Serialize(new { isActive = true,  email = user.Email }),
+            After       = JsonSerializer.Serialize(new { isActive = false, email = user.Email }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.deactivated", user.Id.ToString()),
+            Tags = ["user-management", "lifecycle", "deactivation"],
+        });
+
+        return Results.NoContent();
     }
 
     // =========================================================================

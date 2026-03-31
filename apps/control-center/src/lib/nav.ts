@@ -67,6 +67,18 @@ export const CC_NAV: NavSection[] = [
   },
 
   {
+    heading: 'SYNQAUDIT',
+    items: [
+      { href: '/synqaudit',             label: 'Overview',       icon: 'ri-shield-check-line',  badge: 'LIVE' },
+      { href: '/synqaudit/investigation', label: 'Investigation', icon: 'ri-search-eye-line',    badge: 'LIVE' },
+      { href: '/synqaudit/trace',       label: 'Trace Viewer',   icon: 'ri-git-branch-line',    badge: 'LIVE' },
+      { href: '/synqaudit/exports',     label: 'Exports',        icon: 'ri-download-cloud-line', badge: 'LIVE' },
+      { href: '/synqaudit/integrity',   label: 'Integrity',      icon: 'ri-fingerprint-line',   badge: 'LIVE' },
+      { href: '/synqaudit/legal-holds', label: 'Legal Holds',    icon: 'ri-scales-3-line',      badge: 'LIVE' },
+    ],
+  },
+
+  {
     heading: 'OPERATIONS',
     items: [
       { href: '/support',    label: 'Support Tools', icon: 'ri-customer-service-2-line', badge: 'IN PROGRESS' },

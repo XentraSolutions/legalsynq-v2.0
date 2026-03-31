@@ -20,6 +20,18 @@ public class User
 
     private User() { }
 
+    /// <summary>
+    /// Marks the user as inactive. Idempotent — safe to call when already inactive.
+    /// Returns true if state changed, false if already inactive.
+    /// </summary>
+    public bool Deactivate()
+    {
+        if (!IsActive) return false;
+        IsActive     = false;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
+    }
+
     public static User Create(
         Guid tenantId,
         string email,

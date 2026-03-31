@@ -56,6 +56,9 @@ import type {
   CareConnectIntegrityReport,
   ScopedRoleAssignment,
   CanonicalAuditEvent,
+  AuditExport,
+  IntegrityCheckpoint,
+  LegalHold,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -878,12 +881,42 @@ export function mapPagedResponse<T>(
   mapItem: (item: unknown) => T,
 ): PagedResponse<T> {
   const r = asObj(raw);
+  // Unwrap ApiResponse<T> envelope ({ success, data }) if present
+  const payload = (typeof r['success'] === 'boolean' && r['data'] !== undefined)
+    ? asObj(r['data'])
+    : r;
   return {
-    items:      asArr(r['items']).map(mapItem),
-    totalCount: num(r, 'total_count', 'totalCount', 0),
-    page:       num(r, 'page',        'page',        1),
-    pageSize:   num(r, 'page_size',   'pageSize',    20),
+    items:      asArr(payload['items']).map(mapItem),
+    totalCount: num(payload, 'total_count', 'totalCount', 0),
+    page:       num(payload, 'page',        'page',        1),
+    pageSize:   num(payload, 'page_size',   'pageSize',    20),
   };
+}
+
+/**
+ * unwrapApiResponse — extracts the `data` field from an ApiResponse envelope.
+ * If the input is not an envelope, returns it as-is.
+ */
+export function unwrapApiResponse(raw: unknown): unknown {
+  const r = asObj(raw);
+  if (typeof r['success'] === 'boolean' && r['data'] !== undefined) {
+    return r['data'];
+  }
+  return raw;
+}
+
+/**
+ * unwrapApiResponseList — extracts a top-level array from an ApiResponse envelope.
+ * Tries `data.items`, then `data` (if array), then `items`, then raw array.
+ */
+export function unwrapApiResponseList(raw: unknown): unknown[] {
+  const r = asObj(raw);
+  const data = r['success'] !== undefined ? asObj(r['data'] ?? {}) : r;
+  if (Array.isArray(data['items'])) return data['items'] as unknown[];
+  if (Array.isArray(r['data']))     return r['data'] as unknown[];
+  if (Array.isArray(r['items']))    return r['items'] as unknown[];
+  if (Array.isArray(raw))           return raw as unknown[];
+  return [];
 }
 
 // ── CanonicalAuditEvent mapper ────────────────────────────────────────────────
@@ -897,23 +930,119 @@ export function mapPagedResponse<T>(
  */
 export function mapCanonicalAuditEvent(raw: unknown): CanonicalAuditEvent {
   const r = asObj(raw);
+
+  // Nested objects (camelCase from .NET JsonNamingPolicy.CamelCase)
+  const actor  = asObj(r['actor']  ?? {});
+  const entity = asObj(r['entity'] ?? {});
+  const scope  = asObj(r['scope']  ?? {});
+
+  // Actor fields: nested actor.id / actor.name take precedence, fallback to flat
+  const actorId    = (str(actor, 'id',   'id',   '') || r['actorId']    as string | undefined) as string | undefined;
+  const actorLabel = (str(actor, 'name', 'name', '') || r['actorLabel'] as string | undefined) as string | undefined;
+  const actorType  = str(actor, 'type', 'actorType', '') || undefined;
+
+  // Entity fields: nested entity.type / entity.id take precedence
+  const targetType = (str(entity, 'type', 'type', '') || r['targetType'] as string | undefined) as string | undefined;
+  const targetId   = (str(entity, 'id',   'id',   '') || r['targetId']   as string | undefined) as string | undefined;
+
+  // Tenant: nested scope.tenantId takes precedence
+  const tenantId = (str(scope, 'tenantId', 'tenantId', '') || r['tenantId'] as string | undefined) as string | undefined;
+
+  // Severity and category may be enums — coerce to lowercase string
+  const severityRaw  = str(r, 'severity',      'severity',      'info');
+  const categoryRaw  = str(r, 'eventCategory', 'category',      '');
+
+  // Primary id: prefer auditId (canonical backend field), fallback to id
+  const id = str(r, 'auditId', 'id', '');
+
+  // Tags may be an array
+  const tagsRaw = r['tags'];
+  const tags: string[] | undefined = Array.isArray(tagsRaw) ? (tagsRaw as string[]) : undefined;
+
   return {
-    id:            str(r, 'id',           'id',           ''),
-    source:        str(r, 'source',       'source',       ''),
-    eventType:     str(r, 'event_type',   'eventType',    ''),
-    category:      str(r, 'category',     'category',     ''),
-    severity:      str(r, 'severity',     'severity',     'info'),
-    tenantId:      r['tenantId']      as string | undefined,
-    actorId:       r['actorId']       as string | undefined,
-    actorLabel:    r['actorLabel']    as string | undefined,
-    targetType:    r['targetType']    as string | undefined,
-    targetId:      r['targetId']      as string | undefined,
+    id,
+    source:        str(r, 'sourceSystem', 'source', ''),
+    sourceService: r['sourceService'] as string | undefined,
+    eventType:     str(r, 'eventType', 'event_type', ''),
+    category:      categoryRaw,
+    severity:      severityRaw.toLowerCase(),
+    tenantId:      tenantId || undefined,
+    actorId:       actorId  || undefined,
+    actorLabel:    actorLabel || undefined,
+    actorType:     actorType,
+    targetType:    targetType || undefined,
+    targetId:      targetId  || undefined,
+    action:        r['action']        as string | undefined,
     description:   str(r, 'description', 'description', ''),
-    outcome:       str(r, 'outcome',     'outcome',      ''),
-    ipAddress:     r['ipAddress']     as string | undefined,
+    before:        r['before']        as string | undefined,
+    after:         r['after']         as string | undefined,
+    outcome:       str(r, 'outcome',  'outcome', ''),
+    ipAddress:     (actor['ipAddress'] ?? r['ipAddress']) as string | undefined,
     correlationId: r['correlationId'] as string | undefined,
+    requestId:     r['requestId']     as string | undefined,
+    sessionId:     r['sessionId']     as string | undefined,
     metadata:      r['metadata']      as string | undefined,
-    occurredAtUtc: str(r, 'occurred_at_utc', 'occurredAtUtc', new Date().toISOString()),
-    ingestedAtUtc: str(r, 'ingested_at_utc', 'ingestedAtUtc', new Date().toISOString()),
+    tags,
+    occurredAtUtc: str(r, 'occurredAtUtc', 'occurred_at_utc', new Date().toISOString()),
+    ingestedAtUtc: str(r, 'recordedAtUtc', 'ingestedAtUtc',   new Date().toISOString()),
+    hash:          r['hash']          as string | undefined,
+  };
+}
+
+// ── SynqAudit — Exports mapper ────────────────────────────────────────────────
+
+export function mapAuditExport(raw: unknown): AuditExport {
+  const outer = asObj(raw);
+  const r = (typeof outer['success'] === 'boolean' && outer['data'] !== undefined)
+    ? asObj(outer['data'])
+    : outer;
+  return {
+    exportId:       str(r, 'exportId',       'export_id',        ''),
+    status:         str(r, 'status',         'status',           'Pending') as AuditExport['status'],
+    format:         str(r, 'format',         'format',           'Json'),
+    recordCount:    r['recordCount']    as number | undefined,
+    downloadUrl:    r['downloadUrl']    as string | undefined,
+    createdAtUtc:   str(r, 'createdAtUtc',   'created_at_utc',   new Date().toISOString()),
+    completedAtUtc: r['completedAtUtc'] as string | undefined,
+    errorMessage:   r['errorMessage']   as string | undefined,
+  };
+}
+
+// ── SynqAudit — Integrity Checkpoint mapper ───────────────────────────────────
+
+export function mapIntegrityCheckpoint(raw: unknown): IntegrityCheckpoint {
+  const outer = asObj(raw);
+  const r = (typeof outer['success'] === 'boolean' && outer['data'] !== undefined)
+    ? asObj(outer['data'])
+    : outer;
+  return {
+    checkpointId:      str(r, 'checkpointId',      'checkpoint_id',        ''),
+    checkpointType:    str(r, 'checkpointType',    'checkpoint_type',      ''),
+    aggregateHash:     str(r, 'aggregateHash',     'aggregate_hash',       ''),
+    recordCount:       (r['recordCount'] as number) ?? 0,
+    isValid:           r['isValid']            as boolean | undefined,
+    fromRecordedAtUtc: str(r, 'fromRecordedAtUtc', 'from_recorded_at_utc', new Date().toISOString()),
+    toRecordedAtUtc:   str(r, 'toRecordedAtUtc',   'to_recorded_at_utc',   new Date().toISOString()),
+    createdAtUtc:      str(r, 'createdAtUtc',      'created_at_utc',       new Date().toISOString()),
+  };
+}
+
+// ── SynqAudit — Legal Hold mapper ─────────────────────────────────────────────
+
+export function mapLegalHold(raw: unknown): LegalHold {
+  const outer = asObj(raw);
+  const r = (typeof outer['success'] === 'boolean' && outer['data'] !== undefined)
+    ? asObj(outer['data'])
+    : outer;
+  return {
+    holdId:           str(r, 'holdId',           'hold_id',            ''),
+    auditId:          str(r, 'auditId',           'audit_id',           ''),
+    legalAuthority:   str(r, 'legalAuthority',   'legal_authority',    ''),
+    notes:            r['notes']            as string | undefined,
+    heldByUserId:     r['heldByUserId']     as string | undefined,
+    heldAtUtc:        str(r, 'heldAtUtc',         'held_at_utc',        new Date().toISOString()),
+    isActive:         (r['isActive'] as boolean) ?? true,
+    releasedAtUtc:    r['releasedAtUtc']    as string | undefined,
+    releasedByUserId: r['releasedByUserId'] as string | undefined,
   };
 }

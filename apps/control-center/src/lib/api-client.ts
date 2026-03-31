@@ -348,6 +348,10 @@ export const CACHE_TAGS = {
   ccIntegrity:          'cc:careconnect-integrity',
   // Step 24 — canonical audit (Platform Audit Event Service)
   auditCanonical:       'cc:audit-canonical',
+  // Step 28 — SynqAudit extensions
+  auditExports:         'cc:audit-exports',
+  auditIntegrity:       'cc:audit-integrity',
+  auditLegalHolds:      'cc:audit-legal-holds',
 } as const;
 
 export type CacheTag = typeof CACHE_TAGS[keyof typeof CACHE_TAGS];

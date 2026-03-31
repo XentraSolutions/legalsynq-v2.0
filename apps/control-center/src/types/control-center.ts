@@ -162,23 +162,75 @@ export type AuditReadMode = 'legacy' | 'canonical' | 'hybrid';
 
 /** Canonical event from the Platform Audit Event Service query API. */
 export interface CanonicalAuditEvent {
-  id:            string;
-  source:        string;
-  eventType:     string;
-  category:      string;
-  severity:      string;
-  tenantId?:     string;
-  actorId?:      string;
-  actorLabel?:   string;
-  targetType?:   string;
-  targetId?:     string;
-  description:   string;
-  outcome:       string;
-  ipAddress?:    string;
+  id:             string;
+  source:         string;
+  sourceService?: string;
+  eventType:      string;
+  category:       string;
+  severity:       string;
+  tenantId?:      string;
+  actorId?:       string;
+  actorLabel?:    string;
+  actorType?:     string;
+  targetType?:    string;
+  targetId?:      string;
+  action?:        string;
+  description:    string;
+  before?:        string;
+  after?:         string;
+  outcome:        string;
+  ipAddress?:     string;
   correlationId?: string;
-  metadata?:     string;
-  occurredAtUtc: string;
-  ingestedAtUtc: string;
+  requestId?:     string;
+  sessionId?:     string;
+  metadata?:      string;
+  tags?:          string[];
+  occurredAtUtc:  string;
+  ingestedAtUtc:  string;
+  hash?:          string;
+}
+
+// ── SynqAudit — Exports ───────────────────────────────────────────────────────
+
+export type AuditExportStatus = 'Pending' | 'Processing' | 'Completed' | 'Failed';
+export type AuditExportFormat = 'Json' | 'Csv' | 'Ndjson';
+
+export interface AuditExport {
+  exportId:       string;
+  status:         AuditExportStatus;
+  format:         string;
+  recordCount?:   number;
+  downloadUrl?:   string;
+  createdAtUtc:   string;
+  completedAtUtc?: string;
+  errorMessage?:  string;
+}
+
+// ── SynqAudit — Integrity ─────────────────────────────────────────────────────
+
+export interface IntegrityCheckpoint {
+  checkpointId:     string;
+  checkpointType:   string;
+  aggregateHash:    string;
+  recordCount:      number;
+  isValid?:         boolean;
+  fromRecordedAtUtc: string;
+  toRecordedAtUtc:  string;
+  createdAtUtc:     string;
+}
+
+// ── SynqAudit — Legal Holds ───────────────────────────────────────────────────
+
+export interface LegalHold {
+  holdId:           string;
+  auditId:          string;
+  legalAuthority:   string;
+  notes?:           string;
+  heldByUserId?:    string;
+  heldAtUtc:        string;
+  isActive:         boolean;
+  releasedAtUtc?:   string;
+  releasedByUserId?: string;
 }
 
 // ── Platform Settings ─────────────────────────────────────────────────────────

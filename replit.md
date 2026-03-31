@@ -1946,3 +1946,47 @@ New `audit-cluster` upstream → `http://localhost:5007`. Purely additive.
 - CareConnect API: 0 errors, 1 pre-existing warning
 - Control Center TypeScript: 0 errors
 - Solution file: fixed bogus placeholder GUIDs; audit client correctly registered with `dotnet sln add`
+
+---
+
+## Step 28 — SynqAudit UI (Control Center)
+
+Full dedicated audit section added to the Control Center (Next.js 14, port 5004). Six pages + six client components + four API route handlers.
+
+### Pages (`apps/control-center/src/app/synqaudit/`)
+| Route | File | Description |
+|---|---|---|
+| `/synqaudit` | `page.tsx` | Overview: stat cards, quick-nav, recent events table |
+| `/synqaudit/investigation` | `investigation/page.tsx` | Full filter bar + paged event stream (server fetch → InvestigationWorkspace) |
+| `/synqaudit/trace` | `trace/page.tsx` | Correlation ID trace viewer (chronological timeline) |
+| `/synqaudit/exports` | `exports/page.tsx` | Async export job submission (JSON/CSV/NDJSON) |
+| `/synqaudit/integrity` | `integrity/page.tsx` | HMAC-SHA256 checkpoint list + generate form |
+| `/synqaudit/legal-holds` | `legal-holds/page.tsx` | Legal hold management per audit record ID |
+
+### Client Components (`apps/control-center/src/components/synqaudit/`)
+- **`synqaudit-badges.tsx`** — `SeverityBadge`, `CategoryBadge`, `OutcomeBadge`, `formatUtc`, `formatUtcFull` (no `use client` — server-safe)
+- **`investigation-workspace.tsx`** — filter bar (URL-driven), event stream table, full event detail side panel, pagination
+- **`trace-timeline.tsx`** — searchable correlation ID trace timeline with expandable event cards
+- **`export-request-form.tsx`** — export job form; calls `POST /api/synqaudit/exports`
+- **`integrity-panel.tsx`** — checkpoint list + generate form; calls `POST /api/synqaudit/integrity/generate`
+- **`legal-hold-manager.tsx`** — active/released hold list, place new hold, release hold; calls `/api/synqaudit/legal-holds/[id]` and `/api/synqaudit/legal-holds/[id]/release`
+
+### API Route Handlers (`apps/control-center/src/app/api/synqaudit/`)
+| Route | Purpose |
+|---|---|
+| `POST /api/synqaudit/exports` | Proxy → `auditExports.create()` |
+| `POST /api/synqaudit/integrity/generate` | Proxy → `auditIntegrity.generate()` |
+| `POST /api/synqaudit/legal-holds/[id]` | Proxy → `auditLegalHolds.create(auditId)` |
+| `POST /api/synqaudit/legal-holds/[id]/release` | Proxy → `auditLegalHolds.release(holdId)` |
+
+All routes guarded with `requirePlatformAdmin()`. Dynamic segments use same `[id]` name to satisfy Next.js router uniqueness constraint.
+
+### Extended Types & API Client
+- **`types/control-center.ts`** — `CanonicalAuditEvent` extended (action/before/after/tags/sourceService/actorType/requestId/sessionId/hash); new types: `AuditExport`, `AuditExportFormat`, `IntegrityCheckpoint`, `LegalHold`
+- **`lib/api-mappers.ts`** — `mapCanonicalAuditEvent` rewritten; `mapAuditExport`, `mapIntegrityCheckpoint`, `mapLegalHold` added; `unwrapApiResponse`/`unwrapApiResponseList` helpers for `ApiResponse<T>` envelope
+- **`lib/control-center-api.ts`** — `auditCanonical.getById`, `auditExports.{create,getById}`, `auditIntegrity.{list,generate}`, `auditLegalHolds.{listForRecord,create,release}`
+- **`lib/nav.ts`** — SYNQAUDIT section with 6 live nav items
+
+### Build Status
+- Next.js control-center: ✅ `✓ Ready` (0 compile errors, routing conflict resolved)
+- No TypeScript errors (both `✓ Ready in <4s`)

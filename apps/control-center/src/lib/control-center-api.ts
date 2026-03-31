@@ -77,6 +77,11 @@ import {
   mapPlatformReadiness,
   mapCareConnectIntegrity,
   mapScopedRoleAssignment,
+  mapAuditExport,
+  mapIntegrityCheckpoint,
+  mapLegalHold,
+  unwrapApiResponse,
+  unwrapApiResponseList,
 }                                       from '@/lib/api-mappers';
 import type {
   TenantSummary,
@@ -105,6 +110,9 @@ import type {
   PlatformReadinessSummary,
   CareConnectIntegrityReport,
   ScopedRoleAssignment,
+  AuditExport,
+  IntegrityCheckpoint,
+  LegalHold,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -427,6 +435,158 @@ export const controlCenterServerApi = {
       );
       const paged = mapPagedResponse(raw, mapCanonicalAuditEvent);
       return { items: paged.items, totalCount: paged.totalCount };
+    },
+
+    /**
+     * GET /audit-service/audit/events/{auditId}
+     *
+     * Fetches a single canonical audit event by its stable auditId.
+     * Cache: 30 s  Tag: cc:audit-canonical
+     */
+    getById: async (auditId: string): Promise<CanonicalAuditEvent | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/audit-service/audit/events/${encodeURIComponent(auditId)}`,
+          30,
+          [CACHE_TAGS.auditCanonical],
+        );
+        if (!raw) return null;
+        return mapCanonicalAuditEvent(unwrapApiResponse(raw));
+      } catch {
+        return null;
+      }
+    },
+  },
+
+  // ── SynqAudit — Exports ───────────────────────────────────────────────────
+
+  auditExports: {
+    /**
+     * POST /audit-service/audit/exports
+     *
+     * Submits an asynchronous export job. Returns the export status object.
+     * Cache: no-store (mutations)
+     */
+    create: async (params: {
+      format:                 'Json' | 'Csv' | 'Ndjson';
+      tenantId?:              string;
+      eventType?:             string;
+      category?:              string;
+      severity?:              string;
+      correlationId?:         string;
+      dateFrom?:              string;
+      dateTo?:                string;
+      includeStateSnapshots?: boolean;
+      includeTags?:           boolean;
+    }): Promise<AuditExport> => {
+      const raw = await apiClient.post<unknown>(
+        '/audit-service/audit/exports',
+        { ...params },
+      );
+      return mapAuditExport(raw);
+    },
+
+    /**
+     * GET /audit-service/audit/exports/{exportId}
+     *
+     * Polls the status of a previously submitted export job.
+     * Cache: 5 s  Tag: cc:audit-exports
+     */
+    getById: async (exportId: string): Promise<AuditExport | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/audit-service/audit/exports/${encodeURIComponent(exportId)}`,
+          5,
+          [CACHE_TAGS.auditExports],
+        );
+        return mapAuditExport(raw);
+      } catch {
+        return null;
+      }
+    },
+  },
+
+  // ── SynqAudit — Integrity ─────────────────────────────────────────────────
+
+  auditIntegrity: {
+    /**
+     * GET /audit-service/audit/integrity/checkpoints
+     *
+     * Lists persisted integrity hash checkpoints.
+     * Cache: 30 s  Tag: cc:audit-integrity
+     */
+    list: async (): Promise<IntegrityCheckpoint[]> => {
+      const raw = await apiClient.get<unknown>(
+        '/audit-service/audit/integrity/checkpoints',
+        30,
+        [CACHE_TAGS.auditIntegrity],
+      );
+      return unwrapApiResponseList(raw).map(mapIntegrityCheckpoint);
+    },
+
+    /**
+     * POST /audit-service/audit/integrity/checkpoints/generate
+     *
+     * Generates a new integrity checkpoint on demand.
+     */
+    generate: async (params: {
+      checkpointType?:    string;
+      fromRecordedAtUtc?: string;
+      toRecordedAtUtc?:   string;
+    } = {}): Promise<IntegrityCheckpoint> => {
+      const raw = await apiClient.post<unknown>(
+        '/audit-service/audit/integrity/checkpoints/generate',
+        params,
+      );
+      return mapIntegrityCheckpoint(raw);
+    },
+  },
+
+  // ── SynqAudit — Legal Holds ───────────────────────────────────────────────
+
+  auditLegalHolds: {
+    /**
+     * GET /audit-service/audit/legal-holds/record/{auditId}
+     *
+     * Lists all legal holds for a specific audit record.
+     * Cache: 10 s  Tag: cc:audit-legal-holds
+     */
+    listForRecord: async (auditId: string): Promise<LegalHold[]> => {
+      const raw = await apiClient.get<unknown>(
+        `/audit-service/audit/legal-holds/record/${encodeURIComponent(auditId)}`,
+        10,
+        [CACHE_TAGS.auditLegalHolds],
+      );
+      return unwrapApiResponseList(raw).map(mapLegalHold);
+    },
+
+    /**
+     * POST /audit-service/audit/legal-holds/{auditId}
+     *
+     * Places a legal hold on an audit record.
+     */
+    create: async (auditId: string, params: {
+      legalAuthority: string;
+      notes?:         string;
+    }): Promise<LegalHold> => {
+      const raw = await apiClient.post<unknown>(
+        `/audit-service/audit/legal-holds/${encodeURIComponent(auditId)}`,
+        params,
+      );
+      return mapLegalHold(raw);
+    },
+
+    /**
+     * POST /audit-service/audit/legal-holds/{holdId}/release
+     *
+     * Releases an active legal hold.
+     */
+    release: async (holdId: string): Promise<LegalHold> => {
+      const raw = await apiClient.post<unknown>(
+        `/audit-service/audit/legal-holds/${encodeURIComponent(holdId)}/release`,
+        {},
+      );
+      return mapLegalHold(raw);
     },
   },
 
