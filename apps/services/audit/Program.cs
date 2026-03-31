@@ -67,9 +67,11 @@ try
     // Priority order:
     //   1. Database:ConnectionString in appsettings / env
     //   2. ConnectionStrings:AuditEventDb (standard ASP.NET Core convention)
+    // Use IsNullOrEmpty — empty string from config binding must not override the fallback.
     var connectionString =
-        dbOpts.ConnectionString
-        ?? cfg.GetConnectionString("AuditEventDb");
+        !string.IsNullOrEmpty(dbOpts.ConnectionString)
+            ? dbOpts.ConnectionString
+            : cfg.GetConnectionString("AuditEventDb");
 
     // ── Database + Repository wiring ─────────────────────────────────────────
     switch (dbOpts.Provider)
@@ -110,8 +112,9 @@ try
             // EnsureCreated() is used instead of MigrateAsync() because the existing migrations
             // are MySQL-specific (Pomelo). A fresh SQLite schema is created from the EF model.
             // NOT for production — use MySQL with MigrateOnStartup for production.
-            var sqliteCs = dbOpts.ConnectionString
-                ?? $"Data Source={dbOpts.SqliteFilePath}";
+            var sqliteCs = !string.IsNullOrEmpty(dbOpts.ConnectionString)
+                ? dbOpts.ConnectionString
+                : $"Data Source={dbOpts.SqliteFilePath}";
 
             builder.Services.AddDbContextFactory<AuditEventDbContext>(opts =>
             {

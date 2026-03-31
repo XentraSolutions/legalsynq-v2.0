@@ -30,7 +30,6 @@ public sealed class IngestSourceRegistrationConfiguration : IEntityTypeConfigura
         entity.HasKey(e => e.Id);
         entity.Property(e => e.Id)
             .IsRequired()
-            .HasColumnType("bigint")
             .ValueGeneratedOnAdd();
 
         // ── Identity ──────────────────────────────────────────────────────────

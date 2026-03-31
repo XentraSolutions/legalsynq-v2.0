@@ -40,7 +40,7 @@ public sealed class EfOutboxMessageRepository : IOutboxMessageRepository
         return await db.OutboxMessages
             .AsNoTracking()
             .Where(m => m.ProcessedAtUtc == null && !m.IsPermanentlyFailed)
-            .OrderBy(m => m.CreatedAtUtc)
+            .OrderBy(m => m.Id)
             .Take(batchSize)
             .ToListAsync(ct);
     }

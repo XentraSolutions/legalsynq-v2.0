@@ -53,7 +53,7 @@ public sealed class EfLegalHoldRepository : ILegalHoldRepository
         return await db.LegalHolds
             .AsNoTracking()
             .Where(h => h.AuditId == auditId)
-            .OrderByDescending(h => h.HeldAtUtc)
+            .OrderByDescending(h => h.Id)
             .ToListAsync(ct);
     }
 
@@ -91,7 +91,7 @@ public sealed class EfLegalHoldRepository : ILegalHoldRepository
         return await db.LegalHolds
             .AsNoTracking()
             .Where(h => h.LegalAuthority == legalAuthority && h.ReleasedAtUtc == null)
-            .OrderBy(h => h.HeldAtUtc)
+            .OrderBy(h => h.Id)
             .ToListAsync(ct);
     }
 

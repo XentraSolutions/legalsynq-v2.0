@@ -121,18 +121,19 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
 
         var filtered = ApplyFilters(db.AuditEventRecords.AsNoTracking(), filter);
 
-        var result = await filtered
-            .GroupBy(_ => 1)
-            .Select(g => new
-            {
-                Earliest = g.Min(r => (DateTimeOffset?)r.OccurredAtUtc),
-                Latest   = g.Max(r => (DateTimeOffset?)r.OccurredAtUtc),
-            })
+        // SQLite cannot apply Min/Max aggregate operators on DateTimeOffset columns, and
+        // also cannot ORDER BY DateTimeOffset. Use Id (auto-increment, time-ordered) instead.
+        var earliest = await filtered
+            .OrderBy(r => r.Id)
+            .Select(r => (DateTimeOffset?)r.OccurredAtUtc)
             .FirstOrDefaultAsync(ct);
 
-        return result is null
-            ? (null, null)
-            : (result.Earliest, result.Latest);
+        var latest = await filtered
+            .OrderByDescending(r => r.Id)
+            .Select(r => (DateTimeOffset?)r.OccurredAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+        return (earliest, latest);
     }
 
     // ── Paginated query ────────────────────────────────────────────────────────
@@ -206,8 +207,7 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
         await using var db = await _contextFactory.CreateDbContextAsync(ct);
 
         var query = ApplyFilters(db.AuditEventRecords.AsNoTracking(), filter)
-            .OrderBy(r => r.OccurredAtUtc)
-            .ThenBy(r => r.Id);   // Insertion-order tie-breaker → deterministic export
+            .OrderBy(r => r.Id);  // Insertion-order → deterministic export (SQLite-safe)
 
         await foreach (var record in query.AsAsyncEnumerable().WithCancellation(ct))
         {
@@ -227,8 +227,7 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
         return await db.AuditEventRecords
             .AsNoTracking()
             .Where(r => r.RecordedAtUtc < beforeRecordedAtUtc)
-            .OrderBy(r => r.RecordedAtUtc)
-            .ThenBy(r => r.Id)
+            .OrderBy(r => r.Id)
             .Take(batchSize)
             .ToListAsync(ct);
     }
@@ -367,9 +366,12 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
         var desc = q.SortDescending;
         return q.SortBy?.ToLowerInvariant() switch
         {
+            // DateTimeOffset columns cannot be used in ORDER BY on SQLite.
+            // Id is an auto-increment long that preserves insertion order,
+            // which is equivalent to sorting by RecordedAtUtc / OccurredAtUtc.
             "recordedat" or "recordedatutc" =>
-                desc ? source.OrderByDescending(r => r.RecordedAtUtc)
-                     : source.OrderBy(r => r.RecordedAtUtc),
+                desc ? source.OrderByDescending(r => r.Id)
+                     : source.OrderBy(r => r.Id),
             "severity" =>
                 desc ? source.OrderByDescending(r => r.Severity)
                      : source.OrderBy(r => r.Severity),
@@ -377,8 +379,8 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
                 desc ? source.OrderByDescending(r => r.SourceSystem)
                      : source.OrderBy(r => r.SourceSystem),
             _ =>
-                desc ? source.OrderByDescending(r => r.OccurredAtUtc)
-                     : source.OrderBy(r => r.OccurredAtUtc),
+                desc ? source.OrderByDescending(r => r.Id)
+                     : source.OrderBy(r => r.Id),
         };
     }
 }

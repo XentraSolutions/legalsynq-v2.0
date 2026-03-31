@@ -30,7 +30,6 @@ public sealed class AuditExportJobConfiguration : IEntityTypeConfiguration<Audit
         entity.HasKey(e => e.Id);
         entity.Property(e => e.Id)
             .IsRequired()
-            .HasColumnType("bigint")
             .ValueGeneratedOnAdd();
 
         // ── Public identifier ─────────────────────────────────────────────────

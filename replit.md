@@ -2155,6 +2155,45 @@ All follow fire-and-observe: `_ = auditClient.IngestAsync(...)` (C#) / `.catch((
 ### Analysis
 - `analysis/step29_user_activity_audit.md` — full event taxonomy table, change log, architecture notes
 
+## Step 31 — Audit Service SQLite Dev Fixes (2026-03-31)
+
+### Root Cause Chain (resolved)
+
+Three layered bugs were each silently masking the next:
+
+1. **`HasColumnType("bigint")` on PKs** — `EnsureCreated` was generating `"Id" bigint NOT NULL PRIMARY KEY AUTOINCREMENT` which SQLite rejects (`AUTOINCREMENT` only allowed on `INTEGER`). Fixed by removing explicit column type on PK `Id` properties in all 4 entity configurations (`AuditEventRecordConfiguration`, `AuditExportJobConfiguration`, `IngestSourceRegistrationConfiguration`, `IntegrityCheckpointConfiguration`).
+
+2. **Empty connection string (`ConnectionString=`)** — `DatabaseOptions.ConnectionString` defaults to `""` (empty string), so `dbOpts.ConnectionString ?? $"Data Source={dbOpts.SqliteFilePath}"` never fell through to the file path (null-coalescing ignores empty string). An empty connection string creates a per-connection in-memory SQLite database — `EnsureCreated` succeeded on the first connection, but every subsequent connection got a brand-new empty DB. Fixed by replacing `??` with `string.IsNullOrEmpty()` checks in both the shared `connectionString` and the `sqliteCs` variables in `Program.cs`.
+
+3. **`DateTimeOffset` ORDER BY and `Min`/`Max` aggregates** — SQLite EF Core provider cannot translate `OrderBy(r => r.OccurredAtUtc)` or `GroupBy.Select(g.Min(DateTimeOffset))`. Fixed across 6 repository files:
+   - `EfAuditEventRecordRepository` — `ApplySorting`, `GetOccurredAtRangeAsync`, and `GetBatchForRetentionAsync`
+   - `EfOutboxMessageRepository` — `ListPendingAsync`
+   - `EfAuditExportJobRepository` — `ListByStatusAsync`
+   - `EfIntegrityCheckpointRepository` — `ListAsync`
+   - `EfLegalHoldRepository` — `ListByAuditIdAsync`, `ListActiveByAuthorityAsync`
+
+### Files Changed
+- `apps/services/audit/Program.cs` — fixed `string.IsNullOrEmpty()` for `connectionString` and `sqliteCs`
+- `apps/services/audit/Data/Configurations/AuditEventRecordConfiguration.cs` — removed `HasColumnType("bigint")` from PK
+- `apps/services/audit/Data/Configurations/AuditExportJobConfiguration.cs` — same
+- `apps/services/audit/Data/Configurations/IngestSourceRegistrationConfiguration.cs` — same
+- `apps/services/audit/Data/Configurations/IntegrityCheckpointConfiguration.cs` — same
+- `apps/services/audit/Repositories/EfAuditEventRecordRepository.cs` — replaced all `DateTimeOffset` ORDER BY + `Min`/`Max` aggregates with `OrderBy(r => r.Id)` equivalents
+- `apps/services/audit/Repositories/EfOutboxMessageRepository.cs` — `OrderBy(m => m.Id)`
+- `apps/services/audit/Repositories/EfAuditExportJobRepository.cs` — `OrderBy(j => j.Id)`
+- `apps/services/audit/Repositories/EfIntegrityCheckpointRepository.cs` — `OrderBy(c => c.Id)`
+- `apps/services/audit/Repositories/EfLegalHoldRepository.cs` — `OrderBy(h => h.Id)` (two methods)
+
+### Result
+- Audit service starts cleanly on port 5007 with `Data Source=audit_dev.db`
+- `EnsureCreated` succeeds on every startup; all tables present
+- `POST /internal/audit/events` → `{"success":true, "accepted":true}` ✅
+- `GET /audit/events?tenantId=...` → `{"success":true, "data":{"items":[...],"totalCount":1,...}}` ✅
+- `earliestOccurredAtUtc` / `latestOccurredAtUtc` computed correctly ✅
+- Background jobs (`OutboxRelayHostedService`, `ExportProcessingJob`) start without errors ✅
+
+---
+
 ## Step 30 — IP Address Capture in Auth Audit Events
 
 **IP address now recorded on all login and logout audit events** (both successful and failed).

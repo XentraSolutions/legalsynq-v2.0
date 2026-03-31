@@ -85,7 +85,7 @@ public sealed class EfAuditEventRepository : IAuditEventRepository
         var page     = Math.Max(1, q.Page);
 
         var items = await query
-            .OrderByDescending(e => e.OccurredAtUtc)
+            .OrderByDescending(e => e.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);

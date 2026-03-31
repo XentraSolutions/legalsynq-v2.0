@@ -59,7 +59,7 @@ public sealed class EfIntegrityCheckpointRepository : IIntegrityCheckpointReposi
         return await db.IntegrityCheckpoints
             .AsNoTracking()
             .Where(c => c.CheckpointType == checkpointType)
-            .OrderByDescending(c => c.CreatedAtUtc)
+            .OrderByDescending(c => c.Id)
             .FirstOrDefaultAsync(ct);
     }
 
@@ -72,7 +72,7 @@ public sealed class EfIntegrityCheckpointRepository : IIntegrityCheckpointReposi
         return await db.IntegrityCheckpoints
             .AsNoTracking()
             .Where(c => c.FromRecordedAtUtc >= from && c.FromRecordedAtUtc <= to)
-            .OrderBy(c => c.FromRecordedAtUtc)
+            .OrderBy(c => c.Id)
             .ToListAsync(ct);
     }
 
@@ -87,7 +87,7 @@ public sealed class EfIntegrityCheckpointRepository : IIntegrityCheckpointReposi
         var query = db.IntegrityCheckpoints
             .AsNoTracking()
             .Where(c => c.CheckpointType == checkpointType)
-            .OrderByDescending(c => c.CreatedAtUtc);
+            .OrderByDescending(c => c.Id);
 
         var total = await query.CountAsync(ct);   // int — matches PagedResult<T>.TotalCount
         pageSize  = Math.Max(1, Math.Min(pageSize, 200));
@@ -128,7 +128,7 @@ public sealed class EfIntegrityCheckpointRepository : IIntegrityCheckpointReposi
         if (to.HasValue)
             query = query.Where(c => c.CreatedAtUtc <= to.Value);
 
-        query = query.OrderByDescending(c => c.CreatedAtUtc);
+        query = query.OrderByDescending(c => c.Id);
 
         var total    = await query.CountAsync(ct);
         pageSize     = Math.Max(1, Math.Min(pageSize, 200));

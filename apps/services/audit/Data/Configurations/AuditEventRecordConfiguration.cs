@@ -33,7 +33,6 @@ public sealed class AuditEventRecordConfiguration : IEntityTypeConfiguration<Aud
         entity.HasKey(e => e.Id);
         entity.Property(e => e.Id)
             .IsRequired()
-            .HasColumnType("bigint")
             .ValueGeneratedOnAdd();
 
         // ── Public identifier ─────────────────────────────────────────────────

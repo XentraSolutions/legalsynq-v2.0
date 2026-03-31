@@ -28,7 +28,6 @@ public sealed class IntegrityCheckpointConfiguration : IEntityTypeConfiguration<
         entity.HasKey(e => e.Id);
         entity.Property(e => e.Id)
             .IsRequired()
-            .HasColumnType("bigint")
             .ValueGeneratedOnAdd();
 
         // ── Classification ────────────────────────────────────────────────────

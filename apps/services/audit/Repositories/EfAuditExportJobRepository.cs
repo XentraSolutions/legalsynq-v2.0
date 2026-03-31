@@ -98,7 +98,7 @@ public sealed class EfAuditExportJobRepository : IAuditExportJobRepository
         var query = db.AuditExportJobs
             .AsNoTracking()
             .Where(j => j.RequestedBy == requestedBy)
-            .OrderByDescending(j => j.CreatedAtUtc);
+            .OrderByDescending(j => j.Id);
 
         var total = await query.CountAsync(ct);
         pageSize  = Math.Max(1, Math.Min(pageSize, 200));
@@ -125,7 +125,7 @@ public sealed class EfAuditExportJobRepository : IAuditExportJobRepository
         return await db.AuditExportJobs
             .AsNoTracking()
             .Where(j => j.Status == ExportStatus.Pending || j.Status == ExportStatus.Processing)
-            .OrderBy(j => j.CreatedAtUtc)
+            .OrderBy(j => j.Id)
             .ToListAsync(ct);
     }
 
@@ -144,7 +144,7 @@ public sealed class EfAuditExportJobRepository : IAuditExportJobRepository
         if (statuses is { Count: > 0 })
             query = query.Where(j => statuses.Contains(j.Status));
 
-        query = query.OrderByDescending(j => j.CreatedAtUtc);
+        query = query.OrderByDescending(j => j.Id);
 
         var total = await query.CountAsync(ct);
         pageSize  = Math.Max(1, Math.Min(pageSize, 200));
