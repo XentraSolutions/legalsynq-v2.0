@@ -15,4 +15,5 @@ public record AuthMeResponse(
     string? OrgName,
     List<string> ProductRoles,
     List<string> SystemRoles,
-    DateTime ExpiresAtUtc);
+    DateTime ExpiresAtUtc,
+    int SessionTimeoutMinutes = 30);

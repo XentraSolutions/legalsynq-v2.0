@@ -53,3 +53,30 @@ export async function updateProductEntitlement(
     };
   }
 }
+
+export interface UpdateSessionSettingsResult {
+  success: boolean;
+  error?:  string;
+}
+
+/**
+ * Server Action: update per-tenant idle session timeout.
+ *
+ * Requires an active PlatformAdmin session. Pass null to reset to the
+ * platform default (30 minutes). Valid range: 5–480 minutes.
+ */
+export async function updateTenantSessionSettings(
+  tenantId:              string,
+  sessionTimeoutMinutes: number | null,
+): Promise<UpdateSessionSettingsResult> {
+  await requirePlatformAdmin();
+  try {
+    await controlCenterServerApi.tenants.updateSessionSettings(tenantId, sessionTimeoutMinutes);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to update session settings.',
+    };
+  }
+}

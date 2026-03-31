@@ -7,6 +7,7 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { TenantDetailCard } from '@/components/tenants/tenant-detail-card';
 import { TenantActions } from '@/components/tenants/tenant-actions';
 import { ProductEntitlementsPanel } from '@/components/tenants/product-entitlements-panel';
+import { TenantSessionSettingsPanel } from '@/components/tenants/tenant-session-settings-panel';
 import { switchTenantContextAction } from '@/app/actions/tenant-context';
 import type { TenantStatus, TenantType } from '@/types/control-center';
 
@@ -156,6 +157,12 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
 
             {/* Detail sections */}
             <TenantDetailCard tenant={tenant} />
+
+            {/* ── Session Settings (per-tenant idle timeout) ─────────────── */}
+            <TenantSessionSettingsPanel
+              tenantId={tenant.id}
+              sessionTimeoutMinutes={tenant.sessionTimeoutMinutes}
+            />
 
             {/* ── Product Entitlements (editable) ───────────────────────────── */}
             <ProductEntitlementsPanel

@@ -130,7 +130,8 @@ public class AuthService : IAuthService
         }
 
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
-            userWithRoles, tenant, roleNames, org, productRoles);
+            userWithRoles, tenant, roleNames, org, productRoles,
+            sessionTimeoutMinutes: tenant.SessionTimeoutMinutes);
 
         // Phase H: derive org_type code from OrganizationTypeId FK (authoritative) when available;
         // fall back to the stored OrgType string for compatibility.
@@ -217,17 +218,22 @@ public class AuthService : IAuthService
             ? DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime
             : DateTime.UtcNow.AddMinutes(60);
 
+        // Read per-tenant idle session timeout embedded at login time.
+        var timeoutClaim = principal.FindFirstValue("session_timeout_minutes");
+        var sessionTimeoutMinutes = timeoutClaim is not null && int.TryParse(timeoutClaim, out var tm) ? tm : 30;
+
         var response = new AuthMeResponse(
-            UserId:       userId,
-            Email:        email,
-            TenantId:     tenantId,
-            TenantCode:   tenantCode,
-            OrgId:        orgId,
-            OrgType:      orgType,
-            OrgName:      null,  // Phase 2: DB lookup by orgId for DisplayName ?? Name
-            ProductRoles: productRoles,
-            SystemRoles:  systemRoles,
-            ExpiresAtUtc: expiresAtUtc);
+            UserId:                 userId,
+            Email:                  email,
+            TenantId:               tenantId,
+            TenantCode:             tenantCode,
+            OrgId:                  orgId,
+            OrgType:                orgType,
+            OrgName:                null,  // Phase 2: DB lookup by orgId for DisplayName ?? Name
+            ProductRoles:           productRoles,
+            SystemRoles:            systemRoles,
+            ExpiresAtUtc:           expiresAtUtc,
+            SessionTimeoutMinutes:  sessionTimeoutMinutes);
 
         return Task.FromResult(response);
     }

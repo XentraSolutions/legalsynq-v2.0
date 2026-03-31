@@ -238,6 +238,7 @@ function mapEntitlement(raw: unknown): ProductEntitlementSummary {
 export function mapTenantDetail(raw: unknown): TenantDetail {
   const r    = asObj(raw);
   const base = mapTenantSummary(raw);
+  const rawTimeout = r['sessionTimeoutMinutes'] ?? r['session_timeout_minutes'];
   return {
     ...base,
     email:           optStr(r, 'email', 'email'),
@@ -248,6 +249,7 @@ export function mapTenantDetail(raw: unknown): TenantDetail {
                        : r['linkedOrgCount'] !== undefined
                          ? num(r, 'linked_org_count', 'linkedOrgCount', 0)
                          : undefined,
+    sessionTimeoutMinutes: rawTimeout != null ? Number(rawTimeout) : undefined,
     productEntitlements: asArr(
       r['product_entitlements'] ?? r['productEntitlements'],
     ).map(mapEntitlement),

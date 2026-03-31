@@ -25,6 +25,7 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/tenants",         ListTenants);
         routes.MapGet("/api/admin/tenants/{id:guid}", GetTenant);
         routes.MapPost("/api/admin/tenants/{id:guid}/entitlement", UpdateEntitlement);
+        routes.MapPatch("/api/admin/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings);
 
         // ── Users ─────────────────────────────────────────────────────────
         routes.MapGet("/api/admin/users",           ListUsers);
@@ -157,21 +158,49 @@ public static class AdminEndpoints
 
         return Results.Ok(new
         {
-            id                 = t.Id,
-            code               = t.Code,
-            displayName        = t.Name,
-            type               = "LawFirm",
-            status             = t.IsActive ? "Active" : "Inactive",
-            primaryContactName = firstUser is null ? "" : $"{firstUser.FirstName} {firstUser.LastName}",
-            email              = firstUser?.Email,
-            isActive           = t.IsActive,
-            userCount          = t.Users.Count,
-            activeUserCount    = t.Users.Count(u => u.IsActive),
-            orgCount           = t.Organizations.Count,
-            linkedOrgCount     = t.Organizations.Count,
-            createdAtUtc       = t.CreatedAtUtc,
-            updatedAtUtc       = t.UpdatedAtUtc,
-            productEntitlements = entitlements,
+            id                    = t.Id,
+            code                  = t.Code,
+            displayName           = t.Name,
+            type                  = "LawFirm",
+            status                = t.IsActive ? "Active" : "Inactive",
+            primaryContactName    = firstUser is null ? "" : $"{firstUser.FirstName} {firstUser.LastName}",
+            email                 = firstUser?.Email,
+            isActive              = t.IsActive,
+            userCount             = t.Users.Count,
+            activeUserCount       = t.Users.Count(u => u.IsActive),
+            orgCount              = t.Organizations.Count,
+            linkedOrgCount        = t.Organizations.Count,
+            createdAtUtc          = t.CreatedAtUtc,
+            updatedAtUtc          = t.UpdatedAtUtc,
+            sessionTimeoutMinutes = t.SessionTimeoutMinutes,
+            productEntitlements   = entitlements,
+        });
+    }
+
+    private static async Task<IResult> UpdateTenantSessionSettings(
+        Guid id,
+        IdentityDbContext db,
+        SessionSettingsRequest body)
+    {
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == id);
+        if (tenant is null) return Results.NotFound();
+
+        try
+        {
+            tenant.SetSessionTimeout(body.SessionTimeoutMinutes);
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return Results.Problem(ex.Message, statusCode: 400);
+        }
+
+        await db.SaveChangesAsync();
+
+        return Results.Ok(new
+        {
+            tenantId              = tenant.Id,
+            sessionTimeoutMinutes = tenant.SessionTimeoutMinutes,
+            updatedAtUtc          = tenant.UpdatedAtUtc,
         });
     }
 
@@ -1408,6 +1437,7 @@ public static class AdminEndpoints
         Guid?   ProductId                    = null,
         Guid?   OrganizationRelationshipId   = null);
     private record EntitlementRequest(string ProductCode, bool Enabled);
+    private record SessionSettingsRequest(int? SessionTimeoutMinutes);
     private record CreateOrgRelationshipRequest(
         Guid  SourceOrganizationId,
         Guid  TargetOrganizationId,

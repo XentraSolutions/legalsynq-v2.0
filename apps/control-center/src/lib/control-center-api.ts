@@ -218,9 +218,25 @@ export const controlCenterServerApi = {
         { enabled },
       );
       const result = mapEntitlementResponse(raw);
-      // Purge tenant cache so entitlement state is immediately fresh
       revalidateTag(CACHE_TAGS.tenants);
       return result;
+    },
+
+    /**
+     * PATCH /identity/api/admin/tenants/{id}/session-settings
+     *
+     * Updates the per-tenant idle session timeout.
+     * Pass null to reset to the platform default (30 minutes).
+     */
+    updateSessionSettings: async (
+      tenantId: string,
+      sessionTimeoutMinutes: number | null,
+    ): Promise<void> => {
+      await apiClient.patch<unknown>(
+        `/identity/api/admin/tenants/${encodeURIComponent(tenantId)}/session-settings`,
+        { sessionTimeoutMinutes },
+      );
+      revalidateTag(CACHE_TAGS.tenants);
     },
   },
 

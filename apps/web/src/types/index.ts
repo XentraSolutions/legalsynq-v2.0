@@ -64,6 +64,9 @@ export interface PlatformSession {
 
   // Token lifecycle
   expiresAt: Date;
+
+  // Per-tenant idle session timeout in minutes (default 30 if not configured)
+  sessionTimeoutMinutes: number;
 }
 
 /**

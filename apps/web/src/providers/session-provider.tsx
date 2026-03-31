@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import type { PlatformSession } from '@/types';
@@ -19,6 +20,9 @@ interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+const PLATFORM_DEFAULT_TIMEOUT_MINUTES = 30;
+const WARNING_LEAD_SECONDS = 60;
+
 /**
  * Fetches session from the BFF /api/auth/me route on mount.
  *
@@ -27,16 +31,24 @@ const SessionContext = createContext<SessionContextValue | null>(null);
  * AuthMeResponse envelope. The browser JS never sees the raw JWT.
  *
  * A 401 response means the session is expired or invalid → redirect to /login.
+ *
+ * Also implements per-tenant idle session timeout. Activity events (mouse,
+ * keyboard, scroll, touch) reset the idle timer. When the tenant-configured
+ * idle period elapses, a 60-second warning dialog is shown before auto-logout.
  */
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session,   setSession]   = useState<PlatformSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showWarning, setShowWarning] = useState(false);
+  const [countdown,   setCountdown]   = useState(WARNING_LEAD_SECONDS);
+
+  const idleTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warningTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionRef      = useRef<PlatformSession | null>(null);
 
   const fetchSession = useCallback(async () => {
     setIsLoading(true);
     try {
-      // /api/auth/me is the Next.js BFF route (not a direct gateway call)
-      // The browser sends the platform_session HttpOnly cookie automatically.
       const res = await fetch('/api/auth/me', {
         credentials: 'include',
         cache:       'no-store',
@@ -44,6 +56,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       if (!res.ok) {
         setSession(null);
+        sessionRef.current = null;
         if (res.status === 401 && typeof window !== 'undefined') {
           window.location.href = '/login';
         }
@@ -52,23 +65,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       const me = await res.json();
       const mapped: PlatformSession = {
-        userId:          me.userId,
-        email:           me.email,
-        tenantId:        me.tenantId,
-        tenantCode:      me.tenantCode,
-        orgId:           me.orgId,
-        orgType:         me.orgType,
-        orgName:         me.orgName,
-        productRoles:    me.productRoles   ?? [],
-        systemRoles:     me.systemRoles    ?? [],
-        isPlatformAdmin: (me.systemRoles ?? []).includes('PlatformAdmin'),
-        isTenantAdmin:   (me.systemRoles ?? []).includes('TenantAdmin'),
-        hasOrg:          !!me.orgId,
-        expiresAt:       new Date(me.expiresAtUtc),
+        userId:                me.userId,
+        email:                 me.email,
+        tenantId:              me.tenantId,
+        tenantCode:            me.tenantCode,
+        orgId:                 me.orgId,
+        orgType:               me.orgType,
+        orgName:               me.orgName,
+        productRoles:          me.productRoles          ?? [],
+        systemRoles:           me.systemRoles           ?? [],
+        isPlatformAdmin:       (me.systemRoles ?? []).includes('PlatformAdmin'),
+        isTenantAdmin:         (me.systemRoles ?? []).includes('TenantAdmin'),
+        hasOrg:                !!me.orgId,
+        expiresAt:             new Date(me.expiresAtUtc),
+        sessionTimeoutMinutes: me.sessionTimeoutMinutes ?? PLATFORM_DEFAULT_TIMEOUT_MINUTES,
       };
       setSession(mapped);
+      sessionRef.current = mapped;
     } catch {
       setSession(null);
+      sessionRef.current = null;
     } finally {
       setIsLoading(false);
     }
@@ -76,11 +92,82 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
 
-  const clearSession = useCallback(() => setSession(null), []);
+  const clearSession = useCallback(() => {
+    setSession(null);
+    sessionRef.current = null;
+  }, []);
+
+  // ── Idle timeout ────────────────────────────────────────────────────────────
+
+  const doLogout = useCallback(async () => {
+    setShowWarning(false);
+    if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+    if (idleTimerRef.current)    clearTimeout(idleTimerRef.current);
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    clearSession();
+    window.location.href = '/login?reason=idle';
+  }, [clearSession]);
+
+  const startWarningCountdown = useCallback(() => {
+    setCountdown(WARNING_LEAD_SECONDS);
+    setShowWarning(true);
+    warningTimerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(warningTimerRef.current!);
+          void doLogout();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [doLogout]);
+
+  const resetIdleTimer = useCallback(() => {
+    const s = sessionRef.current;
+    if (!s) return;
+
+    if (showWarning) return;
+
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+
+    const timeoutMs = (s.sessionTimeoutMinutes ?? PLATFORM_DEFAULT_TIMEOUT_MINUTES) * 60 * 1000;
+    const warningMs = timeoutMs - WARNING_LEAD_SECONDS * 1000;
+
+    idleTimerRef.current = setTimeout(() => {
+      startWarningCountdown();
+    }, Math.max(warningMs, 0));
+  }, [showWarning, startWarningCountdown]);
+
+  const stayActive = useCallback(() => {
+    if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+    setShowWarning(false);
+    setCountdown(WARNING_LEAD_SECONDS);
+    resetIdleTimer();
+  }, [resetIdleTimer]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'] as const;
+    const handler = () => resetIdleTimer();
+
+    events.forEach(e => window.addEventListener(e, handler, { passive: true }));
+    resetIdleTimer();
+
+    return () => {
+      events.forEach(e => window.removeEventListener(e, handler));
+      if (idleTimerRef.current)    clearTimeout(idleTimerRef.current);
+      if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+    };
+  }, [session, resetIdleTimer]);
 
   return (
     <SessionContext.Provider value={{ session, isLoading, refresh: fetchSession, clearSession }}>
       {children}
+      {showWarning && (
+        <IdleWarningDialog countdown={countdown} onStay={stayActive} onLogout={doLogout} />
+      )}
     </SessionContext.Provider>
   );
 }
@@ -89,4 +176,57 @@ export function useSessionContext(): SessionContextValue {
   const ctx = useContext(SessionContext);
   if (!ctx) throw new Error('useSessionContext must be used inside <SessionProvider>');
   return ctx;
+}
+
+// ── Idle warning dialog ──────────────────────────────────────────────────────
+
+function IdleWarningDialog({
+  countdown,
+  onStay,
+  onLogout,
+}: {
+  countdown: number;
+  onStay: () => void;
+  onLogout: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="idle-warning-title"
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+        <div className="px-6 pt-6 pb-4 text-center">
+          <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
+            <i className="ri-time-line text-amber-600 text-2xl" />
+          </div>
+          <h2 id="idle-warning-title" className="text-lg font-semibold text-gray-900 mb-1">
+            Session expiring soon
+          </h2>
+          <p className="text-sm text-gray-500">
+            You&apos;ve been inactive. Your session will end in
+          </p>
+          <p className="text-4xl font-bold text-amber-600 mt-3 tabular-nums">
+            {countdown}s
+          </p>
+        </div>
+
+        <div className="px-6 pb-6 flex gap-3">
+          <button
+            onClick={onLogout}
+            className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Log out
+          </button>
+          <button
+            onClick={onStay}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
+          >
+            Stay logged in
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

@@ -25,11 +25,12 @@ export interface TenantSummary {
  * Extends TenantSummary with enriched fields not present in the list view.
  */
 export interface TenantDetail extends TenantSummary {
-  email?:              string;
-  updatedAtUtc:        string;
-  activeUserCount:     number;
-  linkedOrgCount?:     number;
-  productEntitlements: ProductEntitlementSummary[];
+  email?:                string;
+  updatedAtUtc:          string;
+  activeUserCount:       number;
+  linkedOrgCount?:       number;
+  sessionTimeoutMinutes?: number;
+  productEntitlements:   ProductEntitlementSummary[];
 }
 
 // ── Product Entitlements ──────────────────────────────────────────────────────

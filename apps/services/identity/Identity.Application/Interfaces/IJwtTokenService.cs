@@ -9,5 +9,6 @@ public interface IJwtTokenService
         Tenant tenant,
         IEnumerable<string> roles,
         Organization? organization = null,
-        IEnumerable<string>? productRoles = null);
+        IEnumerable<string>? productRoles = null,
+        int? sessionTimeoutMinutes = null);
 }
