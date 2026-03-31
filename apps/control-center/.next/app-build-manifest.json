@@ -20,6 +20,56 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/login/page.js"
+    ],
+    "/tenants/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenants/page.js"
+    ],
+    "/tenants/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenants/loading.js"
+    ],
+    "/synqaudit/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/synqaudit/page.js"
+    ],
+    "/synqaudit/investigation/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/synqaudit/investigation/page.js"
+    ],
+    "/synqaudit/trace/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/synqaudit/trace/page.js"
+    ],
+    "/synqaudit/exports/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/synqaudit/exports/page.js"
+    ],
+    "/synqaudit/legal-holds/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/synqaudit/legal-holds/page.js"
+    ],
+    "/synqaudit/integrity/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/synqaudit/integrity/page.js"
+    ],
+    "/audit-logs/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/audit-logs/page.js"
+    ],
+    "/audit-logs/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/audit-logs/loading.js"
     ]
   }
 }

@@ -1,4 +1,12 @@
 {
-  "/page": "app/page.js",
-  "/login/page": "app/login/page.js"
+  "/login/page": "app/login/page.js",
+  "/api/auth/login/route": "app/api/auth/login/route.js",
+  "/tenants/page": "app/tenants/page.js",
+  "/synqaudit/page": "app/synqaudit/page.js",
+  "/synqaudit/investigation/page": "app/synqaudit/investigation/page.js",
+  "/synqaudit/exports/page": "app/synqaudit/exports/page.js",
+  "/synqaudit/trace/page": "app/synqaudit/trace/page.js",
+  "/synqaudit/legal-holds/page": "app/synqaudit/legal-holds/page.js",
+  "/synqaudit/integrity/page": "app/synqaudit/integrity/page.js",
+  "/audit-logs/page": "app/audit-logs/page.js"
 }
