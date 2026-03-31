@@ -178,7 +178,8 @@ public static class AdminEndpoints
     private static async Task<IResult> UpdateEntitlement(
         Guid id,
         IdentityDbContext db,
-        EntitlementRequest body)
+        EntitlementRequest body,
+        IAuditEventClient auditClient)
     {
         var tenant = await db.Tenants
             .Include(t => t.TenantProducts)
@@ -217,6 +218,27 @@ public static class AdminEndpoints
         }
 
         await db.SaveChangesAsync();
+
+        // Canonical audit — fire-and-observe, never gates the response.
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "platform.admin.tenant.entitlement.updated",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = auditNow,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = id.ToString() },
+            Actor         = new AuditEventActorDto { Type = ActorType.System },
+            Entity        = new AuditEventEntityDto { Type = "Tenant", Id = id.ToString() },
+            Action        = "EntitlementUpdated",
+            Description   = $"Product entitlement '{body.ProductCode}' {(body.Enabled ? "enabled" : "disabled")} for tenant {id}.",
+            After         = JsonSerializer.Serialize(new { productCode = body.ProductCode, enabled = body.Enabled }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "platform.admin.tenant.entitlement.updated", id.ToString(), body.ProductCode),
+            Tags = ["entitlement", "tenant-admin"],
+        });
 
         return Results.Ok(new
         {
@@ -755,7 +777,8 @@ public static class AdminEndpoints
 
     private static async Task<IResult> CreateOrganizationRelationship(
         CreateOrgRelationshipRequest body,
-        IdentityDbContext db)
+        IdentityDbContext db,
+        IAuditEventClient auditClient)
     {
         // Validate orgs exist
         var sourceOrg = await db.Organizations.FirstOrDefaultAsync(o => o.Id == body.SourceOrganizationId);
@@ -789,6 +812,27 @@ public static class AdminEndpoints
         db.OrganizationRelationships.Add(rel);
         await db.SaveChangesAsync();
 
+        // Canonical audit — fire-and-observe, never gates the response.
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "platform.admin.org.relationship.created",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = auditNow,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = sourceOrg.TenantId.ToString() },
+            Actor         = new AuditEventActorDto { Type = ActorType.System },
+            Entity        = new AuditEventEntityDto { Type = "OrganizationRelationship", Id = rel.Id.ToString() },
+            Action        = "RelationshipCreated",
+            Description   = $"Organization relationship created: {body.SourceOrganizationId} → {body.TargetOrganizationId} ({relType.DisplayName}).",
+            After         = JsonSerializer.Serialize(new { id = rel.Id, body.SourceOrganizationId, body.TargetOrganizationId, body.RelationshipTypeId, body.ProductId }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "platform.admin.org.relationship.created", rel.Id.ToString()),
+            Tags = ["org-relationship", "admin"],
+        });
+
         return Results.Created($"/api/admin/organization-relationships/{rel.Id}", new
         {
             id                   = rel.Id,
@@ -802,13 +846,34 @@ public static class AdminEndpoints
         });
     }
 
-    private static async Task<IResult> DeactivateOrganizationRelationship(Guid id, IdentityDbContext db)
+    private static async Task<IResult> DeactivateOrganizationRelationship(Guid id, IdentityDbContext db, IAuditEventClient auditClient)
     {
         var rel = await db.OrganizationRelationships.FirstOrDefaultAsync(r => r.Id == id);
         if (rel is null) return Results.NotFound();
 
         rel.Deactivate();
         await db.SaveChangesAsync();
+
+        // Canonical audit — fire-and-observe, never gates the response.
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "platform.admin.org.relationship.deactivated",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = auditNow,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = rel.TenantId.ToString() },
+            Actor         = new AuditEventActorDto { Type = ActorType.System },
+            Entity        = new AuditEventEntityDto { Type = "OrganizationRelationship", Id = id.ToString() },
+            Action        = "RelationshipDeactivated",
+            Description   = $"Organization relationship {id} deactivated.",
+            Before        = JsonSerializer.Serialize(new { id, isActive = true }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "platform.admin.org.relationship.deactivated", id.ToString()),
+            Tags = ["org-relationship", "admin"],
+        });
 
         return Results.Ok(new { id = rel.Id, isActive = false });
     }

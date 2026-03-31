@@ -1990,3 +1990,49 @@ All routes guarded with `requirePlatformAdmin()`. Dynamic segments use same `[id
 ### Build Status
 - Next.js control-center: ✅ `✓ Ready` (0 compile errors, routing conflict resolved)
 - No TypeScript errors (both `✓ Ready in <4s`)
+
+---
+
+## Step 29 — Missing Audit Events + User Access Logs & Activity Reports
+
+**16 canonical audit events now fully emitting** across 4 source systems. 5 new events wired in this step.
+
+### New Canonical Events
+
+| Event Type | Source | Visibility | Severity |
+|---|---|---|---|
+| `platform.admin.tenant.entitlement.updated` | `AdminEndpoints.UpdateEntitlement` | Platform | Warn |
+| `platform.admin.org.relationship.created` | `AdminEndpoints.CreateOrganizationRelationship` | Platform | Info |
+| `platform.admin.org.relationship.deactivated` | `AdminEndpoints.DeactivateOrganizationRelationship` | Platform | Warn |
+| `platform.admin.impersonation.started` | CC `startImpersonationAction` | Platform | Warn |
+| `platform.admin.impersonation.stopped` | CC `stopImpersonationAction` | Platform | Info |
+
+All follow fire-and-observe: `_ = auditClient.IngestAsync(...)` (C#) / `.catch(() => {})` (TypeScript).
+
+### Impersonation Audit Upgrade
+- **`apps/control-center/src/app/actions/impersonation.ts`** — now dual-emits: (1) local NDJSON log (existing) + (2) canonical event via `controlCenterServerApi.auditIngest.emit()`. The `.catch()` on the canonical emit ensures impersonation never fails due to audit pipeline unavailability.
+- All `TODO: persist to AuditLog table` comments removed — now fulfilled.
+
+### New CC API Method
+- **`auditIngest.emit(payload: AuditIngestPayload)`** added to `controlCenterServerApi` — calls `POST /audit-service/audit/ingest` via the API gateway. Used by server actions that live outside the Identity service DI container.
+- **`AuditIngestPayload`** interface added to `types/control-center.ts`.
+
+### Control Center — User Activity Page
+- **`apps/control-center/src/app/synqaudit/user-activity/page.tsx`** — new `requirePlatformAdmin()`-guarded page
+  - Category tabs: All Events | Access (Security) | Admin Actions (Administrative) | Clinical (Business)
+  - Actor filter: narrows stream to a specific user; clicking any actor ID in the table pre-fills the filter
+  - Date range filter
+  - Trace link per row → `/synqaudit/investigation?search={auditId}`
+  - Tenant context aware (narrows scope when a tenant context is active)
+- **`apps/control-center/src/lib/nav.ts`** — "User Activity" added to SYNQAUDIT section (`ri-user-heart-line`, badge: LIVE)
+
+### Tenant Portal — Activity Page Enhancements
+- **`apps/web/src/app/(platform)/activity/page.tsx`** — enhanced with:
+  - **Category tabs**: All | Access (Security) | Admin (Administrative) | Clinical (Business)
+  - **Actor filter field**: adds `actorId` to the query, narrowing to a specific user
+  - **"My Activity" toggle**: header button; sets `actorId=me` → resolves to `session.userId` server-side
+  - **Clickable actor IDs**: each actor cell links to `?actorId={id}` for drill-down
+  - All filter state preserved across pagination and tab changes via unified `hrefFor()` helper
+
+### Analysis
+- `analysis/step29_user_activity_audit.md` — full event taxonomy table, change log, architecture notes

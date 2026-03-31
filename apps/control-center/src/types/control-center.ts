@@ -190,6 +190,38 @@ export interface CanonicalAuditEvent {
   hash?:          string;
 }
 
+// ── SynqAudit — Event Ingest (server-side canonical emission) ─────────────────
+
+/** Payload for POST /audit-service/audit/ingest — used by CC server actions. */
+export interface AuditIngestPayload {
+  eventType:     string;
+  eventCategory: string;
+  sourceSystem:  string;
+  sourceService: string;
+  visibility:    string;
+  severity:      string;
+  occurredAtUtc: string;
+  scope: {
+    scopeType: string;
+    tenantId?: string;
+  };
+  actor: {
+    id?:    string;
+    type:   string;
+    label?: string;
+  };
+  entity?: {
+    type: string;
+    id?:  string;
+  };
+  action?:        string;
+  description?:   string;
+  before?:        string;
+  after?:         string;
+  idempotencyKey?: string;
+  tags?:          string[];
+}
+
 // ── SynqAudit — Exports ───────────────────────────────────────────────────────
 
 export type AuditExportStatus = 'Pending' | 'Processing' | 'Completed' | 'Failed';

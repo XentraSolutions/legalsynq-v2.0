@@ -26,13 +26,11 @@
  *
  * ── Audit logging ─────────────────────────────────────────────────────────────
  *
- *   Both actions emit structured audit log entries (audit.impersonation.start
- *   and audit.impersonation.stop) that are visible in dev and captured in
- *   production NDJSON logs.
- *
- * TODO: integrate with Identity service impersonation endpoint
- * TODO: issue temporary impersonation token
- * TODO: persist audit events to AuditLog table via Identity service
+ *   Both actions emit:
+ *     1. A structured local log entry (visible in dev/prod log streams).
+ *     2. A canonical audit event to the Platform Audit Event Service via
+ *        controlCenterServerApi.auditIngest.emit() — fire-and-observe, never
+ *        gates the impersonation operation if the audit pipeline is unavailable.
  */
 
 import { redirect } from 'next/navigation';
@@ -46,6 +44,7 @@ import {
   logImpersonationStart,
   logImpersonationStop,
 } from '@/lib/auth';
+import { controlCenterServerApi } from '@/lib/control-center-api';
 import type { UserImpersonationSession, TenantContext } from '@/types/control-center';
 
 // ── startImpersonationAction ──────────────────────────────────────────────────
@@ -105,12 +104,26 @@ export async function startImpersonationAction(user: {
 
   setImpersonation(impersonation);
 
-  // Emit audit log immediately after writing the cookie
+  // 1. Local structured log (visible in dev and prod NDJSON streams)
   logImpersonationStart(session.userId, user.id, user.tenantId);
 
-  // TODO: integrate with Identity service impersonation endpoint
-  // TODO: issue temporary impersonation token
-  // TODO: persist to AuditLog table via Identity service
+  // 2. Canonical audit event — fire-and-observe, never gates redirect
+  void controlCenterServerApi.auditIngest.emit({
+    eventType:     'platform.admin.impersonation.started',
+    eventCategory: 'Security',
+    sourceSystem:  'control-center',
+    sourceService: 'impersonation',
+    visibility:    'Platform',
+    severity:      'Warn',
+    occurredAtUtc: new Date().toISOString(),
+    scope:  { scopeType: 'Tenant', tenantId: user.tenantId },
+    actor:  { id: session.userId, type: 'User', label: 'PlatformAdmin' },
+    entity: { type: 'User', id: user.id },
+    action:      'ImpersonationStarted',
+    description: `Platform admin ${session.userId} started impersonating user ${user.email} (tenant: ${user.tenantId}).`,
+    after:  JSON.stringify({ impersonatedUserId: user.id, impersonatedEmail: user.email, tenantId: user.tenantId }),
+    tags:   ['impersonation', 'security', 'access-control'],
+  }).catch(() => { /* audit pipeline unavailable — impersonation still succeeds */ });
 
   redirect('/');
 }
@@ -138,16 +151,30 @@ export async function stopImpersonationAction(): Promise<never> {
 
   clearImpersonation();
 
-  // Emit audit log after clearing the cookie
+  // 1. Local structured log
   if (impersonation) {
     logImpersonationStop(session.userId, impersonation.impersonatedUserId, impersonation.tenantId);
   } else {
-    // Stop called with no active impersonation — log for visibility
     logImpersonationStop(session.userId, 'none', 'none');
   }
 
-  // TODO: revoke impersonation token on Identity service
-  // TODO: persist to AuditLog table via Identity service
+  // 2. Canonical audit event — fire-and-observe, never gates redirect
+  void controlCenterServerApi.auditIngest.emit({
+    eventType:     'platform.admin.impersonation.stopped',
+    eventCategory: 'Security',
+    sourceSystem:  'control-center',
+    sourceService: 'impersonation',
+    visibility:    'Platform',
+    severity:      'Info',
+    occurredAtUtc: new Date().toISOString(),
+    scope:  { scopeType: 'Tenant', tenantId: impersonation?.tenantId ?? 'unknown' },
+    actor:  { id: session.userId, type: 'User', label: 'PlatformAdmin' },
+    entity: { type: 'User', id: impersonation?.impersonatedUserId ?? 'unknown' },
+    action:      'ImpersonationStopped',
+    description: `Platform admin ${session.userId} ended impersonation session${impersonation ? ` for user ${impersonation.impersonatedUserId}` : ''}.`,
+    before: impersonation ? JSON.stringify({ impersonatedUserId: impersonation.impersonatedUserId, tenantId: impersonation.tenantId }) : undefined,
+    tags:   ['impersonation', 'security', 'access-control'],
+  }).catch(() => { /* audit pipeline unavailable — stop still succeeds */ });
 
   redirect('/tenant-users');
 }

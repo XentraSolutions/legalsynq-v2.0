@@ -113,6 +113,7 @@ import type {
   AuditExport,
   IntegrityCheckpoint,
   LegalHold,
+  AuditIngestPayload,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1041,6 +1042,24 @@ export const controlCenterServerApi = {
         [CACHE_TAGS.users],
       );
       return Array.isArray(raw) ? raw.map(mapScopedRoleAssignment) : [];
+    },
+  },
+
+  // ── SynqAudit — Event Ingest ──────────────────────────────────────────────
+
+  auditIngest: {
+    /**
+     * POST /audit-service/audit/ingest
+     *
+     * Emits a canonical audit event directly to the Platform Audit Event Service.
+     * Used by server-side actions (e.g. impersonation) that run outside the
+     * Identity service and cannot use IAuditEventClient directly.
+     *
+     * Fire-and-observe: callers should not await the return value if they want
+     * to avoid gating user-facing operations on the audit pipeline.
+     */
+    emit: async (payload: AuditIngestPayload): Promise<void> => {
+      await apiClient.post<unknown>('/audit-service/audit/ingest', payload);
     },
   },
 

@@ -5,7 +5,9 @@ const PAGE_SIZE = 20;
 
 interface SearchParams {
   eventType?: string;
+  category?:  string;
   severity?:  string;
+  actorId?:   string;
   dateFrom?:  string;
   dateTo?:    string;
   page?:      string;
@@ -34,29 +36,44 @@ interface PagedAuditResponse {
   totalCount: number;
 }
 
+const CATEGORY_TABS = [
+  { label: 'All',     value: '',               title: 'All event types' },
+  { label: 'Access',  value: 'Security',       title: 'Login, logout, and role events' },
+  { label: 'Admin',   value: 'Administrative', title: 'User and configuration changes' },
+  { label: 'Clinical', value: 'Business',      title: 'Referrals and appointments' },
+];
+
 /**
  * /activity — Tenant portal: activity & audit log viewer.
  *
  * Access: authenticated org member (requireOrg guard).
  * Scope: events scoped to the authenticated user's tenantId only.
  *
- * Renders a read-only timeline of SynqAudit events for the tenant.
- * Platform-internal fields (ipAddress, correlationId, source, integrityhash)
- * are intentionally excluded from this tenant-facing view.
+ * Renders a read-only timeline of SynqAudit events for the tenant,
+ * with category tabs, actor filter, and "My Activity" shortcut.
  */
 export default async function ActivityPage({ searchParams }: PageProps) {
   const session = await requireOrg();
 
+  const category  = searchParams.category  || undefined;
   const eventType = searchParams.eventType?.trim() || undefined;
   const severity  = searchParams.severity  || undefined;
   const dateFrom  = searchParams.dateFrom  || undefined;
   const dateTo    = searchParams.dateTo    || undefined;
   const page      = Math.max(1, parseInt(searchParams.page ?? '1', 10));
 
+  // actorId: supports literal UUID or the magic value "me" which resolves
+  // to the authenticated user's own userId for the "My Activity" toggle.
+  const rawActorId = searchParams.actorId || undefined;
+  const actorId    = rawActorId === 'me' ? session.userId : rawActorId;
+  const isMyView   = rawActorId === 'me' || actorId === session.userId;
+
   const qs = buildQs({
     tenantId:  session.tenantId,
     eventType,
+    category,
     severity,
+    actorId,
     dateFrom,
     dateTo,
     page,
@@ -77,33 +94,79 @@ export default async function ActivityPage({ searchParams }: PageProps) {
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const startItem  = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const endItem    = Math.min(page * PAGE_SIZE, totalCount);
-  const hasFilters = !!(eventType || severity || dateFrom || dateTo);
+  const hasFilters = !!(eventType || category || severity || actorId || dateFrom || dateTo);
 
-  function hrefFor(p: number) {
+  function hrefFor(overrides: Record<string, string | number | undefined>) {
     const params = new URLSearchParams();
-    if (eventType) params.set('eventType', eventType);
-    if (severity)  params.set('severity',  severity);
-    if (dateFrom)  params.set('dateFrom',  dateFrom);
-    if (dateTo)    params.set('dateTo',    dateTo);
-    if (p > 1)     params.set('page',      String(p));
+    const vals = { eventType, category, severity, actorId: rawActorId, dateFrom, dateTo, ...overrides };
+    for (const [k, v] of Object.entries(vals)) {
+      if (v !== undefined && v !== '' && !(k === 'page' && Number(v) <= 1)) {
+        params.set(k, String(v));
+      }
+    }
     const q = params.toString();
     return `/activity${q ? `?${q}` : ''}`;
   }
+
+  function tabHref(cat: string) {
+    return hrefFor({ category: cat || undefined, page: 1 });
+  }
+
+  function pageHref(p: number) {
+    return hrefFor({ page: p });
+  }
+
+  const myActivityHref = isMyView ? '/activity' : hrefFor({ actorId: 'me', page: 1 });
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
 
         {/* ── Page header ─────────────────────────────────────────────────── */}
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Activity Log</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            A read-only record of all platform events for your organisation.
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Activity Log</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              A read-only record of all platform events for your organisation.
+            </p>
+          </div>
+          <a
+            href={myActivityHref}
+            className={[
+              'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap',
+              isMyView
+                ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+                : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50',
+            ].join(' ')}
+          >
+            <span>{isMyView ? '← All Users' : 'My Activity'}</span>
+          </a>
+        </div>
+
+        {/* ── Category tabs ────────────────────────────────────────────────── */}
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+          {CATEGORY_TABS.map((tab) => (
+            <a
+              key={tab.value}
+              href={tabHref(tab.value)}
+              title={tab.title}
+              className={[
+                'px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap',
+                (category ?? '') === tab.value
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50',
+              ].join(' ')}
+            >
+              {tab.label}
+            </a>
+          ))}
         </div>
 
         {/* ── Filter bar ──────────────────────────────────────────────────── */}
         <form method="GET" action="/activity" className="flex flex-wrap items-end gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3">
+
+          {/* Preserve category tab */}
+          {category && <input type="hidden" name="category" value={category} />}
 
           <div className="flex-1 min-w-40">
             <label htmlFor="eventType" className="block text-xs font-medium text-gray-600 mb-1">Event Type</label>
@@ -115,7 +178,17 @@ export default async function ActivityPage({ searchParams }: PageProps) {
             />
           </div>
 
-          <div className="w-32">
+          <div className="flex-1 min-w-32">
+            <label htmlFor="actorId" className="block text-xs font-medium text-gray-600 mb-1">Actor (user ID)</label>
+            <input
+              id="actorId" name="actorId" type="search"
+              defaultValue={rawActorId === 'me' ? session.userId : rawActorId}
+              placeholder="Filter by user UUID"
+              className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+
+          <div className="w-28">
             <label htmlFor="severity" className="block text-xs font-medium text-gray-600 mb-1">Severity</label>
             <select id="severity" name="severity" defaultValue={severity ?? ''}
               className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
@@ -157,10 +230,13 @@ export default async function ActivityPage({ searchParams }: PageProps) {
         {hasFilters && (
           <div className="flex items-center flex-wrap gap-2 text-sm text-gray-500">
             <span>Filters:</span>
-            {eventType && <Chip label={`event: ${eventType}`} />}
-            {severity  && <Chip label={`severity: ${severity}`} />}
-            {dateFrom  && <Chip label={`from: ${dateFrom}`} />}
-            {dateTo    && <Chip label={`to: ${dateTo}`} />}
+            {isMyView    && <Chip label="My Activity" />}
+            {actorId && !isMyView && <Chip label={`actor: ${actorId}`} />}
+            {eventType   && <Chip label={`event: ${eventType}`} />}
+            {category    && <Chip label={`category: ${category}`} />}
+            {severity    && <Chip label={`severity: ${severity}`} />}
+            {dateFrom    && <Chip label={`from: ${dateFrom}`} />}
+            {dateTo      && <Chip label={`to: ${dateTo}`} />}
           </div>
         )}
 
@@ -218,8 +294,13 @@ export default async function ActivityPage({ searchParams }: PageProps) {
                       <span className="block text-xs font-medium">
                         {e.actorLabel ?? e.actorId ?? <span className="text-gray-400 italic text-[11px]">system</span>}
                       </span>
-                      {e.actorId && e.actorLabel && (
-                        <span className="block text-[10px] text-gray-400 font-mono">{e.actorId}</span>
+                      {e.actorId && (
+                        <a
+                          href={`/activity?actorId=${encodeURIComponent(e.actorId)}`}
+                          className="block text-[10px] text-indigo-500 hover:text-indigo-700 hover:underline font-mono"
+                        >
+                          {e.actorId.slice(0, 14)}…
+                        </a>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap text-xs">
@@ -256,7 +337,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
         {!fetchError && totalPages > 1 && (
           <nav className="flex items-center justify-center gap-1" aria-label="Pagination">
             {page > 1 && (
-              <a href={hrefFor(page - 1)} className="px-3 py-1.5 text-xs rounded-md font-medium text-gray-600 hover:bg-gray-100">
+              <a href={pageHref(page - 1)} className="px-3 py-1.5 text-xs rounded-md font-medium text-gray-600 hover:bg-gray-100">
                 ← Prev
               </a>
             )}
@@ -269,7 +350,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
               ) : (
                 <a
                   key={p}
-                  href={hrefFor(p)}
+                  href={pageHref(p)}
                   className={[
                     'px-3 py-1.5 text-xs rounded-md font-medium transition-colors',
                     p === page ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100',
@@ -280,7 +361,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
               ),
             )}
             {page < totalPages && (
-              <a href={hrefFor(page + 1)} className="px-3 py-1.5 text-xs rounded-md font-medium text-gray-600 hover:bg-gray-100">
+              <a href={pageHref(page + 1)} className="px-3 py-1.5 text-xs rounded-md font-medium text-gray-600 hover:bg-gray-100">
                 Next →
               </a>
             )}
