@@ -375,6 +375,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("varchar(4000)");
 
+                    b.Property<DateTime?>("NextRetryAfterUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("NotificationType")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -415,6 +418,12 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("TriggerSource")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("Initial");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -422,6 +431,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Status", "NextRetryAfterUtc")
+                        .HasDatabaseName("IX_CareConnectNotifications_Status_NextRetryAfterUtc");
 
                     b.HasIndex("TenantId", "NotificationType");
 

@@ -115,4 +115,25 @@ public class NotificationRepository : INotificationRepository
                      && n.RelatedEntityType == NotificationRelatedEntityType.Referral)
             .OrderByDescending(n => n.CreatedAtUtc)
             .ToListAsync(ct);
+
+    // LSCC-005-02: retry worker query
+
+    /// <summary>
+    /// Returns failed notifications that are past their scheduled retry time and have not
+    /// yet exhausted the maximum attempt count. Used exclusively by <c>ReferralEmailRetryWorker</c>.
+    /// The index on (Status, NextRetryAfterUtc) makes this efficient.
+    /// </summary>
+    public async Task<List<CareConnectNotification>> GetRetryEligibleAsync(
+        DateTime utcNow,
+        int maxAttempts,
+        int batchSize,
+        CancellationToken ct = default)
+        => await _db.CareConnectNotifications
+            .Where(n => n.Status           == NotificationStatus.Failed
+                     && n.NextRetryAfterUtc != null
+                     && n.NextRetryAfterUtc <= utcNow
+                     && n.AttemptCount      < maxAttempts)
+            .OrderBy(n => n.NextRetryAfterUtc)
+            .Take(batchSize)
+            .ToListAsync(ct);
 }

@@ -22,4 +22,16 @@ public interface INotificationRepository
         Guid tenantId,
         Guid referralId,
         CancellationToken ct = default);
+
+    // LSCC-005-02: retry worker query
+    /// <summary>
+    /// Returns failed notifications that are due for automatic retry:
+    /// Status=Failed, NextRetryAfterUtc &lt;= utcNow, AttemptCount &lt; maxAttempts.
+    /// Capped at <paramref name="batchSize"/> to bound each worker pass.
+    /// </summary>
+    Task<List<CareConnectNotification>> GetRetryEligibleAsync(
+        DateTime utcNow,
+        int maxAttempts,
+        int batchSize,
+        CancellationToken ct = default);
 }

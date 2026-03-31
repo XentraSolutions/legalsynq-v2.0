@@ -466,8 +466,37 @@ public class ReferralService : IReferralService
         var provider = referral.Provider
             ?? throw new InvalidOperationException($"Provider data missing for referral '{referralId}'.");
 
+        // LSCC-005-02: capture any existing failed notification with an active retry schedule
+        // so we can clear it if the manual resend succeeds (retry no longer needed).
+        var existingFailedNotif = await _notificationRepo.GetLatestByReferralAsync(
+            tenantId, referralId,
+            notificationType: NotificationType.ReferralCreated,
+            ct: ct);
+        bool hadRetryScheduled = existingFailedNotif is { Status: "Failed", NextRetryAfterUtc: not null };
+
         // Resend is synchronous — caller expects immediate success/failure feedback.
         await _emailService.ResendNewReferralNotificationAsync(referral, provider, ct);
+
+        // LSCC-005-02: if the resend succeeded, clear any pending auto-retry on the original
+        // failed notification so the worker does not double-send.
+        if (hadRetryScheduled)
+        {
+            // Fetch the notification just created by the resend to check its status.
+            var newNotif = await _notificationRepo.GetLatestByReferralAsync(
+                tenantId, referralId,
+                notificationType: NotificationType.ReferralEmailResent,
+                ct: ct);
+
+            if (newNotif is { Status: "Sent" })
+            {
+                existingFailedNotif!.ClearRetrySchedule();
+                await _notificationRepo.UpdateAsync(existingFailedNotif, ct);
+                _logger.LogInformation(
+                    "ResendEmailAsync: cleared auto-retry schedule on notification {OriginalId} " +
+                    "because manual resend {NewId} succeeded for referral {ReferralId}.",
+                    existingFailedNotif.Id, newNotif.Id, referralId);
+            }
+        }
 
         // Audit: email resend
         var now = DateTimeOffset.UtcNow;
@@ -691,5 +720,102 @@ public class ReferralService : IReferralService
         FailedAtUtc      = n.FailedAtUtc,
         LastAttemptAtUtc = n.LastAttemptAtUtc,
         CreatedAtUtc     = n.CreatedAtUtc,
+        // LSCC-005-02: retry lifecycle fields
+        TriggerSource     = n.TriggerSource,
+        NextRetryAfterUtc = n.NextRetryAfterUtc,
+        DerivedStatus     = ReferralRetryPolicy.GetDerivedStatus(n),
     };
+
+    // LSCC-005-02: Audit timeline
+    public async Task<List<ReferralAuditEventResponse>> GetAuditTimelineAsync(
+        Guid tenantId,
+        Guid referralId,
+        CancellationToken ct = default)
+    {
+        _ = await _referrals.GetByIdAsync(tenantId, referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        var events = new List<ReferralAuditEventResponse>();
+
+        // ── Source 1: status history ───────────────────────────────────────
+        var history = await _referrals.GetHistoryByReferralAsync(tenantId, referralId, ct);
+        foreach (var h in history)
+        {
+            var (label, category) = h.NewStatus switch
+            {
+                "New"       => ("Referral Created",       "info"),
+                "Accepted"  => ("Referral Accepted",      "success"),
+                "Declined"  => ("Referral Declined",      "error"),
+                "Cancelled" => ("Referral Cancelled",     "warning"),
+                "Completed" => ("Referral Completed",     "success"),
+                "Scheduled" => ("Appointment Scheduled",  "success"),
+                _           => ($"Status → {h.NewStatus}", "info"),
+            };
+            events.Add(new ReferralAuditEventResponse
+            {
+                EventType  = $"referral.status.{h.NewStatus.ToLowerInvariant()}",
+                Label      = label,
+                OccurredAt = h.ChangedAtUtc,
+                Detail     = h.Notes,
+                Category   = category,
+            });
+        }
+
+        // ── Source 2: notification records ────────────────────────────────
+        var notifications = await _notificationRepo.GetAllByReferralAsync(tenantId, referralId, ct);
+        foreach (var n in notifications)
+        {
+            var derived = ReferralRetryPolicy.GetDerivedStatus(n);
+            var sourceLabel = n.TriggerSource switch
+            {
+                NotificationSource.ManualResend => "Manual Resend",
+                NotificationSource.AutoRetry    => "Auto-Retry",
+                _                               => "Notification",
+            };
+
+            var typeLabel = n.NotificationType switch
+            {
+                NotificationType.ReferralCreated          => "Provider Notification",
+                NotificationType.ReferralEmailResent      => "Provider Notification (Resent)",
+                NotificationType.ReferralEmailAutoRetry   => "Provider Notification (Auto-Retry)",
+                NotificationType.ReferralAcceptedProvider => "Provider Acceptance Confirmation",
+                NotificationType.ReferralAcceptedReferrer => "Referrer Acceptance Confirmation",
+                _                                         => n.NotificationType,
+            };
+
+            var (statusLabel, category) = derived switch
+            {
+                "Sent"           => ("Sent",             "success"),
+                "Failed"         => ("Failed",           "error"),
+                "Retrying"       => ("Retrying",         "warning"),
+                "RetryExhausted" => ("Retry Exhausted",  "error"),
+                _                => (derived,             "info"),
+            };
+
+            var detail = derived switch
+            {
+                "Failed" or "RetryExhausted" when n.FailureReason is { Length: > 0 }
+                    => $"Attempt {n.AttemptCount}: {TruncateReason(n.FailureReason, 120)}",
+                "Retrying" when n.NextRetryAfterUtc.HasValue
+                    => $"Attempt {n.AttemptCount} failed. Next retry after {n.NextRetryAfterUtc:HH:mm 'UTC'}.",
+                "Sent"
+                    => $"Attempt {n.AttemptCount} succeeded.",
+                _ => n.AttemptCount > 1 ? $"Attempt {n.AttemptCount}" : null,
+            };
+
+            events.Add(new ReferralAuditEventResponse
+            {
+                EventType  = $"notification.{n.NotificationType.ToLowerInvariant()}.{derived.ToLowerInvariant()}",
+                Label      = $"{typeLabel} — {statusLabel}",
+                OccurredAt = n.LastAttemptAtUtc ?? n.CreatedAtUtc,
+                Detail     = detail,
+                Category   = category,
+            });
+        }
+
+        return events.OrderBy(e => e.OccurredAt).ToList();
+    }
+
+    private static string TruncateReason(string reason, int maxLength)
+        => reason.Length <= maxLength ? reason : reason[..maxLength] + "…";
 }

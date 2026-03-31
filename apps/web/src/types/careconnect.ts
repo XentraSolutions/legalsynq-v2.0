@@ -117,7 +117,7 @@ export interface ReferralSummary {
   organizationRelationshipId?: string;
 }
 
-// LSCC-005-01: notification delivery record
+// LSCC-005-01 / LSCC-005-02: notification delivery record
 export interface ReferralNotification {
   id:                string;
   notificationType:  string;
@@ -130,6 +130,27 @@ export interface ReferralNotification {
   failedAtUtc?:      string;
   lastAttemptAtUtc?: string;
   createdAtUtc:      string;
+  // LSCC-005-02: retry lifecycle fields
+  /** How the notification was triggered: Initial | AutoRetry | ManualResend */
+  triggerSource:      string;
+  /** ISO 8601 UTC: when the next auto-retry is scheduled. Null if sent or exhausted. */
+  nextRetryAfterUtc?: string;
+  /** UI-friendly derived status: Pending | Sent | Failed | Retrying | RetryExhausted */
+  derivedStatus:      string;
+}
+
+// LSCC-005-02: audit timeline event (status history + notification events merged)
+export interface ReferralAuditEvent {
+  /** Machine-readable event type, e.g. referral.status.accepted */
+  eventType:   string;
+  /** Human-readable label, e.g. "Provider Notification — Sent" */
+  label:       string;
+  /** ISO 8601 UTC timestamp */
+  occurredAt:  string;
+  /** Optional short context detail */
+  detail?:     string;
+  /** UI colour category: info | success | warning | error | security */
+  category:    string;
 }
 
 // ReferralDetail — extends summary with hardening fields

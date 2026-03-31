@@ -190,6 +190,27 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
 
+        // GET /api/referrals/{id}/audit — operational audit timeline (LSCC-005-02)
+        // Returns status-history + notification events merged and sorted chronologically.
+        group.MapGet("/{id:guid}/audit", async (
+            Guid id,
+            IReferralService service,
+            ICurrentRequestContext ctx,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            try
+            {
+                var timeline = await service.GetAuditTimelineAsync(tenantId, id, ct);
+                return Results.Ok(timeline);
+            }
+            catch (NotFoundException)
+            {
+                return Results.NotFound();
+            }
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser);
+
         // ── LSCC-005: Public token-based endpoints (no auth required) ──────────
 
         // Resolves a view token to determine how to route the provider:

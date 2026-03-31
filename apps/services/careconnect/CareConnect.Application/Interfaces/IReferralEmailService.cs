@@ -63,4 +63,16 @@ public interface IReferralEmailService
         Referral referral,
         Provider provider,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// LSCC-005-02: Re-attempts an email send for an existing failed notification record.
+    /// Called exclusively by <c>ReferralEmailRetryWorker</c> — not for manual operator resend.
+    /// Rebuilds the email body from current referral/provider state. Updates the same
+    /// notification record in-place; no new record is created.
+    /// </summary>
+    Task RetryNotificationAsync(
+        CareConnectNotification notification,
+        Referral                referral,
+        Provider                provider,
+        CancellationToken       ct = default);
 }

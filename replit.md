@@ -557,6 +557,19 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - **Tests:** `ReferralEmailServiceTests` updated for 4-part token API. 21 new tests in `ReferralHardeningTests.cs` covering token versioning, domain transitions, `AttemptCount` accumulation, format validation. **278 tests pass** (5 pre-existing `ProviderAvailabilityServiceTests` failures unchanged).
 - **Report:** `/analysis/LSCC-005-01.md`
 
+**LSCC-005-02 — Operational Automation & Email Reliability (complete):**
+- **Retry model:** Automatic retries update the same notification record in-place (no new records). MaxAttempts=3, delays: 5 min after attempt 1, 30 min after attempt 2. Retry stops on success or exhaustion.
+- **Domain:** `CareConnectNotification` gains `TriggerSource string` (Initial/AutoRetry/ManualResend) and `NextRetryAfterUtc DateTime?`. `MarkFailed(reason, nextRetryAfterUtc?)` schedules next retry. `ClearRetrySchedule()` nulls the schedule. `MarkSent()` always clears schedule. `NotificationType.ReferralEmailAutoRetry` added. `NotificationSource.cs` constants.
+- **Retry policy:** `ReferralRetryPolicy` (static) — `IsEligibleForRetry`, `IsExhausted`, `GetDerivedStatus`, `GetNextRetryAfter`. Derived display states (not persisted): Pending, Sent, Failed, Retrying, RetryExhausted.
+- **BackgroundService:** `ReferralEmailRetryWorker` — polls every 60 s via `IServiceScopeFactory`; skips retries if referral is not in `"New"` status; calls `RetryNotificationAsync` on `IReferralEmailService`.
+- **Manual resend distinction:** `ResendEmailAsync` creates a new `ManualResend` notification record; on success calls `ClearRetrySchedule()` on the original failed record to suppress auto-retry double-send.
+- **Audit timeline:** `GET /api/referrals/{id}/audit` — merges `ReferralStatusHistory` + `CareConnectNotifications` chronologically into `ReferralAuditEventResponse[]` (EventType, Label, OccurredAt, Detail, Category).
+- **DTO updates:** `ReferralNotificationResponse` gains `TriggerSource`, `NextRetryAfterUtc`, `DerivedStatus`. New `ReferralAuditEventResponse`.
+- **Migration:** `20260401120000_NotificationRetry` — adds `TriggerSource`, `NextRetryAfterUtc` to `CareConnectNotifications`.
+- **Frontend:** `ReferralNotification` TS type updated (triggerSource, nextRetryAfterUtc, derivedStatus). `ReferralAuditEvent` type added. `careconnect-api.ts` +1 method (`getAuditTimeline`). New `ReferralAuditTimeline` component (collapsible, colour-coded by category). `ReferralDeliveryCard` updated for retry-aware badges (Retrying…, Retry Exhausted), next-retry hint, exhausted callout, source context pill. Detail page: `ReferralAuditTimeline` added for referrers.
+- **Tests:** 35 new tests in `ReferralRetryTests.cs` covering policy eligibility, delay schedule, derived-state derivation, domain methods, retry/resend distinction, constants. **292 tests pass** (5 pre-existing `ProviderAvailabilityServiceTests` failures unchanged).
+- **Report:** `/analysis/LSCC-005-02.md`
+
 ## CareConnect Provider Geo / Map-Ready Discovery
 
 - **Radius search:** `latitude` + `longitude` + `radiusMiles` (max 100 mi). Bounding-box filter in `ProviderGeoHelper.BoundingBox`.

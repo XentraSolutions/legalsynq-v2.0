@@ -10,6 +10,7 @@ import type {
   ReferralDetail,
   ReferralHistoryItem,
   ReferralNotification,
+  ReferralAuditEvent,
   CreateReferralRequest,
   ReferralSearchParams,
   AppointmentSummary,
@@ -94,6 +95,10 @@ export const careConnectApi = {
     /** POST /api/referrals/{id}/revoke-token — revoke all existing view tokens */
     revokeToken: (id: string) =>
       apiClient.post<ReferralDetail>(`/careconnect/api/referrals/${id}/revoke-token`, {}),
+
+    /** GET /api/referrals/{id}/audit — operational audit timeline (LSCC-005-02) */
+    getAuditTimeline: (id: string) =>
+      apiClient.get<ReferralAuditEvent[]>(`/careconnect/api/referrals/${id}/audit`),
   },
 
   appointments: {

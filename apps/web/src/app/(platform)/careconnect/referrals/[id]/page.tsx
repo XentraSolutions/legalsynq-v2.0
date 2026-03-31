@@ -8,6 +8,7 @@ import { ReferralDetailPanel } from '@/components/careconnect/referral-detail-pa
 import { ReferralDeliveryCard } from '@/components/careconnect/referral-delivery-card';
 import { ReferralStatusActions } from '@/components/careconnect/referral-status-actions';
 import { ReferralTimeline } from '@/components/careconnect/referral-timeline';
+import { ReferralAuditTimeline } from '@/components/careconnect/referral-audit-timeline';
 
 interface ReferralDetailPageProps {
   params: { id: string };
@@ -92,6 +93,11 @@ export default async function ReferralDetailPage({ params }: ReferralDetailPageP
           isReceiver={isReceiver}
           isReferrer={isReferrer}
         />
+      )}
+
+      {/* LSCC-005-02: Operational audit timeline — referrers only */}
+      {referral && isReferrer && (
+        <ReferralAuditTimeline referralId={referral.id} />
       )}
 
       {/* Referral activity timeline */}

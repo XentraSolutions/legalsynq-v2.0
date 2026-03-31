@@ -9,20 +9,28 @@ interface ReferralDeliveryCardProps {
   referral: ReferralDetail;
 }
 
+// LSCC-005-02: supports derived retry states (Retrying, RetryExhausted) in addition to base states
 function statusBadge(status: string | undefined): { label: string; css: string } {
   switch (status) {
-    case 'Sent':    return { label: 'Sent',    css: 'text-green-700 bg-green-50  border-green-200' };
-    case 'Failed':  return { label: 'Failed',  css: 'text-red-700   bg-red-50    border-red-200'   };
-    case 'Pending': return { label: 'Pending', css: 'text-yellow-700 bg-yellow-50 border-yellow-200' };
-    default:        return { label: 'Not sent', css: 'text-gray-500  bg-gray-50   border-gray-200'  };
+    case 'Sent':          return { label: 'Sent',           css: 'text-green-700  bg-green-50   border-green-200'  };
+    case 'Failed':        return { label: 'Failed',         css: 'text-red-700    bg-red-50     border-red-200'    };
+    case 'Retrying':      return { label: 'Retrying…',      css: 'text-yellow-700 bg-yellow-50  border-yellow-200' };
+    case 'RetryExhausted':return { label: 'Retry Exhausted',css: 'text-red-800    bg-red-100    border-red-300'    };
+    case 'Pending':       return { label: 'Pending',        css: 'text-yellow-700 bg-yellow-50  border-yellow-200' };
+    default:              return { label: 'Not sent',       css: 'text-gray-500   bg-gray-50    border-gray-200'   };
   }
 }
 
-function NotifTypePill({ type }: { type: string }) {
-  const label = type === 'ReferralEmailResent' ? 'Resent' : type.replace('Referral', '');
+function NotifTypePill({ type, source }: { type: string; source?: string }) {
+  const baseLabel = type === 'ReferralEmailResent'    ? 'Resent'
+                  : type === 'ReferralEmailAutoRetry' ? 'Auto-Retry'
+                  : type.replace('Referral', '');
+  const srcBadge  = source === 'ManualResend' ? ' · Manual'
+                  : source === 'AutoRetry'    ? ' · Auto'
+                  : '';
   return (
     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">
-      {label}
+      {baseLabel}{srcBadge}
     </span>
   );
 }
@@ -171,7 +179,10 @@ export function ReferralDeliveryCard({ referral }: ReferralDeliveryCardProps) {
           {!historyLoading && notifications && notifications.length > 0 && (
             <ul className="space-y-2">
               {notifications.map(n => {
-                const { label, css } = statusBadge(n.status);
+                // LSCC-005-02: prefer derivedStatus (Retrying / RetryExhausted) if available,
+                // fall back to the raw persisted status.
+                const displayStatus = n.derivedStatus || n.status;
+                const { label, css } = statusBadge(displayStatus);
                 return (
                   <li key={n.id} className="flex items-start gap-2 text-xs">
                     <span className={`mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium shrink-0 ${css}`}>
@@ -179,7 +190,7 @@ export function ReferralDeliveryCard({ referral }: ReferralDeliveryCardProps) {
                     </span>
                     <span className="flex-1 text-gray-600 min-w-0 space-y-0.5">
                       <span className="flex items-center gap-1 flex-wrap">
-                        <NotifTypePill type={n.notificationType} />
+                        <NotifTypePill type={n.notificationType} source={n.triggerSource} />
                         {n.recipientAddress && (
                           <span className="text-gray-400 truncate">→ {n.recipientAddress}</span>
                         )}
@@ -187,9 +198,24 @@ export function ReferralDeliveryCard({ referral }: ReferralDeliveryCardProps) {
                           · {n.attemptCount} attempt{n.attemptCount !== 1 ? 's' : ''}
                         </span>
                       </span>
-                      {n.failureReason && (
+                      {/* Failure reason */}
+                      {n.failureReason && displayStatus !== 'Sent' && (
                         <span className="block text-red-500 truncate text-[11px]" title={n.failureReason}>
                           {n.failureReason}
+                        </span>
+                      )}
+                      {/* LSCC-005-02: next retry hint */}
+                      {displayStatus === 'Retrying' && n.nextRetryAfterUtc && (
+                        <span className="block text-yellow-600 text-[11px]">
+                          Next retry after {new Date(n.nextRetryAfterUtc).toLocaleTimeString('en-US', {
+                            hour: '2-digit', minute: '2-digit', hour12: false
+                          })} UTC
+                        </span>
+                      )}
+                      {/* LSCC-005-02: retry exhausted hint */}
+                      {displayStatus === 'RetryExhausted' && (
+                        <span className="block text-red-700 text-[11px] font-medium">
+                          All automatic retries exhausted — use Resend to try again.
                         </span>
                       )}
                     </span>

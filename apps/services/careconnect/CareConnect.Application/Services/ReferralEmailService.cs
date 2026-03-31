@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace CareConnect.Application.Services;
 
 /// <summary>
-/// LSCC-005 / LSCC-005-01: Implements secure token generation and email notification
+/// LSCC-005 / LSCC-005-01 / LSCC-005-02: Implements secure token generation and email notification
 /// dispatch for the referral flow.
 ///
 /// Token format (URL-safe Base64, LSCC-005-01):
@@ -165,11 +165,14 @@ public class ReferralEmailService : IReferralEmailService
             subject:           subject,
             message:           viewLink,
             scheduledForUtc:   null,
-            createdByUserId:   referral.CreatedByUserId);
+            createdByUserId:   referral.CreatedByUserId,
+            triggerSource:     NotificationSource.Initial);
 
         await _notifications.AddAsync(notification, ct);
 
-        await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct);
+        // LSCC-005-02: schedule retry on failure (attempt 1 → retry after 5 min)
+        await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct,
+            nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1));
     }
 
     /// <summary>
@@ -206,7 +209,8 @@ public class ReferralEmailService : IReferralEmailService
             subject:           subject,
             message:           viewLink,
             scheduledForUtc:   null,
-            createdByUserId:   null);
+            createdByUserId:   null,
+            triggerSource:     NotificationSource.ManualResend);
 
         await _notifications.AddAsync(notification, ct);
 
@@ -240,10 +244,13 @@ public class ReferralEmailService : IReferralEmailService
                 subject:           provSubject,
                 message:           null,
                 scheduledForUtc:   null,
-                createdByUserId:   null);
+                createdByUserId:   null,
+                triggerSource:     NotificationSource.Initial);
 
             await _notifications.AddAsync(provNotif, ct);
-            tasks.Add(TrySendAndUpdateAsync(provNotif, provider.Email, provSubject, provBody, ct));
+            // LSCC-005-02: schedule retry on failure (attempt 1 → retry after 5 min)
+            tasks.Add(TrySendAndUpdateAsync(provNotif, provider.Email, provSubject, provBody, ct,
+                nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
         }
         else
         {
@@ -268,10 +275,13 @@ public class ReferralEmailService : IReferralEmailService
                 subject:           refSubject,
                 message:           null,
                 scheduledForUtc:   null,
-                createdByUserId:   null);
+                createdByUserId:   null,
+                triggerSource:     NotificationSource.Initial);
 
             await _notifications.AddAsync(refNotif, ct);
-            tasks.Add(TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct));
+            // LSCC-005-02: schedule retry on failure
+            tasks.Add(TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct,
+                nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
         }
         else
         {
@@ -283,6 +293,97 @@ public class ReferralEmailService : IReferralEmailService
         await Task.WhenAll(tasks);
     }
 
+    // ── Retry (LSCC-005-02) ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// LSCC-005-02: Re-attempts an email send for an existing failed notification record.
+    /// Called exclusively by <c>ReferralEmailRetryWorker</c>.
+    ///
+    /// Rebuilds the email body from the current referral/provider state (ensuring any
+    /// token revocation is reflected). Updates the same notification record in-place —
+    /// no new record is created.
+    ///
+    /// On success: notification.Status → Sent, NextRetryAfterUtc cleared.
+    /// On failure: notification.Status remains Failed, NextRetryAfterUtc updated if
+    ///   further retries are available, or cleared if MaxAttempts is reached.
+    /// </summary>
+    public async Task RetryNotificationAsync(
+        CareConnectNotification notification,
+        Referral                referral,
+        Provider                provider,
+        CancellationToken       ct = default)
+    {
+        string subject, body, toAddress;
+
+        switch (notification.NotificationType)
+        {
+            case NotificationType.ReferralCreated:
+            case NotificationType.ReferralEmailAutoRetry:
+            {
+                if (string.IsNullOrWhiteSpace(provider.Email))
+                {
+                    _logger.LogWarning(
+                        "RetryNotificationAsync: provider {ProviderId} has no email. Clearing retry for notification {Id}.",
+                        provider.Id, notification.Id);
+                    notification.ClearRetrySchedule();
+                    await _notifications.UpdateAsync(notification, ct);
+                    return;
+                }
+                var token    = GenerateViewToken(referral.Id, referral.TokenVersion);
+                var viewLink = $"{_appBaseUrl}/referrals/view?token={token}";
+                subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
+                body      = BuildNewReferralEmailHtml(referral, provider, viewLink);
+                toAddress = provider.Email;
+                break;
+            }
+            case NotificationType.ReferralAcceptedProvider:
+            {
+                if (string.IsNullOrWhiteSpace(provider.Email))
+                {
+                    notification.ClearRetrySchedule();
+                    await _notifications.UpdateAsync(notification, ct);
+                    return;
+                }
+                subject   = $"Referral accepted — {referral.ClientFirstName} {referral.ClientLastName}";
+                body      = BuildProviderAcceptanceHtml(referral, provider);
+                toAddress = provider.Email;
+                break;
+            }
+            case NotificationType.ReferralAcceptedReferrer:
+            {
+                toAddress = notification.RecipientAddress ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(toAddress))
+                {
+                    notification.ClearRetrySchedule();
+                    await _notifications.UpdateAsync(notification, ct);
+                    return;
+                }
+                subject = $"Your referral was accepted — {referral.ClientFirstName} {referral.ClientLastName}";
+                body    = BuildReferrerAcceptanceHtml(referral, provider);
+                break;
+            }
+            default:
+                _logger.LogWarning(
+                    "RetryNotificationAsync: unsupported type '{Type}' for notification {Id}. Clearing retry.",
+                    notification.NotificationType, notification.Id);
+                notification.ClearRetrySchedule();
+                await _notifications.UpdateAsync(notification, ct);
+                return;
+        }
+
+        // The next-retry time is calculated AFTER this attempt succeeds/fails.
+        // AttemptCount will be incremented by MarkSent/MarkFailed, so we calculate
+        // GetNextRetryAfter for (currentAttemptCount + 1) which is what it will be post-failure.
+        var nextRetryAfterUtcOnFailure = ReferralRetryPolicy.GetNextRetryAfter(notification.AttemptCount + 1);
+
+        _logger.LogInformation(
+            "RetryNotificationAsync: notification {Id} (type={Type}, attempt={Attempt}/{Max}) for referral {ReferralId}.",
+            notification.Id, notification.NotificationType,
+            notification.AttemptCount + 1, ReferralRetryPolicy.MaxAttempts, referral.Id);
+
+        await TrySendAndUpdateAsync(notification, toAddress, subject, body, ct, nextRetryAfterUtcOnFailure);
+    }
+
     // ── Internal: send + update notification status ───────────────────────────
 
     private async Task TrySendAndUpdateAsync(
@@ -290,7 +391,8 @@ public class ReferralEmailService : IReferralEmailService
         string toAddress,
         string subject,
         string body,
-        CancellationToken ct)
+        CancellationToken ct,
+        DateTime? nextRetryAfterUtcOnFailure = null)
     {
         try
         {
@@ -304,7 +406,8 @@ public class ReferralEmailService : IReferralEmailService
                 "Failed to send email notification {NotificationId} to {Recipient}. " +
                 "Notification marked as Failed.",
                 notification.Id, toAddress);
-            notification.MarkFailed(ex.Message);
+            // LSCC-005-02: pass nextRetryAfterUtc so the retry worker knows when to pick this up
+            notification.MarkFailed(ex.Message, nextRetryAfterUtcOnFailure);
             try { await _notifications.UpdateAsync(notification, ct); }
             catch (Exception saveEx)
             {

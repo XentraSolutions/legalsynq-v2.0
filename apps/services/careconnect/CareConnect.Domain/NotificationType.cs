@@ -13,6 +13,8 @@ public static class NotificationType
     public const string AppointmentReminder      = "AppointmentReminder";
     // LSCC-005-01: hardening notification types
     public const string ReferralEmailResent      = "ReferralEmailResent";
+    // LSCC-005-02: automatic retry audit marker
+    public const string ReferralEmailAutoRetry   = "ReferralEmailAutoRetry";
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>
     {
@@ -20,7 +22,7 @@ public static class NotificationType
         ReferralAcceptedProvider, ReferralAcceptedReferrer,
         AppointmentScheduled, AppointmentConfirmed,
         AppointmentCancelled, AppointmentReminder,
-        ReferralEmailResent,
+        ReferralEmailResent, ReferralEmailAutoRetry,
     };
 
     public static bool IsValid(string value) => All.Contains(value);

@@ -23,32 +23,59 @@ public class CareConnectNotification : AuditableEntity
     public int       AttemptCount      { get; private set; }
     public DateTime? LastAttemptAtUtc  { get; private set; }
 
+    // LSCC-005-02: retry scheduling and source tracking
+    /// <summary>
+    /// When the next automatic retry should occur (null if not scheduled or already sent/exhausted).
+    /// Cleared when the notification is sent or retries are exhausted.
+    /// </summary>
+    public DateTime? NextRetryAfterUtc { get; private set; }
+
+    /// <summary>
+    /// Records how this notification was triggered.
+    /// Use <see cref="NotificationSource"/> constants.
+    /// </summary>
+    public string TriggerSource { get; private set; } = NotificationSource.Initial;
+
     private CareConnectNotification() { }
 
     /// <summary>
     /// Marks the notification as successfully sent.
-    /// Increments AttemptCount and records LastAttemptAtUtc.
+    /// Increments AttemptCount, records LastAttemptAtUtc, and clears the retry schedule.
     /// </summary>
     public void MarkSent()
     {
-        AttemptCount     += 1;
-        LastAttemptAtUtc  = DateTime.UtcNow;
-        Status            = NotificationStatus.Sent;
-        SentAtUtc         = DateTime.UtcNow;
-        UpdatedAtUtc      = DateTime.UtcNow;
+        AttemptCount      += 1;
+        LastAttemptAtUtc   = DateTime.UtcNow;
+        Status             = NotificationStatus.Sent;
+        SentAtUtc          = DateTime.UtcNow;
+        NextRetryAfterUtc  = null;
+        UpdatedAtUtc       = DateTime.UtcNow;
     }
 
     /// <summary>
     /// Marks the notification as failed, storing the failure reason.
     /// Increments AttemptCount and records LastAttemptAtUtc.
+    /// Optionally schedules the next automatic retry via <paramref name="nextRetryAfterUtc"/>.
     /// </summary>
-    public void MarkFailed(string reason)
+    public void MarkFailed(string reason, DateTime? nextRetryAfterUtc = null)
     {
-        AttemptCount     += 1;
-        LastAttemptAtUtc  = DateTime.UtcNow;
-        Status            = NotificationStatus.Failed;
-        FailedAtUtc       = DateTime.UtcNow;
-        FailureReason     = reason?.Length > 2000 ? reason[..2000] : reason;
+        AttemptCount      += 1;
+        LastAttemptAtUtc   = DateTime.UtcNow;
+        Status             = NotificationStatus.Failed;
+        FailedAtUtc        = DateTime.UtcNow;
+        FailureReason      = reason?.Length > 2000 ? reason[..2000] : reason;
+        NextRetryAfterUtc  = nextRetryAfterUtc;
+        UpdatedAtUtc       = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// LSCC-005-02: Clears any scheduled retry (e.g., after a successful manual resend).
+    /// This prevents the retry worker from picking up an old failed notification
+    /// whose lifecycle has effectively been superseded by the manual resend.
+    /// </summary>
+    public void ClearRetrySchedule()
+    {
+        NextRetryAfterUtc = null;
         UpdatedAtUtc      = DateTime.UtcNow;
     }
 
@@ -62,7 +89,8 @@ public class CareConnectNotification : AuditableEntity
         string? subject,
         string? message,
         DateTime? scheduledForUtc,
-        Guid?   createdByUserId)
+        Guid?   createdByUserId,
+        string  triggerSource = NotificationSource.Initial)
     {
         return new CareConnectNotification
         {
@@ -79,6 +107,8 @@ public class CareConnectNotification : AuditableEntity
             ScheduledForUtc   = scheduledForUtc,
             AttemptCount      = 0,
             LastAttemptAtUtc  = null,
+            NextRetryAfterUtc = null,
+            TriggerSource     = triggerSource,
             CreatedByUserId   = createdByUserId,
             UpdatedByUserId   = createdByUserId,
             CreatedAtUtc      = DateTime.UtcNow,

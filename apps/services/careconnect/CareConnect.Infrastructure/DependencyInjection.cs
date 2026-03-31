@@ -6,6 +6,7 @@ using CareConnect.Infrastructure.Data;
 using CareConnect.Infrastructure.Email;
 using CareConnect.Infrastructure.Repositories;
 using CareConnect.Infrastructure.Services;
+using CareConnect.Infrastructure.Workers;
 using LegalSynq.AuditClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -64,6 +65,9 @@ public static class DependencyInjection
         // LSCC-005: Email notification dispatch
         services.AddScoped<ISmtpEmailSender, SmtpEmailSender>();
         services.AddScoped<IReferralEmailService, ReferralEmailService>();
+
+        // LSCC-005-02: Automatic email retry background worker
+        services.AddHostedService<ReferralEmailRetryWorker>();
 
         // Phase 1 (step 3): HTTP resolver is now the default.
         // It is fail-safe: returns null on any network error, timeout, or 4xx/5xx.
