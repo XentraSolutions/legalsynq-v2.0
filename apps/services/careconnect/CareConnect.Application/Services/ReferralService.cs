@@ -7,6 +7,7 @@ using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
 using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -19,6 +20,7 @@ public class ReferralService : IReferralService
     private readonly IProviderRepository _providers;
     private readonly INotificationService _notifications;
     private readonly IReferralEmailService _emailService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOrganizationRelationshipResolver _relationshipResolver;
     private readonly IAuditEventClient _auditClient;
     private readonly ILogger<ReferralService> _logger;
@@ -28,6 +30,7 @@ public class ReferralService : IReferralService
         IProviderRepository providers,
         INotificationService notifications,
         IReferralEmailService emailService,
+        IServiceScopeFactory scopeFactory,
         IOrganizationRelationshipResolver relationshipResolver,
         IAuditEventClient auditClient,
         ILogger<ReferralService> logger)
@@ -36,6 +39,7 @@ public class ReferralService : IReferralService
         _providers            = providers;
         _notifications        = notifications;
         _emailService         = emailService;
+        _scopeFactory         = scopeFactory;
         _relationshipResolver = relationshipResolver;
         _auditClient          = auditClient;
         _logger               = logger;
@@ -120,12 +124,18 @@ public class ReferralService : IReferralService
         await _referrals.AddAsync(referral, ct);
 
         // LSCC-005: Fire provider email notification (fire-and-observe — never gates creation).
+        // A fresh DI scope is created so the background task gets its own DbContext instance,
+        // avoiding a concurrent-access conflict with the request-scoped context still in use below.
+        var scopeFactory = _scopeFactory;
+        var logger       = _logger;
         _ = Task.Run(async () =>
         {
-            try { await _emailService.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None); }
+            using var scope       = scopeFactory.CreateScope();
+            var       emailSvc    = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
+            try { await emailSvc.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None); }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex,
+                logger.LogWarning(ex,
                     "Background referral notification failed for referral {ReferralId}.", referral.Id);
             }
         });
@@ -321,12 +331,17 @@ public class ReferralService : IReferralService
         await _referrals.UpdateAsync(referral, history, ct);
 
         // LSCC-005: Fire confirmation emails (fire-and-observe — never gates acceptance).
+        // Fresh scope so the background DbContext is isolated from the request scope used below.
+        var scopeFactory2 = _scopeFactory;
+        var logger2       = _logger;
         _ = Task.Run(async () =>
         {
-            try { await _emailService.SendAcceptanceConfirmationsAsync(referral, provider, CancellationToken.None); }
+            using var scope2   = scopeFactory2.CreateScope();
+            var       emailSvc = scope2.ServiceProvider.GetRequiredService<IReferralEmailService>();
+            try { await emailSvc.SendAcceptanceConfirmationsAsync(referral, provider, CancellationToken.None); }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex,
+                logger2.LogWarning(ex,
                     "Background acceptance confirmation failed for referral {ReferralId}.", referral.Id);
             }
         });
