@@ -54,3 +54,9 @@ id = "6mG0t-JJbtSCq95sKnXAA"
 uri = "file://legalsynq-source.tar.gz"
 type = "unspecified"
 title = "LegalSynq Source Code"
+
+[[outputs]]
+id = "LxNoFrFeOZDESzwUx5bBG"
+uri = "file://analysis/LSCC-003-01.md"
+type = "text"
+title = "LSCC-003-01 — Workflow Completion UX Polish"
