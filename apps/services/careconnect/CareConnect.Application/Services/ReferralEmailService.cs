@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
@@ -9,19 +10,23 @@ using Microsoft.Extensions.Logging;
 namespace CareConnect.Application.Services;
 
 /// <summary>
-/// LSCC-005: Implements secure token generation and email notification dispatch
-/// for the referral flow.
+/// LSCC-005 / LSCC-005-01: Implements secure token generation and email notification
+/// dispatch for the referral flow.
 ///
-/// Token format (URL-safe Base64):
-///   {referralId}:{expiryUnixSeconds}:{hmacHex}
+/// Token format (URL-safe Base64, LSCC-005-01):
+///   {referralId}:{tokenVersion}:{expiryUnixSeconds}:{hmacHex}
 ///
-/// The HMAC-SHA256 covers "{referralId}:{expiryUnixSeconds}" using a secret key
-/// from configuration key "ReferralToken:Secret". Falls back to a development
+/// The HMAC-SHA256 covers "{referralId}:{tokenVersion}:{expiryUnixSeconds}" using a
+/// secret key from configuration key "ReferralToken:Secret". Falls back to a development
 /// constant when the key is absent (NOT suitable for production).
 ///
+/// Token revocation: incrementing a referral's TokenVersion invalidates all previously
+/// issued tokens. ValidateViewToken returns the embedded version; callers must verify
+/// it matches the referral's current TokenVersion.
+///
 /// Email strategy: a CareConnectNotification DB record is always written first
-/// (Pending status). An SMTP send is then attempted; success → Sent, failure →
-/// the record remains Pending. Failure is logged at Warning level — never silent.
+/// (Pending status). An SMTP send is then attempted; success → Sent (AttemptCount++),
+/// failure → Failed (AttemptCount++, FailureReason stored). Never a silent failure.
 /// </summary>
 public class ReferralEmailService : IReferralEmailService
 {
@@ -54,10 +59,16 @@ public class ReferralEmailService : IReferralEmailService
 
     // ── Token helpers ─────────────────────────────────────────────────────────
 
-    public string GenerateViewToken(Guid referralId)
+    /// <summary>
+    /// LSCC-005-01: Generates a 4-part HMAC-signed view token.
+    /// Format: {referralId}:{tokenVersion}:{expiry}:{hmacHex}, Base64url-encoded.
+    /// The version is embedded so revocation can be detected without a DB lookup
+    /// at the HMAC validation step.
+    /// </summary>
+    public string GenerateViewToken(Guid referralId, int tokenVersion)
     {
         var expiry  = DateTimeOffset.UtcNow.AddDays(TokenExpiryDays).ToUnixTimeSeconds();
-        var payload = $"{referralId}:{expiry}";
+        var payload = $"{referralId}:{tokenVersion}:{expiry}";
         var sig     = ComputeHmac(payload);
         var raw     = $"{payload}:{sig}";
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(raw))
@@ -66,7 +77,15 @@ public class ReferralEmailService : IReferralEmailService
                       .Replace('/', '_');
     }
 
-    public Guid? ValidateViewToken(string token)
+    /// <summary>
+    /// LSCC-005-01: Validates a view token. Returns a ViewTokenValidationResult containing
+    /// the referralId and the embedded tokenVersion. Returns null if the token is
+    /// invalid, tampered with, or expired.
+    ///
+    /// The caller must also verify that result.TokenVersion matches the referral's
+    /// current TokenVersion to detect revoked tokens.
+    /// </summary>
+    public ViewTokenValidationResult? ValidateViewToken(string token)
     {
         try
         {
@@ -75,11 +94,14 @@ public class ReferralEmailService : IReferralEmailService
             if (mod != 0) padded += new string('=', 4 - mod);
             var raw     = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
             var parts   = raw.Split(':');
-            if (parts.Length != 3) return null;
 
-            var referralId = Guid.Parse(parts[0]);
-            var expiry     = long.Parse(parts[1]);
-            var sig        = parts[2];
+            // LSCC-005-01: 4-part format: referralId:version:expiry:hmac
+            if (parts.Length != 4) return null;
+
+            var referralId   = Guid.Parse(parts[0]);
+            var tokenVersion = int.Parse(parts[1]);
+            var expiry       = long.Parse(parts[2]);
+            var sig          = parts[3];
 
             if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > expiry)
             {
@@ -87,7 +109,7 @@ public class ReferralEmailService : IReferralEmailService
                 return null;
             }
 
-            var expectedSig = ComputeHmac($"{referralId}:{expiry}");
+            var expectedSig = ComputeHmac($"{referralId}:{tokenVersion}:{expiry}");
             if (!CryptographicOperations.FixedTimeEquals(
                     Encoding.UTF8.GetBytes(sig),
                     Encoding.UTF8.GetBytes(expectedSig)))
@@ -96,7 +118,7 @@ public class ReferralEmailService : IReferralEmailService
                 return null;
             }
 
-            return referralId;
+            return new ViewTokenValidationResult(referralId, tokenVersion);
         }
         catch (Exception ex)
         {
@@ -128,7 +150,7 @@ public class ReferralEmailService : IReferralEmailService
             return;
         }
 
-        var token     = GenerateViewToken(referral.Id);
+        var token     = GenerateViewToken(referral.Id, referral.TokenVersion);
         var viewLink  = $"{_appBaseUrl}/referrals/view?token={token}";
         var subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
         var body      = BuildNewReferralEmailHtml(referral, provider, viewLink);
@@ -146,6 +168,51 @@ public class ReferralEmailService : IReferralEmailService
             createdByUserId:   referral.CreatedByUserId);
 
         await _notifications.AddAsync(notification, ct);
+
+        await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct);
+    }
+
+    /// <summary>
+    /// LSCC-005-01: Resends the provider notification email for an existing referral.
+    /// Creates a new notification record (type: ReferralEmailResent) and sends the
+    /// email with a fresh token using the referral's CURRENT TokenVersion.
+    /// Old revoked tokens (lower version) cannot be reinstated by resend.
+    /// </summary>
+    public async Task ResendNewReferralNotificationAsync(
+        Referral referral,
+        Provider provider,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(provider.Email))
+        {
+            _logger.LogWarning(
+                "Cannot resend referral notification: provider {ProviderId} has no email address.",
+                provider.Id);
+            return;
+        }
+
+        var token     = GenerateViewToken(referral.Id, referral.TokenVersion);
+        var viewLink  = $"{_appBaseUrl}/referrals/view?token={token}";
+        var subject   = $"Referral (resent) — {referral.ClientFirstName} {referral.ClientLastName}";
+        var body      = BuildNewReferralEmailHtml(referral, provider, viewLink);
+
+        var notification = CareConnectNotification.Create(
+            tenantId:          referral.TenantId,
+            notificationType:  NotificationType.ReferralEmailResent,
+            relatedEntityType: NotificationRelatedEntityType.Referral,
+            relatedEntityId:   referral.Id,
+            recipientType:     NotificationRecipientType.Provider,
+            recipientAddress:  provider.Email,
+            subject:           subject,
+            message:           viewLink,
+            scheduledForUtc:   null,
+            createdByUserId:   null);
+
+        await _notifications.AddAsync(notification, ct);
+
+        _logger.LogInformation(
+            "Resending referral notification for referral {ReferralId} (TokenVersion={Version}) to {Email}.",
+            referral.Id, referral.TokenVersion, provider.Email);
 
         await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct);
     }
@@ -235,7 +302,7 @@ public class ReferralEmailService : IReferralEmailService
         {
             _logger.LogWarning(ex,
                 "Failed to send email notification {NotificationId} to {Recipient}. " +
-                "Record remains Pending for retry.",
+                "Notification marked as Failed.",
                 notification.Id, toAddress);
             notification.MarkFailed(ex.Message);
             try { await _notifications.UpdateAsync(notification, ct); }

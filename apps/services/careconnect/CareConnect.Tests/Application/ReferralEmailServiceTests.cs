@@ -1,4 +1,5 @@
-// LSCC-005: Tests for ReferralEmailService — token generation/validation, expiry, tampering.
+// LSCC-005 / LSCC-005-01: Tests for ReferralEmailService — 4-part token generation/validation,
+// version embedding, expiry, tampering, and round-trip correctness.
 using System.Security.Cryptography;
 using System.Text;
 using CareConnect.Application.Interfaces;
@@ -13,16 +14,17 @@ using Xunit;
 namespace CareConnect.Tests.Application;
 
 /// <summary>
-/// LSCC-005 — Verifies the referral view token contract:
-///   - GenerateViewToken produces a valid, URL-safe Base64 token
-///   - ValidateViewToken returns the correct referralId for a valid token
+/// LSCC-005 / LSCC-005-01 — Verifies the referral view token contract:
+///   - GenerateViewToken(referralId, tokenVersion) produces a valid, URL-safe Base64 token
+///   - ValidateViewToken returns a ViewTokenValidationResult (ReferralId + TokenVersion) for a valid token
 ///   - ValidateViewToken returns null for expired tokens
+///   - ValidateViewToken returns null for old 3-part tokens (LSCC-005-01: backward incompatible by design)
 ///   - ValidateViewToken returns null for tampered / malformed tokens
-///   - Round-trip generate → validate is stable
+///   - Round-trip generate → validate is stable and preserves both fields
 /// </summary>
 public class ReferralEmailServiceTests
 {
-    private const string TestSecret = "TEST-REFERRAL-SECRET-KEY-2026";
+    private const string TestSecret  = "TEST-REFERRAL-SECRET-KEY-2026";
     private const string TestBaseUrl = "http://localhost:3000";
 
     // ── Factory ──────────────────────────────────────────────────────────────
@@ -50,7 +52,7 @@ public class ReferralEmailServiceTests
     public void GenerateViewToken_ReturnsNonEmptyString()
     {
         var svc   = BuildService();
-        var token = svc.GenerateViewToken(Guid.NewGuid());
+        var token = svc.GenerateViewToken(Guid.NewGuid(), tokenVersion: 1);
         Assert.False(string.IsNullOrWhiteSpace(token));
     }
 
@@ -58,7 +60,7 @@ public class ReferralEmailServiceTests
     public void GenerateViewToken_IsUrlSafeBase64_NoReservedChars()
     {
         var svc   = BuildService();
-        var token = svc.GenerateViewToken(Guid.NewGuid());
+        var token = svc.GenerateViewToken(Guid.NewGuid(), tokenVersion: 1);
 
         Assert.DoesNotContain("+", token);
         Assert.DoesNotContain("/", token);
@@ -66,19 +68,30 @@ public class ReferralEmailServiceTests
     }
 
     [Fact]
-    public void GenerateViewToken_TwoCallsSameId_ProduceDifferentTokens()
+    public void GenerateViewToken_TwoCallsSameId_ProducesNonEmptyTokens()
     {
-        // Each token has a fresh expiry timestamp — two calls seconds apart produce
-        // different tokens because the expiry unix second can advance.
-        // More importantly the expiry value is included so tokens are unique per issuance.
+        // Each token has a fresh expiry timestamp — two calls seconds apart may produce
+        // different tokens. Either way, both must be non-empty and round-trip correctly.
         var svc = BuildService();
         var id  = Guid.NewGuid();
-        var t1  = svc.GenerateViewToken(id);
-        var t2  = svc.GenerateViewToken(id);
-        // Tokens CAN be equal if issued within the same second — that is fine by contract,
-        // but they must never be empty.
+        var t1  = svc.GenerateViewToken(id, tokenVersion: 1);
+        var t2  = svc.GenerateViewToken(id, tokenVersion: 1);
+
         Assert.False(string.IsNullOrWhiteSpace(t1));
         Assert.False(string.IsNullOrWhiteSpace(t2));
+    }
+
+    [Fact]
+    public void GenerateViewToken_DifferentVersions_ProduceDifferentTokens()
+    {
+        // LSCC-005-01: token version is embedded in the HMAC payload, so version 1 and
+        // version 2 tokens for the same referral must differ.
+        var svc = BuildService();
+        var id  = Guid.NewGuid();
+        var t1  = svc.GenerateViewToken(id, tokenVersion: 1);
+        var t2  = svc.GenerateViewToken(id, tokenVersion: 2);
+
+        Assert.NotEqual(t1, t2);
     }
 
     // ── Round-trip ───────────────────────────────────────────────────────────
@@ -88,9 +101,30 @@ public class ReferralEmailServiceTests
     {
         var svc        = BuildService();
         var referralId = Guid.NewGuid();
-        var token      = svc.GenerateViewToken(referralId);
+        var token      = svc.GenerateViewToken(referralId, tokenVersion: 1);
         var result     = svc.ValidateViewToken(token);
-        Assert.Equal(referralId, result);
+
+        Assert.NotNull(result);
+        Assert.Equal(referralId, result!.ReferralId);
+    }
+
+    [Fact]
+    public void RoundTrip_Generate_Validate_PreservesTokenVersion()
+    {
+        // LSCC-005-01: the token version must round-trip correctly so callers can
+        // detect revoked tokens by comparing result.TokenVersion with referral.TokenVersion.
+        var svc        = BuildService();
+        var referralId = Guid.NewGuid();
+
+        var token2  = svc.GenerateViewToken(referralId, tokenVersion: 2);
+        var result2 = svc.ValidateViewToken(token2);
+        Assert.NotNull(result2);
+        Assert.Equal(2, result2!.TokenVersion);
+
+        var token7  = svc.GenerateViewToken(referralId, tokenVersion: 7);
+        var result7 = svc.ValidateViewToken(token7);
+        Assert.NotNull(result7);
+        Assert.Equal(7, result7!.TokenVersion);
     }
 
     [Fact]
@@ -101,9 +135,11 @@ public class ReferralEmailServiceTests
 
         foreach (var id in ids)
         {
-            var token  = svc.GenerateViewToken(id);
+            var token  = svc.GenerateViewToken(id, tokenVersion: 1);
             var result = svc.ValidateViewToken(token);
-            Assert.Equal(id, result);
+            Assert.NotNull(result);
+            Assert.Equal(id, result!.ReferralId);
+            Assert.Equal(1, result.TokenVersion);
         }
     }
 
@@ -114,10 +150,11 @@ public class ReferralEmailServiceTests
     {
         var svc        = BuildService();
         var referralId = Guid.NewGuid();
+        const int tokenVersion = 1;
 
-        // Craft a token with an expiry in the past using the same algorithm.
+        // Craft an expired 4-part token using the same algorithm the service uses.
         var expiry      = DateTimeOffset.UtcNow.AddSeconds(-1).ToUnixTimeSeconds();
-        var payload     = $"{referralId}:{expiry}";
+        var payload     = $"{referralId}:{tokenVersion}:{expiry}";
         var keyBytes    = Encoding.UTF8.GetBytes(TestSecret);
         using var hmac  = new HMACSHA256(keyBytes);
         var sig         = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
@@ -128,6 +165,27 @@ public class ReferralEmailServiceTests
         Assert.Null(svc.ValidateViewToken(token));
     }
 
+    // ── Old 3-part token rejection (LSCC-005-01) ─────────────────────────────
+
+    [Fact]
+    public void ValidateViewToken_OldThreePartToken_ReturnsNull()
+    {
+        // LSCC-005-01: tokens from before the hardening upgrade (3-part format) must be
+        // rejected without throwing — they lack the version field and parts.Length != 4.
+        var referralId  = Guid.NewGuid();
+        var expiry      = DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds();
+        var payload     = $"{referralId}:{expiry}";              // old 2-field payload
+        var keyBytes    = Encoding.UTF8.GetBytes(TestSecret);
+        using var hmac  = new HMACSHA256(keyBytes);
+        var sig         = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
+        var raw         = $"{payload}:{sig}";                    // 3 parts
+        var token       = Convert.ToBase64String(Encoding.UTF8.GetBytes(raw))
+                              .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        var svc = BuildService();
+        Assert.Null(svc.ValidateViewToken(token));
+    }
+
     // ── Tampering ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -135,14 +193,14 @@ public class ReferralEmailServiceTests
     {
         var svc        = BuildService();
         var referralId = Guid.NewGuid();
-        var token      = svc.GenerateViewToken(referralId);
+        var token      = svc.GenerateViewToken(referralId, tokenVersion: 1);
 
         // Decode, replace the HMAC with an all-zeros hex string of the same length, re-encode.
         var padded  = token.Replace('-', '+').Replace('_', '/');
         var mod     = padded.Length % 4;
         if (mod != 0) padded += new string('=', 4 - mod);
-        var raw     = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
-        var lastSep = raw.LastIndexOf(':');
+        var raw      = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+        var lastSep  = raw.LastIndexOf(':');
         var tampered_raw = raw[..(lastSep + 1)] + new string('0', raw.Length - lastSep - 1);
         var tampered = Convert.ToBase64String(Encoding.UTF8.GetBytes(tampered_raw))
                            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -156,9 +214,34 @@ public class ReferralEmailServiceTests
         var svcA   = BuildService("SECRET-A");
         var svcB   = BuildService("SECRET-B");
         var id     = Guid.NewGuid();
-        var token  = svcA.GenerateViewToken(id);  // signed with A
-        var result = svcB.ValidateViewToken(token); // validated with B
+        var token  = svcA.GenerateViewToken(id, tokenVersion: 1);  // signed with A
+        var result = svcB.ValidateViewToken(token);                  // validated with B
         Assert.Null(result);
+    }
+
+    [Fact]
+    public void ValidateViewToken_VersionTampered_ReturnsNull()
+    {
+        // LSCC-005-01: if an attacker modifies the version field in the token body,
+        // the HMAC computed over the (modified) payload will not match the real signature.
+        var svc        = BuildService();
+        var referralId = Guid.NewGuid();
+        var token      = svc.GenerateViewToken(referralId, tokenVersion: 1);
+
+        // Decode and replace the version digit.
+        var padded = token.Replace('-', '+').Replace('_', '/');
+        var mod    = padded.Length % 4;
+        if (mod != 0) padded += new string('=', 4 - mod);
+        var raw    = Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+
+        // Format: referralId:version:expiry:sig — tamper the version (field index 1)
+        var parts   = raw.Split(':');
+        parts[1]    = "999";  // inject a different version
+        var tampered_raw = string.Join(':', parts);
+        var tampered     = Convert.ToBase64String(Encoding.UTF8.GetBytes(tampered_raw))
+                               .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        Assert.Null(svc.ValidateViewToken(tampered));
     }
 
     // ── Malformed inputs ─────────────────────────────────────────────────────
@@ -203,7 +286,11 @@ public class ReferralEmailServiceTests
 
         var svc  = new ReferralEmailService(notifications.Object, smtp.Object, config, logger);
         var id   = Guid.NewGuid();
-        var tok  = svc.GenerateViewToken(id);
-        Assert.Equal(id, svc.ValidateViewToken(tok));
+        var tok  = svc.GenerateViewToken(id, tokenVersion: 1);
+        var res  = svc.ValidateViewToken(tok);
+
+        Assert.NotNull(res);
+        Assert.Equal(id, res!.ReferralId);
+        Assert.Equal(1, res.TokenVersion);
     }
 }

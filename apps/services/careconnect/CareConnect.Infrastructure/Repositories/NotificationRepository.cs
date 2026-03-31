@@ -74,4 +74,45 @@ public class NotificationRepository : INotificationRepository
         _db.CareConnectNotifications.Update(notification);
         await _db.SaveChangesAsync(ct);
     }
+
+    // LSCC-005-01: Referral-scoped notification queries
+
+    /// <summary>
+    /// Returns the most recently created notification for the given referral, optionally
+    /// filtered to a specific notification type. Used to populate the email delivery
+    /// status indicator on the referral detail view.
+    /// </summary>
+    public async Task<CareConnectNotification?> GetLatestByReferralAsync(
+        Guid tenantId,
+        Guid referralId,
+        string? notificationType = null,
+        CancellationToken ct = default)
+    {
+        var q = _db.CareConnectNotifications
+            .Where(n => n.TenantId == tenantId
+                     && n.RelatedEntityId == referralId
+                     && n.RelatedEntityType == NotificationRelatedEntityType.Referral);
+
+        if (!string.IsNullOrWhiteSpace(notificationType))
+            q = q.Where(n => n.NotificationType == notificationType);
+
+        return await q
+            .OrderByDescending(n => n.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>
+    /// Returns all notifications for the given referral, ordered newest-first.
+    /// Used to populate the notification history panel on the referral detail view.
+    /// </summary>
+    public async Task<List<CareConnectNotification>> GetAllByReferralAsync(
+        Guid tenantId,
+        Guid referralId,
+        CancellationToken ct = default)
+        => await _db.CareConnectNotifications
+            .Where(n => n.TenantId == tenantId
+                     && n.RelatedEntityId == referralId
+                     && n.RelatedEntityType == NotificationRelatedEntityType.Referral)
+            .OrderByDescending(n => n.CreatedAtUtc)
+            .ToListAsync(ct);
 }

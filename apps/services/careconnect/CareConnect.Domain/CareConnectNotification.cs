@@ -19,21 +19,37 @@ public class CareConnectNotification : AuditableEntity
     public DateTime? FailedAtUtc      { get; private set; }
     public string? FailureReason      { get; private set; }
 
+    // LSCC-005-01: delivery tracking fields
+    public int       AttemptCount      { get; private set; }
+    public DateTime? LastAttemptAtUtc  { get; private set; }
+
     private CareConnectNotification() { }
 
+    /// <summary>
+    /// Marks the notification as successfully sent.
+    /// Increments AttemptCount and records LastAttemptAtUtc.
+    /// </summary>
     public void MarkSent()
     {
-        Status      = NotificationStatus.Sent;
-        SentAtUtc   = DateTime.UtcNow;
-        UpdatedAtUtc = DateTime.UtcNow;
+        AttemptCount     += 1;
+        LastAttemptAtUtc  = DateTime.UtcNow;
+        Status            = NotificationStatus.Sent;
+        SentAtUtc         = DateTime.UtcNow;
+        UpdatedAtUtc      = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// Marks the notification as failed, storing the failure reason.
+    /// Increments AttemptCount and records LastAttemptAtUtc.
+    /// </summary>
     public void MarkFailed(string reason)
     {
-        Status        = NotificationStatus.Failed;
-        FailedAtUtc   = DateTime.UtcNow;
-        FailureReason = reason?.Length > 2000 ? reason[..2000] : reason;
-        UpdatedAtUtc  = DateTime.UtcNow;
+        AttemptCount     += 1;
+        LastAttemptAtUtc  = DateTime.UtcNow;
+        Status            = NotificationStatus.Failed;
+        FailedAtUtc       = DateTime.UtcNow;
+        FailureReason     = reason?.Length > 2000 ? reason[..2000] : reason;
+        UpdatedAtUtc      = DateTime.UtcNow;
     }
 
     public static CareConnectNotification Create(
@@ -61,6 +77,8 @@ public class CareConnectNotification : AuditableEntity
             Message           = message,
             Status            = NotificationStatus.Pending,
             ScheduledForUtc   = scheduledForUtc,
+            AttemptCount      = 0,
+            LastAttemptAtUtc  = null,
             CreatedByUserId   = createdByUserId,
             UpdatedByUserId   = createdByUserId,
             CreatedAtUtc      = DateTime.UtcNow,

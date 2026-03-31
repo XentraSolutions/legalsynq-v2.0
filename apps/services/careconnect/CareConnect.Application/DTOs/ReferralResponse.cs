@@ -24,4 +24,10 @@ public class ReferralResponse
     public Guid? ReferringOrganizationId { get; set; }
     public Guid? ReceivingOrganizationId { get; set; }
     public Guid? OrganizationRelationshipId { get; set; }
+
+    // LSCC-005-01: hardening fields
+    public int     TokenVersion          { get; set; } = 1;
+    public string? ProviderEmailStatus   { get; set; }
+    public int     ProviderEmailAttempts { get; set; }
+    public string? ProviderEmailFailureReason { get; set; }
 }

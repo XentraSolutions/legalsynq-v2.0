@@ -5,6 +5,7 @@ import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { ReferralDetailPanel } from '@/components/careconnect/referral-detail-panel';
+import { ReferralDeliveryCard } from '@/components/careconnect/referral-delivery-card';
 import { ReferralStatusActions } from '@/components/careconnect/referral-status-actions';
 import { ReferralTimeline } from '@/components/careconnect/referral-timeline';
 
@@ -77,6 +78,11 @@ export default async function ReferralDetailPage({ params }: ReferralDetailPageP
             Select an available slot to schedule for this referral.
           </span>
         </div>
+      )}
+
+      {/* LSCC-005-01: Email delivery status card — referrers only */}
+      {referral && isReferrer && (
+        <ReferralDeliveryCard referral={referral} />
       )}
 
       {/* Role-based status actions (Accept / Decline for receivers; Cancel for either) */}

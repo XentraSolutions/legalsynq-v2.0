@@ -84,6 +84,12 @@ public class Referral : AuditableEntity
     public string? ReferrerEmail { get; private set; }
     public string? ReferrerName  { get; private set; }
 
+    // ── LSCC-005-01: Token versioning for revocation ─────────────────────
+    // Incrementing this value invalidates all previously issued view tokens.
+    // New tokens are generated using the current version; old tokens with a
+    // mismatched version are rejected as revoked.
+    public int TokenVersion { get; private set; } = 1;
+
     public Provider? Provider { get; private set; }
     public Party? SubjectParty { get; private set; }
 
@@ -141,6 +147,7 @@ public class Referral : AuditableEntity
             Notes                      = notes?.Trim(),
             ReferrerEmail              = referrerEmail?.Trim(),
             ReferrerName               = referrerName?.Trim(),
+            TokenVersion               = 1,
             CreatedByUserId            = createdByUserId,
             UpdatedByUserId            = createdByUserId,
             CreatedAtUtc               = now,
@@ -157,6 +164,16 @@ public class Referral : AuditableEntity
         Status          = ValidStatuses.Accepted;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// LSCC-005-01: Invalidates all previously issued view tokens by incrementing
+    /// the token version. Any token carrying an older version will be rejected.
+    /// </summary>
+    public void IncrementTokenVersion()
+    {
+        TokenVersion    += 1;
+        UpdatedAtUtc     = DateTime.UtcNow;
     }
 
     /// <summary>

@@ -10,4 +10,16 @@ public interface INotificationRepository
     Task AddAsync(CareConnectNotification notification, CancellationToken ct = default);
     Task AddRangeAsync(IEnumerable<CareConnectNotification> notifications, CancellationToken ct = default);
     Task UpdateAsync(CareConnectNotification notification, CancellationToken ct = default);
+
+    // LSCC-005-01: referral-scoped notification queries
+    Task<CareConnectNotification?> GetLatestByReferralAsync(
+        Guid tenantId,
+        Guid referralId,
+        string? notificationType = null,
+        CancellationToken ct = default);
+
+    Task<List<CareConnectNotification>> GetAllByReferralAsync(
+        Guid tenantId,
+        Guid referralId,
+        CancellationToken ct = default);
 }

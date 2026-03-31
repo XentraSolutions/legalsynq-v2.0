@@ -9,6 +9,7 @@ import type {
   ReferralSummary,
   ReferralDetail,
   ReferralHistoryItem,
+  ReferralNotification,
   CreateReferralRequest,
   ReferralSearchParams,
   AppointmentSummary,
@@ -79,6 +80,20 @@ export const careConnectApi = {
      */
     acceptByToken: (id: string, token: string) =>
       apiClient.post<void>(`/careconnect/api/referrals/${id}/accept-by-token`, { token }),
+
+    // LSCC-005-01: hardening endpoints
+
+    /** GET /api/referrals/{id}/notifications — email delivery history */
+    getNotifications: (id: string) =>
+      apiClient.get<ReferralNotification[]>(`/careconnect/api/referrals/${id}/notifications`),
+
+    /** POST /api/referrals/{id}/resend-email — re-send provider notification */
+    resendEmail: (id: string) =>
+      apiClient.post<ReferralDetail>(`/careconnect/api/referrals/${id}/resend-email`, {}),
+
+    /** POST /api/referrals/{id}/revoke-token — revoke all existing view tokens */
+    revokeToken: (id: string) =>
+      apiClient.post<ReferralDetail>(`/careconnect/api/referrals/${id}/revoke-token`, {}),
   },
 
   appointments: {

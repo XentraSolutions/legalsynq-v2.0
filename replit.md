@@ -544,6 +544,19 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - **14 new tests** in `ReferralEmailServiceTests.cs`: token round-trip, URL-safe encoding, expiry, HMAC tampering, wrong-secret, malformed inputs, dev-fallback.
 - **Bug fix (post-completion):** `ReferralService.CreateAsync` was using `_providers.GetByIdAsync(tenantId, ...)` which filters by `TenantId`. Since providers are a platform-wide marketplace (`BuildBaseQuery` deliberately ignores TenantId), cross-tenant provider lookups returned null → `NotFoundException` → 404. Fixed by switching to `_providers.GetByIdCrossAsync(id)` — consistent with `ProviderService`, `SearchAsync`, and the marketplace design intent.
 
+**LSCC-005-01 — Referral Flow Hardening & Operational Visibility (complete):**
+- **Domain:** `CareConnectNotification` gains `AttemptCount int` + `LastAttemptAtUtc DateTime?`; `MarkSent()`/`MarkFailed()` now increment `AttemptCount`. `Referral` gains `TokenVersion int` (default 1) + `IncrementTokenVersion()`. `NotificationType.ReferralEmailResent` added.
+- **Token strategy:** 4-part HMAC token format: `{referralId}:{tokenVersion}:{expiry}:{hmacHex}` (Base64url). Version is cryptographically bound in the HMAC payload. `ValidateViewToken` now returns `ViewTokenValidationResult?(ReferralId, TokenVersion)`. Old 3-part tokens auto-rejected.
+- **Revocation:** `RevokeTokenAsync` increments `TokenVersion` via `IncrementTokenVersion()`; all previously issued tokens are instantly invalidated. Emits `careconnect.referral.token.revoked` audit event (Security category).
+- **Resend:** `ResendEmailAsync` creates a new `ReferralEmailResent` notification record using the current `TokenVersion`. Only available while referral is in `New` status.
+- **Replay/duplicate hardening:** `AcceptByTokenAsync` checks `status != New` and emits `careconnect.referral.accept.replay` security audit event; returns 409 Conflict on double-accept.
+- **Migration:** `20260401110000_ReferralHardening` — adds `AttemptCount`, `LastAttemptAtUtc` to `CareConnectNotifications`; adds `TokenVersion` to `Referrals`.
+- **New endpoints:** `POST /{id}/resend-email`, `POST /{id}/revoke-token`, `GET /{id}/notifications` — all authenticated, `ReferralCreate` capability for mutations.
+- **`ReferralResponse` DTO:** Extended with `TokenVersion`, `ProviderEmailStatus`, `ProviderEmailAttempts`, `ProviderEmailFailureReason`.
+- **Frontend:** `ReferralNotification` type; `careconnect-api.ts` +3 methods (`resendEmail`, `revokeToken`, `getNotifications`). New `ReferralDeliveryCard` component (email status badge, attempt count, resend/revoke buttons, lazy notification history drawer) — referrer-only on referral detail page. Invalid token page redesigned with reason-aware messaging (missing/revoked/expired).
+- **Tests:** `ReferralEmailServiceTests` updated for 4-part token API. 21 new tests in `ReferralHardeningTests.cs` covering token versioning, domain transitions, `AttemptCount` accumulation, format validation. **278 tests pass** (5 pre-existing `ProviderAvailabilityServiceTests` failures unchanged).
+- **Report:** `/analysis/LSCC-005-01.md`
+
 ## CareConnect Provider Geo / Map-Ready Discovery
 
 - **Radius search:** `latitude` + `longitude` + `radiusMiles` (max 100 mi). Bounding-box filter in `ProviderGeoHelper.BoundingBox`.

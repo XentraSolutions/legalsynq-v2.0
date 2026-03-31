@@ -111,10 +111,35 @@ export interface ReferralSummary {
   notes?:           string;
   createdAtUtc:     string;
   updatedAtUtc:     string;
+  // LSCC-005-01: org context
+  referringOrganizationId?: string;
+  receivingOrganizationId?:  string;
+  organizationRelationshipId?: string;
 }
 
-// ReferralDetail — same shape as summary for Phase 1
-export type ReferralDetail = ReferralSummary;
+// LSCC-005-01: notification delivery record
+export interface ReferralNotification {
+  id:                string;
+  notificationType:  string;
+  recipientType:     string;
+  recipientAddress?: string;
+  status:            string;
+  attemptCount:      number;
+  failureReason?:    string;
+  sentAtUtc?:        string;
+  failedAtUtc?:      string;
+  lastAttemptAtUtc?: string;
+  createdAtUtc:      string;
+}
+
+// ReferralDetail — extends summary with hardening fields
+export interface ReferralDetail extends ReferralSummary {
+  // LSCC-005-01: token versioning + email delivery status
+  tokenVersion?:              number;
+  providerEmailStatus?:       string;
+  providerEmailAttempts?:     number;
+  providerEmailFailureReason?: string;
+}
 
 export interface CreateReferralRequest {
   providerId:       string;

@@ -351,6 +351,10 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -363,6 +367,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<string>("FailureReason")
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
+
+                    b.Property<DateTime?>("LastAttemptAtUtc")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Message")
                         .HasMaxLength(4000)
@@ -912,6 +919,10 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<string>("ReferrerName")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<int>("TokenVersion")
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
 
                     b.Property<Guid>("ProviderId")
                         .HasColumnType("char(36)");

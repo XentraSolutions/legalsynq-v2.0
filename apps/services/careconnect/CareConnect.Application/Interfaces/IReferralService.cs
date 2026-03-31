@@ -13,4 +13,9 @@ public interface IReferralService
     // LSCC-005: Public token-based endpoints (no auth context)
     Task<ReferralViewTokenRouteResponse> ResolveViewTokenAsync(string token, CancellationToken ct = default);
     Task<ReferralResponse> AcceptByTokenAsync(Guid referralId, string token, CancellationToken ct = default);
+
+    // LSCC-005-01: Hardening — resend, revoke, notification history
+    Task<ReferralResponse> ResendEmailAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
+    Task<ReferralResponse> RevokeTokenAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
+    Task<List<ReferralNotificationResponse>> GetNotificationsAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
 }

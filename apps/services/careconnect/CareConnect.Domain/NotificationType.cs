@@ -11,13 +11,16 @@ public static class NotificationType
     public const string AppointmentConfirmed     = "AppointmentConfirmed";
     public const string AppointmentCancelled     = "AppointmentCancelled";
     public const string AppointmentReminder      = "AppointmentReminder";
+    // LSCC-005-01: hardening notification types
+    public const string ReferralEmailResent      = "ReferralEmailResent";
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>
     {
         ReferralStatusChanged, ReferralCreated,
         ReferralAcceptedProvider, ReferralAcceptedReferrer,
         AppointmentScheduled, AppointmentConfirmed,
-        AppointmentCancelled, AppointmentReminder
+        AppointmentCancelled, AppointmentReminder,
+        ReferralEmailResent,
     };
 
     public static bool IsValid(string value) => All.Contains(value);

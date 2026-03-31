@@ -19,6 +19,7 @@ public class ReferralService : IReferralService
     private readonly IReferralRepository _referrals;
     private readonly IProviderRepository _providers;
     private readonly INotificationService _notifications;
+    private readonly INotificationRepository _notificationRepo;
     private readonly IReferralEmailService _emailService;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOrganizationRelationshipResolver _relationshipResolver;
@@ -29,6 +30,7 @@ public class ReferralService : IReferralService
         IReferralRepository referrals,
         IProviderRepository providers,
         INotificationService notifications,
+        INotificationRepository notificationRepo,
         IReferralEmailService emailService,
         IServiceScopeFactory scopeFactory,
         IOrganizationRelationshipResolver relationshipResolver,
@@ -38,6 +40,7 @@ public class ReferralService : IReferralService
         _referrals            = referrals;
         _providers            = providers;
         _notifications        = notifications;
+        _notificationRepo     = notificationRepo;
         _emailService         = emailService;
         _scopeFactory         = scopeFactory;
         _relationshipResolver = relationshipResolver;
@@ -53,7 +56,7 @@ public class ReferralService : IReferralService
 
         return new PagedResponse<ReferralResponse>
         {
-            Items = items.Select(ToResponse).ToList(),
+            Items = items.Select(r => ToResponse(r)).ToList(),
             Page = query.Page,
             PageSize = query.PageSize,
             TotalCount = totalCount
@@ -64,7 +67,10 @@ public class ReferralService : IReferralService
     {
         var referral = await _referrals.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Referral '{id}' was not found.");
-        return ToResponse(referral);
+
+        // LSCC-005-01: load latest notification for email status display
+        var latestNotif = await _notificationRepo.GetLatestByReferralAsync(tenantId, id, ct: ct);
+        return ToResponse(referral, latestNotif);
     }
 
     public async Task<ReferralResponse> CreateAsync(Guid tenantId, Guid? userId, CreateReferralRequest request, CancellationToken ct = default)
@@ -271,13 +277,31 @@ public class ReferralService : IReferralService
         string token,
         CancellationToken ct = default)
     {
-        var referralId = _emailService.ValidateViewToken(token);
-        if (referralId is null)
+        var tokenResult = _emailService.ValidateViewToken(token);
+        if (tokenResult is null)
+        {
+            // Emit audit for invalid/malformed token access
+            EmitInvalidTokenAudit(token, "malformed-or-expired", null);
             return new ReferralViewTokenRouteResponse { RouteType = "invalid" };
+        }
 
-        var referral = await _referrals.GetByIdGlobalAsync(referralId.Value, ct);
+        var referral = await _referrals.GetByIdGlobalAsync(tokenResult.ReferralId, ct);
         if (referral is null)
+        {
+            EmitInvalidTokenAudit(token, "referral-not-found", tokenResult.ReferralId);
             return new ReferralViewTokenRouteResponse { RouteType = "notfound" };
+        }
+
+        // LSCC-005-01: Version check — rejects revoked tokens
+        if (tokenResult.TokenVersion != referral.TokenVersion)
+        {
+            _logger.LogWarning(
+                "Referral view token version mismatch for referral {ReferralId}: " +
+                "token has version {TokenVersion}, referral has version {ReferralVersion}. Token revoked.",
+                referral.Id, tokenResult.TokenVersion, referral.TokenVersion);
+            EmitInvalidTokenAudit(token, "revoked", tokenResult.ReferralId);
+            return new ReferralViewTokenRouteResponse { RouteType = "invalid" };
+        }
 
         var provider = referral.Provider;
         if (provider is null)
@@ -302,19 +326,59 @@ public class ReferralService : IReferralService
         string token,
         CancellationToken ct = default)
     {
-        var tokenReferralId = _emailService.ValidateViewToken(token);
-        if (tokenReferralId is null)
+        var tokenResult = _emailService.ValidateViewToken(token);
+        if (tokenResult is null)
+        {
+            EmitInvalidTokenAudit(token, "malformed-or-expired", null);
             throw new UnauthorizedAccessException("Invalid or expired view token.");
+        }
 
-        if (tokenReferralId.Value != referralId)
+        if (tokenResult.ReferralId != referralId)
             throw new UnauthorizedAccessException("Token does not match the requested referral.");
 
         var referral = await _referrals.GetByIdGlobalAsync(referralId, ct)
             ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
 
+        // LSCC-005-01: Version check — rejects revoked tokens
+        if (tokenResult.TokenVersion != referral.TokenVersion)
+        {
+            _logger.LogWarning(
+                "Acceptance attempt with revoked token for referral {ReferralId} " +
+                "(token version {TokenVersion}, referral version {ReferralVersion}).",
+                referral.Id, tokenResult.TokenVersion, referral.TokenVersion);
+            EmitInvalidTokenAudit(token, "revoked", referralId);
+            throw new UnauthorizedAccessException("This referral link has been revoked. Please contact the referring party for a new link.");
+        }
+
+        // LSCC-005-01: Duplicate/replay hardening — status check prevents double-acceptance
         if (referral.Status != Referral.ValidStatuses.New)
+        {
+            _logger.LogInformation(
+                "Replay acceptance attempt for referral {ReferralId}: already in status {Status}.",
+                referral.Id, referral.Status);
+            // Emit an audit event for the replay attempt
+            var replayNow = DateTimeOffset.UtcNow;
+            _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "careconnect.referral.accept.replay",
+                EventCategory = EventCategory.Security,
+                SourceSystem  = "care-connect",
+                SourceService = "referral-api",
+                Visibility    = AuditVisibility.Tenant,
+                Severity      = SeverityLevel.Warn,
+                OccurredAtUtc = replayNow,
+                Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = referral.TenantId.ToString() },
+                Actor         = new AuditEventActorDto { Id = "public-token", Type = ActorType.System },
+                Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+                Action        = "ReferralAcceptReplay",
+                Description   = $"Duplicate acceptance attempt for referral '{referral.Id}' (status: '{referral.Status}'). Rejected.",
+                Outcome       = "failure",
+                IdempotencyKey = IdempotencyKey.ForWithTimestamp(replayNow, "care-connect", "careconnect.referral.accept.replay", referral.Id.ToString()),
+                Tags           = ["referral", "replay", "security"],
+            });
             throw new InvalidOperationException(
                 $"Referral is not in Pending (New) status — current status: '{referral.Status}'.");
+        }
 
         var provider = referral.Provider
             ?? throw new InvalidOperationException($"Provider data missing for referral '{referralId}'.");
@@ -330,8 +394,10 @@ public class ReferralService : IReferralService
         referral.Accept(updatedByUserId: null);
         await _referrals.UpdateAsync(referral, history, ct);
 
-        // LSCC-005: Fire confirmation emails (fire-and-observe — never gates acceptance).
+        // LSCC-005 / LSCC-005-01: Fire confirmation emails (fire-and-observe — never gates acceptance).
         // Fresh scope so the background DbContext is isolated from the request scope used below.
+        // Duplicate confirmation prevention: acceptance status is already committed, so any
+        // concurrent/replay requests will hit the status != New guard above before reaching this point.
         var scopeFactory2 = _scopeFactory;
         var logger2       = _logger;
         _ = Task.Run(async () =>
@@ -378,6 +444,134 @@ public class ReferralService : IReferralService
 
         var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
         return ToResponse(loaded!);
+    }
+
+    // ── LSCC-005-01: Hardening methods ───────────────────────────────────────
+
+    /// <summary>
+    /// Resends the provider notification email for a referral.
+    /// Only available when the referral is still in New status.
+    /// Creates a fresh notification record (ReferralEmailResent) with the current token version.
+    /// </summary>
+    public async Task<ReferralResponse> ResendEmailAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    {
+        var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        if (referral.Status != Referral.ValidStatuses.New)
+            throw new InvalidOperationException(
+                $"Cannot resend provider notification: referral is already '{referral.Status}'. " +
+                $"The provider has already actioned this referral.");
+
+        var provider = referral.Provider
+            ?? throw new InvalidOperationException($"Provider data missing for referral '{referralId}'.");
+
+        // Resend is synchronous — caller expects immediate success/failure feedback.
+        await _emailService.ResendNewReferralNotificationAsync(referral, provider, ct);
+
+        // Audit: email resend
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.email.resent",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+            Actor         = new AuditEventActorDto { Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action        = "ReferralEmailResent",
+            Description   = $"Provider notification email resent for referral '{referral.Id}'.",
+            Outcome       = "success",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.email.resent", referral.Id.ToString()),
+            Tags           = ["referral", "email", "resent"],
+        });
+
+        var latest = await _notificationRepo.GetLatestByReferralAsync(tenantId, referralId, ct: ct);
+        return ToResponse(referral, latest);
+    }
+
+    /// <summary>
+    /// Revokes all previously issued view tokens for a referral by incrementing TokenVersion.
+    /// Any token with an older version will be rejected as revoked.
+    /// Newly generated tokens (e.g. from resend) will use the new version and will work.
+    /// </summary>
+    public async Task<ReferralResponse> RevokeTokenAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    {
+        var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        var oldVersion = referral.TokenVersion;
+        referral.IncrementTokenVersion();
+        await _referrals.UpdateAsync(referral, null, ct);
+
+        _logger.LogInformation(
+            "Referral {ReferralId} token revoked: version {OldVersion} → {NewVersion}.",
+            referral.Id, oldVersion, referral.TokenVersion);
+
+        // Audit: token revocation
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.token.revoked",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+            Actor         = new AuditEventActorDto { Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action        = "ReferralTokenRevoked",
+            Description   = $"View token revoked for referral '{referral.Id}'. Version {oldVersion} → {referral.TokenVersion}.",
+            Outcome       = "success",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.token.revoked", referral.Id.ToString()),
+            Tags           = ["referral", "token", "revoked", "security"],
+        });
+
+        var latest = await _notificationRepo.GetLatestByReferralAsync(tenantId, referralId, ct: ct);
+        return ToResponse(referral, latest);
+    }
+
+    /// <summary>
+    /// Returns the notification history for a referral (email delivery records).
+    /// </summary>
+    public async Task<List<ReferralNotificationResponse>> GetNotificationsAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    {
+        _ = await _referrals.GetByIdAsync(tenantId, referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        var notifs = await _notificationRepo.GetAllByReferralAsync(tenantId, referralId, ct);
+        return notifs.Select(ToNotificationResponse).ToList();
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private void EmitInvalidTokenAudit(string token, string reason, Guid? referralId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.token.invalid",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Platform },
+            Actor         = new AuditEventActorDto { Id = "anonymous", Type = ActorType.System },
+            Entity        = new AuditEventEntityDto { Type = "Referral", Id = referralId?.ToString() ?? "unknown" },
+            Action        = "TokenInvalid",
+            Description   = $"Invalid referral view token presented. Reason: {reason}.",
+            Outcome       = "failure",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.token.invalid", referralId?.ToString() ?? "unknown"),
+            Tags           = ["referral", "token", "invalid", "security"],
+        });
     }
 
     private static void ValidateQuery(GetReferralsQuery q)
@@ -444,7 +638,7 @@ public class ReferralService : IReferralService
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
 
-    private static ReferralResponse ToResponse(Referral r) => new()
+    private static ReferralResponse ToResponse(Referral r, CareConnectNotification? latestNotif = null) => new()
     {
         Id = r.Id,
         TenantId = r.TenantId,
@@ -465,7 +659,12 @@ public class ReferralService : IReferralService
         // Phase 5: expose org context fields resolved at creation time
         ReferringOrganizationId = r.ReferringOrganizationId,
         ReceivingOrganizationId = r.ReceivingOrganizationId,
-        OrganizationRelationshipId = r.OrganizationRelationshipId
+        OrganizationRelationshipId = r.OrganizationRelationshipId,
+        // LSCC-005-01: hardening fields
+        TokenVersion          = r.TokenVersion,
+        ProviderEmailStatus   = latestNotif?.Status,
+        ProviderEmailAttempts = latestNotif?.AttemptCount ?? 0,
+        ProviderEmailFailureReason = latestNotif?.FailureReason,
     };
 
     private static ReferralStatusHistoryResponse ToHistoryResponse(ReferralStatusHistory h) => new()
@@ -477,5 +676,20 @@ public class ReferralService : IReferralService
         ChangedByUserId = h.ChangedByUserId,
         ChangedAtUtc = h.ChangedAtUtc,
         Notes = h.Notes
+    };
+
+    private static ReferralNotificationResponse ToNotificationResponse(CareConnectNotification n) => new()
+    {
+        Id               = n.Id,
+        NotificationType = n.NotificationType,
+        RecipientType    = n.RecipientType,
+        RecipientAddress = n.RecipientAddress,
+        Status           = n.Status,
+        AttemptCount     = n.AttemptCount,
+        FailureReason    = n.FailureReason,
+        SentAtUtc        = n.SentAtUtc,
+        FailedAtUtc      = n.FailedAtUtc,
+        LastAttemptAtUtc = n.LastAttemptAtUtc,
+        CreatedAtUtc     = n.CreatedAtUtc,
     };
 }

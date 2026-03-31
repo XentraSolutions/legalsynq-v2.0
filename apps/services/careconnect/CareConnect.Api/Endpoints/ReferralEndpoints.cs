@@ -124,6 +124,72 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
 
+        // ── LSCC-005-01: Hardening endpoints (authenticated) ────────────────────
+
+        // GET /api/referrals/{id}/notifications — email delivery history for a referral
+        group.MapGet("/{id:guid}/notifications", async (
+            Guid id,
+            IReferralService service,
+            ICurrentRequestContext ctx,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var notifs = await service.GetNotificationsAsync(tenantId, id, ct);
+            return Results.Ok(notifs);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser);
+
+        // POST /api/referrals/{id}/resend-email — resend provider notification email
+        // Only available while referral is in New status.
+        group.MapPost("/{id:guid}/resend-email", async (
+            Guid id,
+            IReferralService service,
+            ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+
+            try
+            {
+                var referral = await service.ResendEmailAsync(tenantId, id, ct);
+                return Results.Ok(referral);
+            }
+            catch (NotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { error = ex.Message });
+            }
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser);
+
+        // POST /api/referrals/{id}/revoke-token — invalidate all previously issued view tokens
+        group.MapPost("/{id:guid}/revoke-token", async (
+            Guid id,
+            IReferralService service,
+            ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+
+            try
+            {
+                var referral = await service.RevokeTokenAsync(tenantId, id, ct);
+                return Results.Ok(referral);
+            }
+            catch (NotFoundException)
+            {
+                return Results.NotFound();
+            }
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser);
+
         // ── LSCC-005: Public token-based endpoints (no auth required) ──────────
 
         // Resolves a view token to determine how to route the provider:
