@@ -8,6 +8,8 @@ import type {
   AvailabilitySearchParams,
   ReferralSummary,
   ReferralDetail,
+  ActivationRequestSummary,
+  ActivationRequestDetail,
   ReferralSearchParams,
   AppointmentSummary,
   AppointmentDetail,
@@ -68,5 +70,18 @@ export const careConnectServerApi = {
 
     getById: (id: string) =>
       serverApi.get<AppointmentDetail>(`/careconnect/api/appointments/${id}`),
+  },
+
+  // LSCC-009: Admin activation queue (server-side only — requires admin session)
+  adminActivations: {
+    getPending: () =>
+      serverApi.get<{ items: ActivationRequestSummary[]; count: number }>(
+        `/careconnect/api/admin/activations`,
+      ),
+
+    getById: (id: string) =>
+      serverApi.get<ActivationRequestDetail>(
+        `/careconnect/api/admin/activations/${id}`,
+      ),
   },
 };

@@ -303,3 +303,44 @@ export interface PagedResponse<T> {
   pageSize:   number;
   totalCount: number;
 }
+
+// ── LSCC-009: Admin Activation Queue ─────────────────────────────────────────
+
+export interface ActivationRequestSummary {
+  id:               string;
+  providerName:     string;
+  providerEmail:    string;
+  requesterName:    string | null;
+  requesterEmail:   string | null;
+  clientName:       string | null;
+  referringFirmName: string | null;
+  requestedService: string | null;
+  referralId:       string;
+  providerId:       string;
+  status:           string;
+  createdAtUtc:     string;
+}
+
+export interface ActivationRequestDetail {
+  id:                     string;
+  tenantId:               string;
+  referralId:             string;
+  providerId:             string;
+  providerName:           string;
+  providerEmail:          string;
+  providerPhone:          string | null;
+  providerAddress:        string | null;
+  providerOrganizationId: string | null;
+  requesterName:          string | null;
+  requesterEmail:         string | null;
+  clientName:             string | null;
+  referringFirmName:      string | null;
+  requestedService:       string | null;
+  referralStatus:         string;
+  status:                 string;
+  approvedByUserId:       string | null;
+  approvedAtUtc:          string | null;
+  linkedOrganizationId:   string | null;
+  createdAtUtc:           string;
+  isAlreadyActive:        boolean;
+}

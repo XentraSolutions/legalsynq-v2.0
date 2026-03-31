@@ -24,6 +24,7 @@ public class ReferralService : IReferralService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOrganizationRelationshipResolver _relationshipResolver;
     private readonly IAuditEventClient _auditClient;
+    private readonly IActivationRequestService? _activationRequests; // LSCC-009 (optional — avoid circular DI)
     private readonly ILogger<ReferralService> _logger;
 
     public ReferralService(
@@ -35,7 +36,8 @@ public class ReferralService : IReferralService
         IServiceScopeFactory scopeFactory,
         IOrganizationRelationshipResolver relationshipResolver,
         IAuditEventClient auditClient,
-        ILogger<ReferralService> logger)
+        ILogger<ReferralService> logger,
+        IActivationRequestService? activationRequests = null)
     {
         _referrals            = referrals;
         _providers            = providers;
@@ -45,6 +47,7 @@ public class ReferralService : IReferralService
         _scopeFactory         = scopeFactory;
         _relationshipResolver = relationshipResolver;
         _auditClient          = auditClient;
+        _activationRequests   = activationRequests;
         _logger               = logger;
     }
 
@@ -878,10 +881,12 @@ public class ReferralService : IReferralService
     /// Returns false when the token is invalid or the event type is not allowed.
     /// </summary>
     public async Task<bool> TrackFunnelEventAsync(
-        Guid referralId,
-        string token,
-        string eventType,
-        CancellationToken ct = default)
+        Guid    referralId,
+        string  token,
+        string  eventType,
+        string? requesterName  = null,
+        string? requesterEmail = null,
+        CancellationToken ct   = default)
     {
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { "ReferralViewed", "ActivationStarted" };
@@ -889,11 +894,11 @@ public class ReferralService : IReferralService
         if (!allowed.Contains(eventType)) return false;
 
         var tokenResult = _emailService.ValidateViewToken(token);
-        if (tokenResult is null)                          return false;
-        if (tokenResult.ReferralId != referralId)         return false;
+        if (tokenResult is null)                               return false;
+        if (tokenResult.ReferralId != referralId)              return false;
 
         var referral = await _referrals.GetByIdGlobalAsync(referralId, ct);
-        if (referral is null)                             return false;
+        if (referral is null)                                  return false;
         if (tokenResult.TokenVersion != referral.TokenVersion) return false;
 
         var normalised = eventType.ToLowerInvariant();
@@ -917,6 +922,31 @@ public class ReferralService : IReferralService
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", $"careconnect.referral.funnel.{normalised}", referral.Id.ToString()),
             Tags           = ["referral", "funnel", "activation", normalised],
         });
+
+        // LSCC-009: Persist the activation request for admin review
+        if (normalised == "activationstarted" && _activationRequests is not null)
+        {
+            var provider = await _providers.GetByIdCrossAsync(referral.ProviderId, ct);
+            if (provider is not null)
+            {
+                var clientName = referral.ClientFirstName is { Length: > 0 }
+                    ? $"{referral.ClientFirstName} {referral.ClientLastName}".Trim()
+                    : null;
+
+                await _activationRequests.UpsertAsync(
+                    referralId:        referral.Id,
+                    providerId:        provider.Id,
+                    tenantId:          referral.TenantId,
+                    providerName:      provider.Name,
+                    providerEmail:     provider.Email,
+                    requesterName:     requesterName,
+                    requesterEmail:    requesterEmail,
+                    clientName:        clientName,
+                    referringFirmName: referral.ReferrerName,
+                    requestedService:  referral.RequestedService,
+                    ct:                ct);
+            }
+        }
 
         return true;
     }

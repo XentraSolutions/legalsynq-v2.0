@@ -25,6 +25,16 @@ public interface IReferralService
     // LSCC-008: Provider activation funnel — public, token-gated
     /// <summary>Returns limited referral context for the public activation landing page. Returns null when the token is invalid/revoked.</summary>
     Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(Guid referralId, string token, CancellationToken ct = default);
-    /// <summary>Emits a funnel tracking event (ReferralViewed | ActivationStarted). Returns false when token is invalid.</summary>
-    Task<bool> TrackFunnelEventAsync(Guid referralId, string token, string eventType, CancellationToken ct = default);
+    /// <summary>
+    /// Emits a funnel tracking event (ReferralViewed | ActivationStarted). Returns false when token is invalid.
+    /// For ActivationStarted, persists an ActivationRequest record for admin review (LSCC-009).
+    /// requesterName and requesterEmail are only used when eventType == "ActivationStarted".
+    /// </summary>
+    Task<bool> TrackFunnelEventAsync(
+        Guid    referralId,
+        string  token,
+        string  eventType,
+        string? requesterName  = null,
+        string? requesterEmail = null,
+        CancellationToken ct   = default);
 }

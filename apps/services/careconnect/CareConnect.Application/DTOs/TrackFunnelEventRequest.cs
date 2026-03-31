@@ -12,4 +12,11 @@ public class TrackFunnelEventRequest
     /// Server rejects unrecognised event types.
     /// </summary>
     public string EventType { get; init; } = "";
+
+    // ── LSCC-009: Activation intent data (only used for ActivationStarted) ──
+    /// <summary>Full name of the person submitting the activation request.</summary>
+    public string? RequesterName  { get; init; }
+
+    /// <summary>Email address of the person submitting the activation request.</summary>
+    public string? RequesterEmail { get; init; }
 }

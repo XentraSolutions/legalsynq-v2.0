@@ -29,6 +29,8 @@ public class CareConnectDbContext : DbContext
     public DbSet<ReferralAttachment> ReferralAttachments => Set<ReferralAttachment>();
     public DbSet<AppointmentAttachment> AppointmentAttachments => Set<AppointmentAttachment>();
     public DbSet<CareConnectNotification> CareConnectNotifications => Set<CareConnectNotification>();
+    // LSCC-009: Provider activation queue
+    public DbSet<ActivationRequest> ActivationRequests => Set<ActivationRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -268,7 +268,9 @@ public static class ReferralEndpoints
             if (string.IsNullOrWhiteSpace(request.EventType))
                 return Results.BadRequest(new { error = "eventType is required." });
 
-            var ok = await service.TrackFunnelEventAsync(id, request.Token, request.EventType, ct);
+            var ok = await service.TrackFunnelEventAsync(
+                id, request.Token, request.EventType,
+                request.RequesterName, request.RequesterEmail, ct);
             return ok ? Results.Ok() : Results.BadRequest(new { error = "Invalid token or unrecognised event type." });
         });
         // Note: no .RequireAuthorization — intentionally public, token-gated

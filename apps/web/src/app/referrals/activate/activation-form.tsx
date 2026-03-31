@@ -41,7 +41,12 @@ export function ActivationForm({ summary, token, referralId }: ActivationFormPro
       const resp = await fetch(`/api/careconnect/api/referrals/${referralId}/track-funnel`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ token, eventType: 'ActivationStarted' }),
+        body:    JSON.stringify({
+          token,
+          eventType:     'ActivationStarted',
+          requesterName:  name.trim(),
+          requesterEmail: email.trim(),
+        }),
       });
 
       if (resp.ok || resp.status === 200) {

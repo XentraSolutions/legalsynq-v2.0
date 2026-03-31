@@ -110,6 +110,7 @@ app.MapGet("/info",   () => Results.Ok(new { service = "CareConnect", version = 
 app.MapCareConnectIntegrityEndpoints();
 app.MapProviderAdminEndpoints();
 app.MapAdminBackfillEndpoints();
+app.MapActivationAdminEndpoints(); // LSCC-009
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
 app.MapCategoryEndpoints();

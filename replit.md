@@ -2194,6 +2194,49 @@ Three layered bugs were each silently masking the next:
 
 ---
 
+## Step 35 — LSCC-009 Admin Activation Queue (2026-03-31)
+
+Builds the admin workflow that closes the provider activation loop: collects activation
+intent from the LSCC-008 funnel into durable database records, surfaces them in a
+protected admin queue, and lets an admin approve each request (linking the provider
+to an Identity Organisation) safely and idempotently.
+
+### New Files — Backend
+- `CareConnect.Domain/ActivationRequest.cs` — domain entity (Pending → Approved lifecycle, idempotent `Approve()`)
+- `CareConnect.Infrastructure/Data/Config/ActivationRequestConfiguration.cs` — EF fluent config; unique index on `(ReferralId, ProviderId)` for deduplication
+- `CareConnect.Application/Repositories/IActivationRequestRepository.cs` + `ActivationRequestRepository.cs` — CRUD + pending list + referral/provider lookup
+- `CareConnect.Application/Interfaces/IActivationRequestService.cs` + `ActivationRequestService.cs` — upsert, getPending, getById, approve (with idempotency and pre-linked-provider guard)
+- `CareConnect.Application/DTOs/ActivationRequestDtos.cs` — Summary / Detail / ApproveRequest / ApproveResponse DTOs
+- `CareConnect.Api/Endpoints/ActivationAdminEndpoints.cs` — `GET /api/admin/activations`, `GET /api/admin/activations/{id}`, `POST /api/admin/activations/{id}/approve` (all require `Policies.PlatformOrTenantAdmin`)
+- `CareConnect.Infrastructure/Data/Migrations/20260331204551_AddActivationRequestQueue` — EF migration
+- `CareConnect.Tests/Application/ActivationQueueTests.cs` — 10 tests, all pass
+- `analysis/careconnect/LSCC-009-report.md` — implementation report
+
+### New Files — Frontend
+- `apps/web/src/app/(platform)/careconnect/admin/activations/page.tsx` — admin queue list (server component, `requireAdmin()`)
+- `apps/web/src/app/(platform)/careconnect/admin/activations/[id]/page.tsx` — detail page with approve panel (server component, `requireAdmin()`)
+- `apps/web/src/app/(platform)/careconnect/admin/activations/[id]/approve-action.tsx` — client component: Organisation ID input, POST approve, inline success/already-approved states
+
+### Modified Files
+- `CareConnect.Infrastructure/Data/CareConnectDbContext.cs` — `DbSet<ActivationRequest> ActivationRequests`
+- `CareConnect.Infrastructure/DependencyInjection.cs` — DI for `IActivationRequestRepository` + `IActivationRequestService`
+- `CareConnect.Api/Program.cs` — `MapActivationAdminEndpoints()`
+- `CareConnect.Application/DTOs/TrackFunnelEventRequest.cs` — added `RequesterName?` + `RequesterEmail?`
+- `CareConnect.Application/Interfaces/IReferralService.cs` — extended `TrackFunnelEventAsync` signature
+- `CareConnect.Application/Services/ReferralService.cs` — upserts `ActivationRequest` when `ActivationStarted` fires
+- `apps/web/src/types/careconnect.ts` — `ActivationRequestSummary` + `ActivationRequestDetail` interfaces
+- `apps/web/src/lib/careconnect-server-api.ts` — `adminActivations.getPending()` + `adminActivations.getById(id)`
+- `apps/web/src/app/referrals/activate/activation-form.tsx` — sends `requesterName` + `requesterEmail` in track-funnel body
+
+### Admin Approval Guard Rails
+1. `organizationId` required in body — no auto-provisioning
+2. Already Approved → idempotent success (`wasAlreadyApproved = true`), no side effects
+3. Provider already linked → skip `LinkOrganizationAsync`, still mark Approved
+4. Not found → 404 `NotFoundException`
+5. Audit event `careconnect.activation.approved` emitted on every fresh approval
+
+---
+
 ## Step 34 — LSCC-008 Provider Activation Funnel (2026-03-31)
 
 Implements the full end-to-end funnel that routes a provider from the referral

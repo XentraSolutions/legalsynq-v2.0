@@ -46,6 +46,8 @@ public static class DependencyInjection
         services.AddScoped<IReferralAttachmentRepository, ReferralAttachmentRepository>();
         services.AddScoped<IAppointmentAttachmentRepository, AppointmentAttachmentRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        // LSCC-009: Provider activation queue
+        services.AddScoped<IActivationRequestRepository, ActivationRequestRepository>();
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();
@@ -61,6 +63,8 @@ public static class DependencyInjection
         services.AddScoped<IReferralAttachmentService, ReferralAttachmentService>();
         services.AddScoped<IAppointmentAttachmentService, AppointmentAttachmentService>();
         services.AddScoped<INotificationService, NotificationService>();
+        // LSCC-009: Provider activation queue service
+        services.AddScoped<IActivationRequestService, ActivationRequestService>();
 
         // LSCC-005: Email notification dispatch
         services.AddScoped<ISmtpEmailSender, SmtpEmailSender>();
