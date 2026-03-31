@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 /**
  * Login form — calls the Next.js BFF route POST /api/auth/login.
@@ -10,9 +10,13 @@ import { useRouter } from 'next/navigation';
  * client render always agree (both see isDev = false), eliminating the
  * hydration mismatch caused by NEXT_PUBLIC_ENV being available in the
  * Node.js process but not necessarily inlined in the browser bundle.
+ *
+ * Supports a `returnTo` query param for deep-linking after login
+ * (e.g., LSCC-005 active-tenant provider referral view flow).
  */
 export function LoginForm() {
-  const router = useRouter();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
 
   const [mounted,    setMounted]    = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -45,7 +49,12 @@ export function LoginForm() {
         return;
       }
 
-      router.push('/dashboard');
+      // Honor returnTo for deep-link flows (e.g. referral view); guard against open redirects
+      const rawReturnTo = searchParams.get('returnTo') ?? '';
+      const safeDest    = rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//')
+        ? rawReturnTo
+        : '/dashboard';
+      router.push(safeDest);
     } catch {
       setError('Network error. Please check your connection and try again.');
     } finally {

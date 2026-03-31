@@ -18,6 +18,7 @@ public class ReferralService : IReferralService
     private readonly IReferralRepository _referrals;
     private readonly IProviderRepository _providers;
     private readonly INotificationService _notifications;
+    private readonly IReferralEmailService _emailService;
     private readonly IOrganizationRelationshipResolver _relationshipResolver;
     private readonly IAuditEventClient _auditClient;
     private readonly ILogger<ReferralService> _logger;
@@ -26,6 +27,7 @@ public class ReferralService : IReferralService
         IReferralRepository referrals,
         IProviderRepository providers,
         INotificationService notifications,
+        IReferralEmailService emailService,
         IOrganizationRelationshipResolver relationshipResolver,
         IAuditEventClient auditClient,
         ILogger<ReferralService> logger)
@@ -33,6 +35,7 @@ public class ReferralService : IReferralService
         _referrals            = referrals;
         _providers            = providers;
         _notifications        = notifications;
+        _emailService         = emailService;
         _relationshipResolver = relationshipResolver;
         _auditClient          = auditClient;
         _logger               = logger;
@@ -107,9 +110,22 @@ public class ReferralService : IReferralService
             request.Urgency,
             request.Notes,
             userId,
-            organizationRelationshipId: orgRelationshipId);
+            organizationRelationshipId: orgRelationshipId,
+            referrerEmail: request.ReferrerEmail,
+            referrerName:  request.ReferrerName);
 
         await _referrals.AddAsync(referral, ct);
+
+        // LSCC-005: Fire provider email notification (fire-and-observe — never gates creation).
+        _ = Task.Run(async () =>
+        {
+            try { await _emailService.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None); }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Background referral notification failed for referral {ReferralId}.", referral.Id);
+            }
+        });
 
         // Canonical audit: careconnect.referral.created — fire-and-observe, never gates creation.
         var now = DateTimeOffset.UtcNow;
@@ -234,6 +250,116 @@ public class ReferralService : IReferralService
 
         var history = await _referrals.GetHistoryByReferralAsync(tenantId, referralId, ct);
         return history.Select(ToHistoryResponse).ToList();
+    }
+
+    // ── LSCC-005: Public token-based methods ─────────────────────────────────
+
+    public async Task<ReferralViewTokenRouteResponse> ResolveViewTokenAsync(
+        string token,
+        CancellationToken ct = default)
+    {
+        var referralId = _emailService.ValidateViewToken(token);
+        if (referralId is null)
+            return new ReferralViewTokenRouteResponse { RouteType = "invalid" };
+
+        var referral = await _referrals.GetByIdGlobalAsync(referralId.Value, ct);
+        if (referral is null)
+            return new ReferralViewTokenRouteResponse { RouteType = "notfound" };
+
+        var provider = referral.Provider;
+        if (provider is null)
+        {
+            _logger.LogWarning(
+                "Referral {ReferralId} has no Provider navigation — cannot resolve view token route.",
+                referral.Id);
+            return new ReferralViewTokenRouteResponse { RouteType = "invalid" };
+        }
+
+        // OrganizationId is null → provider has no Identity org link → pending provider flow
+        var routeType = provider.OrganizationId.HasValue ? "active" : "pending";
+        return new ReferralViewTokenRouteResponse
+        {
+            RouteType  = routeType,
+            ReferralId = referral.Id,
+        };
+    }
+
+    public async Task<ReferralResponse> AcceptByTokenAsync(
+        Guid referralId,
+        string token,
+        CancellationToken ct = default)
+    {
+        var tokenReferralId = _emailService.ValidateViewToken(token);
+        if (tokenReferralId is null)
+            throw new UnauthorizedAccessException("Invalid or expired view token.");
+
+        if (tokenReferralId.Value != referralId)
+            throw new UnauthorizedAccessException("Token does not match the requested referral.");
+
+        var referral = await _referrals.GetByIdGlobalAsync(referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        if (referral.Status != Referral.ValidStatuses.New)
+            throw new InvalidOperationException(
+                $"Referral is not in Pending (New) status — current status: '{referral.Status}'.");
+
+        var provider = referral.Provider
+            ?? throw new InvalidOperationException($"Provider data missing for referral '{referralId}'.");
+
+        var history = ReferralStatusHistory.Create(
+            referral.Id,
+            referral.TenantId,
+            referral.Status,
+            Referral.ValidStatuses.Accepted,
+            changedByUserId: null,
+            notes: "Accepted via public token link.");
+
+        referral.Accept(updatedByUserId: null);
+        await _referrals.UpdateAsync(referral, history, ct);
+
+        // LSCC-005: Fire confirmation emails (fire-and-observe — never gates acceptance).
+        _ = Task.Run(async () =>
+        {
+            try { await _emailService.SendAcceptanceConfirmationsAsync(referral, provider, CancellationToken.None); }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Background acceptance confirmation failed for referral {ReferralId}.", referral.Id);
+            }
+        });
+
+        // Canonical audit: token-based acceptance — fire-and-observe.
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.accepted.by-token",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = referral.TenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = "public-token",
+                Type = ActorType.System,
+                Name = "PublicTokenAccept",
+            },
+            Entity         = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action         = "ReferralAcceptedByToken",
+            Description    = $"Referral '{referral.Id}' accepted via public view token.",
+            Outcome        = "success",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.accepted.by-token", referral.Id.ToString()),
+            Tags           = ["referral", "accepted", "public-token"],
+        });
+
+        var loaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
+        return ToResponse(loaded!);
     }
 
     private static void ValidateQuery(GetReferralsQuery q)

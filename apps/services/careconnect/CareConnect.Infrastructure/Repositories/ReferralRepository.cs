@@ -77,6 +77,14 @@ public class ReferralRepository : IReferralRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<Referral?> GetByIdGlobalAsync(Guid id, CancellationToken ct = default)
+    {
+        return await _db.Referrals
+            .Where(r => r.Id == id)
+            .Include(r => r.Provider)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task AddAsync(Referral referral, CancellationToken ct = default)
     {
         await _db.Referrals.AddAsync(referral, ct);

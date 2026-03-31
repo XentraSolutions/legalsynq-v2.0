@@ -18,4 +18,9 @@ public class CreateReferralRequest
     // OrganizationRelationship in Identity and set it on the created referral.
     public Guid? ReferringOrganizationId { get; set; }
     public Guid? ReceivingOrganizationId { get; set; }
+
+    // LSCC-005: referrer contact stored for email notifications.
+    // Pre-filled from session on the frontend; optional for backward compatibility.
+    public string? ReferrerEmail { get; set; }
+    public string? ReferrerName  { get; set; }
 }

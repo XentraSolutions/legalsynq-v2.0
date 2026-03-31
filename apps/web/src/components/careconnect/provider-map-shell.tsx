@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/lib/api-client';
+import { useSession } from '@/hooks/use-session';
 import { ProviderCard } from '@/components/careconnect/provider-card';
 import type {
   ProviderMarker,
@@ -32,6 +33,7 @@ export function ProviderMapShell({
   fetchError,
 }: ProviderMapShellProps) {
   const router       = useRouter();
+  const { session }  = useSession();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
 
@@ -188,7 +190,13 @@ export function ProviderMapShell({
             <>
               <div className="grid gap-3">
                 {result.items.map(provider => (
-                  <ProviderCard key={provider.id} provider={provider} />
+                  <ProviderCard
+                    key={provider.id}
+                    provider={provider}
+                    isReferrer={isReferrer}
+                    referrerEmail={session?.email}
+                    referrerName={session?.orgName}
+                  />
                 ))}
               </div>
 

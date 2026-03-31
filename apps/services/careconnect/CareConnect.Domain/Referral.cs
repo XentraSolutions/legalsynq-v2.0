@@ -79,6 +79,11 @@ public class Referral : AuditableEntity
     public string Status { get; private set; } = ValidStatuses.New;
     public string? Notes { get; private set; }
 
+    // ── Referrer contact (stored at creation for email notifications) ─────
+    // "Pending" status in LSCC-005 spec ≡ "New" status in this domain model.
+    public string? ReferrerEmail { get; private set; }
+    public string? ReferrerName  { get; private set; }
+
     public Provider? Provider { get; private set; }
     public Party? SubjectParty { get; private set; }
 
@@ -108,35 +113,50 @@ public class Referral : AuditableEntity
         string urgency,
         string? notes,
         Guid? createdByUserId,
-        Guid? organizationRelationshipId = null)
+        Guid? organizationRelationshipId = null,
+        string? referrerEmail = null,
+        string? referrerName = null)
     {
         var now = DateTime.UtcNow;
         return new Referral
         {
-            Id                       = Guid.NewGuid(),
-            TenantId                 = tenantId,
-            ReferringOrganizationId  = referringOrganizationId,
-            ReceivingOrganizationId  = receivingOrganizationId,
-            ProviderId               = providerId,
+            Id                         = Guid.NewGuid(),
+            TenantId                   = tenantId,
+            ReferringOrganizationId    = referringOrganizationId,
+            ReceivingOrganizationId    = receivingOrganizationId,
+            ProviderId                 = providerId,
             OrganizationRelationshipId = organizationRelationshipId,
-            SubjectPartyId           = subjectPartyId,
-            SubjectNameSnapshot      = subjectNameSnapshot?.Trim(),
-            SubjectDobSnapshot       = subjectDobSnapshot,
-            ClientFirstName          = clientFirstName.Trim(),
-            ClientLastName           = clientLastName.Trim(),
-            ClientDob                = clientDob,
-            ClientPhone              = clientPhone.Trim(),
-            ClientEmail              = clientEmail.Trim(),
-            CaseNumber               = caseNumber?.Trim(),
-            RequestedService         = requestedService.Trim(),
-            Urgency                  = urgency,
-            Status                   = ValidStatuses.New,
-            Notes                    = notes?.Trim(),
-            CreatedByUserId          = createdByUserId,
-            UpdatedByUserId          = createdByUserId,
-            CreatedAtUtc             = now,
-            UpdatedAtUtc             = now
+            SubjectPartyId             = subjectPartyId,
+            SubjectNameSnapshot        = subjectNameSnapshot?.Trim(),
+            SubjectDobSnapshot         = subjectDobSnapshot,
+            ClientFirstName            = clientFirstName.Trim(),
+            ClientLastName             = clientLastName.Trim(),
+            ClientDob                  = clientDob,
+            ClientPhone                = clientPhone.Trim(),
+            ClientEmail                = clientEmail.Trim(),
+            CaseNumber                 = caseNumber?.Trim(),
+            RequestedService           = requestedService.Trim(),
+            Urgency                    = urgency,
+            Status                     = ValidStatuses.New,
+            Notes                      = notes?.Trim(),
+            ReferrerEmail              = referrerEmail?.Trim(),
+            ReferrerName               = referrerName?.Trim(),
+            CreatedByUserId            = createdByUserId,
+            UpdatedByUserId            = createdByUserId,
+            CreatedAtUtc               = now,
+            UpdatedAtUtc               = now
         };
+    }
+
+    /// <summary>
+    /// Transitions this referral from New → Accepted.
+    /// Used by both authenticated provider users and the public token-based accept flow.
+    /// </summary>
+    public void Accept(Guid? updatedByUserId)
+    {
+        Status          = ValidStatuses.Accepted;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
     }
 
     /// <summary>

@@ -521,6 +521,28 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - **25 new backend tests** in `AnalyticsMetricsTests.cs` (metric contracts, rate computation, date range logic, drilldown URL contracts, graceful empty-data handling).
 - **Report:** `analysis/LSCC-004-report.md`.
 
+**LSCC-005 — Minimal Referral Flow + Basic Dashboard Analytics (complete):**
+- **Domain layer:** `Referral.cs` — `ReferrerEmail`/`ReferrerName` fields + `Accept(Guid?)` method. `NotificationType` — 3 new values (`ReferralCreated`, `ReferralAcceptedProvider`, `ReferralAcceptedReferrer`). `CareConnectNotification` — `MarkSent()`/`MarkFailed()` domain methods.
+- **Migration:** `20260401100000_AddReferrerFieldsToReferral` — adds `ReferrerEmail`/`ReferrerName` columns to `Referrals`.
+- **`ReferralEmailService`** — HMAC-SHA256 token (format: `{referralId}:{expiryUnixSeconds}:{hmacHex}`, Base64url, 30-day TTL); HTML email templates for new-referral and acceptance confirmations; notification record queuing with SMTP best-effort delivery. Config keys: `ReferralToken:Secret`, `AppBaseUrl`, `Smtp:Host/Port/EnableSsl/Username/Password/FromAddress/FromName`.
+- **`SmtpEmailSender`** — `ISmtpEmailSender` implementation; explicit failure logging at Warning level; throws `InvalidOperationException` if `Smtp:Host` absent.
+- **Public API endpoints** (no `[Authorize]`):
+  - `GET /api/referrals/resolve-view-token?token=X` — returns `{ routeType: "pending"|"active"|"invalid"|"notfound", referralId?, tenantCode? }`.
+  - `POST /api/referrals/{id}/accept-by-token` — validates HMAC token, accepts referral, fires confirmation emails (fire-and-observe).
+- **`IReferralRepository.GetByIdGlobalAsync`** — cross-tenant lookup for public token flows.
+- **Frontend (`apps/web/src/`):**
+  - `middleware.ts` — `/referrals/view` and `/referrals/accept` added to `PUBLIC_PATHS`.
+  - `app/referrals/view/page.tsx` — Server Component; validates token via gateway; redirects pending providers to accept page, active-tenant providers to login with `returnTo` deep link.
+  - `app/referrals/accept/[referralId]/page.tsx` — public Client Component; Accept button POSTs `accept-by-token`; shows success/error states; `/invalid` sub-path for bad/expired links.
+  - `login-form.tsx` — `returnTo` query param support with open-redirect guard (`/` prefix check).
+  - `provider-card.tsx` — converted to Client Component; `isReferrer` + referrer identity props; "Refer Patient" button (outside the `<Link>`) that opens `CreateReferralForm` modal via `useState`.
+  - `provider-map-shell.tsx` — pulls referrer identity from `useSession()` and passes to `ProviderCard`.
+  - `create-referral-form.tsx` — `referrerEmail?`/`referrerName?` props forwarded in `CreateReferralRequest` payload.
+  - `types/careconnect.ts` — `referrerEmail?`/`referrerName?` added to `CreateReferralRequest`.
+  - `careconnect-api.ts` — `referrals.acceptByToken(id, token)` method.
+  - `dashboard/page.tsx` — fixed 30-day **Referral Activity** section (4 cards: Total, Pending, Accepted, Acceptance Rate); only visible for referrer role.
+- **14 new tests** in `ReferralEmailServiceTests.cs`: token round-trip, URL-safe encoding, expiry, HMAC tampering, wrong-secret, malformed inputs, dev-fallback.
+
 ## CareConnect Provider Geo / Map-Ready Discovery
 
 - **Radius search:** `latitude` + `longitude` + `radiusMiles` (max 100 mi). Bounding-box filter in `ProviderGeoHelper.BoundingBox`.

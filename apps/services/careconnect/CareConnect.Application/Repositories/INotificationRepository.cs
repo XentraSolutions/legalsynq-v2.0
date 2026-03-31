@@ -9,4 +9,5 @@ public interface INotificationRepository
     Task<(List<CareConnectNotification> Items, int TotalCount)> SearchAsync(Guid tenantId, GetNotificationsQuery query, CancellationToken ct = default);
     Task AddAsync(CareConnectNotification notification, CancellationToken ct = default);
     Task AddRangeAsync(IEnumerable<CareConnectNotification> notifications, CancellationToken ct = default);
+    Task UpdateAsync(CareConnectNotification notification, CancellationToken ct = default);
 }

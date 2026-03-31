@@ -1,5 +1,6 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using BuildingBlocks.Exceptions;
 using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
@@ -122,6 +123,60 @@ public static class ReferralEndpoints
             return Results.Ok(referral);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
+
+        // ── LSCC-005: Public token-based endpoints (no auth required) ──────────
+
+        // Resolves a view token to determine how to route the provider:
+        //   "pending"  → route to public accept page (/referrals/accept/{id}?token=...)
+        //   "active"   → route through platform login then to /careconnect/referrals/{id}
+        //   "invalid"  → token is bad or expired
+        //   "notfound" → referral was deleted
+        group.MapGet("/resolve-view-token", async (
+            [FromQuery] string token,
+            IReferralService service,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(token))
+                return Results.BadRequest(new { error = "token is required." });
+
+            var result = await service.ResolveViewTokenAsync(token, ct);
+            return Results.Ok(result);
+        });
+        // Note: no .RequireAuthorization — intentionally public
+
+        // Accepts a referral on behalf of a pending (unlinked) provider.
+        // The token proves the provider received the notification email.
+        group.MapPost("/{id:guid}/accept-by-token", async (
+            Guid id,
+            [FromBody] AcceptByTokenRequest request,
+            IReferralService service,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+
+            try
+            {
+                var referral = await service.AcceptByTokenAsync(id, request.Token, ct);
+                return Results.Ok(referral);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Problem(
+                    detail: ex.Message,
+                    statusCode: StatusCodes.Status401Unauthorized,
+                    title: "Invalid or expired token");
+            }
+            catch (NotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { error = ex.Message });
+            }
+        });
+        // Note: no .RequireAuthorization — intentionally public
     }
 }
 

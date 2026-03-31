@@ -12,6 +12,9 @@ interface CreateReferralFormProps {
   providerName: string;
   /** Called when the user cancels or after successful submission */
   onClose: () => void;
+  /** LSCC-005: referrer identity forwarded to the backend for email notifications */
+  referrerEmail?: string;
+  referrerName?:  string;
 }
 
 const URGENCY_OPTIONS: { value: ReferralUrgencyValue; label: string }[] = [
@@ -33,7 +36,7 @@ const SERVICES = [
   'Other',
 ];
 
-export function CreateReferralForm({ providerId, providerName, onClose }: CreateReferralFormProps) {
+export function CreateReferralForm({ providerId, providerName, onClose, referrerEmail, referrerName }: CreateReferralFormProps) {
   const router = useRouter();
 
   // Subject party (client) fields
@@ -82,6 +85,8 @@ export function CreateReferralForm({ providerId, providerName, onClose }: Create
       requestedService,
       urgency,
       notes:            notes.trim() || undefined,
+      referrerEmail:    referrerEmail || undefined,
+      referrerName:     referrerName  || undefined,
     };
 
     try {

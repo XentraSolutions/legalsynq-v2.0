@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import Image from 'next/image';
 import { LoginForm } from './login-form';
 
@@ -129,7 +130,9 @@ export default function LoginPage() {
             <p className="mt-1.5 text-sm text-gray-500">Sign in to your LegalSynq account</p>
           </div>
 
-          <LoginForm />
+          <Suspense fallback={null}>
+            <LoginForm />
+          </Suspense>
 
           {/* Footer links */}
           <p className="mt-6 text-center text-xs text-gray-400">

@@ -68,4 +68,10 @@ public class NotificationRepository : INotificationRepository
         await _db.CareConnectNotifications.AddRangeAsync(notifications, ct);
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task UpdateAsync(CareConnectNotification notification, CancellationToken ct = default)
+    {
+        _db.CareConnectNotifications.Update(notification);
+        await _db.SaveChangesAsync(ct);
+    }
 }

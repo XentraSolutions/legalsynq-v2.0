@@ -905,6 +905,14 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("varchar(2000)");
 
+                    b.Property<string>("ReferrerEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("varchar(320)");
+
+                    b.Property<string>("ReferrerName")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
                     b.Property<Guid>("ProviderId")
                         .HasColumnType("char(36)");
 

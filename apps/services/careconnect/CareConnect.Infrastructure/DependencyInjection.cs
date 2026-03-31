@@ -3,6 +3,7 @@ using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
+using CareConnect.Infrastructure.Email;
 using CareConnect.Infrastructure.Repositories;
 using CareConnect.Infrastructure.Services;
 using LegalSynq.AuditClient;
@@ -59,6 +60,10 @@ public static class DependencyInjection
         services.AddScoped<IReferralAttachmentService, ReferralAttachmentService>();
         services.AddScoped<IAppointmentAttachmentService, AppointmentAttachmentService>();
         services.AddScoped<INotificationService, NotificationService>();
+
+        // LSCC-005: Email notification dispatch
+        services.AddScoped<ISmtpEmailSender, SmtpEmailSender>();
+        services.AddScoped<IReferralEmailService, ReferralEmailService>();
 
         // Phase 1 (step 3): HTTP resolver is now the default.
         // It is fail-safe: returns null on any network error, timeout, or 4xx/5xx.

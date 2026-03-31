@@ -21,6 +21,21 @@ public class CareConnectNotification : AuditableEntity
 
     private CareConnectNotification() { }
 
+    public void MarkSent()
+    {
+        Status      = NotificationStatus.Sent;
+        SentAtUtc   = DateTime.UtcNow;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkFailed(string reason)
+    {
+        Status        = NotificationStatus.Failed;
+        FailedAtUtc   = DateTime.UtcNow;
+        FailureReason = reason?.Length > 2000 ? reason[..2000] : reason;
+        UpdatedAtUtc  = DateTime.UtcNow;
+    }
+
     public static CareConnectNotification Create(
         Guid    tenantId,
         string  notificationType,

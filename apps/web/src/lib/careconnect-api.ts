@@ -72,6 +72,13 @@ export const careConnectApi = {
     /** GET /api/referrals/{id}/history — status change audit log */
     getHistory: (id: string) =>
       apiClient.get<ReferralHistoryItem[]>(`/careconnect/api/referrals/${id}/history`),
+
+    /**
+     * POST /api/referrals/{id}/accept-by-token — PUBLIC (no auth).
+     * Accepts a referral using a secure HMAC view token.
+     */
+    acceptByToken: (id: string, token: string) =>
+      apiClient.post<void>(`/careconnect/api/referrals/${id}/accept-by-token`, { token }),
   },
 
   appointments: {

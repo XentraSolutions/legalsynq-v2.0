@@ -249,6 +249,28 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       .slice(0, 5);
   }
 
+  // ── Fixed 30-day Referral Activity (LSCC-005) ──────────────────────────────
+  // Three best-effort count calls; failures render as zero gracefully.
+
+  const fixed30dTo   = new Date().toISOString().slice(0, 10);
+  const _30dAgo      = new Date(); _30dAgo.setDate(_30dAgo.getDate() - 30);
+  const fixed30dFrom = _30dAgo.toISOString().slice(0, 10);
+
+  const [ref30Total, ref30New, ref30Accepted] = showReferrerView
+    ? await Promise.allSettled([
+        careConnectServerApi.referrals.search({ createdFrom: fixed30dFrom, createdTo: fixed30dTo, pageSize: 1 }),
+        careConnectServerApi.referrals.search({ status: 'New',      createdFrom: fixed30dFrom, createdTo: fixed30dTo, pageSize: 1 }),
+        careConnectServerApi.referrals.search({ status: 'Accepted', createdFrom: fixed30dFrom, createdTo: fixed30dTo, pageSize: 1 }),
+      ])
+    : [null, null, null];
+
+  const activity30Total    = ref30Total    && ref30Total.status    === 'fulfilled' ? ref30Total.value.totalCount    : 0;
+  const activity30New      = ref30New      && ref30New.status      === 'fulfilled' ? ref30New.value.totalCount      : 0;
+  const activity30Accepted = ref30Accepted && ref30Accepted.status === 'fulfilled' ? ref30Accepted.value.totalCount : 0;
+  const activity30Rate     = activity30Total > 0
+    ? Math.round((activity30Accepted / activity30Total) * 100)
+    : 0;
+
   // ── Analytics data ─────────────────────────────────────────────────────────
   // 11 parallel best-effort calls — individual failures leave metrics at 0/empty.
 
@@ -350,6 +372,34 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </>
         )}
       </div>
+
+      {/* ── Referral Activity (fixed 30-day window) ──────────────────────────── */}
+      {showReferrerView && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">Referral Activity</h2>
+            <span className="text-xs text-gray-400">Last 30 days</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white border border-gray-200 rounded-lg px-4 py-4">
+              <p className="text-2xl font-bold text-gray-900">{activity30Total}</p>
+              <p className="text-xs text-gray-500 mt-1">Total Referrals</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg px-4 py-4">
+              <p className="text-2xl font-bold text-gray-900">{activity30New}</p>
+              <p className="text-xs text-gray-500 mt-1">Pending</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg px-4 py-4">
+              <p className="text-2xl font-bold text-gray-900">{activity30Accepted}</p>
+              <p className="text-xs text-gray-500 mt-1">Accepted</p>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg px-4 py-4">
+              <p className="text-2xl font-bold text-gray-900">{activity30Rate}%</p>
+              <p className="text-xs text-gray-500 mt-1">Acceptance Rate</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Operational panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

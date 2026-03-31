@@ -127,6 +127,9 @@ export interface CreateReferralRequest {
   requestedService: string;
   urgency:          string;
   notes?:           string;
+  /** LSCC-005: referrer identity for the notification email */
+  referrerEmail?:   string;
+  referrerName?:    string;
 }
 
 export interface ReferralSearchParams {
