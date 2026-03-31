@@ -2194,6 +2194,45 @@ Three layered bugs were each silently masking the next:
 
 ---
 
+## Step 34 — LSCC-008 Provider Activation Funnel (2026-03-31)
+
+Implements the full end-to-end funnel that routes a provider from the referral
+notification email to either an activation intent form (pending/unlinked provider)
+or the authenticated portal (active/linked provider).
+
+### New Files
+- `apps/services/careconnect/CareConnect.Application/DTOs/ReferralPublicSummaryResponse.cs` — public referral context DTO (minimal PHI, HMAC-gated)
+- `apps/services/careconnect/CareConnect.Application/DTOs/TrackFunnelEventRequest.cs` — funnel event request DTO
+- `apps/web/src/app/referrals/activate/page.tsx` — server component: activation intent capture, validates token, renders context + form
+- `apps/web/src/app/referrals/activate/activation-form.tsx` — client component: name + email capture, emits ActivationStarted, confirmation screen
+- `apps/web/src/app/referrals/accept/[referralId]/activation-landing.tsx` — client component: referral card + benefits + 3 CTAs (Activate / Log in / Direct accept)
+- `apps/services/careconnect/CareConnect.Tests/Application/ProviderActivationFunnelTests.cs` — 22 test cases covering all paths
+- `analysis/careconnect/LSCC-008-report.md` — implementation report
+
+### Backend Changes
+- `IReferralService` + `ReferralService` — `GetPublicSummaryAsync` (token-validated, version-checked) + `TrackFunnelEventAsync` (allowlisted event types, fire-and-forget audit)
+- `ReferralEndpoints.cs` — `GET /api/referrals/{id}/public-summary` + `POST /api/referrals/{id}/track-funnel` (public, HMAC token-gated)
+
+### Frontend Changes
+- `middleware.ts` — `/referrals/activate` added to `PUBLIC_PATHS`
+- `app/referrals/accept/[referralId]/page.tsx` — rebuilt as server component: fetches public summary, handles invalid/revoked/expired/already-accepted states, renders `ActivationLanding`
+
+### Funnel Flow
+```
+Email link → /referrals/accept/[id]?token=...
+  ├─ Token invalid        → /referrals/accept/invalid?reason=...
+  ├─ Already accepted     → AlreadyAcceptedScreen
+  └─ Pending referral     → ActivationLanding
+        ├─ [Primary]   /referrals/activate?referralId=...&token=... → account activation form
+        ├─ [Secondary] /login?returnTo=...&reason=referral-view
+        └─ [Tertiary]  accept-by-token (no account, collapsible)
+```
+
+### Provider State Detection
+`provider.OrganizationId.HasValue` → active (route to login) | null → pending (route to activation funnel)
+
+---
+
 ## Step 33 — LSCC-007-01 Dashboard Deep-Links & Context Preservation (2026-03-31)
 
 Wires `from=dashboard` into every referral link on the dashboard and propagates

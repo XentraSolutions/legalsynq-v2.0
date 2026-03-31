@@ -314,6 +314,28 @@ public class ReferralService : IReferralService
 
         // OrganizationId is null → provider has no Identity org link → pending provider flow
         var routeType = provider.OrganizationId.HasValue ? "active" : "pending";
+
+        // LSCC-008: Emit ReferralViewed funnel event for valid tokens (fire-and-observe)
+        var viewedNow = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.funnel.referralviewed",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = viewedNow,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = referral.TenantId.ToString() },
+            Actor         = new AuditEventActorDto { Id = "public-token", Type = ActorType.System, Name = "ProviderFunnel" },
+            Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action        = "ReferralViewed",
+            Description   = $"Referral '{referral.Id}' viewed via public token (provider state: {routeType}).",
+            Outcome       = "success",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(viewedNow, "care-connect", "careconnect.referral.funnel.referralviewed", referral.Id.ToString()),
+            Tags           = ["referral", "funnel", "viewed", routeType],
+        });
+
         return new ReferralViewTokenRouteResponse
         {
             RouteType  = routeType,
@@ -814,6 +836,89 @@ public class ReferralService : IReferralService
         }
 
         return events.OrderBy(e => e.OccurredAt).ToList();
+    }
+
+    // ── LSCC-008: Provider activation funnel ─────────────────────────────────
+
+    /// <summary>
+    /// Returns a limited public referral summary for the provider activation landing page.
+    /// Token is validated (HMAC + version) before any data is returned.
+    /// Only fields already present in the provider notification email are exposed.
+    /// Returns null when the token is invalid, revoked, or the referral cannot be found.
+    /// </summary>
+    public async Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(
+        Guid referralId,
+        string token,
+        CancellationToken ct = default)
+    {
+        var tokenResult = _emailService.ValidateViewToken(token);
+        if (tokenResult is null)                          return null;
+        if (tokenResult.ReferralId != referralId)         return null;
+
+        var referral = await _referrals.GetByIdGlobalAsync(referralId, ct);
+        if (referral is null)                             return null;
+        if (tokenResult.TokenVersion != referral.TokenVersion) return null;
+
+        return new ReferralPublicSummaryResponse
+        {
+            ReferralId       = referral.Id,
+            ClientFirstName  = referral.ClientFirstName,
+            ClientLastName   = referral.ClientLastName,
+            ReferrerName     = referral.ReferrerName ?? "",
+            ProviderName     = referral.Provider?.Name ?? "",
+            RequestedService = referral.RequestedService,
+            Status           = referral.Status,
+        };
+    }
+
+    /// <summary>
+    /// Emits a provider activation funnel tracking event.
+    /// Accepted event types: "ReferralViewed", "ActivationStarted".
+    /// Token is validated before any event is stored.
+    /// Returns false when the token is invalid or the event type is not allowed.
+    /// </summary>
+    public async Task<bool> TrackFunnelEventAsync(
+        Guid referralId,
+        string token,
+        string eventType,
+        CancellationToken ct = default)
+    {
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "ReferralViewed", "ActivationStarted" };
+
+        if (!allowed.Contains(eventType)) return false;
+
+        var tokenResult = _emailService.ValidateViewToken(token);
+        if (tokenResult is null)                          return false;
+        if (tokenResult.ReferralId != referralId)         return false;
+
+        var referral = await _referrals.GetByIdGlobalAsync(referralId, ct);
+        if (referral is null)                             return false;
+        if (tokenResult.TokenVersion != referral.TokenVersion) return false;
+
+        var normalised = eventType.ToLowerInvariant();
+        var now        = DateTimeOffset.UtcNow;
+
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = $"careconnect.referral.funnel.{normalised}",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-api",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = referral.TenantId.ToString() },
+            Actor         = new AuditEventActorDto { Id = "public-token", Type = ActorType.System, Name = "ProviderFunnel" },
+            Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action        = eventType,
+            Description   = $"Provider funnel event '{eventType}' recorded for referral '{referral.Id}'.",
+            Outcome       = "success",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", $"careconnect.referral.funnel.{normalised}", referral.Id.ToString()),
+            Tags           = ["referral", "funnel", "activation", normalised],
+        });
+
+        return true;
     }
 
     private static string TruncateReason(string reason, int maxLength)

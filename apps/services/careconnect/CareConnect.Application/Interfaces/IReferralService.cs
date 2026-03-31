@@ -21,4 +21,10 @@ public interface IReferralService
 
     // LSCC-005-02: Operational audit timeline (status history + notification events, chrono-ordered)
     Task<List<ReferralAuditEventResponse>> GetAuditTimelineAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
+
+    // LSCC-008: Provider activation funnel — public, token-gated
+    /// <summary>Returns limited referral context for the public activation landing page. Returns null when the token is invalid/revoked.</summary>
+    Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(Guid referralId, string token, CancellationToken ct = default);
+    /// <summary>Emits a funnel tracking event (ReferralViewed | ActivationStarted). Returns false when token is invalid.</summary>
+    Task<bool> TrackFunnelEventAsync(Guid referralId, string token, string eventType, CancellationToken ct = default);
 }

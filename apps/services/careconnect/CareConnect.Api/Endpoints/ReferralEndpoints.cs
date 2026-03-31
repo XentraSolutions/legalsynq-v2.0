@@ -231,6 +231,48 @@ public static class ReferralEndpoints
         });
         // Note: no .RequireAuthorization — intentionally public
 
+        // ── LSCC-008: Provider activation funnel (public, token-gated) ──────────
+
+        // GET /api/referrals/{id}/public-summary?token=...
+        // Returns limited referral context for the activation landing page.
+        // Token is HMAC-validated + version-checked before any data is returned.
+        group.MapGet("/{id:guid}/public-summary", async (
+            Guid id,
+            [FromQuery] string token,
+            IReferralService service,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(token))
+                return Results.BadRequest(new { error = "token is required." });
+
+            var summary = await service.GetPublicSummaryAsync(id, token, ct);
+            if (summary is null)
+                return Results.Unauthorized();
+
+            return Results.Ok(summary);
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
+
+        // POST /api/referrals/{id}/track-funnel
+        // Body: { token, eventType }
+        // Records a provider funnel event (ReferralViewed | ActivationStarted).
+        group.MapPost("/{id:guid}/track-funnel", async (
+            Guid id,
+            [FromBody] TrackFunnelEventRequest request,
+            IReferralService service,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+
+            if (string.IsNullOrWhiteSpace(request.EventType))
+                return Results.BadRequest(new { error = "eventType is required." });
+
+            var ok = await service.TrackFunnelEventAsync(id, request.Token, request.EventType, ct);
+            return ok ? Results.Ok() : Results.BadRequest(new { error = "Invalid token or unrecognised event type." });
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
+
         // Accepts a referral on behalf of a pending (unlinked) provider.
         // The token proves the provider received the notification email.
         group.MapPost("/{id:guid}/accept-by-token", async (
