@@ -4,30 +4,18 @@ import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { AppointmentListTable } from '@/components/careconnect/appointment-list-table';
+import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
 
 interface AppointmentsPageProps {
   searchParams: {
-    status?: string;
-    page?:   string;
+    status?:     string;
+    providerId?: string;
+    from?:       string;
+    to?:         string;
+    page?:       string;
   };
 }
 
-/**
- * /careconnect/appointments — Appointment list.
- *
- * Access: CARECONNECT_REFERRER or CARECONNECT_RECEIVER.
- *
- * UX shaping by role:
- *   - CARECONNECT_REFERRER (law firm):  "Sent Appointments"
- *     (they see only appointments that originated from their referrals)
- *   - CARECONNECT_RECEIVER (provider):  "Incoming Appointments"
- *     (they see only appointments directed at their org)
- *   The backend scopes results automatically; the role only affects the heading.
- *
- * The "New Appointment" flow is always initiated via the availability page
- * (Find Providers → availability → BookingPanel), not from here directly.
- * Referrers get a shortcut button to /careconnect/providers as a reminder.
- */
 export default async function AppointmentsPage({ searchParams }: AppointmentsPageProps) {
   const session = await requireOrg();
 
@@ -44,12 +32,19 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
 
   const page = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
 
+  // Date range from drilldown links — only used if valid
+  const from = (searchParams.from && isValidIsoDate(searchParams.from)) ? searchParams.from : undefined;
+  const to   = (searchParams.to   && isValidIsoDate(searchParams.to))   ? searchParams.to   : undefined;
+
   let result = null;
   let fetchError: string | null = null;
 
   try {
     result = await careConnectServerApi.appointments.search({
-      status:   searchParams.status || undefined,
+      status:     searchParams.status     || undefined,
+      providerId: searchParams.providerId || undefined,
+      from,
+      to,
       page,
       pageSize: 20,
     });
@@ -58,6 +53,7 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
   }
 
   const heading = isReferrer ? 'Sent Appointments' : 'Incoming Appointments';
+  const hasDateFilter = !!(from || to);
 
   const STATUS_FILTERS = ['', 'Scheduled', 'Confirmed', 'Completed', 'Cancelled', 'NoShow'];
 
@@ -67,7 +63,6 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">{heading}</h1>
 
-        {/* Referrers: shortcut to the booking entry-point */}
         {isReferrer && (
           <Link
             href="/careconnect/providers"
@@ -77,6 +72,25 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
           </Link>
         )}
       </div>
+
+      {/* Active date filter indicator */}
+      {hasDateFilter && (
+        <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded px-3 py-2">
+          <span className="ri-calendar-line" />
+          <span>
+            Filtered to{' '}
+            {from ? formatDisplayDate(from) : 'start'}
+            {' → '}
+            {to ? formatDisplayDate(to) : 'today'}
+          </span>
+          <Link
+            href="/careconnect/appointments"
+            className="ml-2 text-blue-500 hover:text-blue-700 underline"
+          >
+            Clear
+          </Link>
+        </div>
+      )}
 
       {/* Status filter chips */}
       <div className="flex items-center gap-2 flex-wrap">

@@ -4,30 +4,19 @@ import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { ReferralListTable } from '@/components/careconnect/referral-list-table';
+import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
 
 interface ReferralsPageProps {
   searchParams: {
-    status?:   string;
-    urgency?:  string;
-    page?:     string;
+    status?:      string;
+    urgency?:     string;
+    providerId?:  string;
+    createdFrom?: string;
+    createdTo?:   string;
+    page?:        string;
   };
 }
 
-/**
- * /careconnect/referrals — Referral list.
- *
- * Access: CARECONNECT_REFERRER or CARECONNECT_RECEIVER (either is sufficient).
- *   Users with neither role see a denial message — the nav builder already hides
- *   this route from them.
- *
- * UX shaping by role:
- *   - CARECONNECT_REFERRER (law firm):  heading = "Sent Referrals"  + "New Referral" button
- *   - CARECONNECT_RECEIVER (provider):  heading = "Received Referrals" (no create button)
- *   - Both roles:  the backend scopes results to the caller's org automatically.
- *     Law firms see only referrals they created; providers see only referrals directed at them.
- *
- * Backend handles all access enforcement — the role check here is UX only.
- */
 export default async function ReferralsPage({ searchParams }: ReferralsPageProps) {
   const session = await requireOrg();
 
@@ -44,13 +33,22 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
 
   const page = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
 
+  // Date range from drilldown links — only used if both are valid
+  const createdFrom = (searchParams.createdFrom && isValidIsoDate(searchParams.createdFrom))
+    ? searchParams.createdFrom : undefined;
+  const createdTo   = (searchParams.createdTo && isValidIsoDate(searchParams.createdTo))
+    ? searchParams.createdTo : undefined;
+
   let result = null;
   let fetchError: string | null = null;
 
   try {
     result = await careConnectServerApi.referrals.search({
-      status:  searchParams.status  || undefined,
-      urgency: searchParams.urgency || undefined,
+      status:      searchParams.status     || undefined,
+      urgency:     searchParams.urgency    || undefined,
+      providerId:  searchParams.providerId || undefined,
+      createdFrom,
+      createdTo,
       page,
       pageSize: 20,
     });
@@ -60,13 +58,15 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
 
   const heading = isReferrer ? 'Sent Referrals' : 'Received Referrals';
 
+  // Active date filter banner
+  const hasDateFilter = !!(createdFrom || createdTo);
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">{heading}</h1>
 
-        {/* Referrers: start a new referral from the provider search flow */}
         {isReferrer && (
           <Link
             href="/careconnect/providers"
@@ -77,7 +77,26 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
         )}
       </div>
 
-      {/* Quick status filters — values match backend ReferralWorkflowRules */}
+      {/* Active date filter indicator */}
+      {hasDateFilter && (
+        <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded px-3 py-2">
+          <span className="ri-calendar-line" />
+          <span>
+            Filtered to{' '}
+            {createdFrom ? formatDisplayDate(createdFrom) : 'start'}
+            {' → '}
+            {createdTo ? formatDisplayDate(createdTo) : 'today'}
+          </span>
+          <Link
+            href="/careconnect/referrals"
+            className="ml-2 text-blue-500 hover:text-blue-700 underline"
+          >
+            Clear
+          </Link>
+        </div>
+      )}
+
+      {/* Quick status filters */}
       <div className="flex items-center gap-2 flex-wrap">
         {['', 'New', 'Accepted', 'Declined', 'Scheduled', 'Completed', 'Cancelled'].map(s => (
           <Link

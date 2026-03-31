@@ -500,6 +500,27 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - `Appointment.BackfillOrgIds(Guid, Guid)` — new idempotent domain method for legacy org-ID population.
 - **EF Core alignment:** `Microsoft.EntityFrameworkCore.Design` downgraded from `8.0.8` → `8.0.2` in all four affected projects (CareConnect.Api, CareConnect.Infrastructure, Fund.Api, Fund.Infrastructure) to eliminate MSB3277 version conflict with Pomelo 8.0.2.
 
+**LSCC-003-01 — Workflow Completion UX Polish (complete):**
+- **Toast system:** `toast-context.tsx` (ToastProvider, useToast, useToastState) + `toast-container.tsx`; wired into platform layout; used on every mutation action (referral status, appointment confirm/noshow/reschedule/cancel).
+- **ReferralTimeline:** `components/careconnect/referral-timeline.tsx` — renders `GET /api/referrals/{id}/history` status history with timestamped entries.
+- **AppointmentActions:** `components/careconnect/appointment-actions.tsx` — Confirm / No-Show buttons + Reschedule modal with slot picker; calls `PUT /api/appointments/{id}` and `POST /api/appointments/{id}/reschedule`.
+- **Dashboard stat counts:** Live counts via parallel API calls; referral counts by status; today's appointment count.
+- **15 new backend tests** added across `AppointmentActionTests.cs` and `WorkflowIntegrationTests.cs`.
+- **Report:** `analysis/LSCC-003-01.md`.
+
+**LSCC-004 — Analytics & Operational Visibility (complete):**
+- **`apps/web/src/lib/daterange.ts`** — date range utilities: presets (7d / 30d / custom), ISO formatting, URL param parsing, validation.
+- **`apps/web/src/lib/careconnect-metrics.ts`** — pure metric functions: `safeRate`, `computeReferralFunnel`, `computeAppointmentMetrics`, `computeProviderPerformance`, `formatRate`.
+- **Analytics components** (`src/components/careconnect/analytics/`):
+  - `date-range-picker.tsx` — Client Component; preset + custom date inputs; pushes `analyticsFrom`/`analyticsTo` URL params.
+  - `referral-funnel.tsx` — bar funnel with Total / Accepted / Scheduled / Completed + rates + drilldown links.
+  - `appointment-metrics.tsx` — 4-card panel (Total / Completed / Cancelled / No-Show + rates).
+  - `provider-performance.tsx` — top-10 provider table sorted by referrals received; colored acceptance rate; drilldown links.
+- **Dashboard** extended with **Performance Overview** section: 11 parallel `Promise.allSettled` API calls for accurate counts; referral funnel + appointment metrics + provider table; date range picker.
+- **Referral + appointment list pages** extended with `createdFrom`/`createdTo`/`providerId` (referrals) and `from`/`to`/`providerId` (appointments) filter params; active filter banner with clear link.
+- **25 new backend tests** in `AnalyticsMetricsTests.cs` (metric contracts, rate computation, date range logic, drilldown URL contracts, graceful empty-data handling).
+- **Report:** `analysis/LSCC-004-report.md`.
+
 ## CareConnect Provider Geo / Map-Ready Discovery
 
 - **Radius search:** `latitude` + `longitude` + `radiusMiles` (max 100 mi). Bounding-box filter in `ProviderGeoHelper.BoundingBox`.

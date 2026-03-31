@@ -1,63 +1,62 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { StatusBadge, UrgencyBadge } from '@/components/careconnect/status-badge';
+import { DateRangePicker } from '@/components/careconnect/analytics/date-range-picker';
+import { ReferralFunnel } from '@/components/careconnect/analytics/referral-funnel';
+import { AppointmentMetricsPanel } from '@/components/careconnect/analytics/appointment-metrics';
+import { ProviderPerformanceTable } from '@/components/careconnect/analytics/provider-performance';
+import { parseDateRangeParams, formatDisplayDate } from '@/lib/daterange';
+import {
+  computeReferralFunnel,
+  computeAppointmentMetrics,
+  computeProviderPerformance,
+} from '@/lib/careconnect-metrics';
 import type { ReferralSummary, AppointmentSummary } from '@/types/careconnect';
 
-/**
- * /careconnect/dashboard — Role-aware landing page.
- *
- * CARECONNECT_REFERRER (law firm):
- *   Stats: Active referrals | Upcoming appts (7 days) | Completed referrals | Declined referrals
- *   Content: Active referral list + upcoming appointments
- *
- * CARECONNECT_RECEIVER (provider):
- *   Stats: New referrals | Today's appts | Accepted referrals | Completed referrals
- *   Content: Pending referral inbox + today's schedule
- */
+interface DashboardPageProps {
+  searchParams: {
+    analyticsFrom?: string;
+    analyticsTo?:   string;
+  };
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day:   'numeric',
-    year:  'numeric',
+    month: 'short', day: 'numeric', year: 'numeric',
   });
 }
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
-    month:  'short',
-    day:    'numeric',
-    hour:   'numeric',
-    minute: '2-digit',
-    hour12: true,
+    month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
   });
 }
 
 function isToday(iso: string): boolean {
   const d = new Date(iso);
   const now = new Date();
-  return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth()    === now.getMonth()    &&
-    d.getDate()     === now.getDate()
-  );
+  return d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
 function isWithinDays(iso: string, days: number): boolean {
-  const d   = new Date(iso);
+  const d = new Date(iso);
   const now = new Date();
   const end = new Date(now);
   end.setDate(end.getDate() + days);
   return d >= now && d <= end;
 }
 
+// ── Sub-components ─────────────────────────────────────────────────────────────
+
 function SectionCard({ title, viewAllHref, viewAllLabel, children }: {
-  title:        string;
-  viewAllHref:  string;
-  viewAllLabel: string;
-  children:     React.ReactNode;
+  title: string; viewAllHref: string; viewAllLabel: string; children: React.ReactNode;
 }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -73,11 +72,7 @@ function SectionCard({ title, viewAllHref, viewAllLabel, children }: {
 }
 
 function EmptyRow({ message }: { message: string }) {
-  return (
-    <div className="px-5 py-8 text-center">
-      <p className="text-sm text-gray-400">{message}</p>
-    </div>
-  );
+  return <div className="px-5 py-8 text-center"><p className="text-sm text-gray-400">{message}</p></div>;
 }
 
 function ReferralRows({ referrals }: { referrals: ReferralSummary[] }) {
@@ -143,21 +138,62 @@ function AppointmentRows({ appointments }: { appointments: AppointmentSummary[] 
   );
 }
 
-export default async function DashboardPage() {
+function AnalyticsPanelCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+      </div>
+      <div className="px-5 py-4">{children}</div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, href }: { label: string; value: number | string; href: string }) {
+  return (
+    <Link href={href} className="bg-white border border-gray-200 rounded-lg px-4 py-4 hover:border-primary transition-colors">
+      <p className="text-2xl font-bold text-gray-900">{value}</p>
+      <p className="text-xs text-gray-500 mt-1">{label}</p>
+    </Link>
+  );
+}
+
+function QuickAction({ href, icon, label, desc }: {
+  href: string; icon: string; label: string; desc: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="bg-white border border-gray-200 rounded-lg px-4 py-4 flex items-start gap-3 hover:border-primary transition-colors group"
+    >
+      <span className={`${icon} text-xl text-primary mt-0.5 shrink-0`} />
+      <div>
+        <p className="text-sm font-medium text-gray-900 group-hover:text-primary transition-colors">{label}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
+      </div>
+    </Link>
+  );
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const session = await requireOrg();
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
-
   const showReferrerView = isReferrer || (!isReferrer && !isReceiver);
 
-  // ── Fetch data ──────────────────────────────────────────────────────────────
-  // Best-effort: failures silently fall back to 0/empty rather than breaking the page.
+  // ── Date range ─────────────────────────────────────────────────────────────
+  const { range: analyticsRange, activePreset } = parseDateRangeParams(
+    searchParams.analyticsFrom,
+    searchParams.analyticsTo,
+  );
 
-  let referrals:    ReferralSummary[]    = [];
-  let appointments: AppointmentSummary[] = [];
+  // ── Operational data ───────────────────────────────────────────────────────
 
-  // Secondary stat counters
+  let referrals:            ReferralSummary[]    = [];
+  let appointments:         AppointmentSummary[] = [];
   let completedReferralCount = 0;
   let declinedReferralCount  = 0;
   let acceptedReferralCount  = 0;
@@ -174,33 +210,23 @@ export default async function DashboardPage() {
       ]);
 
     if (activeRef.status === 'fulfilled') {
-      referrals = activeRef.value.items.filter(
-        r => !['Completed', 'Cancelled', 'Declined'].includes(r.status),
-      ).slice(0, 5);
+      referrals = activeRef.value.items
+        .filter(r => !['Completed', 'Cancelled', 'Declined'].includes(r.status))
+        .slice(0, 5);
     }
-    if (completedRef.status === 'fulfilled') {
-      completedReferralCount = completedRef.value.totalCount;
-    }
-    if (declinedRef.status === 'fulfilled') {
-      declinedReferralCount = declinedRef.value.totalCount;
-    }
+    if (completedRef.status === 'fulfilled') completedReferralCount = completedRef.value.totalCount;
+    if (declinedRef.status  === 'fulfilled') declinedReferralCount  = declinedRef.value.totalCount;
 
-    // Merge scheduled + confirmed, filter to next 7 days, deduplicate
     const apptMap = new Map<string, AppointmentSummary>();
-    if (scheduledAppt.status === 'fulfilled') {
-      scheduledAppt.value.items.forEach(a => apptMap.set(a.id, a));
-    }
-    if (confirmedAppt.status === 'fulfilled') {
-      confirmedAppt.value.items.forEach(a => apptMap.set(a.id, a));
-    }
-    appointments   = [...apptMap.values()]
+    if (scheduledAppt.status === 'fulfilled') scheduledAppt.value.items.forEach(a => apptMap.set(a.id, a));
+    if (confirmedAppt.status === 'fulfilled') confirmedAppt.value.items.forEach(a => apptMap.set(a.id, a));
+    appointments = [...apptMap.values()]
       .filter(a => isWithinDays(a.scheduledAtUtc, 7))
       .sort((a, b) => new Date(a.scheduledAtUtc).getTime() - new Date(b.scheduledAtUtc).getTime())
       .slice(0, 5);
     upcomingApptCount = apptMap.size;
 
   } else {
-    // Receiver
     const [newRef, acceptedRef, completedRef, scheduledAppt, confirmedAppt] =
       await Promise.allSettled([
         careConnectServerApi.referrals.search({ status: 'New',       pageSize: 5 }),
@@ -210,30 +236,79 @@ export default async function DashboardPage() {
         careConnectServerApi.appointments.search({ status: 'Confirmed', pageSize: 50 }),
       ]);
 
-    if (newRef.status === 'fulfilled') {
-      referrals = newRef.value.items;
-    }
-    if (acceptedRef.status === 'fulfilled') {
-      acceptedReferralCount = acceptedRef.value.totalCount;
-    }
-    if (completedRef.status === 'fulfilled') {
-      completedReferralCount = completedRef.value.totalCount;
-    }
+    if (newRef.status      === 'fulfilled') referrals             = newRef.value.items;
+    if (acceptedRef.status === 'fulfilled') acceptedReferralCount = acceptedRef.value.totalCount;
+    if (completedRef.status=== 'fulfilled') completedReferralCount= completedRef.value.totalCount;
 
     const apptMap = new Map<string, AppointmentSummary>();
-    if (scheduledAppt.status === 'fulfilled') {
-      scheduledAppt.value.items.forEach(a => apptMap.set(a.id, a));
-    }
-    if (confirmedAppt.status === 'fulfilled') {
-      confirmedAppt.value.items.forEach(a => apptMap.set(a.id, a));
-    }
+    if (scheduledAppt.status === 'fulfilled') scheduledAppt.value.items.forEach(a => apptMap.set(a.id, a));
+    if (confirmedAppt.status === 'fulfilled') confirmedAppt.value.items.forEach(a => apptMap.set(a.id, a));
     appointments = [...apptMap.values()]
       .filter(a => isToday(a.scheduledAtUtc))
       .sort((a, b) => new Date(a.scheduledAtUtc).getTime() - new Date(b.scheduledAtUtc).getTime())
       .slice(0, 5);
   }
 
+  // ── Analytics data ─────────────────────────────────────────────────────────
+  // 11 parallel best-effort calls — individual failures leave metrics at 0/empty.
+
+  const [
+    totalRef, acceptedRef, declinedRef, scheduledRef, completedRef,
+    totalAppt, completedAppt, cancelledAppt, noShowAppt,
+    referralItems, appointmentItems,
+  ] = await Promise.allSettled([
+    careConnectServerApi.referrals.search({ createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
+    careConnectServerApi.referrals.search({ status: 'Accepted',  createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
+    careConnectServerApi.referrals.search({ status: 'Declined',  createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
+    careConnectServerApi.referrals.search({ status: 'Scheduled', createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
+    careConnectServerApi.referrals.search({ status: 'Completed', createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 1 }),
+
+    careConnectServerApi.appointments.search({ from: analyticsRange.from, to: analyticsRange.to, pageSize: 1 }),
+    careConnectServerApi.appointments.search({ status: 'Completed', from: analyticsRange.from, to: analyticsRange.to, pageSize: 1 }),
+    careConnectServerApi.appointments.search({ status: 'Cancelled', from: analyticsRange.from, to: analyticsRange.to, pageSize: 1 }),
+    careConnectServerApi.appointments.search({ status: 'NoShow',    from: analyticsRange.from, to: analyticsRange.to, pageSize: 1 }),
+
+    careConnectServerApi.referrals.search({ createdFrom: analyticsRange.from, createdTo: analyticsRange.to, pageSize: 200 }),
+    careConnectServerApi.appointments.search({ from: analyticsRange.from, to: analyticsRange.to, pageSize: 200 }),
+  ]);
+
+  // PagedResponse<any> avoids union narrowing issues when Promise.allSettled mixes response types
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const getCount = (r: PromiseSettledResult<{ totalCount: number; items: any[] }>) =>
+    r.status === 'fulfilled' ? r.value.totalCount : 0;
+
+  const funnelMetrics = computeReferralFunnel(
+    getCount(totalRef),
+    getCount(acceptedRef),
+    getCount(declinedRef),
+    getCount(scheduledRef),
+    getCount(completedRef),
+  );
+
+  const apptMetrics = computeAppointmentMetrics(
+    getCount(totalAppt),
+    getCount(completedAppt),
+    getCount(cancelledAppt),
+    getCount(noShowAppt),
+  );
+
+  const referralItemsList    = referralItems.status === 'fulfilled'
+    ? (referralItems.value as { items: ReferralSummary[] }).items
+    : ([] as ReferralSummary[]);
+  const appointmentItemsList = appointmentItems.status === 'fulfilled'
+    ? (appointmentItems.value as { items: AppointmentSummary[] }).items
+    : ([] as AppointmentSummary[]);
+  const referralItemsCapped   = referralItems.status     === 'fulfilled' && referralItems.value.totalCount > 200;
+  const appointmentItemsCapped= appointmentItems.status  === 'fulfilled' && appointmentItems.value.totalCount > 200;
+  const isCapped              = referralItemsCapped || appointmentItemsCapped;
+
+  const providerRows = computeProviderPerformance(
+    referralItemsList.map(r => ({ providerId: r.providerId, providerName: r.providerName, status: r.status })),
+    appointmentItemsList.map(a => ({ providerId: a.providerId, status: a.status })),
+  );
+
   // ── Render ─────────────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -243,94 +318,118 @@ export default async function DashboardPage() {
           <p className="text-sm text-gray-500 mt-0.5">
             {showReferrerView
               ? 'Overview of your referral activity and upcoming appointments.'
-              : 'Incoming referrals and today\'s appointment schedule.'}
+              : "Incoming referrals and today's appointment schedule."}
           </p>
         </div>
-
         {showReferrerView ? (
-          <Link
-            href="/careconnect/providers"
-            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0"
-          >
+          <Link href="/careconnect/providers" className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0">
             Find Providers
           </Link>
         ) : (
-          <Link
-            href="/careconnect/referrals"
-            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0"
-          >
+          <Link href="/careconnect/referrals" className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0">
             Referral Inbox
           </Link>
         )}
       </div>
 
-      {/* Stats bar */}
+      {/* Stat bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {showReferrerView ? (
           <>
-            <StatCard label="Active Referrals"   value={referrals.length}        href="/careconnect/referrals" />
-            <StatCard label="Upcoming (7 days)"  value={upcomingApptCount}       href="/careconnect/appointments" />
-            <StatCard label="Completed"          value={completedReferralCount}   href="/careconnect/referrals?status=Completed" />
-            <StatCard label="Declined"           value={declinedReferralCount}    href="/careconnect/referrals?status=Declined" />
+            <StatCard label="Active Referrals"  value={referrals.length}       href="/careconnect/referrals" />
+            <StatCard label="Upcoming (7 days)" value={upcomingApptCount}      href="/careconnect/appointments" />
+            <StatCard label="Completed"         value={completedReferralCount} href="/careconnect/referrals?status=Completed" />
+            <StatCard label="Declined"          value={declinedReferralCount}  href="/careconnect/referrals?status=Declined" />
           </>
         ) : (
           <>
-            <StatCard label="Pending Referrals"  value={referrals.length}         href="/careconnect/referrals?status=New" />
-            <StatCard label="Today's Appts"      value={appointments.length}      href="/careconnect/appointments" />
-            <StatCard label="Accepted"           value={acceptedReferralCount}    href="/careconnect/referrals?status=Accepted" />
-            <StatCard label="Completed"          value={completedReferralCount}   href="/careconnect/referrals?status=Completed" />
+            <StatCard label="Pending Referrals" value={referrals.length}        href="/careconnect/referrals?status=New" />
+            <StatCard label="Today's Appts"     value={appointments.length}     href="/careconnect/appointments" />
+            <StatCard label="Accepted"          value={acceptedReferralCount}   href="/careconnect/referrals?status=Accepted" />
+            <StatCard label="Completed"         value={completedReferralCount}  href="/careconnect/referrals?status=Completed" />
           </>
         )}
       </div>
 
-      {/* Main panels */}
+      {/* Operational panels */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {showReferrerView ? (
           <>
-            <SectionCard
-              title="Active Referrals"
-              viewAllHref="/careconnect/referrals"
-              viewAllLabel="View all"
-            >
+            <SectionCard title="Active Referrals"     viewAllHref="/careconnect/referrals"      viewAllLabel="View all">
               <ReferralRows referrals={referrals} />
             </SectionCard>
-
-            <SectionCard
-              title="Upcoming Appointments"
-              viewAllHref="/careconnect/appointments"
-              viewAllLabel="View all"
-            >
+            <SectionCard title="Upcoming Appointments" viewAllHref="/careconnect/appointments"   viewAllLabel="View all">
               <AppointmentRows appointments={appointments} />
             </SectionCard>
           </>
         ) : (
           <>
-            <SectionCard
-              title="Pending Referrals"
-              viewAllHref="/careconnect/referrals?status=New"
-              viewAllLabel="View all"
-            >
+            <SectionCard title="Pending Referrals"  viewAllHref="/careconnect/referrals?status=New" viewAllLabel="View all">
               <ReferralRows referrals={referrals} />
             </SectionCard>
-
-            <SectionCard
-              title="Today's Appointments"
-              viewAllHref="/careconnect/appointments"
-              viewAllLabel="View all"
-            >
+            <SectionCard title="Today's Appointments" viewAllHref="/careconnect/appointments" viewAllLabel="View all">
               <AppointmentRows appointments={appointments} />
             </SectionCard>
           </>
         )}
+      </div>
+
+      {/* ── Performance Overview ────────────────────────────────────────────── */}
+      <div className="space-y-4">
+        {/* Section header + date range picker */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Performance Overview</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {formatDisplayDate(analyticsRange.from)} — {formatDisplayDate(analyticsRange.to)}
+            </p>
+          </div>
+          <Suspense fallback={null}>
+            <DateRangePicker
+              activePreset={activePreset}
+              currentFrom={analyticsRange.from}
+              currentTo={analyticsRange.to}
+            />
+          </Suspense>
+        </div>
+
+        {/* Referral funnel + appointment metrics side by side on large screens */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <AnalyticsPanelCard title="Referral Funnel">
+            <ReferralFunnel
+              metrics={funnelMetrics}
+              from={analyticsRange.from}
+              to={analyticsRange.to}
+            />
+          </AnalyticsPanelCard>
+
+          <AnalyticsPanelCard title="Appointment Performance">
+            <AppointmentMetricsPanel
+              metrics={apptMetrics}
+              from={analyticsRange.from}
+              to={analyticsRange.to}
+            />
+          </AnalyticsPanelCard>
+        </div>
+
+        {/* Provider performance table */}
+        <AnalyticsPanelCard title="Provider Performance">
+          <ProviderPerformanceTable
+            rows={providerRows}
+            from={analyticsRange.from}
+            to={analyticsRange.to}
+            isCapped={isCapped}
+          />
+        </AnalyticsPanelCard>
       </div>
 
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {showReferrerView ? (
           <>
-            <QuickAction href="/careconnect/providers"    icon="ri-search-line"       label="Find Providers"    desc="Search by name, specialty, or location" />
-            <QuickAction href="/careconnect/referrals"    icon="ri-file-list-3-line"  label="All Referrals"     desc="Track the status of every referral" />
-            <QuickAction href="/careconnect/appointments" icon="ri-calendar-2-line"   label="Appointments"      desc="View and manage your appointments" />
+            <QuickAction href="/careconnect/providers"    icon="ri-search-line"       label="Find Providers"  desc="Search by name, specialty, or location" />
+            <QuickAction href="/careconnect/referrals"    icon="ri-file-list-3-line"  label="All Referrals"   desc="Track the status of every referral" />
+            <QuickAction href="/careconnect/appointments" icon="ri-calendar-2-line"   label="Appointments"    desc="View and manage your appointments" />
           </>
         ) : (
           <>
@@ -341,37 +440,5 @@ export default async function DashboardPage() {
         )}
       </div>
     </div>
-  );
-}
-
-function StatCard({ label, value, href }: { label: string; value: number | string; href: string }) {
-  return (
-    <Link
-      href={href}
-      className="bg-white border border-gray-200 rounded-lg px-4 py-4 hover:border-primary transition-colors"
-    >
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
-      <p className="text-xs text-gray-500 mt-1">{label}</p>
-    </Link>
-  );
-}
-
-function QuickAction({ href, icon, label, desc }: {
-  href:  string;
-  icon:  string;
-  label: string;
-  desc:  string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="bg-white border border-gray-200 rounded-lg px-4 py-4 flex items-start gap-3 hover:border-primary transition-colors group"
-    >
-      <span className={`${icon} text-xl text-primary mt-0.5 shrink-0`} />
-      <div>
-        <p className="text-sm font-medium text-gray-900 group-hover:text-primary transition-colors">{label}</p>
-        <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
-      </div>
-    </Link>
   );
 }
