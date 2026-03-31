@@ -54,6 +54,7 @@ public static class ReferralWorkflowRules
     /// Determines the capability code required to perform the given status transition.
     /// Used by endpoints to enforce capability-based authorization on referral updates.
     /// </summary>
+    // LSCC-001: CareConnect permission enforcement — status-driven capability gate
     public static string RequiredCapabilityFor(string toStatus) => toStatus switch
     {
         Referral.ValidStatuses.Accepted  => BuildingBlocks.Authorization.CapabilityCodes.ReferralAccept,

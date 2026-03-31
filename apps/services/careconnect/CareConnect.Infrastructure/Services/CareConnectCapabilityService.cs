@@ -9,8 +9,10 @@ namespace CareConnect.Infrastructure.Services;
 /// The PlatformAdmin bypass is applied by AuthorizationService before
 /// this service is ever called.
 /// </summary>
+// LSCC-001: CareConnect permission enforcement — static role→capability map (no DB required)
 public sealed class CareConnectCapabilityService : ICapabilityService
 {
+    // LSCC-001: Defines which capabilities each CareConnect product role grants
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> RoleCapabilities =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
         {

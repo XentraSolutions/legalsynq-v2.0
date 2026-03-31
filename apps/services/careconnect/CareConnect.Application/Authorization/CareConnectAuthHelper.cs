@@ -14,15 +14,18 @@ public static class CareConnectAuthHelper
     /// Throws <see cref="BuildingBlocks.Exceptions.ForbiddenException"/> when the user
     /// does not hold the required capability and is not a PlatformAdmin or TenantAdmin.
     /// </summary>
+    // LSCC-001: CareConnect permission enforcement — two-level bypass then capability check
     public static async Task RequireAsync(
         ICurrentRequestContext ctx,
         AuthorizationService authSvc,
         string capabilityCode,
         CancellationToken ct = default)
     {
+        // LSCC-001: PlatformAdmin and TenantAdmin bypass all capability checks
         if (ctx.IsPlatformAdmin) return;
         if (ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase)) return;
 
+        // LSCC-001: All other users must hold the specific capability for this operation
         if (!await authSvc.IsAuthorizedAsync(ctx, capabilityCode, ct))
             throw new BuildingBlocks.Exceptions.ForbiddenException(capabilityCode);
     }

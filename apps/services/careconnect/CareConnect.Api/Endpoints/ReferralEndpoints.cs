@@ -23,8 +23,8 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            // Referrers see their org's outbound referrals; receivers see addressed referrals.
-            // Admins and PlatformAdmin see all (no org filter applied by helper since they bypass).
+            // LSCC-001: Org-participant scoping — referrers see outbound, receivers see addressed.
+            // Admins and PlatformAdmin bypass capability checks and see all referrals.
             var isReceiver = await authSvc.IsAuthorizedAsync(ctx, CapabilityCodes.ReferralReadAddressed, ct);
 
             var query = new GetReferralsQuery
