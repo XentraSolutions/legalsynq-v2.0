@@ -22,4 +22,16 @@ public interface IProviderService
         Guid?     serviceOfferingId = null,
         Guid?     facilityId        = null,
         CancellationToken ct        = default);
+
+    /// <summary>
+    /// LSCC-002: Admin-safe endpoint that explicitly sets the Identity OrganizationId
+    /// for a provider that was seeded or created before org linkage was enforced.
+    /// Idempotent — calling again with the same organizationId is a no-op.
+    /// </summary>
+    // LSCC-002: Admin provider org-link backfill entry point
+    Task<ProviderResponse> LinkOrganizationAsync(
+        Guid tenantId,
+        Guid providerId,
+        Guid organizationId,
+        CancellationToken ct = default);
 }

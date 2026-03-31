@@ -25,18 +25,31 @@ public static class AppointmentEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
 
+        // LSCC-002: Org-participant scoping — mirrors referral list scoping:
+        // receivers filter by receiving org; all others filter by referring org.
+        // PlatformAdmin and TenantAdmin bypass filters and see all appointments in the tenant.
         app.MapGet("/api/appointments", async (
             [AsParameters] AppointmentSearchParams query,
             IAppointmentService service,
             ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var result = await service.SearchAppointmentsAsync(tenantId, query, ct);
+
+            var isReceiver = await authSvc.IsAuthorizedAsync(ctx, CapabilityCodes.ReferralReadAddressed, ct);
+            var (referringOrgId, receivingOrgId) =
+                CareConnectParticipantHelper.GetAppointmentOrgScope(ctx, isReceiver);
+
+            var result = await service.SearchAppointmentsAsync(
+                tenantId, query, referringOrgId, receivingOrgId, ct);
             return Results.Ok(result);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
 
+        // LSCC-002: Row-level access control — caller must be an admin or a participant
+        // (ReferringOrganizationId or ReceivingOrganizationId matches their org).
+        // Returns 404 (not 403) for non-participants to avoid confirming record existence.
         app.MapGet("/api/appointments/{id:guid}", async (
             Guid id,
             IAppointmentService service,
@@ -45,6 +58,17 @@ public static class AppointmentEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var appointment = await service.GetAppointmentByIdAsync(tenantId, id, ct);
+
+            if (!CareConnectParticipantHelper.IsAdmin(ctx))
+            {
+                var isParticipant =
+                    (ctx.OrgId.HasValue && appointment.ReferringOrganizationId == ctx.OrgId) ||
+                    (ctx.OrgId.HasValue && appointment.ReceivingOrganizationId  == ctx.OrgId);
+
+                if (!isParticipant)
+                    return Results.NotFound();
+            }
+
             return Results.Ok(appointment);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);

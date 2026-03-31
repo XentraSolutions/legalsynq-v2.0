@@ -54,9 +54,11 @@ public class AppointmentResponse
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; init; }
 
-    // Phase 5: denormalized from Referral at appointment creation time.
-    // Null for appointments created before Phase C/5.
+    // Phase 5 / LSCC-002: denormalized from Referral at appointment creation time.
+    // Null for appointments created before LSCC-002 org-linkage enforcement.
     public Guid? OrganizationRelationshipId { get; init; }
+    public Guid? ReferringOrganizationId { get; init; }
+    public Guid? ReceivingOrganizationId { get; init; }
 }
 
 public class AppointmentSearchParams

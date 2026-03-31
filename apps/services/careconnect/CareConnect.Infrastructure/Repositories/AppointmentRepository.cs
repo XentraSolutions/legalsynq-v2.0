@@ -57,6 +57,7 @@ public class AppointmentRepository : IAppointmentRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    // LSCC-002: referringOrgId/receivingOrgId added for org-participant scoping
     public async Task<(List<Appointment> Items, int TotalCount)> SearchAsync(
         Guid tenantId,
         Guid? referralId,
@@ -66,6 +67,8 @@ public class AppointmentRepository : IAppointmentRepository
         DateTime? to,
         int page,
         int pageSize,
+        Guid? referringOrgId = null,
+        Guid? receivingOrgId = null,
         CancellationToken ct = default)
     {
         var query = _db.Appointments
@@ -89,6 +92,14 @@ public class AppointmentRepository : IAppointmentRepository
 
         if (to.HasValue)
             query = query.Where(a => a.ScheduledStartAtUtc <= to.Value);
+
+        // LSCC-002: Org-participant filters — applied independently so admins passing
+        // null for both skip the filter entirely (no narrowing without org context).
+        if (referringOrgId.HasValue)
+            query = query.Where(a => a.ReferringOrganizationId == referringOrgId.Value);
+
+        if (receivingOrgId.HasValue)
+            query = query.Where(a => a.ReceivingOrganizationId == receivingOrgId.Value);
 
         var total = await query.CountAsync(ct);
 

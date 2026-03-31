@@ -51,6 +51,9 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
 
+        // LSCC-002: Row-level access control — caller must be an admin or a participant
+        // (ReferringOrganizationId or ReceivingOrganizationId matches their org).
+        // Returns 404 (not 403) for non-participants to avoid confirming record existence.
         group.MapGet("/{id:guid}", async (
             Guid id,
             IReferralService service,
@@ -59,6 +62,18 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var referral = await service.GetByIdAsync(tenantId, id, ct);
+
+            if (!CareConnectParticipantHelper.IsAdmin(ctx))
+            {
+                // Re-construct the domain participant view from the response DTO org IDs.
+                var isParticipant =
+                    (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
+                    (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId);
+
+                if (!isParticipant)
+                    return Results.NotFound();
+            }
+
             return Results.Ok(referral);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);

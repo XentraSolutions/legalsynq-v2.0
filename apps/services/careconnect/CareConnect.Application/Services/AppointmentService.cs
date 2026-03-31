@@ -104,8 +104,8 @@ public class AppointmentService : IAppointmentService
 
         slot.Reserve(userId);
 
-        // Phase C: denormalize the org relationship from the referral so the appointment
-        // can be filtered/reported by org relationship without a join back to Referral.
+        // LSCC-002: Denormalize org participant IDs from referral so appointment queries
+        // can be org-scoped without joining back to Referral for every read.
         var appointment = Appointment.Create(
             tenantId,
             request.ReferralId,
@@ -117,7 +117,9 @@ public class AppointmentService : IAppointmentService
             slot.EndAtUtc,
             request.Notes,
             userId,
-            organizationRelationshipId: referral.OrganizationRelationshipId);
+            organizationRelationshipId: referral.OrganizationRelationshipId,
+            referringOrganizationId: referral.ReferringOrganizationId,
+            receivingOrganizationId: referral.ReceivingOrganizationId);
 
         await _appointments.SaveBookingAsync(slot, appointment, ct);
 
@@ -169,9 +171,12 @@ public class AppointmentService : IAppointmentService
         return ToAppointmentResponse(loaded!);
     }
 
+    // LSCC-002: referringOrgId/receivingOrgId forwarded for org-participant scoping
     public async Task<PagedResponse<AppointmentResponse>> SearchAppointmentsAsync(
         Guid tenantId,
         AppointmentSearchParams query,
+        Guid? referringOrgId = null,
+        Guid? receivingOrgId = null,
         CancellationToken ct = default)
     {
         var page = Math.Max(1, query.Page ?? 1);
@@ -186,7 +191,9 @@ public class AppointmentService : IAppointmentService
             query.To,
             page,
             pageSize,
-            ct);
+            referringOrgId: referringOrgId,
+            receivingOrgId: receivingOrgId,
+            ct: ct);
 
         return new PagedResponse<AppointmentResponse>
         {
@@ -463,7 +470,9 @@ public class AppointmentService : IAppointmentService
         Notes = a.Notes,
         CreatedAtUtc = a.CreatedAtUtc,
         UpdatedAtUtc = a.UpdatedAtUtc,
-        // Phase 5: denormalized org relationship — populated at creation from Referral
-        OrganizationRelationshipId = a.OrganizationRelationshipId
+        // Phase 5 / LSCC-002: denormalized org participant IDs — populated at creation from Referral
+        OrganizationRelationshipId = a.OrganizationRelationshipId,
+        ReferringOrganizationId    = a.ReferringOrganizationId,
+        ReceivingOrganizationId    = a.ReceivingOrganizationId
     };
 }

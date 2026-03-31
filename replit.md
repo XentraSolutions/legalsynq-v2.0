@@ -395,8 +395,8 @@ Migration `AddUpdatedByUserId` added nullable `UpdatedByUserId char(36)` column.
 | `GET /careconnect/api/slots` | GET | Bearer + `appointment:create` capability | List slots (tenant-scoped, filterable) |
 | `POST /careconnect/api/providers/{id}/slots/generate` | POST | Bearer + `schedule:manage` capability | Generate slots from templates |
 | `POST /careconnect/api/appointments` | POST | Bearer + `appointment:create` capability | Book appointment |
-| `GET /careconnect/api/appointments` | GET | Bearer (AuthenticatedUser) | List appointments |
-| `GET /careconnect/api/appointments/{id}` | GET | Bearer (AuthenticatedUser) | Get appointment |
+| `GET /careconnect/api/appointments` | GET | Bearer (AuthenticatedUser) | List appointments (org-scoped by participant role) |
+| `GET /careconnect/api/appointments/{id}` | GET | Bearer (AuthenticatedUser, participant only) | Get appointment — 404 for non-participants |
 | `PUT /careconnect/api/appointments/{id}` | PUT | Bearer + `appointment:update` capability | Update status/notes |
 | `POST /careconnect/api/appointments/{id}/cancel` | POST | Bearer + `appointment:manage` capability | Cancel appointment |
 | `POST /careconnect/api/appointments/{id}/reschedule` | POST | Bearer + `appointment:manage` capability | Reschedule appointment |
@@ -483,7 +483,15 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 
 **Org-scoped referral list:** `GET /api/referrals` applies `ReferringOrgId`/`ReceivingOrgId` filters from JWT `org_id` claim based on user's product roles. Admins see all.
 
-**xUnit test suite:** `CareConnect.Tests` — 94 tests covering `CareConnectCapabilityService`, `ReferralWorkflowRules`, `AppointmentWorkflowRules`. All passing.
+**xUnit test suite:** `CareConnect.Tests` — 141 tests covering `CareConnectCapabilityService`, `ReferralWorkflowRules`, `AppointmentWorkflowRules`, `OrgScopingTests`, `ProviderAvailabilityServiceTests`, `CareConnectParticipantHelperTests`, `AppointmentOrgScopingTests`. All passing.
+
+**LSCC-002 — Access hardening (complete):**
+- `GET /api/referrals/{id}` — row-level participant check: non-participant callers receive 404 (not 403).
+- `GET /api/appointments` — org-scoped: mirrors referral list scoping (receiver sees receiving-org appointments, referrer sees referring-org appointments, admins see all).
+- `GET /api/appointments/{id}` — row-level participant check: non-participant callers receive 404.
+- `PUT /api/admin/providers/{id}/link-organization` — explicit admin backfill for providers with null `OrganizationId`.
+- `Appointment.Create` now denormalizes `ReferringOrganizationId` and `ReceivingOrganizationId` from the source Referral at booking time.
+- `CareConnectParticipantHelper` — shared static helper: `IsAdmin`, `IsReferralParticipant`, `IsAppointmentParticipant`, `GetReferralOrgScope`, `GetAppointmentOrgScope`.
 
 ## CareConnect Provider Geo / Map-Ready Discovery
 
@@ -976,8 +984,9 @@ Analysis: `analysis/step6_final-convergence-and-relationship-activation.md`
 - **`GET /api/admin/users/{id}/scoped-roles`:** New endpoint; returns all active SRAs per user grouped by scope type via `IScopedAuthorizationService`.
 - **`GET /api/admin/platform-readiness`:** Extended with `scopedAssignmentsByScope: {global, organization, product, relationship, tenant}` section.
 
-#### CareConnect — Integrity Reporting
+#### CareConnect — Admin Endpoints
 - **`GET /api/admin/integrity`** (`CareConnectIntegrityEndpoints.cs`): Returns four integrity counters (referrals with org-pair but null relationship; appointments missing relationship where referral has one; providers/facilities without OrganizationId). Always returns 200; `-1` on individual query failure. `clean: true` when all counters are zero.
+- **`PUT /api/admin/providers/{id}/link-organization`** (`ProviderAdminEndpoints.cs`): LSCC-002 backfill — sets `Provider.OrganizationId` to the supplied `organizationId`. Auth: `PlatformOrTenantAdmin`. Idempotent. Returns updated `ProviderResponse`.
 
 #### Control Center (TypeScript)
 - **`types/control-center.ts`:** Added `ScopedAssignmentsByScope` interface; extended `PlatformReadinessSummary` with `scopedAssignmentsByScope` field

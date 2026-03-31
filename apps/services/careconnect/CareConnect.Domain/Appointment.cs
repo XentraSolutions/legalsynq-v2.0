@@ -73,9 +73,10 @@ public class Appointment : AuditableEntity
     }
 
     /// <summary>
-    /// Create an appointment, optionally linking it to the org relationship that
-    /// sourced the referral (denormalized from Referral.OrganizationRelationshipId).
+    /// Create an appointment, denormalizing org participant IDs from the source referral
+    /// so that appointment queries can be org-scoped without joining back to Referral.
     /// </summary>
+    // LSCC-002: Denormalize ReferringOrganizationId/ReceivingOrganizationId from Referral at creation
     public static Appointment Create(
         Guid tenantId,
         Guid referralId,
@@ -87,7 +88,9 @@ public class Appointment : AuditableEntity
         DateTime scheduledEndAtUtc,
         string? notes,
         Guid? createdByUserId,
-        Guid? organizationRelationshipId = null)
+        Guid? organizationRelationshipId = null,
+        Guid? referringOrganizationId = null,
+        Guid? receivingOrganizationId = null)
     {
         return new Appointment
         {
@@ -101,6 +104,8 @@ public class Appointment : AuditableEntity
             ScheduledStartAtUtc = scheduledStartAtUtc,
             ScheduledEndAtUtc = scheduledEndAtUtc,
             OrganizationRelationshipId = organizationRelationshipId,
+            ReferringOrganizationId = referringOrganizationId,
+            ReceivingOrganizationId = receivingOrganizationId,
             Status = AppointmentStatus.Scheduled,
             Notes = notes?.Trim(),
             CreatedByUserId = createdByUserId,

@@ -108,6 +108,7 @@ app.MapGet("/info",   () => Results.Ok(new { service = "CareConnect", version = 
 
 // API endpoints
 app.MapCareConnectIntegrityEndpoints();
+app.MapProviderAdminEndpoints();
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
 app.MapCategoryEndpoints();

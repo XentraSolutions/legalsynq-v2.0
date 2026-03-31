@@ -360,6 +360,23 @@ public class ProviderService : IProviderService
         };
     }
 
+    // LSCC-002: Admin org-link backfill — explicit, idempotent, admin-only operation.
+    public async Task<ProviderResponse> LinkOrganizationAsync(
+        Guid tenantId,
+        Guid providerId,
+        Guid organizationId,
+        CancellationToken ct = default)
+    {
+        var provider = await _providers.GetByIdAsync(tenantId, providerId, ct)
+            ?? throw new NotFoundException($"Provider '{providerId}' was not found.");
+
+        provider.LinkOrganization(organizationId);
+        await _providers.UpdateAsync(provider, ct);
+
+        var loaded = await _providers.GetByIdAsync(tenantId, providerId, ct);
+        return ToResponse(loaded!);
+    }
+
     private static string BuildSubtitle(string city, string state, string? primaryCategory)
     {
         var location = $"{city}, {state}";
