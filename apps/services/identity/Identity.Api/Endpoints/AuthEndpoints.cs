@@ -17,12 +17,15 @@ public static class AuthEndpoints
         // cookie, and forwards only the session envelope (no raw token) to the browser.
         app.MapPost("/api/auth/login", async (
             LoginRequest request,
+            HttpContext httpContext,
             IAuthService authService,
             CancellationToken ct) =>
         {
             try
             {
-                var response = await authService.LoginAsync(request, ct);
+                var ip = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
+                      ?? httpContext.Connection.RemoteIpAddress?.ToString();
+                var response = await authService.LoginAsync(request, ip, ct);
                 return Results.Ok(response);
             }
             catch (UnauthorizedAccessException)
@@ -90,9 +93,11 @@ public static class AuthEndpoints
                 },
                 Actor = new AuditEventActorDto
                 {
-                    Id   = userId,
-                    Type = ActorType.User,
-                    Name = name,
+                    Id        = userId,
+                    Type      = ActorType.User,
+                    Name      = name,
+                    IpAddress = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
+                             ?? httpContext.Connection.RemoteIpAddress?.ToString(),
                 },
                 Entity      = userId is not null ? new AuditEventEntityDto { Type = "User", Id = userId } : null,
                 Action      = "Logout",

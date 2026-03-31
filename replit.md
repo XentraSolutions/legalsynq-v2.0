@@ -2036,3 +2036,16 @@ All follow fire-and-observe: `_ = auditClient.IngestAsync(...)` (C#) / `.catch((
 
 ### Analysis
 - `analysis/step29_user_activity_audit.md` — full event taxonomy table, change log, architecture notes
+
+## Step 30 — IP Address Capture in Auth Audit Events
+
+**IP address now recorded on all login and logout audit events** (both successful and failed).
+
+### Changes
+- **`Identity.Api/Endpoints/AuthEndpoints.cs`** — login endpoint now injects `HttpContext` and extracts the client IP via `X-Forwarded-For` (first segment) falling back to `RemoteIpAddress`. Passes `ip` to `LoginAsync`. Logout endpoint likewise sets `Actor.IpAddress` from the same header chain.
+- **`Identity.Application/Interfaces/IAuthService.cs`** — `LoginAsync` signature extended: `Task<LoginResponse> LoginAsync(LoginRequest request, string? ipAddress = null, CancellationToken ct = default)`
+- **`Identity.Application/Services/AuthService.cs`** — `LoginAsync` accepts `ipAddress`; sets `Actor.IpAddress` on the `identity.user.login.succeeded` event. `EmitLoginFailed` helper extended with `string? ipAddress = null`; all four call sites (`TenantNotFound`, `UserNotFound`, `InvalidCredentials`, `RoleLookupFailed`) pass the IP through.
+
+### Result
+- Activity Log IP Address column now shows the real client IP for login/logout events instead of `—`.
+- Both successful and failed login attempts include the IP, supporting HIPAA §164.312(b) and NIST SP 800-92 requirements for contextual access logging.

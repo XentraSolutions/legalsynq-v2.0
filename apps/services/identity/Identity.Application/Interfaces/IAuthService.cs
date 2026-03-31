@@ -5,7 +5,7 @@ namespace Identity.Application.Interfaces;
 
 public interface IAuthService
 {
-    Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken ct = default);
+    Task<LoginResponse> LoginAsync(LoginRequest request, string? ipAddress = null, CancellationToken ct = default);
 
     /// <summary>
     /// Builds an AuthMeResponse from a validated ClaimsPrincipal.

@@ -35,7 +35,7 @@ public class AuthService : IAuthService
         _logger = logger;
     }
 
-    public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
+    public async Task<LoginResponse> LoginAsync(LoginRequest request, string? ipAddress = null, CancellationToken ct = default)
     {
         // Canonical audit helpers — used when a login failure must be emitted before re-throwing.
         // fire-and-observe: never awaited, never allowed to gate the primary auth response.
@@ -45,7 +45,7 @@ public class AuthService : IAuthService
         var tenant = await _tenantRepository.GetByCodeAsync(tenantCodeNorm, ct);
         if (tenant is null || !tenant.IsActive)
         {
-            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotFound");
+            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotFound", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
 
@@ -53,21 +53,21 @@ public class AuthService : IAuthService
         var user = await _userRepository.GetByTenantAndEmailAsync(tenant.Id, normalizedEmail, ct);
         if (user is null || !user.IsActive)
         {
-            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: null, reason: "UserNotFound");
+            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: null, reason: "UserNotFound", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
 
         var valid = _passwordHasher.Verify(request.Password, user.PasswordHash);
         if (!valid)
         {
-            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "InvalidCredentials");
+            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "InvalidCredentials", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
 
         var userWithRoles = await _userRepository.GetByIdWithRolesAsync(user.Id, ct);
         if (userWithRoles is null)
         {
-            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "RoleLookupFailed");
+            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "RoleLookupFailed", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
 
@@ -169,9 +169,10 @@ public class AuthService : IAuthService
             },
             Actor = new AuditEventActorDto
             {
-                Id   = userWithRoles.Id.ToString(),
-                Type = ActorType.User,
-                Name = $"{userWithRoles.FirstName} {userWithRoles.LastName}".Trim(),
+                Id        = userWithRoles.Id.ToString(),
+                Type      = ActorType.User,
+                Name      = $"{userWithRoles.FirstName} {userWithRoles.LastName}".Trim(),
+                IpAddress = ipAddress,
             },
             Entity = new AuditEventEntityDto { Type = "User", Id = userWithRoles.Id.ToString() },
             Action      = "LoginSucceeded",
@@ -245,7 +246,7 @@ public class AuthService : IAuthService
     ///
     /// HIPAA §164.312(b): failed login attempts are a required audit event.
     /// </summary>
-    private void EmitLoginFailed(string email, string tenantCode, string? userId, string reason)
+    private void EmitLoginFailed(string email, string tenantCode, string? userId, string reason, string? ipAddress = null)
     {
         var now = DateTimeOffset.UtcNow;
         _ = _auditClient.IngestAsync(new IngestAuditEventRequest
@@ -264,9 +265,10 @@ public class AuthService : IAuthService
             },
             Actor = new AuditEventActorDto
             {
-                Id   = userId,
-                Type = ActorType.User,
-                Name = email,
+                Id        = userId,
+                Type      = ActorType.User,
+                Name      = email,
+                IpAddress = ipAddress,
             },
             Entity      = userId is not null ? new AuditEventEntityDto { Type = "User", Id = userId } : null,
             Action      = "LoginFailed",

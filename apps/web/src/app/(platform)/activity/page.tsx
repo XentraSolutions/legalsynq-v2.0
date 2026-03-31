@@ -17,30 +17,60 @@ interface PageProps {
   searchParams: SearchParams;
 }
 
-interface RawAuditEvent {
-  id:            string;
-  eventType?:    string;
-  category?:     string;
-  severity?:     string;
-  actorId?:      string;
-  actorLabel?:   string;
-  targetType?:   string;
-  targetId?:     string;
-  description?:  string;
-  outcome?:      string;
-  occurredAtUtc?: string;
+// ── Wire types matching the actual audit service JSON shape ────────────────────
+
+interface AuditActor {
+  id?:        string;
+  name?:      string;
+  type?:      string;
+  ipAddress?: string;
 }
 
-interface PagedAuditResponse {
-  items:      RawAuditEvent[];
+interface AuditEntity {
+  type?: string;
+  id?:   string;
+}
+
+interface AuditScope {
+  tenantId?:      string;
+  organizationId?: string;
+  userScopeId?:   string;
+}
+
+interface AuditEventRecord {
+  auditId:        string;
+  eventType:      string;
+  eventCategory:  string;
+  severity:       string;
+  sourceSystem:   string;
+  action:         string;
+  description:    string;
+  actor:          AuditActor;
+  entity?:        AuditEntity;
+  scope:          AuditScope;
+  occurredAtUtc:  string;
+  recordedAtUtc?: string;
+}
+
+// The audit service wraps everything in ApiResponse<T>
+interface AuditQueryData {
+  items:      AuditEventRecord[];
   totalCount: number;
+  page:       number;
+  pageSize:   number;
+}
+
+interface AuditApiResponse {
+  success: boolean;
+  data:    AuditQueryData;
+  traceId?: string;
 }
 
 const CATEGORY_TABS = [
-  { label: 'All',     value: '',               title: 'All event types' },
-  { label: 'Access',  value: 'Security',       title: 'Login, logout, and role events' },
-  { label: 'Admin',   value: 'Administrative', title: 'User and configuration changes' },
-  { label: 'Clinical', value: 'Business',      title: 'Referrals and appointments' },
+  { label: 'All',      value: '',               title: 'All event types' },
+  { label: 'Access',   value: 'Security',        title: 'Login, logout, and role events' },
+  { label: 'Admin',    value: 'Administrative',  title: 'User and configuration changes' },
+  { label: 'Clinical', value: 'Business',        title: 'Referrals and appointments' },
 ];
 
 /**
@@ -48,9 +78,6 @@ const CATEGORY_TABS = [
  *
  * Access: authenticated org member (requireOrg guard).
  * Scope: events scoped to the authenticated user's tenantId only.
- *
- * Renders a read-only timeline of SynqAudit events for the tenant,
- * with category tabs, actor filter, and "My Activity" shortcut.
  */
 export default async function ActivityPage({ searchParams }: PageProps) {
   const session = await requireOrg();
@@ -62,8 +89,6 @@ export default async function ActivityPage({ searchParams }: PageProps) {
   const dateTo    = searchParams.dateTo    || undefined;
   const page      = Math.max(1, parseInt(searchParams.page ?? '1', 10));
 
-  // actorId: supports literal UUID or the magic value "me" which resolves
-  // to the authenticated user's own userId for the "My Activity" toggle.
   const rawActorId = searchParams.actorId || undefined;
   const actorId    = rawActorId === 'me' ? session.userId : rawActorId;
   const isMyView   = rawActorId === 'me' || actorId === session.userId;
@@ -80,17 +105,17 @@ export default async function ActivityPage({ searchParams }: PageProps) {
     pageSize:  PAGE_SIZE,
   });
 
-  let result: PagedAuditResponse | null = null;
+  let result: AuditApiResponse | null = null;
   let fetchError: string | null = null;
 
   try {
-    result = await serverApi.get<PagedAuditResponse>(`/audit-service/audit/events${qs}`);
+    result = await serverApi.get<AuditApiResponse>(`/audit-service/audit/events${qs}`);
   } catch (err: unknown) {
     fetchError = err instanceof Error ? err.message : 'Unable to load activity log.';
   }
 
-  const items      = result?.items ?? [];
-  const totalCount = result?.totalCount ?? 0;
+  const items      = result?.data?.items ?? [];
+  const totalCount = result?.data?.totalCount ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const startItem  = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const endItem    = Math.min(page * PAGE_SIZE, totalCount);
@@ -108,21 +133,16 @@ export default async function ActivityPage({ searchParams }: PageProps) {
     return `/activity${q ? `?${q}` : ''}`;
   }
 
-  function tabHref(cat: string) {
-    return hrefFor({ category: cat || undefined, page: 1 });
-  }
-
-  function pageHref(p: number) {
-    return hrefFor({ page: p });
-  }
+  function tabHref(cat: string) { return hrefFor({ category: cat || undefined, page: 1 }); }
+  function pageHref(p: number)   { return hrefFor({ page: p }); }
 
   const myActivityHref = isMyView ? '/activity' : hrefFor({ actorId: 'me', page: 1 });
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
 
-        {/* ── Page header ─────────────────────────────────────────────────── */}
+        {/* ── Page header ───────────────────────────────────────────────── */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Activity Log</h1>
@@ -143,7 +163,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
           </a>
         </div>
 
-        {/* ── Category tabs ────────────────────────────────────────────────── */}
+        {/* ── Category tabs ──────────────────────────────────────────────── */}
         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
           {CATEGORY_TABS.map((tab) => (
             <a
@@ -162,10 +182,8 @@ export default async function ActivityPage({ searchParams }: PageProps) {
           ))}
         </div>
 
-        {/* ── Filter bar ──────────────────────────────────────────────────── */}
+        {/* ── Filter bar ────────────────────────────────────────────────── */}
         <form method="GET" action="/activity" className="flex flex-wrap items-end gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3">
-
-          {/* Preserve category tab */}
           {category && <input type="hidden" name="category" value={category} />}
 
           <div className="flex-1 min-w-40">
@@ -193,10 +211,10 @@ export default async function ActivityPage({ searchParams }: PageProps) {
             <select id="severity" name="severity" defaultValue={severity ?? ''}
               className="w-full h-9 rounded-md border border-gray-300 px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
               <option value="">All</option>
-              <option value="info">Info</option>
-              <option value="warn">Warn</option>
-              <option value="error">Error</option>
-              <option value="critical">Critical</option>
+              <option value="Info">Info</option>
+              <option value="Warn">Warn</option>
+              <option value="Error">Error</option>
+              <option value="Critical">Critical</option>
             </select>
           </div>
 
@@ -226,21 +244,21 @@ export default async function ActivityPage({ searchParams }: PageProps) {
           </div>
         </form>
 
-        {/* ── Active filter chips ──────────────────────────────────────────── */}
+        {/* ── Active filter chips ──────────────────────────────────────── */}
         {hasFilters && (
           <div className="flex items-center flex-wrap gap-2 text-sm text-gray-500">
             <span>Filters:</span>
-            {isMyView    && <Chip label="My Activity" />}
+            {isMyView     && <Chip label="My Activity" />}
             {actorId && !isMyView && <Chip label={`actor: ${actorId}`} />}
-            {eventType   && <Chip label={`event: ${eventType}`} />}
-            {category    && <Chip label={`category: ${category}`} />}
-            {severity    && <Chip label={`severity: ${severity}`} />}
-            {dateFrom    && <Chip label={`from: ${dateFrom}`} />}
-            {dateTo      && <Chip label={`to: ${dateTo}`} />}
+            {eventType    && <Chip label={`event: ${eventType}`} />}
+            {category     && <Chip label={`category: ${category}`} />}
+            {severity     && <Chip label={`severity: ${severity}`} />}
+            {dateFrom     && <Chip label={`from: ${dateFrom}`} />}
+            {dateTo       && <Chip label={`to: ${dateTo}`} />}
           </div>
         )}
 
-        {/* ── Error banner ─────────────────────────────────────────────────── */}
+        {/* ── Error banner ──────────────────────────────────────────────── */}
         {fetchError && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <strong className="font-semibold">Activity log unavailable.</strong>{' '}
@@ -248,7 +266,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        {/* ── Result count ─────────────────────────────────────────────────── */}
+        {/* ── Result count ──────────────────────────────────────────────── */}
         {!fetchError && result && (
           <div className="flex items-center justify-between text-xs text-gray-400">
             <span>
@@ -260,7 +278,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        {/* ── Timeline table ────────────────────────────────────────────────── */}
+        {/* ── Timeline table ─────────────────────────────────────────────── */}
         {!fetchError && items.length > 0 && (
           <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
             <table className="min-w-full divide-y divide-gray-100 text-sm">
@@ -271,52 +289,76 @@ export default async function ActivityPage({ searchParams }: PageProps) {
                   <th className="px-4 py-3 text-left font-medium whitespace-nowrap">Category</th>
                   <th className="px-4 py-3 text-left font-medium whitespace-nowrap">Severity</th>
                   <th className="px-4 py-3 text-left font-medium whitespace-nowrap">Actor</th>
+                  <th className="px-4 py-3 text-left font-medium whitespace-nowrap">IP Address</th>
                   <th className="px-4 py-3 text-left font-medium whitespace-nowrap">Target</th>
                   <th className="px-4 py-3 text-left font-medium whitespace-nowrap">Description</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {items.map((e) => (
-                  <tr key={e.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={e.auditId} className="hover:bg-gray-50 transition-colors">
+
                     <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap font-mono text-[11px]">
                       {e.occurredAtUtc ? formatUtc(e.occurredAtUtc) : '—'}
                     </td>
+
                     <td className="px-4 py-2.5 text-gray-700 font-mono text-[11px] whitespace-nowrap">
                       {e.eventType ?? '—'}
                     </td>
+
                     <td className="px-4 py-2.5">
-                      {e.category ? <CategoryBadge value={e.category} /> : <span className="text-gray-300 text-[11px]">—</span>}
+                      {e.eventCategory
+                        ? <CategoryBadge value={e.eventCategory} />
+                        : <span className="text-gray-300 text-[11px]">—</span>}
                     </td>
+
                     <td className="px-4 py-2.5">
-                      {e.severity ? <SeverityBadge value={e.severity} /> : <span className="text-gray-300 text-[11px]">—</span>}
+                      {e.severity
+                        ? <SeverityBadge value={e.severity} />
+                        : <span className="text-gray-300 text-[11px]">—</span>}
                     </td>
+
                     <td className="px-4 py-2.5 text-gray-700 whitespace-nowrap">
                       <span className="block text-xs font-medium">
-                        {e.actorLabel ?? e.actorId ?? <span className="text-gray-400 italic text-[11px]">system</span>}
+                        {e.actor?.name ?? <span className="text-gray-400 italic text-[11px]">system</span>}
                       </span>
-                      {e.actorId && (
+                      {e.actor?.id && (
                         <a
-                          href={`/activity?actorId=${encodeURIComponent(e.actorId)}`}
+                          href={`/activity?actorId=${encodeURIComponent(e.actor.id)}`}
                           className="block text-[10px] text-indigo-500 hover:text-indigo-700 hover:underline font-mono"
                         >
-                          {e.actorId.slice(0, 14)}…
+                          {e.actor.id.slice(0, 14)}…
                         </a>
                       )}
                     </td>
+
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {e.actor?.ipAddress
+                        ? (
+                          <span className="font-mono text-[11px] text-gray-600 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">
+                            {e.actor.ipAddress}
+                          </span>
+                        )
+                        : <span className="text-gray-300 text-[11px]">—</span>
+                      }
+                    </td>
+
                     <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap text-xs">
-                      {e.targetType && (
-                        <span className="mr-1 text-[10px] font-semibold text-gray-400 uppercase">{e.targetType}</span>
+                      {e.entity?.type && (
+                        <span className="mr-1 text-[10px] font-semibold text-gray-400 uppercase">{e.entity.type}</span>
                       )}
-                      {e.targetId && (
-                        <span className="font-mono text-[11px]">{e.targetId}</span>
+                      {e.entity?.id && (
+                        <span className="font-mono text-[11px]">{e.entity.id}</span>
                       )}
-                      {!e.targetType && !e.targetId && (
+                      {!e.entity?.type && !e.entity?.id && (
                         <span className="text-gray-300 italic text-[11px]">—</span>
                       )}
                     </td>
+
                     <td className="px-4 py-2.5 text-gray-500 text-xs max-w-xs truncate">
                       {e.description ?? ''}
                     </td>
+
                   </tr>
                 ))}
               </tbody>
@@ -324,7 +366,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        {/* ── Empty state ──────────────────────────────────────────────────── */}
+        {/* ── Empty state ───────────────────────────────────────────────── */}
         {!fetchError && result && items.length === 0 && (
           <div className="rounded-lg border border-gray-200 bg-white px-6 py-12 text-center">
             <p className="text-sm text-gray-400">
@@ -333,15 +375,12 @@ export default async function ActivityPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        {/* ── Pagination ───────────────────────────────────────────────────── */}
+        {/* ── Pagination ────────────────────────────────────────────────── */}
         {!fetchError && totalPages > 1 && (
           <nav className="flex items-center justify-center gap-1" aria-label="Pagination">
-            {page > 1 && (
-              <a href={pageHref(page - 1)} className="px-3 py-1.5 text-xs rounded-md font-medium text-gray-600 hover:bg-gray-100">
-                ← Prev
-              </a>
-            )}
-            {page <= 1 && (
+            {page > 1 ? (
+              <a href={pageHref(page - 1)} className="px-3 py-1.5 text-xs rounded-md font-medium text-gray-600 hover:bg-gray-100">← Prev</a>
+            ) : (
               <span className="px-3 py-1.5 text-xs rounded-md text-gray-300 cursor-not-allowed">← Prev</span>
             )}
             {buildPageRange(page, totalPages).map((p, i) =>
@@ -360,12 +399,9 @@ export default async function ActivityPage({ searchParams }: PageProps) {
                 </a>
               ),
             )}
-            {page < totalPages && (
-              <a href={pageHref(page + 1)} className="px-3 py-1.5 text-xs rounded-md font-medium text-gray-600 hover:bg-gray-100">
-                Next →
-              </a>
-            )}
-            {page >= totalPages && (
+            {page < totalPages ? (
+              <a href={pageHref(page + 1)} className="px-3 py-1.5 text-xs rounded-md font-medium text-gray-600 hover:bg-gray-100">Next →</a>
+            ) : (
               <span className="px-3 py-1.5 text-xs rounded-md text-gray-300 cursor-not-allowed">Next →</span>
             )}
           </nav>
@@ -376,7 +412,7 @@ export default async function ActivityPage({ searchParams }: PageProps) {
   );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function buildQs(params: Record<string, string | number | undefined>): string {
   const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== '');
@@ -403,7 +439,7 @@ function formatUtc(iso: string): string {
   } catch { return iso; }
 }
 
-// ── Badge components ──────────────────────────────────────────────────────────
+// ── Badge components ───────────────────────────────────────────────────────────
 
 function SeverityBadge({ value }: { value: string }) {
   const MAP: Record<string, string> = {
