@@ -38,7 +38,7 @@ echo "[notifications] Starting on :5008"
 ) &
 PID_NOTIF=$!
 
-# Start notifications provider-health worker
+# Start notifications provider-health worker (long-running, uses setInterval — respawn is correct)
 echo "[notifications:worker] Starting provider-health worker"
 (
   cd "$ROOT/apps/services/notifications"
@@ -46,6 +46,14 @@ echo "[notifications:worker] Starting provider-health worker"
     node_modules/.bin/ts-node-dev --respawn --transpile-only src/workers/provider-health.worker.ts
 ) &
 PID_NOTIF_WORKER=$!
+
+# Start notifications dispatch worker (stub — exits immediately, no respawn to avoid restart loop)
+echo "[notifications:worker] Starting dispatch worker (stub)"
+(
+  cd "$ROOT/apps/services/notifications"
+  NODE_ENV=development \
+    node_modules/.bin/ts-node --transpile-only src/workers/notification.worker.ts
+) || true &
 
 cleanup() {
     kill "$PID_WEB" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" 2>/dev/null || true
