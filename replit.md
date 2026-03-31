@@ -2194,6 +2194,32 @@ Three layered bugs were each silently masking the next:
 
 ---
 
+## Step 32 — LSCC-007 CareConnect UX Layer (2026-03-31)
+
+Frontend-only UX overhaul of the CareConnect referral experience.
+
+### New Components
+- `ReferralPageHeader` — detail page identity/status header (name, status badge, urgency, service, created date)
+- `ReferralQueueToolbar` — debounced search input + status filter pills (client component, updates URL params)
+- `ReferralQuickActions` — per-row quick actions with toast feedback and inline confirm for destructive actions
+
+### Key Changes
+- **Referral list page**: work-queue layout; pending rows highlighted (blue left-border accent); role-specific title/subtitle; search (client name, 320ms debounce, server-side via `clientName` API param); filter labels ("Pending" = "New" in backend); results count; back-to-dashboard link
+- **Referral detail page**: reorganized into 5 sections: identity header → primary actions → book appointment → referral fields → delivery/access/audit; `hideHeader` prop on `ReferralDetailPanel` avoids duplicate header
+- **Quick actions** per list row: View (all), Accept (receiver, non-terminal), Resend Email (referrer, New only), Revoke Link (referrer, with inline confirm)
+- **Navigation**: `?from=dashboard` param makes detail back button context-aware (back to dashboard vs. referrals list)
+
+### Files Changed
+- `apps/web/src/components/careconnect/referral-page-header.tsx` (new)
+- `apps/web/src/components/careconnect/referral-queue-toolbar.tsx` (new)
+- `apps/web/src/components/careconnect/referral-quick-actions.tsx` (new)
+- `apps/web/src/components/careconnect/referral-detail-panel.tsx` — `hideHeader?` prop
+- `apps/web/src/components/careconnect/referral-list-table.tsx` — role props, quick actions, row highlighting
+- `apps/web/src/app/(platform)/careconnect/referrals/page.tsx` — toolbar integration, search param
+- `apps/web/src/app/(platform)/careconnect/referrals/[id]/page.tsx` — section reorganization
+
+---
+
 ## Step 30 — IP Address Capture in Auth Audit Events
 
 **IP address now recorded on all login and logout audit events** (both successful and failed).

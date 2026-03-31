@@ -1,9 +1,11 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { ReferralListTable } from '@/components/careconnect/referral-list-table';
+import { ReferralQueueToolbar } from '@/components/careconnect/referral-queue-toolbar';
 import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
 
 interface ReferralsPageProps {
@@ -14,6 +16,7 @@ interface ReferralsPageProps {
     createdFrom?: string;
     createdTo?:   string;
     page?:        string;
+    search?:      string;
   };
 }
 
@@ -33,11 +36,12 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
 
   const page = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
 
-  // Date range from drilldown links — only used if both are valid
   const createdFrom = (searchParams.createdFrom && isValidIsoDate(searchParams.createdFrom))
     ? searchParams.createdFrom : undefined;
   const createdTo   = (searchParams.createdTo && isValidIsoDate(searchParams.createdTo))
     ? searchParams.createdTo : undefined;
+
+  const searchText = searchParams.search?.trim() || undefined;
 
   let result = null;
   let fetchError: string | null = null;
@@ -47,6 +51,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
       status:      searchParams.status     || undefined,
       urgency:     searchParams.urgency    || undefined,
       providerId:  searchParams.providerId || undefined,
+      clientName:  searchText,
       createdFrom,
       createdTo,
       page,
@@ -56,23 +61,34 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
     fetchError = err instanceof ServerApiError ? err.message : 'Failed to load referrals.';
   }
 
-  const heading = isReferrer ? 'Sent Referrals' : 'Received Referrals';
+  const heading = isReferrer ? 'Sent Referrals' : 'Referral Inbox';
 
-  // Active date filter banner
   const hasDateFilter = !!(createdFrom || createdTo);
+
+  // Build query string for pagination links to preserve current filters
+  const qsParts: string[] = [];
+  if (searchParams.status)    qsParts.push(`status=${encodeURIComponent(searchParams.status)}`);
+  if (searchParams.search)    qsParts.push(`search=${encodeURIComponent(searchParams.search)}`);
+  if (searchParams.createdFrom) qsParts.push(`createdFrom=${searchParams.createdFrom}`);
+  if (searchParams.createdTo)   qsParts.push(`createdTo=${searchParams.createdTo}`);
+  const currentQs = qsParts.join('&');
 
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">{heading}</h1>
-
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">{heading}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {isReferrer ? 'Referrals you have sent to providers.' : 'Referrals waiting for your action.'}
+          </p>
+        </div>
         {isReferrer && (
           <Link
             href="/careconnect/providers"
-            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0"
           >
-            New Referral
+            + New Referral
           </Link>
         )}
       </div>
@@ -80,7 +96,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
       {/* Active date filter indicator */}
       {hasDateFilter && (
         <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded px-3 py-2">
-          <span className="ri-calendar-line" />
+          <span>&#x1F4C5;</span>
           <span>
             Filtered to{' '}
             {createdFrom ? formatDisplayDate(createdFrom) : 'start'}
@@ -96,28 +112,28 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
         </div>
       )}
 
-      {/* Quick status filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {['', 'New', 'Accepted', 'Declined', 'Scheduled', 'Completed', 'Cancelled'].map(s => (
-          <Link
-            key={s}
-            href={s ? `/careconnect/referrals?status=${s}` : '/careconnect/referrals'}
-            className={`text-sm px-3 py-1 rounded-full border transition-colors ${
-              (searchParams.status ?? '') === s
-                ? 'bg-primary text-white border-primary'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-            }`}
-          >
-            {s || 'All'}
-          </Link>
-        ))}
-      </div>
+      {/* Search + filter toolbar — Suspense because it uses useSearchParams */}
+      <Suspense fallback={null}>
+        <ReferralQueueToolbar
+          currentSearch={searchText ?? ''}
+          currentStatus={searchParams.status ?? ''}
+        />
+      </Suspense>
 
       {/* Error */}
       {fetchError && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-          {fetchError}
+          Unable to load referrals. {fetchError}
         </div>
+      )}
+
+      {/* Results summary when filtering */}
+      {result && (searchText || searchParams.status) && (
+        <p className="text-xs text-gray-400">
+          {result.totalCount === 0
+            ? 'No referrals match your filters.'
+            : `${result.totalCount} referral${result.totalCount !== 1 ? 's' : ''} found`}
+        </p>
       )}
 
       {/* Referral table */}
@@ -127,8 +143,18 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
           totalCount={result.totalCount}
           page={result.page}
           pageSize={result.pageSize}
+          isReferrer={isReferrer}
+          isReceiver={isReceiver}
+          currentQs={currentQs}
         />
       )}
+
+      {/* Back to dashboard */}
+      <div className="pt-1">
+        <Link href="/careconnect/dashboard" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+          ← Back to Dashboard
+        </Link>
+      </div>
     </div>
   );
 }

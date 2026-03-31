@@ -2,7 +2,8 @@ import type { ReferralDetail } from '@/types/careconnect';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 
 interface ReferralDetailPanelProps {
-  referral: ReferralDetail;
+  referral:    ReferralDetail;
+  hideHeader?: boolean;
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -34,24 +35,26 @@ function formatDate(iso: string | undefined): string {
   });
 }
 
-export function ReferralDetailPanel({ referral }: ReferralDetailPanelProps) {
+export function ReferralDetailPanel({ referral, hideHeader = false }: ReferralDetailPanelProps) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg">
-      {/* Header */}
-      <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">
-            {referral.clientFirstName} {referral.clientLastName}
-          </h2>
-          {referral.caseNumber && (
-            <p className="text-sm text-gray-500 mt-0.5">Case #{referral.caseNumber}</p>
-          )}
+      {/* Header — omitted when used alongside ReferralPageHeader */}
+      {!hideHeader && (
+        <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {referral.clientFirstName} {referral.clientLastName}
+            </h2>
+            {referral.caseNumber && (
+              <p className="text-sm text-gray-500 mt-0.5">Case #{referral.caseNumber}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <UrgencyBadge urgency={referral.urgency} />
+            <StatusBadge status={referral.status} size="md" />
+          </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <UrgencyBadge urgency={referral.urgency} />
-          <StatusBadge status={referral.status} size="md" />
-        </div>
-      </div>
+      )}
 
       {/* Body */}
       <div className="px-6 py-5 space-y-0">

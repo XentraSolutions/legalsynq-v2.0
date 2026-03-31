@@ -4,6 +4,7 @@ import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
+import { ReferralPageHeader } from '@/components/careconnect/referral-page-header';
 import { ReferralDetailPanel } from '@/components/careconnect/referral-detail-panel';
 import { ReferralDeliveryCard } from '@/components/careconnect/referral-delivery-card';
 import { ReferralStatusActions } from '@/components/careconnect/referral-status-actions';
@@ -11,10 +12,11 @@ import { ReferralTimeline } from '@/components/careconnect/referral-timeline';
 import { ReferralAuditTimeline } from '@/components/careconnect/referral-audit-timeline';
 
 interface ReferralDetailPageProps {
-  params: { id: string };
+  params:      { id: string };
+  searchParams: { from?: string };
 }
 
-export default async function ReferralDetailPage({ params }: ReferralDetailPageProps) {
+export default async function ReferralDetailPage({ params, searchParams }: ReferralDetailPageProps) {
   const session = await requireOrg();
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
@@ -46,15 +48,22 @@ export default async function ReferralDetailPage({ params }: ReferralDetailPageP
     }
   }
 
+  const backHref = searchParams.from === 'dashboard'
+    ? '/careconnect/dashboard'
+    : '/careconnect/referrals';
+  const backLabel = searchParams.from === 'dashboard'
+    ? '← Back to Dashboard'
+    : '← Back to Referrals';
+
   return (
     <div className="space-y-4">
-      {/* Back link */}
-      <nav>
+      {/* Back navigation */}
+      <nav className="flex items-center justify-between">
         <Link
-          href="/careconnect/referrals"
+          href={backHref}
           className="text-sm text-gray-500 hover:text-gray-800 transition-colors"
         >
-          ← Back to Referrals
+          {backLabel}
         </Link>
       </nav>
 
@@ -64,50 +73,51 @@ export default async function ReferralDetailPage({ params }: ReferralDetailPageP
         </div>
       )}
 
-      {referral && <ReferralDetailPanel referral={referral} />}
-
-      {/* Referrer: book an appointment once the referral is accepted */}
-      {referral && isReferrer && referral.status === 'Accepted' && (
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/careconnect/providers/${referral.providerId}/availability?referralId=${referral.id}`}
-            className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
-          >
-            Book Appointment
-          </Link>
-          <span className="text-xs text-gray-400">
-            Select an available slot to schedule for this referral.
-          </span>
-        </div>
-      )}
-
-      {/* LSCC-005-01: Email delivery status card — referrers only */}
-      {referral && isReferrer && (
-        <ReferralDeliveryCard referral={referral} />
-      )}
-
-      {/* Role-based status actions (Accept / Decline for receivers; Cancel for either) */}
       {referral && (
-        <ReferralStatusActions
-          referral={referral}
-          isReceiver={isReceiver}
-          isReferrer={isReferrer}
-        />
-      )}
+        <>
+          {/* 1. Header — identity + prominent status */}
+          <ReferralPageHeader referral={referral} />
 
-      {/* LSCC-005-02: Operational audit timeline — referrers only */}
-      {referral && isReferrer && (
-        <ReferralAuditTimeline referralId={referral.id} />
-      )}
+          {/* 2. Primary action area */}
+          <ReferralStatusActions
+            referral={referral}
+            isReceiver={isReceiver}
+            isReferrer={isReferrer}
+          />
 
-      {/* Referral activity timeline */}
-      {referral && (
-        <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
-            Activity
-          </h3>
-          <ReferralTimeline referralId={referral.id} />
-        </div>
+          {/* Book appointment — referrer action once accepted */}
+          {isReferrer && referral.status === 'Accepted' && (
+            <div className="bg-teal-50 border border-teal-200 rounded-lg px-5 py-4 flex items-center gap-4">
+              <div className="flex-1">
+                <p className="text-sm font-medium text-teal-800">This referral has been accepted.</p>
+                <p className="text-xs text-teal-600 mt-0.5">You can now schedule an appointment with the provider.</p>
+              </div>
+              <Link
+                href={`/careconnect/providers/${referral.providerId}/availability?referralId=${referral.id}`}
+                className="bg-teal-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-teal-700 transition-colors shrink-0"
+              >
+                Book Appointment
+              </Link>
+            </div>
+          )}
+
+          {/* 3. Referral details — body only (header rendered above) */}
+          <ReferralDetailPanel referral={referral} hideHeader />
+
+          {/* 4. Delivery / access controls — referrers only */}
+          {isReferrer && <ReferralDeliveryCard referral={referral} />}
+
+          {/* 5. Audit timeline — referrers only */}
+          {isReferrer && <ReferralAuditTimeline referralId={referral.id} />}
+
+          {/* 5b. Activity / status history — all roles */}
+          <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">
+              Activity
+            </h3>
+            <ReferralTimeline referralId={referral.id} />
+          </div>
+        </>
       )}
     </div>
   );
