@@ -8,6 +8,7 @@ import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 import { ProviderDetailCard } from '@/components/careconnect/provider-detail-card';
 import { CreateReferralForm } from '@/components/careconnect/create-referral-form';
+import { ProviderAvailabilityPreview } from '@/components/careconnect/provider-availability-preview';
 import type { ProviderDetail } from '@/types/careconnect';
 
 /**
@@ -97,6 +98,9 @@ export default function ProviderDetailPage() {
 
       {/* Provider detail card */}
       <ProviderDetailCard provider={provider} />
+
+      {/* Availability preview — first 5 open slots in the next 2 weeks */}
+      <ProviderAvailabilityPreview providerId={provider.id} providerName={provider.displayLabel} />
 
       {/* Create Referral CTA — only for referrers */}
       {isReferrer && (

@@ -5,6 +5,7 @@ import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { ReferralDetailPanel } from '@/components/careconnect/referral-detail-panel';
+import { ReferralStatusActions } from '@/components/careconnect/referral-status-actions';
 
 interface ReferralDetailPageProps {
   params: { id: string };
@@ -73,8 +74,8 @@ export default async function ReferralDetailPage({ params }: ReferralDetailPageP
 
       {referral && <ReferralDetailPanel referral={referral} />}
 
-      {/* Referrer: book an appointment for this referral */}
-      {referral && isReferrer && referral.status !== 'Cancelled' && referral.status !== 'Declined' && (
+      {/* Referrer: book an appointment once the referral is accepted */}
+      {referral && isReferrer && referral.status === 'Accepted' && (
         <div className="flex items-center gap-3">
           <Link
             href={`/careconnect/providers/${referral.providerId}/availability?referralId=${referral.id}`}
@@ -83,16 +84,18 @@ export default async function ReferralDetailPage({ params }: ReferralDetailPageP
             Book Appointment
           </Link>
           <span className="text-xs text-gray-400">
-            Opens the provider's availability calendar with this referral pre-loaded.
+            Select an available slot to schedule for this referral.
           </span>
         </div>
       )}
 
-      {/* Phase 2 placeholder for receiver status updates */}
-      {referral && isReceiver && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-400">
-          Status updates (Accept / Decline) are coming in Phase 2.
-        </div>
+      {/* Role-based status actions (Accept / Decline for receivers; Cancel for either) */}
+      {referral && (
+        <ReferralStatusActions
+          referral={referral}
+          isReceiver={isReceiver}
+          isReferrer={isReferrer}
+        />
       )}
     </div>
   );

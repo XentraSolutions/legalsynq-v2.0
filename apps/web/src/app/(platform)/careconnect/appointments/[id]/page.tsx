@@ -5,6 +5,7 @@ import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { AppointmentDetailPanel } from '@/components/careconnect/appointment-detail-panel';
+import { AppointmentCancelButton } from '@/components/careconnect/appointment-cancel-button';
 
 interface AppointmentDetailPageProps {
   params: { id: string };
@@ -82,11 +83,9 @@ export default async function AppointmentDetailPage({ params }: AppointmentDetai
 
       {appointment && <AppointmentDetailPanel appointment={appointment} />}
 
-      {/* Phase 2 placeholder for status actions (receivers: Confirm / NoShow) */}
-      {appointment && isReceiver && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-400">
-          Status management (Confirm, Cancel, No-show) is coming in Phase 2.
-        </div>
+      {/* Cancel action — available to referrers and receivers for non-terminal appointments */}
+      {appointment && (isReferrer || isReceiver) && (
+        <AppointmentCancelButton appointment={appointment} />
       )}
     </div>
   );

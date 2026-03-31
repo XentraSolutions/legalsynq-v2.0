@@ -77,9 +77,9 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
         )}
       </div>
 
-      {/* Quick status filters */}
+      {/* Quick status filters — values match backend ReferralWorkflowRules */}
       <div className="flex items-center gap-2 flex-wrap">
-        {['', 'Pending', 'Accepted', 'Declined', 'Completed', 'Cancelled'].map(s => (
+        {['', 'New', 'Accepted', 'Declined', 'Scheduled', 'Completed', 'Cancelled'].map(s => (
           <Link
             key={s}
             href={s ? `/careconnect/referrals?status=${s}` : '/careconnect/referrals'}

@@ -63,6 +63,10 @@ export const careConnectApi = {
 
     getById: (id: string) =>
       apiClient.get<ReferralDetail>(`/careconnect/api/referrals/${id}`),
+
+    /** PUT /api/referrals/{id} — update status (Accept / Decline / Cancel / etc.) */
+    update: (id: string, body: { requestedService: string; urgency: string; status: string; notes?: string }) =>
+      apiClient.put<ReferralDetail>(`/careconnect/api/referrals/${id}`, body),
   },
 
   appointments: {
@@ -76,5 +80,9 @@ export const careConnectApi = {
 
     getById: (id: string) =>
       apiClient.get<AppointmentDetail>(`/careconnect/api/appointments/${id}`),
+
+    /** POST /api/appointments/{id}/cancel */
+    cancel: (id: string, body: { notes?: string } = {}) =>
+      apiClient.post<AppointmentDetail>(`/careconnect/api/appointments/${id}/cancel`, body),
   },
 };
