@@ -100,11 +100,20 @@ public class ProviderRepository : IProviderRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task<Provider?> GetByIdCrossAsync(Guid id, CancellationToken ct = default)
+    {
+        return await _db.Providers
+            .Where(p => p.Id == id)
+            .Include(p => p.ProviderCategories)
+                .ThenInclude(pc => pc.Category)
+            .FirstOrDefaultAsync(ct);
+    }
+
     private IQueryable<Provider> BuildBaseQuery(Guid tenantId, GetProvidersQuery query)
     {
-        var q = _db.Providers
-            .Where(p => p.TenantId == tenantId)
-            .AsQueryable();
+        // Providers are a platform-wide marketplace; all active providers from all tenants
+        // are discoverable. The tenantId parameter is retained for future analytics/audit use.
+        var q = _db.Providers.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(query.Name))
             q = q.Where(p => p.Name.Contains(query.Name));

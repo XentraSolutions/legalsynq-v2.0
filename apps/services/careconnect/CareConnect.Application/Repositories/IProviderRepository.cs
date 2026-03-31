@@ -7,6 +7,11 @@ public interface IProviderRepository
 {
     Task<(List<Provider> Items, int TotalCount)> SearchAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default);
     Task<List<Provider>> GetMarkersAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default);
+
+    /// <summary>Cross-tenant read — used for discovery (detail page, availability). No ownership check.</summary>
+    Task<Provider?> GetByIdCrossAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Tenant-scoped read — used for write operations (update, link). Returns null if provider belongs to a different tenant.</summary>
     Task<Provider?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task AddAsync(Provider provider, CancellationToken ct = default);
     Task UpdateAsync(Provider provider, CancellationToken ct = default);

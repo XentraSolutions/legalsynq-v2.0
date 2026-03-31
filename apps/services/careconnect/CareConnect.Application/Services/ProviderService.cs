@@ -51,7 +51,8 @@ public class ProviderService : IProviderService
 
     public async Task<ProviderResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
-        var provider = await _providers.GetByIdAsync(tenantId, id, ct)
+        // Cross-tenant read: referrers from any org may view any provider's detail page.
+        var provider = await _providers.GetByIdCrossAsync(id, ct)
             ?? throw new NotFoundException($"Provider '{id}' was not found.");
         return ToResponse(provider);
     }
@@ -165,10 +166,11 @@ public class ProviderService : IProviderService
         if (errors.Count > 0)
             throw new ValidationException("One or more validation errors occurred.", errors);
 
-        var provider = await _providers.GetByIdAsync(tenantId, providerId, ct)
+        // Cross-tenant read: referrer may view any provider's availability.
+        var provider = await _providers.GetByIdCrossAsync(providerId, ct)
             ?? throw new NotFoundException($"Provider '{providerId}' was not found.");
 
-        var allSlots = await _slots.GetOpenByProviderInRangeAsync(tenantId, providerId, from, to, ct);
+        var allSlots = await _slots.GetOpenByProviderInRangeAsync(provider.TenantId, providerId, from, to, ct);
 
         // Apply optional filters in memory (the repository returns all open slots in range).
         var filtered = allSlots
