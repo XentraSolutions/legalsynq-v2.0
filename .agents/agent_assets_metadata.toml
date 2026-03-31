@@ -66,3 +66,9 @@ id = "UKIR6jc5Pnb-ASOfBVGbw"
 uri = "file://analysis/LSCC-005-report.md"
 type = "text"
 title = "LSCC-005 Implementation Report"
+
+[[outputs]]
+id = "YcTlK4cGUhorQlHbtIwH7"
+uri = "file://analysis/careconnect/LSCC-009-report.md"
+type = "text"
+title = "LSCC-009 Admin Activation Queue — Implementation Report"
