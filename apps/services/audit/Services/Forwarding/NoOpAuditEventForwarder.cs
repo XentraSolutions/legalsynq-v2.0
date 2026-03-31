@@ -144,7 +144,7 @@ public sealed class NoOpAuditEventForwarder : IAuditEventForwarder
             Payload        = payload,
             PublishedAtUtc = publishedAt,
             CorrelationId  = record.CorrelationId,
-            SourceService  = "platform-audit-event-service",
+            SourceService  = "audit",
         };
 
         _logger.LogDebug(

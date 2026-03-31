@@ -53,7 +53,7 @@ public sealed class IntegrationEvent<TPayload>
 
     /// <summary>
     /// The service that created and published this event.
-    /// Always "platform-audit-event-service" for events originating here.
+    /// Always "audit" for events originating here.
     /// </summary>
-    public string SourceService { get; init; } = "platform-audit-event-service";
+    public string SourceService { get; init; } = "audit";
 }

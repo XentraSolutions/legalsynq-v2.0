@@ -9,7 +9,7 @@ namespace PlatformAuditEventService.Data;
 /// ConnectionStrings__AuditEventDb or falls back to a localhost dev default.
 ///
 /// Usage:
-///   cd apps/services/platform-audit-event-service
+///   cd apps/services/audit
 ///   dotnet ef migrations add InitialAuditSchema --output-dir Data/Migrations
 ///   dotnet ef database update
 /// </summary>

@@ -459,7 +459,7 @@ public sealed class AuditEventQueryController : ControllerBase
         {
             EventType       = "audit.log.accessed",
             EventCategory   = EventCategory.Access,
-            SourceSystem    = "platform-audit-event-service",
+            SourceSystem    = "audit",
             SourceService   = "audit-query-api",
             Visibility      = VisibilityScope.Platform,
             Severity        = SeverityLevel.Info,

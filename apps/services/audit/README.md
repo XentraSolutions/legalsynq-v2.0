@@ -18,7 +18,7 @@ tamper-evident audit records from distributed systems in the LegalSynq platform.
 ## Quick Start
 
 ```bash
-cd apps/services/platform-audit-event-service
+cd apps/services/audit
 dotnet run
 # Swagger UI: http://localhost:5007/swagger
 # Health:     http://localhost:5007/health
@@ -34,7 +34,7 @@ The integration test suite uses xUnit + FluentAssertions + `WebApplicationFactor
 run against a fully wired-up in-memory service instance — no external dependencies required.
 
 ```bash
-cd apps/services/platform-audit-event-service.Tests
+cd apps/services/audit.Tests
 dotnet test
 ```
 

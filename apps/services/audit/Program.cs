@@ -433,7 +433,7 @@ try
                 .SetResourceBuilder(
                     ResourceBuilder.CreateDefault()
                         .AddService(
-                            serviceName:    "platform-audit-event-service",
+                            serviceName:    "audit",
                             serviceVersion: serviceVersion))
                 .AddAspNetCoreInstrumentation(o =>
                 {

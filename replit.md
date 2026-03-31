@@ -1217,7 +1217,7 @@ IDs and 1 CareConnect migration ID were inserted into `__EFMigrationsHistory` to
 ## Platform Audit/Event Service — Step 1 Scaffold (2026-03-30)
 
 ### Location
-`apps/services/platform-audit-event-service/`
+`apps/services/audit/`
 
 ### Purpose
 Standalone, independently deployable, portable audit/event service. Ingests business, security,
@@ -1489,7 +1489,7 @@ Both `PlatformAuditEventService.DTOs.AuditEventQueryRequest` (legacy) and `Platf
 ## Platform Audit Service — Step 10: Tamper-Evident Hashing ✅
 
 **Analysis doc:** `analysis/step10_hashing.md`
-**Integrity spec:** `apps/services/platform-audit-event-service/Docs/integrity-model.md`
+**Integrity spec:** `apps/services/audit/Docs/integrity-model.md`
 
 ### Key design gap fixed
 
@@ -1616,7 +1616,7 @@ Body shape is `ApiResponse<BatchIngestResponse>` for 200/207/422 — always insp
 ## Platform Audit Service — Step 12: Service-to-Service Ingest Auth ✅
 
 **Analysis doc:** `analysis/step12_ingest_auth.md`
-**Operator reference:** `apps/services/platform-audit-event-service/Docs/ingest-auth.md`
+**Operator reference:** `apps/services/audit/Docs/ingest-auth.md`
 
 ### Design
 
