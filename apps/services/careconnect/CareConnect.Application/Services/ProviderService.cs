@@ -377,6 +377,55 @@ public class ProviderService : IProviderService
         return ToResponse(loaded!);
     }
 
+    // LSCC-002-01: List active providers with no Identity org link (backfill candidates).
+    public async Task<List<ProviderResponse>> GetUnlinkedProvidersAsync(
+        Guid tenantId,
+        CancellationToken ct = default)
+    {
+        var unlinked = await _providers.GetUnlinkedAsync(tenantId, ct);
+        return unlinked.Select(ToResponse).ToList();
+    }
+
+    // LSCC-002-01: Bulk org-link — processes each item independently; never auto-guesses mappings.
+    // Skipped  = provider already has an OrganizationId (already linked).
+    // Unresolved = provider not found in this tenant.
+    // Updated  = successfully linked in this call.
+    public async Task<BulkLinkReport> BulkLinkOrganizationAsync(
+        Guid tenantId,
+        IReadOnlyList<ProviderOrgLinkItem> items,
+        CancellationToken ct = default)
+    {
+        int updated = 0, skipped = 0, unresolved = 0;
+
+        foreach (var item in items)
+        {
+            var provider = await _providers.GetByIdAsync(tenantId, item.ProviderId, ct);
+
+            if (provider is null)
+            {
+                unresolved++;
+                continue;
+            }
+
+            if (provider.OrganizationId.HasValue)
+            {
+                // Already linked — idempotent skip.
+                skipped++;
+                continue;
+            }
+
+            provider.LinkOrganization(item.OrganizationId);
+            await _providers.UpdateAsync(provider, ct);
+            updated++;
+        }
+
+        return new BulkLinkReport(
+            Total: items.Count,
+            Updated: updated,
+            Skipped: skipped,
+            Unresolved: unresolved);
+    }
+
     private static string BuildSubtitle(string city, string state, string? primaryCategory)
     {
         var location = $"{city}, {state}";

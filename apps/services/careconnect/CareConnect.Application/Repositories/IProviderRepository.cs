@@ -11,4 +11,11 @@ public interface IProviderRepository
     Task AddAsync(Provider provider, CancellationToken ct = default);
     Task UpdateAsync(Provider provider, CancellationToken ct = default);
     Task SyncCategoriesAsync(Guid providerId, List<Guid> categoryIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// LSCC-002-01: Returns all active providers in the tenant that have no OrganizationId set.
+    /// Used for backfill identification and admin reporting.
+    /// </summary>
+    // LSCC-002-01: Provider backfill tooling — identify unlinked providers
+    Task<List<Provider>> GetUnlinkedAsync(Guid tenantId, CancellationToken ct = default);
 }

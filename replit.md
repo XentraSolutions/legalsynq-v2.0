@@ -483,7 +483,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 
 **Org-scoped referral list:** `GET /api/referrals` applies `ReferringOrgId`/`ReceivingOrgId` filters from JWT `org_id` claim based on user's product roles. Admins see all.
 
-**xUnit test suite:** `CareConnect.Tests` — 141 tests covering `CareConnectCapabilityService`, `ReferralWorkflowRules`, `AppointmentWorkflowRules`, `OrgScopingTests`, `ProviderAvailabilityServiceTests`, `CareConnectParticipantHelperTests`, `AppointmentOrgScopingTests`. All passing.
+**xUnit test suite:** `CareConnect.Tests` — 158 tests covering `CareConnectCapabilityService`, `ReferralWorkflowRules`, `AppointmentWorkflowRules`, `OrgScopingTests`, `ProviderAvailabilityServiceTests`, `CareConnectParticipantHelperTests`, `AppointmentOrgScopingTests`, `AccessControlValidationTests`. All passing.
 
 **LSCC-002 — Access hardening (complete):**
 - `GET /api/referrals/{id}` — row-level participant check: non-participant callers receive 404 (not 403).
@@ -492,6 +492,13 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - `PUT /api/admin/providers/{id}/link-organization` — explicit admin backfill for providers with null `OrganizationId`.
 - `Appointment.Create` now denormalizes `ReferringOrganizationId` and `ReceivingOrganizationId` from the source Referral at booking time.
 - `CareConnectParticipantHelper` — shared static helper: `IsAdmin`, `IsReferralParticipant`, `IsAppointmentParticipant`, `GetReferralOrgScope`, `GetAppointmentOrgScope`.
+
+**LSCC-002-01 — Provider bulk tooling + appointment backfill (complete):**
+- `GET /api/admin/providers/unlinked` — list all active providers with no Identity `OrganizationId` set. Returns `{ providers, count }`.
+- `POST /api/admin/providers/bulk-link-organization` — bulk-link providers to organizations from an explicit `{ items: [{providerId, organizationId}] }` admin mapping. Returns `BulkLinkReport { total, updated, skipped, unresolved }`. Idempotent per item.
+- `POST /api/admin/appointments/backfill-org-ids` — finds legacy appointments with null org IDs, copies `ReferringOrganizationId`/`ReceivingOrganizationId` from parent Referral. Returns `AppointmentBackfillReport { updated, skipped, alreadySet, candidates }`. Never guesses mappings; only derives from parent Referral.
+- `Appointment.BackfillOrgIds(Guid, Guid)` — new idempotent domain method for legacy org-ID population.
+- **EF Core alignment:** `Microsoft.EntityFrameworkCore.Design` downgraded from `8.0.8` → `8.0.2` in all four affected projects (CareConnect.Api, CareConnect.Infrastructure, Fund.Api, Fund.Infrastructure) to eliminate MSB3277 version conflict with Pomelo 8.0.2.
 
 ## CareConnect Provider Geo / Map-Ready Discovery
 

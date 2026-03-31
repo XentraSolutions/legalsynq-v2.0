@@ -73,6 +73,20 @@ public class Appointment : AuditableEntity
     }
 
     /// <summary>
+    /// LSCC-002-01: Backfill org participant IDs for legacy appointments created
+    /// before LSCC-002 denormalization enforcement. Values are derived only from
+    /// the parent Referral — never inferred.
+    /// Idempotent: calling again with the same values is a no-op from domain perspective.
+    /// </summary>
+    // LSCC-002-01: Legacy appointment org-ID backfill — safe, explicit, admin-only
+    public void BackfillOrgIds(Guid referringOrganizationId, Guid receivingOrganizationId)
+    {
+        ReferringOrganizationId = referringOrganizationId;
+        ReceivingOrganizationId = receivingOrganizationId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
     /// Create an appointment, denormalizing org participant IDs from the source referral
     /// so that appointment queries can be org-scoped without joining back to Referral.
     /// </summary>

@@ -34,4 +34,30 @@ public interface IProviderService
         Guid providerId,
         Guid organizationId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// LSCC-002-01: Returns active providers that have no Identity OrganizationId set.
+    /// Used by admins to identify what requires manual backfill.
+    /// </summary>
+    // LSCC-002-01: Provider backfill tooling — list unlinked providers
+    Task<List<ProviderResponse>> GetUnlinkedProvidersAsync(
+        Guid tenantId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// LSCC-002-01: Bulk-links providers to organizations from an explicit admin mapping.
+    /// Idempotent per item — already-linked providers are counted as skipped.
+    /// Never auto-guesses org mappings.
+    /// </summary>
+    // LSCC-002-01: Provider bulk backfill — safe, explicit, admin-only
+    Task<BulkLinkReport> BulkLinkOrganizationAsync(
+        Guid tenantId,
+        IReadOnlyList<ProviderOrgLinkItem> items,
+        CancellationToken ct = default);
 }
+
+/// <summary>LSCC-002-01: Single provider-to-org mapping item for bulk backfill.</summary>
+public sealed record ProviderOrgLinkItem(Guid ProviderId, Guid OrganizationId);
+
+/// <summary>LSCC-002-01: Result of a bulk provider org-link operation.</summary>
+public sealed record BulkLinkReport(int Total, int Updated, int Skipped, int Unresolved);
