@@ -9,13 +9,13 @@ interface ProductEntitlementsPanelProps {
   entitlements: ProductEntitlementSummary[];
 }
 
-const PRODUCT_META: Record<ProductCode, { icon: string; description: string }> = {
-  SynqFund:    { icon: '💰', description: 'Litigation funding management and case financing' },
-  SynqLien:    { icon: '⚖️', description: 'Medical lien tracking and settlement workflows' },
-  SynqBill:    { icon: '🧾', description: 'Billing, invoicing, and fee management' },
-  SynqRx:      { icon: '💊', description: 'Prescription and pharmacy benefit coordination' },
-  SynqPayout:  { icon: '📤', description: 'Disbursement and payout processing' },
-  CareConnect: { icon: '🏥', description: 'Care coordination and provider network management' },
+const PRODUCT_META: Record<ProductCode, { iconSrc: string; description: string }> = {
+  SynqFund:    { iconSrc: '/product-icons/synqfund.png',    description: 'Litigation funding management and case financing' },
+  SynqLien:    { iconSrc: '/product-icons/synqlien.png',    description: 'Medical lien tracking and settlement workflows' },
+  SynqBill:    { iconSrc: '/product-icons/synqbill.png',    description: 'Billing, invoicing, and fee management' },
+  SynqRx:      { iconSrc: '/product-icons/synqrx.png',      description: 'Prescription and pharmacy benefit coordination' },
+  SynqPayout:  { iconSrc: '/product-icons/synqpayout.png',  description: 'Disbursement and payout processing' },
+  CareConnect: { iconSrc: '/product-icons/synqconnect.png', description: 'Care coordination and provider network management' },
 };
 
 /**
@@ -103,14 +103,14 @@ export function ProductEntitlementsPanel({
       {/* Product grid */}
       <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map(item => {
-          const meta    = PRODUCT_META[item.productCode] ?? { icon: '📦', description: '' };
+          const meta    = PRODUCT_META[item.productCode] ?? { iconSrc: '', description: '' };
           const loading = pending === item.productCode;
 
           return (
             <ProductCard
               key={item.productCode}
               item={item}
-              icon={meta.icon}
+              iconSrc={meta.iconSrc}
               description={meta.description}
               loading={loading}
               onToggle={() => handleToggle(item.productCode, item.enabled)}
@@ -126,13 +126,13 @@ export function ProductEntitlementsPanel({
 
 interface ProductCardProps {
   item:        ProductEntitlementSummary;
-  icon:        string;
+  iconSrc:     string;
   description: string;
   loading:     boolean;
   onToggle:    () => void;
 }
 
-function ProductCard({ item, icon, description, loading, onToggle }: ProductCardProps) {
+function ProductCard({ item, iconSrc, description, loading, onToggle }: ProductCardProps) {
   const isActive = item.enabled;
 
   return (
@@ -147,9 +147,16 @@ function ProductCard({ item, icon, description, loading, onToggle }: ProductCard
       {/* Top row: icon + name + toggle */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="text-xl leading-none shrink-0" aria-hidden>
-            {icon}
-          </span>
+          {iconSrc ? (
+            <img
+              src={iconSrc}
+              alt=""
+              aria-hidden
+              className="w-7 h-7 shrink-0 object-contain"
+            />
+          ) : (
+            <span className="w-7 h-7 shrink-0 rounded bg-gray-100" aria-hidden />
+          )}
           <span className="text-sm font-semibold text-gray-900 truncate">
             {item.productName}
           </span>
