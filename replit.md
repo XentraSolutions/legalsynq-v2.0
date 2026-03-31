@@ -2194,6 +2194,42 @@ Three layered bugs were each silently masking the next:
 
 ---
 
+## Step 36 — LSCC-010 Auto Provisioning — Provider Instant Activation (2026-03-31)
+
+Eliminates the manual admin step from the provider activation happy path. When a provider
+submits the LSCC-008 form, `auto-provision` fires: validates the HMAC token, creates/resolves
+an Identity Organization (idempotent), links the provider, auto-approves the activation request,
+and returns a login URL for immediate portal access. Any failure falls back to the LSCC-009 queue.
+
+### New Files — Backend
+- `CareConnect.Application/Interfaces/IIdentityOrganizationService.cs` — cross-service interface
+- `CareConnect.Application/Interfaces/IAutoProvisionService.cs` — orchestration interface
+- `CareConnect.Application/DTOs/AutoProvisionDtos.cs` — `AutoProvisionResult` (Provisioned/AlreadyActive/Fallback factories) + `AutoProvisionRequest`
+- `CareConnect.Application/Services/AutoProvisionService.cs` — full orchestration (token → provider → identity org → link → approve → loginUrl)
+- `CareConnect.Infrastructure/Services/HttpIdentityOrganizationService.cs` — HTTP client for Identity org creation; all failures return null (graceful fallback)
+- `CareConnect.Tests/Application/AutoProvisionTests.cs` — 10 tests, all pass
+
+### New Files — Identity
+- `AdminEndpointsLscc010` in `Identity.Api/Endpoints/AdminEndpoints.cs` — `POST /api/admin/organizations` (idempotent by deterministic name) + `GET /api/admin/organizations/{id}`
+
+### New Files — Frontend
+- (none; activation-form.tsx updated in place)
+
+### Modified Files
+- `CareConnect.Api/Endpoints/ReferralEndpoints.cs` — `POST /{id}/auto-provision` (public, token-gated)
+- `CareConnect.Infrastructure/DependencyInjection.cs` — DI for `IIdentityOrganizationService` + `IAutoProvisionService`
+- `apps/web/src/app/referrals/activate/activation-form.tsx` — calls auto-provision; renders 3 states: provisioned (green + login CTA), alreadyActive (blue + login CTA), fallback (amber + "team will follow up")
+- `CareConnect.Tests/Application/ProviderActivationFunnelTests.cs` — fixed URL assertion bug (encoded-string vs plain-path mismatch)
+
+### Behaviour
+- **Happy path:** pending provider → org created → provider linked → request auto-approved → login redirect
+- **Already active:** provider already linked → skip identity call → login redirect (idempotent)
+- **Fallback:** any failure → LSCC-009 upsert → amber "request received" UI; no activation lost
+- **Audit events:** `AutoProvisionStarted`, `AutoProvisionSucceeded`, `AutoProvisionFailed` (fire-and-forget)
+- **Test score:** 341 pass, 5 pre-existing ProviderAvailability failures (unrelated)
+
+---
+
 ## Step 35 — LSCC-009 Admin Activation Queue (2026-03-31)
 
 Builds the admin workflow that closes the provider activation loop: collects activation

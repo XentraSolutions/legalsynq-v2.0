@@ -275,6 +275,27 @@ public static class ReferralEndpoints
         });
         // Note: no .RequireAuthorization — intentionally public, token-gated
 
+        // POST /api/referrals/{id}/auto-provision
+        // LSCC-010: Attempts instant provider activation.
+        // On success:  provider is linked to an Identity org, returns loginUrl.
+        // On fallback: upserts LSCC-009 activation request for admin review.
+        // Public, token-gated (same HMAC-validated approach as track-funnel).
+        group.MapPost("/{id:guid}/auto-provision", async (
+            Guid id,
+            [FromBody] AutoProvisionRequest request,
+            IAutoProvisionService provisioner,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Token))
+                return Results.BadRequest(new { error = "token is required." });
+
+            var result = await provisioner.ProvisionAsync(
+                id, request.Token, request.RequesterName, request.RequesterEmail, ct);
+
+            return Results.Ok(result);
+        });
+        // Note: no .RequireAuthorization — intentionally public, token-gated
+
         // Accepts a referral on behalf of a pending (unlinked) provider.
         // The token proves the provider received the notification email.
         group.MapPost("/{id:guid}/accept-by-token", async (

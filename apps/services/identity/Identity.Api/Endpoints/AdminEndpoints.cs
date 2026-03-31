@@ -49,6 +49,13 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/support/{id}/notes", AddSupportNote);
         routes.MapPatch("/api/admin/support/{id}/status", UpdateSupportStatus);
 
+        // ── LSCC-010: Provider auto-provisioning — minimal org creation ──────
+        // Internal service-to-service endpoint.  Token-gated at the gateway.
+        // Creates a minimal PROVIDER Organization for a CareConnect provider.
+        // Idempotent: returns the existing org if already provisioned.
+        routes.MapPost("/api/admin/organizations",          AdminEndpointsLscc010.CreateProviderOrganization);
+        routes.MapGet("/api/admin/organizations/{id:guid}", AdminEndpointsLscc010.GetOrganizationById);
+
         // ── Platform Foundation — Phase 1-6 ──────────────────────────────
         routes.MapGet("/api/admin/organization-types",             ListOrganizationTypes);
         routes.MapGet("/api/admin/organization-types/{id:guid}",   GetOrganizationType);
@@ -1454,4 +1461,95 @@ public static class AdminEndpoints
         string  type,
         string  description,
         bool    editable);
+
+}
+
+/// <summary>
+/// LSCC-010: Handler methods for the provider auto-provisioning org endpoints.
+/// Separated as partial class extensions for file manageability.
+/// </summary>
+public static partial class AdminEndpointsLscc010
+{
+    // Deterministic org name that embeds the CareConnect provider ID for stable lookup.
+    // Format: "{ProviderName} [cc:{providerCcId:D}]"
+    // This is the idempotency key — the same provider always maps to the same org.
+    private static string OrgName(string providerName, Guid providerCcId)
+        => $"{providerName.Trim()} [cc:{providerCcId:D}]";
+
+    /// <summary>
+    /// POST /api/admin/organizations
+    /// Creates a minimal PROVIDER Organization for a CareConnect provider.
+    /// Idempotent — returns the existing org if one was already created for this provider.
+    /// </summary>
+    public static async Task<IResult> CreateProviderOrganization(
+        CreateProviderOrgRequest body,
+        IdentityDbContext        db,
+        CancellationToken        ct)
+    {
+        if (body.TenantId   == Guid.Empty) return Results.BadRequest(new { error = "tenantId is required." });
+        if (body.ProviderCcId == Guid.Empty) return Results.BadRequest(new { error = "providerCcId is required." });
+        if (string.IsNullOrWhiteSpace(body.ProviderName)) return Results.BadRequest(new { error = "providerName is required." });
+
+        // Validate tenant exists
+        var tenantExists = await db.Tenants.AnyAsync(t => t.Id == body.TenantId, ct);
+        if (!tenantExists)
+            return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
+
+        var name = OrgName(body.ProviderName, body.ProviderCcId);
+
+        // Idempotency: look up existing org with this deterministic name under the tenant
+        var existing = await db.Organizations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(o => o.TenantId == body.TenantId
+                                   && o.OrgType   == "PROVIDER"
+                                   && o.Name      == name, ct);
+
+        if (existing is not null)
+        {
+            return Results.Ok(new CreateProviderOrgResponse(existing.Id, existing.Name, IsNew: false));
+        }
+
+        // Create minimal PROVIDER org — no billing, no user setup, no domains
+        var org = Organization.Create(
+            tenantId:   body.TenantId,
+            name:       name,
+            orgType:    OrgType.Provider,
+            displayName: body.ProviderName.Trim());
+
+        db.Organizations.Add(org);
+        await db.SaveChangesAsync(ct);
+
+        return Results.Created(
+            $"/api/admin/organizations/{org.Id}",
+            new CreateProviderOrgResponse(org.Id, org.Name, IsNew: true));
+    }
+
+    /// <summary>
+    /// GET /api/admin/organizations/{id}
+    /// Returns a minimal org record by ID for verification/lookup.
+    /// </summary>
+    public static async Task<IResult> GetOrganizationById(
+        Guid              id,
+        IdentityDbContext db,
+        CancellationToken ct)
+    {
+        var org = await db.Organizations
+            .AsNoTracking()
+            .Where(o => o.Id == id)
+            .Select(o => new { o.Id, o.TenantId, o.Name, o.OrgType, o.IsActive, o.CreatedAtUtc })
+            .FirstOrDefaultAsync(ct);
+
+        return org is null ? Results.NotFound() : Results.Ok(org);
+    }
+
+    // Keep the request/response records accessible to the route registration above
+    public record CreateProviderOrgRequest(
+        Guid   TenantId,
+        Guid   ProviderCcId,
+        string ProviderName);
+
+    private record CreateProviderOrgResponse(
+        Guid   Id,
+        string Name,
+        bool   IsNew);
 }

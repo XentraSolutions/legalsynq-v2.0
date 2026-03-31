@@ -409,7 +409,10 @@ public class ProviderActivationFunnelTests
         var returnTo   = $"/careconnect/referrals/{referralId}";
         var loginUrl   = $"/login?returnTo={Uri.EscapeDataString(returnTo)}&reason=referral-view";
 
-        Assert.Contains("/careconnect/referrals/", loginUrl);
+        // returnTo is the plain unencoded path — check it directly
+        Assert.Contains("/careconnect/referrals/", returnTo);
+        Assert.Contains(referralId.ToString(), returnTo);
+        // loginUrl contains the encoded form — referralId still appears verbatim (not encoded)
         Assert.Contains(referralId.ToString(), loginUrl);
         Assert.DoesNotContain("//", loginUrl.Replace("://", "")); // no protocol-relative redirect
         Assert.StartsWith("/", returnTo);

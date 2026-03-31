@@ -66,6 +66,10 @@ public static class DependencyInjection
         // LSCC-009: Provider activation queue service
         services.AddScoped<IActivationRequestService, ActivationRequestService>();
 
+        // LSCC-010: Auto-provisioning — Identity org HTTP client + orchestration service
+        services.AddScoped<IIdentityOrganizationService, HttpIdentityOrganizationService>();
+        services.AddScoped<IAutoProvisionService, AutoProvisionService>();
+
         // LSCC-005: Email notification dispatch
         services.AddScoped<ISmtpEmailSender, SmtpEmailSender>();
         services.AddScoped<IReferralEmailService, ReferralEmailService>();
