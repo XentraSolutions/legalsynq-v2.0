@@ -6,17 +6,20 @@ import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 import { useToast } from '@/lib/toast-context';
+import { buildReferralDetailUrl } from '@/lib/referral-nav';
 import type { ReferralSummary } from '@/types/careconnect';
 
 interface ReferralQuickActionsProps {
   referral:   ReferralSummary;
   isReferrer: boolean;
   isReceiver: boolean;
+  /** Current list query string (without leading "?") — preserved in the detail URL for back navigation */
+  contextQs?: string;
 }
 
 const ACTIONABLE_FOR_RECEIVER = ['New', 'Received', 'Contacted'];
 
-export function ReferralQuickActions({ referral, isReferrer, isReceiver }: ReferralQuickActionsProps) {
+export function ReferralQuickActions({ referral, isReferrer, isReceiver, contextQs = '' }: ReferralQuickActionsProps) {
   const router          = useRouter();
   const { show: toast } = useToast();
 
@@ -97,9 +100,9 @@ export function ReferralQuickActions({ referral, isReferrer, isReceiver }: Refer
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      {/* View — always present */}
+      {/* View — always present; carries context so detail page back-link is correct */}
       <Link
-        href={`/careconnect/referrals/${referral.id}`}
+        href={buildReferralDetailUrl(referral.id, contextQs)}
         className="text-xs font-medium px-2.5 py-1 border border-gray-200 text-gray-700 rounded hover:bg-gray-50 transition-colors whitespace-nowrap"
       >
         View

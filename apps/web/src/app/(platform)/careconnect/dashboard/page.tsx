@@ -82,7 +82,7 @@ function ReferralRows({ referrals }: { referrals: ReferralSummary[] }) {
       {referrals.map(r => (
         <li key={r.id}>
           <Link
-            href={`/careconnect/referrals/${r.id}`}
+            href={`/careconnect/referrals/${r.id}?from=dashboard`}
             className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors gap-4"
           >
             <div className="min-w-0">
@@ -348,7 +348,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             Find Providers
           </Link>
         ) : (
-          <Link href="/careconnect/referrals" className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0">
+          <Link href="/careconnect/referrals?from=dashboard" className="bg-primary text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity shrink-0">
             Referral Inbox
           </Link>
         )}
@@ -358,17 +358,17 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {showReferrerView ? (
           <>
-            <StatCard label="Active Referrals"  value={referrals.length}       href="/careconnect/referrals" />
+            <StatCard label="Active Referrals"  value={referrals.length}       href="/careconnect/referrals?from=dashboard" />
             <StatCard label="Upcoming (7 days)" value={upcomingApptCount}      href="/careconnect/appointments" />
-            <StatCard label="Completed"         value={completedReferralCount} href="/careconnect/referrals?status=Completed" />
-            <StatCard label="Declined"          value={declinedReferralCount}  href="/careconnect/referrals?status=Declined" />
+            <StatCard label="Completed"         value={completedReferralCount} href="/careconnect/referrals?from=dashboard&status=Completed" />
+            <StatCard label="Declined"          value={declinedReferralCount}  href="/careconnect/referrals?from=dashboard&status=Declined" />
           </>
         ) : (
           <>
-            <StatCard label="Pending Referrals" value={referrals.length}        href="/careconnect/referrals?status=New" />
+            <StatCard label="Pending Referrals" value={referrals.length}        href="/careconnect/referrals?from=dashboard&status=New" />
             <StatCard label="Today's Appts"     value={appointments.length}     href="/careconnect/appointments" />
-            <StatCard label="Accepted"          value={acceptedReferralCount}   href="/careconnect/referrals?status=Accepted" />
-            <StatCard label="Completed"         value={completedReferralCount}  href="/careconnect/referrals?status=Completed" />
+            <StatCard label="Accepted"          value={acceptedReferralCount}   href="/careconnect/referrals?from=dashboard&status=Accepted" />
+            <StatCard label="Completed"         value={completedReferralCount}  href="/careconnect/referrals?from=dashboard&status=Completed" />
           </>
         )}
       </div>
@@ -381,18 +381,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <span className="text-xs text-gray-400">Last 30 days</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-white border border-gray-200 rounded-lg px-4 py-4">
-              <p className="text-2xl font-bold text-gray-900">{activity30Total}</p>
-              <p className="text-xs text-gray-500 mt-1">Total Referrals</p>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg px-4 py-4">
-              <p className="text-2xl font-bold text-gray-900">{activity30New}</p>
-              <p className="text-xs text-gray-500 mt-1">Pending</p>
-            </div>
-            <div className="bg-white border border-gray-200 rounded-lg px-4 py-4">
-              <p className="text-2xl font-bold text-gray-900">{activity30Accepted}</p>
-              <p className="text-xs text-gray-500 mt-1">Accepted</p>
-            </div>
+            <StatCard label="Total Referrals"  value={activity30Total}    href={`/careconnect/referrals?from=dashboard&createdFrom=${fixed30dFrom}&createdTo=${fixed30dTo}`} />
+            <StatCard label="Pending"          value={activity30New}      href={`/careconnect/referrals?from=dashboard&status=New&createdFrom=${fixed30dFrom}&createdTo=${fixed30dTo}`} />
+            <StatCard label="Accepted"         value={activity30Accepted} href={`/careconnect/referrals?from=dashboard&status=Accepted&createdFrom=${fixed30dFrom}&createdTo=${fixed30dTo}`} />
             <div className="bg-white border border-gray-200 rounded-lg px-4 py-4">
               <p className="text-2xl font-bold text-gray-900">{activity30Rate}%</p>
               <p className="text-xs text-gray-500 mt-1">Acceptance Rate</p>
@@ -405,19 +396,19 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {showReferrerView ? (
           <>
-            <SectionCard title="Active Referrals"     viewAllHref="/careconnect/referrals"      viewAllLabel="View all">
+            <SectionCard title="Active Referrals"      viewAllHref="/careconnect/referrals?from=dashboard"           viewAllLabel="View all">
               <ReferralRows referrals={referrals} />
             </SectionCard>
-            <SectionCard title="Upcoming Appointments" viewAllHref="/careconnect/appointments"   viewAllLabel="View all">
+            <SectionCard title="Upcoming Appointments" viewAllHref="/careconnect/appointments"                        viewAllLabel="View all">
               <AppointmentRows appointments={appointments} />
             </SectionCard>
           </>
         ) : (
           <>
-            <SectionCard title="Pending Referrals"  viewAllHref="/careconnect/referrals?status=New" viewAllLabel="View all">
+            <SectionCard title="Pending Referrals"     viewAllHref="/careconnect/referrals?from=dashboard&status=New" viewAllLabel="View all">
               <ReferralRows referrals={referrals} />
             </SectionCard>
-            <SectionCard title="Today's Appointments" viewAllHref="/careconnect/appointments" viewAllLabel="View all">
+            <SectionCard title="Today's Appointments"  viewAllHref="/careconnect/appointments"                        viewAllLabel="View all">
               <AppointmentRows appointments={appointments} />
             </SectionCard>
           </>
@@ -477,15 +468,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {showReferrerView ? (
           <>
-            <QuickAction href="/careconnect/providers"    icon="ri-search-line"       label="Find Providers"  desc="Search by name, specialty, or location" />
-            <QuickAction href="/careconnect/referrals"    icon="ri-file-list-3-line"  label="All Referrals"   desc="Track the status of every referral" />
-            <QuickAction href="/careconnect/appointments" icon="ri-calendar-2-line"   label="Appointments"    desc="View and manage your appointments" />
+            <QuickAction href="/careconnect/providers"               icon="ri-search-line"       label="Find Providers"  desc="Search by name, specialty, or location" />
+            <QuickAction href="/careconnect/referrals?from=dashboard" icon="ri-file-list-3-line"  label="All Referrals"   desc="Track the status of every referral" />
+            <QuickAction href="/careconnect/appointments"            icon="ri-calendar-2-line"   label="Appointments"    desc="View and manage your appointments" />
           </>
         ) : (
           <>
-            <QuickAction href="/careconnect/referrals"    icon="ri-mail-line"           label="Referral Inbox"   desc="Review and accept incoming referrals" />
-            <QuickAction href="/careconnect/appointments" icon="ri-calendar-check-line" label="Schedule"         desc="View today's and upcoming appointments" />
-            <QuickAction href="/careconnect/providers"    icon="ri-hospital-line"       label="Provider Network" desc="Browse providers in the network" />
+            <QuickAction href="/careconnect/referrals?from=dashboard" icon="ri-mail-line"           label="Referral Inbox"   desc="Review and accept incoming referrals" />
+            <QuickAction href="/careconnect/appointments"             icon="ri-calendar-check-line" label="Schedule"         desc="View today's and upcoming appointments" />
+            <QuickAction href="/careconnect/providers"                icon="ri-hospital-line"       label="Provider Network" desc="Browse providers in the network" />
           </>
         )}
       </div>

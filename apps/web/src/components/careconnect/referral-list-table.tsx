@@ -112,6 +112,7 @@ export function ReferralListTable({
                     referral={r}
                     isReferrer={isReferrer}
                     isReceiver={isReceiver}
+                    contextQs={currentQs}
                   />
                 </td>
               </tr>

@@ -4,6 +4,7 @@ import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
+import { resolveReferralDetailBack } from '@/lib/referral-nav';
 import { ReferralPageHeader } from '@/components/careconnect/referral-page-header';
 import { ReferralDetailPanel } from '@/components/careconnect/referral-detail-panel';
 import { ReferralDeliveryCard } from '@/components/careconnect/referral-delivery-card';
@@ -12,8 +13,14 @@ import { ReferralTimeline } from '@/components/careconnect/referral-timeline';
 import { ReferralAuditTimeline } from '@/components/careconnect/referral-audit-timeline';
 
 interface ReferralDetailPageProps {
-  params:      { id: string };
-  searchParams: { from?: string };
+  params:       { id: string };
+  searchParams: {
+    from?:        string;
+    status?:      string;
+    search?:      string;
+    createdFrom?: string;
+    createdTo?:   string;
+  };
 }
 
 export default async function ReferralDetailPage({ params, searchParams }: ReferralDetailPageProps) {
@@ -48,12 +55,7 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
     }
   }
 
-  const backHref = searchParams.from === 'dashboard'
-    ? '/careconnect/dashboard'
-    : '/careconnect/referrals';
-  const backLabel = searchParams.from === 'dashboard'
-    ? '← Back to Dashboard'
-    : '← Back to Referrals';
+  const { href: backHref, label: backLabel } = resolveReferralDetailBack(searchParams);
 
   return (
     <div className="space-y-4">

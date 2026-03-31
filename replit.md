@@ -2194,6 +2194,36 @@ Three layered bugs were each silently masking the next:
 
 ---
 
+## Step 33 — LSCC-007-01 Dashboard Deep-Links & Context Preservation (2026-03-31)
+
+Wires `from=dashboard` into every referral link on the dashboard and propagates
+the full list query-string through the referral list so the detail page back-button
+is always contextually correct.
+
+### New Files
+- `apps/web/src/lib/referral-nav.ts` — pure utility module: `buildReferralDetailUrl`,
+  `resolveReferralDetailBack`, `referralNavParamsToQs`
+
+### Back-link Priority (resolveReferralDetailBack)
+1. List filters present (`status`, `search`, `createdFrom`, `createdTo`) → back to
+   filtered list with status-aware label (e.g. "← Back to Pending Referrals")
+2. `from=dashboard` only → back to `/careconnect/dashboard`
+3. Fallback → back to `/careconnect/referrals`
+
+### Dashboard Changes
+- All referral `href` values (StatCards, SectionCard viewAll, QuickActions,
+  header button, Referral Activity KPI cards) now carry `from=dashboard`
+- Referral Activity KPI cards (Total / Pending / Accepted) upgraded from static
+  `<div>` to clickable `StatCard` with date-range deep-links
+
+### Component Changes
+- `ReferralQuickActions` — new `contextQs?: string` prop; View link uses `buildReferralDetailUrl`
+- `ReferralListTable` — passes `currentQs` as `contextQs` to `ReferralQuickActions`
+- `referrals/[id]/page.tsx` — `searchParams` extended with `status/search/createdFrom/createdTo`;
+  manual `from` check replaced by `resolveReferralDetailBack(searchParams)`
+
+---
+
 ## Step 32 — LSCC-007 CareConnect UX Layer (2026-03-31)
 
 Frontend-only UX overhaul of the CareConnect referral experience.
