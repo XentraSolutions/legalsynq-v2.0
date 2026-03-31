@@ -29,10 +29,28 @@ PID_CC=$!
 ) &
 PID_DOTNET=$!
 
+# Start notifications service — port 5008
+echo "[notifications] Starting on :5008"
+(
+  cd "$ROOT/apps/services/notifications"
+  PORT=5008 NODE_ENV=development \
+    node_modules/.bin/ts-node-dev --respawn --transpile-only src/server.ts
+) &
+PID_NOTIF=$!
+
+# Start notifications provider-health worker
+echo "[notifications:worker] Starting provider-health worker"
+(
+  cd "$ROOT/apps/services/notifications"
+  NODE_ENV=development \
+    node_modules/.bin/ts-node-dev --respawn --transpile-only src/workers/provider-health.worker.ts
+) &
+PID_NOTIF_WORKER=$!
+
 cleanup() {
-    kill "$PID_WEB" "$PID_CC" "$PID_DOTNET" 2>/dev/null || true
+    kill "$PID_WEB" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-wait "$PID_WEB" "$PID_CC" "$PID_DOTNET"
+wait "$PID_WEB" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER"

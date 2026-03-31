@@ -2422,3 +2422,63 @@ Admin-only dashboard showing provider activation funnel metrics derived entirely
 ### Test Results
 - 19/19 LSCC-011 tests pass
 - Total suite: 360 pass (pre-existing 5 ProviderAvailability failures unchanged)
+
+## Step 38 — Notifications Service Merge (2026-03-31)
+
+Merged the standalone TypeScript/Node.js notifications backend into the main platform
+monorepo at `apps/services/notifications/`.
+
+### Service Overview
+- **Port**: 5008
+- **Stack**: Express + Sequelize (mysql2) + custom JSON logger
+- **DB**: Sequelize `sync({ alter: true })` in dev — no separate migration step
+- **Auth**: Tenant context via `x-tenant-id` header; Gateway JWT gate for protected routes
+
+### Route Groups (all prefixed `/v1/`)
+| Prefix | Description |
+|--------|-------------|
+| `/v1/health` | Health check (anonymous) |
+| `/v1/notifications` | Send + list notifications |
+| `/v1/templates` | Template CRUD + versioning |
+| `/v1/providers` | BYOP provider config management |
+| `/v1/webhooks` | Inbound provider webhook ingestion |
+| `/v1/billing` | Billing plans, rates, rate-limit policies |
+| `/v1/contacts` | Contact suppression + policies |
+
+### Workers
+| Worker | Script | Purpose |
+|--------|--------|---------|
+| Provider-health | `src/workers/provider-health.worker.ts` | Periodic circuit-breaker health check |
+| Notification dispatch | `src/workers/notification.worker.ts` | Queue-backed send (stub — queue TBD) |
+
+### Environment Variables (DB — optional in dev, service starts without them)
+| Variable | Description |
+|----------|-------------|
+| `NOTIF_DB_HOST` | MySQL host |
+| `NOTIF_DB_PORT` | MySQL port (default 3306) |
+| `NOTIF_DB_NAME` | Database name |
+| `NOTIF_DB_USER` | Database user |
+| `NOTIF_DB_PASSWORD` | Database password |
+
+### Optional Provider Variables
+- `SENDGRID_API_KEY`, `SENDGRID_DEFAULT_FROM_EMAIL`, `SENDGRID_DEFAULT_FROM_NAME`
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_DEFAULT_FROM_NUMBER`
+- `PROVIDER_SECRET_ENCRYPTION_KEY` — AES-256 key for BYOP credential encryption
+
+### New Files
+- `apps/services/notifications/` — entire service directory (100+ files)
+- `apps/services/notifications/package.json` — `@legalsynq/notifications-service`
+- `apps/services/notifications/tsconfig.json`
+- `apps/services/notifications/src/` — all source (controllers, services, models, repositories, integrations, workers)
+
+### Modified Files
+- `apps/gateway/Gateway.Api/appsettings.json` — added `notifications-health` route (anon), `notifications-protected` route, and `notifications-cluster` (`:5008`)
+- `scripts/run-dev.sh` — added notifications server (port 5008) + provider-health worker
+
+### Gateway Routing
+- `GET /notifications/v1/health` — anonymous
+- `* /notifications/**` — JWT-protected, strips `/notifications` prefix before forwarding to `:5008`
+
+### TypeScript
+- `tsc --noEmit` passes with 0 errors
+- `GET http://localhost:5008/v1/health` → `{"status":"ok","service":"notifications",...}`
