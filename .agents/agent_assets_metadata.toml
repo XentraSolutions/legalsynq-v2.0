@@ -60,3 +60,9 @@ id = "LxNoFrFeOZDESzwUx5bBG"
 uri = "file://analysis/LSCC-003-01.md"
 type = "text"
 title = "LSCC-003-01 — Workflow Completion UX Polish"
+
+[[outputs]]
+id = "UKIR6jc5Pnb-ASOfBVGbw"
+uri = "file://analysis/LSCC-005-report.md"
+type = "text"
+title = "LSCC-005 Implementation Report"
