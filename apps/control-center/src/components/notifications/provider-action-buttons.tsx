@@ -77,16 +77,18 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
           </button>
         </span>
 
-        {/* Activate — only shown when inactive */}
+        {/* Activate — only shown when inactive, requires validation first */}
         {status === 'inactive' && (
-          <button
-            disabled={isPending}
-            onClick={() => runAction(() => activateProviderConfig(configId), setToggleSt)}
-            className={`${btnBase} bg-green-50 text-green-700 border-green-300 hover:border-green-500`}
-          >
-            {stateIcon(toggleSt) ?? <i className="ri-toggle-line" />}
-            Activate
-          </button>
+          <span title={!isValidated ? 'Validate the config first before activating' : undefined}>
+            <button
+              disabled={isPending || !isValidated}
+              onClick={() => runAction(() => activateProviderConfig(configId), setToggleSt)}
+              className={`${btnBase} bg-green-50 text-green-700 border-green-300 hover:border-green-500`}
+            >
+              {stateIcon(toggleSt) ?? <i className="ri-toggle-line" />}
+              Activate
+            </button>
+          </span>
         )}
       </div>
 
