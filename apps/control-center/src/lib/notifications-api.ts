@@ -142,6 +142,7 @@ export interface NotifSummary {
   channel:          NotifChannel;
   status:           NotifStatus;
   recipientJson:    string;
+  metadataJson:     string | null;
   providerUsed:     string | null;
   failureCategory:  NotifFailureCategory | null;
   lastErrorMessage: string | null;

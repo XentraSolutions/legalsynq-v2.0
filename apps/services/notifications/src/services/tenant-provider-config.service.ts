@@ -363,11 +363,15 @@ export async function testTenantProviderConfig(
         return { success: false, message: `Sending test emails is not supported for provider: ${config.providerType}` };
       }
 
-      // Persist a Notification + Attempt record so the send shows in delivery/provider logs
+      // Persist a Notification + Attempt record so the send shows in delivery/provider logs.
       // Use nil UUID '00000000-...' as a platform sentinel when the config has no tenant scope.
+      // NOTE: SendGrid returns 202 Accepted synchronously; actual delivery events (blocks, bounces)
+      // arrive asynchronously via webhook. We use "accepted" (not "sent") to reflect that we only
+      // know the provider received the request — not that it was delivered.
       const PLATFORM_TENANT = "00000000-0000-0000-0000-000000000000";
       const attemptStatus: "sent" | "failed" = sendResult.success ? "sent" : "failed";
-      const notifStatus   = sendResult.success ? "sent" : "failed";
+      // "accepted" = provider acknowledged our request; delivery outcome requires webhook confirmation
+      const notifStatus: "accepted" | "failed" = sendResult.success ? "accepted" : "failed";
       try {
         const notif = await notifRepo.create({
           tenantId:             config.tenantId ?? PLATFORM_TENANT,
@@ -377,12 +381,13 @@ export async function testTenantProviderConfig(
             subject: testPayload?.subject ?? "LegalSynq — Test Email",
             body:    testPayload?.body    ?? "This is a test email sent from the LegalSynq Notifications platform.",
           }),
+          metadataJson:         JSON.stringify({ testSend: true }),
           renderedSubject:      testPayload?.subject ?? "LegalSynq — Test Email",
           providerConfigId:     config.id,
           providerOwnershipMode: config.ownershipMode,
         });
         await notifRepo.update(notif.id, {
-          status:       notifStatus as "sent" | "failed",
+          status:       notifStatus,
           providerUsed: config.providerType,
           lastErrorMessage: sendResult.success ? null : (sendResult.failure?.message ?? null),
         });
@@ -408,8 +413,9 @@ export async function testTenantProviderConfig(
         return {
           success: true,
           message: `Test email accepted by ${config.providerType} for delivery to ${testPayload!.toEmail}. ` +
-            `If the email does not arrive, verify that your sender address is authenticated in your ${config.providerType} account ` +
-            `(SendGrid: Settings → Sender Authentication).`,
+            `If the email does not arrive or your provider shows it as blocked, the most common cause is an unverified sender address — ` +
+            `go to SendGrid → Settings → Sender Authentication and verify the From email. ` +
+            `Check the SendGrid Activity Feed for the real delivery status (blocks, bounces, and spam reports appear there first).`,
         };
       } else {
         const raw = sendResult.failure?.message ?? "";

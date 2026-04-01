@@ -25,6 +25,16 @@ function parseRecipient(recipientJson: string): string {
   }
 }
 
+function isTestSend(metadataJson: string | null): boolean {
+  try {
+    if (!metadataJson) return false;
+    const m = JSON.parse(metadataJson);
+    return m?.testSend === true;
+  } catch {
+    return false;
+  }
+}
+
 export default async function NotificationsLogPage({ searchParams }: Props) {
   const session = await requirePlatformAdmin();
 
@@ -158,6 +168,10 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
                   {items.map(n => {
                     const recipient = parseRecipient(n.recipientJson);
                     const subject   = n.renderedSubject ?? n.templateKey ?? null;
+                    const testSend  = isTestSend(n.metadataJson);
+                    const testTitle = testSend && n.status === 'accepted'
+                      ? 'Test send: submitted to provider. Actual delivery outcome (blocks, bounces) arrives asynchronously — check your provider\'s activity dashboard for the final status.'
+                      : undefined;
                     return (
                       <tr key={n.id} className="hover:bg-gray-50">
                         <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 whitespace-nowrap">
@@ -181,7 +195,16 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
                             <span className="text-gray-400 italic">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap"><NotificationStatusBadge status={n.status} /></td>
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5" title={testTitle}>
+                            <NotificationStatusBadge status={n.status} />
+                            {testSend && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">
+                                Test
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">
                           {n.providerUsed ?? <span className="text-gray-400 italic">—</span>}
                         </td>
