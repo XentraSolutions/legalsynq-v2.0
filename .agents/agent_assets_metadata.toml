@@ -120,3 +120,9 @@ id = "l3EHHhZTiJRcpAc2GNgw-"
 uri = "file://analysis/UIX-002-01-report.md"
 type = "text"
 title = "UIX-002-01 Hardening Pass — Delivery Report"
+
+[[outputs]]
+id = "n9WYEXqwv1Y_EH4a8rEGb"
+uri = "file://UIX-002-01-AdminNavigationExposure.md"
+type = "text"
+title = "UIX-002-01 — Admin Navigation Exposure Report"
