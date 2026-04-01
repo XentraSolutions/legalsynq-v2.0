@@ -250,6 +250,7 @@ export const controlCenterServerApi = {
     create: async (body: {
       name:           string;
       code:           string;
+      orgType:        string;
       adminEmail:     string;
       adminFirstName: string;
       adminLastName:  string;

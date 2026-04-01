@@ -27,6 +27,7 @@ export interface CreateTenantResult {
 export async function createTenantAction(data: {
   name:           string;
   code:           string;
+  orgType:        string;
   adminEmail:     string;
   adminFirstName: string;
   adminLastName:  string;

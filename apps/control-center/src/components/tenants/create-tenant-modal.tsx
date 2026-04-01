@@ -26,6 +26,7 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
   const [form, setForm] = useState({
     name:           '',
     code:           '',
+    orgType:        'LAW_FIRM',
     adminEmail:     '',
     adminFirstName: '',
     adminLastName:  '',
@@ -158,6 +159,25 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
                 />
                 <p className="mt-1 text-[11px] text-gray-400">
                   2–12 alphanumeric characters. Used as a unique identifier — cannot be changed later.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Organization Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={form.orgType}
+                  onChange={e => setForm(f => ({ ...f, orgType: e.target.value }))}
+                  className={selectClass}
+                >
+                  <option value="LAW_FIRM">Law Firm</option>
+                  <option value="PROVIDER">Provider</option>
+                  <option value="FUNDER">Funder</option>
+                  <option value="LIEN_OWNER">Lien Owner</option>
+                </select>
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Determines what the tenant can do on the platform.
                 </p>
               </div>
             </fieldset>
@@ -317,5 +337,11 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
 const inputClass = [
   'w-full text-sm border border-gray-200 rounded-md px-3 py-1.5',
   'text-gray-900 placeholder-gray-400',
+  'focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400',
+].join(' ');
+
+const selectClass = [
+  'w-full text-sm border border-gray-200 rounded-md px-3 py-1.5 bg-white',
+  'text-gray-900',
   'focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400',
 ].join(' ');

@@ -25,7 +25,7 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/tenants",           ListTenants);
         routes.MapPost("/api/admin/tenants",          CreateTenant);
         routes.MapGet("/api/admin/tenants/{id:guid}", GetTenant);
-        routes.MapPost("/api/admin/tenants/{id:guid}/entitlement", UpdateEntitlement);
+        routes.MapPost("/api/admin/tenants/{id:guid}/entitlements/{productCode}", UpdateEntitlement);
         routes.MapPatch("/api/admin/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings);
 
         // ── Users ─────────────────────────────────────────────────────────
@@ -155,13 +155,28 @@ public static class AdminEndpoints
 
         var firstUser = t.Users.OrderBy(u => u.CreatedAtUtc).FirstOrDefault();
 
-        var entitlements = t.TenantProducts.Select(tp => new
+        // Always return ALL active platform products so the entitlements panel
+        // is never empty for newly created tenants. Products not yet in TenantProducts
+        // are returned with enabled=false so they can be toggled on.
+        var allProducts = await db.Products
+            .Where(p => p.IsActive)
+            .OrderBy(p => p.Name)
+            .ToListAsync();
+
+        var entitlements = allProducts.Select(p =>
         {
-            productCode  = tp.Product.Code,
-            productName  = tp.Product.Name,
-            enabled      = tp.IsEnabled,
-            status       = tp.IsEnabled ? "Active" : "Disabled",
-            enabledAtUtc = tp.EnabledAtUtc,
+            var tp = t.TenantProducts.FirstOrDefault(x => x.ProductId == p.Id);
+            // Return the frontend ProductCode ('SynqFund') rather than the raw DB code ('SYNQ_FUND')
+            // so the mapper and PRODUCT_META lookup in the Control Center panel work without transforms.
+            var frontendCode = DbToFrontendProductCode.TryGetValue(p.Code, out var fc) ? fc : p.Name;
+            return new
+            {
+                productCode  = frontendCode,
+                productName  = p.Name,
+                enabled      = tp?.IsEnabled ?? false,
+                status       = (tp?.IsEnabled ?? false) ? "Active" : "Disabled",
+                enabledAtUtc = tp?.EnabledAtUtc,
+            };
         }).ToList();
 
         return Results.Ok(new
@@ -233,6 +248,16 @@ public static class AdminEndpoints
         if (emailExists)
             return Results.Conflict(new { error = $"A user with email '{emailNorm}' already exists." });
 
+        // ── Resolve organization type ──────────────────────────────────────────
+        // GUIDs mirror SeedIds in Identity.Infrastructure (which is internal to that assembly).
+        var orgTypeId = body.OrgType switch
+        {
+            "PROVIDER"   => new Guid("70000000-0000-0000-0000-000000000003"),
+            "FUNDER"     => new Guid("70000000-0000-0000-0000-000000000004"),
+            "LIEN_OWNER" => new Guid("70000000-0000-0000-0000-000000000005"),
+            _            => new Guid("70000000-0000-0000-0000-000000000002"),  // default: LAW_FIRM
+        };
+
         // ── Find TenantAdmin role ──────────────────────────────────────────────
         var tenantAdminRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "TenantAdmin", ct);
         if (tenantAdminRole is null)
@@ -242,9 +267,17 @@ public static class AdminEndpoints
         var tempPassword = GenerateTemporaryPassword();
         var passwordHash = passwordHasher.Hash(tempPassword);
 
-        // ── Create tenant + user + role assignment ─────────────────────────────
+        // ── Create tenant + org + user + membership + role assignment ──────────
         var tenant = Tenant.Create(body.Name.Trim(), code);
         db.Tenants.Add(tenant);
+
+        // Default organization — same name as the tenant, typed by OrgType.
+        var org = Organization.Create(
+            tenantId:         tenant.Id,
+            name:             body.Name.Trim(),
+            organizationTypeId: orgTypeId,
+            displayName:      body.Name.Trim());
+        db.Organizations.Add(org);
 
         var user = User.Create(
             tenantId:     tenant.Id,
@@ -253,6 +286,13 @@ public static class AdminEndpoints
             firstName:    body.AdminFirstName.Trim(),
             lastName:     body.AdminLastName.Trim());
         db.Users.Add(user);
+
+        // Add the admin user as an ADMIN member of the default organization.
+        var membership = UserOrganizationMembership.Create(
+            userId:         user.Id,
+            organizationId: org.Id,
+            memberRole:     MemberRole.Admin);
+        db.UserOrganizationMemberships.Add(membership);
 
         var sra = ScopedRoleAssignment.Create(
             userId:    user.Id,
@@ -359,12 +399,34 @@ public static class AdminEndpoints
         });
     }
 
+    // Maps the frontend ProductCode (TypeScript) → the DB product Code column.
+    // Keeps the two representations decoupled without touching the DB schema.
+    private static readonly Dictionary<string, string> FrontendToDbProductCode = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["SynqFund"]    = "SYNQ_FUND",
+        ["SynqLien"]    = "SYNQ_LIENS",
+        ["CareConnect"] = "SYNQ_CARECONNECT",
+    };
+
+    // Maps the DB product Code column → the frontend ProductCode (TypeScript).
+    private static readonly Dictionary<string, string> DbToFrontendProductCode = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["SYNQ_FUND"]        = "SynqFund",
+        ["SYNQ_LIENS"]       = "SynqLien",
+        ["SYNQ_CARECONNECT"] = "CareConnect",
+    };
+
     private static async Task<IResult> UpdateEntitlement(
-        Guid id,
+        Guid   id,
+        string productCode,   // from route: /entitlements/{productCode}
         IdentityDbContext db,
         EntitlementRequest body,
         IAuditEventClient auditClient)
     {
+        // Resolve the frontend productCode ('SynqFund') → DB code ('SYNQ_FUND').
+        if (!FrontendToDbProductCode.TryGetValue(productCode, out var dbCode))
+            dbCode = productCode; // pass-through if already a raw DB code
+
         var tenant = await db.Tenants
             .Include(t => t.TenantProducts)
                 .ThenInclude(tp => tp.Product)
@@ -373,10 +435,10 @@ public static class AdminEndpoints
         if (tenant is null) return Results.NotFound();
 
         var product = await db.Products
-            .FirstOrDefaultAsync(p => p.Code == body.ProductCode);
+            .FirstOrDefaultAsync(p => p.Code == dbCode);
 
         if (product is null)
-            return Results.NotFound(new { error = $"Product '{body.ProductCode}' not found." });
+            return Results.NotFound(new { error = $"Product '{productCode}' not found." });
 
         var existing = tenant.TenantProducts.FirstOrDefault(tp => tp.ProductId == product.Id);
 
@@ -418,16 +480,16 @@ public static class AdminEndpoints
             Actor         = new AuditEventActorDto { Type = ActorType.System },
             Entity        = new AuditEventEntityDto { Type = "Tenant", Id = id.ToString() },
             Action        = "EntitlementUpdated",
-            Description   = $"Product entitlement '{body.ProductCode}' {(body.Enabled ? "enabled" : "disabled")} for tenant {id}.",
-            After         = JsonSerializer.Serialize(new { productCode = body.ProductCode, enabled = body.Enabled }),
-            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "platform.admin.tenant.entitlement.updated", id.ToString(), body.ProductCode),
+            Description   = $"Product entitlement '{productCode}' {(body.Enabled ? "enabled" : "disabled")} for tenant {id}.",
+            After         = JsonSerializer.Serialize(new { productCode, enabled = body.Enabled }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "platform.admin.tenant.entitlement.updated", id.ToString(), productCode),
             Tags = ["entitlement", "tenant-admin"],
         });
 
         return Results.Ok(new
         {
             tenantId    = tenant.Id,
-            productCode = body.ProductCode,
+            productCode,            // frontend ProductCode (e.g., 'SynqFund')
             enabled     = body.Enabled,
             status      = body.Enabled ? "Active" : "Disabled",
         });
@@ -1592,12 +1654,13 @@ public static class AdminEndpoints
         Guid?   ProductId                    = null,
         Guid?   OrganizationRelationshipId   = null);
     private record CreateTenantRequest(
-        string Name,
-        string Code,
-        string AdminEmail,
-        string AdminFirstName,
-        string AdminLastName);
-    private record EntitlementRequest(string ProductCode, bool Enabled);
+        string  Name,
+        string  Code,
+        string  AdminEmail,
+        string  AdminFirstName,
+        string  AdminLastName,
+        string? OrgType = null);  // LAW_FIRM | PROVIDER | FUNDER | LIEN_OWNER (defaults to LAW_FIRM)
+    private record EntitlementRequest(bool Enabled);
     private record SessionSettingsRequest(int? SessionTimeoutMinutes);
     private record CreateOrgRelationshipRequest(
         Guid  SourceOrganizationId,
