@@ -36,6 +36,15 @@ public class UserRepository : IUserRepository
             .ThenBy(u => u.FirstName)
             .ToListAsync(ct);
 
+    public Task<List<User>> GetByTenantWithRolesAsync(Guid tenantId, CancellationToken ct = default) =>
+        _db.Users
+            .Where(u => u.TenantId == tenantId)
+            .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive))
+                .ThenInclude(s => s.Role)
+            .OrderBy(u => u.LastName)
+            .ThenBy(u => u.FirstName)
+            .ToListAsync(ct);
+
     public async Task AddAsync(User user, IReadOnlyList<Guid> roleIds, CancellationToken ct = default)
     {
         await _db.Users.AddAsync(user, ct);

@@ -52,6 +52,12 @@ public class UserService : IUserService
         return users.Select(ToResponse).ToList();
     }
 
+    public async Task<List<UserResponse>> GetByTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var users = await _userRepository.GetByTenantWithRolesAsync(tenantId, ct);
+        return users.Select(ToResponse).ToList();
+    }
+
     public async Task<UserResponse?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var user = await _userRepository.GetByIdWithRolesAsync(id, ct);

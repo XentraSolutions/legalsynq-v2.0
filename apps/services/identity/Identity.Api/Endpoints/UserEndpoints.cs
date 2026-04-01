@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
 using LegalSynq.AuditClient;
@@ -62,11 +63,18 @@ public static class UserEndpoints
             }
         });
 
-        app.MapGet("/api/users", async (IUserService userService, CancellationToken ct) =>
+        app.MapGet("/api/users", async (
+            ClaimsPrincipal   caller,
+            IUserService      userService,
+            CancellationToken ct) =>
         {
-            var users = await userService.GetAllAsync(ct);
+            var tenantIdStr = caller.FindFirstValue("tenant_id");
+            if (!Guid.TryParse(tenantIdStr, out var tenantId))
+                return Results.Unauthorized();
+
+            var users = await userService.GetByTenantAsync(tenantId, ct);
             return Results.Ok(users);
-        });
+        }).RequireAuthorization();
 
         app.MapGet("/api/users/{id:guid}", async (Guid id, IUserService userService, CancellationToken ct) =>
         {
