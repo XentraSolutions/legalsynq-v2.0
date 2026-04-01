@@ -5,17 +5,17 @@ import {
   validateProviderConfig,
   testProviderConfig,
   activateProviderConfig,
-  deactivateProviderConfig,
 } from '@/app/notifications/actions';
 
 interface Props {
-  configId: string;
-  status:   'active' | 'inactive';
+  configId:         string;
+  status:           'active' | 'inactive';
+  validationStatus: 'not_validated' | 'valid' | 'invalid';
 }
 
 type BtnState = 'idle' | 'loading' | 'ok' | 'err';
 
-export function ProviderActionButtons({ configId, status }: Props) {
+export function ProviderActionButtons({ configId, status, validationStatus }: Props) {
   const [isPending,  startTransition]  = useTransition();
   const [validateSt, setValidateSt]    = useState<BtnState>('idle');
   const [testSt,     setTestSt]        = useState<BtnState>('idle');
@@ -50,7 +50,7 @@ export function ProviderActionButtons({ configId, status }: Props) {
     return null;
   }
 
-  const isActive = status === 'active';
+  const isValidated = validationStatus === 'valid';
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -65,27 +65,20 @@ export function ProviderActionButtons({ configId, status }: Props) {
           Validate
         </button>
 
-        {/* Test */}
-        <button
-          disabled={isPending}
-          onClick={() => runAction(() => testProviderConfig(configId), setTestSt)}
-          className={`${btnBase} bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-700`}
-        >
-          {stateIcon(testSt) ?? <i className="ri-send-plane-line" />}
-          Test
-        </button>
-
-        {/* Activate / Deactivate */}
-        {isActive ? (
+        {/* Test — only available after validation */}
+        <span title={!isValidated ? 'Validate the config first before testing' : undefined}>
           <button
-            disabled={isPending}
-            onClick={() => runAction(() => deactivateProviderConfig(configId), setToggleSt)}
-            className={`${btnBase} bg-amber-50 text-amber-700 border-amber-300 hover:border-amber-500`}
+            disabled={isPending || !isValidated}
+            onClick={() => runAction(() => testProviderConfig(configId), setTestSt)}
+            className={`${btnBase} bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-700`}
           >
-            {stateIcon(toggleSt) ?? <i className="ri-toggle-fill" />}
-            Deactivate
+            {stateIcon(testSt) ?? <i className="ri-send-plane-line" />}
+            Test
           </button>
-        ) : (
+        </span>
+
+        {/* Activate — only shown when inactive */}
+        {status === 'inactive' && (
           <button
             disabled={isPending}
             onClick={() => runAction(() => activateProviderConfig(configId), setToggleSt)}
