@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import Link from 'next/link';
+import Link               from 'next/link';
 import type { UserDetail, UserStatus } from '@/types/control-center';
-import { Routes } from '@/lib/routes';
+import { Routes }         from '@/lib/routes';
 
 interface UserDetailCardProps {
   user: UserDetail;
@@ -174,8 +174,13 @@ export function UserDetailCard({ user }: UserDetailCardProps) {
             <div className="divide-y divide-gray-100">
               {user.groups.map(g => (
                 <div key={g.groupId} className="px-5 py-3 flex items-center justify-between gap-4">
-                  <p className="text-sm font-medium text-gray-900">{g.groupName}</p>
-                  <p className="text-xs text-gray-400">Joined {formatDate(g.joinedAtUtc)}</p>
+                  <Link
+                    href={Routes.groupDetail(g.groupId)}
+                    className="text-sm font-medium text-gray-900 hover:text-indigo-700 hover:underline transition-colors"
+                  >
+                    {g.groupName}
+                  </Link>
+                  <p className="text-xs text-gray-400 shrink-0">Joined {formatDate(g.joinedAtUtc)}</p>
                 </div>
               ))}
             </div>
@@ -190,9 +195,14 @@ export function UserDetailCard({ user }: UserDetailCardProps) {
             <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
               Role Assignments
             </h2>
-            <span className="text-xs text-gray-400">
-              {user.roles.length} role{user.roles.length !== 1 ? 's' : ''}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border bg-amber-50 text-amber-700 border-amber-200">
+                Read-only · Current MVP
+              </span>
+              <span className="text-xs text-gray-400">
+                {user.roles.length} role{user.roles.length !== 1 ? 's' : ''}
+              </span>
+            </div>
           </div>
           {user.roles.length === 0 ? (
             <div className="px-5 py-8 text-center">
@@ -213,22 +223,104 @@ export function UserDetailCard({ user }: UserDetailCardProps) {
         </div>
       )}
 
-      {/* ── Recent Activity (placeholder) ─────────────────────────────── */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Recent Activity
-          </h2>
-        </div>
-        <div className="px-5 py-10 text-center space-y-2">
-          <p className="text-sm text-gray-500 font-medium">Activity log coming soon</p>
-          <p className="text-xs text-gray-400 max-w-sm mx-auto">
-            Login history and audit events will appear here once the audit log
-            backend endpoint is connected.
-          </p>
-        </div>
+      {/* ── Effective Access Summary ───────────────────────────────────── */}
+      <EffectiveAccessSummary user={user} />
+
+    </div>
+  );
+}
+
+// ── Effective Access Summary panel ───────────────────────────────────────────
+
+function EffectiveAccessSummary({ user }: { user: UserDetail }) {
+  const primaryMembership = user.memberships?.find(m => m.isPrimary);
+  const roleCount         = user.roles?.length ?? 0;
+  const groupCount        = user.groups?.length ?? 0;
+  const membershipCount   = user.memberships?.length ?? 0;
+  const isActive          = user.status === 'Active';
+
+  const accessTier = (() => {
+    const roleNames = (user.roles ?? []).map(r => r.roleName.toLowerCase());
+    if (roleNames.some(n => n.includes('platformadmin') || n === 'platform admin'))
+      return { label: 'Platform Admin', description: 'Full platform management access across all tenants.', color: 'text-red-700 bg-red-50 border-red-200' };
+    if (roleNames.some(n => n.includes('tenantadmin') || n === 'tenant admin'))
+      return { label: 'Tenant Admin', description: 'Full management access within their tenant.', color: 'text-indigo-700 bg-indigo-50 border-indigo-200' };
+    if (roleNames.length > 0)
+      return { label: roleNames[0], description: 'Scoped access based on assigned role.', color: 'text-gray-700 bg-gray-50 border-gray-200' };
+    return { label: 'No role assigned', description: 'No scoped access — user has no active role assignment.', color: 'text-amber-700 bg-amber-50 border-amber-200' };
+  })();
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          Effective Access Summary
+        </h2>
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border bg-gray-100 text-gray-500 border-gray-200">
+          Read-only · Informational
+        </span>
       </div>
 
+      <div className="px-5 py-4 space-y-4">
+
+        {/* Account state indicator */}
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[12px] font-semibold border ${isActive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full inline-block ${isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
+            {isActive ? 'Account Active' : `Account ${user.status}`}
+          </span>
+          {!isActive && (
+            <span className="text-xs text-gray-400 italic">
+              Inactive accounts cannot access the platform.
+            </span>
+          )}
+        </div>
+
+        {/* Role / access tier */}
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-gray-500">Access Tier</p>
+          <div className="flex items-start gap-2">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${accessTier.color}`}>
+              {accessTier.label}
+            </span>
+            <p className="text-xs text-gray-500 pt-0.5">{accessTier.description}</p>
+          </div>
+        </div>
+
+        {/* Summary stats */}
+        <div className="grid grid-cols-3 gap-3">
+          <SummaryStat label="Organizations" value={membershipCount} />
+          <SummaryStat label="Groups" value={groupCount} />
+          <SummaryStat label="Role Assignments" value={roleCount} />
+        </div>
+
+        {/* Primary org callout */}
+        {primaryMembership && (
+          <div className="text-xs text-gray-500 bg-gray-50 rounded-md px-3 py-2 border border-gray-100">
+            Primary org:{' '}
+            <span className="font-medium text-gray-800">{primaryMembership.orgName}</span>
+            {' '}·{' '}
+            <span className="text-gray-500">{primaryMembership.memberRole}</span>
+          </div>
+        )}
+
+        {/* No primary org notice */}
+        {!primaryMembership && membershipCount === 0 && (
+          <p className="text-xs text-amber-600 bg-amber-50 rounded-md px-3 py-2 border border-amber-100">
+            No organization membership. This user has no primary org assigned.
+          </p>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="bg-gray-50 border border-gray-100 rounded-md px-3 py-2 text-center">
+      <p className="text-lg font-semibold text-gray-800">{value}</p>
+      <p className="text-[11px] text-gray-500 mt-0.5">{label}</p>
     </div>
   );
 }

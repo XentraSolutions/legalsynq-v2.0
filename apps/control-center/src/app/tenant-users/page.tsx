@@ -153,6 +153,13 @@ export default async function TenantUsersPage({ searchParams }: TenantUsersPageP
             page={result.page}
             pageSize={result.pageSize}
             showTenantColumn={!tenantCtx}
+            baseHref={(() => {
+              const params = new URLSearchParams();
+              if (search)          params.set('search', search);
+              if (status !== 'all') params.set('status', status);
+              const qs = params.toString();
+              return qs ? `?${qs}&` : '?';
+            })()}
           />
         )}
       </div>

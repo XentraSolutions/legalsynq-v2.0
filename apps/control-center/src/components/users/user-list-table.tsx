@@ -1,6 +1,7 @@
-import Link from 'next/link';
+import Link               from 'next/link';
 import type { UserSummary, UserStatus } from '@/types/control-center';
-import { Routes } from '@/lib/routes';
+import { Routes }          from '@/lib/routes';
+import { UserRowActions }  from './user-row-actions';
 
 interface UserListTableProps {
   users:             UserSummary[];
@@ -8,6 +9,12 @@ interface UserListTableProps {
   page:              number;
   pageSize:          number;
   showTenantColumn?: boolean;
+  /**
+   * Base href for pagination links — should include all current filter params
+   * (search, status) so that prev/next links preserve active filters.
+   * E.g. "?search=alice&status=active&" — pageHref appends page=N.
+   * Defaults to "?" (no filter params preserved).
+   */
   baseHref?:         string;
 }
 
@@ -20,9 +27,9 @@ function formatDate(iso: string): string {
 }
 
 function formatLoginDate(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
+  const d       = new Date(iso);
+  const now     = new Date();
+  const diffMs  = now.getTime() - d.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffDays === 0) return 'Today';
@@ -69,11 +76,16 @@ export function UserListTable({
   const hasPrev   = page > 1;
   const hasNext   = page * pageSize < totalCount;
 
-  function pageHref(p: number, search?: string): string {
-    const base = baseHref.includes('?') ? baseHref : `${baseHref}?`;
-    const sep  = base.endsWith('?') || base.endsWith('&') ? '' : '&';
-    const searchPart = search ? `search=${encodeURIComponent(search)}&` : '';
-    return `${base}${sep}${searchPart}page=${p}`;
+  /**
+   * Build a pagination href that appends page=N to the base href.
+   * baseHref is expected to already contain all filter params, ending in
+   * either "?" or "&" so we can directly append "page=N".
+   */
+  function pageHref(p: number): string {
+    const base = baseHref.endsWith('?') || baseHref.endsWith('&')
+      ? baseHref
+      : baseHref.includes('?') ? `${baseHref}&` : `${baseHref}?`;
+    return `${base}page=${p}`;
   }
 
   return (
@@ -92,6 +104,7 @@ export function UserListTable({
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Primary Org</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Groups</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Last Login</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -127,6 +140,9 @@ export function UserListTable({
                 </td>
                 <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                   {user.lastLoginAtUtc ? formatLoginDate(user.lastLoginAtUtc) : '—'}
+                </td>
+                <td className="px-4 py-3">
+                  <UserRowActions userId={user.id} currentStatus={user.status} />
                 </td>
               </tr>
             ))}
