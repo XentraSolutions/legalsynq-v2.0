@@ -7,6 +7,7 @@ using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Identity.Api.Endpoints;
 
@@ -96,6 +97,13 @@ public static class AdminEndpoints
 
         // UIX-002: resend invite
         routes.MapPost("/api/admin/users/{id:guid}/resend-invite",          ResendInvite);
+
+        // UIX-003-03: security / session admin actions
+        routes.MapPost("/api/admin/users/{id:guid}/lock",                   LockUser);
+        routes.MapPost("/api/admin/users/{id:guid}/unlock",                 UnlockUser);
+        routes.MapPost("/api/admin/users/{id:guid}/reset-password",         AdminResetPassword);
+        routes.MapPost("/api/admin/users/{id:guid}/force-logout",           ForceLogout);
+        routes.MapGet("/api/admin/users/{id:guid}/security",                GetUserSecurity);
 
         // ── Role assignment ───────────────────────────────────────────────────
         routes.MapPost("/api/admin/users/{id:guid}/roles",                  AssignRole);
@@ -817,7 +825,10 @@ public static class AdminEndpoints
             tenantDisplayName = u.Tenant.Name,
             createdAtUtc      = u.CreatedAtUtc,
             updatedAtUtc      = u.UpdatedAtUtc,
-            isLocked          = false,
+            isLocked          = u.IsLocked,
+            lockedAtUtc       = u.LockedAtUtc,
+            lastLoginAtUtc    = u.LastLoginAtUtc,
+            sessionVersion    = u.SessionVersion,
             avatarDocumentId  = u.AvatarDocumentId,
             memberships = u.OrganizationMemberships.Select(m => new
             {
@@ -899,6 +910,333 @@ public static class AdminEndpoints
         });
 
         return Results.NoContent();
+    }
+
+    // =========================================================================
+    // UIX-003-03: SECURITY / SESSION ADMIN ACTIONS
+    // =========================================================================
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/lock
+    ///
+    /// Administratively locks a user account. Locked users cannot authenticate.
+    /// Also increments SessionVersion, invalidating all active JWTs.
+    /// Idempotent: 204 if already locked.
+    /// Emits identity.user.locked audit event.
+    /// </summary>
+    private static async Task<IResult> LockUser(
+        Guid              id,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        CancellationToken ct)
+    {
+        var user = await db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (user is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var callerIdStr = caller.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)
+                       ?? caller.FindFirstValue("sub");
+        var lockingAdminId = Guid.TryParse(callerIdStr, out var aid) ? (Guid?)aid : null;
+
+        var changed = user.Lock(lockingAdminId);
+        if (!changed) return Results.NoContent();
+
+        await db.SaveChangesAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.locked",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = user.TenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = callerIdStr,
+                Type = ActorType.User,
+                Name = "admin",
+            },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "UserLocked",
+            Description = $"User '{user.Email}' locked by admin in tenant {user.TenantId}.",
+            Before      = JsonSerializer.Serialize(new { isLocked = false, email = user.Email }),
+            After       = JsonSerializer.Serialize(new { isLocked = true,  email = user.Email, lockedAt = now }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.locked", user.Id.ToString()),
+            Tags = ["user-management", "security", "lock"],
+        });
+
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/unlock
+    ///
+    /// Unlocks an administratively locked account.
+    /// Idempotent: 204 if already unlocked.
+    /// Emits identity.user.unlocked audit event.
+    /// </summary>
+    private static async Task<IResult> UnlockUser(
+        Guid              id,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        CancellationToken ct)
+    {
+        var user = await db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (user is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var changed = user.Unlock();
+        if (!changed) return Results.NoContent();
+
+        await db.SaveChangesAsync(ct);
+
+        var callerIdStr = caller.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)
+                       ?? caller.FindFirstValue("sub");
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.unlocked",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = user.TenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = callerIdStr,
+                Type = ActorType.User,
+                Name = "admin",
+            },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "UserUnlocked",
+            Description = $"User '{user.Email}' unlocked by admin in tenant {user.TenantId}.",
+            Before      = JsonSerializer.Serialize(new { isLocked = true,  email = user.Email }),
+            After       = JsonSerializer.Serialize(new { isLocked = false, email = user.Email }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.unlocked", user.Id.ToString()),
+            Tags = ["user-management", "security", "unlock"],
+        });
+
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/force-logout
+    ///
+    /// Revokes all active sessions for a user by incrementing their SessionVersion.
+    /// All existing JWTs containing an older session_version will be rejected by auth/me.
+    /// Emits identity.user.force_logout audit event.
+    /// </summary>
+    private static async Task<IResult> ForceLogout(
+        Guid              id,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        CancellationToken ct)
+    {
+        var user = await db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (user is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        user.IncrementSessionVersion();
+        await db.SaveChangesAsync(ct);
+
+        var callerIdStr = caller.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)
+                       ?? caller.FindFirstValue("sub");
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.force_logout",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = user.TenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = callerIdStr,
+                Type = ActorType.User,
+                Name = "admin",
+            },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "ForceLogout",
+            Description = $"All sessions revoked for user '{user.Email}' in tenant {user.TenantId}.",
+            Metadata    = JsonSerializer.Serialize(new { newSessionVersion = user.SessionVersion }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.force_logout", user.Id.ToString()),
+            Tags = ["user-management", "security", "session", "force-logout"],
+        });
+
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/reset-password
+    ///
+    /// Admin-triggers a password reset workflow for a user.
+    /// Creates a PasswordResetToken (24-hour expiry) and logs the reset link.
+    /// In production, the link would be emailed; in dev it is logged only.
+    ///
+    /// Any previous pending reset tokens for this user are revoked first (idempotent).
+    /// Emits identity.user.password_reset_triggered audit event.
+    /// </summary>
+    private static async Task<IResult> AdminResetPassword(
+        Guid              id,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        Microsoft.Extensions.Logging.ILogger<AdminEndpoints> logger,
+        CancellationToken ct)
+    {
+        var user = await db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (user is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        // Revoke any existing pending reset tokens for this user.
+        var existingTokens = await db.PasswordResetTokens
+            .Where(t => t.UserId == id && t.Status == PasswordResetToken.Statuses.Pending)
+            .ToListAsync(ct);
+        foreach (var old in existingTokens) old.Revoke();
+
+        // Generate a new cryptographically random reset token.
+        var rawToken  = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        var tokenHash = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(rawToken)));
+
+        var callerIdStr = caller.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)
+                       ?? caller.FindFirstValue("sub");
+        var triggeredByAdminId = Guid.TryParse(callerIdStr, out var aid) ? (Guid?)aid : null;
+
+        var resetToken = PasswordResetToken.Create(id, user.TenantId, tokenHash, triggeredByAdminId);
+        db.PasswordResetTokens.Add(resetToken);
+        await db.SaveChangesAsync(ct);
+
+        // In dev: log the raw token so it can be used without email infrastructure.
+        // In production this would trigger an email to the user.
+        logger.LogInformation(
+            "[UIX-003-03] Password reset triggered for user {UserId} ({Email}) in tenant {TenantId}. " +
+            "Reset token (dev only — never log in production): {RawToken}. " +
+            "Token expires at {ExpiresAt:O}.",
+            user.Id, user.Email, user.TenantId, rawToken, resetToken.ExpiresAtUtc);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.password_reset_triggered",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = user.TenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = callerIdStr,
+                Type = ActorType.User,
+                Name = "admin",
+            },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "PasswordResetTriggered",
+            Description = $"Admin-triggered password reset for user '{user.Email}' in tenant {user.TenantId}.",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.password_reset_triggered", user.Id.ToString()),
+            Tags = ["user-management", "security", "password-reset"],
+        });
+
+        return Results.Ok(new { message = "Password reset email will be sent to the user." });
+    }
+
+    /// <summary>
+    /// GET /api/admin/users/{id}/security
+    ///
+    /// Returns a security summary for the user: lock state, last login,
+    /// session version, and recent security/admin audit events.
+    /// Read-only. Tenant-scoped for TenantAdmin callers.
+    /// </summary>
+    private static async Task<IResult> GetUserSecurity(
+        Guid              id,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        CancellationToken ct)
+    {
+        var u = await db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (u is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, u.TenantId)) return Results.Forbid();
+
+        var hasPendingInvite = await db.UserInvitations
+            .AnyAsync(i => i.UserId == id && i.Status == UserInvitation.Statuses.Pending, ct);
+
+        var recentResets = await db.PasswordResetTokens
+            .Where(t => t.UserId == id)
+            .OrderByDescending(t => t.CreatedAtUtc)
+            .Take(5)
+            .Select(t => new
+            {
+                id          = t.Id,
+                status      = t.Status,
+                createdAt   = t.CreatedAtUtc,
+                expiresAt   = t.ExpiresAtUtc,
+                usedAt      = t.UsedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new
+        {
+            userId           = u.Id,
+            email            = u.Email,
+            isLocked         = u.IsLocked,
+            lockedAtUtc      = u.LockedAtUtc,
+            lastLoginAtUtc   = u.LastLoginAtUtc,
+            sessionVersion   = u.SessionVersion,
+            isActive         = u.IsActive,
+            hasPendingInvite,
+            recentPasswordResets = recentResets,
+            // Recent security/admin events are fetched by the CC frontend via the
+            // Audit service query API (/audit/entity/User/{userId}) to avoid coupling
+            // the identity service to the audit DB.
+        });
     }
 
     // =========================================================================

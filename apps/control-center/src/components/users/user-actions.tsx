@@ -5,31 +5,11 @@
  *
  * Groups:
  *   1. Account state — Activate / Deactivate
- *   2. Security      — Lock / Unlock, Reset Password
+ *   2. Security      — Lock / Unlock, Reset Password, Force Logout
  *   3. Invite        — Resend Invite (only when status === 'Invited')
  *
- * ── UX improvements over the previous version ────────────────────────────────
- *
- *   - Destructive actions (Deactivate, Lock) prompt a ConfirmDialog before
- *     executing, preventing accidental status changes.
- *   - Pending state: each button shows a spinner while its action is in flight.
- *   - Success / error inline feedback appears for 3.5 seconds.
- *   - Accessibility: all buttons have aria-label, aria-busy, focus-visible
- *     rings; confirm dialog handles Escape + focus management.
- *
- * ── Wiring guide ─────────────────────────────────────────────────────────────
- *
- *   When backend endpoints are ready:
- *   1. Create a BFF proxy at app/api/identity/admin/users/[id]/[action]/route.ts
- *   2. Replace each `await simulateAction()` stub with the actual fetch call.
- *   3. Call router.refresh() after success to re-fetch the Server Component.
- *
- * TODO: POST /identity/api/admin/users/{userId}/activate
- * TODO: POST /identity/api/admin/users/{userId}/deactivate
- * TODO: POST /identity/api/admin/users/{userId}/lock
- * TODO: POST /identity/api/admin/users/{userId}/unlock
- * TODO: POST /identity/api/admin/users/{userId}/reset-password
- * TODO: POST /identity/api/admin/users/{userId}/resend-invite
+ * UIX-003-03: lock, unlock, reset-password, force-logout are now fully wired
+ * to real BFF proxy routes (no more simulateAction stubs for these actions).
  */
 
 import { useState }           from 'react';
@@ -50,6 +30,7 @@ type UserAction =
   | 'lock'
   | 'unlock'
   | 'reset-password'
+  | 'force-logout'
   | 'resend-invite';
 
 interface FeedbackState {
@@ -60,13 +41,12 @@ interface FeedbackState {
 const ACTION_LABELS: Record<UserAction, string> = {
   'activate':      'Activated',
   'deactivate':    'Deactivated',
-  'lock':          'Locked',
-  'unlock':        'Unlocked',
+  'lock':          'Account locked. All sessions revoked.',
+  'unlock':        'Account unlocked',
   'reset-password':'Password reset email sent',
+  'force-logout':  'All sessions signed out',
   'resend-invite': 'Invitation resent',
 };
-
-const WIRED_ACTIONS = new Set<UserAction>(['activate', 'deactivate', 'resend-invite']);
 
 export function UserActions({ userId, currentStatus, isLocked = false }: UserActionsProps) {
   const router = useRouter();
@@ -89,19 +69,15 @@ export function UserActions({ userId, currentStatus, isLocked = false }: UserAct
     setPending(action);
 
     try {
-      if (WIRED_ACTIONS.has(action)) {
-        const res = await fetch(
-          `/api/identity/admin/users/${encodeURIComponent(userId)}/${action}`,
-          { method: 'POST' },
-        );
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({})) as { message?: string };
-          throw new Error(body.message ?? 'Action failed');
-        }
-        router.refresh();
-      } else {
-        await simulateAction(action);
+      const res = await fetch(
+        `/api/identity/admin/users/${encodeURIComponent(userId)}/${action}`,
+        { method: 'POST' },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { message?: string };
+        throw new Error(body.message ?? 'Action failed');
       }
+      router.refresh();
 
       const trackEvent: Record<UserAction, string> = {
         'activate':      'user.status.change',
@@ -109,6 +85,7 @@ export function UserActions({ userId, currentStatus, isLocked = false }: UserAct
         'lock':          'user.lock',
         'unlock':        'user.unlock',
         'reset-password':'user.password.reset',
+        'force-logout':  'user.force.logout',
         'resend-invite': 'user.invite.resend',
       };
       track(trackEvent[action] as import('@/lib/analytics').TrackEvent, { userId, action });
@@ -179,8 +156,18 @@ export function UserActions({ userId, currentStatus, isLocked = false }: UserAct
           disabled={isInvited || isPendingAny}
           isPending={pending === 'reset-password'}
           aria-label={isInvited ? 'User has not set a password yet' : 'Send a password reset email'}
-          title={isInvited ? 'User has not set a password yet' : 'Send a password reset email'}
+          title={isInvited ? 'User has not set a password yet' : 'Trigger an admin password reset'}
           onClick={() => executeAction('reset-password')}
+        />
+
+        <ActionButton
+          label="Force Logout"
+          variant="danger"
+          disabled={isInvited || isPendingAny}
+          isPending={pending === 'force-logout'}
+          aria-label={isInvited ? 'User has no active sessions' : 'Sign out all active sessions'}
+          title={isInvited ? 'User has no active sessions' : 'Revoke all active sessions immediately'}
+          onClick={() => setConfirming('force-logout')}
         />
 
         {/* ── Invite ───────────────────────────────────────────────────── */}
@@ -231,11 +218,24 @@ export function UserActions({ userId, currentStatus, isLocked = false }: UserAct
       {confirming === 'lock' && (
         <ConfirmDialog
           title="Lock this user account?"
-          description="The user will be signed out immediately and blocked from signing in. All active sessions will be terminated."
+          description="The user will be signed out immediately and blocked from signing in. All active sessions will be terminated. You can unlock the account at any time."
           confirmLabel="Lock Account"
           variant="danger"
           isPending={pending === 'lock'}
           onConfirm={() => executeAction('lock')}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
+
+      {/* Force logout confirmation */}
+      {confirming === 'force-logout' && (
+        <ConfirmDialog
+          title="Force sign out this user?"
+          description="All of this user's active sessions will be immediately revoked. They will need to sign in again. This does not affect their account status or login ability."
+          confirmLabel="Force Sign Out"
+          variant="warning"
+          isPending={pending === 'force-logout'}
+          onConfirm={() => executeAction('force-logout')}
           onCancel={() => setConfirming(null)}
         />
       )}
@@ -300,13 +300,4 @@ function ActionButton({
       )}
     </button>
   );
-}
-
-/**
- * simulateAction — stub that resolves after 800ms.
- * Remove once real BFF proxy routes are wired.
- * TODO: delete when POST /identity/api/admin/users/{id}/{action} is live.
- */
-async function simulateAction(_action: string): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, 800));
 }

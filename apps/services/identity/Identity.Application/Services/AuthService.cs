@@ -57,6 +57,14 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException();
         }
 
+        // UIX-003-03: reject locked accounts (checked after IsActive so lock state is independent).
+        if (user.IsLocked)
+        {
+            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "AccountLocked", ipAddress: ipAddress);
+            EmitLockedLoginBlocked(user, tenant, ipAddress);
+            throw new UnauthorizedAccessException();
+        }
+
         var valid = _passwordHasher.Verify(request.Password, user.PasswordHash);
         if (!valid)
         {
@@ -183,6 +191,17 @@ public class AuthService : IAuthService
             Tags = ["auth", "login"],
         });
 
+        // UIX-003-03: update LastLoginAtUtc. Best-effort — never gate login on this write.
+        try
+        {
+            userWithRoles.RecordLogin();
+            await _userRepository.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist LastLoginAtUtc for user {UserId}. Non-fatal.", userWithRoles.Id);
+        }
+
         return new LoginResponse(token, expiresAtUtc, userResponse);
     }
 
@@ -190,6 +209,10 @@ public class AuthService : IAuthService
     /// Assembles an AuthMeResponse from a validated ClaimsPrincipal.
     /// Most fields come from JWT claims; AvatarDocumentId is fetched from DB
     /// since it changes independently of the token lifecycle.
+    ///
+    /// UIX-003-03: validates SessionVersion from the JWT against the DB value.
+    /// If the token's session_version is older than the current DB value,
+    /// the session is considered force-logged-out and the request is rejected.
     /// </summary>
     public async Task<AuthMeResponse> GetCurrentUserAsync(ClaimsPrincipal principal, CancellationToken ct = default)
     {
@@ -223,11 +246,29 @@ public class AuthService : IAuthService
         var sessionTimeoutMinutes = timeoutClaim is not null && int.TryParse(timeoutClaim, out var tm) ? tm : 30;
 
         // AvatarDocumentId is not in the JWT (changes independently) — fetch from DB.
+        // UIX-003-03: also validate SessionVersion and IsLocked from DB.
         Guid? avatarDocumentId = null;
         if (Guid.TryParse(userId, out var userGuid))
         {
             var user = await _userRepository.GetByIdAsync(userGuid, ct);
+
+            // UIX-003-03: reject locked accounts immediately — they cannot use existing sessions.
+            if (user?.IsLocked == true)
+                throw new UnauthorizedAccessException("Account is locked.");
+
             avatarDocumentId = user?.AvatarDocumentId;
+
+            // UIX-003-03: validate session version. Tokens from before a force-logout
+            // or lock will have an older session_version and must be rejected.
+            // If the claim is absent (old tokens before this feature), allow through.
+            var sessionVersionClaim = principal.FindFirstValue("session_version");
+            if (sessionVersionClaim is not null
+                && int.TryParse(sessionVersionClaim, out var tokenVersion)
+                && user is not null
+                && tokenVersion < user.SessionVersion)
+            {
+                throw new UnauthorizedAccessException("Session has been invalidated.");
+            }
         }
 
         return new AuthMeResponse(
@@ -293,6 +334,45 @@ public class AuthService : IAuthService
             }),
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.login.failed", email),
             Tags = ["auth", "login", "failure", "security"],
+        });
+    }
+
+    /// <summary>
+    /// UIX-003-03: emits a dedicated <c>identity.user.login.blocked</c> event when a locked
+    /// account attempts to authenticate. Separate from the generic login.failed event so
+    /// security dashboards can distinguish intentional locks from bad credentials.
+    /// Fire-and-observe.
+    /// </summary>
+    private void EmitLockedLoginBlocked(User user, Tenant tenant, string? ipAddress)
+    {
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.login.blocked",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "auth-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = tenant.Id.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id        = user.Id.ToString(),
+                Type      = ActorType.User,
+                Name      = user.Email,
+                IpAddress = ipAddress,
+            },
+            Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "LoginBlocked",
+            Description = $"Login attempt blocked for locked account '{user.Email}' in tenant {tenant.Code}.",
+            Metadata    = JsonSerializer.Serialize(new { tenantCode = tenant.Code, email = user.Email, reason = "AccountLocked" }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.login.blocked", user.Id.ToString()),
+            Tags = ["auth", "login", "blocked", "security", "locked"],
         });
     }
 

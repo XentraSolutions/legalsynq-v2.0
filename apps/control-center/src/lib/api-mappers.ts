@@ -332,6 +332,12 @@ export function mapUserDetail(raw: unknown): UserDetail {
     createdAtUtc:      str(r, 'created_at',           'createdAtUtc',      new Date().toISOString()),
     updatedAtUtc:      str(r, 'updated_at',           'updatedAtUtc',      new Date().toISOString()),
     isLocked:          bool(r, 'is_locked',           'isLocked',          false),
+    lockedAtUtc:       optStr(r, 'locked_at_utc',     'lockedAtUtc'),
+    lastLoginAtUtc:    optStr(r, 'last_login_at_utc', 'lastLoginAtUtc')
+                         ?? optStr(r, 'lastLoginAtUtc', 'last_login_at_utc'),
+    sessionVersion:    typeof (r['sessionVersion'] ?? r['session_version']) === 'number'
+                         ? (r['sessionVersion'] ?? r['session_version']) as number
+                         : undefined,
     avatarDocumentId:  (r['avatarDocumentId'] ?? r['avatar_document_id']) as string | undefined,
     inviteSentAtUtc:   optStr(r, 'invite_sent_at',    'inviteSentAtUtc'),
     memberships: rawMemberships.map(m => {

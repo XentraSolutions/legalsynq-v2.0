@@ -43,6 +43,9 @@ public class IdentityDbContext : DbContext
     public DbSet<GroupMembership>               GroupMemberships               => Set<GroupMembership>();
     public DbSet<UserInvitation>                UserInvitations                => Set<UserInvitation>();
 
+    // UIX-003-03: Security / admin-triggered password reset
+    public DbSet<PasswordResetToken>            PasswordResetTokens            => Set<PasswordResetToken>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(IdentityDbContext).Assembly);

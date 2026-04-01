@@ -5,6 +5,7 @@ import { Routes }                         from '@/lib/routes';
 import { CCShell }                        from '@/components/shell/cc-shell';
 import { UserDetailCard }                 from '@/components/users/user-detail-card';
 import { UserActions }                    from '@/components/users/user-actions';
+import { UserSecurityPanel }             from '@/components/users/user-security-panel';
 import { RoleAssignmentPanel }            from '@/components/users/role-assignment-panel';
 import { OrgMembershipPanel }             from '@/components/users/org-membership-panel';
 import { GroupMembershipPanel }           from '@/components/users/group-membership-panel';
@@ -41,8 +42,8 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     fetchError = err instanceof Error ? err.message : 'Failed to load user.';
   }
 
-  // Fetch access-control reference data in parallel; failures are non-fatal.
-  const [rolesResult, orgsResult, groupsResult] = await Promise.allSettled([
+  // Fetch access-control reference data + security summary in parallel; failures are non-fatal.
+  const [rolesResult, orgsResult, groupsResult, securityResult] = await Promise.allSettled([
     controlCenterServerApi.roles.list(),
     user
       ? controlCenterServerApi.organizations.listByTenant(user.tenantId)
@@ -50,11 +51,15 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     user
       ? controlCenterServerApi.groups.list({ tenantId: user.tenantId, pageSize: 200 })
       : Promise.resolve({ items: [], total: 0, page: 1, pageSize: 200, totalPages: 0 }),
+    user
+      ? controlCenterServerApi.users.getSecurity(user.id)
+      : Promise.resolve(null),
   ]);
 
   const availableRoles  = rolesResult.status  === 'fulfilled' ? rolesResult.value              : [];
   const availableOrgs   = orgsResult.status   === 'fulfilled' ? orgsResult.value               : [];
   const availableGroups = groupsResult.status === 'fulfilled' ? groupsResult.value.items       : [];
+  const security        = securityResult.status === 'fulfilled' ? securityResult.value         : null;
 
   return (
     <CCShell userEmail={session.email}>
@@ -157,6 +162,9 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
 
             {/* Read-only profile / account info */}
             <UserDetailCard user={user} />
+
+            {/* ── Security & Sessions (UIX-003-03) ─────────────────────────── */}
+            <UserSecurityPanel security={security} />
 
             {/* ── Access Control Management (UIX-003) ──────────────────────── */}
             <div className="space-y-3">

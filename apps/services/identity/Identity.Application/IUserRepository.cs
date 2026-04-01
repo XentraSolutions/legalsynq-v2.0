@@ -17,4 +17,11 @@ public interface IUserRepository
     /// Updates the user's AvatarDocumentId. Pass null to clear the avatar.
     /// </summary>
     Task UpdateAvatarAsync(Guid userId, Guid? avatarDocumentId, CancellationToken ct = default);
+
+    /// <summary>
+    /// UIX-003-03: Persists pending EF change-tracked mutations on the Users entity
+    /// (e.g. RecordLogin, IncrementSessionVersion). Callers must load the entity via
+    /// this repository before mutating — do not use this for unrelated entities.
+    /// </summary>
+    Task SaveChangesAsync(CancellationToken ct = default);
 }

@@ -97,11 +97,37 @@ export interface UserDetail extends UserSummary {
   createdAtUtc:      string;
   updatedAtUtc:      string;
   isLocked?:         boolean;
+  lockedAtUtc?:      string;
+  lastLoginAtUtc?:   string;
+  sessionVersion?:   number;
   avatarDocumentId?: string;
   inviteSentAtUtc?:  string;
   memberships?:      OrgMembershipSummary[];
   groups?:           UserGroupSummary[];
   roles?:            UserRoleSummary[];
+}
+
+/**
+ * UIX-003-03: Security summary for a user — returned by GET /security.
+ */
+export interface UserSecurity {
+  userId:          string;
+  email:           string;
+  isLocked:        boolean;
+  lockedAtUtc:     string | null;
+  lastLoginAtUtc:  string | null;
+  sessionVersion:  number;
+  isActive:        boolean;
+  hasPendingInvite: boolean;
+  recentPasswordResets: PasswordResetSummary[];
+}
+
+export interface PasswordResetSummary {
+  id:        string;
+  status:    'PENDING' | 'USED' | 'EXPIRED' | 'REVOKED';
+  createdAt: string;
+  expiresAt: string;
+  usedAt:    string | null;
 }
 
 export interface OrgSummary {

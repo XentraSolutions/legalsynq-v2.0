@@ -40,6 +40,9 @@ public class JwtTokenService : IJwtTokenService
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new("tenant_id", tenant.Id.ToString()),
             new("tenant_code", tenant.Code),
+            // UIX-003-03: session invalidation — embed version at login time.
+            // auth/me validates this against the DB value; mismatches reject the request.
+            new("session_version", user.SessionVersion.ToString()),
         };
 
         foreach (var role in roles)

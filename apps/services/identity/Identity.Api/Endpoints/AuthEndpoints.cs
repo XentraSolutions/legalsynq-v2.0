@@ -377,9 +377,100 @@ public static class AuthEndpoints
             return Results.NoContent();
         })
         .RequireAuthorization();
+
+        // ── POST /api/auth/password-reset/confirm ─────────────────────────────
+        // Anonymous. Accepts a password-reset token (admin-triggered), validates it,
+        // sets a new password, and invalidates all existing sessions (SessionVersion++).
+        //
+        // Flow:
+        //   1. Hash the raw token with SHA-256.
+        //   2. Look up the PasswordResetToken by hash.
+        //   3. Validate: status == PENDING and not expired.
+        //   4. Set the user's new password (User.SetPassword increments SessionVersion).
+        //   5. Mark the token as used.
+        //   6. Emit identity.user.password_reset_completed audit event.
+        app.MapPost("/api/auth/password-reset/confirm", async (
+            PasswordResetConfirmRequest body,
+            IdentityDbContext           db,
+            IPasswordHasher             passwordHasher,
+            IAuditEventClient           auditClient,
+            CancellationToken           ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(body.Token))
+                return Results.BadRequest(new { error = "token is required." });
+            if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
+                return Results.BadRequest(new { error = "newPassword must be at least 8 characters." });
+
+            var tokenHash = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(body.Token)));
+
+            var resetToken = await db.PasswordResetTokens
+                .Include(t => t.User)
+                .FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
+
+            if (resetToken is null)
+                return Results.BadRequest(new { error = "Invalid or expired reset token." });
+
+            if (resetToken.Status != PasswordResetToken.Statuses.Pending)
+                return Results.BadRequest(new
+                {
+                    error = resetToken.Status == PasswordResetToken.Statuses.Used
+                        ? "This reset link has already been used."
+                        : "This reset link is no longer valid.",
+                });
+
+            if (resetToken.IsExpired())
+                return Results.BadRequest(new { error = "This reset link has expired. Please ask an admin to send a new one." });
+
+            var user = resetToken.User;
+            if (user is null)
+                return Results.Problem("User record not found for this reset token.", statusCode: 500);
+
+            // SetPassword hashes the new password and increments SessionVersion,
+            // which invalidates all existing JWTs for this user.
+            var passwordHash = passwordHasher.Hash(body.NewPassword);
+            user.SetPassword(passwordHash);
+            resetToken.MarkUsed();
+
+            await db.SaveChangesAsync(ct);
+
+            var now = DateTimeOffset.UtcNow;
+            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "identity.user.password_reset_completed",
+                EventCategory = EventCategory.Security,
+                SourceSystem  = "identity-service",
+                SourceService = "auth-api",
+                Visibility    = VisibilityScope.Tenant,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = now,
+                Scope = new AuditEventScopeDto
+                {
+                    ScopeType = ScopeType.Tenant,
+                    TenantId  = user.TenantId.ToString(),
+                },
+                Actor = new AuditEventActorDto
+                {
+                    Id   = user.Id.ToString(),
+                    Type = ActorType.User,
+                    Name = user.Email,
+                },
+                Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+                Action      = "PasswordResetCompleted",
+                Description = $"Password reset completed for user '{user.Email}' in tenant {user.TenantId}.",
+                IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
+                    now, "identity-service", "identity.user.password_reset_completed", user.Id.ToString()),
+                Tags = ["auth", "security", "password-reset"],
+            });
+
+            return Results.Ok(new { message = "Password updated successfully." });
+        })
+        .AllowAnonymous();
     }
 
     private record AcceptInviteRequest(string Token, string NewPassword);
+    private record PasswordResetConfirmRequest(string Token, string NewPassword);
     private record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     private record SetAvatarRequest(string DocumentId);
 }

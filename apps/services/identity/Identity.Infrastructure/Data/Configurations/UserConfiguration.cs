@@ -44,6 +44,25 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnType("varchar(36)")
             .IsRequired(false);
 
+        // UIX-003-03: security / session fields
+        builder.Property(u => u.IsLocked)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(u => u.LockedAtUtc)
+            .IsRequired(false);
+
+        builder.Property(u => u.LockedByAdminId)
+            .HasColumnType("char(36)")
+            .IsRequired(false);
+
+        builder.Property(u => u.LastLoginAtUtc)
+            .IsRequired(false);
+
+        builder.Property(u => u.SessionVersion)
+            .IsRequired()
+            .HasDefaultValue(0);
+
         builder.HasIndex(u => new { u.TenantId, u.Email })
             .IsUnique();
 

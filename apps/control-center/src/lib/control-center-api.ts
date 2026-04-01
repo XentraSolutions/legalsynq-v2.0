@@ -400,6 +400,67 @@ export const controlCenterServerApi = {
     },
 
     /**
+     * UIX-003-03: POST /identity/api/admin/users/{id}/lock
+     * Locks a user account. Revalidates cc:users cache.
+     */
+    lock: async (id: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/lock`,
+        {},
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * UIX-003-03: POST /identity/api/admin/users/{id}/unlock
+     * Unlocks a user account. Revalidates cc:users cache.
+     */
+    unlock: async (id: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/unlock`,
+        {},
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * UIX-003-03: POST /identity/api/admin/users/{id}/reset-password
+     * Triggers an admin-initiated password reset workflow.
+     */
+    resetPassword: async (id: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/reset-password`,
+        {},
+      );
+    },
+
+    /**
+     * UIX-003-03: POST /identity/api/admin/users/{id}/force-logout
+     * Revokes all active sessions by incrementing SessionVersion.
+     */
+    forceLogout: async (id: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/force-logout`,
+        {},
+      );
+    },
+
+    /**
+     * UIX-003-03: GET /identity/api/admin/users/{id}/security
+     * Returns security summary: lock state, last login, session version,
+     * recent password resets.
+     */
+    getSecurity: async (id: string): Promise<import('@/types/control-center').UserSecurity | null> => {
+      try {
+        return await apiClient.get<import('@/types/control-center').UserSecurity>(
+          `/identity/api/admin/users/${encodeURIComponent(id)}/security`,
+        );
+      } catch {
+        return null;
+      }
+    },
+
+    /**
      * POST /identity/api/admin/users/{id}/memberships
      * Assigns the user to an organization. Revalidates cc:users cache.
      */

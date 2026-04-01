@@ -93,4 +93,11 @@ public class UserRepository : IUserRepository
             .Where(m => m.UserId == userId && m.IsActive)
             .OrderBy(m => m.JoinedAtUtc)
             .FirstOrDefaultAsync(ct);
+
+    /// <summary>
+    /// UIX-003-03: Persists pending change-tracked mutations for User entities
+    /// already loaded by this repository (e.g. RecordLogin, IncrementSessionVersion).
+    /// </summary>
+    public Task SaveChangesAsync(CancellationToken ct = default) =>
+        _db.SaveChangesAsync(ct);
 }

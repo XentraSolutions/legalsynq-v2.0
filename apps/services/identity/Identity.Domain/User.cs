@@ -13,6 +13,35 @@ public class User
     public DateTime UpdatedAtUtc { get; private set; }
 
     /// <summary>
+    /// UIX-003-03: Whether this account is administratively locked.
+    /// Locked users cannot authenticate regardless of IsActive.
+    /// </summary>
+    public bool IsLocked { get; private set; }
+
+    /// <summary>
+    /// UIX-003-03: When the account was locked. Null if not currently locked.
+    /// </summary>
+    public DateTime? LockedAtUtc { get; private set; }
+
+    /// <summary>
+    /// UIX-003-03: The admin user ID who locked this account. Null if not locked or locked by system.
+    /// </summary>
+    public Guid? LockedByAdminId { get; private set; }
+
+    /// <summary>
+    /// UIX-003-03: Timestamp of the user's most recent successful login.
+    /// Updated on each successful authentication.
+    /// </summary>
+    public DateTime? LastLoginAtUtc { get; private set; }
+
+    /// <summary>
+    /// UIX-003-03: Monotonically-increasing session invalidation counter.
+    /// Embedded in JWT as session_version. Force-logout increments this;
+    /// tokens with a lower version are rejected by auth/me.
+    /// </summary>
+    public int SessionVersion { get; private set; }
+
+    /// <summary>
     /// Reference to the user's profile picture stored in the Documents service.
     /// Null when no avatar has been uploaded.
     /// </summary>
@@ -51,14 +80,68 @@ public class User
     }
 
     /// <summary>
+    /// UIX-003-03: Locks this account. Idempotent — safe to call when already locked.
+    /// Returns true if state changed, false if already locked.
+    /// Locked users are rejected during login and all active sessions become invalid
+    /// because SessionVersion is incremented, invalidating existing JWTs.
+    /// </summary>
+    public bool Lock(Guid? lockedByAdminId = null)
+    {
+        var now = DateTime.UtcNow;
+        if (IsLocked) return false;
+        IsLocked         = true;
+        LockedAtUtc      = now;
+        LockedByAdminId  = lockedByAdminId;
+        SessionVersion++;
+        UpdatedAtUtc     = now;
+        return true;
+    }
+
+    /// <summary>
+    /// UIX-003-03: Unlocks this account. Idempotent — safe to call when not locked.
+    /// Returns true if state changed, false if already unlocked.
+    /// </summary>
+    public bool Unlock()
+    {
+        if (!IsLocked) return false;
+        IsLocked        = false;
+        LockedAtUtc     = null;
+        LockedByAdminId = null;
+        UpdatedAtUtc    = DateTime.UtcNow;
+        return true;
+    }
+
+    /// <summary>
+    /// UIX-003-03: Records a successful login timestamp.
+    /// Called at the end of a successful LoginAsync.
+    /// </summary>
+    public void RecordLogin()
+    {
+        LastLoginAtUtc = DateTime.UtcNow;
+        UpdatedAtUtc   = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// UIX-003-03: Increments the session version to invalidate all existing JWTs.
+    /// Used by force-logout. Always changes state (never idempotent by design).
+    /// </summary>
+    public void IncrementSessionVersion()
+    {
+        SessionVersion++;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
     /// Replaces the stored password hash. Used when an invited user sets their
-    /// password on first login (accept-invite flow).
+    /// password on first login (accept-invite flow) or when admin-triggered
+    /// password reset is confirmed by the user.
     /// </summary>
     public void SetPassword(string passwordHash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
-        PasswordHash = passwordHash;
-        UpdatedAtUtc = DateTime.UtcNow;
+        PasswordHash   = passwordHash;
+        SessionVersion++;
+        UpdatedAtUtc   = DateTime.UtcNow;
     }
 
     /// <summary>
@@ -95,15 +178,17 @@ public class User
         var now = DateTime.UtcNow;
         return new User
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            Email = email.ToLowerInvariant().Trim(),
-            PasswordHash = passwordHash,
-            FirstName = firstName.Trim(),
-            LastName = lastName.Trim(),
-            IsActive = true,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now
+            Id             = Guid.NewGuid(),
+            TenantId       = tenantId,
+            Email          = email.ToLowerInvariant().Trim(),
+            PasswordHash   = passwordHash,
+            FirstName      = firstName.Trim(),
+            LastName       = lastName.Trim(),
+            IsActive       = true,
+            IsLocked       = false,
+            SessionVersion = 0,
+            CreatedAtUtc   = now,
+            UpdatedAtUtc   = now
         };
     }
 }
