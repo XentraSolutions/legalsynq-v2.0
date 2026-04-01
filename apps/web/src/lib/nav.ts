@@ -107,8 +107,24 @@ export const GLOBAL_BOTTOM_NAV: NavSection = {
   ],
 };
 
-// ── Legacy stub ───────────────────────────────────────────────────────────────
+// ── Admin nav sections (shown when session has admin role) ────────────────────
 
-export function buildNavGroups(_session: PlatformSession) {
-  return [];
+/**
+ * Returns the Administration NavSection[] for sidebar rendering.
+ * Returns an empty array for standard users — they see nothing.
+ */
+export function buildNavGroups(session: PlatformSession): NavSection[] {
+  if (!session.isPlatformAdmin && !session.isTenantAdmin) return [];
+
+  const items: NavSection['items'] = [
+    { href: '/admin/users',          label: 'Users',          icon: 'ri-user-3-line'     },
+    { href: '/admin/organizations',   label: 'Organizations',   icon: 'ri-building-line'   },
+    { href: '/admin/products',        label: 'Products',        icon: 'ri-grid-line'       },
+  ];
+
+  if (session.isPlatformAdmin) {
+    items.push({ href: '/admin/tenants', label: 'All Tenants', icon: 'ri-building-4-line' });
+  }
+
+  return [{ heading: 'ADMINISTRATION', items }];
 }

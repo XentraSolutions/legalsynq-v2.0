@@ -5,7 +5,8 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useProduct } from '@/contexts/product-context';
 import { useSettings } from '@/contexts/settings-context';
-import { PRODUCT_NAV, PRODUCT_META, GLOBAL_BOTTOM_NAV } from '@/lib/nav';
+import { PRODUCT_NAV, PRODUCT_META, GLOBAL_BOTTOM_NAV, buildNavGroups } from '@/lib/nav';
+import { useSession } from '@/hooks/use-session';
 import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
 
@@ -16,6 +17,8 @@ export function Sidebar() {
   const { selectedProductId } = useProduct();
   const settings              = useSettings();
   const nav                   = settings.appearance.nav;
+  const { session }           = useSession();
+  const adminSections         = session ? buildNavGroups(session) : [];
 
   const [collapsed, setCollapsed] = useState(false);
   const [mounted,   setMounted]   = useState(false);
@@ -98,6 +101,32 @@ export function Sidebar() {
             )}
             {/* Divider between sections when collapsed */}
             {si > 0 && collapsed && (
+              <div className="mx-2 mb-2 border-t border-gray-100" />
+            )}
+            <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
+              {section.items.map(item => (
+                <SidebarItem
+                  key={item.href}
+                  item={item}
+                  pathname={pathname}
+                  collapsed={collapsed}
+                  activeColor={nav.activeColor}
+                  activeBg={nav.activeBg}
+                />
+              ))}
+            </nav>
+          </div>
+        ))}
+
+        {/* ── Administration sections (PlatformAdmin / TenantAdmin only) ──── */}
+        {adminSections.map((section, si) => (
+          <div key={`admin-${si}`} className={sections.length > 0 || si > 0 ? 'mt-4' : ''}>
+            {section.heading && !collapsed && (
+              <p className="px-5 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none">
+                {section.heading}
+              </p>
+            )}
+            {(sections.length > 0 || si > 0) && collapsed && (
               <div className="mx-2 mb-2 border-t border-gray-100" />
             )}
             <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
