@@ -10,6 +10,12 @@ interface UserListTableProps {
   pageSize:          number;
   showTenantColumn?: boolean;
   /**
+   * When true, the empty state message reflects "no results match your
+   * filters" rather than "no users exist". Set by the page when any
+   * search or status filter is active.
+   */
+  hasFilters?:       boolean;
+  /**
    * Base href for pagination links — should include all current filter params
    * (search, status) so that prev/next links preserve active filters.
    * E.g. "?search=alice&status=active&" — pageHref appends page=N.
@@ -42,14 +48,31 @@ function fullName(user: UserSummary): string {
   return `${user.firstName} ${user.lastName}`;
 }
 
+const STATUS_DOT: Record<UserStatus, string> = {
+  Active:   'bg-green-500',
+  Inactive: 'bg-gray-400',
+  Invited:  'bg-blue-500',
+};
+
+const STATUS_STYLES: Record<UserStatus, string> = {
+  Active:   'bg-green-50 text-green-700 border-green-200',
+  Inactive: 'bg-gray-100 text-gray-500 border-gray-200',
+  Invited:  'bg-blue-50 text-blue-700 border-blue-200',
+};
+
+const STATUS_MEANING: Record<UserStatus, string> = {
+  Active:   'Can sign in and access the platform',
+  Inactive: 'Account disabled — cannot sign in',
+  Invited:  'Invitation sent — awaiting acceptance',
+};
+
 function StatusBadge({ status }: { status: UserStatus }) {
-  const styles: Record<UserStatus, string> = {
-    Active:   'bg-green-50 text-green-700 border-green-200',
-    Inactive: 'bg-gray-100 text-gray-500 border-gray-200',
-    Invited:  'bg-blue-50 text-blue-700 border-blue-200',
-  };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${styles[status]}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold border ${STATUS_STYLES[status]}`}
+      title={STATUS_MEANING[status]}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full inline-block flex-shrink-0 ${STATUS_DOT[status]}`} />
       {status}
     </span>
   );
@@ -61,12 +84,27 @@ export function UserListTable({
   page,
   pageSize,
   showTenantColumn = true,
+  hasFilters = false,
   baseHref = '?',
 }: UserListTableProps) {
   if (users.length === 0) {
     return (
-      <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">
-        <p className="text-sm text-gray-400">No users found.</p>
+      <div className="bg-white border border-gray-200 rounded-lg p-12 text-center space-y-2">
+        {hasFilters ? (
+          <>
+            <p className="text-sm font-medium text-gray-600">No users match your filters</p>
+            <p className="text-xs text-gray-400">
+              Try clearing the search or selecting a different status.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-gray-600">No users yet</p>
+            <p className="text-xs text-gray-400">
+              Invite a user to get started.
+            </p>
+          </>
+        )}
       </div>
     );
   }
@@ -76,11 +114,6 @@ export function UserListTable({
   const hasPrev   = page > 1;
   const hasNext   = page * pageSize < totalCount;
 
-  /**
-   * Build a pagination href that appends page=N to the base href.
-   * baseHref is expected to already contain all filter params, ending in
-   * either "?" or "&" so we can directly append "page=N".
-   */
   function pageHref(p: number): string {
     const base = baseHref.endsWith('?') || baseHref.endsWith('&')
       ? baseHref
@@ -148,6 +181,17 @@ export function UserListTable({
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Status legend */}
+      <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 flex flex-wrap items-center gap-4">
+        {(Object.keys(STATUS_MEANING) as UserStatus[]).map(s => (
+          <span key={s} className="inline-flex items-center gap-1.5 text-[11px] text-gray-500">
+            <span className={`w-1.5 h-1.5 rounded-full inline-block ${STATUS_DOT[s]}`} />
+            <span className="font-semibold text-gray-600">{s}</span>
+            <span>— {STATUS_MEANING[s]}</span>
+          </span>
+        ))}
       </div>
 
       {/* Pagination footer */}

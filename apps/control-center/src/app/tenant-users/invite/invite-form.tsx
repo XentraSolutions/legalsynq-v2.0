@@ -1,19 +1,27 @@
 'use client';
 
 /**
- * InviteUserForm — client-side form for /tenant-users/invite.
+ * InviteUserForm — UIX-003 / UIX-003-02
+ *
+ * Client-side form for /tenant-users/invite.
  *
  * Props:
  *   resolvedTenantId   — if set, the tenant is pre-resolved (TenantAdmin
  *                        context or selected tenant). The field is hidden and
  *                        the value is submitted silently.
  *   resolvedTenantName — human-readable tenant name shown in the locked badge.
+ *
+ * UX improvements (UIX-003-02):
+ *   - Shows an inline success state after submission (instead of immediate redirect)
+ *   - Explains what happens next before navigating away
+ *   - Better help text on each field
+ *   - Tenant context is clearly communicated
  */
 
-import { useState, FormEvent } from 'react';
-import Link                    from 'next/link';
-import { useRouter }           from 'next/navigation';
-import { Routes }              from '@/lib/routes';
+import { useState, useEffect, FormEvent } from 'react';
+import Link                               from 'next/link';
+import { useRouter }                      from 'next/navigation';
+import { Routes }                         from '@/lib/routes';
 
 interface Props {
   resolvedTenantId?:   string;
@@ -28,18 +36,45 @@ interface FormState {
   memberRole: string;
 }
 
+interface SuccessState {
+  email:      string;
+  firstName:  string;
+  lastName:   string;
+}
+
+const MEMBER_ROLES = [
+  { value: 'Member',  label: 'Member',  hint: 'Standard access — can view and use resources' },
+  { value: 'Admin',   label: 'Admin',   hint: 'Can manage resources within the organization' },
+  { value: 'Owner',   label: 'Owner',   hint: 'Full control, including billing and membership' },
+  { value: 'Viewer',  label: 'Viewer',  hint: 'Read-only access to organization resources' },
+];
+
 export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) {
   const router = useRouter();
 
-  const [form, setForm]       = useState<FormState>({
+  const [form, setForm]         = useState<FormState>({
     email:      '',
     firstName:  '',
     lastName:   '',
     tenantId:   resolvedTenantId ?? '',
     memberRole: 'Member',
   });
-  const [pending, setPending] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
+  const [pending,  setPending]  = useState(false);
+  const [error,    setError]    = useState<string | null>(null);
+  const [success,  setSuccess]  = useState<SuccessState | null>(null);
+  const [countdown, setCountdown] = useState(5);
+
+  /* After success, count down and redirect */
+  useEffect(() => {
+    if (!success) return;
+    if (countdown <= 0) {
+      router.push(Routes.tenantUsers);
+      router.refresh();
+      return;
+    }
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [success, countdown, router]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value } = e.target;
@@ -69,8 +104,11 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
         throw new Error(body.message ?? 'Failed to send invitation.');
       }
 
-      router.push(Routes.tenantUsers);
-      router.refresh();
+      setSuccess({
+        email:     form.email.trim(),
+        firstName: form.firstName.trim(),
+        lastName:  form.lastName.trim(),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally {
@@ -80,6 +118,83 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
 
   const tenantIsLocked = Boolean(resolvedTenantId);
 
+  /* ── Success state ───────────────────────────────────────────────────── */
+  if (success) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-start justify-center pt-20 px-4">
+        <div className="w-full max-w-md">
+          <div className="bg-white border border-green-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-6 py-5 border-b border-green-100 bg-green-50 flex items-center gap-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block flex-shrink-0" />
+              <h1 className="text-base font-semibold text-green-800">Invitation Sent</h1>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <p className="text-sm text-gray-700">
+                An invitation email has been sent to{' '}
+                <span className="font-semibold">{success.firstName} {success.lastName}</span> at{' '}
+                <span className="font-mono text-indigo-700">{success.email}</span>.
+              </p>
+
+              <div className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3 text-sm text-gray-600 space-y-1.5">
+                <p className="font-medium text-gray-700 text-xs uppercase tracking-wide">What happens next</p>
+                <ul className="space-y-1 text-xs text-gray-500 list-none">
+                  <li className="flex items-start gap-2">
+                    <span className="mt-1 w-1 h-1 rounded-full bg-gray-400 flex-shrink-0 inline-block" />
+                    The user receives an email with a secure invitation link.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="mt-1 w-1 h-1 rounded-full bg-gray-400 flex-shrink-0 inline-block" />
+                    They set a password and complete their profile on first login.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="mt-1 w-1 h-1 rounded-full bg-gray-400 flex-shrink-0 inline-block" />
+                    Their status appears as <span className="font-semibold text-blue-700">Invited</span> until they accept.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="mt-1 w-1 h-1 rounded-full bg-gray-400 flex-shrink-0 inline-block" />
+                    You can resend the invitation from their profile if needed.
+                  </li>
+                </ul>
+              </div>
+
+              <p className="text-xs text-gray-400">
+                Redirecting to user list in {countdown}s…
+              </p>
+
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { router.push(Routes.tenantUsers); router.refresh(); }}
+                  className="flex-1 bg-indigo-600 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-center"
+                >
+                  Go to User List
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSuccess(null);
+                    setCountdown(5);
+                    setForm({
+                      email:      '',
+                      firstName:  '',
+                      lastName:   '',
+                      tenantId:   resolvedTenantId ?? '',
+                      memberRole: 'Member',
+                    });
+                  }}
+                  className="flex-1 bg-white border border-gray-200 text-gray-600 text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors text-center"
+                >
+                  Invite Another
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Form ────────────────────────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-gray-50 flex items-start justify-center pt-20 px-4">
       <div className="w-full max-w-md">
@@ -93,7 +208,7 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
               <div>
                 <h1 className="text-lg font-semibold text-gray-900">Invite User</h1>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  Send an invitation to a new platform user.
+                  An invitation email will be sent with a secure sign-up link.
                 </p>
               </div>
               <Link
@@ -114,37 +229,40 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
               </div>
             )}
 
-            <Field label="First Name" required>
+            <Field label="First Name" required hint="The user's given name — used in the invitation email.">
               <input
                 type="text"
                 name="firstName"
                 value={form.firstName}
                 onChange={handleChange}
                 required
+                autoComplete="given-name"
                 placeholder="Jane"
                 className={inputClass}
               />
             </Field>
 
-            <Field label="Last Name" required>
+            <Field label="Last Name" required hint="The user's family name.">
               <input
                 type="text"
                 name="lastName"
                 value={form.lastName}
                 onChange={handleChange}
                 required
+                autoComplete="family-name"
                 placeholder="Smith"
                 className={inputClass}
               />
             </Field>
 
-            <Field label="Email Address" required>
+            <Field label="Email Address" required hint="Must be a valid email. This is where the invitation will be sent.">
               <input
                 type="email"
                 name="email"
                 value={form.email}
                 onChange={handleChange}
                 required
+                autoComplete="email"
                 placeholder="jane@example.com"
                 className={inputClass}
               />
@@ -152,7 +270,7 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
 
             {/* Tenant — locked (auto-resolved) or manual UUID entry */}
             {tenantIsLocked ? (
-              <Field label="Tenant">
+              <Field label="Tenant" hint="The user will be added to this tenant automatically.">
                 <div className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-md bg-gray-50">
                   <span className="h-2 w-2 rounded-full bg-amber-400 flex-shrink-0" />
                   <span className="text-sm text-gray-700 font-medium truncate">
@@ -162,44 +280,42 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
                     auto
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-gray-400">
-                  Tenant resolved from your active session context.
-                </p>
                 {/* Hidden field carries the value for submit */}
                 <input type="hidden" name="tenantId" value={resolvedTenantId} />
               </Field>
             ) : (
-              <Field label="Tenant ID" required>
+              <Field label="Tenant ID" required hint="The UUID of the tenant this user belongs to. Find it on the Tenants page.">
                 <input
                   type="text"
                   name="tenantId"
                   value={form.tenantId}
                   onChange={handleChange}
                   required
-                  placeholder="Tenant UUID"
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                   className={`${inputClass} font-mono text-xs`}
                 />
-                <p className="mt-1 text-xs text-gray-400">
-                  The UUID of the tenant this user belongs to.
-                </p>
               </Field>
             )}
 
-            <Field label="Member Role">
+            <Field label="Member Role" hint="Sets the user's role within their primary organization.">
               <select
                 name="memberRole"
                 value={form.memberRole}
                 onChange={handleChange}
                 className={inputClass}
               >
-                <option value="Member">Member</option>
-                <option value="Admin">Admin</option>
-                <option value="Owner">Owner</option>
-                <option value="Viewer">Viewer</option>
+                {MEMBER_ROLES.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
               </select>
+              {form.memberRole && (
+                <p className="mt-1 text-[11px] text-gray-400">
+                  {MEMBER_ROLES.find(r => r.value === form.memberRole)?.hint}
+                </p>
+              )}
             </Field>
 
-            <div className="pt-2">
+            <div className="pt-2 space-y-2">
               <button
                 type="submit"
                 disabled={pending}
@@ -214,6 +330,10 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
                   'Send Invitation'
                 )}
               </button>
+              <p className="text-center text-[11px] text-gray-400">
+                The user will receive an email with a secure sign-up link.
+                {' '}Fields marked <span className="text-red-500">*</span> are required.
+              </p>
             </div>
           </form>
         </div>
@@ -235,10 +355,12 @@ const inputClass =
 function Field({
   label,
   required,
+  hint,
   children,
 }: {
   label:     string;
   required?: boolean;
+  hint?:     string;
   children:  React.ReactNode;
 }) {
   return (
@@ -248,6 +370,7 @@ function Field({
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
+      {hint && <p className="mt-1 text-[11px] text-gray-400">{hint}</p>}
     </div>
   );
 }

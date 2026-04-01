@@ -18,10 +18,15 @@ interface UserDetailPageProps {
 /**
  * /tenant-users/[id] — User detail page.
  *
- * Access: PlatformAdmin only.
+ * Access: PlatformAdmin or TenantAdmin (UIX-003-01).
+ *   - PlatformAdmin: full cross-tenant access.
+ *   - TenantAdmin: scoped to their own tenant (enforced by BFF + backend).
  *
- * Renders read-only user info (UserDetailCard) plus interactive Access Control
- * Management panels (UIX-003): role assignment, org membership, group membership.
+ * Layout:
+ *   1. Informational summary (UserDetailCard) — User Information, Account Status,
+ *      Effective Access Summary. Read-only.
+ *   2. Access Control Management panels (UIX-003) — interactive role assignment,
+ *      org membership, group membership. Editable.
  */
 export default async function UserDetailPage({ params }: UserDetailPageProps) {
   const session = await requireAdmin();
@@ -157,10 +162,17 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-                  Access Control
+                  Access Control Management
                 </h2>
                 <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-[11px] font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded uppercase tracking-wide">
+                  Editable
+                </span>
               </div>
+              <p className="text-xs text-gray-500">
+                Use the panels below to manage this user's system roles, organization memberships, and group assignments.
+                Changes take effect immediately.
+              </p>
 
               <RoleAssignmentPanel
                 userId={user.id}

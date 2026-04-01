@@ -153,6 +153,7 @@ export default async function TenantUsersPage({ searchParams }: TenantUsersPageP
             page={result.page}
             pageSize={result.pageSize}
             showTenantColumn={!tenantCtx}
+            hasFilters={Boolean(search || status !== 'all')}
             baseHref={(() => {
               const params = new URLSearchParams();
               if (search)          params.set('search', search);
