@@ -467,6 +467,7 @@ public static class AdminEndpoints
         if (product is null)
             return Results.NotFound(new { error = $"Product '{productCode}' not found." });
 
+        // ── 1. Update TenantProducts (tenant-level license) ──────────────────
         var existing = tenant.TenantProducts.FirstOrDefault(tp => tp.ProductId == product.Id);
 
         if (existing is null)
@@ -488,6 +489,34 @@ public static class AdminEndpoints
                 await db.Database.ExecuteSqlRawAsync(
                     "UPDATE TenantProducts SET IsEnabled = 1, EnabledAtUtc = {0} WHERE TenantId = {1} AND ProductId = {2}",
                     DateTime.UtcNow, tenant.Id, product.Id);
+        }
+
+        // ── 2. Cascade to OrganizationProducts (org-level, drives product roles) ─
+        // Product roles in the JWT are derived from OrganizationProducts, so the
+        // tenant-level toggle must propagate to every active org in the tenant.
+        var tenantOrgs = await db.Organizations
+            .Include(o => o.OrganizationProducts)
+            .Where(o => o.TenantId == id && o.IsActive)
+            .ToListAsync();
+
+        foreach (var org in tenantOrgs)
+        {
+            var orgProduct = org.OrganizationProducts
+                .FirstOrDefault(op => op.ProductId == product.Id);
+
+            if (orgProduct is null)
+            {
+                if (body.Enabled)
+                    db.OrganizationProducts.Add(
+                        OrganizationProduct.Create(org.Id, product.Id));
+            }
+            else
+            {
+                if (body.Enabled)
+                    orgProduct.Enable();
+                else
+                    orgProduct.Disable();
+            }
         }
 
         await db.SaveChangesAsync();
