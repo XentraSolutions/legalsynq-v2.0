@@ -20,8 +20,9 @@ public static class TenantBrandingEndpoints
         // Caching: safe to cache for 5–15 minutes at the CDN/gateway layer.
         // The branding data changes infrequently; stale data is a minor cosmetic issue.
         //
-        // Phase 1 response: returns Tenant.Name as DisplayName; LogoUrl/PrimaryColor/
-        // FaviconUrl are null until a branding management feature is built.
+        // LogoDocumentId: when set, the authenticated portal proxies the logo via
+        //   the Documents service (GET /documents/{id}/content).
+        //   Anonymous contexts (login page) receive null — default LegalSynq branding applies.
         app.MapGet("/api/tenants/current/branding", async (
             HttpContext httpContext,
             ITenantRepository tenantRepository,
@@ -33,21 +34,23 @@ public static class TenantBrandingEndpoints
             {
                 // Return a safe default rather than 404 — the login page must always render
                 return Results.Ok(new TenantBrandingResponse(
-                    TenantId:    string.Empty,
-                    TenantCode:  string.Empty,
-                    DisplayName: "LegalSynq",
-                    LogoUrl:     null,
-                    PrimaryColor: null,
-                    FaviconUrl:  null));
+                    TenantId:       string.Empty,
+                    TenantCode:     string.Empty,
+                    DisplayName:    "LegalSynq",
+                    LogoUrl:        null,
+                    LogoDocumentId: null,
+                    PrimaryColor:   null,
+                    FaviconUrl:     null));
             }
 
             return Results.Ok(new TenantBrandingResponse(
-                TenantId:    tenant.Id.ToString(),
-                TenantCode:  tenant.Code,
-                DisplayName: tenant.Name,
-                LogoUrl:     null,       // Phase 2: from TenantBranding table
-                PrimaryColor: null,      // Phase 2: from TenantBranding table
-                FaviconUrl:  null));     // Phase 2: from TenantBranding table
+                TenantId:       tenant.Id.ToString(),
+                TenantCode:     tenant.Code,
+                DisplayName:    tenant.Name,
+                LogoUrl:        null,
+                LogoDocumentId: tenant.LogoDocumentId?.ToString(),
+                PrimaryColor:   null,       // Phase 2: from TenantBranding table
+                FaviconUrl:     null));     // Phase 2: from TenantBranding table
         })
         .AllowAnonymous();
     }

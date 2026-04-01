@@ -69,20 +69,22 @@ export async function CCShell({ children, userEmail }: CCShellProps) {
         <div className="flex items-center gap-3 shrink-0">
           <AppSwitcher />
           <div className="h-4 w-px" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }} />
-          {avatarDocId ? (
-            <img
-              src={`/api/profile/avatar/${avatarDocId}`}
-              alt="Profile"
-              className="w-7 h-7 rounded-full object-cover shrink-0"
-            />
-          ) : (
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-              style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
-            >
-              <i className="ri-user-3-line text-[13px] text-slate-300" />
-            </div>
-          )}
+          <Link href="/profile" title="My profile" className="shrink-0">
+            {avatarDocId ? (
+              <img
+                src={`/api/profile/avatar/${avatarDocId}`}
+                alt="Profile"
+                className="w-7 h-7 rounded-full object-cover hover:ring-2 hover:ring-orange-400 transition-all"
+              />
+            ) : (
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center hover:ring-2 hover:ring-orange-400 transition-all"
+                style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+              >
+                <i className="ri-user-3-line text-[13px] text-slate-300" />
+              </div>
+            )}
+          </Link>
           <span className="hidden sm:block text-xs text-slate-300">{userEmail}</span>
           <div className="h-4 w-px" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }} />
           <SignOutButton />

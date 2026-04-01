@@ -37,8 +37,37 @@ export function UserDetailCard({ user }: UserDetailCardProps) {
   const isLocked  = user.isLocked ?? false;
   const isInvited = user.status === 'Invited';
 
+  const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
+  const avatarSrc = user.avatarDocumentId
+    ? `/api/admin/users/${user.id}/avatar/${user.avatarDocumentId}?tenantId=${user.tenantId}`
+    : null;
+
   return (
     <div className="space-y-5">
+
+      {/* ── Avatar ───────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-4 px-1">
+        {avatarSrc ? (
+          <img
+            src={avatarSrc}
+            alt={`${user.firstName} ${user.lastName}`}
+            className="w-14 h-14 rounded-full object-cover border border-gray-200 shadow-sm shrink-0"
+          />
+        ) : (
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-bold border border-white/20 shadow-sm shrink-0"
+            style={{ backgroundColor: '#f97316' }}
+          >
+            {initials}
+          </div>
+        )}
+        <div>
+          <p className="text-base font-semibold text-gray-900">
+            {user.firstName} {user.lastName}
+          </p>
+          <p className="text-sm text-gray-500">{user.email}</p>
+        </div>
+      </div>
 
       {/* ── User Information ──────────────────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">

@@ -2510,3 +2510,54 @@ monorepo at `apps/services/notifications/`.
 - **Updated components:** `UserListTable` (Primary Org + Groups columns), `UserDetailCard` (membership/group/role panels), `UserActions` (wired activate/deactivate/resend-invite to real BFF)
 - **BFF routes:** `/api/identity/admin/users/[id]/activate|deactivate|resend-invite`, `/api/identity/admin/users/invite`
 - Full report: `analysis/UIX-002-report.md`
+
+## Avatar, Profile Pictures & Tenant Logo — COMPLETED 2026-04-01
+
+### T001 — CC Profile Page with Avatar Upload
+- `apps/control-center/src/app/profile/page.tsx` — new profile page (requireAdmin guard)
+- `apps/control-center/src/components/avatar/AvatarUpload.tsx` — CC avatar upload/remove component
+  - Uses existing `/api/profile/avatar` (POST/DELETE) and `/api/profile/avatar/[id]` (GET) BFF routes
+- `apps/control-center/src/components/shell/cc-shell.tsx` — avatar in top-bar now links to `/profile` with hover ring
+
+### T002 — CC User Detail Shows User Avatar
+- `Identity.Api/Endpoints/AdminEndpoints.cs` (`GetUser`) — now returns `avatarDocumentId` in response
+- `apps/control-center/src/types/control-center.ts` — `UserDetail` extended with `avatarDocumentId?`
+- `apps/control-center/src/lib/api-mappers.ts` — `mapUserDetail` maps `avatarDocumentId`
+- `apps/control-center/src/app/api/admin/users/[userId]/avatar/[docId]/route.ts` — new proxy (passes `X-Admin-Target-Tenant` header)
+- `apps/control-center/src/components/users/user-detail-card.tsx` — avatar display + initials fallback at top of user detail
+
+### T003 — Tenant Logo Upload (Full Stack)
+
+#### Backend (Identity service)
+- `Identity.Domain/Tenant.cs` — `LogoDocumentId: Guid?`, `SetLogo(Guid)`, `ClearLogo()`
+- `20260401200001_AddTenantLogo.cs` + snapshot — EF Core migration; auto-applies on startup
+- `TenantBrandingResponse.cs` — new `LogoDocumentId?` parameter
+- `TenantBrandingEndpoints.cs` — `GET /api/tenants/current/branding` now returns `logoDocumentId`
+- `AdminEndpoints.cs` — `GetTenant` returns `logoDocumentId`; new endpoints:
+  - `PATCH /api/admin/tenants/{id}/logo` — set logo (body: `{ documentId }`) with `identity.tenant.logo_set` audit event
+  - `DELETE /api/admin/tenants/{id}/logo` — clear logo with `identity.tenant.logo_cleared` audit event
+
+#### CC Frontend
+- `apps/control-center/src/app/api/tenants/[id]/logo/route.ts` — `POST` (upload to Docs + persist) / `DELETE`
+- `apps/control-center/src/app/api/tenants/[id]/logo/content/[docId]/route.ts` — image proxy (X-Admin-Target-Tenant)
+- `apps/control-center/src/components/tenants/TenantLogoUpload.tsx` — logo upload/replace/remove panel
+- `apps/control-center/src/app/tenants/[id]/page.tsx` — logo panel added to tenant detail (above session settings)
+- `apps/control-center/src/types/control-center.ts` — `TenantDetail` extended with `logoDocumentId?`
+- `apps/control-center/src/lib/api-mappers.ts` — `mapTenantDetail` maps `logoDocumentId`
+
+#### Web Portal
+- `apps/web/src/app/api/branding/logo/[docId]/route.ts` — logo image proxy (requires session)
+- `apps/web/src/types/index.ts` — `TenantBranding` extended with `logoDocumentId?`
+- `apps/web/src/components/shell/top-bar.tsx` — shows tenant logo (`/api/branding/logo/{docId}`) when authenticated + logo set; falls back to LegalSynq logo
+
+### Document Type IDs
+- Profile avatar: `20000000-0000-0000-0000-000000000001`
+- Tenant logo:    `20000000-0000-0000-0000-000000000002`
+
+### Audit Events
+| Event | When |
+|-------|------|
+| `identity.user.avatar_set` | User uploads avatar |
+| `identity.user.avatar_removed` | User removes avatar |
+| `identity.tenant.logo_set` | Admin sets tenant logo |
+| `identity.tenant.logo_cleared` | Admin removes tenant logo |

@@ -287,6 +287,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
                     b.Property<bool>("IsActive").HasColumnType("tinyint(1)");
                     b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<Guid?>("LogoDocumentId").HasColumnType("char(36)");
                     b.Property<int?>("SessionTimeoutMinutes").HasColumnType("int");
                     b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)");
                     b.HasKey("Id");

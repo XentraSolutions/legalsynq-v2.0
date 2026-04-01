@@ -30,6 +30,7 @@ export interface TenantDetail extends TenantSummary {
   activeUserCount:       number;
   linkedOrgCount?:       number;
   sessionTimeoutMinutes?: number;
+  logoDocumentId?:       string;
   productEntitlements:   ProductEntitlementSummary[];
 }
 
@@ -96,6 +97,7 @@ export interface UserDetail extends UserSummary {
   createdAtUtc:      string;
   updatedAtUtc:      string;
   isLocked?:         boolean;
+  avatarDocumentId?: string;
   inviteSentAtUtc?:  string;
   memberships?:      OrgMembershipSummary[];
   groups?:           UserGroupSummary[];

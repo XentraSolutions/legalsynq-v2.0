@@ -253,6 +253,7 @@ export function mapTenantDetail(raw: unknown): TenantDetail {
                          ? num(r, 'linked_org_count', 'linkedOrgCount', 0)
                          : undefined,
     sessionTimeoutMinutes: rawTimeout != null ? Number(rawTimeout) : undefined,
+    logoDocumentId: (r['logoDocumentId'] ?? r['logo_document_id']) as string | undefined,
     productEntitlements: asArr(
       r['product_entitlements'] ?? r['productEntitlements'],
     ).map(mapEntitlement),
@@ -331,6 +332,7 @@ export function mapUserDetail(raw: unknown): UserDetail {
     createdAtUtc:      str(r, 'created_at',           'createdAtUtc',      new Date().toISOString()),
     updatedAtUtc:      str(r, 'updated_at',           'updatedAtUtc',      new Date().toISOString()),
     isLocked:          bool(r, 'is_locked',           'isLocked',          false),
+    avatarDocumentId:  (r['avatarDocumentId'] ?? r['avatar_document_id']) as string | undefined,
     inviteSentAtUtc:   optStr(r, 'invite_sent_at',    'inviteSentAtUtc'),
     memberships: rawMemberships.map(m => {
       const mo = asObj(m);

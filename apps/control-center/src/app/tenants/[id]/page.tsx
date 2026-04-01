@@ -3,6 +3,7 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 import { TenantDetailCard }               from '@/components/tenants/tenant-detail-card';
 import { ProductEntitlementsPanel }       from '@/components/tenants/product-entitlements-panel';
 import { TenantSessionSettingsPanel }     from '@/components/tenants/tenant-session-settings-panel';
+import { TenantLogoUpload }              from '@/components/tenants/TenantLogoUpload';
 
 interface TenantDetailPageProps {
   params: { id: string };
@@ -42,6 +43,11 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
   return (
     <div className="space-y-5">
       <TenantDetailCard tenant={tenant} />
+
+      <TenantLogoUpload
+        tenantId={tenant.id}
+        logoDocumentId={tenant.logoDocumentId}
+      />
 
       <TenantSessionSettingsPanel
         tenantId={tenant.id}

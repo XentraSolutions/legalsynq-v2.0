@@ -10,5 +10,6 @@ public record TenantBrandingResponse(
     string TenantCode,
     string DisplayName,
     string? LogoUrl,
+    string? LogoDocumentId,
     string? PrimaryColor,
     string? FaviconUrl);

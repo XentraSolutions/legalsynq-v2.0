@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useSession } from '@/hooks/use-session';
 import { useProduct } from '@/contexts/product-context';
 import { orgTypeLabel } from '@/lib/nav';
+import { useTenantBranding } from '@/providers/tenant-branding-provider';
 
 // ── All platform products shown in the app switcher ──────────────────────────
 
@@ -54,6 +55,7 @@ const ALL_PRODUCTS = [
  */
 export function TopBar() {
   const { session, clearSession } = useSession();
+  const branding = useTenantBranding();
 
   return (
     <header
@@ -68,15 +70,23 @@ export function TopBar() {
 
       {/* ── Logo ────────────────────────────────────────────────────────── */}
       <Link href="/dashboard" className="flex items-center shrink-0">
-        <Image
-          src="/legalsynq-logo-white.png"
-          alt="LegalSynq"
-          width={130}
-          height={32}
-          priority
-          unoptimized
-          className="h-7 w-auto"
-        />
+        {session && branding.logoDocumentId ? (
+          <img
+            src={`/api/branding/logo/${branding.logoDocumentId}`}
+            alt={branding.displayName}
+            className="h-7 w-auto object-contain max-w-[160px]"
+          />
+        ) : (
+          <Image
+            src="/legalsynq-logo-white.png"
+            alt="LegalSynq"
+            width={130}
+            height={32}
+            priority
+            unoptimized
+            className="h-7 w-auto"
+          />
+        )}
       </Link>
 
       {/* ── Spacer ──────────────────────────────────────────────────────── */}

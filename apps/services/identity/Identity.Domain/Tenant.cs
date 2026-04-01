@@ -16,6 +16,12 @@ public class Tenant
     /// </summary>
     public int? SessionTimeoutMinutes { get; private set; }
 
+    /// <summary>
+    /// Document ID of the tenant's logo image, stored in the Documents service.
+    /// Null means no custom logo — the platform default (LegalSynq) is displayed.
+    /// </summary>
+    public Guid? LogoDocumentId { get; private set; }
+
     public ICollection<User> Users { get; private set; } = [];
     public ICollection<Role> Roles { get; private set; } = [];
     public ICollection<TenantProduct> TenantProducts { get; private set; } = [];
@@ -47,5 +53,17 @@ public class Tenant
             throw new ArgumentOutOfRangeException(nameof(minutes), "Session timeout must be between 5 and 480 minutes.");
         SessionTimeoutMinutes = minutes;
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetLogo(Guid documentId)
+    {
+        LogoDocumentId = documentId;
+        UpdatedAtUtc   = DateTime.UtcNow;
+    }
+
+    public void ClearLogo()
+    {
+        LogoDocumentId = null;
+        UpdatedAtUtc   = DateTime.UtcNow;
     }
 }

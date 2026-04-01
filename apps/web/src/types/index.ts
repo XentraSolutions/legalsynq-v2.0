@@ -88,12 +88,13 @@ export interface PartySession {
 // ── Tenant branding ───────────────────────────────────────────────────────────
 
 export interface TenantBranding {
-  tenantId:      string;
-  tenantCode:    string;
-  displayName:   string;
-  logoUrl?:      string;
-  primaryColor?: string;  // hex, injected as --color-primary CSS variable
-  faviconUrl?:   string;
+  tenantId:        string;
+  tenantCode:      string;
+  displayName:     string;
+  logoUrl?:        string;
+  logoDocumentId?: string;
+  primaryColor?:   string;  // hex, injected as --color-primary CSS variable
+  faviconUrl?:     string;
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
