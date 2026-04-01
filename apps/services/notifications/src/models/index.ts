@@ -22,7 +22,7 @@ import { initTenantContactPolicyModel } from "./tenant-contact-policy.model";
 
 let sequelize: Sequelize | null = null;
 
-export async function initDatabase(config: AppConfig): Promise<Sequelize | null> {
+export async function initDatabase(config: AppConfig, opts: { skipSync?: boolean } = {}): Promise<Sequelize | null> {
   const { host, port, name, user, password } = config.db;
 
   if (!host || !name || !user) {
@@ -69,6 +69,11 @@ export async function initDatabase(config: AppConfig): Promise<Sequelize | null>
   Notification.hasMany(NotificationAttempt, { foreignKey: "notificationId", as: "attempts" });
 
   const isDev = config.nodeEnv !== "production";
+
+  if (opts.skipSync) {
+    logger.debug("Skipping sequelize.sync() — skipSync requested");
+    return sequelize;
+  }
 
   try {
     await sequelize.sync({ alter: isDev });

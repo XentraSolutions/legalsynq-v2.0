@@ -55,10 +55,19 @@ echo "[notifications:worker] Starting dispatch worker (stub)"
     node_modules/.bin/ts-node --transpile-only src/workers/notification.worker.ts
 ) || true &
 
+# Start notifications status-sync worker (polls SendGrid for accepted → real status every 2 min)
+echo "[notifications:worker] Starting status-sync worker"
+(
+  cd "$ROOT/apps/services/notifications"
+  NODE_ENV=development \
+    node_modules/.bin/ts-node-dev --respawn --transpile-only src/workers/status-sync.worker.ts
+) &
+PID_STATUS_SYNC=$!
+
 cleanup() {
-    kill "$PID_WEB" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" 2>/dev/null || true
+    kill "$PID_WEB" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC" 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-wait "$PID_WEB" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER"
+wait "$PID_WEB" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC"

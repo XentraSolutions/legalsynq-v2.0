@@ -169,7 +169,7 @@ export class SendGridEmailProviderAdapter implements EmailProviderAdapter {
         { Authorization: `Bearer ${this.config.apiKey}` },
       );
       if (result.statusCode !== 200) {
-        logger.debug("SendGrid Messages API returned non-200", { statusCode: result.statusCode });
+        logger.warn("SendGrid Messages API returned non-200", { statusCode: result.statusCode, body: result.body.slice(0, 200) });
         return null;
       }
       const body = JSON.parse(result.body) as { messages?: { status: string }[] };
@@ -182,7 +182,7 @@ export class SendGridEmailProviderAdapter implements EmailProviderAdapter {
       }
       return null;
     } catch (err) {
-      logger.debug("SendGrid queryMessageStatus failed", { error: String(err) });
+      logger.warn("SendGrid queryMessageStatus error", { error: String(err) });
       return null;
     }
   }

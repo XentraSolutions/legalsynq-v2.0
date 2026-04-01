@@ -1,4 +1,4 @@
-import { Op, fn, col, literal } from "sequelize";
+import { Op, fn, col, literal, WhereOptions } from "sequelize";
 import { Notification, NotificationStatus } from "../models/notification.model";
 import { NotificationChannel, FailureCategory } from "../types";
 
@@ -83,6 +83,28 @@ export class NotificationRepository {
     });
 
     return { rows: result.rows, count: result.count };
+  }
+
+  /**
+   * Returns "accepted" notifications for a given provider that were created within
+   * `lookbackHours` hours and may need their status refreshed from the provider.
+   */
+  async listPendingStatusSync(opts: {
+    providerUsed: string;
+    lookbackHours?: number;
+    limit?: number;
+  }): Promise<Notification[]> {
+    const since = new Date(Date.now() - (opts.lookbackHours ?? 24) * 60 * 60 * 1000);
+    const where: WhereOptions = {
+      status: "accepted",
+      providerUsed: opts.providerUsed,
+      createdAt: { [Op.gte]: since },
+    };
+    return Notification.findAll({
+      where,
+      limit: Math.min(opts.limit ?? 50, 200),
+      order: [["createdAt", "ASC"]],
+    });
   }
 
   async findByTenant(tenantId: string): Promise<Notification[]> {
