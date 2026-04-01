@@ -114,3 +114,9 @@ id = "S4_wroSH2ZI6Iz6rG85Hm"
 uri = "file://analysis/UIX-001-01.md"
 type = "text"
 title = "UIX-001-01 — Revised Access & Account Management Report"
+
+[[outputs]]
+id = "l3EHHhZTiJRcpAc2GNgw-"
+uri = "file://analysis/UIX-002-01-report.md"
+type = "text"
+title = "UIX-002-01 Hardening Pass — Delivery Report"
