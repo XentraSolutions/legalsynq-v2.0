@@ -2,16 +2,19 @@
  * POST /api/identity/admin/users/[id]/memberships/[membershipId]/set-primary
  *
  * BFF proxy — marks an org membership as the user's primary org.
+ *
+ * Access: PlatformAdmin or TenantAdmin.
+ * Tenant boundary is enforced by the identity service backend.
  */
 import { type NextRequest, NextResponse } from 'next/server';
-import { requirePlatformAdmin }           from '@/lib/auth-guards';
+import { requireAdmin }                   from '@/lib/auth-guards';
 import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 export async function POST(
   _request: NextRequest,
   { params }: { params: { id: string; membershipId: string } },
 ): Promise<NextResponse> {
-  try { await requirePlatformAdmin(); }
+  try { await requireAdmin(); }
   catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
 
   try {

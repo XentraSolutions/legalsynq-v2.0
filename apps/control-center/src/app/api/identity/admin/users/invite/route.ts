@@ -3,10 +3,15 @@
  *
  * BFF proxy — sends a new user invitation.
  * Called by the InviteUserForm client component.
+ *
+ * Access: PlatformAdmin or TenantAdmin.
+ * TenantAdmin scope: the tenantId in the request body must match the
+ * caller's own tenant — enforced here (BFF layer) AND downstream in the
+ * identity service (ClaimsPrincipal check in AdminEndpoints.cs).
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { requirePlatformAdmin }           from '@/lib/auth-guards';
+import { requireAdmin }                   from '@/lib/auth-guards';
 import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 interface InviteUserBody {
@@ -19,8 +24,9 @@ interface InviteUserBody {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  let session;
   try {
-    await requirePlatformAdmin();
+    session = await requireAdmin();
   } catch {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
@@ -36,6 +42,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(
       { message: 'email, firstName, lastName, and tenantId are required.' },
       { status: 400 },
+    );
+  }
+
+  // TenantAdmin scope check — may only invite users into their own tenant.
+  if (!session.isPlatformAdmin && body.tenantId !== session.tenantId) {
+    return NextResponse.json(
+      { message: 'TenantAdmin may only invite users into their own tenant.' },
+      { status: 403 },
     );
   }
 

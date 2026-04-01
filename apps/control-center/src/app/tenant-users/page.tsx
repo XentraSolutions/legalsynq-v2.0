@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requirePlatformAdmin } from '@/lib/auth-guards';
+import { requireAdmin } from '@/lib/auth-guards';
 import { getTenantContext } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
@@ -33,7 +33,7 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 ];
 
 export default async function TenantUsersPage({ searchParams }: TenantUsersPageProps) {
-  const session   = await requirePlatformAdmin();
+  const session   = await requireAdmin();
   const tenantCtx = getTenantContext();
 
   const page   = Math.max(1, parseInt(searchParams.page ?? '1') || 1);

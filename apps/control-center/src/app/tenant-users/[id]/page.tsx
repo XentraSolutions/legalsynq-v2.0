@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requirePlatformAdmin }           from '@/lib/auth-guards';
+import { requireAdmin }                   from '@/lib/auth-guards';
 import { controlCenterServerApi }         from '@/lib/control-center-api';
 import { Routes }                         from '@/lib/routes';
 import { CCShell }                        from '@/components/shell/cc-shell';
@@ -24,7 +24,7 @@ interface UserDetailPageProps {
  * Management panels (UIX-003): role assignment, org membership, group membership.
  */
 export default async function UserDetailPage({ params }: UserDetailPageProps) {
-  const session = await requirePlatformAdmin();
+  const session = await requireAdmin();
   const { id }  = params;
 
   let user        = null;

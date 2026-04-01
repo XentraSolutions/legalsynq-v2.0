@@ -728,6 +728,7 @@ public static class AdminEndpoints
     /// </summary>
     private static async Task<IResult> DeactivateUser(
         Guid              id,
+        ClaimsPrincipal   caller,
         IdentityDbContext db,
         IAuditEventClient auditClient,
         CancellationToken ct)
@@ -737,6 +738,9 @@ public static class AdminEndpoints
             .FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (user is null) return Results.NotFound();
+
+        // UIX-003-01: TenantAdmin may only deactivate users within their own tenant.
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
 
         // Deactivate() is idempotent — returns false if already inactive.
         var changed = user.Deactivate();
@@ -1447,6 +1451,9 @@ public static class AdminEndpoints
         var user = await db.Users.FindAsync(id);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
 
+        // UIX-003-01: TenantAdmin may only assign roles within their own tenant.
+        if (IsCrossTenantAccess(ctx.User, user.TenantId)) return Results.Forbid();
+
         var role = await db.Roles.FindAsync(body.RoleId);
         if (role is null) return Results.NotFound(new { error = $"Role '{body.RoleId}' not found." });
 
@@ -1601,11 +1608,15 @@ public static class AdminEndpoints
     private static async Task<IResult> RevokeRole(
         Guid              id,
         Guid              roleId,
+        ClaimsPrincipal   caller,
         IdentityDbContext db,
         IAuditEventClient auditClient)
     {
         var user = await db.Users.FindAsync(id);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        // UIX-003-01: TenantAdmin may only revoke roles within their own tenant.
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
 
         // Phase G: deactivate the GLOBAL ScopedRoleAssignment (sole authoritative record).
         var sra = await db.ScopedRoleAssignments
@@ -1785,6 +1796,7 @@ public static class AdminEndpoints
     /// </summary>
     private static async Task<IResult> ActivateUser(
         Guid              id,
+        ClaimsPrincipal   caller,
         IdentityDbContext db,
         IAuditEventClient auditClient,
         CancellationToken ct)
@@ -1794,6 +1806,9 @@ public static class AdminEndpoints
             .FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        // UIX-003-01: TenantAdmin may only activate users within their own tenant.
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
 
         var changed = user.Activate();
         if (!changed) return Results.NoContent();
@@ -1836,6 +1851,7 @@ public static class AdminEndpoints
     /// </summary>
     private static async Task<IResult> InviteUser(
         InviteUserRequest body,
+        ClaimsPrincipal   caller,
         IdentityDbContext db,
         IPasswordHasher   passwordHasher,
         IAuditEventClient auditClient,
@@ -1852,6 +1868,9 @@ public static class AdminEndpoints
 
         var tenant = await db.Tenants.FindAsync([body.TenantId], ct);
         if (tenant is null) return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
+
+        // UIX-003-01: TenantAdmin may only invite users into their own tenant.
+        if (IsCrossTenantAccess(caller, body.TenantId)) return Results.Forbid();
 
         var emailLower = body.Email.ToLowerInvariant().Trim();
         var existing = await db.Users.AnyAsync(u => u.TenantId == body.TenantId && u.Email == emailLower, ct);
@@ -1916,12 +1935,16 @@ public static class AdminEndpoints
     /// </summary>
     private static async Task<IResult> ResendInvite(
         Guid              id,
+        ClaimsPrincipal   caller,
         IdentityDbContext db,
         IAuditEventClient auditClient,
         CancellationToken ct)
     {
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        // UIX-003-01: TenantAdmin may only resend invites for users in their own tenant.
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
 
         var pending = await db.UserInvitations
             .Where(i => i.UserId == id && i.Status == UserInvitation.Statuses.Pending)
@@ -1970,11 +1993,15 @@ public static class AdminEndpoints
     private static async Task<IResult> AssignMembership(
         Guid                    id,
         AssignMembershipRequest body,
+        ClaimsPrincipal         caller,
         IdentityDbContext       db,
         CancellationToken       ct)
     {
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        // UIX-003-01: TenantAdmin may only assign memberships within their own tenant.
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
 
         var org = await db.Organizations.FindAsync([body.OrganizationId], ct);
         if (org is null) return Results.NotFound(new { error = $"Organization '{body.OrganizationId}' not found." });
@@ -2017,9 +2044,14 @@ public static class AdminEndpoints
     private static async Task<IResult> SetPrimaryMembership(
         Guid              id,
         Guid              membershipId,
+        ClaimsPrincipal   caller,
         IdentityDbContext db,
         CancellationToken ct)
     {
+        // UIX-003-01: load user to enforce TenantAdmin tenant boundary.
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is not null && IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
         var target = await db.UserOrganizationMemberships
             .FirstOrDefaultAsync(m => m.Id == membershipId && m.UserId == id, ct);
         if (target is null)
@@ -2046,9 +2078,14 @@ public static class AdminEndpoints
     private static async Task<IResult> RemoveMembership(
         Guid              id,
         Guid              membershipId,
+        ClaimsPrincipal   caller,
         IdentityDbContext db,
         CancellationToken ct)
     {
+        // UIX-003-01: load user to enforce TenantAdmin tenant boundary.
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is not null && IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
         var membership = await db.UserOrganizationMemberships
             .FirstOrDefaultAsync(m => m.Id == membershipId && m.UserId == id && m.IsActive, ct);
         if (membership is null)
@@ -2224,11 +2261,15 @@ public static class AdminEndpoints
     private static async Task<IResult> AddGroupMember(
         Guid                   id,
         AddGroupMemberRequest  body,
+        ClaimsPrincipal        caller,
         IdentityDbContext      db,
         CancellationToken      ct)
     {
         var group = await db.TenantGroups.FindAsync([id], ct);
         if (group is null) return Results.NotFound(new { error = $"Group '{id}' not found." });
+
+        // UIX-003-01: TenantAdmin may only manage members in their own tenant's groups.
+        if (IsCrossTenantAccess(caller, group.TenantId)) return Results.Forbid();
 
         var user = await db.Users.FindAsync([body.UserId], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{body.UserId}' not found." });
@@ -2257,9 +2298,14 @@ public static class AdminEndpoints
     private static async Task<IResult> RemoveGroupMember(
         Guid              id,
         Guid              userId,
+        ClaimsPrincipal   caller,
         IdentityDbContext db,
         CancellationToken ct)
     {
+        // UIX-003-01: load group to enforce TenantAdmin tenant boundary.
+        var group = await db.TenantGroups.FindAsync([id], ct);
+        if (group is not null && IsCrossTenantAccess(caller, group.TenantId)) return Results.Forbid();
+
         var membership = await db.GroupMemberships
             .FirstOrDefaultAsync(m => m.GroupId == id && m.UserId == userId, ct);
         if (membership is null)
@@ -2309,6 +2355,20 @@ public static class AdminEndpoints
             .ToListAsync(ct);
 
         return Results.Ok(new { items, totalCount = items.Count });
+    }
+
+    // ── UIX-003-01: Caller-based tenant boundary enforcement ─────────────────
+
+    /// <summary>
+    /// Returns <c>true</c> if the caller is a non-PlatformAdmin whose tenant differs
+    /// from <paramref name="targetTenantId"/>.  PlatformAdmins are never restricted.
+    /// A caller with no parseable <c>tenant_id</c> claim is treated as cross-tenant (deny).
+    /// </summary>
+    private static bool IsCrossTenantAccess(ClaimsPrincipal caller, Guid targetTenantId)
+    {
+        if (caller.IsInRole("PlatformAdmin")) return false;
+        var raw = caller.FindFirstValue("tenant_id");
+        return raw is null || !Guid.TryParse(raw, out var callerTid) || callerTid != targetTenantId;
     }
 
     // ── UIX-003: Organizations list ──────────────────────────────────────────
