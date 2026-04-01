@@ -646,8 +646,15 @@ public static class AdminEndpoints
         });
     }
 
-    private static async Task<IResult> GetUser(Guid id, IdentityDbContext db, CancellationToken ct)
+    private static async Task<IResult> GetUser(
+        Guid              id,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        CancellationToken ct)
     {
+        var isPlatformAdmin = caller.IsInRole("PlatformAdmin");
+        var callerTenantId  = caller.FindFirstValue("tenant_id");
+
         var u = await db.Users
             .Include(u => u.Tenant)
             .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global))
@@ -657,6 +664,13 @@ public static class AdminEndpoints
             .FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (u is null) return Results.NotFound();
+
+        // Non-PlatformAdmins may only view users within their own tenant.
+        if (!isPlatformAdmin)
+        {
+            if (callerTenantId is null || !Guid.TryParse(callerTenantId, out var callerTid) || u.TenantId != callerTid)
+                return Results.Forbid();
+        }
 
         var hasPendingInvite = await db.UserInvitations.AnyAsync(
             i => i.UserId == id && i.Status == UserInvitation.Statuses.Pending, ct);

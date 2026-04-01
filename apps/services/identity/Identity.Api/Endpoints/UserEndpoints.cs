@@ -12,11 +12,20 @@ public static class UserEndpoints
     public static void MapUserEndpoints(this WebApplication app)
     {
         app.MapPost("/api/users", async (
+            ClaimsPrincipal   caller,
             CreateUserRequest request,
             IUserService      userService,
             IAuditEventClient auditClient,
             CancellationToken ct) =>
         {
+            // Callers may only create users within their own tenant.
+            var tenantIdStr = caller.FindFirstValue("tenant_id");
+            if (!Guid.TryParse(tenantIdStr, out var callerTenantId))
+                return Results.Unauthorized();
+
+            if (request.TenantId != callerTenantId)
+                return Results.Forbid();
+
             try
             {
                 var user = await userService.CreateUserAsync(request, ct);
@@ -61,7 +70,7 @@ public static class UserEndpoints
             {
                 return Results.Problem(ex.Message, statusCode: 400);
             }
-        });
+        }).RequireAuthorization();
 
         app.MapGet("/api/users", async (
             ClaimsPrincipal   caller,
@@ -76,10 +85,24 @@ public static class UserEndpoints
             return Results.Ok(users);
         }).RequireAuthorization();
 
-        app.MapGet("/api/users/{id:guid}", async (Guid id, IUserService userService, CancellationToken ct) =>
+        app.MapGet("/api/users/{id:guid}", async (
+            Guid              id,
+            ClaimsPrincipal   caller,
+            IUserService      userService,
+            CancellationToken ct) =>
         {
+            var tenantIdStr = caller.FindFirstValue("tenant_id");
+            if (!Guid.TryParse(tenantIdStr, out var callerTenantId))
+                return Results.Unauthorized();
+
             var user = await userService.GetByIdAsync(id, ct);
-            return user is null ? Results.NotFound() : Results.Ok(user);
-        });
+            if (user is null) return Results.NotFound();
+
+            // Callers may only view users within their own tenant.
+            if (user.TenantId != callerTenantId)
+                return Results.Forbid();
+
+            return Results.Ok(user);
+        }).RequireAuthorization();
     }
 }
