@@ -102,6 +102,15 @@ export interface UserDetail extends UserSummary {
   roles?:            UserRoleSummary[];
 }
 
+export interface OrgSummary {
+  id:          string;
+  tenantId:    string;
+  name:        string;
+  displayName: string;
+  orgType:     string;
+  isActive:    boolean;
+}
+
 export interface OrgMembershipSummary {
   membershipId:   string;
   organizationId: string;

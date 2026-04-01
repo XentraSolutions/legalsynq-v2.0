@@ -55,6 +55,7 @@ public static class AdminEndpoints
         // Internal service-to-service endpoint.  Token-gated at the gateway.
         // Creates a minimal PROVIDER Organization for a CareConnect provider.
         // Idempotent: returns the existing org if already provisioned.
+        routes.MapGet("/api/admin/organizations",           ListOrganizations);
         routes.MapPost("/api/admin/organizations",          AdminEndpointsLscc010.CreateProviderOrganization);
         routes.MapGet("/api/admin/organizations/{id:guid}", AdminEndpointsLscc010.GetOrganizationById);
 
@@ -2304,6 +2305,53 @@ public static class AdminEndpoints
                 productId   = c.ProductId,
                 productName = c.Product.Name,
                 isActive    = c.IsActive,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { items, totalCount = items.Count });
+    }
+
+    // ── UIX-003: Organizations list ──────────────────────────────────────────
+
+    /// <summary>
+    /// GET /api/admin/organizations?tenantId=
+    ///
+    /// Returns active organizations optionally filtered by tenantId.
+    /// Used by the Control Center access-control panels to populate
+    /// the "Add Membership" org selection dropdown.
+    /// </summary>
+    private static async Task<IResult> ListOrganizations(
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        string            tenantId = "",
+        CancellationToken ct       = default)
+    {
+        var isPlatformAdmin = caller.IsInRole("PlatformAdmin");
+        var callerTenantId  = caller.FindFirstValue("tenant_id");
+
+        var q = db.Organizations.AsNoTracking().AsQueryable();
+
+        // TenantAdmin is scoped to their own tenant.
+        if (!isPlatformAdmin && callerTenantId is not null && Guid.TryParse(callerTenantId, out var callerTid))
+        {
+            q = q.Where(o => o.TenantId == callerTid);
+        }
+        else if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var filterTid))
+        {
+            q = q.Where(o => o.TenantId == filterTid);
+        }
+
+        var items = await q
+            .Where(o => o.IsActive)
+            .OrderBy(o => o.DisplayName ?? o.Name)
+            .Select(o => new
+            {
+                id          = o.Id,
+                tenantId    = o.TenantId,
+                name        = o.Name,
+                displayName = o.DisplayName ?? o.Name,
+                orgType     = o.OrgType,
+                isActive    = o.IsActive,
             })
             .ToListAsync(ct);
 

@@ -119,6 +119,7 @@ import type {
   AuditIngestPayload,
   GroupSummary,
   GroupDetail,
+  OrgSummary,
   PermissionCatalogItem,
 }                                       from '@/types/control-center';
 
@@ -434,6 +435,58 @@ export const controlCenterServerApi = {
         `/identity/api/admin/users/${encodeURIComponent(id)}/memberships/${encodeURIComponent(membershipId)}`,
       );
       revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * POST /identity/api/admin/users/{id}/roles
+     * Assigns a role to a user (GLOBAL scope). Revalidates cc:users cache.
+     */
+    assignRole: async (id: string, roleId: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/roles`,
+        { roleId },
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * DELETE /identity/api/admin/users/{id}/roles/{roleId}
+     * Revokes a role from a user. Revalidates cc:users cache.
+     */
+    revokeRole: async (id: string, roleId: string): Promise<void> => {
+      await apiClient.del<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/roles/${encodeURIComponent(roleId)}`,
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+  },
+
+  // ── Organizations ─────────────────────────────────────────────────────────
+
+  organizations: {
+    /**
+     * GET /identity/api/admin/organizations?tenantId=
+     * Lists active organizations, optionally scoped to a tenant.
+     * Cache: 60 s  Tag: cc:tenants (org changes follow tenant lifecycle)
+     */
+    listByTenant: async (tenantId: string): Promise<OrgSummary[]> => {
+      const qs = tenantId ? `?tenantId=${encodeURIComponent(tenantId)}` : '';
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/organizations${qs}`,
+        60,
+        [CACHE_TAGS.tenants],
+      );
+      if (raw && typeof raw === 'object' && 'items' in raw && Array.isArray((raw as { items: unknown[] }).items)) {
+        return (raw as { items: Record<string, unknown>[] }).items.map(o => ({
+          id:          String(o.id ?? ''),
+          tenantId:    String(o.tenantId ?? ''),
+          name:        String(o.name ?? ''),
+          displayName: String(o.displayName ?? o.name ?? ''),
+          orgType:     String(o.orgType ?? ''),
+          isActive:    Boolean(o.isActive ?? true),
+        }));
+      }
+      return [];
     },
   },
 

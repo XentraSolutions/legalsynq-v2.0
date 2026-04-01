@@ -1,12 +1,15 @@
 import Link from 'next/link';
-import { requirePlatformAdmin } from '@/lib/auth-guards';
-import { controlCenterServerApi } from '@/lib/control-center-api';
-import { Routes } from '@/lib/routes';
-import { CCShell } from '@/components/shell/cc-shell';
-import { UserDetailCard } from '@/components/users/user-detail-card';
-import { UserActions } from '@/components/users/user-actions';
-import { startImpersonationAction } from '@/app/actions/impersonation';
-import type { UserStatus } from '@/types/control-center';
+import { requirePlatformAdmin }           from '@/lib/auth-guards';
+import { controlCenterServerApi }         from '@/lib/control-center-api';
+import { Routes }                         from '@/lib/routes';
+import { CCShell }                        from '@/components/shell/cc-shell';
+import { UserDetailCard }                 from '@/components/users/user-detail-card';
+import { UserActions }                    from '@/components/users/user-actions';
+import { RoleAssignmentPanel }            from '@/components/users/role-assignment-panel';
+import { OrgMembershipPanel }             from '@/components/users/org-membership-panel';
+import { GroupMembershipPanel }           from '@/components/users/group-membership-panel';
+import { startImpersonationAction }       from '@/app/actions/impersonation';
+import type { UserStatus }                from '@/types/control-center';
 
 interface UserDetailPageProps {
   params: { id: string };
@@ -17,15 +20,14 @@ interface UserDetailPageProps {
  *
  * Access: PlatformAdmin only.
  *
- * Data: served from mock stub in controlCenterServerApi.users.getById(id).
- * TODO: When GET /identity/api/admin/users/{id} is live, the stub auto-wires —
- *       no page change needed, only the API method in control-center-api.ts.
+ * Renders read-only user info (UserDetailCard) plus interactive Access Control
+ * Management panels (UIX-003): role assignment, org membership, group membership.
  */
 export default async function UserDetailPage({ params }: UserDetailPageProps) {
   const session = await requirePlatformAdmin();
   const { id }  = params;
 
-  let user = null;
+  let user        = null;
   let fetchError: string | null = null;
 
   try {
@@ -33,6 +35,21 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load user.';
   }
+
+  // Fetch access-control reference data in parallel; failures are non-fatal.
+  const [rolesResult, orgsResult, groupsResult] = await Promise.allSettled([
+    controlCenterServerApi.roles.list(),
+    user
+      ? controlCenterServerApi.organizations.listByTenant(user.tenantId)
+      : Promise.resolve([]),
+    user
+      ? controlCenterServerApi.groups.list({ tenantId: user.tenantId, pageSize: 200 })
+      : Promise.resolve({ items: [], total: 0, page: 1, pageSize: 200, totalPages: 0 }),
+  ]);
+
+  const availableRoles  = rolesResult.status  === 'fulfilled' ? rolesResult.value              : [];
+  const availableOrgs   = orgsResult.status   === 'fulfilled' ? orgsResult.value               : [];
+  const availableGroups = groupsResult.status === 'fulfilled' ? groupsResult.value.items       : [];
 
   return (
     <CCShell userEmail={session.email}>
@@ -133,8 +150,36 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
               </div>
             </div>
 
-            {/* Detail sections */}
+            {/* Read-only profile / account info */}
             <UserDetailCard user={user} />
+
+            {/* ── Access Control Management (UIX-003) ──────────────────────── */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                  Access Control
+                </h2>
+                <div className="flex-1 h-px bg-gray-200" />
+              </div>
+
+              <RoleAssignmentPanel
+                userId={user.id}
+                currentRoles={user.roles ?? []}
+                availableRoles={availableRoles}
+              />
+
+              <OrgMembershipPanel
+                userId={user.id}
+                memberships={user.memberships ?? []}
+                availableOrgs={availableOrgs}
+              />
+
+              <GroupMembershipPanel
+                userId={user.id}
+                currentGroups={user.groups ?? []}
+                availableGroups={availableGroups}
+              />
+            </div>
           </>
         )}
       </div>
