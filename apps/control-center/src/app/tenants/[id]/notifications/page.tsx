@@ -330,7 +330,7 @@ export default async function TenantNotificationsPage({ params, searchParams }: 
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">User Activity</p>
           <a
-            href={`/synqaudit/user-activity?tenantId=${encodeURIComponent(id)}`}
+            href={Routes.tenantActivity(id)}
             className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
           >
             Full investigation →
@@ -401,8 +401,9 @@ export default async function TenantNotificationsPage({ params, searchParams }: 
                         </span>
                         {e.actorId && (
                           <a
-                            href={`/synqaudit/user-activity?actorId=${encodeURIComponent(e.actorId)}`}
+                            href={`${Routes.tenantActivity(id)}?actorId=${encodeURIComponent(e.actorId)}`}
                             className="block font-mono text-[10px] text-indigo-500 hover:underline"
+                            title="Filter activity for this actor (tenant-scoped)"
                           >
                             {e.actorId.slice(0, 16)}…
                           </a>
