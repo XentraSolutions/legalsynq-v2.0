@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
@@ -28,7 +27,8 @@ interface ProvidersPageProps {
 /**
  * /careconnect/providers — Provider search with list/map toggle.
  *
- * Access: CARECONNECT_REFERRER only.
+ * Access: CARECONNECT_REFERRER or CARECONNECT_RECEIVER. Users with neither
+ * role see an inline access-required message (no redirect).
  *
  * Rendering: Server Component — fetches initial list data and passes it
  * to ProviderMapShell (Client Component) as a prop.
@@ -45,8 +45,15 @@ interface ProvidersPageProps {
 export default async function ProvidersPage({ searchParams }: ProvidersPageProps) {
   const session = await requireOrg();
 
-  if (!session.productRoles.includes(ProductRole.CareConnectReferrer)) {
-    redirect('/dashboard');
+  const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
+  const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
+
+  if (!isReferrer && !isReceiver) {
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-700">
+        You do not have a CareConnect role. Contact your administrator to gain access.
+      </div>
+    );
   }
 
   const page = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
@@ -110,7 +117,7 @@ export default async function ProvidersPage({ searchParams }: ProvidersPageProps
       <ProviderMapShell
         initialProviders={result}
         initialPage={page}
-        isReferrer
+        isReferrer={isReferrer}
         fetchError={fetchError}
       />
     </div>
