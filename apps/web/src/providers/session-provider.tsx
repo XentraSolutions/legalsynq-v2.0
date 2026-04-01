@@ -55,11 +55,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       });
 
       if (!res.ok) {
-        setSession(null);
-        sessionRef.current = null;
-        if (res.status === 401 && typeof window !== 'undefined') {
-          window.location.href = '/login';
+        if (res.status === 401) {
+          // Genuine auth failure — clear session and redirect to login.
+          setSession(null);
+          sessionRef.current = null;
+          if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+          }
         }
+        // Non-401 errors (503, 500, network blip): keep any existing session
+        // so the avatar stays visible. The user is still authenticated —
+        // a transient backend error should not log them out silently.
         return;
       }
 
@@ -83,8 +89,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSession(mapped);
       sessionRef.current = mapped;
     } catch {
-      setSession(null);
-      sessionRef.current = null;
+      // Network error: preserve any existing session — the avatar should
+      // remain visible. Do not clear the session on connectivity failures.
     } finally {
       setIsLoading(false);
     }

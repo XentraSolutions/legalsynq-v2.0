@@ -53,7 +53,7 @@ const ALL_PRODUCTS = [
  * Right: avatar → profile dropdown
  */
 export function TopBar() {
-  const { session, isLoading, clearSession } = useSession();
+  const { session, clearSession } = useSession();
 
   return (
     <header
@@ -82,12 +82,15 @@ export function TopBar() {
       {/* ── Spacer ──────────────────────────────────────────────────────── */}
       <div className="flex-1" />
 
-      {/* ── User menu — skeleton shown during initial load so layout never jumps ── */}
-      {isLoading && !session ? (
-        <div className="w-8 h-8 rounded-full bg-white/15 animate-pulse shrink-0" />
-      ) : session ? (
+      {/* ── User menu ────────────────────────────────────────────────────────── */}
+      {/* Always render something so the top-right corner never goes blank:    */}
+      {/* - skeleton while loading or if session is unavailable               */}
+      {/* - UserMenu once the session is confirmed                            */}
+      {session ? (
         <UserMenu session={session} clearSession={clearSession} />
-      ) : null}
+      ) : (
+        <div className="w-8 h-8 rounded-full bg-white/15 animate-pulse shrink-0" />
+      )}
     </header>
   );
 }
