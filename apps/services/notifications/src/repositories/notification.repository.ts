@@ -111,7 +111,7 @@ export class NotificationRepository {
     return Notification.findAll({ where: { tenantId }, order: [["createdAt", "DESC"]] });
   }
 
-  async getStats(): Promise<{
+  async getStats(tenantId?: string): Promise<{
     total: number;
     byStatus: Record<string, number>;
     byChannel: Record<string, number>;
@@ -122,9 +122,13 @@ export class NotificationRepository {
     const ago24h   = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const ago7d    = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
 
+    // Scope every query to the tenant when tenantId is supplied.
+    const tenantWhere: Record<string, unknown> = tenantId ? { tenantId } : {};
+
     // counts by status (all time)
     const statusRows = await Notification.findAll({
       attributes: ["status", [fn("COUNT", col("id")), "cnt"]],
+      where: tenantWhere,
       group: ["status"],
       raw: true,
     }) as unknown as { status: string; cnt: string }[];
@@ -140,6 +144,7 @@ export class NotificationRepository {
     // counts by channel (all time)
     const channelRows = await Notification.findAll({
       attributes: ["channel", [fn("COUNT", col("id")), "cnt"]],
+      where: tenantWhere,
       group: ["channel"],
       raw: true,
     }) as unknown as { channel: string; cnt: string }[];
@@ -150,7 +155,7 @@ export class NotificationRepository {
     // last 24h
     const rows24h = await Notification.findAll({
       attributes: ["status", [fn("COUNT", col("id")), "cnt"]],
-      where: { createdAt: { [Op.gte]: ago24h } },
+      where: { ...tenantWhere, createdAt: { [Op.gte]: ago24h } },
       group: ["status"],
       raw: true,
     }) as unknown as { status: string; cnt: string }[];
@@ -167,7 +172,7 @@ export class NotificationRepository {
     // last 7 days
     const rows7d = await Notification.findAll({
       attributes: ["status", [fn("COUNT", col("id")), "cnt"]],
-      where: { createdAt: { [Op.gte]: ago7d } },
+      where: { ...tenantWhere, createdAt: { [Op.gte]: ago7d } },
       group: ["status"],
       raw: true,
     }) as unknown as { status: string; cnt: string }[];

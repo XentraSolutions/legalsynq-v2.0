@@ -750,7 +750,7 @@ export class NotificationService {
     });
   }
 
-  async getStats() {
-    return this.notificationRepo.getStats();
+  async getStats(tenantId?: string) {
+    return this.notificationRepo.getStats(tenantId);
   }
 }

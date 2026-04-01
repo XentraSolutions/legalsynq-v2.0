@@ -123,7 +123,7 @@ export const notificationsController = {
     const service = requireService(res);
     if (!service) return;
     try {
-      const data = await service.getStats();
+      const data = await service.getStats(req.tenantId);
       res.status(200).json({ data });
     } catch (err) {
       next(err);

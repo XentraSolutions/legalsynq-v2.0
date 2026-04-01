@@ -102,7 +102,8 @@ export function orgTypeLabel(orgType: string | undefined): string {
 export const GLOBAL_BOTTOM_NAV: NavSection = {
   heading: 'ACCOUNT',
   items: [
-    { href: '/activity', label: 'Activity Log', icon: 'ri-history-line' },
+    { href: '/notifications', label: 'Notifications', icon: 'ri-mail-send-line' },
+    { href: '/activity',      label: 'Activity Log',  icon: 'ri-history-line'   },
   ],
 };
 
