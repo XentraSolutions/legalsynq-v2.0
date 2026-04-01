@@ -1,7 +1,5 @@
 import { requirePlatformAdmin }   from '@/lib/auth-guards';
-import { getTenantContext }        from '@/lib/auth';
 import { CCShell }                 from '@/components/shell/cc-shell';
-import { NoTenantContext }         from '@/components/notifications/no-tenant-context';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type {
   NotifListResponse,
@@ -12,22 +10,7 @@ import { NotificationStatusBadge } from '@/components/notifications/status-badge
 import { ChannelBadge }            from '@/components/notifications/channel-badge';
 
 export default async function NotificationsOverviewPage() {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">Notifications</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Platform notification delivery service.</p>
-          </div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   let recent:          NotifListResponse | null  = null;
   let usageSummary:    NotifUsageSummary  | null  = null;
@@ -82,15 +65,8 @@ export default async function NotificationsOverviewPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold text-gray-900">Notifications</h1>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-300 text-[11px] font-semibold text-amber-700">
-                {tenantCtx.tenantCode}
-              </span>
-            </div>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Delivery overview for <strong>{tenantCtx.tenantName}</strong>.
-            </p>
+            <h1 className="text-xl font-semibold text-gray-900">Notifications</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Platform-wide notification delivery overview.</p>
           </div>
         </div>
 
@@ -207,7 +183,7 @@ export default async function NotificationsOverviewPage() {
         {items.length === 0 && !fetchError && (
           <div className="rounded-lg border border-gray-200 bg-white px-6 py-10 text-center">
             <i className="ri-inbox-line text-3xl text-gray-300 mb-2 block" />
-            <p className="text-sm text-gray-500">No notifications found for this tenant.</p>
+            <p className="text-sm text-gray-500">No notifications found.</p>
           </div>
         )}
 

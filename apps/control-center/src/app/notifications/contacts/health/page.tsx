@@ -1,34 +1,11 @@
 import { requirePlatformAdmin }           from '@/lib/auth-guards';
-import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
-import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type { NotifContactHealth }       from '@/lib/notifications-api';
 
 export default async function ContactHealthPage() {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <a href="/notifications/contacts/suppressions" className="text-sm text-indigo-600 hover:text-indigo-800">Suppressions</a>
-              <span className="text-gray-300">|</span>
-              <span className="text-sm font-semibold text-gray-700">Health</span>
-              <span className="text-gray-300">|</span>
-              <a href="/notifications/contacts/policies" className="text-sm text-indigo-600 hover:text-indigo-800">Policies</a>
-            </div>
-            <h1 className="text-xl font-semibold text-gray-900">Contact Health</h1>
-          </div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   let records:    NotifContactHealth[] = [];
   let fetchError: string | null        = null;
@@ -64,7 +41,7 @@ export default async function ContactHealthPage() {
           </div>
           <h1 className="text-xl font-semibold text-gray-900">Contact Health</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Per-contact delivery health for <strong>{tenantCtx.tenantName}</strong>.{' '}
+            Platform-wide per-contact delivery health.{' '}
             <span className="text-amber-600 font-medium">Populated by webhook ingestion — empty until providers send callbacks.</span>
           </p>
         </div>

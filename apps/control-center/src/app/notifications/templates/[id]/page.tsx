@@ -1,7 +1,5 @@
 import { requirePlatformAdmin }           from '@/lib/auth-guards';
-import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
-import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { TemplatePreviewModal }          from '@/components/notifications/template-preview-modal';
 import { PublishVersionButton }          from '@/components/notifications/publish-version-button';
@@ -15,19 +13,7 @@ interface Props {
 }
 
 export default async function TemplateDetailPage({ params }: Props) {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div><h1 className="text-xl font-semibold text-gray-900">Template</h1></div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   let template:   NotifTemplate | null       = null;
   let versions:   NotifTemplateVersion[]     = [];

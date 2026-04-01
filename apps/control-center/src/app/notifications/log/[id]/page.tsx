@@ -1,7 +1,5 @@
 import { requirePlatformAdmin }           from '@/lib/auth-guards';
-import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
-import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { NotificationStatusBadge }       from '@/components/notifications/status-badge';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { notifClient }                    from '@/lib/notifications-api';
@@ -13,19 +11,7 @@ interface Props {
 }
 
 export default async function NotificationDetailPage({ params }: Props) {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div><h1 className="text-xl font-semibold text-gray-900">Notification Detail</h1></div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   let notification: NotifDetail | null = null;
   let events:       NotifEvent[]       = [];

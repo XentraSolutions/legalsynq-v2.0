@@ -1,7 +1,5 @@
 import { requirePlatformAdmin }           from '@/lib/auth-guards';
-import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
-import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { RateLimitForm }                  from '@/components/notifications/rate-limit-form';
 import { BillingPlanForm }               from '@/components/notifications/billing-plan-form';
@@ -16,19 +14,7 @@ import type {
 } from '@/lib/notifications-api';
 
 export default async function NotificationsBillingPage() {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div><h1 className="text-xl font-semibold text-gray-900">Usage & Billing</h1></div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   let summary:    NotifUsageSummary   | null = null;
   let events:     NotifUsageEvent[]          = [];
@@ -86,9 +72,7 @@ export default async function NotificationsBillingPage() {
 
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Usage &amp; Billing</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Usage events and billing policies for <strong>{tenantCtx.tenantName}</strong>.
-          </p>
+          <p className="text-sm text-gray-500 mt-0.5">Platform-wide usage events and billing policies.</p>
         </div>
 
         {fetchError && (

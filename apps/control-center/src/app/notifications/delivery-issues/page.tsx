@@ -1,7 +1,5 @@
 import { requirePlatformAdmin }           from '@/lib/auth-guards';
-import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
-import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { NotificationStatusBadge }       from '@/components/notifications/status-badge';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
@@ -23,19 +21,7 @@ interface Props {
  * them client-side to present a single delivery-issue view.
  */
 export default async function DeliveryIssuesPage({ searchParams }: Props) {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div><h1 className="text-xl font-semibold text-gray-900">Delivery Issues</h1></div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   const page = Math.max(1, parseInt(searchParams.page ?? '1', 10));
 
@@ -83,7 +69,7 @@ export default async function DeliveryIssuesPage({ searchParams }: Props) {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Delivery Issues</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Failed and blocked notifications for <strong>{tenantCtx.tenantName}</strong>.
+              Platform-wide failed and blocked notifications.
             </p>
           </div>
           <a

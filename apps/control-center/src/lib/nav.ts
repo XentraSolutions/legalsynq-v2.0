@@ -69,13 +69,13 @@ export const CC_NAV: NavSection[] = [
   {
     heading: 'NOTIFICATIONS',
     items: [
-      { href: '/notifications',                     label: 'Overview',        icon: 'ri-notification-3-line',  badge: 'MOCKUP' },
-      { href: '/notifications/log',                 label: 'Delivery Log',    icon: 'ri-mail-send-line',        badge: 'MOCKUP' },
-      { href: '/notifications/templates',           label: 'Templates',       icon: 'ri-file-text-line',        badge: 'MOCKUP' },
-      { href: '/notifications/providers',           label: 'Providers',       icon: 'ri-plug-line',             badge: 'MOCKUP' },
-      { href: '/notifications/billing',             label: 'Usage & Billing', icon: 'ri-bar-chart-2-line',      badge: 'MOCKUP' },
-      { href: '/notifications/contacts/suppressions', label: 'Suppressions',  icon: 'ri-user-forbid-line',      badge: 'MOCKUP' },
-      { href: '/notifications/delivery-issues',     label: 'Delivery Issues', icon: 'ri-error-warning-line',    badge: 'MOCKUP' },
+      { href: '/notifications',                        label: 'Overview',        icon: 'ri-notification-3-line'  },
+      { href: '/notifications/log',                    label: 'Delivery Log',    icon: 'ri-mail-send-line'       },
+      { href: '/notifications/templates',              label: 'Templates',       icon: 'ri-file-text-line'       },
+      { href: '/notifications/providers',              label: 'Providers',       icon: 'ri-plug-line'            },
+      { href: '/notifications/billing',                label: 'Usage & Billing', icon: 'ri-bar-chart-2-line'     },
+      { href: '/notifications/contacts/suppressions',  label: 'Suppressions',    icon: 'ri-user-forbid-line'     },
+      { href: '/notifications/delivery-issues',        label: 'Delivery Issues', icon: 'ri-error-warning-line'   },
     ],
   },
 

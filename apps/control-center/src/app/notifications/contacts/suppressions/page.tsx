@@ -1,7 +1,5 @@
 import { requirePlatformAdmin }           from '@/lib/auth-guards';
-import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
-import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { AddSuppressionForm }            from '@/components/notifications/add-suppression-form';
 import { LiftSuppressionButton }         from '@/components/notifications/lift-suppression-button';
@@ -9,28 +7,7 @@ import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type { NotifSuppression }         from '@/lib/notifications-api';
 
 export default async function ContactSuppressionsPage() {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm font-semibold text-gray-700">Suppressions</span>
-              <span className="text-gray-300">|</span>
-              <a href="/notifications/contacts/health" className="text-sm text-indigo-600 hover:text-indigo-800">Health</a>
-              <span className="text-gray-300">|</span>
-              <a href="/notifications/contacts/policies" className="text-sm text-indigo-600 hover:text-indigo-800">Policies</a>
-            </div>
-            <h1 className="text-xl font-semibold text-gray-900">Contact Suppressions</h1>
-          </div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   let suppressions: NotifSuppression[] = [];
   let fetchError:   string | null      = null;
@@ -76,7 +53,7 @@ export default async function ContactSuppressionsPage() {
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Contact Suppressions</h1>
               <p className="text-sm text-gray-500 mt-0.5">
-                Suppressed contacts for <strong>{tenantCtx.tenantName}</strong> — {suppressions.length} record{suppressions.length !== 1 ? 's' : ''}
+                {suppressions.length} suppressed contact{suppressions.length !== 1 ? 's' : ''} platform-wide
               </p>
             </div>
             <AddSuppressionForm />
@@ -138,7 +115,7 @@ export default async function ContactSuppressionsPage() {
                 {suppressions.length === 0 && (
                   <tr>
                     <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">
-                      No suppressions found for this tenant.
+                      No suppressions found.
                     </td>
                   </tr>
                 )}

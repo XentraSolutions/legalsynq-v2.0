@@ -1,7 +1,5 @@
 import { requirePlatformAdmin }           from '@/lib/auth-guards';
-import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
-import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { ProviderActionButtons }          from '@/components/notifications/provider-action-buttons';
 import { ProviderConfigForm }             from '@/components/notifications/provider-config-form';
@@ -14,19 +12,7 @@ import type {
 } from '@/lib/notifications-api';
 
 export default async function NotificationsProvidersPage() {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div><h1 className="text-xl font-semibold text-gray-900">Providers</h1></div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   let configs:         NotifProviderConfig[]   = [];
   let catalog:         NotifCatalogProvider[]  = [];
@@ -73,9 +59,7 @@ export default async function NotificationsProvidersPage() {
 
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Providers</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Provider integrations for <strong>{tenantCtx.tenantName}</strong>.
-          </p>
+          <p className="text-sm text-gray-500 mt-0.5">Platform-wide provider integrations and channel settings.</p>
         </div>
 
         {fetchError && (

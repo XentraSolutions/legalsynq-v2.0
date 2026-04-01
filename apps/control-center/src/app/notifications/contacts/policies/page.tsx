@@ -1,35 +1,12 @@
 import { requirePlatformAdmin }           from '@/lib/auth-guards';
-import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
-import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { ContactPolicyForm }              from '@/components/notifications/contact-policy-form';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type { NotifContactPolicy }       from '@/lib/notifications-api';
 
 export default async function ContactPoliciesPage() {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <a href="/notifications/contacts/suppressions" className="text-sm text-indigo-600 hover:text-indigo-800">Suppressions</a>
-              <span className="text-gray-300">|</span>
-              <a href="/notifications/contacts/health" className="text-sm text-indigo-600 hover:text-indigo-800">Health</a>
-              <span className="text-gray-300">|</span>
-              <span className="text-sm font-semibold text-gray-700">Policies</span>
-            </div>
-            <h1 className="text-xl font-semibold text-gray-900">Contact Policies</h1>
-          </div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   let policies:   NotifContactPolicy[] = [];
   let fetchError: string | null        = null;
@@ -62,7 +39,7 @@ export default async function ContactPoliciesPage() {
           </div>
           <h1 className="text-xl font-semibold text-gray-900">Contact Policies</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Contact enforcement policies for <strong>{tenantCtx.tenantName}</strong>.
+            Platform-wide contact enforcement policies.
           </p>
         </div>
 

@@ -1,7 +1,5 @@
 import { requirePlatformAdmin }              from '@/lib/auth-guards';
-import { getTenantContext }                  from '@/lib/auth';
 import { CCShell }                           from '@/components/shell/cc-shell';
-import { NoTenantContext }                   from '@/components/notifications/no-tenant-context';
 import { NotificationStatusBadge }          from '@/components/notifications/status-badge';
 import { ChannelBadge }                      from '@/components/notifications/channel-badge';
 import { notifClient, NOTIF_CACHE_TAGS }    from '@/lib/notifications-api';
@@ -18,19 +16,7 @@ interface Props {
 const PAGE_SIZE = 20;
 
 export default async function NotificationsLogPage({ searchParams }: Props) {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div><h1 className="text-xl font-semibold text-gray-900">Delivery Log</h1></div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   const status  = searchParams.status  ?? '';
   const channel = searchParams.channel ?? '';
@@ -87,7 +73,7 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Delivery Log</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Scoped to <strong>{tenantCtx.tenantName}</strong> — {totalCount.toLocaleString()} record{totalCount !== 1 ? 's' : ''}
+              {totalCount.toLocaleString()} record{totalCount !== 1 ? 's' : ''} platform-wide
             </p>
           </div>
         </div>

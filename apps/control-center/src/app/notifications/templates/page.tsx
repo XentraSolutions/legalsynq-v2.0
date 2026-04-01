@@ -1,26 +1,12 @@
 import { requirePlatformAdmin }           from '@/lib/auth-guards';
-import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
-import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { TemplateCreateForm }             from '@/components/notifications/template-create-form';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type { NotifTemplate }            from '@/lib/notifications-api';
 
 export default async function NotificationsTemplatesPage() {
-  const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
-
-  if (!tenantCtx) {
-    return (
-      <CCShell userEmail={session.email}>
-        <div className="space-y-4">
-          <div><h1 className="text-xl font-semibold text-gray-900">Templates</h1></div>
-          <NoTenantContext />
-        </div>
-      </CCShell>
-    );
-  }
+  const session = await requirePlatformAdmin();
 
   let templates:  NotifTemplate[] = [];
   let fetchError: string | null   = null;
@@ -51,7 +37,7 @@ export default async function NotificationsTemplatesPage() {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Templates</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Message templates for <strong>{tenantCtx.tenantName}</strong> — {templates.length} template{templates.length !== 1 ? 's' : ''}
+              {templates.length} platform template{templates.length !== 1 ? 's' : ''}
             </p>
           </div>
           <TemplateCreateForm />
@@ -105,7 +91,7 @@ export default async function NotificationsTemplatesPage() {
                 {templates.length === 0 && (
                   <tr>
                     <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">
-                      No templates found for this tenant.
+                      No templates found.
                     </td>
                   </tr>
                 )}

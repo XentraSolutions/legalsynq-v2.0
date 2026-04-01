@@ -1,13 +1,9 @@
 /**
- * notifications-api.ts — Tenant-scoped HTTP client for the Notifications service.
+ * notifications-api.ts — Platform-wide HTTP client for the Notifications service.
  *
- * Every Notifications service endpoint (except /v1/health) requires the
- * x-tenant-id request header.  This module wraps fetch() for server-side
- * use and injects that header from the active cc_tenant_context cookie.
- *
- * If no tenant context is set, callers receive null from the guard helper
- * and should render the NoTenantContext empty state rather than calling
- * any notifClient method.
+ * Notifications are platform-scoped — no x-tenant-id header is sent.
+ * This module wraps fetch() for server-side use with Bearer auth from
+ * the active platform_session cookie.
  *
  * Base path through the Gateway: /notifications/v1/...
  */
@@ -15,7 +11,6 @@
 import { redirect }                  from 'next/navigation';
 import { cookies }                   from 'next/headers';
 import { logInfo, logWarn, logError } from '@/lib/logger';
-import { getTenantContext }           from '@/lib/auth';
 import { CONTROL_CENTER_API_BASE }   from '@/lib/env';
 import { ApiError }                  from '@/lib/api-client';
 
@@ -34,12 +29,7 @@ export async function notifFetch<T>(
   options: NotifFetchOptions = {},
 ): Promise<T> {
   const requestId = crypto.randomUUID();
-  const tenantCtx = getTenantContext();
   const method    = options.method ?? 'GET';
-
-  if (!tenantCtx) {
-    throw new ApiError(400, 'MISSING_TENANT_CONTEXT');
-  }
 
   const cookieStore = cookies();
   const token = cookieStore.get('platform_session')?.value;
@@ -54,7 +44,6 @@ export async function notifFetch<T>(
     'Accept':        'application/json',
     'X-Request-Id':  requestId,
     'Authorization': `Bearer ${token}`,
-    'x-tenant-id':   tenantCtx.tenantId,
   };
 
   const isRead = method === 'GET' || method === 'HEAD';
@@ -70,10 +59,7 @@ export async function notifFetch<T>(
     fetchCache = 'no-store';
   }
 
-  logInfo('notif.api.request.start', {
-    requestId, method, endpoint: path,
-    tenantId: tenantCtx.tenantId, tenantCode: tenantCtx.tenantCode,
-  });
+  logInfo('notif.api.request.start', { requestId, method, endpoint: path });
 
   const startMs = Date.now();
   let res: Response;
