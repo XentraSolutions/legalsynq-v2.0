@@ -1116,9 +1116,11 @@ public static class AdminEndpoints
         ClaimsPrincipal   caller,
         IdentityDbContext db,
         IAuditEventClient auditClient,
-        Microsoft.Extensions.Logging.ILogger<AdminEndpoints> logger,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
+        var logger = loggerFactory.CreateLogger(nameof(AdminEndpoints));
+
         var user = await db.Users
             .Include(u => u.Tenant)
             .FirstOrDefaultAsync(u => u.Id == id, ct);

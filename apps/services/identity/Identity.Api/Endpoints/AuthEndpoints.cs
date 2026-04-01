@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Identity.Application;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
+using Identity.Domain;
 using Identity.Infrastructure.Data;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
