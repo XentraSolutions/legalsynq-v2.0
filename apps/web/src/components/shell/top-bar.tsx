@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
 import { useSession } from '@/hooks/use-session';
 import { useProduct } from '@/contexts/product-context';
-import { orgTypeLabel } from '@/lib/nav';
+import { orgTypeLabel, PRODUCT_CODE_TO_NAV_KEY } from '@/lib/nav';
 import { useTenantBranding } from '@/providers/tenant-branding-provider';
 
 // ── All platform products shown in the app switcher ──────────────────────────
@@ -111,6 +111,22 @@ function AppSwitcher() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { setSelectedProductId } = useProduct();
+  const { session } = useSession();
+
+  // Build the set of enabled product IDs from the session.
+  // When enabledProducts is empty (e.g. PlatformAdmin or not yet loaded) show all.
+  const enabledIds: Set<string> = (() => {
+    const ep = session?.enabledProducts ?? [];
+    if (ep.length === 0) return new Set(ALL_PRODUCTS.map(p => p.id));
+    const ids = new Set<string>();
+    for (const code of ep) {
+      const navKey = PRODUCT_CODE_TO_NAV_KEY[code];
+      if (navKey) ids.add(navKey);
+    }
+    return ids;
+  })();
+
+  const visibleProducts = ALL_PRODUCTS.filter(p => enabledIds.has(p.id));
 
   useEffect(() => {
     if (!open) return;
@@ -154,7 +170,7 @@ function AppSwitcher() {
           </div>
 
           <div className="py-2">
-            {ALL_PRODUCTS.map(product => (
+            {visibleProducts.map(product => (
               <Link
                 key={product.id}
                 href={product.href}
@@ -177,6 +193,12 @@ function AppSwitcher() {
                 </span>
               </Link>
             ))}
+
+            {visibleProducts.length === 0 && (
+              <p className="px-4 py-3 text-xs text-gray-400">
+                No products enabled for your account.
+              </p>
+            )}
           </div>
         </div>
       )}

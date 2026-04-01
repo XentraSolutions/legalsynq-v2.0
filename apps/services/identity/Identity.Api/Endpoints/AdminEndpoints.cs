@@ -1286,24 +1286,39 @@ public static class AdminEndpoints
 
         var total = await q.CountAsync(ct);
 
-        var rows = await q
+        // Materialize with raw MetadataJson string first — EF Core cannot translate
+        // JsonSerializer.Deserialize (it has optional parameters) inside an expression tree.
+        var rawRows = await q
             .OrderByDescending(a => a.CreatedAtUtc)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(a => new
             {
-                id           = a.Id,
-                actorName    = a.ActorName,
-                actorType    = a.ActorType,
-                action       = a.Action,
-                entityType   = a.EntityType,
-                entityId     = a.EntityId,
-                metadata     = a.MetadataJson != null
-                    ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(a.MetadataJson)
-                    : null,
-                createdAtUtc = a.CreatedAtUtc,
+                a.Id,
+                a.ActorName,
+                a.ActorType,
+                a.Action,
+                a.EntityType,
+                a.EntityId,
+                a.MetadataJson,
+                a.CreatedAtUtc,
             })
             .ToListAsync(ct);
+
+        // Deserialize metadata in-memory after materialization.
+        var rows = rawRows.Select(a => new
+        {
+            id           = a.Id,
+            actorName    = a.ActorName,
+            actorType    = a.ActorType,
+            action       = a.Action,
+            entityType   = a.EntityType,
+            entityId     = a.EntityId,
+            metadata     = a.MetadataJson is not null
+                ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(a.MetadataJson)
+                : null,
+            createdAtUtc = a.CreatedAtUtc,
+        }).ToList();
 
         return Results.Ok(new
         {
