@@ -1,7 +1,9 @@
 {
+  "/_not-found/page": "app/_not-found/page.js",
   "/tenants/page": "app/tenants/page.js",
   "/login/page": "app/login/page.js",
   "/platform-readiness/page": "app/platform-readiness/page.js",
   "/notifications/page": "app/notifications/page.js",
-  "/roles/page": "app/roles/page.js"
+  "/roles/page": "app/roles/page.js",
+  "/api/auth/login/route": "app/api/auth/login/route.js"
 }
