@@ -17,7 +17,7 @@ export interface CreateContactSuppressionInput {
 }
 
 export interface SuppressionFilter {
-  tenantId: string;
+  tenantId?: string;
   channel?: string;
   contactValue?: string;
   status?: SuppressionStatus;
@@ -79,7 +79,8 @@ export class ContactSuppressionRepository {
   }
 
   async list(filter: SuppressionFilter): Promise<{ rows: ContactSuppression[]; count: number }> {
-    const where: Record<string, unknown> = { tenantId: filter.tenantId };
+    const where: Record<string, unknown> = {};
+    if (filter.tenantId !== undefined) where["tenantId"] = filter.tenantId;
     if (filter.channel) where["channel"] = filter.channel;
     if (filter.contactValue) where["contactValue"] = normalizeContactValue(filter.channel ?? "", filter.contactValue);
     if (filter.status) where["status"] = filter.status;

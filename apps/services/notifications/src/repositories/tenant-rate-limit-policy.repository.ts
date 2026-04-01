@@ -6,12 +6,16 @@ export class TenantRateLimitPolicyRepository {
     return TenantRateLimitPolicy.findByPk(id);
   }
 
-  async findByIdAndTenant(id: string, tenantId: string): Promise<TenantRateLimitPolicy | null> {
-    return TenantRateLimitPolicy.findOne({ where: { id, tenantId } });
+  async findByIdAndTenant(id: string, tenantId: string | undefined): Promise<TenantRateLimitPolicy | null> {
+    const where: Record<string, unknown> = { id };
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
+    return TenantRateLimitPolicy.findOne({ where });
   }
 
-  async findAllByTenant(tenantId: string): Promise<TenantRateLimitPolicy[]> {
-    return TenantRateLimitPolicy.findAll({ where: { tenantId }, order: [["createdAt", "DESC"]] });
+  async findAllByTenant(tenantId: string | undefined): Promise<TenantRateLimitPolicy[]> {
+    const where: Record<string, unknown> = {};
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
+    return TenantRateLimitPolicy.findAll({ where, order: [["createdAt", "DESC"]] });
   }
 
   async findActivePolicies(tenantId: string, channel?: string | null): Promise<TenantRateLimitPolicy[]> {

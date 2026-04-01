@@ -225,7 +225,7 @@ export async function updateTenantProviderConfig(
 }
 
 export async function listTenantProviderConfigs(
-  tenantId: string,
+  tenantId: string | undefined,
   channel?: NotificationChannel
 ): Promise<SafeProviderConfigView[]> {
   const configs = await repo.findByTenant(tenantId, channel);
@@ -234,7 +234,7 @@ export async function listTenantProviderConfigs(
 
 export async function getTenantProviderConfig(
   id: string,
-  tenantId: string
+  tenantId: string | undefined
 ): Promise<SafeProviderConfigView> {
   const config = await repo.findByIdAndTenant(id, tenantId);
   if (!config) throw Object.assign(new Error("Provider config not found"), { statusCode: 404 });

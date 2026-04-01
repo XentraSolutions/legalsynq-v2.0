@@ -49,7 +49,7 @@ export interface SubmitNotificationResult {
 }
 
 export interface ListNotificationsInput {
-  tenantId: string;
+  tenantId?: string;
   channel?: NotificationChannel;
   status?: string;
   limit?: number;

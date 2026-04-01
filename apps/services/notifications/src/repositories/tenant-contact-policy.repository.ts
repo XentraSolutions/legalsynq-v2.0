@@ -25,12 +25,16 @@ export class TenantContactPolicyRepository {
     return TenantContactPolicy.findByPk(id);
   }
 
-  async findByIdAndTenant(id: string, tenantId: string): Promise<TenantContactPolicy | null> {
-    return TenantContactPolicy.findOne({ where: { id, tenantId } });
+  async findByIdAndTenant(id: string, tenantId: string | undefined): Promise<TenantContactPolicy | null> {
+    const where: Record<string, unknown> = { id };
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
+    return TenantContactPolicy.findOne({ where });
   }
 
-  async findAllByTenant(tenantId: string): Promise<TenantContactPolicy[]> {
-    return TenantContactPolicy.findAll({ where: { tenantId }, order: [["createdAt", "DESC"]] });
+  async findAllByTenant(tenantId: string | undefined): Promise<TenantContactPolicy[]> {
+    const where: Record<string, unknown> = {};
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
+    return TenantContactPolicy.findAll({ where, order: [["createdAt", "DESC"]] });
   }
 
   /**

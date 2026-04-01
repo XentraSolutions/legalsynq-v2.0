@@ -10,16 +10,6 @@ export function tenantMiddleware(req: Request, res: Response, next: NextFunction
   const raw = req.headers[TENANT_HEADER];
   const tenantId = Array.isArray(raw) ? raw[0] : raw;
 
-  if (!tenantId || tenantId.trim() === "") {
-    res.status(400).json({
-      error: {
-        code: "MISSING_TENANT_CONTEXT",
-        message: "x-tenant-id header is required",
-      },
-    });
-    return;
-  }
-
-  req.tenantId = tenantId.trim();
+  req.tenantId = tenantId && tenantId.trim() !== "" ? tenantId.trim() : undefined;
   next();
 }

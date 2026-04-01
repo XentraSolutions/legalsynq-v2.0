@@ -8,12 +8,16 @@ export class TenantBillingPlanRepository {
     return TenantBillingPlan.findByPk(id);
   }
 
-  async findByIdAndTenant(id: string, tenantId: string): Promise<TenantBillingPlan | null> {
-    return TenantBillingPlan.findOne({ where: { id, tenantId } });
+  async findByIdAndTenant(id: string, tenantId: string | undefined): Promise<TenantBillingPlan | null> {
+    const where: Record<string, unknown> = { id };
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
+    return TenantBillingPlan.findOne({ where });
   }
 
-  async findAllByTenant(tenantId: string): Promise<TenantBillingPlan[]> {
-    return TenantBillingPlan.findAll({ where: { tenantId }, order: [["effectiveFrom", "DESC"]] });
+  async findAllByTenant(tenantId: string | undefined): Promise<TenantBillingPlan[]> {
+    const where: Record<string, unknown> = {};
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
+    return TenantBillingPlan.findAll({ where, order: [["effectiveFrom", "DESC"]] });
   }
 
   async findActivePlanForTenant(tenantId: string, asOf?: Date): Promise<TenantBillingPlan | null> {

@@ -146,7 +146,7 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
-      tenantId: string;
+      tenantId: string | undefined;
     }
   }
 }

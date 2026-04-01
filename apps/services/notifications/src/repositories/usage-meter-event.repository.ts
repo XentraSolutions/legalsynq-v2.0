@@ -21,7 +21,7 @@ export interface CreateUsageMeterEventInput {
 }
 
 export interface UsageEventFilter {
-  tenantId: string;
+  tenantId?: string;
   channel?: NotificationChannel;
   usageUnit?: UsageUnit;
   providerOwnershipMode?: string;
@@ -57,7 +57,8 @@ export class UsageMeterEventRepository {
   }
 
   async list(filter: UsageEventFilter): Promise<{ rows: UsageMeterEvent[]; count: number }> {
-    const where: Record<string, unknown> = { tenantId: filter.tenantId };
+    const where: Record<string, unknown> = {};
+    if (filter.tenantId !== undefined) where["tenantId"] = filter.tenantId;
     if (filter.channel) where["channel"] = filter.channel;
     if (filter.usageUnit) where["usageUnit"] = filter.usageUnit;
     if (filter.providerOwnershipMode) where["providerOwnershipMode"] = filter.providerOwnershipMode;
@@ -104,15 +105,14 @@ export class UsageMeterEventRepository {
   }
 
   async summarizeByUnit(
-    tenantId: string,
+    tenantId: string | undefined,
     fromDate: Date,
     toDate: Date
   ): Promise<Array<{ usageUnit: string; totalQuantity: number; billableQuantity: number }>> {
+    const baseWhere: Record<string, unknown> = { occurredAt: { [Op.between]: [fromDate, toDate] } };
+    if (tenantId !== undefined) baseWhere["tenantId"] = tenantId;
     const rows = await UsageMeterEvent.findAll({
-      where: {
-        tenantId,
-        occurredAt: { [Op.between]: [fromDate, toDate] },
-      },
+      where: baseWhere,
       attributes: [
         "usageUnit",
         [fn("SUM", col("quantity")), "totalQuantity"],

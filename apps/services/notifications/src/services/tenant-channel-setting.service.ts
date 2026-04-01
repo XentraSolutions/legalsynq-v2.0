@@ -6,11 +6,11 @@ import { NotificationChannel, NotificationChannels, TenantChannelProviderMode } 
 const settingRepo = new TenantChannelProviderSettingRepository();
 const configRepo = new TenantProviderConfigRepository();
 
-export async function listTenantChannelSettings(tenantId: string) {
+export async function listTenantChannelSettings(tenantId: string | undefined) {
   return settingRepo.findAllByTenant(tenantId);
 }
 
-export async function getTenantChannelSetting(tenantId: string, channel: NotificationChannel) {
+export async function getTenantChannelSetting(tenantId: string | undefined, channel: NotificationChannel) {
   return settingRepo.findByTenantAndChannel(tenantId, channel);
 }
 

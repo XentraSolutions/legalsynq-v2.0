@@ -34,7 +34,7 @@ interface UpdateNotificationInput {
 }
 
 interface ListNotificationsFilter {
-  tenantId: string;
+  tenantId?: string;
   channel?: NotificationChannel;
   status?: NotificationStatus;
   limit?: number;
@@ -67,7 +67,8 @@ export class NotificationRepository {
   }
 
   async list(filter: ListNotificationsFilter): Promise<{ rows: Notification[]; count: number }> {
-    const where: Record<string, unknown> = { tenantId: filter.tenantId };
+    const where: Record<string, unknown> = {};
+    if (filter.tenantId !== undefined) where["tenantId"] = filter.tenantId;
     if (filter.channel) where["channel"] = filter.channel;
     if (filter.status) where["status"] = filter.status;
 

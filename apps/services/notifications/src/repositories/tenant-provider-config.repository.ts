@@ -6,12 +6,15 @@ export class TenantProviderConfigRepository {
     return TenantProviderConfig.findByPk(id);
   }
 
-  async findByIdAndTenant(id: string, tenantId: string): Promise<TenantProviderConfig | null> {
-    return TenantProviderConfig.findOne({ where: { id, tenantId } });
+  async findByIdAndTenant(id: string, tenantId: string | undefined): Promise<TenantProviderConfig | null> {
+    const where: Record<string, unknown> = { id };
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
+    return TenantProviderConfig.findOne({ where });
   }
 
-  async findByTenant(tenantId: string, channel?: NotificationChannel): Promise<TenantProviderConfig[]> {
-    const where: Record<string, unknown> = { tenantId };
+  async findByTenant(tenantId: string | undefined, channel?: NotificationChannel): Promise<TenantProviderConfig[]> {
+    const where: Record<string, unknown> = {};
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
     if (channel) where["channel"] = channel;
     return TenantProviderConfig.findAll({ where, order: [["createdAt", "DESC"]] });
   }

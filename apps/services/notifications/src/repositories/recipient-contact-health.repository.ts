@@ -4,13 +4,14 @@ import { NotificationChannel } from "../types";
 
 export class RecipientContactHealthRepository {
   async list(filter: {
-    tenantId: string;
+    tenantId?: string;
     channel?: NotificationChannel;
     healthStatus?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ rows: RecipientContactHealth[]; count: number }> {
-    const where: Record<string, unknown> = { tenantId: filter.tenantId };
+    const where: Record<string, unknown> = {};
+    if (filter.tenantId !== undefined) where["tenantId"] = filter.tenantId;
     if (filter.channel) where["channel"] = filter.channel;
     if (filter.healthStatus) where["healthStatus"] = filter.healthStatus;
     const limit = Math.min(filter.limit ?? 100, 500);

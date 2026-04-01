@@ -3,14 +3,18 @@ import { NotificationChannel, TenantChannelProviderMode } from "../types";
 
 export class TenantChannelProviderSettingRepository {
   async findByTenantAndChannel(
-    tenantId: string,
+    tenantId: string | undefined,
     channel: NotificationChannel
   ): Promise<TenantChannelProviderSetting | null> {
-    return TenantChannelProviderSetting.findOne({ where: { tenantId, channel } });
+    const where: Record<string, unknown> = { channel };
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
+    return TenantChannelProviderSetting.findOne({ where });
   }
 
-  async findAllByTenant(tenantId: string): Promise<TenantChannelProviderSetting[]> {
-    return TenantChannelProviderSetting.findAll({ where: { tenantId } });
+  async findAllByTenant(tenantId: string | undefined): Promise<TenantChannelProviderSetting[]> {
+    const where: Record<string, unknown> = {};
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
+    return TenantChannelProviderSetting.findAll({ where });
   }
 
   async upsert(input: {
