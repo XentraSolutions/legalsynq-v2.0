@@ -47,6 +47,12 @@ const MODULES: ModuleCard[] = [
     description: 'Lookup sessions, reset credentials, and assist tenants.',
   },
   {
+    href:        CCRoutes.notifications,
+    title:       'Notifications',
+    description: 'Manage provider configs, templates, billing plans, and contact policies.',
+    badge:       'Admin',
+  },
+  {
     href:        CCRoutes.auditLogs,
     title:       'Audit Logs',
     description: 'Browse platform-wide administrative event history.',

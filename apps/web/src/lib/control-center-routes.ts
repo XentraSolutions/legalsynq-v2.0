@@ -53,6 +53,26 @@ export const CCRoutes = {
 
   /** /control-center/settings or /settings */
   settings:    cc('/settings'),
+
+  // ── Notifications ────────────────────────────────────────────────────────
+
+  /** /control-center/notifications or /notifications */
+  notifications:            cc('/notifications'),
+
+  /** /control-center/notifications/providers */
+  notifProviders:           cc('/notifications/providers'),
+
+  /** /control-center/notifications/templates */
+  notifTemplates:           cc('/notifications/templates'),
+
+  /** /control-center/notifications/billing */
+  notifBilling:             cc('/notifications/billing'),
+
+  /** /control-center/notifications/contacts/policies */
+  notifContactPolicies:     cc('/notifications/contacts/policies'),
+
+  /** /control-center/notifications/log */
+  notifLog:                 cc('/notifications/log'),
 } as const;
 
 export type CCRoutePath = typeof CCRoutes[keyof typeof CCRoutes];

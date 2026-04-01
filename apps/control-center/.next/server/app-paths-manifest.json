@@ -1,7 +1,1 @@
-{
-  "/login/page": "app/login/page.js",
-  "/tenants/page": "app/tenants/page.js",
-  "/product-rules/page": "app/product-rules/page.js",
-  "/notifications/providers/page": "app/notifications/providers/page.js",
-  "/tenants/[id]/page": "app/tenants/[id]/page.js"
-}
+{}

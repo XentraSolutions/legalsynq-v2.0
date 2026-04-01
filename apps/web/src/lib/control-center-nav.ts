@@ -54,6 +54,19 @@ export function buildControlCenterNav(_session: PlatformSession): NavGroup[] {
       ],
     },
     {
+      id:    'control-center-notifications',
+      label: 'Notifications',
+      icon:  'Bell',
+      items: [
+        { href: CCRoutes.notifications,        label: 'Overview' },
+        { href: CCRoutes.notifProviders,       label: 'Providers' },
+        { href: CCRoutes.notifTemplates,       label: 'Templates' },
+        { href: CCRoutes.notifBilling,         label: 'Billing' },
+        { href: CCRoutes.notifContactPolicies, label: 'Contact Policies' },
+        { href: CCRoutes.notifLog,             label: 'Delivery Log' },
+      ],
+    },
+    {
       id:    'control-center-config',
       label: 'Configuration',
       icon:  'Settings',
