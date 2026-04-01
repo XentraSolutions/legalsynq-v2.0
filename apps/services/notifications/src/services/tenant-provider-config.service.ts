@@ -408,7 +408,7 @@ export async function deleteTenantProviderConfig(
     err.statusCode = 500;
     throw err;
   }
-  await auditClient.emit({
+  await auditClient.publishEvent({
     eventType: "tenant_provider_config.deleted",
     metadata: { configId, providerType: config.providerType },
   });
