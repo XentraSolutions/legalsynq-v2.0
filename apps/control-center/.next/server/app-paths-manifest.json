@@ -1,5 +1,6 @@
 {
   "/notifications/providers/page": "app/notifications/providers/page.js",
   "/api/auth/login/route": "app/api/auth/login/route.js",
+  "/tenants/page": "app/tenants/page.js",
   "/login/page": "app/login/page.js"
 }
