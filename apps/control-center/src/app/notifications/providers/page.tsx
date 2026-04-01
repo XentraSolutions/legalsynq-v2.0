@@ -3,6 +3,7 @@ import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
 import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
+import { ProviderActionButtons }          from '@/components/notifications/provider-action-buttons';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type {
   NotifProviderConfig,
@@ -96,6 +97,7 @@ export default async function NotificationsProvidersPage() {
                     <th className="px-4 py-2.5 text-left font-medium">Validation</th>
                     <th className="px-4 py-2.5 text-left font-medium">Health</th>
                     <th className="px-4 py-2.5 text-left font-medium">Created</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -122,11 +124,14 @@ export default async function NotificationsProvidersPage() {
                       <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 whitespace-nowrap">
                         {new Date(c.createdAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
                       </td>
+                      <td className="px-4 py-2.5">
+                        <ProviderActionButtons configId={c.id} status={c.status} />
+                      </td>
                     </tr>
                   ))}
                   {configs.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
+                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">
                         No provider configurations found for this tenant.
                       </td>
                     </tr>

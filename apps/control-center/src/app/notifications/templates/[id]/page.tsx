@@ -3,6 +3,8 @@ import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
 import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
+import { TemplatePreviewModal }          from '@/components/notifications/template-preview-modal';
+import { PublishVersionButton }          from '@/components/notifications/publish-version-button';
 import { notifClient }                    from '@/lib/notifications-api';
 import type { NotifTemplate, NotifTemplateVersion } from '@/lib/notifications-api';
 import { ApiError }                       from '@/lib/api-client';
@@ -120,6 +122,7 @@ export default async function TemplateDetailPage({ params }: Props) {
                       <th className="px-4 py-2.5 text-left font-medium">Variables</th>
                       <th className="px-4 py-2.5 text-left font-medium">Published</th>
                       <th className="px-4 py-2.5 text-left font-medium">Created</th>
+                      <th className="px-4 py-2.5 text-left font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -127,9 +130,6 @@ export default async function TemplateDetailPage({ params }: Props) {
                       <tr key={v.id} className={v.id === template.currentVersionId ? 'bg-green-50' : 'hover:bg-gray-50'}>
                         <td className="px-4 py-2.5 font-mono text-[12px] text-gray-700 font-bold">
                           v{v.versionNumber}
-                          {v.id === template.currentVersionId && (
-                            <span className="ml-2 text-[10px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">current</span>
-                          )}
                         </td>
                         <td className="px-4 py-2.5">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${statusCfg[v.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
@@ -149,6 +149,21 @@ export default async function TemplateDetailPage({ params }: Props) {
                         </td>
                         <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500">
                           {new Date(v.createdAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <TemplatePreviewModal
+                              templateId={template.id}
+                              versionId={v.id}
+                              variables={v.variables}
+                            />
+                            <PublishVersionButton
+                              templateId={template.id}
+                              versionId={v.id}
+                              versionNumber={v.versionNumber}
+                              isCurrentVersion={v.id === template.currentVersionId}
+                            />
+                          </div>
                         </td>
                       </tr>
                     ))}

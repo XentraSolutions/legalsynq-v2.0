@@ -3,6 +3,8 @@ import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
 import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
+import { AddSuppressionForm }            from '@/components/notifications/add-suppression-form';
+import { LiftSuppressionButton }         from '@/components/notifications/lift-suppression-button';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type { NotifSuppression }         from '@/lib/notifications-api';
 
@@ -70,10 +72,15 @@ export default async function ContactSuppressionsPage() {
             <span className="text-gray-300">|</span>
             <a href="/notifications/contacts/policies" className="text-indigo-600 hover:text-indigo-800">Policies</a>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">Contact Suppressions</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Suppressed contacts for <strong>{tenantCtx.tenantName}</strong> — {suppressions.length} record{suppressions.length !== 1 ? 's' : ''}
-          </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">Contact Suppressions</h1>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Suppressed contacts for <strong>{tenantCtx.tenantName}</strong> — {suppressions.length} record{suppressions.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <AddSuppressionForm />
+          </div>
         </div>
 
         {fetchError && (
@@ -93,6 +100,7 @@ export default async function ContactSuppressionsPage() {
                   <th className="px-4 py-2.5 text-left font-medium">Reason</th>
                   <th className="px-4 py-2.5 text-left font-medium">Suppressed (UTC)</th>
                   <th className="px-4 py-2.5 text-left font-medium">Expires</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -122,11 +130,14 @@ export default async function ContactSuppressionsPage() {
                         ? new Date(s.expiresAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })
                         : <span className="text-gray-400 italic">never</span>}
                     </td>
+                    <td className="px-4 py-2.5">
+                      <LiftSuppressionButton suppressionId={s.id} status={s.status} />
+                    </td>
                   </tr>
                 ))}
                 {suppressions.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-400">
+                    <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">
                       No suppressions found for this tenant.
                     </td>
                   </tr>

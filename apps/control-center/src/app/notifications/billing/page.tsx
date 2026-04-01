@@ -3,6 +3,7 @@ import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
 import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
+import { RateLimitForm }                  from '@/components/notifications/rate-limit-form';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type {
   NotifUsageSummary,
@@ -137,11 +138,12 @@ export default async function NotificationsBillingPage() {
 
             {/* Rate limit policies */}
             <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-700">Rate-Limit Policies ({rateLimits.length})</h2>
+                <RateLimitForm mode="create" />
               </div>
               {rateLimits.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-gray-400 italic">No rate-limit policies configured.</p>
+                <p className="px-4 py-6 text-sm text-gray-400 italic">No rate-limit policies configured. Click "New Policy" to create one.</p>
               ) : (
                 <table className="min-w-full divide-y divide-gray-100 text-sm">
                   <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
@@ -151,6 +153,7 @@ export default async function NotificationsBillingPage() {
                       <th className="px-4 py-2.5 text-left font-medium">Window (s)</th>
                       <th className="px-4 py-2.5 text-left font-medium">Status</th>
                       <th className="px-4 py-2.5 text-left font-medium">Created</th>
+                      <th className="px-4 py-2.5 text-left font-medium">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -168,6 +171,15 @@ export default async function NotificationsBillingPage() {
                         </td>
                         <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500">
                           {new Date(rl.createdAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <RateLimitForm
+                            mode="edit"
+                            id={rl.id}
+                            initialChannel={rl.channel}
+                            initialLimit={rl.limitCount}
+                            initialWindow={rl.windowSeconds}
+                          />
                         </td>
                       </tr>
                     ))}

@@ -90,3 +90,9 @@ id = "XYOhKdu0jXc9geLjg0jjd"
 uri = "file://analysis/notifications/NOTIF-UI-001-report.md"
 type = "text"
 title = "NOTIF-UI-001 — Post-Implementation Report (14 sections)"
+
+[[outputs]]
+id = "Z9TNtXQUarj2E3ZiCRsq_"
+uri = "file://analysis/notifications/NOTIF-UI-002-report.md"
+type = "text"
+title = "NOTIF-UI-002 — Notifications Mutation Flows (Post-Implementation Report)"
