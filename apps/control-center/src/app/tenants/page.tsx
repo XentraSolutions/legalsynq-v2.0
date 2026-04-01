@@ -95,6 +95,7 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
             totalCount={result.totalCount}
             page={result.page}
             pageSize={result.pageSize}
+            activeTenantId={tenantCtx?.tenantId ?? null}
           />
         )}
       </div>

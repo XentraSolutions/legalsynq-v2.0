@@ -34,8 +34,19 @@ export class NotifWebError extends Error {
 
 async function notifRequest<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
   const cookieStore = cookies();
-  const token    = cookieStore.get('platform_session')?.value;
-  const tenantId = cookieStore.get('cc_tenant_context')?.value;
+  const token  = cookieStore.get('platform_session')?.value;
+
+  // cc_tenant_context stores JSON: { tenantId, tenantName, tenantCode }
+  let tenantId: string | undefined;
+  const raw = cookieStore.get('cc_tenant_context')?.value;
+  if (raw) {
+    try {
+      const ctx = JSON.parse(raw) as { tenantId?: string };
+      tenantId  = ctx.tenantId;
+    } catch {
+      tenantId = raw; // fallback if somehow stored as plain UUID
+    }
+  }
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token)    headers['Authorization'] = `Bearer ${token}`;
