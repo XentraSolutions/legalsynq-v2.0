@@ -36,18 +36,42 @@ const WARNING_LEAD_SECONDS = 60;
  * keyboard, scroll, touch) reset the idle timer. When the tenant-configured
  * idle period elapses, a 60-second warning dialog is shown before auto-logout.
  */
-export function SessionProvider({ children }: { children: ReactNode }) {
-  const [session,   setSession]   = useState<PlatformSession | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+/**
+ * Serializable version of PlatformSession for the server→client prop boundary.
+ * Date objects cannot cross RSC boundaries, so expiresAt is kept as an ISO string.
+ */
+export interface SerializableSession extends Omit<PlatformSession, 'expiresAt'> {
+  expiresAt: string;
+}
+
+/** Re-hydrate a SerializableSession back into a full PlatformSession. */
+function deserializeSession(s: SerializableSession): PlatformSession {
+  return { ...s, expiresAt: new Date(s.expiresAt) };
+}
+
+interface SessionProviderProps {
+  children:        ReactNode;
+  initialSession?: SerializableSession | null;
+}
+
+export function SessionProvider({ children, initialSession }: SessionProviderProps) {
+  // Seed state from the SSR-resolved session so the UI is populated instantly.
+  // isLoading starts false when we already have data; true only on a cold client load.
+  const seeded = initialSession ? deserializeSession(initialSession) : null;
+  const [session,   setSession]   = useState<PlatformSession | null>(seeded);
+  const [isLoading, setIsLoading] = useState(initialSession == null);
   const [showWarning, setShowWarning] = useState(false);
   const [countdown,   setCountdown]   = useState(WARNING_LEAD_SECONDS);
 
   const idleTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warningTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sessionRef      = useRef<PlatformSession | null>(null);
+  // Seed the ref too so idle-timer callbacks see the correct session immediately.
+  const sessionRef      = useRef<PlatformSession | null>(seeded);
 
   const fetchSession = useCallback(async () => {
-    setIsLoading(true);
+    // Only show the loading spinner when we have no session at all yet.
+    // If we already have an SSR-seeded session this runs as a silent background refresh.
+    if (!sessionRef.current) setIsLoading(true);
     try {
       const res = await fetch('/api/auth/me', {
         credentials: 'include',
