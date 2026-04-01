@@ -1,1 +1,7 @@
-{}
+{
+  "/tenants/page": "app/tenants/page.js",
+  "/tenants/[id]/page": "app/tenants/[id]/page.js",
+  "/org-types/page": "app/org-types/page.js",
+  "/domains/page": "app/domains/page.js",
+  "/notifications/log/page": "app/notifications/log/page.js"
+}

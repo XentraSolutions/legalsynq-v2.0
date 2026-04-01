@@ -33,7 +33,7 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .IsUnique();
 
         builder.HasData(
-            new { Id = SeedIds.ProductSynqFund,        Name = "SynqFund",        Code = "SYNQ_FUND",        Description = (string?)"Fund management platform",              IsActive = true, CreatedAtUtc = SeedIds.SeededAt },
+            new { Id = SeedIds.ProductSynqFund,        Name = "SynqFund",        Code = "SYNQ_FUND",        Description = (string?)"Presettlement funding",                  IsActive = true, CreatedAtUtc = SeedIds.SeededAt },
             new { Id = SeedIds.ProductSynqLiens,       Name = "SynqLiens",       Code = "SYNQ_LIENS",       Description = (string?)"Lien management platform",              IsActive = true, CreatedAtUtc = SeedIds.SeededAt },
             new { Id = SeedIds.ProductSynqCareConnect, Name = "SynqCareConnect", Code = "SYNQ_CARECONNECT", Description = (string?)"Care coordination platform",            IsActive = true, CreatedAtUtc = SeedIds.SeededAt },
             new { Id = SeedIds.ProductSynqPay,         Name = "SynqPay",         Code = "SYNQ_PAY",         Description = (string?)"Payment processing platform",           IsActive = true, CreatedAtUtc = SeedIds.SeededAt },

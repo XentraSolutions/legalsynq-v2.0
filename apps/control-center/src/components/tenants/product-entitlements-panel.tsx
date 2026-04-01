@@ -10,7 +10,7 @@ interface ProductEntitlementsPanelProps {
 }
 
 const PRODUCT_META: Record<ProductCode, { iconSrc: string; description: string }> = {
-  SynqFund:    { iconSrc: '/product-icons/synqfund.png',    description: 'Litigation funding management and case financing' },
+  SynqFund:    { iconSrc: '/product-icons/synqfund.png',    description: 'Presettlement funding' },
   SynqLien:    { iconSrc: '/product-icons/synqlien.png',    description: 'Medical lien tracking and settlement workflows' },
   SynqBill:    { iconSrc: '/product-icons/synqbill.png',    description: 'Billing, invoicing, and fee management' },
   SynqRx:      { iconSrc: '/product-icons/synqrx.png',      description: 'Prescription and pharmacy benefit coordination' },
