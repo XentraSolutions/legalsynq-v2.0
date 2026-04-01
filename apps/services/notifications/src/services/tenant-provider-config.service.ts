@@ -392,6 +392,28 @@ export async function activateTenantProviderConfig(
 }
 
 // For internal use by routing service — returns decrypted credentials
+export async function deleteTenantProviderConfig(
+  configId: string,
+  tenantId: string | undefined
+): Promise<void> {
+  const config = await repo.findByIdAndTenant(configId, tenantId);
+  if (!config) {
+    const err = new Error("Provider config not found") as Error & { statusCode: number };
+    err.statusCode = 404;
+    throw err;
+  }
+  const deleted = await repo.deleteById(configId, tenantId);
+  if (!deleted) {
+    const err = new Error("Failed to delete provider config") as Error & { statusCode: number };
+    err.statusCode = 500;
+    throw err;
+  }
+  await auditClient.emit({
+    eventType: "tenant_provider_config.deleted",
+    metadata: { configId, providerType: config.providerType },
+  });
+}
+
 export async function resolveProviderCredentials(
   configId: string
 ): Promise<{ config: TenantProviderConfig; credentials: Record<string, unknown>; endpointConfig: Record<string, unknown> } | null> {

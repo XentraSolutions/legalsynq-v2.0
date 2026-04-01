@@ -18,11 +18,27 @@ export interface ActionResult<T = undefined> {
 export async function validateProviderConfig(configId: string): Promise<ActionResult> {
   await requirePlatformAdmin();
   try {
-    await notifClient.post(`/providers/configs/${configId}/validate`, {});
+    const res = await notifClient.post<{ data: { valid: boolean; errors: string[] } }>(
+      `/providers/configs/${configId}/validate`, {}
+    );
     revalidateTag(NOTIF_CACHE_TAGS.providers);
+    if (!res.data.valid) {
+      return { success: false, error: res.data.errors.join('; ') };
+    }
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Validation failed.' };
+  }
+}
+
+export async function deleteProviderConfig(configId: string): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  try {
+    await notifClient.del(`/providers/configs/${configId}`);
+    revalidateTag(NOTIF_CACHE_TAGS.providers);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Delete failed.' };
   }
 }
 

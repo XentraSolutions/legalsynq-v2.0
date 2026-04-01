@@ -11,6 +11,7 @@ router.get("/configs", providersController.listConfigs);
 router.post("/configs", providersController.createConfig);
 router.get("/configs/:configId", providersController.getConfig);
 router.patch("/configs/:configId", providersController.updateConfig);
+router.delete("/configs/:configId", providersController.deleteConfig);
 router.post("/configs/:configId/validate", providersController.validateConfig);
 router.post("/configs/:configId/test", providersController.testConfig);
 router.post("/configs/:configId/activate", providersController.activateConfig);

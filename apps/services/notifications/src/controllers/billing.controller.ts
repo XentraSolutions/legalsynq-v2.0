@@ -67,7 +67,7 @@ export const billingController = {
 
       const summary = await usageRepo.summarizeByUnit(tenantId, fromDate, toDate);
 
-      const plan = await planRepo.findActivePlanForTenant(tenantId, now);
+      const plan = tenantId ? await planRepo.findActivePlanForTenant(tenantId, now) : null;
 
       res.json({
         data: {

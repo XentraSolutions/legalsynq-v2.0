@@ -78,4 +78,11 @@ export class TenantProviderConfigRepository {
   ): Promise<void> {
     await TenantProviderConfig.update(updates, { where: { id } });
   }
+
+  async deleteById(id: string, tenantId: string | undefined): Promise<boolean> {
+    const where: Record<string, unknown> = { id };
+    if (tenantId !== undefined) where["tenantId"] = tenantId;
+    const count = await TenantProviderConfig.destroy({ where });
+    return count > 0;
+  }
 }

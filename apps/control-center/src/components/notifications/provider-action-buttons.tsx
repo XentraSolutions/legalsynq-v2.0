@@ -5,6 +5,7 @@ import {
   validateProviderConfig,
   testProviderConfig,
   activateProviderConfig,
+  deleteProviderConfig,
 } from '@/app/notifications/actions';
 
 interface Props {
@@ -20,6 +21,8 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
   const [validateSt, setValidateSt]    = useState<BtnState>('idle');
   const [testSt,     setTestSt]        = useState<BtnState>('idle');
   const [toggleSt,   setToggleSt]      = useState<BtnState>('idle');
+  const [deleteSt,   setDeleteSt]      = useState<BtnState>('idle');
+  const [confirmDel, setConfirmDel]    = useState(false);
   const [errorMsg,   setErrorMsg]      = useState<string | null>(null);
 
   function runAction(
@@ -89,6 +92,36 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
               Activate
             </button>
           </span>
+        )}
+
+        {/* Delete */}
+        {!confirmDel ? (
+          <button
+            disabled={isPending}
+            onClick={() => setConfirmDel(true)}
+            className={`${btnBase} bg-white text-red-500 border-red-200 hover:border-red-400 hover:bg-red-50`}
+            title="Delete this provider config"
+          >
+            <i className="ri-delete-bin-line" />
+          </button>
+        ) : (
+          <>
+            <button
+              disabled={isPending}
+              onClick={() => runAction(() => deleteProviderConfig(configId), setDeleteSt)}
+              className={`${btnBase} bg-red-600 text-white border-red-600 hover:bg-red-700`}
+            >
+              {stateIcon(deleteSt) ?? <i className="ri-check-line" />}
+              Confirm
+            </button>
+            <button
+              disabled={isPending}
+              onClick={() => setConfirmDel(false)}
+              className={`${btnBase} bg-white text-gray-500 border-gray-300 hover:bg-gray-50`}
+            >
+              Cancel
+            </button>
+          </>
         )}
       </div>
 

@@ -7,6 +7,7 @@ import {
   validateTenantProviderConfig,
   testTenantProviderConfig,
   activateTenantProviderConfig,
+  deleteTenantProviderConfig,
 } from "../services/tenant-provider-config.service";
 import {
   listTenantChannelSettings,
@@ -155,6 +156,17 @@ export const providersController = {
       const { configId } = req.params as { configId: string };
       const config = await updateTenantProviderConfig(configId, tenantId, { status: "inactive" });
       res.json({ data: config });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+
+  async deleteConfig(req: Request, res: Response): Promise<void> {
+    try {
+      const tenantId = req.tenantId;
+      const { configId } = req.params as { configId: string };
+      await deleteTenantProviderConfig(configId, tenantId);
+      res.status(204).send();
     } catch (err) {
       handleError(res, err);
     }
