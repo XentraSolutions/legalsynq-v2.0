@@ -83,6 +83,48 @@ export async function deactivateProviderConfig(configId: string): Promise<Action
   }
 }
 
+// ── Provider config logs ──────────────────────────────────────────────────────
+
+export interface ProviderLogRow {
+  id:                    string;
+  notificationId:        string;
+  attemptNumber:         number;
+  status:                string;
+  provider:              string;
+  providerMessageId:     string | null;
+  failureCategory:       string | null;
+  errorMessage:          string | null;
+  startedAt:             string | null;
+  completedAt:           string | null;
+  platformFallbackUsed:  boolean;
+  channel:               string | null;
+  renderedSubject:       string | null;
+  templateKey:           string | null;
+  recipient:             string | null;
+  notificationCreatedAt: string | null;
+}
+
+export async function fetchProviderLogs(
+  configId: string,
+  opts: { limit?: number; offset?: number; status?: string; from?: string; to?: string } = {}
+): Promise<ActionResult<{ rows: ProviderLogRow[]; total: number }>> {
+  await requirePlatformAdmin();
+  try {
+    const params = new URLSearchParams();
+    if (opts.limit   != null) params.set('limit',  String(opts.limit));
+    if (opts.offset  != null) params.set('offset', String(opts.offset));
+    if (opts.status)          params.set('status', opts.status);
+    if (opts.from)            params.set('from',   opts.from);
+    if (opts.to)              params.set('to',     opts.to);
+    const qs = params.toString();
+    const path = `/providers/configs/${configId}/logs${qs ? `?${qs}` : ''}`;
+    const res = await notifClient.get<{ data: { rows: ProviderLogRow[]; total: number } }>(path, 0);
+    return { success: true, data: res.data };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to load logs.' };
+  }
+}
+
 // ── Template mutations ────────────────────────────────────────────────────────
 
 export async function publishTemplateVersion(

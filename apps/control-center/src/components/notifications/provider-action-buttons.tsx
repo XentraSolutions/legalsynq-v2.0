@@ -119,6 +119,15 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
             </button>
           </span>
 
+          {/* Logs */}
+          <a
+            href={`/notifications/providers/${configId}/logs`}
+            className={`${btnBase} bg-white text-gray-600 border-gray-300 hover:border-violet-400 hover:text-violet-700`}
+          >
+            <i className="ri-file-list-3-line" />
+            Logs
+          </a>
+
           {/* Activate — only shown when inactive */}
           {status === 'inactive' && (
             <span title={!isValidated ? 'Validate the config first before activating' : undefined}>

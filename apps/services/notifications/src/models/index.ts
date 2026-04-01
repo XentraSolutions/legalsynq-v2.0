@@ -2,8 +2,8 @@ import { Sequelize } from "sequelize";
 import { AppConfig } from "../config";
 import { logger } from "../shared/logger";
 import { initTenantModel } from "./tenant.model";
-import { initNotificationModel } from "./notification.model";
-import { initNotificationAttemptModel } from "./notification-attempt.model";
+import { initNotificationModel, Notification } from "./notification.model";
+import { initNotificationAttemptModel, NotificationAttempt } from "./notification-attempt.model";
 import { initProviderHealthModel } from "./provider-health.model";
 import { initTenantProviderConfigModel } from "./tenant-provider-config.model";
 import { initProviderWebhookLogModel } from "./provider-webhook-log.model";
@@ -63,6 +63,10 @@ export async function initDatabase(config: AppConfig): Promise<Sequelize | null>
   initTenantRateLimitPolicyModel(sequelize);
   initContactSuppressionModel(sequelize);
   initTenantContactPolicyModel(sequelize);
+
+  // Associations
+  NotificationAttempt.belongsTo(Notification, { foreignKey: "notificationId", as: "notification" });
+  Notification.hasMany(NotificationAttempt, { foreignKey: "notificationId", as: "attempts" });
 
   const isDev = config.nodeEnv !== "production";
 

@@ -9,6 +9,7 @@ import {
   activateTenantProviderConfig,
   deleteTenantProviderConfig,
 } from "../services/tenant-provider-config.service";
+import { NotificationAttemptRepository } from "../repositories/notification-attempt.repository";
 import {
   listTenantChannelSettings,
   getTenantChannelSetting,
@@ -222,6 +223,58 @@ export const providersController = {
       }
 
       res.json({ data });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+
+  async listConfigLogs(req: Request, res: Response): Promise<void> {
+    try {
+      const { configId } = req.params as { configId: string };
+      const { limit, offset, status, from, to } = req.query as Record<string, string | undefined>;
+
+      const attemptRepo = new NotificationAttemptRepository();
+      const result = await attemptRepo.findByProviderConfigId(configId, {
+        limit:  limit  ? parseInt(limit,  10) : undefined,
+        offset: offset ? parseInt(offset, 10) : undefined,
+        status: status || undefined,
+        from:   from ? new Date(from) : undefined,
+        to:     to   ? new Date(to)   : undefined,
+      });
+
+      const rows = result.rows.map((a) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const notif = (a as any).notification as Record<string, unknown> | undefined;
+        let recipient: string | null = null;
+        if (notif?.recipientJson) {
+          try {
+            const r = JSON.parse(notif.recipientJson as string);
+            recipient = r.email ?? r.phone ?? r.address ?? null;
+          } catch {
+            recipient = null;
+          }
+        }
+        return {
+          id:                  a.id,
+          notificationId:      a.notificationId,
+          attemptNumber:       a.attemptNumber,
+          status:              a.status,
+          provider:            a.provider,
+          providerMessageId:   a.providerMessageId,
+          failureCategory:     a.failureCategory,
+          errorMessage:        a.errorMessage,
+          startedAt:           a.startedAt,
+          completedAt:         a.completedAt,
+          platformFallbackUsed: a.platformFallbackUsed,
+          channel:             notif?.channel   ?? null,
+          renderedSubject:     notif?.renderedSubject ?? null,
+          templateKey:         notif?.templateKey ?? null,
+          recipient,
+          notificationCreatedAt: notif?.createdAt ?? null,
+        };
+      });
+
+      res.json({ data: { rows, total: result.count } });
     } catch (err) {
       handleError(res, err);
     }

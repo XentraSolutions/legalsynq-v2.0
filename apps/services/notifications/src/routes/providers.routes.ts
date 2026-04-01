@@ -16,6 +16,7 @@ router.post("/configs/:configId/validate", providersController.validateConfig);
 router.post("/configs/:configId/test", providersController.testConfig);
 router.post("/configs/:configId/activate", providersController.activateConfig);
 router.post("/configs/:configId/deactivate", providersController.deactivateConfig);
+router.get("/configs/:configId/logs", providersController.listConfigLogs);
 
 // ─── Tenant Channel Settings ──────────────────────────────────────────────────
 router.get("/channel-settings", providersController.listChannelSettings);
