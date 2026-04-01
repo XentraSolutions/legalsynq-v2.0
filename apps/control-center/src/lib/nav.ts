@@ -98,7 +98,7 @@ export const CC_NAV: NavSection[] = [
     heading: 'OPERATIONS',
     items: [
       { href: '/support',    label: 'Support Tools', icon: 'ri-customer-service-2-line', badge: 'IN PROGRESS' },
-      { href: '/audit-logs', label: 'Audit Logs',    icon: 'ri-file-list-3-line',        badge: 'IN PROGRESS' },
+      { href: '/audit-logs', label: 'Audit Logs',    icon: 'ri-file-list-3-line',        badge: 'LIVE' },
       { href: '/monitoring', label: 'Monitoring',    icon: 'ri-pulse-line',              badge: 'IN PROGRESS' },
     ],
   },

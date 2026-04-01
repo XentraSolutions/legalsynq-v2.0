@@ -6,6 +6,7 @@ import { CCShell }                        from '@/components/shell/cc-shell';
 import { UserDetailCard }                 from '@/components/users/user-detail-card';
 import { UserActions }                    from '@/components/users/user-actions';
 import { UserSecurityPanel }             from '@/components/users/user-security-panel';
+import { UserActivityPanel }             from '@/components/users/user-activity-panel';
 import { RoleAssignmentPanel }            from '@/components/users/role-assignment-panel';
 import { OrgMembershipPanel }             from '@/components/users/org-membership-panel';
 import { GroupMembershipPanel }           from '@/components/users/group-membership-panel';
@@ -165,6 +166,9 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
 
             {/* ── Security & Sessions (UIX-003-03) ─────────────────────────── */}
             <UserSecurityPanel security={security} />
+
+            {/* ── Activity Timeline (UIX-004) ───────────────────────────────── */}
+            <UserActivityPanel userId={user.id} tenantId={user.tenantId} />
 
             {/* ── Access Control Management (UIX-003) ──────────────────────── */}
             <div className="space-y-3">

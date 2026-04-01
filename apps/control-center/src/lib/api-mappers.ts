@@ -62,6 +62,7 @@ import type {
   GroupSummary,
   GroupDetail,
   PermissionCatalogItem,
+  UserActivityEvent,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -517,6 +518,75 @@ export function mapAuditLog(raw: unknown): AuditLogEntry {
     entityId:    str(r, 'entity_id',   'entityId',    ''),
     metadata,
     createdAtUtc: str(r, 'created_at', 'createdAtUtc', new Date().toISOString()),
+  };
+}
+
+// ── UIX-004: Audit event label mapping ───────────────────────────────────────
+
+/**
+ * Maps raw backend eventType codes to readable admin-facing labels.
+ * Used by the global audit page and user activity panel.
+ */
+export const AUDIT_EVENT_LABELS: Record<string, string> = {
+  // Auth / Security
+  'identity.user.login':                    'Login successful',
+  'identity.user.login_failed':             'Login failed',
+  'identity.user.login.blocked':            'Login blocked',
+  'identity.user.logout':                   'Logged out',
+  'identity.user.password_changed':         'Password changed',
+  'identity.user.password_reset_triggered': 'Password reset triggered',
+  'identity.user.password_reset_completed': 'Password reset completed',
+  // Account lifecycle
+  'identity.user.invited':                  'User invited',
+  'identity.user.invite_resent':            'Invite resent',
+  'identity.user.invite_accepted':          'Invite accepted',
+  'identity.user.activated':                'Account activated',
+  'identity.user.deactivated':              'Account deactivated',
+  // Security admin actions
+  'identity.user.locked':                   'Account locked',
+  'identity.user.unlocked':                 'Account unlocked',
+  'identity.user.force_logout':             'Force logged out',
+  'identity.user.session_revoked':          'Sessions revoked',
+  // Access control
+  'identity.user.role_assigned':            'Role assigned',
+  'identity.user.role_revoked':             'Role revoked',
+  'identity.user.membership_added':         'Membership added',
+  'identity.user.membership_removed':       'Membership removed',
+  'identity.user.primary_membership_changed': 'Primary membership changed',
+  'identity.user.group_membership_added':   'Group membership added',
+  'identity.user.group_membership_removed': 'Group membership removed',
+  // Tenant / platform
+  'platform.admin.tenant.created':          'Tenant created',
+  'platform.admin.tenant.entitlement.updated': 'Product entitlement updated',
+};
+
+/** Maps an eventType code to a readable label, falling back to the raw code. */
+export function mapEventLabel(eventType: string): string {
+  return AUDIT_EVENT_LABELS[eventType] ?? eventType
+    .replace(/^identity\.|^platform\./, '')
+    .replace(/\./g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
+ * Maps a CanonicalAuditEvent to a UserActivityEvent for display in panels.
+ * Handles missing fields gracefully.
+ */
+export function mapUserActivityEvent(raw: unknown): UserActivityEvent {
+  const r = asObj(raw);
+  const eventType = str(r, 'eventType', 'event_type', '');
+  const actor     = asObj(r['actor'] ?? {});
+  return {
+    id:           str(r, 'auditId', 'id', ''),
+    label:        mapEventLabel(eventType),
+    eventType,
+    category:     str(r, 'eventCategory', 'category', 'Administrative'),
+    actorLabel:   str(actor, 'name', 'actorLabel', '') || str(r, 'actorLabel', 'actorName', 'System'),
+    actorType:    str(actor, 'type', 'actorType', 'System'),
+    occurredAtUtc: str(r, 'occurredAtUtc', 'createdAtUtc', new Date().toISOString()),
+    description:  (r['description'] as string | undefined) || undefined,
+    ipAddress:    (actor['ipAddress'] ?? r['ipAddress']) as string | undefined,
   };
 }
 

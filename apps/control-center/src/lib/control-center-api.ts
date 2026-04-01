@@ -461,6 +461,36 @@ export const controlCenterServerApi = {
     },
 
     /**
+     * UIX-004: GET /identity/api/admin/users/{id}/activity
+     *
+     * Returns a paged list of local AuditLog entries for this user
+     * (admin actions: lock/unlock/force-logout/role-assign/etc).
+     * For richer event data (login, logout, invite) use auditCanonical.listForUser().
+     * Never throws — returns null on error so the panel degrades gracefully.
+     */
+    getActivity: async (
+      id: string,
+      params: { page?: number; pageSize?: number; category?: string } = {},
+    ): Promise<{ items: AuditLogEntry[]; totalCount: number } | null> => {
+      const qs = toQs({
+        page:     params.page     ?? 1,
+        pageSize: params.pageSize ?? 20,
+        category: params.category,
+      });
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/identity/api/admin/users/${encodeURIComponent(id)}/activity${qs}`,
+          10,
+          [CACHE_TAGS.audit],
+        );
+        const paged = mapPagedResponse(raw, mapAuditLog);
+        return { items: paged.items, totalCount: paged.totalCount };
+      } catch {
+        return null;
+      }
+    },
+
+    /**
      * POST /identity/api/admin/users/{id}/memberships
      * Assigns the user to an organization. Revalidates cc:users cache.
      */
@@ -817,6 +847,39 @@ export const controlCenterServerApi = {
         return mapCanonicalAuditEvent(unwrapApiResponse(raw));
       } catch {
         return null;
+      }
+    },
+
+    /**
+     * UIX-004: GET /audit-service/audit/events?targetId=&actorId=&tenantId=
+     *
+     * Convenience method: returns recent canonical events involving a specific user
+     * (as actor or as target). Scoped to the caller's tenant.
+     * Never throws — returns [] on error so the panel degrades gracefully.
+     */
+    listForUser: async (params: {
+      userId:     string;
+      tenantId?:  string;
+      page?:      number;
+      pageSize?:  number;
+    }): Promise<{ items: CanonicalAuditEvent[]; totalCount: number }> => {
+      try {
+        const qs = toQs({
+          targetId:   params.userId,
+          targetType: 'User',
+          tenantId:   params.tenantId,
+          page:       params.page     ?? 1,
+          pageSize:   params.pageSize ?? 15,
+        });
+        const raw = await apiClient.get<unknown>(
+          `/audit-service/audit/events${qs}`,
+          10,
+          [CACHE_TAGS.auditCanonical],
+        );
+        const paged = mapPagedResponse(raw, mapCanonicalAuditEvent);
+        return { items: paged.items, totalCount: paged.totalCount };
+      } catch {
+        return { items: [], totalCount: 0 };
       }
     },
   },

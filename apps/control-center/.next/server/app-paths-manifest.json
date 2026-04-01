@@ -1,10 +1,1 @@
-{
-  "/groups/page": "app/groups/page.js",
-  "/permissions/page": "app/permissions/page.js",
-  "/roles/page": "app/roles/page.js",
-  "/scoped-roles/page": "app/scoped-roles/page.js",
-  "/roles/[id]/page": "app/roles/[id]/page.js",
-  "/org-types/page": "app/org-types/page.js",
-  "/relationship-types/page": "app/relationship-types/page.js",
-  "/org-relationships/page": "app/org-relationships/page.js"
-}
+{}

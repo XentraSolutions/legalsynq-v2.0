@@ -259,6 +259,22 @@ export interface AuditLogEntry {
   createdAtUtc: string;
 }
 
+/**
+ * UIX-004: A normalised activity event for display in the UserActivityPanel.
+ * Populated from either AuditLogEntry (identity local) or CanonicalAuditEvent.
+ */
+export interface UserActivityEvent {
+  id:           string;
+  label:        string;
+  eventType:    string;
+  category:     string;
+  actorLabel:   string;
+  actorType:    string;
+  occurredAtUtc: string;
+  description?: string;
+  ipAddress?:   string;
+}
+
 /** Source mode for the audit log page. Set via AUDIT_READ_MODE env var. */
 export type AuditReadMode = 'legacy' | 'canonical' | 'hybrid';
 

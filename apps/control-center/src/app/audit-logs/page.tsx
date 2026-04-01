@@ -1,4 +1,4 @@
-import { requirePlatformAdmin }      from '@/lib/auth-guards';
+import { requireAdmin }              from '@/lib/auth-guards';
 import { getTenantContext }           from '@/lib/auth';
 import { controlCenterServerApi }     from '@/lib/control-center-api';
 import { CCShell }                    from '@/components/shell/cc-shell';
@@ -47,11 +47,13 @@ const MODE_COLORS: Record<AuditReadMode, string> = {
 /**
  * /audit-logs — System-wide audit log viewer with canonical/legacy hybrid support.
  *
- * Access: PlatformAdmin only. Read-only.
+ * Access: PlatformAdmin or TenantAdmin (requireAdmin). Read-only.
+ * TenantAdmin: scoped to their tenant via JWT claims propagated to the audit service.
+ * PlatformAdmin: can query across all tenants.
  * Filtering: server-side via URL searchParams (plain GET form, no JS required).
  */
 export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps) {
-  const session   = await requirePlatformAdmin();
+  const session   = await requireAdmin();
   const tenantCtx = getTenantContext();
 
   const search        = searchParams.search        ?? '';

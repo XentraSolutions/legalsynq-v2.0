@@ -105,6 +105,9 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/users/{id:guid}/force-logout",           ForceLogout);
         routes.MapGet("/api/admin/users/{id:guid}/security",                GetUserSecurity);
 
+        // UIX-004: user activity audit trail (queries local AuditLogs by EntityId)
+        routes.MapGet("/api/admin/users/{id:guid}/activity",                GetUserActivity);
+
         // ── Role assignment ───────────────────────────────────────────────────
         routes.MapPost("/api/admin/users/{id:guid}/roles",                  AssignRole);
         routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}",  RevokeRole);
@@ -1238,6 +1241,76 @@ public static class AdminEndpoints
             // Recent security/admin events are fetched by the CC frontend via the
             // Audit service query API (/audit/entity/User/{userId}) to avoid coupling
             // the identity service to the audit DB.
+        });
+    }
+
+    /// <summary>
+    /// UIX-004: GET /api/admin/users/{id}/activity
+    ///
+    /// Returns a paged list of local audit log entries (AuditLogs table) for
+    /// the specified user. Covers admin actions emitted by the Identity service:
+    /// lock, unlock, force-logout, password reset, role assignment, membership changes.
+    ///
+    /// For richer canonical events (login, logout, invite-accepted, etc.) the CC
+    /// queries the Audit service directly via /audit-service/audit/events?targetId=.
+    ///
+    /// Scope: TenantAdmin sees only users in their tenant. PlatformAdmin sees all.
+    /// </summary>
+    private static async Task<IResult> GetUserActivity(
+        Guid              id,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        int    page     = 1,
+        int    pageSize = 20,
+        string category = "",
+        CancellationToken ct = default)
+    {
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        page     = Math.Max(page, 1);
+
+        var u = await db.Users
+            .AsNoTracking()
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (u is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, u.TenantId)) return Results.Forbid();
+
+        var idStr = id.ToString();
+        var q = db.AuditLogs
+            .AsNoTracking()
+            .Where(a => a.EntityId == idStr);
+
+        if (!string.IsNullOrWhiteSpace(category))
+            q = q.Where(a => a.EntityType == category);
+
+        var total = await q.CountAsync(ct);
+
+        var rows = await q
+            .OrderByDescending(a => a.CreatedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(a => new
+            {
+                id           = a.Id,
+                actorName    = a.ActorName,
+                actorType    = a.ActorType,
+                action       = a.Action,
+                entityType   = a.EntityType,
+                entityId     = a.EntityId,
+                metadata     = a.MetadataJson != null
+                    ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(a.MetadataJson)
+                    : null,
+                createdAtUtc = a.CreatedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new
+        {
+            items      = rows,
+            totalCount = total,
+            page,
+            pageSize,
         });
     }
 
