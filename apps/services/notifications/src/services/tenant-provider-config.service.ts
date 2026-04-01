@@ -372,6 +372,8 @@ export async function testTenantProviderConfig(
       const attemptStatus: "sent" | "failed" = sendResult.success ? "sent" : "failed";
       // "accepted" = provider acknowledged our request; delivery outcome requires webhook confirmation
       const notifStatus: "accepted" | "failed" = sendResult.success ? "accepted" : "failed";
+      let persistedNotifId: string | null = null;
+      let persistedAttemptId: string | null = null;
       try {
         const notif = await notifRepo.create({
           tenantId:             config.tenantId ?? PLATFORM_TENANT,
@@ -386,6 +388,7 @@ export async function testTenantProviderConfig(
           providerConfigId:     config.id,
           providerOwnershipMode: config.ownershipMode,
         });
+        persistedNotifId = notif.id;
         await notifRepo.update(notif.id, {
           status:       notifStatus,
           providerUsed: config.providerType,
@@ -399,6 +402,7 @@ export async function testTenantProviderConfig(
           providerConfigId:     config.id,
           providerOwnershipMode: config.ownershipMode,
         });
+        persistedAttemptId = attempt.id;
         await attemptRepo.complete(attempt.id, {
           status:            attemptStatus,
           providerMessageId: sendResult.providerMessageId ?? null,
@@ -406,6 +410,52 @@ export async function testTenantProviderConfig(
         });
       } catch (recordErr) {
         logger.warn("Failed to persist test-send notification record", { configId: id, error: String(recordErr) });
+      }
+
+      // Fire-and-forget: poll SendGrid's Email Activity API at 8 s then 30 s to capture the
+      // real delivery outcome (blocked, bounced, delivered) and backfill the record.
+      if (sendResult.success && config.providerType === "sendgrid" && persistedNotifId && persistedAttemptId) {
+        const sgAdapter = new SendGridEmailProviderAdapter({
+          apiKey:            credentials["apiKey"] as string,
+          defaultFromEmail:  fromEmail,
+          defaultFromName:   fromName,
+        });
+        const notifId   = persistedNotifId;
+        const attemptId = persistedAttemptId;
+        const toEmail   = testPayload!.toEmail!;
+        (async () => {
+          for (const delayMs of [8_000, 30_000]) {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+            try {
+              const sgStatus = await sgAdapter.queryMessageStatus(toEmail);
+              logger.debug("SendGrid status poll result", { notifId, toEmail, sgStatus, delayMs });
+              if (sgStatus === null) continue; // not visible yet or API unavailable — try next poll
+              if (sgStatus === "delivered") {
+                await notifRepo.update(notifId, { status: "sent" });
+                await attemptRepo.complete(attemptId, { status: "sent" });
+                logger.info("Test send confirmed delivered", { notifId, toEmail });
+                return;
+              }
+              if (["not_delivered", "blocked", "bounced", "spam_report"].includes(sgStatus)) {
+                const failureCategory = sgStatus === "bounced" ? "invalid_recipient" : "non_retryable_failure";
+                await notifRepo.update(notifId, {
+                  status:           "failed",
+                  failureCategory,
+                  lastErrorMessage: `SendGrid: ${sgStatus}`,
+                });
+                await attemptRepo.complete(attemptId, {
+                  status:       "failed",
+                  errorMessage: `SendGrid: ${sgStatus}`,
+                });
+                logger.info("Test send marked failed from SendGrid status", { notifId, toEmail, sgStatus });
+                return;
+              }
+              // "processing" or "deferred" — let the next poll decide
+            } catch (pollErr) {
+              logger.debug("SendGrid status poll error", { notifId, error: String(pollErr) });
+            }
+          }
+        })().catch(err => logger.debug("Background SendGrid poll crashed", { error: String(err) }));
       }
 
       if (sendResult.success) {

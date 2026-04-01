@@ -153,6 +153,40 @@ export class SendGridEmailProviderAdapter implements EmailProviderAdapter {
     }
   }
 
+  /**
+   * Queries the SendGrid Email Activity API for the latest delivery status of a recently
+   * sent message.  Returns null when the message hasn't appeared yet or when the API
+   * isn't accessible (e.g. plan doesn't include Email Activity).
+   */
+  async queryMessageStatus(
+    toEmail: string,
+  ): Promise<"delivered" | "not_delivered" | "blocked" | "bounced" | "deferred" | "spam_report" | "processing" | null> {
+    if (!this.config.apiKey) return null;
+    try {
+      const query = encodeURIComponent(`to_email="${toEmail}"`);
+      const result = await httpsGet(
+        `https://api.sendgrid.com/v3/messages?query=${query}&limit=1&orderby=last_event_time+desc`,
+        { Authorization: `Bearer ${this.config.apiKey}` },
+      );
+      if (result.statusCode !== 200) {
+        logger.debug("SendGrid Messages API returned non-200", { statusCode: result.statusCode });
+        return null;
+      }
+      const body = JSON.parse(result.body) as { messages?: { status: string }[] };
+      const first = body.messages?.[0];
+      if (!first) return null;
+      const s = first.status as string;
+      const validStatuses = ["delivered", "not_delivered", "blocked", "bounced", "deferred", "spam_report", "processing"];
+      if (validStatuses.includes(s)) {
+        return s as "delivered" | "not_delivered" | "blocked" | "bounced" | "deferred" | "spam_report" | "processing";
+      }
+      return null;
+    } catch (err) {
+      logger.debug("SendGrid queryMessageStatus failed", { error: String(err) });
+      return null;
+    }
+  }
+
   async healthCheck(): Promise<{ status: "healthy" | "degraded" | "down"; latencyMs?: number }> {
     if (!this.config.apiKey) {
       return { status: "down" };
