@@ -20,6 +20,7 @@ interface AuthMeResponse {
   expiresAtUtc:          string;
   avatarDocumentId?:     string;
   sessionTimeoutMinutes: number;
+  enabledProducts?:      string[];
 }
 
 // ── Server-side session helper ────────────────────────────────────────────────
@@ -74,6 +75,7 @@ function mapToSession(me: AuthMeResponse): PlatformSession {
     orgName:          me.orgName,
     productRoles:     me.productRoles ?? [],
     systemRoles,
+    enabledProducts:  me.enabledProducts ?? [],
     isPlatformAdmin:  systemRoles.includes(SystemRole.PlatformAdmin),
     isTenantAdmin:    systemRoles.includes(SystemRole.TenantAdmin),
     hasOrg:           !!me.orgId,

@@ -35,4 +35,11 @@ public class TenantRepository : ITenantRepository
             .Select(td => td.Tenant)
             .FirstOrDefaultAsync(ct);
     }
+
+    public Task<List<string>> GetEnabledProductCodesAsync(Guid tenantId, CancellationToken ct = default) =>
+        _db.TenantProducts
+            .Include(tp => tp.Product)
+            .Where(tp => tp.TenantId == tenantId && tp.IsEnabled)
+            .Select(tp => tp.Product.Code)
+            .ToListAsync(ct);
 }

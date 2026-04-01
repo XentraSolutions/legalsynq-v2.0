@@ -1,9 +1,14 @@
 {
   "pages": {
-    "/login/page": [
+    "/groups/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/login/page.js"
+      "static/chunks/app/groups/page.js"
+    ],
+    "/groups/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/groups/loading.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -16,25 +21,50 @@
       "static/chunks/main-app.js",
       "static/chunks/app/error.js"
     ],
-    "/tenants/page": [
+    "/permissions/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/tenants/page.js"
+      "static/chunks/app/permissions/page.js"
     ],
-    "/tenants/loading": [
+    "/permissions/loading": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/tenants/loading.js"
+      "static/chunks/app/permissions/loading.js"
     ],
-    "/tenants/[id]/page": [
+    "/roles/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/tenants/[id]/page.js"
+      "static/chunks/app/roles/page.js"
     ],
-    "/tenants/[id]/layout": [
+    "/roles/loading": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/tenants/[id]/layout.js"
+      "static/chunks/app/roles/loading.js"
+    ],
+    "/roles/[id]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/roles/[id]/page.js"
+    ],
+    "/scoped-roles/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/scoped-roles/page.js"
+    ],
+    "/org-types/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/org-types/page.js"
+    ],
+    "/relationship-types/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/relationship-types/page.js"
+    ],
+    "/org-relationships/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/org-relationships/page.js"
     ]
   }
 }

@@ -73,6 +73,39 @@ export const PRODUCT_META: Record<string, { label: string; icon: string; color: 
   insights:    { label: 'Synq Insights',     icon: 'ri-bar-chart-2-line',    color: '#0891b2', iconSrc: '/product-icons/synqinsight.png' },
 };
 
+/**
+ * Maps backend product codes (as returned by auth/me `enabledProducts`) to the
+ * PRODUCT_META key used in the tenant portal.
+ * Values on the left are the frontend-friendly codes emitted by the Identity service
+ * (e.g. "CareConnect", "SynqFund"). Values on the right are PRODUCT_META keys.
+ */
+export const PRODUCT_CODE_TO_NAV_KEY: Record<string, string> = {
+  CareConnect:  'careconnect',
+  SynqFund:     'fund',
+  SynqLien:     'lien',
+  SynqAI:       'ai',
+  SynqInsights: 'insights',
+  SynqBill:     'bill',
+  SynqRx:       'rx',
+  SynqPayout:   'payout',
+};
+
+/**
+ * Converts a list of backend enabledProducts codes into the set of PRODUCT_META
+ * keys that should be shown on the dashboard.
+ * Falls back to showing ALL products when the list is empty (e.g. during
+ * onboarding, or for PlatformAdmin users whose tokens predate this feature).
+ */
+export function resolveEnabledNavKeys(enabledProducts: string[]): Set<string> {
+  if (enabledProducts.length === 0) return new Set(Object.keys(PRODUCT_META));
+  const keys = new Set<string>();
+  for (const code of enabledProducts) {
+    const key = PRODUCT_CODE_TO_NAV_KEY[code];
+    if (key && key in PRODUCT_META) keys.add(key);
+  }
+  return keys;
+}
+
 // ── Infer product from pathname ───────────────────────────────────────────────
 
 export function inferProductFromPath(pathname: string): string | null {

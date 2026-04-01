@@ -54,8 +54,13 @@ export interface PlatformSession {
   orgName?:  string;
 
   // Access control (display-only; backend enforces all real authorization)
-  productRoles: ProductRoleValue[];
-  systemRoles:  SystemRoleValue[];
+  productRoles:   ProductRoleValue[];
+  systemRoles:    SystemRoleValue[];
+
+  // Tenant-level product entitlements — which products the tenant has licensed.
+  // Populated from TenantProduct.IsEnabled at auth/me time.
+  // Used to filter the dashboard product tiles. Values e.g. "CareConnect", "SynqFund".
+  enabledProducts: string[];
 
   // Convenience flags — derived during session decode, not from JWT trust
   isPlatformAdmin: boolean;

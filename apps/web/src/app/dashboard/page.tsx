@@ -1,5 +1,5 @@
 import { requireOrg } from '@/lib/auth-guards';
-import { PRODUCT_META, PRODUCT_NAV, orgTypeLabel } from '@/lib/nav';
+import { PRODUCT_META, PRODUCT_NAV, orgTypeLabel, resolveEnabledNavKeys } from '@/lib/nav';
 import { AppShell } from '@/components/shell/app-shell';
 import Link from 'next/link';
 
@@ -10,7 +10,11 @@ import Link from 'next/link';
 export default async function DashboardPage() {
   const session = await requireOrg();
 
-  const productEntries = Object.entries(PRODUCT_META);
+  // Filter product tiles to only those enabled for this tenant.
+  // resolveEnabledNavKeys falls back to ALL products when the list is empty
+  // (e.g. PlatformAdmin sessions, or tenants with no entitlements configured yet).
+  const enabledKeys    = resolveEnabledNavKeys(session.enabledProducts);
+  const productEntries = Object.entries(PRODUCT_META).filter(([id]) => enabledKeys.has(id));
 
   return (
     <AppShell>

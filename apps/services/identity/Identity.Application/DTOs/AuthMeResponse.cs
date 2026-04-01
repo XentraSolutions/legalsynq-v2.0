@@ -17,4 +17,10 @@ public record AuthMeResponse(
     List<string> SystemRoles,
     DateTime ExpiresAtUtc,
     int SessionTimeoutMinutes = 30,
-    Guid? AvatarDocumentId = null);
+    Guid? AvatarDocumentId = null,
+    /// <summary>
+    /// Frontend-friendly product codes (e.g. "SynqFund", "CareConnect") for every product
+    /// that is currently enabled at the tenant level.  Used by the tenant portal to show
+    /// only the products the tenant has licensed.  Derived from TenantProduct.IsEnabled.
+    /// </summary>
+    List<string>? EnabledProducts = null);

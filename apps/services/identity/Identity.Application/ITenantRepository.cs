@@ -13,4 +13,11 @@ public interface ITenantRepository
     /// Used by the anonymous branding endpoint for production subdomain-based resolution.
     /// </summary>
     Task<Tenant?> GetByHostAsync(string host, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the internal DB product codes (e.g. "SYNQ_FUND", "SYNQ_CARECONNECT") for all
+    /// products that are currently enabled for the given tenant.
+    /// Used by auth/me to include <c>enabledProducts</c> in the session envelope.
+    /// </summary>
+    Task<List<string>> GetEnabledProductCodesAsync(Guid tenantId, CancellationToken ct = default);
 }

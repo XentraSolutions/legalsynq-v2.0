@@ -271,6 +271,18 @@ public class AuthService : IAuthService
             }
         }
 
+        // Resolve which products are enabled at the tenant level.
+        // Returns frontend-friendly codes (e.g. "SynqFund", "CareConnect") so the
+        // tenant portal can filter its product tiles without knowing DB internals.
+        List<string> enabledProducts = [];
+        if (Guid.TryParse(tenantId, out var tenantGuid))
+        {
+            var dbCodes = await _tenantRepository.GetEnabledProductCodesAsync(tenantGuid, ct);
+            enabledProducts = dbCodes
+                .Select(code => DbToFrontendProductCode.TryGetValue(code, out var fc) ? fc : code)
+                .ToList();
+        }
+
         return new AuthMeResponse(
             UserId:                 userId,
             Email:                  email,
@@ -283,8 +295,24 @@ public class AuthService : IAuthService
             SystemRoles:            systemRoles,
             ExpiresAtUtc:           expiresAtUtc,
             SessionTimeoutMinutes:  sessionTimeoutMinutes,
-            AvatarDocumentId:       avatarDocumentId);
+            AvatarDocumentId:       avatarDocumentId,
+            EnabledProducts:        enabledProducts);
     }
+
+    // Maps the DB product Code column → the frontend ProductCode (TypeScript).
+    // Keep in sync with AdminEndpoints.DbToFrontendProductCode.
+    private static readonly Dictionary<string, string> DbToFrontendProductCode
+        = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["SYNQ_FUND"]        = "SynqFund",
+        ["SYNQ_LIENS"]       = "SynqLien",
+        ["SYNQ_CARECONNECT"] = "CareConnect",
+        ["SYNQ_AI"]          = "SynqAI",
+        ["SYNQ_INSIGHTS"]    = "SynqInsights",
+        ["SYNQ_BILL"]        = "SynqBill",
+        ["SYNQ_RX"]          = "SynqRx",
+        ["SYNQ_PAYOUT"]      = "SynqPayout",
+    };
 
     // ── Canonical audit helpers ────────────────────────────────────────────────
 

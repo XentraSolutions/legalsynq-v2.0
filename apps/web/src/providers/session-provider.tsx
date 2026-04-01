@@ -80,6 +80,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         orgName:               me.orgName,
         productRoles:          me.productRoles          ?? [],
         systemRoles:           me.systemRoles           ?? [],
+        enabledProducts:       me.enabledProducts       ?? [],
         isPlatformAdmin:       (me.systemRoles ?? []).includes('PlatformAdmin'),
         isTenantAdmin:         (me.systemRoles ?? []).includes('TenantAdmin'),
         hasOrg:                !!me.orgId,
