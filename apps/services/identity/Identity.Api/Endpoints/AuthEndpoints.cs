@@ -200,7 +200,87 @@ public static class AuthEndpoints
             return Results.Ok(new { message = "Invitation accepted. Your account is now active." });
         })
         .AllowAnonymous();
+
+        // ── POST /api/auth/change-password ───────────────────────────────────
+        // Authenticated. Verifies the caller's current password then replaces it.
+        //
+        // Flow:
+        //   1. Extract user id from the validated JWT (sub claim).
+        //   2. Validate request body (currentPassword, newPassword length ≥ 8).
+        //   3. Load the user record from the database.
+        //   4. Verify currentPassword against the stored bcrypt hash.
+        //   5. Hash the new password and call user.SetPassword().
+        //   6. Persist changes and emit identity.user.password_changed audit event.
+        app.MapPost("/api/auth/change-password", async (
+            ChangePasswordRequest body,
+            HttpContext           httpContext,
+            IdentityDbContext     db,
+            IPasswordHasher       passwordHasher,
+            IAuditEventClient     auditClient,
+            CancellationToken     ct) =>
+        {
+            var userIdStr = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                         ?? httpContext.User.FindFirstValue("sub");
+
+            if (!Guid.TryParse(userIdStr, out var userId))
+                return Results.Problem("Invalid or missing user identity.", statusCode: 401);
+
+            if (string.IsNullOrWhiteSpace(body.CurrentPassword))
+                return Results.BadRequest(new { error = "currentPassword is required." });
+
+            if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
+                return Results.BadRequest(new { error = "newPassword must be at least 8 characters." });
+
+            if (body.CurrentPassword == body.NewPassword)
+                return Results.BadRequest(new { error = "New password must differ from the current password." });
+
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+            if (user is null)
+                return Results.Problem("User record not found.", statusCode: 404);
+
+            if (!passwordHasher.Verify(body.CurrentPassword, user.PasswordHash))
+                return Results.Problem("Current password is incorrect.", statusCode: 400);
+
+            var newHash = passwordHasher.Hash(body.NewPassword);
+            user.SetPassword(newHash);
+            await db.SaveChangesAsync(ct);
+
+            var now = DateTimeOffset.UtcNow;
+            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "identity.user.password_changed",
+                EventCategory = EventCategory.Security,
+                SourceSystem  = "identity-service",
+                SourceService = "auth-api",
+                Visibility    = VisibilityScope.Tenant,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = now,
+                Scope = new AuditEventScopeDto
+                {
+                    ScopeType = ScopeType.Tenant,
+                    TenantId  = user.TenantId.ToString(),
+                },
+                Actor       = new AuditEventActorDto
+                {
+                    Id        = user.Id.ToString(),
+                    Type      = ActorType.User,
+                    Name      = user.Email,
+                    IpAddress = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
+                             ?? httpContext.Connection.RemoteIpAddress?.ToString(),
+                },
+                Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+                Action      = "PasswordChanged",
+                Description = $"User '{user.Email}' changed their password.",
+                IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
+                    now, "identity-service", "identity.user.password_changed", user.Id.ToString()),
+                Tags = ["auth", "password", "security"],
+            });
+
+            return Results.Ok(new { message = "Password changed successfully." });
+        })
+        .RequireAuthorization();
     }
 
     private record AcceptInviteRequest(string Token, string NewPassword);
+    private record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 }
