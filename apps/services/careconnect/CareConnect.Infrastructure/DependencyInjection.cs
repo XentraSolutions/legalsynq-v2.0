@@ -73,8 +73,9 @@ public static class DependencyInjection
         // LSCC-011: Activation funnel analytics
         services.AddScoped<IActivationFunnelAnalyticsService, ActivationFunnelAnalyticsService>();
 
-        // LSCC-005: Email notification dispatch
-        services.AddScoped<ISmtpEmailSender, SmtpEmailSender>();
+        // LSCC-005: Email notification dispatch via platform Notifications service (SendGrid)
+        services.AddHttpClient("NotificationsService");
+        services.AddScoped<ISmtpEmailSender, NotificationsServiceEmailSender>();
         services.AddScoped<IReferralEmailService, ReferralEmailService>();
 
         // LSCC-005-02: Automatic email retry background worker

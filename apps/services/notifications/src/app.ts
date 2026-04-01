@@ -4,6 +4,7 @@ import { initDatabase } from "./models";
 import { tenantMiddleware } from "./middlewares/tenant.middleware";
 import { errorMiddleware, notFoundMiddleware } from "./middlewares/error.middleware";
 import routes from "./routes";
+import internalRoutes from "./routes/internal.routes";
 import { logger } from "./shared/logger";
 import { providerRegistry } from "./integrations/providers/registry/provider.registry";
 import { SendGridEmailProviderAdapter } from "./integrations/providers/adapters/sendgrid.adapter";
@@ -59,6 +60,9 @@ export async function createNotificationsService(): Promise<Express> {
 
   // Wire up webhook ingestion service
   setWebhookIngestionService(config);
+
+  // Internal service-to-service routes (no tenant middleware, no external auth)
+  app.use("/internal", internalRoutes);
 
   app.use("/v1", routes);
 
