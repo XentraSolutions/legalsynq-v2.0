@@ -84,3 +84,9 @@ id = "Elb6HtIwC8qk-2y7nrRgI"
 uri = "file://analysis/notifications/notifications-merge-fix-report.md"
 type = "text"
 title = "Notifications Merge — Fix Report (3 fixes applied)"
+
+[[outputs]]
+id = "XYOhKdu0jXc9geLjg0jjd"
+uri = "file://analysis/notifications/NOTIF-UI-001-report.md"
+type = "text"
+title = "NOTIF-UI-001 — Notifications Control Center UI"
