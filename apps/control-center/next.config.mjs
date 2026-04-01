@@ -100,10 +100,13 @@ const SECURITY_HEADERS = [
 const nextConfig = {
   experimental: {
     serverActions: {
-      // TODO: replace '*' with explicit origin list for CSRF hardening.
-      // e.g. allowedOrigins: [process.env.NEXT_PUBLIC_CONTROL_CENTER_ORIGIN]
-      // '*' is acceptable during development but should be locked down before
-      // production deployment.
+      // Next.js 14 CSRF check: compares origin vs x-forwarded-host.
+      // The Replit dev proxy strips the port, causing a mismatch.
+      // The isCsrfOriginAllowed helper does NOT support bare '*' —
+      // it only does exact-match or subdomain wildcard patterns.
+      // Since cc_tenant_context is not HttpOnly, the Set Active feature
+      // writes cookies client-side (via document.cookie) to avoid this check.
+      // TODO: replace with explicit origin list for production hardening.
       allowedOrigins: ['*'],
     },
   },

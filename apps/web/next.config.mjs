@@ -2,6 +2,9 @@
 const nextConfig = {
   experimental: {
     serverActions: {
+      // Next.js 14 CSRF check: the Replit dev proxy can cause origin/host
+      // mismatches. allowedOrigins is set to allow all for development.
+      // TODO: lock down to explicit origins for production.
       allowedOrigins: ['*'],
     },
   },

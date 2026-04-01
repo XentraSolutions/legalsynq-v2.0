@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { TenantSummary, TenantStatus, TenantType } from '@/types/control-center';
 import { Routes } from '@/lib/routes';
-import { switchTenantContextAction } from '@/app/actions/tenant-context';
+import { SetActiveTenantButton, ClearActiveTenantButton } from './set-active-tenant-button';
 
 interface TenantListTableProps {
   tenants:         TenantSummary[];
@@ -68,12 +68,7 @@ export function TenantListTable({ tenants, totalCount, page, pageSize, activeTen
           </thead>
           <tbody className="divide-y divide-gray-100">
             {tenants.map(tenant => {
-              const isActive  = tenant.id === activeTenantId;
-              const switchAction = switchTenantContextAction.bind(null, {
-                tenantId:   tenant.id,
-                tenantName: tenant.displayName,
-                tenantCode: tenant.code,
-              });
+              const isActive = tenant.id === activeTenantId;
               return (
                 <tr key={tenant.id} className={`hover:bg-gray-50 transition-colors ${isActive ? 'bg-amber-50' : ''}`}>
                   <td className="px-4 py-3">
@@ -104,15 +99,14 @@ export function TenantListTable({ tenants, totalCount, page, pageSize, activeTen
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-3">
-                      {!isActive && (
-                        <form action={switchAction}>
-                          <button
-                            type="submit"
-                            className="text-xs text-amber-700 font-medium border border-amber-300 bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-md transition-colors whitespace-nowrap"
-                          >
-                            Set Active
-                          </button>
-                        </form>
+                      {isActive ? (
+                        <ClearActiveTenantButton />
+                      ) : (
+                        <SetActiveTenantButton
+                          tenantId={tenant.id}
+                          tenantName={tenant.displayName}
+                          tenantCode={tenant.code}
+                        />
                       )}
                       <Link
                         href={Routes.tenantDetail(tenant.id)}
