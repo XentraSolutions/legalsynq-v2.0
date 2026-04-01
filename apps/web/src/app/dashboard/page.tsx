@@ -37,7 +37,7 @@ export default async function DashboardPage() {
                 key={id}
                 id={id}
                 meta={meta}
-                items={(PRODUCT_NAV[id] ?? []).slice(0, 3)}
+                items={(PRODUCT_NAV[id] ?? []).flatMap(s => s.items).slice(0, 3)}
               />
             ))}
           </div>
