@@ -226,9 +226,9 @@ export interface NotifProviderConfig {
 }
 
 export interface NotifCatalogProvider {
-  provider:  string;
-  channels:  NotifChannel[];
-  mode:      string;
+  providerType:  string;
+  channel:       NotifChannel;
+  displayName:   string;
 }
 
 export interface NotifChannelSetting {

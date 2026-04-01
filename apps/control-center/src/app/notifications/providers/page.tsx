@@ -189,12 +189,11 @@ export default async function NotificationsProvidersPage() {
               ) : (
                 <div className="divide-y divide-gray-100">
                   {catalog.map(p => (
-                    <div key={p.provider} className="flex items-center gap-4 px-4 py-3">
-                      <span className="text-sm font-medium text-gray-800 w-28">{p.provider}</span>
+                    <div key={`${p.providerType}-${p.channel}`} className="flex items-center gap-4 px-4 py-3">
+                      <span className="text-sm font-medium text-gray-800 w-28">{p.displayName ?? p.providerType}</span>
                       <div className="flex gap-1.5 flex-wrap">
-                        {p.channels.map(ch => <ChannelBadge key={ch} channel={ch} />)}
+                        <ChannelBadge channel={p.channel} />
                       </div>
-                      <span className="ml-auto text-xs text-gray-400">{p.mode}</span>
                     </div>
                   ))}
                 </div>
