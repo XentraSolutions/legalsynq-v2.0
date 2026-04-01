@@ -5,7 +5,7 @@ export type AttemptStatus = "created" | "sending" | "sent" | "failed";
 
 interface NotificationAttemptAttributes {
   id: string;
-  tenantId: string;
+  tenantId: string | null;
   notificationId: string;
   attemptNumber: number;
   provider: string;
@@ -43,7 +43,7 @@ export class NotificationAttempt extends Model<
   NotificationAttemptCreationAttributes
 > {
   declare id: string;
-  declare tenantId: string;
+  declare tenantId: string | null;
   declare notificationId: string;
   declare attemptNumber: number;
   declare provider: string;

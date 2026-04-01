@@ -5,7 +5,7 @@ export type NotificationStatus = "accepted" | "processing" | "sent" | "failed" |
 
 interface NotificationAttributes {
   id: string;
-  tenantId: string;
+  tenantId: string | null;
   channel: NotificationChannel;
   status: NotificationStatus;
   recipientJson: string;
@@ -56,7 +56,7 @@ interface NotificationCreationAttributes
 
 export class Notification extends Model<NotificationAttributes, NotificationCreationAttributes> {
   declare id: string;
-  declare tenantId: string;
+  declare tenantId: string | null;
   declare channel: NotificationChannel;
   declare status: NotificationStatus;
   declare recipientJson: string;

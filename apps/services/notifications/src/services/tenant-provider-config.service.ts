@@ -1,4 +1,6 @@
 import { TenantProviderConfigRepository } from "../repositories/tenant-provider-config.repository";
+import { NotificationRepository } from "../repositories/notification.repository";
+import { NotificationAttemptRepository } from "../repositories/notification-attempt.repository";
 import { TenantProviderConfig } from "../models/tenant-provider-config.model";
 import { auditClient } from "../integrations/audit/audit.client";
 import { encrypt, decrypt, maskSecret } from "../shared/crypto.service";
@@ -22,6 +24,8 @@ import { TwilioSmsProviderAdapter } from "../integrations/providers/adapters/twi
 import { isSupportedEmailProvider, isSupportedSmsProvider } from "../integrations/providers/schemas/index";
 
 const repo = new TenantProviderConfigRepository();
+const notifRepo = new NotificationRepository();
+const attemptRepo = new NotificationAttemptRepository();
 
 export interface CreateTenantProviderConfigInput {
   tenantId: string | undefined;
@@ -357,6 +361,46 @@ export async function testTenantProviderConfig(
         sendResult = await adapter.send(emailPayload);
       } else {
         return { success: false, message: `Sending test emails is not supported for provider: ${config.providerType}` };
+      }
+
+      // Persist a Notification + Attempt record so the send shows in delivery/provider logs
+      // Use nil UUID '00000000-...' as a platform sentinel when the config has no tenant scope.
+      const PLATFORM_TENANT = "00000000-0000-0000-0000-000000000000";
+      const attemptStatus: "sent" | "failed" = sendResult.success ? "sent" : "failed";
+      const notifStatus   = sendResult.success ? "sent" : "failed";
+      try {
+        const notif = await notifRepo.create({
+          tenantId:             config.tenantId ?? PLATFORM_TENANT,
+          channel:              config.channel as NotificationChannel,
+          recipientJson:        JSON.stringify({ email: testPayload!.toEmail }),
+          messageJson:          JSON.stringify({
+            subject: testPayload?.subject ?? "LegalSynq — Test Email",
+            body:    testPayload?.body    ?? "This is a test email sent from the LegalSynq Notifications platform.",
+          }),
+          renderedSubject:      testPayload?.subject ?? "LegalSynq — Test Email",
+          providerConfigId:     config.id,
+          providerOwnershipMode: config.ownershipMode,
+        });
+        await notifRepo.update(notif.id, {
+          status:       notifStatus as "sent" | "failed",
+          providerUsed: config.providerType,
+          lastErrorMessage: sendResult.success ? null : (sendResult.failure?.message ?? null),
+        });
+        const attempt = await attemptRepo.create({
+          tenantId:             config.tenantId ?? PLATFORM_TENANT,
+          notificationId:       notif.id,
+          attemptNumber:        1,
+          provider:             config.providerType,
+          providerConfigId:     config.id,
+          providerOwnershipMode: config.ownershipMode,
+        });
+        await attemptRepo.complete(attempt.id, {
+          status:            attemptStatus,
+          providerMessageId: sendResult.providerMessageId ?? null,
+          errorMessage:      sendResult.success ? null : (sendResult.failure?.message ?? null),
+        });
+      } catch (recordErr) {
+        logger.warn("Failed to persist test-send notification record", { configId: id, error: String(recordErr) });
       }
 
       if (sendResult.success) {

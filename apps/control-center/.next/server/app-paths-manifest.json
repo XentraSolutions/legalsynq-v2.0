@@ -1,5 +1,1 @@
-{
-  "/notifications/log/page": "app/notifications/log/page.js",
-  "/login/page": "app/login/page.js",
-  "/api/auth/login/route": "app/api/auth/login/route.js"
-}
+{}
