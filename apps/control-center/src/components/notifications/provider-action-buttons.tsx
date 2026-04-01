@@ -234,15 +234,24 @@ export function ProviderActionButtons({ configId, status, validationStatus }: Pr
                 />
               </div>
 
-              {testMsg && (
-                <p className={`text-xs rounded px-3 py-2 border ${
-                  testSt === 'ok'
-                    ? 'text-green-700 bg-green-50 border-green-200'
-                    : 'text-red-600 bg-red-50 border-red-200'
-                }`}>
-                  {testSt === 'ok' ? <><i className="ri-check-line mr-1" />{testMsg}</> : testMsg}
-                </p>
-              )}
+              {testMsg && (() => {
+                const isOk      = testSt === 'ok';
+                const hasCaveat = isOk && testMsg.includes('If the email does not arrive');
+                const cls = isOk
+                  ? hasCaveat
+                    ? 'text-amber-800 bg-amber-50 border-amber-200'
+                    : 'text-green-700 bg-green-50 border-green-200'
+                  : 'text-red-600 bg-red-50 border-red-200';
+                const icon = isOk
+                  ? hasCaveat ? 'ri-mail-send-line' : 'ri-check-line'
+                  : 'ri-error-warning-line';
+                return (
+                  <div className={`text-xs rounded px-3 py-2 border leading-relaxed ${cls}`}>
+                    <i className={`${icon} mr-1`} />
+                    {testMsg}
+                  </div>
+                );
+              })()}
 
               <div className="flex justify-end gap-2 pt-1">
                 <button

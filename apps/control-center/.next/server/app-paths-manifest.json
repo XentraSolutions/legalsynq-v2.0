@@ -1,1 +1,4 @@
-{}
+{
+  "/notifications/templates/page": "app/notifications/templates/page.js",
+  "/notifications/providers/page": "app/notifications/providers/page.js"
+}

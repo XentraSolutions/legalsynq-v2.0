@@ -361,9 +361,23 @@ export async function testTenantProviderConfig(
 
       if (sendResult.success) {
         await repo.update(id, { healthStatus: "healthy" });
-        return { success: true, message: `Test email delivered to ${testPayload!.toEmail}` };
+        return {
+          success: true,
+          message: `Test email accepted by ${config.providerType} for delivery to ${testPayload!.toEmail}. ` +
+            `If the email does not arrive, verify that your sender address is authenticated in your ${config.providerType} account ` +
+            `(SendGrid: Settings → Sender Authentication).`,
+        };
       } else {
-        return { success: false, message: sendResult.failure?.message ?? "Send failed — check provider logs" };
+        const raw = sendResult.failure?.message ?? "";
+        let hint = "";
+        if (raw.includes("554") || raw.includes("not accepted") || raw.toLowerCase().includes("blocked")) {
+          hint = " This often means the sender email is not a verified sender identity in SendGrid — go to Settings → Sender Authentication.";
+        } else if (raw.includes("401") || raw.includes("403") || raw.toLowerCase().includes("api key") || raw.toLowerCase().includes("auth")) {
+          hint = " Check that the API key in this provider config has 'Mail Send' permission.";
+        } else if (raw.includes("400")) {
+          hint = " The request was rejected by the provider — check that the From Email and API key are correct.";
+        }
+        return { success: false, message: (sendResult.failure?.message ?? "Send failed — check provider logs") + hint };
       }
     }
 
