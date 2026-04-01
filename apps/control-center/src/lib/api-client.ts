@@ -352,6 +352,12 @@ export const CACHE_TAGS = {
   auditExports:         'cc:audit-exports',
   auditIntegrity:       'cc:audit-integrity',
   auditLegalHolds:      'cc:audit-legal-holds',
+  // NOTIF-UI-001 — Notifications service
+  notifNotifications:   'notif:notifications',
+  notifTemplates:       'notif:templates',
+  notifProviders:       'notif:providers',
+  notifBilling:         'notif:billing',
+  notifContacts:        'notif:contacts',
 } as const;
 
 export type CacheTag = typeof CACHE_TAGS[keyof typeof CACHE_TAGS];

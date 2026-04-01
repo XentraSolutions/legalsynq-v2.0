@@ -1,0 +1,197 @@
+import { requirePlatformAdmin }           from '@/lib/auth-guards';
+import { getTenantContext }               from '@/lib/auth';
+import { CCShell }                        from '@/components/shell/cc-shell';
+import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
+import { ChannelBadge }                   from '@/components/notifications/channel-badge';
+import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
+import type {
+  NotifProviderConfig,
+  NotifCatalogProvider,
+  NotifChannelSetting,
+} from '@/lib/notifications-api';
+
+export default async function NotificationsProvidersPage() {
+  const session   = await requirePlatformAdmin();
+  const tenantCtx = getTenantContext();
+
+  if (!tenantCtx) {
+    return (
+      <CCShell userEmail={session.email}>
+        <div className="space-y-4">
+          <div><h1 className="text-xl font-semibold text-gray-900">Providers</h1></div>
+          <NoTenantContext />
+        </div>
+      </CCShell>
+    );
+  }
+
+  let configs:         NotifProviderConfig[]   = [];
+  let catalog:         NotifCatalogProvider[]  = [];
+  let channelSettings: NotifChannelSetting[]   = [];
+  let fetchError:      string | null           = null;
+
+  try {
+    [configs, catalog, channelSettings] = await Promise.all([
+      notifClient.get<NotifProviderConfig[] | { items: NotifProviderConfig[] }>(
+        '/providers/configs', 30, [NOTIF_CACHE_TAGS.providers],
+      ).then(r => Array.isArray(r) ? r : (r as { items: NotifProviderConfig[] }).items ?? []),
+      notifClient.get<NotifCatalogProvider[] | { items: NotifCatalogProvider[] }>(
+        '/providers/catalog', 300, [NOTIF_CACHE_TAGS.providers],
+      ).then(r => Array.isArray(r) ? r : (r as { items: NotifCatalogProvider[] }).items ?? []),
+      notifClient.get<NotifChannelSetting[] | { items: NotifChannelSetting[] }>(
+        '/providers/channel-settings', 30, [NOTIF_CACHE_TAGS.providers],
+      ).then(r => Array.isArray(r) ? r : (r as { items: NotifChannelSetting[] }).items ?? []),
+    ]);
+  } catch (err) {
+    fetchError = err instanceof Error ? err.message : 'Failed to load provider data.';
+  }
+
+  const configStatusCfg: Record<string, string> = {
+    active:   'bg-green-50 text-green-700 border-green-200',
+    inactive: 'bg-gray-50  text-gray-600  border-gray-200',
+  };
+
+  const validationCfg: Record<string, string> = {
+    valid:         'text-green-700',
+    invalid:       'text-red-700',
+    not_validated: 'text-amber-600',
+  };
+
+  const healthCfg: Record<string, string> = {
+    healthy:  'bg-green-50 text-green-700 border-green-200',
+    degraded: 'bg-amber-50 text-amber-700 border-amber-200',
+    down:     'bg-red-50   text-red-700   border-red-200',
+    unknown:  'bg-gray-50  text-gray-600  border-gray-200',
+  };
+
+  return (
+    <CCShell userEmail={session.email}>
+      <div className="space-y-6">
+
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Providers</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Provider integrations for <strong>{tenantCtx.tenantName}</strong>.
+          </p>
+        </div>
+
+        {fetchError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{fetchError}</div>
+        )}
+
+        {!fetchError && (
+          <>
+            {/* Provider Configs */}
+            <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <h2 className="text-sm font-semibold text-gray-700">Provider Configurations ({configs.length})</h2>
+              </div>
+              <table className="min-w-full divide-y divide-gray-100 text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left font-medium">Provider</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Channel</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Mode</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Validation</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Health</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Created</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {configs.map(c => (
+                    <tr key={c.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2.5 text-sm font-medium text-gray-800">{c.provider}</td>
+                      <td className="px-4 py-2.5"><ChannelBadge channel={c.channel} /></td>
+                      <td className="px-4 py-2.5 text-xs text-gray-600">{c.ownershipMode}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${configStatusCfg[c.status] ?? configStatusCfg['inactive']}`}>
+                          {c.status}
+                        </span>
+                      </td>
+                      <td className={`px-4 py-2.5 text-xs font-medium ${validationCfg[c.validationStatus] ?? 'text-gray-600'}`}>
+                        {c.validationStatus.replace('_', ' ')}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {c.healthStatus ? (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${healthCfg[c.healthStatus] ?? healthCfg['unknown']}`}>
+                            {c.healthStatus}
+                          </span>
+                        ) : <span className="text-gray-400 text-xs italic">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 whitespace-nowrap">
+                        {new Date(c.createdAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
+                      </td>
+                    </tr>
+                  ))}
+                  {configs.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
+                        No provider configurations found for this tenant.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Channel Settings */}
+            <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <h2 className="text-sm font-semibold text-gray-700">Channel Settings ({channelSettings.length})</h2>
+              </div>
+              {channelSettings.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-gray-400 italic">No channel settings configured.</p>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {channelSettings.map(s => (
+                    <div key={s.channel} className="flex items-center gap-4 px-4 py-3">
+                      <ChannelBadge channel={s.channel} />
+                      <div className="flex-1 grid grid-cols-3 gap-4 text-xs">
+                        <div>
+                          <p className="text-gray-500 mb-0.5">Primary</p>
+                          <p className="font-medium text-gray-800">{s.primaryProvider ?? <span className="text-gray-400 italic">—</span>}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500 mb-0.5">Fallback</p>
+                          <p className="font-medium text-gray-800">{s.fallbackProvider ?? <span className="text-gray-400 italic">—</span>}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500 mb-0.5">Mode</p>
+                          <p className="font-medium text-gray-800">{s.mode}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Provider Catalog */}
+            <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <h2 className="text-sm font-semibold text-gray-700">Platform Catalog ({catalog.length} providers)</h2>
+              </div>
+              {catalog.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-gray-400 italic">No catalog providers returned.</p>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {catalog.map(p => (
+                    <div key={p.provider} className="flex items-center gap-4 px-4 py-3">
+                      <span className="text-sm font-medium text-gray-800 w-28">{p.provider}</span>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {p.channels.map(ch => <ChannelBadge key={ch} channel={ch} />)}
+                      </div>
+                      <span className="ml-auto text-xs text-gray-400">{p.mode}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+      </div>
+    </CCShell>
+  );
+}
