@@ -11,7 +11,9 @@ import { cookies } from 'next/headers';
  *
  * Injects:
  *   Authorization: Bearer <platform_session>
- *   x-tenant-id:   <cc_tenant_context>   (required by notifications service)
+ *
+ * Notification settings are platform-wide (not per-tenant), so no x-tenant-id
+ * header is sent.
  *
  * Path convention (matches notifications-api.ts in the standalone CC):
  *   /notifications/v1/<resource>
@@ -34,23 +36,10 @@ export class NotifWebError extends Error {
 
 async function notifRequest<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
   const cookieStore = cookies();
-  const token  = cookieStore.get('platform_session')?.value;
-
-  // cc_tenant_context stores JSON: { tenantId, tenantName, tenantCode }
-  let tenantId: string | undefined;
-  const raw = cookieStore.get('cc_tenant_context')?.value;
-  if (raw) {
-    try {
-      const ctx = JSON.parse(raw) as { tenantId?: string };
-      tenantId  = ctx.tenantId;
-    } catch {
-      tenantId = raw; // fallback if somehow stored as plain UUID
-    }
-  }
+  const token = cookieStore.get('platform_session')?.value;
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token)    headers['Authorization'] = `Bearer ${token}`;
-  if (tenantId) headers['x-tenant-id']   = tenantId;
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const url = `${GATEWAY_URL}${NOTIF_PREFIX}${path}`;
 

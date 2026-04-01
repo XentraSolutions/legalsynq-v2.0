@@ -3,9 +3,6 @@ import { requireCCPlatformAdmin } from '@/lib/auth-guards';
 import { CCRoutes }               from '@/lib/control-center-routes';
 import { notifWebApi }            from '@/lib/notif-web-api';
 
-/**
- * Notification record as returned by GET /notifications/v1/notifications
- */
 interface NotificationRecord {
   id:                 string;
   channel:            string;
@@ -47,21 +44,13 @@ export default async function NotifLogPage() {
   let records:    NotificationRecord[] = [];
   let total:      number               = 0;
   let fetchError: string | null        = null;
-  let noTenant    = false;
-
-  const tenantSet = true; // notifWebApi reads cc_tenant_context cookie; if missing the request will 400/401
 
   try {
     const res = await notifWebApi.get<ListResponse>('/notifications?limit=50');
     records = res.data ?? [];
     total   = res.meta?.total ?? records.length;
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('400') || msg.includes('MISSING_TENANT')) {
-      noTenant = true;
-    } else {
-      fetchError = msg;
-    }
+    fetchError = err instanceof Error ? err.message : String(err);
   }
 
   return (
@@ -79,19 +68,13 @@ export default async function NotifLogPage() {
         </p>
       </div>
 
-      {noTenant && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-          No tenant context is set. Select a tenant context in the sidebar to view delivery records for a specific tenant.
-        </div>
-      )}
-
       {fetchError && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{fetchError}</div>
       )}
 
       <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-        {records.length === 0 && !fetchError && !noTenant ? (
-          <p className="px-4 py-10 text-center text-sm text-gray-400">No delivery records found for this tenant.</p>
+        {records.length === 0 && !fetchError ? (
+          <p className="px-4 py-10 text-center text-sm text-gray-400">No delivery records found.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-100 text-sm">

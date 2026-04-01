@@ -1,14 +1,12 @@
 import Link from 'next/link';
 import type { TenantSummary, TenantStatus, TenantType } from '@/types/control-center';
 import { Routes } from '@/lib/routes';
-import { SetActiveTenantButton, ClearActiveTenantButton } from './set-active-tenant-button';
 
 interface TenantListTableProps {
-  tenants:         TenantSummary[];
-  totalCount:      number;
-  page:            number;
-  pageSize:        number;
-  activeTenantId?: string | null;
+  tenants:    TenantSummary[];
+  totalCount: number;
+  page:       number;
+  pageSize:   number;
 }
 
 function formatDate(iso: string): string {
@@ -43,7 +41,7 @@ function StatusBadge({ status }: { status: TenantStatus }) {
   );
 }
 
-export function TenantListTable({ tenants, totalCount, page, pageSize, activeTenantId }: TenantListTableProps) {
+export function TenantListTable({ tenants, totalCount, page, pageSize }: TenantListTableProps) {
   if (tenants.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">
@@ -63,62 +61,38 @@ export function TenantListTable({ tenants, totalCount, page, pageSize, activeTen
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Primary Contact</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Created</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Actions</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {tenants.map(tenant => {
-              const isActive = tenant.id === activeTenantId;
-              return (
-                <tr key={tenant.id} className={`hover:bg-gray-50 transition-colors ${isActive ? 'bg-amber-50' : ''}`}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{tenant.displayName}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{tenant.code}</p>
-                      </div>
-                      {isActive && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[10px] font-semibold text-amber-700 shrink-0">
-                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                          Active
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {formatType(tenant.type)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={tenant.status} />
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {tenant.primaryContactName}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                    {formatDate(tenant.createdAtUtc)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      {isActive ? (
-                        <ClearActiveTenantButton />
-                      ) : (
-                        <SetActiveTenantButton
-                          tenantId={tenant.id}
-                          tenantName={tenant.displayName}
-                          tenantCode={tenant.code}
-                        />
-                      )}
-                      <Link
-                        href={Routes.tenantDetail(tenant.id)}
-                        className="text-xs text-indigo-600 font-medium hover:underline whitespace-nowrap"
-                      >
-                        View →
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+            {tenants.map(tenant => (
+              <tr key={tenant.id} className="hover:bg-gray-50 transition-colors">
+                <td className="px-4 py-3">
+                  <p className="text-sm font-medium text-gray-900">{tenant.displayName}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{tenant.code}</p>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-700">
+                  {formatType(tenant.type)}
+                </td>
+                <td className="px-4 py-3">
+                  <StatusBadge status={tenant.status} />
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-700">
+                  {tenant.primaryContactName}
+                </td>
+                <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                  {formatDate(tenant.createdAtUtc)}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <Link
+                    href={Routes.tenantDetail(tenant.id)}
+                    className="text-xs text-indigo-600 font-medium hover:underline whitespace-nowrap"
+                  >
+                    View →
+                  </Link>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
