@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Identity.Application;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
 using Identity.Infrastructure.Data;
@@ -279,8 +280,106 @@ public static class AuthEndpoints
             return Results.Ok(new { message = "Password changed successfully." });
         })
         .RequireAuthorization();
+
+        // ── PATCH /api/profile/avatar ─────────────────────────────────────────
+        // Authenticated. Stores the document ID of an already-uploaded avatar.
+        // The actual file upload goes directly to the documents service via BFF.
+        app.MapPatch("/api/profile/avatar", async (
+            SetAvatarRequest   body,
+            HttpContext        httpContext,
+            IUserRepository    userRepo,
+            IAuditEventClient  auditClient,
+            CancellationToken  ct) =>
+        {
+            var userIdStr = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                         ?? httpContext.User.FindFirstValue("sub");
+
+            if (!Guid.TryParse(userIdStr, out var userId))
+                return Results.Problem("Invalid or missing user identity.", statusCode: 401);
+
+            if (!Guid.TryParse(body.DocumentId, out var documentId))
+                return Results.BadRequest(new { error = "documentId must be a valid UUID." });
+
+            await userRepo.UpdateAvatarAsync(userId, documentId, ct);
+
+            var now = DateTimeOffset.UtcNow;
+            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "identity.user.avatar_set",
+                EventCategory = EventCategory.DataChange,
+                SourceSystem  = "identity-service",
+                SourceService = "auth-api",
+                Visibility    = VisibilityScope.Tenant,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = now,
+                Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant },
+                Actor         = new AuditEventActorDto
+                {
+                    Id        = userIdStr,
+                    Type      = ActorType.User,
+                    IpAddress = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
+                             ?? httpContext.Connection.RemoteIpAddress?.ToString(),
+                },
+                Entity         = new AuditEventEntityDto { Type = "User", Id = userIdStr! },
+                Action         = "AvatarSet",
+                Description    = $"User updated their profile picture (document {documentId}).",
+                IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
+                    now, "identity-service", "identity.user.avatar_set", userIdStr ?? ""),
+                Tags = ["profile", "avatar"],
+            });
+
+            return Results.Ok(new { avatarDocumentId = documentId });
+        })
+        .RequireAuthorization();
+
+        // ── DELETE /api/profile/avatar ────────────────────────────────────────
+        // Authenticated. Clears the user's avatar document reference.
+        app.MapDelete("/api/profile/avatar", async (
+            HttpContext        httpContext,
+            IUserRepository    userRepo,
+            IAuditEventClient  auditClient,
+            CancellationToken  ct) =>
+        {
+            var userIdStr = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                         ?? httpContext.User.FindFirstValue("sub");
+
+            if (!Guid.TryParse(userIdStr, out var userId))
+                return Results.Problem("Invalid or missing user identity.", statusCode: 401);
+
+            await userRepo.UpdateAvatarAsync(userId, null, ct);
+
+            var now = DateTimeOffset.UtcNow;
+            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "identity.user.avatar_removed",
+                EventCategory = EventCategory.DataChange,
+                SourceSystem  = "identity-service",
+                SourceService = "auth-api",
+                Visibility    = VisibilityScope.Tenant,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = now,
+                Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant },
+                Actor         = new AuditEventActorDto
+                {
+                    Id        = userIdStr,
+                    Type      = ActorType.User,
+                    IpAddress = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
+                             ?? httpContext.Connection.RemoteIpAddress?.ToString(),
+                },
+                Entity         = new AuditEventEntityDto { Type = "User", Id = userIdStr! },
+                Action         = "AvatarRemoved",
+                Description    = "User removed their profile picture.",
+                IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
+                    now, "identity-service", "identity.user.avatar_removed", userIdStr ?? ""),
+                Tags = ["profile", "avatar"],
+            });
+
+            return Results.NoContent();
+        })
+        .RequireAuthorization();
     }
 
     private record AcceptInviteRequest(string Token, string NewPassword);
     private record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+    private record SetAvatarRequest(string DocumentId);
 }

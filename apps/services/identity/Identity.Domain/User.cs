@@ -12,6 +12,12 @@ public class User
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>
+    /// Reference to the user's profile picture stored in the Documents service.
+    /// Null when no avatar has been uploaded.
+    /// </summary>
+    public Guid? AvatarDocumentId { get; private set; }
+
     public Tenant Tenant { get; private set; } = null!;
     public ICollection<UserOrganizationMembership> OrganizationMemberships { get; private set; } = [];
 
@@ -53,6 +59,25 @@ public class User
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
         PasswordHash = passwordHash;
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Associates a Documents-service document ID as the user's profile picture.
+    /// The document must be uploaded before calling this method.
+    /// </summary>
+    public void SetAvatar(Guid documentId)
+    {
+        AvatarDocumentId = documentId;
+        UpdatedAtUtc     = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Removes the user's profile picture. Idempotent — safe to call when already null.
+    /// </summary>
+    public void ClearAvatar()
+    {
+        AvatarDocumentId = null;
+        UpdatedAtUtc     = DateTime.UtcNow;
     }
 
     public static User Create(

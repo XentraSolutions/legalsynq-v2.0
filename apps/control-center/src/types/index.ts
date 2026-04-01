@@ -45,10 +45,12 @@ export interface PlatformSession {
   orgName?:     string;
   productRoles: ProductRoleValue[];
   systemRoles:  SystemRoleValue[];
-  isPlatformAdmin: boolean;
-  isTenantAdmin:   boolean;
-  hasOrg:          boolean;
-  expiresAt:       Date;
+  isPlatformAdmin:  boolean;
+  isTenantAdmin:    boolean;
+  hasOrg:           boolean;
+  avatarDocumentId?:     string;
+  expiresAt:             Date;
+  sessionTimeoutMinutes: number;
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────

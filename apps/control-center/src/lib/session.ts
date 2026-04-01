@@ -12,16 +12,18 @@ import { CONTROL_CENTER_API_BASE } from '@/lib/env';
 // ── /auth/me response shape ───────────────────────────────────────────────────
 
 interface AuthMeResponse {
-  userId:       string;
-  email:        string;
-  tenantId:     string;
-  tenantCode:   string;
-  orgId?:       string;
-  orgType?:     OrgTypeValue;
-  orgName?:     string;
-  productRoles: ProductRoleValue[];
-  systemRoles:  SystemRoleValue[];
-  expiresAtUtc: string;
+  userId:            string;
+  email:             string;
+  tenantId:          string;
+  tenantCode:        string;
+  orgId?:            string;
+  orgType?:          OrgTypeValue;
+  orgName?:          string;
+  productRoles:      ProductRoleValue[];
+  systemRoles:       SystemRoleValue[];
+  expiresAtUtc:          string;
+  avatarDocumentId?:     string;
+  sessionTimeoutMinutes: number;
 }
 
 // ── Server-side session helper ────────────────────────────────────────────────
@@ -61,19 +63,21 @@ export async function getServerSession(): Promise<PlatformSession | null> {
 function mapToSession(me: AuthMeResponse): PlatformSession {
   const systemRoles = me.systemRoles ?? [];
   return {
-    userId:      me.userId,
-    email:       me.email,
-    tenantId:    me.tenantId,
-    tenantCode:  me.tenantCode,
-    orgId:       me.orgId,
-    orgType:     me.orgType,
-    orgName:     me.orgName,
-    productRoles: me.productRoles ?? [],
+    userId:           me.userId,
+    email:            me.email,
+    tenantId:         me.tenantId,
+    tenantCode:       me.tenantCode,
+    orgId:            me.orgId,
+    orgType:          me.orgType,
+    orgName:          me.orgName,
+    productRoles:     me.productRoles ?? [],
     systemRoles,
-    isPlatformAdmin: systemRoles.includes(SystemRole.PlatformAdmin),
-    isTenantAdmin:   systemRoles.includes(SystemRole.TenantAdmin),
-    hasOrg:          !!me.orgId,
-    expiresAt:       new Date(me.expiresAtUtc),
+    isPlatformAdmin:  systemRoles.includes(SystemRole.PlatformAdmin),
+    isTenantAdmin:    systemRoles.includes(SystemRole.TenantAdmin),
+    hasOrg:           !!me.orgId,
+    avatarDocumentId:      me.avatarDocumentId,
+    expiresAt:             new Date(me.expiresAtUtc),
+    sessionTimeoutMinutes: me.sessionTimeoutMinutes ?? 30,
   };
 }
 

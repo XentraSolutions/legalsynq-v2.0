@@ -40,6 +40,10 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.UpdatedAtUtc)
             .IsRequired();
 
+        builder.Property(u => u.AvatarDocumentId)
+            .HasColumnType("varchar(36)")
+            .IsRequired(false);
+
         builder.HasIndex(u => new { u.TenantId, u.Email })
             .IsUnique();
 

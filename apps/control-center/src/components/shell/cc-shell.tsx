@@ -8,6 +8,7 @@ import { TenantContextBanner } from '@/components/layout/tenant-context-banner';
 import { ImpersonationBanner } from '@/components/layout/impersonation-banner';
 import { getTenantContext, getImpersonation } from '@/lib/auth';
 import { AnalyticsProvider } from '@/components/analytics/analytics-provider';
+import { getServerSession } from '@/lib/session';
 
 interface CCShellProps {
   children:  ReactNode;
@@ -23,9 +24,11 @@ interface CCShellProps {
  *   [amber TenantContextBanner — only when a tenant context is active]
  *   [light sidebar + scrollable main content]
  */
-export function CCShell({ children, userEmail }: CCShellProps) {
+export async function CCShell({ children, userEmail }: CCShellProps) {
   const tenantCtx     = getTenantContext();
   const impersonation = getImpersonation();
+  const session       = await getServerSession();
+  const avatarDocId   = session?.avatarDocumentId;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -66,12 +69,20 @@ export function CCShell({ children, userEmail }: CCShellProps) {
         <div className="flex items-center gap-3 shrink-0">
           <AppSwitcher />
           <div className="h-4 w-px" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }} />
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-            style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
-          >
-            <i className="ri-user-3-line text-[13px] text-slate-300" />
-          </div>
+          {avatarDocId ? (
+            <img
+              src={`/api/profile/avatar/${avatarDocId}`}
+              alt="Profile"
+              className="w-7 h-7 rounded-full object-cover shrink-0"
+            />
+          ) : (
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+              style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+            >
+              <i className="ri-user-3-line text-[13px] text-slate-300" />
+            </div>
+          )}
           <span className="hidden sm:block text-xs text-slate-300">{userEmail}</span>
           <div className="h-4 w-px" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }} />
           <SignOutButton />

@@ -212,6 +212,10 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
     ? session.orgName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
     : session.email.slice(0, 2).toUpperCase();
 
+  const avatarSrc = session.avatarDocumentId
+    ? `/api/profile/avatar/${session.avatarDocumentId}`
+    : null;
+
   return (
     <div ref={ref} className="relative flex items-center shrink-0">
       <button
@@ -220,12 +224,20 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
         aria-haspopup="true"
         aria-expanded={open}
       >
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 ring-2 ring-transparent group-hover:ring-white/20 transition-all"
-          style={{ backgroundColor: '#f97316' }}
-        >
-          {initials}
-        </div>
+        {avatarSrc ? (
+          <img
+            src={avatarSrc}
+            alt="Profile"
+            className="w-8 h-8 rounded-full object-cover shrink-0 ring-2 ring-transparent group-hover:ring-white/20 transition-all"
+          />
+        ) : (
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 ring-2 ring-transparent group-hover:ring-white/20 transition-all"
+            style={{ backgroundColor: '#f97316' }}
+          >
+            {initials}
+          </div>
+        )}
       </button>
 
       {open && (
@@ -234,12 +246,20 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
           role="menu"
         >
           <div className="flex items-center gap-3 px-4 py-3.5 bg-gray-50 border-b border-gray-100">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
-              style={{ backgroundColor: '#f97316' }}
-            >
-              {initials}
-            </div>
+            {avatarSrc ? (
+              <img
+                src={avatarSrc}
+                alt="Profile"
+                className="w-10 h-10 rounded-full object-cover shrink-0"
+              />
+            ) : (
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
+                style={{ backgroundColor: '#f97316' }}
+              >
+                {initials}
+              </div>
+            )}
             <div className="min-w-0">
               <p className="text-sm font-semibold text-gray-900 truncate">
                 {session.orgName ?? session.email}

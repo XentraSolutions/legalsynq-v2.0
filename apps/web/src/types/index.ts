@@ -62,6 +62,9 @@ export interface PlatformSession {
   isTenantAdmin:   boolean;
   hasOrg:          boolean;
 
+  // Profile picture — references a document in the Documents service
+  avatarDocumentId?: string;
+
   // Token lifecycle
   expiresAt: Date;
 

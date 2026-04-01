@@ -11,4 +11,9 @@ public interface IUserRepository
     Task<List<User>> GetAllWithRolesAsync(CancellationToken ct = default);
     Task AddAsync(User user, IReadOnlyList<Guid> roleIds, CancellationToken ct = default);
     Task<UserOrganizationMembership?> GetPrimaryOrgMembershipAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Updates the user's AvatarDocumentId. Pass null to clear the avatar.
+    /// </summary>
+    Task UpdateAvatarAsync(Guid userId, Guid? avatarDocumentId, CancellationToken ct = default);
 }

@@ -188,10 +188,10 @@ public class AuthService : IAuthService
 
     /// <summary>
     /// Assembles an AuthMeResponse from a validated ClaimsPrincipal.
-    /// All fields come from JWT claims — no DB query required.
-    /// The Identity service validates the token signature; this method reads the payload.
+    /// Most fields come from JWT claims; AvatarDocumentId is fetched from DB
+    /// since it changes independently of the token lifecycle.
     /// </summary>
-    public Task<AuthMeResponse> GetCurrentUserAsync(ClaimsPrincipal principal, CancellationToken ct = default)
+    public async Task<AuthMeResponse> GetCurrentUserAsync(ClaimsPrincipal principal, CancellationToken ct = default)
     {
         var userId     = principal.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? principal.FindFirstValue("sub")
@@ -222,7 +222,15 @@ public class AuthService : IAuthService
         var timeoutClaim = principal.FindFirstValue("session_timeout_minutes");
         var sessionTimeoutMinutes = timeoutClaim is not null && int.TryParse(timeoutClaim, out var tm) ? tm : 30;
 
-        var response = new AuthMeResponse(
+        // AvatarDocumentId is not in the JWT (changes independently) — fetch from DB.
+        Guid? avatarDocumentId = null;
+        if (Guid.TryParse(userId, out var userGuid))
+        {
+            var user = await _userRepository.GetByIdAsync(userGuid, ct);
+            avatarDocumentId = user?.AvatarDocumentId;
+        }
+
+        return new AuthMeResponse(
             UserId:                 userId,
             Email:                  email,
             TenantId:               tenantId,
@@ -233,9 +241,8 @@ public class AuthService : IAuthService
             ProductRoles:           productRoles,
             SystemRoles:            systemRoles,
             ExpiresAtUtc:           expiresAtUtc,
-            SessionTimeoutMinutes:  sessionTimeoutMinutes);
-
-        return Task.FromResult(response);
+            SessionTimeoutMinutes:  sessionTimeoutMinutes,
+            AvatarDocumentId:       avatarDocumentId);
     }
 
     // ── Canonical audit helpers ────────────────────────────────────────────────

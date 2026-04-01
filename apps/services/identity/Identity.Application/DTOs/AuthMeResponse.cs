@@ -16,4 +16,5 @@ public record AuthMeResponse(
     List<string> ProductRoles,
     List<string> SystemRoles,
     DateTime ExpiresAtUtc,
-    int SessionTimeoutMinutes = 30);
+    int SessionTimeoutMinutes = 30,
+    Guid? AvatarDocumentId = null);

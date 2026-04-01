@@ -1,11 +1,11 @@
 import { requireOrg } from '@/lib/auth-guards';
+import { AvatarUpload } from '@/components/avatar/AvatarUpload';
 
 /**
  * /profile — Authenticated user's profile overview.
  *
  * Access: authenticated org member (requireOrg guard).
- * Data:   derived entirely from the server-validated session envelope —
- *         no additional API calls needed.
+ * Data:   derived entirely from the server-validated session envelope.
  */
 export default async function ProfilePage() {
   const session = await requireOrg();
@@ -33,17 +33,20 @@ export default async function ProfilePage() {
 
         {/* ── Identity card ─────────────────────────────────────────────── */}
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          {/* Orange header strip + avatar */}
+          {/* Orange header strip */}
           <div className="h-24 bg-gradient-to-r from-orange-500 to-orange-400" />
+
           <div className="px-6 pb-6">
+            {/* Avatar + name row */}
             <div className="flex items-end gap-4 -mt-10 mb-4">
-              <div
-                className="w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-lg border-4 border-white shrink-0"
-                style={{ backgroundColor: '#f97316' }}
-              >
-                {initials}
+              {/* AvatarUpload sits over the orange strip */}
+              <div className="shrink-0">
+                <AvatarUpload
+                  avatarDocumentId={session.avatarDocumentId}
+                  initials={initials}
+                />
               </div>
-              <div className="mb-1">
+              <div className="mb-1 pb-1">
                 <p className="text-base font-semibold text-gray-900 leading-tight">{session.email}</p>
                 {session.orgName && (
                   <p className="text-sm text-gray-500">{session.orgName}</p>
