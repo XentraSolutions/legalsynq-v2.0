@@ -102,6 +102,9 @@ export const Routes = {
   /** /tenants/:id/notifications — Notification activity for a specific tenant */
   tenantNotifications: (id: string) => `/tenants/${id}/notifications`,
 
+  /** /tenants/:id/activity — User activity audit log scoped to a specific tenant */
+  tenantActivity: (id: string) => `/tenants/${id}/activity`,
+
   /** /permissions — Platform permission catalog */
   permissions: '/permissions',
 } as const;

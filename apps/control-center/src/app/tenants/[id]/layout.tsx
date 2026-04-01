@@ -140,6 +140,7 @@ export default async function TenantDetailLayout({
               overviewHref={Routes.tenantDetail(id)}
               usersHref={Routes.tenantUsers_(id)}
               notificationsHref={Routes.tenantNotifications(id)}
+              activityHref={Routes.tenantActivity(id)}
             />
           </>
         )}
