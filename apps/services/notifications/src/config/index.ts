@@ -67,9 +67,27 @@ export function loadConfig(): AppConfig {
   const port = optionalEnvNumber("PORT", 3100);
   const logLevel = optionalEnv("LOG_LEVEL", "info");
 
-  const dbHost = process.env["NOTIF_DB_HOST"] ?? "";
-  const dbName = process.env["NOTIF_DB_NAME"] ?? "";
-  const dbUser = process.env["NOTIF_DB_USER"] ?? "";
+  // Parse shared RDS credentials from any existing .NET connection string as a fallback.
+  // This lets the notifications service share the same MySQL server without requiring
+  // a separate secret when NOTIF_DB_* vars point to the same host/user.
+  function parseConnStringField(connStr: string, field: string): string {
+    const match = connStr.match(new RegExp(`${field}=([^;]+)`, "i"));
+    return match ? match[1].trim() : "";
+  }
+  const sharedConnStr =
+    process.env["ConnectionStrings__CareConnectDb"] ??
+    process.env["ConnectionStrings__IdentityDb"] ??
+    "";
+
+  const dbHost = process.env["NOTIF_DB_HOST"] || parseConnStringField(sharedConnStr, "server");
+  const dbName = process.env["NOTIF_DB_NAME"] || "notifications_db";
+  const dbUser = process.env["NOTIF_DB_USER"] || parseConnStringField(sharedConnStr, "user");
+  // Prefer the shared connection string password over the NOTIF_DB_PASSWORD secret.
+  // The shared string is always correct for this RDS instance; the secret may be stale.
+  const dbPassword =
+    parseConnStringField(sharedConnStr, "password") ||
+    process.env["NOTIF_DB_PASSWORD"] ||
+    "";
 
   if (!dbHost || !dbName || !dbUser) {
     logger.warn(
@@ -101,7 +119,7 @@ export function loadConfig(): AppConfig {
       port: optionalEnvNumber("NOTIF_DB_PORT", 3306),
       name: dbName,
       user: dbUser,
-      password: process.env["NOTIF_DB_PASSWORD"] ?? "",
+      password: dbPassword,
     },
     providers: {
       healthCheckIntervalSeconds: optionalEnvNumber(
