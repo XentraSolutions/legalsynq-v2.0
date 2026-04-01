@@ -24,14 +24,14 @@ namespace Identity.Infrastructure.Persistence.Migrations
                 name: "TenantGroups",
                 columns: table => new
                 {
-                    Id              = table.Column<Guid>(type: "char(36)", nullable: false),
-                    TenantId        = table.Column<Guid>(type: "char(36)", nullable: false),
+                    Id              = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: false),
+                    TenantId        = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: false),
                     Name            = table.Column<string>(type: "varchar(200)", maxLength: 200, nullable: false),
                     Description     = table.Column<string>(type: "varchar(1000)", maxLength: 1000, nullable: true),
                     IsActive        = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     CreatedAtUtc    = table.Column<DateTime>(type: "datetime(6)", nullable: false),
                     UpdatedAtUtc    = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    CreatedByUserId = table.Column<Guid>(type: "char(36)", nullable: true),
+                    CreatedByUserId = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -60,12 +60,12 @@ namespace Identity.Infrastructure.Persistence.Migrations
                 name: "GroupMemberships",
                 columns: table => new
                 {
-                    Id            = table.Column<Guid>(type: "char(36)", nullable: false),
-                    GroupId       = table.Column<Guid>(type: "char(36)", nullable: false),
-                    UserId        = table.Column<Guid>(type: "char(36)", nullable: false),
-                    TenantId      = table.Column<Guid>(type: "char(36)", nullable: false),
+                    Id            = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: false),
+                    GroupId       = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: false),
+                    UserId        = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: false),
+                    TenantId      = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: false),
                     JoinedAtUtc   = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    AddedByUserId = table.Column<Guid>(type: "char(36)", nullable: true),
+                    AddedByUserId = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: true),
                 },
                 constraints: table =>
                 {
@@ -105,10 +105,10 @@ namespace Identity.Infrastructure.Persistence.Migrations
                 name: "UserInvitations",
                 columns: table => new
                 {
-                    Id              = table.Column<Guid>(type: "char(36)", nullable: false),
-                    UserId          = table.Column<Guid>(type: "char(36)", nullable: false),
-                    TenantId        = table.Column<Guid>(type: "char(36)", nullable: false),
-                    InvitedByUserId = table.Column<Guid>(type: "char(36)", nullable: true),
+                    Id              = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: false),
+                    UserId          = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: false),
+                    TenantId        = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: false),
+                    InvitedByUserId = table.Column<Guid>(type: "char(36) CHARACTER SET ascii COLLATE ascii_general_ci", nullable: true),
                     TokenHash       = table.Column<string>(type: "varchar(512)", maxLength: 512, nullable: false),
                     Status          = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false),
                     PortalOrigin    = table.Column<string>(type: "varchar(30)", maxLength: 30, nullable: false),
