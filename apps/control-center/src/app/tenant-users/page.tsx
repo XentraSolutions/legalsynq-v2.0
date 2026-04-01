@@ -6,10 +6,13 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { UserListTable } from '@/components/users/user-list-table';
 import { Routes } from '@/lib/routes';
 
+type StatusFilter = 'all' | 'active' | 'inactive' | 'invited';
+
 interface TenantUsersPageProps {
   searchParams: {
     page?:   string;
     search?: string;
+    status?: string;
   };
 }
 
@@ -22,12 +25,22 @@ interface TenantUsersPageProps {
  * TODO: When GET /identity/api/admin/users is live, the stub auto-wires —
  *       no page change needed.
  */
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: 'all',      label: 'All'      },
+  { value: 'active',   label: 'Active'   },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'invited',  label: 'Invited'  },
+];
+
 export default async function TenantUsersPage({ searchParams }: TenantUsersPageProps) {
   const session   = await requirePlatformAdmin();
   const tenantCtx = getTenantContext();
 
   const page   = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
   const search = searchParams.search ?? '';
+  const status = (STATUS_FILTERS.map(f => f.value) as string[]).includes(searchParams.status ?? '')
+    ? (searchParams.status as StatusFilter)
+    : 'all';
 
   let result = null;
   let fetchError: string | null = null;
@@ -38,6 +51,7 @@ export default async function TenantUsersPage({ searchParams }: TenantUsersPageP
       pageSize: 20,
       search,
       tenantId: tenantCtx?.tenantId,
+      status:   status !== 'all' ? status : undefined,
     });
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load users.';
@@ -73,33 +87,54 @@ export default async function TenantUsersPage({ searchParams }: TenantUsersPageP
           </Link>
         </div>
 
-        {/* Search */}
-        <form method="GET" className="flex items-center gap-2">
+        {/* Search + Status filter row */}
+        <form method="GET" className="flex flex-wrap items-center gap-2">
           <input
             type="text"
             name="search"
             defaultValue={search}
             placeholder="Search by name, email or role…"
-            className="w-full sm:w-80 text-sm border border-gray-200 rounded-md px-3 py-1.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400"
+            className="w-full sm:w-72 text-sm border border-gray-200 rounded-md px-3 py-1.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400"
           />
+
+          {/* Status pills — each submits the form with status= param */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+            {STATUS_FILTERS.map(f => (
+              <button
+                key={f.value}
+                type="submit"
+                name="status"
+                value={f.value}
+                className={
+                  status === f.value
+                    ? 'text-xs px-3 py-1 rounded-md bg-white shadow-sm text-indigo-700 font-semibold border border-gray-200'
+                    : 'text-xs px-3 py-1 rounded-md text-gray-500 hover:text-gray-800 transition-colors'
+                }
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
           <button
             type="submit"
             className="text-sm px-3 py-1.5 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
           >
             Search
           </button>
-          {search && (
+          {(search || status !== 'all') && (
             <a href="?" className="text-xs text-gray-400 hover:text-gray-700 underline">
               Clear
             </a>
           )}
         </form>
 
-        {/* Summary chips */}
+        {/* Summary */}
         {result && !fetchError && (
           <p className="text-xs text-gray-400">
             {result.totalCount} user{result.totalCount !== 1 ? 's' : ''} found
             {search && ` matching "${search}"`}
+            {status !== 'all' && ` · ${status}`}
           </p>
         )}
 

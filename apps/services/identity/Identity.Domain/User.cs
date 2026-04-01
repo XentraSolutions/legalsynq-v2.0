@@ -44,6 +44,17 @@ public class User
         return true;
     }
 
+    /// <summary>
+    /// Replaces the stored password hash. Used when an invited user sets their
+    /// password on first login (accept-invite flow).
+    /// </summary>
+    public void SetPassword(string passwordHash)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
+        PasswordHash = passwordHash;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public static User Create(
         Guid tenantId,
         string email,

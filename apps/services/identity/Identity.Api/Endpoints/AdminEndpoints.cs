@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Identity.Application.Interfaces;
 using Identity.Domain;
@@ -557,14 +558,32 @@ public static class AdminEndpoints
 
     private static async Task<IResult> ListUsers(
         IdentityDbContext db,
+        ClaimsPrincipal   caller,
         int    page     = 1,
         int    pageSize = 20,
         string search   = "",
-        string tenantId = "")
+        string tenantId = "",
+        string status   = "")
     {
         var q = db.Users
             .Include(u => u.Tenant)
             .AsQueryable();
+
+        // ── Tenant scoping: TenantAdmin is always restricted to their own tenant ──
+        // PlatformAdmin may pass an explicit tenantId filter or see all.
+        var callerTenantId = caller.FindFirstValue("tenant_id");
+        var isPlatformAdmin = caller.IsInRole("PlatformAdmin");
+
+        if (!isPlatformAdmin && callerTenantId is not null && Guid.TryParse(callerTenantId, out var callerTid))
+        {
+            // TenantAdmin: always scope to own tenant — ignore any tenantId param
+            q = q.Where(u => u.TenantId == callerTid);
+        }
+        else if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var tid))
+        {
+            // PlatformAdmin with explicit tenant filter
+            q = q.Where(u => u.TenantId == tid);
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
             q = q.Where(u =>
@@ -572,8 +591,16 @@ public static class AdminEndpoints
                 u.FirstName.Contains(search) ||
                 u.LastName.Contains(search));
 
-        if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var tid))
-            q = q.Where(u => u.TenantId == tid);
+        // ── Status filter ──────────────────────────────────────────────────────
+        var statusNorm = status.ToLowerInvariant().Trim();
+        if (statusNorm == "active")
+            q = q.Where(u => u.IsActive);
+        else if (statusNorm == "inactive")
+            q = q.Where(u => !u.IsActive &&
+                !db.UserInvitations.Any(i => i.UserId == u.Id && i.Status == UserInvitation.Statuses.Pending));
+        else if (statusNorm == "invited")
+            q = q.Where(u => !u.IsActive &&
+                db.UserInvitations.Any(i => i.UserId == u.Id && i.Status == UserInvitation.Statuses.Pending));
 
         var total = await q.CountAsync();
 
@@ -1996,7 +2023,10 @@ public static class AdminEndpoints
 
     /// <summary>
     /// DELETE /api/admin/users/{id}/memberships/{membershipId}
-    /// Scaffold — deactivates the membership. Full removal is Phase 2.
+    /// Deactivates the membership. Enforces membership safety rules:
+    ///   - 409 if this is the user's last active membership.
+    ///   - 409 if this is the primary membership and other memberships still exist
+    ///     (caller must designate a new primary first via set-primary).
     /// </summary>
     private static async Task<IResult> RemoveMembership(
         Guid              id,
@@ -2005,9 +2035,31 @@ public static class AdminEndpoints
         CancellationToken ct)
     {
         var membership = await db.UserOrganizationMemberships
-            .FirstOrDefaultAsync(m => m.Id == membershipId && m.UserId == id, ct);
+            .FirstOrDefaultAsync(m => m.Id == membershipId && m.UserId == id && m.IsActive, ct);
         if (membership is null)
             return Results.NotFound(new { error = $"Membership '{membershipId}' not found for user '{id}'." });
+
+        // ── Safety rule 1: cannot remove the last active membership ───────────
+        var activeMembershipCount = await db.UserOrganizationMemberships
+            .CountAsync(m => m.UserId == id && m.IsActive, ct);
+
+        if (activeMembershipCount <= 1)
+            return Results.Conflict(new
+            {
+                error = "Cannot remove the user's last remaining organization membership. " +
+                        "Assign the user to another organization first.",
+                code  = "LAST_MEMBERSHIP",
+            });
+
+        // ── Safety rule 2: cannot remove primary membership while others exist ─
+        // Caller must designate another primary first via set-primary.
+        if (membership.IsPrimary)
+            return Results.Conflict(new
+            {
+                error = "Cannot remove the primary membership. " +
+                        "Please designate another membership as primary first.",
+                code  = "PRIMARY_MEMBERSHIP",
+            });
 
         membership.Deactivate();
         await db.SaveChangesAsync(ct);
@@ -2024,6 +2076,7 @@ public static class AdminEndpoints
     /// </summary>
     private static async Task<IResult> ListGroups(
         IdentityDbContext db,
+        ClaimsPrincipal   caller,
         string tenantId = "",
         int    page     = 1,
         int    pageSize = 50,
@@ -2033,8 +2086,18 @@ public static class AdminEndpoints
             .Include(g => g.Members)
             .AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var tid))
+        // ── Tenant scoping: TenantAdmin always restricted to own tenant ────────
+        var callerTenantId = caller.FindFirstValue("tenant_id");
+        var isPlatformAdmin = caller.IsInRole("PlatformAdmin");
+
+        if (!isPlatformAdmin && callerTenantId is not null && Guid.TryParse(callerTenantId, out var callerTid))
+        {
+            q = q.Where(g => g.TenantId == callerTid);
+        }
+        else if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var tid))
+        {
             q = q.Where(g => g.TenantId == tid);
+        }
 
         var total = await q.CountAsync(ct);
 
@@ -2103,12 +2166,24 @@ public static class AdminEndpoints
     private static async Task<IResult> CreateGroup(
         CreateGroupRequest body,
         IdentityDbContext  db,
+        ClaimsPrincipal    caller,
         CancellationToken  ct)
     {
         if (string.IsNullOrWhiteSpace(body.Name))
             return Results.BadRequest(new { error = "name is required." });
         if (body.TenantId == Guid.Empty)
             return Results.BadRequest(new { error = "tenantId is required." });
+
+        // ── Tenant boundary: TenantAdmin may only create groups in their own tenant ──
+        var callerTenantId = caller.FindFirstValue("tenant_id");
+        var isPlatformAdmin = caller.IsInRole("PlatformAdmin");
+
+        if (!isPlatformAdmin && callerTenantId is not null &&
+            Guid.TryParse(callerTenantId, out var callerTid) &&
+            body.TenantId != callerTid)
+        {
+            return Results.Forbid();
+        }
 
         var tenant = await db.Tenants.FindAsync([body.TenantId], ct);
         if (tenant is null) return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });

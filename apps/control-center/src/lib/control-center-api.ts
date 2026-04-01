@@ -306,12 +306,14 @@ export const controlCenterServerApi = {
       pageSize?: number;
       search?:   string;
       tenantId?: string;
+      status?:   string;
     } = {}): Promise<PagedResponse<UserSummary>> => {
       const qs = toQs({
         page:     params.page     ?? 1,
         pageSize: params.pageSize ?? 20,
         search:   params.search,
         tenantId: params.tenantId,
+        status:   params.status,
       });
       const raw = await apiClient.get<unknown>(
         `/identity/api/admin/users${qs}`,
