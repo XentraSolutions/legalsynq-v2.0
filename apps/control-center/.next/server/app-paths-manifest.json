@@ -1,1 +1,3 @@
-{}
+{
+  "/notifications/providers/page": "app/notifications/providers/page.js"
+}
