@@ -133,6 +133,14 @@ public static class AdminEndpoints
         // UIX-002: read-only capability/permission catalog
         routes.MapGet("/api/admin/permissions",                         ListPermissions);
 
+        // ── Role permission management (UIX-005) ──────────────────────────────
+        routes.MapGet("/api/admin/roles/{id:guid}/permissions",                              GetRolePermissions);
+        routes.MapPost("/api/admin/roles/{id:guid}/permissions",                             AssignRolePermission);
+        routes.MapDelete("/api/admin/roles/{id:guid}/permissions/{capabilityId:guid}",       RevokeRolePermission);
+
+        // ── User effective permissions (UIX-005) ─────────────────────────────
+        routes.MapGet("/api/admin/users/{id:guid}/permissions",                              GetUserEffectivePermissions);
+
         return routes;
     }
 
@@ -1340,22 +1348,42 @@ public static class AdminEndpoints
     {
         var total = await db.Roles.CountAsync();
 
-        // Step 6 Phase B: userCount via ScopedRoleAssignments (GLOBAL-scoped, primary).
-        var roles = await db.Roles
+        // UIX-005: materialize roles first, then join capability counts
+        // (EF Core LINQ restriction: cannot call Count inside Select on nav collections)
+        var roleList = await db.Roles
             .OrderBy(r => r.Name)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(r => new
-            {
-                id          = r.Id,
-                name        = r.Name,
-                description = r.Description ?? "",
-                userCount   = db.ScopedRoleAssignments.Count(
-                                  s => s.RoleId == r.Id && s.IsActive
-                                    && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global),
-                permissions = new string[] { },
-            })
             .ToListAsync();
+
+        var roleIds = roleList.Select(r => r.Id).ToList();
+
+        var userCounts = await db.ScopedRoleAssignments
+            .Where(s => roleIds.Contains(s.RoleId) && s.IsActive
+                     && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
+            .GroupBy(s => s.RoleId)
+            .Select(g => new { roleId = g.Key, count = g.Count() })
+            .ToListAsync();
+
+        var capCounts = await db.RoleCapabilityAssignments
+            .Where(a => roleIds.Contains(a.RoleId))
+            .GroupBy(a => a.RoleId)
+            .Select(g => new { roleId = g.Key, count = g.Count() })
+            .ToListAsync();
+
+        var userCountMap = userCounts.ToDictionary(x => x.roleId, x => x.count);
+        var capCountMap  = capCounts.ToDictionary(x => x.roleId, x => x.count);
+
+        var roles = roleList.Select(r => new
+        {
+            id              = r.Id,
+            name            = r.Name,
+            description     = r.Description ?? "",
+            isSystemRole    = r.IsSystemRole,
+            userCount       = userCountMap.GetValueOrDefault(r.Id, 0),
+            capabilityCount = capCountMap.GetValueOrDefault(r.Id, 0),
+            permissions     = Array.Empty<string>(),
+        });
 
         return Results.Ok(new
         {
@@ -1373,19 +1401,39 @@ public static class AdminEndpoints
 
         if (r is null) return Results.NotFound();
 
-        // Step 6 Phase B: userCount via ScopedRoleAssignments (GLOBAL-scoped, primary).
         var userCount = await db.ScopedRoleAssignments
             .CountAsync(s => s.RoleId == id && s.IsActive
                           && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global);
+
+        // UIX-005: load actual capability assignments for this role
+        var caps = await db.RoleCapabilityAssignments
+            .Where(a => a.RoleId == id)
+            .Include(a => a.Capability)
+            .ThenInclude(c => c.Product)
+            .OrderBy(a => a.Capability.Product.Name)
+            .ThenBy(a => a.Capability.Code)
+            .ToListAsync();
+
+        var resolvedPermissions = caps.Select(a => new
+        {
+            id          = a.CapabilityId,
+            key         = a.Capability.Code,
+            description = a.Capability.Description ?? a.Capability.Name,
+            name        = a.Capability.Name,
+            productId   = a.Capability.ProductId,
+            productName = a.Capability.Product.Name,
+        }).ToList();
 
         return Results.Ok(new
         {
             id                  = r.Id,
             name                = r.Name,
             description         = r.Description ?? "",
+            isSystemRole        = r.IsSystemRole,
             userCount,
-            permissions         = new string[] { },
-            resolvedPermissions = new object[] { },
+            capabilityCount     = caps.Count,
+            permissions         = resolvedPermissions.Select(p => p.key).ToArray(),
+            resolvedPermissions,
             createdAtUtc        = r.CreatedAtUtc,
             updatedAtUtc        = r.UpdatedAtUtc,
         });
@@ -2877,6 +2925,7 @@ public static class AdminEndpoints
     private static async Task<IResult> ListPermissions(
         IdentityDbContext db,
         string productId = "",
+        string search    = "",
         CancellationToken ct = default)
     {
         var q = db.Capabilities
@@ -2886,6 +2935,16 @@ public static class AdminEndpoints
 
         if (!string.IsNullOrWhiteSpace(productId) && Guid.TryParse(productId, out var pid))
             q = q.Where(c => c.ProductId == pid);
+
+        // UIX-005: simple substring search across code, name, and description
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.ToLowerInvariant();
+            q = q.Where(c =>
+                c.Code.Contains(s)       ||
+                c.Name.Contains(s)       ||
+                (c.Description != null && c.Description.Contains(s)));
+        }
 
         var items = await q
             .OrderBy(c => c.Product.Name)
@@ -2903,6 +2962,256 @@ public static class AdminEndpoints
             .ToListAsync(ct);
 
         return Results.Ok(new { items, totalCount = items.Count });
+    }
+
+    // =========================================================================
+    // ROLE PERMISSION MANAGEMENT (UIX-005)
+    // =========================================================================
+
+    /// <summary>
+    /// GET /api/admin/roles/{id}/permissions
+    ///
+    /// Returns all capabilities assigned to a role.
+    /// Access: PlatformAdmin or TenantAdmin.
+    /// </summary>
+    private static async Task<IResult> GetRolePermissions(
+        Guid              id,
+        IdentityDbContext db,
+        CancellationToken ct = default)
+    {
+        var roleExists = await db.Roles.AnyAsync(r => r.Id == id, ct);
+        if (!roleExists) return Results.NotFound();
+
+        var assignments = await db.RoleCapabilityAssignments
+            .Where(a => a.RoleId == id)
+            .Include(a => a.Capability)
+            .ThenInclude(c => c.Product)
+            .OrderBy(a => a.Capability.Product.Name)
+            .ThenBy(a => a.Capability.Code)
+            .ToListAsync(ct);
+
+        var items = assignments.Select(a => new
+        {
+            id               = a.CapabilityId,
+            code             = a.Capability.Code,
+            name             = a.Capability.Name,
+            description      = a.Capability.Description,
+            productId        = a.Capability.ProductId,
+            productName      = a.Capability.Product.Name,
+            isActive         = a.Capability.IsActive,
+            assignedAtUtc    = a.AssignedAtUtc,
+            assignedByUserId = a.AssignedByUserId,
+        }).ToList();
+
+        return Results.Ok(new { items, totalCount = items.Count });
+    }
+
+    private record AssignRolePermissionRequest(Guid CapabilityId);
+
+    /// <summary>
+    /// POST /api/admin/roles/{id}/permissions
+    ///
+    /// Assigns a capability to a role. Idempotent — returns 200 if already assigned.
+    /// Emits a role.permission.assigned audit event.
+    /// Access: PlatformAdmin only.
+    /// </summary>
+    private static async Task<IResult> AssignRolePermission(
+        Guid                         id,
+        AssignRolePermissionRequest  body,
+        IdentityDbContext            db,
+        ClaimsPrincipal              caller,
+        IAuditEventClient            auditClient,
+        ILoggerFactory               loggerFactory,
+        CancellationToken            ct = default)
+    {
+        var logger = loggerFactory.CreateLogger("AdminEndpoints.AssignRolePermission");
+
+        var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (role is null) return Results.NotFound(new { error = "Role not found." });
+
+        var capability = await db.Capabilities.FirstOrDefaultAsync(c => c.Id == body.CapabilityId && c.IsActive, ct);
+        if (capability is null) return Results.NotFound(new { error = "Capability not found or inactive." });
+
+        // Idempotency: return OK if already assigned
+        var alreadyAssigned = await db.RoleCapabilityAssignments
+            .AnyAsync(a => a.RoleId == id && a.CapabilityId == body.CapabilityId, ct);
+
+        if (alreadyAssigned)
+            return Results.Ok(new { message = "Capability already assigned to role." });
+
+        var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid? callerId  = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
+
+        var assignment = RoleCapabilityAssignment.Create(id, body.CapabilityId, callerId);
+        db.RoleCapabilityAssignments.Add(assignment);
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation(
+            "Role {RoleId} assigned capability {CapabilityId} by {ActorId}",
+            id, body.CapabilityId, callerId);
+
+        var assignAuditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "role.permission.assigned",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = assignAuditNow,
+            Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "Role", Id = id.ToString() },
+            Action        = "PermissionAssigned",
+            Description   = $"Capability '{capability.Code}' assigned to role '{role.Name}'",
+            Metadata      = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                roleId       = id,
+                capabilityId = body.CapabilityId,
+                code         = capability.Code,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(assignAuditNow, "identity-service", "role.permission.assigned", id.ToString(), body.CapabilityId.ToString()),
+        });
+
+        return Results.Created(
+            $"/api/admin/roles/{id}/permissions/{body.CapabilityId}",
+            new { roleId = id, capabilityId = body.CapabilityId });
+    }
+
+    /// <summary>
+    /// DELETE /api/admin/roles/{id}/permissions/{capabilityId}
+    ///
+    /// Revokes a capability from a role. Emits a role.permission.revoked audit event.
+    /// Access: PlatformAdmin only.
+    /// </summary>
+    private static async Task<IResult> RevokeRolePermission(
+        Guid              id,
+        Guid              capabilityId,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        IAuditEventClient auditClient,
+        ILoggerFactory    loggerFactory,
+        CancellationToken ct = default)
+    {
+        var logger = loggerFactory.CreateLogger("AdminEndpoints.RevokeRolePermission");
+
+        var assignment = await db.RoleCapabilityAssignments
+            .Include(a => a.Capability)
+            .Include(a => a.Role)
+            .FirstOrDefaultAsync(a => a.RoleId == id && a.CapabilityId == capabilityId, ct);
+
+        if (assignment is null)
+            return Results.NotFound(new { error = "Permission assignment not found." });
+
+        db.RoleCapabilityAssignments.Remove(assignment);
+        await db.SaveChangesAsync(ct);
+
+        var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        logger.LogInformation(
+            "Role {RoleId} revoked capability {CapabilityId} by {ActorId}",
+            id, capabilityId, callerIdRaw);
+
+        var revokeAuditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "role.permission.revoked",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = revokeAuditNow,
+            Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "Role", Id = id.ToString() },
+            Action        = "PermissionRevoked",
+            Description   = $"Capability '{assignment.Capability.Code}' revoked from role '{assignment.Role.Name}'",
+            Metadata      = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                roleId       = id,
+                capabilityId,
+                code         = assignment.Capability.Code,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(revokeAuditNow, "identity-service", "role.permission.revoked", id.ToString(), capabilityId.ToString()),
+        });
+
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// GET /api/admin/users/{id}/permissions
+    ///
+    /// Returns the effective (union) permissions for a user, derived from all active
+    /// role assignments. Each capability includes which role(s) grant it.
+    /// Access: PlatformAdmin or TenantAdmin (with tenant boundary check).
+    /// </summary>
+    private static async Task<IResult> GetUserEffectivePermissions(
+        Guid              id,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct = default)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null) return Results.NotFound();
+
+        if (IsCrossTenantAccess(caller, user.TenantId))
+            return Results.Forbid();
+
+        // Active global-scoped role assignments for this user
+        var roleAssignments = await db.ScopedRoleAssignments
+            .Where(s => s.UserId == id && s.IsActive
+                     && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
+            .Include(s => s.Role)
+            .ToListAsync(ct);
+
+        if (roleAssignments.Count == 0)
+            return Results.Ok(new { items = Array.Empty<object>(), totalCount = 0, roleCount = 0 });
+
+        var roleIds = roleAssignments.Select(s => s.RoleId).ToList();
+
+        // Capability assignments for all those roles
+        var capAssignments = await db.RoleCapabilityAssignments
+            .Where(a => roleIds.Contains(a.RoleId))
+            .Include(a => a.Capability)
+            .ThenInclude(c => c.Product)
+            .ToListAsync(ct);
+
+        // Build map: capabilityId → list of role names that grant it
+        var capToRoles = capAssignments
+            .GroupBy(a => a.CapabilityId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(a => roleAssignments
+                        .First(r => r.RoleId == a.RoleId).Role.Name)
+                      .Distinct()
+                      .ToList());
+
+        // Distinct capabilities
+        var distinctCaps = capAssignments
+            .GroupBy(a => a.CapabilityId)
+            .Select(g => g.First().Capability)
+            .OrderBy(c => c.Product.Name)
+            .ThenBy(c => c.Code)
+            .ToList();
+
+        var items = distinctCaps.Select(c => new
+        {
+            id          = c.Id,
+            code        = c.Code,
+            name        = c.Name,
+            description = c.Description,
+            productId   = c.ProductId,
+            productName = c.Product.Name,
+            isActive    = c.IsActive,
+            sources     = capToRoles.GetValueOrDefault(c.Id, [])
+                            .Select(roleName => new { type = "role", name = roleName })
+                            .ToList(),
+        }).ToList();
+
+        return Results.Ok(new
+        {
+            items,
+            totalCount = items.Count,
+            roleCount  = roleAssignments.Count,
+        });
     }
 
     // ── UIX-003-01: Caller-based tenant boundary enforcement ─────────────────

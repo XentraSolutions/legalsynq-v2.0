@@ -1,17 +1,21 @@
 import Link from 'next/link';
-import { requirePlatformAdmin } from '@/lib/auth-guards';
-import { controlCenterServerApi } from '@/lib/control-center-api';
-import { Routes } from '@/lib/routes';
-import { CCShell } from '@/components/shell/cc-shell';
-import { GroupDetailCard } from '@/components/users/group-detail-card';
+import { requirePlatformAdmin }      from '@/lib/auth-guards';
+import { controlCenterServerApi }    from '@/lib/control-center-api';
+import { Routes }                    from '@/lib/routes';
+import { CCShell }                   from '@/components/shell/cc-shell';
+import { GroupDetailCard }           from '@/components/users/group-detail-card';
+import { GroupPermissionsPanel }     from '@/components/users/group-permissions-panel';
 
 interface GroupDetailPageProps {
   params: { id: string };
 }
 
 /**
- * /groups/[id] — Group detail page showing members.
+ * /groups/[id] — Group detail page showing members and permissions information.
  * Access: PlatformAdmin only.
+ *
+ * UIX-005: GroupPermissionsPanel wired — informational, explains the role-based
+ * permission model and links to Roles & Permission Catalog.
  */
 export default async function GroupDetailPage({ params }: GroupDetailPageProps) {
   const session = await requirePlatformAdmin();
@@ -87,7 +91,11 @@ export default async function GroupDetailPage({ params }: GroupDetailPageProps) 
               </div>
             </div>
 
+            {/* Members */}
             <GroupDetailCard group={group} />
+
+            {/* Permissions info (UIX-005) */}
+            <GroupPermissionsPanel groupName={group.name} />
           </>
         )}
       </div>

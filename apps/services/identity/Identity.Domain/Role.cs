@@ -11,6 +11,7 @@ public class Role
     public DateTime UpdatedAtUtc { get; private set; }
 
     public Tenant Tenant { get; private set; } = null!;
+    public ICollection<RoleCapabilityAssignment> RoleCapabilityAssignments { get; private set; } = [];
 
     private Role() { }
 

@@ -7,6 +7,7 @@ import { UserDetailCard }                 from '@/components/users/user-detail-c
 import { UserActions }                    from '@/components/users/user-actions';
 import { UserSecurityPanel }             from '@/components/users/user-security-panel';
 import { UserActivityPanel }             from '@/components/users/user-activity-panel';
+import { EffectivePermissionsPanel }     from '@/components/users/effective-permissions-panel';
 import { RoleAssignmentPanel }            from '@/components/users/role-assignment-panel';
 import { OrgMembershipPanel }             from '@/components/users/org-membership-panel';
 import { GroupMembershipPanel }           from '@/components/users/group-membership-panel';
@@ -44,7 +45,7 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
   }
 
   // Fetch access-control reference data + security summary in parallel; failures are non-fatal.
-  const [rolesResult, orgsResult, groupsResult, securityResult] = await Promise.allSettled([
+  const [rolesResult, orgsResult, groupsResult, securityResult, permissionsResult] = await Promise.allSettled([
     controlCenterServerApi.roles.list(),
     user
       ? controlCenterServerApi.organizations.listByTenant(user.tenantId)
@@ -55,12 +56,20 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     user
       ? controlCenterServerApi.users.getSecurity(user.id)
       : Promise.resolve(null),
+    // UIX-005: effective permissions for this user
+    user
+      ? controlCenterServerApi.users.getEffectivePermissions(user.id)
+      : Promise.resolve(null),
   ]);
 
-  const availableRoles  = rolesResult.status  === 'fulfilled' ? rolesResult.value              : [];
-  const availableOrgs   = orgsResult.status   === 'fulfilled' ? orgsResult.value               : [];
-  const availableGroups = groupsResult.status === 'fulfilled' ? groupsResult.value.items       : [];
-  const security        = securityResult.status === 'fulfilled' ? securityResult.value         : null;
+  const availableRoles  = rolesResult.status      === 'fulfilled' ? rolesResult.value              : [];
+  const availableOrgs   = orgsResult.status       === 'fulfilled' ? orgsResult.value               : [];
+  const availableGroups = groupsResult.status     === 'fulfilled' ? groupsResult.value.items       : [];
+  const security        = securityResult.status   === 'fulfilled' ? securityResult.value           : null;
+  const effectivePerms  = permissionsResult.status === 'fulfilled' ? permissionsResult.value       : null;
+  const permsError      = permissionsResult.status === 'rejected'
+    ? (permissionsResult.reason instanceof Error ? permissionsResult.reason.message : 'Failed to load permissions.')
+    : null;
 
   return (
     <CCShell userEmail={session.email}>
@@ -169,6 +178,12 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
 
             {/* ── Activity Timeline (UIX-004) ───────────────────────────────── */}
             <UserActivityPanel userId={user.id} tenantId={user.tenantId} />
+
+            {/* ── Effective Permissions (UIX-005) ────────────────────────────── */}
+            <EffectivePermissionsPanel
+              result={effectivePerms}
+              fetchError={permsError}
+            />
 
             {/* ── Access Control Management (UIX-003) ──────────────────────── */}
             <div className="space-y-3">

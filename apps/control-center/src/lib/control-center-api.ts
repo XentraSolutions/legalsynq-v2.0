@@ -83,6 +83,8 @@ import {
   mapGroupSummary,
   mapGroupDetail,
   mapPermissionCatalogItem,
+  mapRoleCapabilityItem,
+  mapEffectivePermissionsResult,
   unwrapApiResponse,
   unwrapApiResponseList,
 }                                       from '@/lib/api-mappers';
@@ -121,6 +123,8 @@ import type {
   GroupDetail,
   OrgSummary,
   PermissionCatalogItem,
+  RoleCapabilityItem,
+  EffectivePermissionsResult,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -550,6 +554,24 @@ export const controlCenterServerApi = {
       );
       revalidateTag(CACHE_TAGS.users);
     },
+
+    /**
+     * GET /identity/api/admin/users/{id}/permissions
+     *
+     * Returns the effective (union) permissions for a user — all capabilities
+     * derived from their active role assignments, with source attribution.
+     * Cache: 30 s  Tag: cc:users
+     *
+     * UIX-005
+     */
+    getEffectivePermissions: async (id: string): Promise<EffectivePermissionsResult> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/permissions`,
+        30,
+        [CACHE_TAGS.users],
+      );
+      return mapEffectivePermissionsResult(raw);
+    },
   },
 
   // ── Organizations ─────────────────────────────────────────────────────────
@@ -666,15 +688,26 @@ export const controlCenterServerApi = {
   permissions: {
     /**
      * GET /identity/api/admin/permissions
-     * Returns the full platform permission catalog. Cache: 300 s.
+     *
+     * Returns the platform capability catalog, optionally filtered by productId
+     * or searched by code/name/description.
+     *
+     * Cache: 300 s  Tag: cc:roles (same lifecycle as roles — permissions are static)
      */
-    list: async (): Promise<PermissionCatalogItem[]> => {
+    list: async (opts?: { productId?: string; search?: string }): Promise<PermissionCatalogItem[]> => {
+      const qs = new URLSearchParams();
+      if (opts?.productId) qs.set('productId', opts.productId);
+      if (opts?.search)    qs.set('search',    opts.search);
+      const suffix = qs.toString() ? `?${qs}` : '';
+
       const raw = await apiClient.get<unknown>(
-        '/identity/api/admin/permissions',
+        `/identity/api/admin/permissions${suffix}`,
         300,
-        [CACHE_TAGS.users],
+        [CACHE_TAGS.roles],
       );
-      return Array.isArray(raw) ? raw.map(mapPermissionCatalogItem) : [];
+      // Backend returns { items: [...], totalCount: N }
+      const paged = mapPagedResponse(raw, mapPermissionCatalogItem);
+      return paged.items;
     },
   },
 
@@ -684,13 +717,10 @@ export const controlCenterServerApi = {
     /**
      * GET /identity/api/admin/roles
      *
-     * Returns the full list of platform roles.
+     * Returns the full list of platform roles with capability counts.
      * Response is normalised via mapRoleSummary.
      *
      * Cache: 300 s  Tag: cc:roles
-     *   Roles are near-static configuration data; 5 min is safe.
-     *
-     * TODO: add Redis or edge caching
      */
     list: async (): Promise<RoleSummary[]> => {
       const raw = await apiClient.get<unknown>(
@@ -699,7 +729,6 @@ export const controlCenterServerApi = {
         [CACHE_TAGS.roles],
       );
       if (Array.isArray(raw)) return raw.map(mapRoleSummary);
-      // Backend may wrap in a paged envelope
       const paged = mapPagedResponse(raw, mapRoleSummary);
       return paged.items;
     },
@@ -711,7 +740,6 @@ export const controlCenterServerApi = {
      * Response is normalised via mapRoleDetail.
      *
      * Cache: 300 s  Tag: cc:roles
-     *   Same lifecycle as roles.list.
      */
     getById: async (id: string): Promise<RoleDetail | null> => {
       try {
@@ -725,6 +753,47 @@ export const controlCenterServerApi = {
         if (isNotFound(err)) return null;
         throw err;
       }
+    },
+
+    /**
+     * GET /identity/api/admin/roles/{id}/permissions
+     *
+     * Returns all capabilities currently assigned to a role.
+     * Cache: 60 s — assignments change less often than user data but more than catalog.
+     */
+    getPermissions: async (id: string): Promise<RoleCapabilityItem[]> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/roles/${encodeURIComponent(id)}/permissions`,
+        60,
+        [CACHE_TAGS.roles],
+      );
+      const paged = mapPagedResponse(raw, mapRoleCapabilityItem);
+      return paged.items;
+    },
+
+    /**
+     * POST /identity/api/admin/roles/{id}/permissions
+     *
+     * Assigns a capability to a role. Revalidates cc:roles cache.
+     */
+    assignPermission: async (id: string, capabilityId: string): Promise<void> => {
+      await apiClient.post(
+        `/identity/api/admin/roles/${encodeURIComponent(id)}/permissions`,
+        { capabilityId },
+      );
+      revalidateTag(CACHE_TAGS.roles);
+    },
+
+    /**
+     * DELETE /identity/api/admin/roles/{id}/permissions/{capabilityId}
+     *
+     * Revokes a capability from a role. Revalidates cc:roles cache.
+     */
+    revokePermission: async (id: string, capabilityId: string): Promise<void> => {
+      await apiClient.del(
+        `/identity/api/admin/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(capabilityId)}`,
+      );
+      revalidateTag(CACHE_TAGS.roles);
     },
   },
 

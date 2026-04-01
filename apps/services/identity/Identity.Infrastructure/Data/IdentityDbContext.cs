@@ -24,6 +24,9 @@ public class IdentityDbContext : DbContext
     public DbSet<Capability> Capabilities => Set<Capability>();
     public DbSet<RoleCapability> RoleCapabilities => Set<RoleCapability>();
 
+    // UIX-005: Role ↔ Capability assignments (for tenant custom roles)
+    public DbSet<RoleCapabilityAssignment> RoleCapabilityAssignments => Set<RoleCapabilityAssignment>();
+
     // User organization membership
     public DbSet<UserOrganizationMembership> UserOrganizationMemberships => Set<UserOrganizationMembership>();
 

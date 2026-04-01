@@ -215,11 +215,13 @@ export interface Permission {
  * Platform-level roles only — tenant-level roles are separate.
  */
 export interface RoleSummary {
-  id:          string;
-  name:        string;
-  description: string;
-  userCount:   number;
-  permissions: string[];   // permission keys
+  id:              string;
+  name:            string;
+  description:     string;
+  isSystemRole:    boolean;
+  userCount:       number;
+  capabilityCount: number;
+  permissions:     string[];   // permission keys
 }
 
 /**
@@ -229,7 +231,46 @@ export interface RoleSummary {
 export interface RoleDetail extends RoleSummary {
   createdAtUtc:        string;
   updatedAtUtc:        string;
+  capabilityCount:     number;
   resolvedPermissions: Permission[];
+}
+
+// ── UIX-005: Role Capability Assignment ────────────────────────────────────────
+
+/**
+ * A capability assigned to a role.
+ * Returned by GET /identity/api/admin/roles/{id}/permissions.
+ * Extends PermissionCatalogItem with assignment metadata.
+ */
+export interface RoleCapabilityItem extends PermissionCatalogItem {
+  assignedAtUtc:    string;
+  assignedByUserId: string | null;
+}
+
+/**
+ * A permission source — which role or group grants a capability.
+ */
+export interface PermissionSource {
+  type: 'role' | 'group';
+  name: string;
+}
+
+/**
+ * An effective permission for a user — the union of capabilities across
+ * all their active role assignments, with attribution sources.
+ * Returned by GET /identity/api/admin/users/{id}/permissions.
+ */
+export interface EffectivePermission extends PermissionCatalogItem {
+  sources: PermissionSource[];
+}
+
+/**
+ * Result shape from GET /identity/api/admin/users/{id}/permissions.
+ */
+export interface EffectivePermissionsResult {
+  items:      EffectivePermission[];
+  totalCount: number;
+  roleCount:  number;
 }
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────

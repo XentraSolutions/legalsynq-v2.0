@@ -12,6 +12,7 @@ public class Capability
 
     public Product Product { get; private set; } = null!;
     public ICollection<RoleCapability> RoleCapabilities { get; private set; } = [];
+    public ICollection<RoleCapabilityAssignment> RoleCapabilityAssignments { get; private set; } = [];
 
     private Capability() { }
 

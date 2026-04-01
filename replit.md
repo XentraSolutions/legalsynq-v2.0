@@ -2561,3 +2561,60 @@ monorepo at `apps/services/notifications/`.
 | `identity.user.avatar_removed` | User removes avatar |
 | `identity.tenant.logo_set` | Admin sets tenant logo |
 | `identity.tenant.logo_cleared` | Admin removes tenant logo |
+
+## UIX-004 — Audit & Activity Timeline — COMPLETED 2026-04-01
+
+### Backend
+- `GetUserActivity` handler: `GET /api/admin/users/{id}/activity` — queries `AuditLogs` by `EntityId = userId`, paged, `IsCrossTenantAccess` enforced.
+
+### CC Types / Mappers / API Client
+- `UserActivityEvent` type in `control-center.ts`
+- `AUDIT_EVENT_LABELS` map + `mapEventLabel()` + `mapUserActivityEvent()` in `api-mappers.ts`
+- `users.getActivity(id, { page, pageSize, category })` in `control-center-api.ts`
+- `auditCanonical.listForUser({ userId, tenantId, page, pageSize })` convenience method
+
+### CC BFF Route
+- `GET /api/identity/admin/users/[id]/activity/route.ts` — protected by `requireAdmin()`
+
+### CC Pages & Components
+- `/audit-logs/page.tsx` — full featured: `requireAdmin()` (both PlatformAdmin + TenantAdmin), `AUDIT_READ_MODE` env-driven (legacy/canonical/hybrid), filters, pagination, canonical interactive table
+- `UserActivityPanel` server component — canonical audit timeline on user detail page; graceful unavailable state
+- Wired into `/tenant-users/[id]` page between security and access-control sections
+- Nav: `/audit-logs` badge set to `LIVE`
+
+Full report: `analysis/UIX-004-report.md`
+
+## UIX-005 — Permissions & Effective Access Management — COMPLETED 2026-04-01
+
+### Backend (Identity)
+- `RoleCapabilityAssignment` domain entity (composite PK: RoleId + CapabilityId)
+- EF Core config + migration `20260401220001_UIX005_AddRoleCapabilityAssignments`
+- 4 new admin endpoints: `GetRolePermissions`, `AssignRolePermission`, `RevokeRolePermission`, `GetUserEffectivePermissions`
+- `ListRoles`/`GetRole` now return `isSystemRole`, `capabilityCount`, `resolvedPermissions`
+- `ListPermissions` supports `?search=` and `?productId=` server-side filtering
+
+### CC Types / Mappers / API Client
+- `RoleSummary` extended: `isSystemRole`, `capabilityCount`
+- New types: `RoleCapabilityItem`, `EffectivePermission`, `PermissionSource`, `EffectivePermissionsResult`
+- Mappers: `mapRoleCapabilityItem`, `mapEffectivePermission`, `mapEffectivePermissionsResult`
+- `permissions.list()` bug fixed (was returning empty due to envelope mismatch)
+- New API methods: `roles.getPermissions`, `roles.assignPermission`, `roles.revokePermission`, `users.getEffectivePermissions`
+
+### CC BFF Routes
+- `GET/POST /api/identity/admin/roles/[id]/permissions`
+- `DELETE /api/identity/admin/roles/[id]/permissions/[capabilityId]`
+- `GET /api/identity/admin/users/[id]/permissions`
+
+### CC Components
+- `RolePermissionPanel` — interactive assign/revoke with capability picker (client component)
+- `EffectivePermissionsPanel` — read-only union view with source-role attribution badges
+- `GroupPermissionsPanel` — informational notice (groups derive permissions through roles)
+- `PermissionSearchBar` — client search input for `/permissions` page (URL-param navigation)
+
+### CC Pages
+- `/permissions` — product chip filter nav + text search + active filter summary + result count
+- `/roles/[id]` — `RolePermissionPanel` wired in
+- `/tenant-users/[id]` — `EffectivePermissionsPanel` wired in
+- `/groups/[id]` — `GroupPermissionsPanel` wired in
+
+Full report: `analysis/UIX-005-report.md`

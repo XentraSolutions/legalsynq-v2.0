@@ -63,6 +63,10 @@ import type {
   GroupDetail,
   PermissionCatalogItem,
   UserActivityEvent,
+  RoleCapabilityItem,
+  EffectivePermission,
+  PermissionSource,
+  EffectivePermissionsResult,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -455,10 +459,12 @@ export function mapRoleSummary(raw: unknown): RoleSummary {
   }).filter(Boolean);
 
   return {
-    id:          str(r, 'id',          'id',          '',    'mapRoleSummary.id'),
-    name:        str(r, 'name',        'name',        '',    'mapRoleSummary.name'),
-    description: str(r, 'description', 'description', ''),
-    userCount:   num(r, 'user_count',  'userCount',   0),
+    id:              str(r, 'id',               'id',              '',    'mapRoleSummary.id'),
+    name:            str(r, 'name',             'name',            '',    'mapRoleSummary.name'),
+    description:     str(r, 'description',      'description',     ''),
+    isSystemRole:    bool(r, 'is_system_role',  'isSystemRole',    false),
+    userCount:       num(r, 'user_count',       'userCount',       0),
+    capabilityCount: num(r, 'capability_count', 'capabilityCount', 0),
     permissions,
   };
 }
@@ -483,6 +489,54 @@ export function mapRoleDetail(raw: unknown): RoleDetail {
     resolvedPermissions: asArr(
       r['resolved_permissions'] ?? r['resolvedPermissions'],
     ).map(mapPermission),
+  };
+}
+
+// ── UIX-005: Role capability assignment + effective permission mappers ─────────
+
+/**
+ * mapRoleCapabilityItem — maps a capability item returned from
+ * GET /api/admin/roles/{id}/permissions.
+ */
+export function mapRoleCapabilityItem(raw: unknown): RoleCapabilityItem {
+  const r    = asObj(raw);
+  const base = mapPermissionCatalogItem(raw);
+  return {
+    ...base,
+    assignedAtUtc:    str(r, 'assigned_at_utc',    'assignedAtUtc',    new Date().toISOString()),
+    assignedByUserId: optStr(r, 'assigned_by_user_id', 'assignedByUserId') ?? null,
+  };
+}
+
+/**
+ * mapEffectivePermission — maps an effective permission item returned from
+ * GET /api/admin/users/{id}/permissions.
+ */
+export function mapEffectivePermission(raw: unknown): EffectivePermission {
+  const r    = asObj(raw);
+  const base = mapPermissionCatalogItem(raw);
+
+  const sources: PermissionSource[] = asArr(r['sources']).map(s => {
+    const so = asObj(s);
+    return {
+      type: (str(so, 'type', 'type', 'role') as 'role' | 'group'),
+      name: str(so, 'name', 'name', ''),
+    };
+  });
+
+  return { ...base, sources };
+}
+
+/**
+ * mapEffectivePermissionsResult — maps the full response from
+ * GET /api/admin/users/{id}/permissions.
+ */
+export function mapEffectivePermissionsResult(raw: unknown): EffectivePermissionsResult {
+  const r = asObj(raw);
+  return {
+    items:      asArr(r['items']).map(mapEffectivePermission),
+    totalCount: num(r, 'total_count', 'totalCount', 0),
+    roleCount:  num(r, 'role_count',  'roleCount',  0),
   };
 }
 
