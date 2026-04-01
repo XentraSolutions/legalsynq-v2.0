@@ -102,3 +102,9 @@ id = "v9yo-JzM9MXJSGG2kxIIz"
 uri = "file://analysis/NOTIF-UI-003-report.md"
 type = "text"
 title = "NOTIF-UI-003 — Extended Config & Admin (Post-Implementation Report)"
+
+[[outputs]]
+id = "bftlsXRKvyCwx871YqFoj"
+uri = "file://docs/UIX-001-Access-Account-Management.md"
+type = "text"
+title = "UIX-001 — Access & Account Management Report"
