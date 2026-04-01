@@ -238,6 +238,42 @@ export const controlCenterServerApi = {
       );
       revalidateTag(CACHE_TAGS.tenants);
     },
+
+    /**
+     * POST /identity/api/admin/tenants
+     *
+     * Creates a new tenant with a default admin user. Returns the new tenant's
+     * ID/code/name plus the one-time temporary password for the admin user.
+     *
+     * Revalidates: cc:tenants so the list refreshes immediately.
+     */
+    create: async (body: {
+      name:           string;
+      code:           string;
+      adminEmail:     string;
+      adminFirstName: string;
+      adminLastName:  string;
+    }): Promise<{
+      tenantId:          string;
+      displayName:       string;
+      code:              string;
+      status:            string;
+      adminUserId:       string;
+      adminEmail:        string;
+      temporaryPassword: string;
+    }> => {
+      const raw = await apiClient.post<{
+        tenantId:          string;
+        displayName:       string;
+        code:              string;
+        status:            string;
+        adminUserId:       string;
+        adminEmail:        string;
+        temporaryPassword: string;
+      }>('/identity/api/admin/tenants', body);
+      revalidateTag(CACHE_TAGS.tenants);
+      return raw;
+    },
   },
 
   // ── Users ─────────────────────────────────────────────────────────────────

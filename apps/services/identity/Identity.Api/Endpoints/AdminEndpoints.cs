@@ -22,7 +22,8 @@ public static class AdminEndpoints
     public static IEndpointRouteBuilder MapAdminEndpoints(this IEndpointRouteBuilder routes)
     {
         // ── Tenants ──────────────────────────────────────────────────────────
-        routes.MapGet("/api/admin/tenants",         ListTenants);
+        routes.MapGet("/api/admin/tenants",           ListTenants);
+        routes.MapPost("/api/admin/tenants",          CreateTenant);
         routes.MapGet("/api/admin/tenants/{id:guid}", GetTenant);
         routes.MapPost("/api/admin/tenants/{id:guid}/entitlement", UpdateEntitlement);
         routes.MapPatch("/api/admin/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings);
@@ -182,6 +183,153 @@ public static class AdminEndpoints
             sessionTimeoutMinutes = t.SessionTimeoutMinutes,
             productEntitlements   = entitlements,
         });
+    }
+
+    /// <summary>
+    /// POST /api/admin/tenants
+    ///
+    /// Creates a new tenant and a default admin user in a single atomic transaction.
+    /// Returns the new tenant details and a one-time temporary password for the admin user.
+    ///
+    /// Validations:
+    ///   - Tenant code must be unique (case-insensitive).
+    ///   - Admin email must not already exist.
+    ///   - Code: 2–12 alphanumeric characters (uppercased automatically).
+    /// </summary>
+    private static async Task<IResult> CreateTenant(
+        CreateTenantRequest  body,
+        IdentityDbContext    db,
+        IPasswordHasher      passwordHasher,
+        IAuditEventClient    auditClient,
+        CancellationToken    ct)
+    {
+        // ── Validate inputs ───────────────────────────────────────────────────
+        if (string.IsNullOrWhiteSpace(body.Name))
+            return Results.BadRequest(new { error = "Tenant name is required." });
+
+        if (string.IsNullOrWhiteSpace(body.Code))
+            return Results.BadRequest(new { error = "Tenant code is required." });
+
+        var code = body.Code.ToUpperInvariant().Trim();
+        if (code.Length < 2 || code.Length > 12 || !code.All(c => char.IsLetterOrDigit(c)))
+            return Results.BadRequest(new { error = "Code must be 2–12 alphanumeric characters." });
+
+        if (string.IsNullOrWhiteSpace(body.AdminEmail))
+            return Results.BadRequest(new { error = "Admin email is required." });
+
+        if (string.IsNullOrWhiteSpace(body.AdminFirstName))
+            return Results.BadRequest(new { error = "Admin first name is required." });
+
+        if (string.IsNullOrWhiteSpace(body.AdminLastName))
+            return Results.BadRequest(new { error = "Admin last name is required." });
+
+        // ── Uniqueness checks ──────────────────────────────────────────────────
+        var codeExists = await db.Tenants.AnyAsync(t => t.Code == code, ct);
+        if (codeExists)
+            return Results.Conflict(new { error = $"A tenant with code '{code}' already exists." });
+
+        var emailNorm = body.AdminEmail.ToLowerInvariant().Trim();
+        var emailExists = await db.Users.AnyAsync(u => u.Email == emailNorm, ct);
+        if (emailExists)
+            return Results.Conflict(new { error = $"A user with email '{emailNorm}' already exists." });
+
+        // ── Find TenantAdmin role ──────────────────────────────────────────────
+        var tenantAdminRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "TenantAdmin", ct);
+        if (tenantAdminRole is null)
+            return Results.Problem("TenantAdmin role not found. Contact platform support.", statusCode: 500);
+
+        // ── Generate a one-time temporary password ─────────────────────────────
+        var tempPassword = GenerateTemporaryPassword();
+        var passwordHash = passwordHasher.Hash(tempPassword);
+
+        // ── Create tenant + user + role assignment ─────────────────────────────
+        var tenant = Tenant.Create(body.Name.Trim(), code);
+        db.Tenants.Add(tenant);
+
+        var user = User.Create(
+            tenantId:     tenant.Id,
+            email:        emailNorm,
+            passwordHash: passwordHash,
+            firstName:    body.AdminFirstName.Trim(),
+            lastName:     body.AdminLastName.Trim());
+        db.Users.Add(user);
+
+        var sra = ScopedRoleAssignment.Create(
+            userId:    user.Id,
+            roleId:    tenantAdminRole.Id,
+            scopeType: ScopedRoleAssignment.ScopeTypes.Global,
+            tenantId:  tenant.Id);
+        db.ScopedRoleAssignments.Add(sra);
+
+        await db.SaveChangesAsync(ct);
+
+        // ── Canonical audit event ──────────────────────────────────────────────
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "platform.admin.tenant.created",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Platform },
+            Actor         = new AuditEventActorDto { Type = ActorType.System },
+            Entity        = new AuditEventEntityDto { Type = "Tenant", Id = tenant.Id.ToString() },
+            Action        = "TenantCreated",
+            Description   = $"Tenant '{tenant.Name}' ({tenant.Code}) created with default admin '{emailNorm}'.",
+            After         = JsonSerializer.Serialize(new { tenantId = tenant.Id, code = tenant.Code, adminEmail = emailNorm }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "platform.admin.tenant.created", tenant.Id.ToString()),
+            Tags = ["tenant-management", "onboarding"],
+        });
+
+        return Results.Created(
+            $"/api/admin/tenants/{tenant.Id}",
+            new
+            {
+                tenantId          = tenant.Id,
+                displayName       = tenant.Name,
+                code              = tenant.Code,
+                status            = "Active",
+                adminUserId       = user.Id,
+                adminEmail        = user.Email,
+                temporaryPassword = tempPassword,
+            });
+    }
+
+    /// <summary>
+    /// Generates a secure random temporary password: 12 characters,
+    /// mixing uppercase, lowercase, digits, and symbols.
+    /// </summary>
+    private static string GenerateTemporaryPassword()
+    {
+        const string upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string lower   = "abcdefghjkmnpqrstuvwxyz";
+        const string digits  = "23456789";
+        const string symbols = "!@#$%&*";
+        var all = upper + lower + digits + symbols;
+
+        var rng = System.Security.Cryptography.RandomNumberGenerator.Create();
+        var bytes = new byte[16];
+        rng.GetBytes(bytes);
+
+        var chars = new char[12];
+        chars[0]  = upper  [bytes[0]  % upper.Length];
+        chars[1]  = lower  [bytes[1]  % lower.Length];
+        chars[2]  = digits [bytes[2]  % digits.Length];
+        chars[3]  = symbols[bytes[3]  % symbols.Length];
+        for (int i = 4; i < 12; i++)
+            chars[i] = all[bytes[i] % all.Length];
+
+        // Shuffle
+        rng.GetBytes(bytes);
+        for (int i = chars.Length - 1; i > 0; i--)
+        {
+            int j = bytes[i] % (i + 1);
+            (chars[i], chars[j]) = (chars[j], chars[i]);
+        }
+        return new string(chars);
     }
 
     private static async Task<IResult> UpdateTenantSessionSettings(
@@ -1443,6 +1591,12 @@ public static class AdminEndpoints
         Guid?   OrganizationId               = null,
         Guid?   ProductId                    = null,
         Guid?   OrganizationRelationshipId   = null);
+    private record CreateTenantRequest(
+        string Name,
+        string Code,
+        string AdminEmail,
+        string AdminFirstName,
+        string AdminLastName);
     private record EntitlementRequest(string ProductCode, bool Enabled);
     private record SessionSettingsRequest(int? SessionTimeoutMinutes);
     private record CreateOrgRelationshipRequest(

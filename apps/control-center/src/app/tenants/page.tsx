@@ -3,6 +3,7 @@ import { getTenantContext } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { TenantListTable } from '@/components/tenants/tenant-list-table';
+import { CreateTenantButton } from '@/components/tenants/create-tenant-button';
 
 interface TenantsPageProps {
   searchParams: {
@@ -49,14 +50,7 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
               </span>
             )}
           </div>
-          <button
-            type="button"
-            disabled
-            className="bg-indigo-600 text-white text-sm font-medium px-4 py-2 rounded-md opacity-50 cursor-not-allowed"
-            title="Coming soon"
-          >
-            Create Tenant
-          </button>
+          <CreateTenantButton />
         </div>
 
         {/* Search */}
