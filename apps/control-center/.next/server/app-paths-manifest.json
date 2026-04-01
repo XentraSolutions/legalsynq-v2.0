@@ -3,5 +3,6 @@
   "/api/auth/login/route": "app/api/auth/login/route.js",
   "/tenants/page": "app/tenants/page.js",
   "/notifications/page": "app/notifications/page.js",
-  "/api/auth/logout/route": "app/api/auth/logout/route.js"
+  "/tenants/[id]/page": "app/tenants/[id]/page.js",
+  "/tenants/[id]/users/page": "app/tenants/[id]/users/page.js"
 }
