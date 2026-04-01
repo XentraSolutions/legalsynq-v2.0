@@ -1,8 +1,8 @@
-// File: /home/runner/workspace/apps/control-center/src/app/notifications/templates/page.tsx
-import * as entry from '../../../../../src/app/notifications/templates/page.js'
+// File: /home/runner/workspace/apps/control-center/src/app/notifications/log/page.tsx
+import * as entry from '../../../../../src/app/notifications/log/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
-type TEntry = typeof import('../../../../../src/app/notifications/templates/page.js')
+type TEntry = typeof import('../../../../../src/app/notifications/log/page.js')
 
 // Check that the entry is a valid entry
 checkFields<Diff<{

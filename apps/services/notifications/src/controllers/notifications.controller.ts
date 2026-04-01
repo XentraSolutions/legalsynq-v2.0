@@ -119,6 +119,17 @@ export const notificationsController = {
     }
   },
 
+  async stats(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const service = requireService(res);
+    if (!service) return;
+    try {
+      const data = await service.getStats();
+      res.status(200).json({ data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   update(_req: Request, res: Response): void {
     res.status(501).json({ error: { code: "NOT_IMPLEMENTED", message: "Not implemented" } });
   },

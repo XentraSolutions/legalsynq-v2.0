@@ -1,9 +1,9 @@
 {
   "pages": {
-    "/notifications/templates/page": [
+    "/notifications/log/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/notifications/templates/page.js"
+      "static/chunks/app/notifications/log/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -16,10 +16,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/error.js"
     ],
-    "/notifications/providers/page": [
+    "/login/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/notifications/providers/page.js"
+      "static/chunks/app/login/page.js"
     ]
   }
 }

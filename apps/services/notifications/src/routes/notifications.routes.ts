@@ -5,6 +5,7 @@ import { notificationIssuesController } from "../controllers/notification-issues
 
 const router = Router();
 
+router.get("/stats", notificationsController.stats);
 router.get("/", notificationsController.list);
 router.post("/", notificationsController.create);
 router.get("/:id", notificationsController.get);

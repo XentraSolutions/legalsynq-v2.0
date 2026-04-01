@@ -1,4 +1,5 @@
 {
-  "/notifications/templates/page": "app/notifications/templates/page.js",
-  "/notifications/providers/page": "app/notifications/providers/page.js"
+  "/notifications/log/page": "app/notifications/log/page.js",
+  "/login/page": "app/login/page.js",
+  "/api/auth/login/route": "app/api/auth/login/route.js"
 }

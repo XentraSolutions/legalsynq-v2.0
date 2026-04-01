@@ -749,4 +749,8 @@ export class NotificationService {
       offset: input.offset,
     });
   }
+
+  async getStats() {
+    return this.notificationRepo.getStats();
+  }
 }

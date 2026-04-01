@@ -6,25 +6,36 @@ import { notifClient, NOTIF_CACHE_TAGS }    from '@/lib/notifications-api';
 import type { NotifListResponse }           from '@/lib/notifications-api';
 
 interface Props {
-  searchParams: {
+  searchParams: Promise<{
     status?:  string;
     channel?: string;
     page?:    string;
-  };
+    q?:       string;
+  }>;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 25;
+
+function parseRecipient(recipientJson: string): string {
+  try {
+    const r = JSON.parse(recipientJson);
+    return r.email ?? r.phone ?? r.address ?? '—';
+  } catch {
+    return '—';
+  }
+}
 
 export default async function NotificationsLogPage({ searchParams }: Props) {
   const session = await requirePlatformAdmin();
 
-  const status  = searchParams.status  ?? '';
-  const channel = searchParams.channel ?? '';
-  const page    = Math.max(1, parseInt(searchParams.page ?? '1', 10));
+  const sp      = await searchParams;
+  const status  = sp.status  ?? '';
+  const channel = sp.channel ?? '';
+  const page    = Math.max(1, parseInt(sp.page ?? '1', 10));
 
   const qs = new URLSearchParams();
-  qs.set('page', String(page));
-  qs.set('pageSize', String(PAGE_SIZE));
+  qs.set('limit',  String(PAGE_SIZE));
+  qs.set('offset', String((page - 1) * PAGE_SIZE));
   if (status)  qs.set('status',  status);
   if (channel) qs.set('channel', channel);
 
@@ -34,15 +45,15 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
   try {
     data = await notifClient.get<NotifListResponse>(
       `/notifications?${qs.toString()}`,
-      10,
+      0,
       [NOTIF_CACHE_TAGS.notifications],
     );
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load notifications.';
   }
 
-  const items      = data?.items      ?? [];
-  const totalCount = data?.total      ?? 0;
+  const items      = data?.data      ?? [];
+  const totalCount = data?.meta?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   const statusOptions  = ['', 'accepted', 'processing', 'sent', 'failed', 'blocked'];
@@ -74,15 +85,16 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
             <h1 className="text-xl font-semibold text-gray-900">Delivery Log</h1>
             <p className="text-sm text-gray-500 mt-0.5">
               {totalCount.toLocaleString()} record{totalCount !== 1 ? 's' : ''} platform-wide
+              {(status || channel) && <span className="ml-1 text-indigo-600">(filtered)</span>}
             </p>
           </div>
         </div>
 
         {/* Filter bar */}
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-gray-600">Status</label>
-            <div className="flex gap-1">
+        <div className="flex flex-wrap gap-4 items-start bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Status</label>
+            <div className="flex gap-1 flex-wrap">
               {statusOptions.map(s => (
                 <a
                   key={s || '__all'}
@@ -98,9 +110,9 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-gray-600">Channel</label>
-            <div className="flex gap-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs font-medium text-gray-600 whitespace-nowrap">Channel</label>
+            <div className="flex gap-1 flex-wrap">
               {channelOptions.map(c => (
                 <a
                   key={c || '__all'}
@@ -128,51 +140,73 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
         {/* Table */}
         {!fetchError && (
           <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-100 text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
-                <tr>
-                  <th className="px-4 py-2.5 text-left font-medium">ID</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Channel</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Status</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Provider</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Template</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Failure</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Created (UTC)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {items.map(n => (
-                  <tr key={n.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 whitespace-nowrap">
-                      <a href={`/notifications/log/${n.id}`} className="hover:text-indigo-600 hover:underline">
-                        {n.id.slice(0, 8)}…
-                      </a>
-                    </td>
-                    <td className="px-4 py-2.5"><ChannelBadge channel={n.channel} /></td>
-                    <td className="px-4 py-2.5"><NotificationStatusBadge status={n.status} /></td>
-                    <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">
-                      {n.providerUsed ?? <span className="text-gray-400 italic">—</span>}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-[11px] text-gray-600">
-                      {n.templateKey ?? <span className="text-gray-400 italic">—</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-red-600 max-w-[200px] truncate">
-                      {n.failureCategory ?? n.lastErrorMessage ?? <span className="text-gray-400 italic">—</span>}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 whitespace-nowrap">
-                      {new Date(n.createdAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
-                    </td>
-                  </tr>
-                ))}
-                {items.length === 0 && (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-100 text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">
-                      No notifications match the current filters.
-                    </td>
+                    <th className="px-4 py-2.5 text-left font-medium">ID</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Channel</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Recipient</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Subject / Template</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Provider</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Failure</th>
+                    <th className="px-4 py-2.5 text-left font-medium whitespace-nowrap">Created (UTC)</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {items.map(n => {
+                    const recipient = parseRecipient(n.recipientJson);
+                    const subject   = n.renderedSubject ?? n.templateKey ?? null;
+                    return (
+                      <tr key={n.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 whitespace-nowrap">
+                          <a href={`/notifications/log/${n.id}`} className="hover:text-indigo-600 hover:underline">
+                            {n.id.slice(0, 8)}…
+                          </a>
+                        </td>
+                        <td className="px-4 py-2.5"><ChannelBadge channel={n.channel} /></td>
+                        <td className="px-4 py-2.5 font-mono text-[11px] text-gray-700 max-w-[180px] truncate" title={recipient}>
+                          {recipient}
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-gray-700 max-w-[200px]">
+                          {subject ? (
+                            <span className="truncate block" title={subject}>
+                              {n.renderedSubject
+                                ? subject
+                                : <span className="font-mono text-gray-500">{subject}</span>
+                              }
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 italic">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap"><NotificationStatusBadge status={n.status} /></td>
+                        <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">
+                          {n.providerUsed ?? <span className="text-gray-400 italic">—</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-red-600 max-w-[180px]">
+                          {n.failureCategory ?? (n.lastErrorMessage
+                            ? <span className="truncate block" title={n.lastErrorMessage}>{n.lastErrorMessage}</span>
+                            : <span className="text-gray-400 italic">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 whitespace-nowrap">
+                          {new Date(n.createdAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {items.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-400">
+                        No notifications match the current filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
@@ -180,7 +214,7 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
         {totalPages > 1 && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-500">
-              Page {page} of {totalPages}
+              Page {page} of {totalPages} · {totalCount.toLocaleString()} total
             </span>
             <div className="flex gap-2">
               {page > 1 && (

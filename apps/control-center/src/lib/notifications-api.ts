@@ -146,6 +146,7 @@ export interface NotifSummary {
   failureCategory:  NotifFailureCategory | null;
   lastErrorMessage: string | null;
   templateKey:      string | null;
+  renderedSubject:  string | null;
   blockedByPolicy:  boolean;
   blockedReasonCode: string | null;
   platformFallbackUsed: boolean;
@@ -179,10 +180,20 @@ export interface NotifIssue {
 }
 
 export interface NotifListResponse {
-  items:      NotifSummary[];
-  total?:     number;
-  page?:      number;
-  pageSize?:  number;
+  data:  NotifSummary[];
+  meta: {
+    total:  number;
+    limit:  number;
+    offset: number;
+  };
+}
+
+export interface NotifStats {
+  total:     number;
+  byStatus:  Record<string, number>;
+  byChannel: Record<string, number>;
+  last24h: { total: number; sent: number; failed: number; blocked: number };
+  last7d:  { total: number; sent: number; failed: number; blocked: number };
 }
 
 export interface NotifTemplate {
