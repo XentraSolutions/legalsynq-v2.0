@@ -3,7 +3,7 @@ import { NotificationChannel, TenantProviderValidationStatus, TenantProviderHeal
 
 interface TenantProviderConfigAttributes {
   id: string;
-  tenantId: string;
+  tenantId: string | null;
   channel: NotificationChannel;
   providerType: string;
   ownershipMode: TenantChannelProviderMode;
@@ -28,7 +28,7 @@ interface TenantProviderConfigAttributes {
 interface TenantProviderConfigCreationAttributes
   extends Optional<
     TenantProviderConfigAttributes,
-    | "id" | "ownershipMode" | "isActive" | "isPrimary" | "isFallback"
+    | "id" | "tenantId" | "ownershipMode" | "isActive" | "isPrimary" | "isFallback"
     | "allowAutomaticFailover" | "allowPlatformFallback" | "status"
     | "endpointConfigJson" | "senderConfigJson" | "webhookConfigJson"
     | "credentialReference" | "lastValidatedAt" | "validationStatus" | "healthStatus"
@@ -36,7 +36,7 @@ interface TenantProviderConfigCreationAttributes
 
 export class TenantProviderConfig extends Model<TenantProviderConfigAttributes, TenantProviderConfigCreationAttributes> {
   declare id: string;
-  declare tenantId: string;
+  declare tenantId: string | null;
   declare channel: NotificationChannel;
   declare providerType: string;
   declare ownershipMode: TenantChannelProviderMode;
@@ -62,7 +62,7 @@ export function initTenantProviderConfigModel(sequelize: Sequelize): void {
   TenantProviderConfig.init(
     {
       id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-      tenantId: { type: DataTypes.UUID, allowNull: false, field: "tenant_id" },
+      tenantId: { type: DataTypes.UUID, allowNull: true, defaultValue: null, field: "tenant_id" },
       channel: { type: DataTypes.ENUM("email", "sms", "push", "in-app"), allowNull: false },
       providerType: { type: DataTypes.STRING(100), allowNull: false, field: "provider_type" },
       ownershipMode: { type: DataTypes.ENUM("platform_managed", "tenant_managed"), allowNull: false, defaultValue: "tenant_managed", field: "ownership_mode" },

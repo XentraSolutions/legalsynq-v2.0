@@ -32,7 +32,7 @@ export class TenantProviderConfigRepository {
   }
 
   async create(input: {
-    tenantId: string;
+    tenantId?: string | null;
     channel: NotificationChannel;
     providerType: string;
     displayName: string;
@@ -45,7 +45,9 @@ export class TenantProviderConfigRepository {
   }): Promise<TenantProviderConfig> {
     return TenantProviderConfig.create({
       ...input,
-      ownershipMode: "tenant_managed",
+      tenantId: input.tenantId ?? null,
+      // Platform-level configs (no tenantId) are always platform_managed
+      ownershipMode: input.tenantId ? "tenant_managed" : "platform_managed",
       isActive: false,
       isPrimary: false,
       isFallback: false,

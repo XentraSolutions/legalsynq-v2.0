@@ -24,7 +24,7 @@ import { isSupportedEmailProvider, isSupportedSmsProvider } from "../integration
 const repo = new TenantProviderConfigRepository();
 
 export interface CreateTenantProviderConfigInput {
-  tenantId: string;
+  tenantId: string | undefined;
   channel: NotificationChannel;
   providerType: string;
   displayName: string;
@@ -38,7 +38,7 @@ export interface CreateTenantProviderConfigInput {
 
 export interface SafeProviderConfigView {
   id: string;
-  tenantId: string;
+  tenantId: string | null;
   channel: string;
   providerType: string;
   ownershipMode: string;
@@ -167,7 +167,7 @@ export async function createTenantProviderConfig(
 
 export async function updateTenantProviderConfig(
   id: string,
-  tenantId: string,
+  tenantId: string | undefined,
   updates: {
     displayName?: string;
     endpointConfig?: Record<string, unknown>;
@@ -243,7 +243,7 @@ export async function getTenantProviderConfig(
 
 export async function validateTenantProviderConfig(
   id: string,
-  tenantId: string
+  tenantId: string | undefined
 ): Promise<{ valid: boolean; errors: string[] }> {
   const config = await repo.findByIdAndTenant(id, tenantId);
   if (!config) throw Object.assign(new Error("Provider config not found"), { statusCode: 404 });
@@ -296,7 +296,7 @@ export async function validateTenantProviderConfig(
 
 export async function testTenantProviderConfig(
   id: string,
-  tenantId: string
+  tenantId: string | undefined
 ): Promise<{ success: boolean; latencyMs?: number; message: string }> {
   const config = await repo.findByIdAndTenant(id, tenantId);
   if (!config) throw Object.assign(new Error("Provider config not found"), { statusCode: 404 });
@@ -368,7 +368,7 @@ export async function testTenantProviderConfig(
 
 export async function activateTenantProviderConfig(
   id: string,
-  tenantId: string
+  tenantId: string | undefined
 ): Promise<SafeProviderConfigView> {
   const config = await repo.findByIdAndTenant(id, tenantId);
   if (!config) throw Object.assign(new Error("Provider config not found"), { statusCode: 404 });
