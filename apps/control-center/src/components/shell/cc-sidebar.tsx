@@ -139,18 +139,19 @@ function SidebarSection({
   );
 
   return (
-    <div className={sectionIndex > 0 ? 'mt-4' : ''}>
+    <div className={sectionIndex > 0 ? 'mt-3' : ''}>
       {/* Section heading — expanded sidebar only */}
       {section.heading && !sidebarCollapsed && (
         <button
           onClick={onToggleSection}
-          className="w-full flex items-center justify-between px-5 mb-1 group"
+          className="w-full flex items-center justify-between px-3 mx-2 mb-0.5 rounded-md h-7 group hover:bg-gray-100 transition-colors"
+          style={{ width: 'calc(100% - 16px)' }}
           title={sectionCollapsed ? `Expand ${section.heading}` : `Collapse ${section.heading}`}
         >
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none group-hover:text-gray-600 transition-colors">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none group-hover:text-gray-700 transition-colors">
             {section.heading}
           </span>
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1 shrink-0">
             {sectionCollapsed && hasActive && (
               <span
                 className="w-1.5 h-1.5 rounded-full"
@@ -160,8 +161,10 @@ function SidebarSection({
             )}
             <i
               className={clsx(
-                'text-[11px] text-gray-300 group-hover:text-gray-500 transition-all duration-200',
-                sectionCollapsed ? 'ri-arrow-right-s-line' : 'ri-arrow-down-s-line',
+                'text-[14px] transition-transform duration-200',
+                sectionCollapsed
+                  ? 'ri-arrow-right-s-line text-gray-400 group-hover:text-gray-600'
+                  : 'ri-arrow-down-s-line text-gray-400 group-hover:text-gray-600',
               )}
             />
           </span>

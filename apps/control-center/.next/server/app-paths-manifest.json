@@ -1,7 +1,7 @@
 {
   "/tenants/page": "app/tenants/page.js",
-  "/api/auth/logout/route": "app/api/auth/logout/route.js",
   "/login/page": "app/login/page.js",
-  "/api/auth/login/route": "app/api/auth/login/route.js",
-  "/page": "app/page.js"
+  "/platform-readiness/page": "app/platform-readiness/page.js",
+  "/notifications/page": "app/notifications/page.js",
+  "/roles/page": "app/roles/page.js"
 }
