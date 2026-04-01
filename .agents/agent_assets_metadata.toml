@@ -108,3 +108,9 @@ id = "bftlsXRKvyCwx871YqFoj"
 uri = "file://docs/UIX-001-Access-Account-Management.md"
 type = "text"
 title = "UIX-001 — Access & Account Management Report"
+
+[[outputs]]
+id = "S4_wroSH2ZI6Iz6rG85Hm"
+uri = "file://analysis/UIX-001-01.md"
+type = "text"
+title = "UIX-001-01 — Revised Access & Account Management Report"
