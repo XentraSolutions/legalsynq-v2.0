@@ -72,3 +72,15 @@ id = "YcTlK4cGUhorQlHbtIwH7"
 uri = "file://analysis/careconnect/LSCC-009-report.md"
 type = "text"
 title = "LSCC-009 Admin Activation Queue — Implementation Report"
+
+[[outputs]]
+id = "hIYINgO6H6G_MHmol5yTH"
+uri = "file://analysis/notifications/notifications-merge-audit-report.md"
+type = "text"
+title = "Notifications Merge — Audit Report (11 issues)"
+
+[[outputs]]
+id = "Elb6HtIwC8qk-2y7nrRgI"
+uri = "file://analysis/notifications/notifications-merge-fix-report.md"
+type = "text"
+title = "Notifications Merge — Fix Report (3 fixes applied)"
