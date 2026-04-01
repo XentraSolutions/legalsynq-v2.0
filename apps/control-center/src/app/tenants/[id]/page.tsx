@@ -151,8 +151,9 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
 
             {/* Sub-navigation tabs */}
             <div className="flex items-center gap-0 border-b border-gray-200">
-              <SubNavLink href={Routes.tenantDetail(id)}    label="Overview" active />
-              <SubNavLink href={Routes.tenantUsers_(id)}    label="Users"    active={false} />
+              <SubNavLink href={Routes.tenantDetail(id)}          label="Overview"       active />
+              <SubNavLink href={Routes.tenantUsers_(id)}          label="Users"          active={false} />
+              <SubNavLink href={Routes.tenantNotifications(id)}   label="Notifications"  active={false} />
             </div>
 
             {/* Detail sections */}

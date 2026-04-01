@@ -99,6 +99,9 @@ export const Routes = {
   /** /groups/:id — Group detail */
   groupDetail: (id: string) => `/groups/${id}`,
 
+  /** /tenants/:id/notifications — Notification activity for a specific tenant */
+  tenantNotifications: (id: string) => `/tenants/${id}/notifications`,
+
   /** /permissions — Platform permission catalog */
   permissions: '/permissions',
 } as const;

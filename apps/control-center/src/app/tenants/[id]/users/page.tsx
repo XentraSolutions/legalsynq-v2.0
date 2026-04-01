@@ -66,8 +66,9 @@ export default async function TenantScopedUsersPage({ params, searchParams }: Te
 
         {/* Sub-navigation tabs */}
         <div className="flex items-center gap-0 border-b border-gray-200 -mb-1">
-          <SubNavLink href={Routes.tenantDetail(id)}    label="Overview" active={false} />
-          <SubNavLink href={Routes.tenantUsers_(id)}    label="Users"    active />
+          <SubNavLink href={Routes.tenantDetail(id)}         label="Overview"      active={false} />
+          <SubNavLink href={Routes.tenantUsers_(id)}         label="Users"         active />
+          <SubNavLink href={Routes.tenantNotifications(id)}  label="Notifications" active={false} />
         </div>
 
         {/* Header */}
