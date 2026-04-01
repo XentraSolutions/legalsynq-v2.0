@@ -1,6 +1,9 @@
+import { cookies }                from 'next/headers';
 import { requireCCPlatformAdmin } from '@/lib/auth-guards';
 import { controlCenterServerApi } from '@/lib/control-center-api';
-import { TenantListTable } from '@/components/control-center/tenant-list-table';
+import { TenantListTable }        from '@/components/control-center/tenant-list-table';
+import { CCRoutes }               from '@/lib/control-center-routes';
+import Link                       from 'next/link';
 
 interface TenantsPageProps {
   searchParams: {
@@ -9,21 +12,32 @@ interface TenantsPageProps {
   };
 }
 
+function readActiveTenantId(): string | null {
+  const raw = cookies().get('cc_tenant_context')?.value;
+  if (!raw) return null;
+  try {
+    const ctx = JSON.parse(raw) as { tenantId?: string };
+    return ctx.tenantId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * /control-center/tenants — Tenants list.
  *
- * Access: PlatformAdmin only (enforced by requireCCPlatformAdmin).
- *
- * Data: currently served from a mock stub in controlCenterServerApi.tenants.list().
- * TODO: When GET /identity/api/admin/tenants is live, the stub auto-wires — no page change needed.
+ * Shows all tenants with their status, type, and primary contact.
+ * Each row includes a "Set Active" / "Deactivate" button that sets the
+ * cc_tenant_context cookie used by the Notifications section.
  */
 export default async function TenantsPage({ searchParams }: TenantsPageProps) {
   await requireCCPlatformAdmin();
 
-  const page   = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
-  const search = searchParams.search ?? '';
+  const page           = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
+  const search         = searchParams.search ?? '';
+  const activeTenantId = readActiveTenantId();
 
-  let result = null;
+  let result     = null;
   let fetchError: string | null = null;
 
   try {
@@ -36,7 +50,17 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Tenants</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Tenants</h1>
+          {activeTenantId && (
+            <p className="text-xs text-amber-700 mt-0.5">
+              A notification context is active.{' '}
+              <Link href={CCRoutes.notifications} className="underline hover:text-amber-900">
+                Manage in Notifications →
+              </Link>
+            </p>
+          )}
+        </div>
         <button
           type="button"
           disabled
@@ -47,7 +71,7 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
         </button>
       </div>
 
-      {/* Search bar (non-functional — query param wiring is backend-ready) */}
+      {/* Search bar */}
       <form method="GET" className="flex items-center gap-2">
         <input
           type="text"
@@ -63,12 +87,7 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
           Search
         </button>
         {search && (
-          <a
-            href="?"
-            className="text-xs text-gray-400 hover:text-gray-700 underline"
-          >
-            Clear
-          </a>
+          <a href="?" className="text-xs text-gray-400 hover:text-gray-700 underline">Clear</a>
         )}
       </form>
 
@@ -79,13 +98,14 @@ export default async function TenantsPage({ searchParams }: TenantsPageProps) {
         </div>
       )}
 
-      {/* Tenants table */}
+      {/* Tenants table — activeTenantId prop enables the "Notif Context" column */}
       {result && (
         <TenantListTable
           tenants={result.items}
           totalCount={result.totalCount}
           page={result.page}
           pageSize={result.pageSize}
+          activeTenantId={activeTenantId}
         />
       )}
     </div>

@@ -1,12 +1,15 @@
 import Link from 'next/link';
 import type { TenantSummary, TenantStatus, TenantType } from '@/types/control-center';
 import { CCRouteBuilders } from '@/lib/control-center-routes';
+import { ActivateTenantButton, ClearTenantContextButton } from '@/components/control-center/tenant-context-button';
+import type { TenantContext } from '@/app/(control-center)/control-center/notifications/actions';
 
 interface TenantListTableProps {
-  tenants:    TenantSummary[];
-  totalCount: number;
-  page:       number;
-  pageSize:   number;
+  tenants:         TenantSummary[];
+  totalCount:      number;
+  page:            number;
+  pageSize:        number;
+  activeTenantId?: string | null;
 }
 
 function formatDate(iso: string): string {
@@ -40,7 +43,7 @@ function StatusBadge({ status }: { status: TenantStatus }) {
   );
 }
 
-export function TenantListTable({ tenants, totalCount, page, pageSize }: TenantListTableProps) {
+export function TenantListTable({ tenants, totalCount, page, pageSize, activeTenantId }: TenantListTableProps) {
   if (tenants.length === 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">
@@ -49,9 +52,10 @@ export function TenantListTable({ tenants, totalCount, page, pageSize }: TenantL
     );
   }
 
+  const showContextCol = activeTenantId !== undefined;
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      {/* Table */}
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-100">
           <thead>
@@ -61,61 +65,84 @@ export function TenantListTable({ tenants, totalCount, page, pageSize }: TenantL
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Primary Contact</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Created</th>
+              {showContextCol && (
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Notif Context</th>
+              )}
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {tenants.map(tenant => (
-              <tr key={tenant.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3">
-                  <p className="text-sm font-medium text-gray-900">{tenant.displayName}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{tenant.code}</p>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-700">
-                  {formatType(tenant.type)}
-                </td>
-                <td className="px-4 py-3">
-                  <StatusBadge status={tenant.status} />
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-700">
-                  {tenant.primaryContactName}
-                </td>
-                <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                  {formatDate(tenant.createdAtUtc)}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <Link
-                    href={CCRouteBuilders.tenantDetail(tenant.id)}
-                    className="text-xs text-indigo-600 font-medium hover:underline whitespace-nowrap"
-                  >
-                    View →
-                  </Link>
-                </td>
-              </tr>
-            ))}
+            {tenants.map(tenant => {
+              const isActive = tenant.id === activeTenantId;
+              const ctx: TenantContext = {
+                tenantId:   tenant.id,
+                tenantName: tenant.displayName,
+                tenantCode: tenant.code,
+              };
+              return (
+                <tr key={tenant.id} className={`transition-colors ${isActive ? 'bg-amber-50' : 'hover:bg-gray-50'}`}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{tenant.displayName}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{tenant.code}</p>
+                      </div>
+                      {isActive && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-[10px] font-semibold text-amber-700 shrink-0">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                          Notif Active
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-700">
+                    {formatType(tenant.type)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={tenant.status} />
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-700">
+                    {tenant.primaryContactName}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                    {formatDate(tenant.createdAtUtc)}
+                  </td>
+                  {showContextCol && (
+                    <td className="px-4 py-3">
+                      {isActive ? (
+                        <ClearTenantContextButton label="Deactivate" />
+                      ) : (
+                        <ActivateTenantButton tenant={ctx} />
+                      )}
+                    </td>
+                  )}
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      href={CCRouteBuilders.tenantDetail(tenant.id)}
+                      className="text-xs text-indigo-600 font-medium hover:underline whitespace-nowrap"
+                    >
+                      View →
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {/* Footer */}
       <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
         <p className="text-xs text-gray-400">
           Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalCount)} of {totalCount}
         </p>
         <div className="flex items-center gap-2">
           {page > 1 && (
-            <Link
-              href={`?page=${page - 1}`}
-              className="text-xs text-indigo-600 hover:underline"
-            >
+            <Link href={`?page=${page - 1}`} className="text-xs text-indigo-600 hover:underline">
               ← Previous
             </Link>
           )}
           {page * pageSize < totalCount && (
-            <Link
-              href={`?page=${page + 1}`}
-              className="text-xs text-indigo-600 hover:underline"
-            >
+            <Link href={`?page=${page + 1}`} className="text-xs text-indigo-600 hover:underline">
               Next →
             </Link>
           )}
