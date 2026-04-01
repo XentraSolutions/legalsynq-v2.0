@@ -42,11 +42,20 @@ export async function deleteProviderConfig(configId: string): Promise<ActionResu
   }
 }
 
-export async function testProviderConfig(configId: string): Promise<ActionResult> {
+export async function testProviderConfig(
+  configId: string,
+  payload?: { toEmail?: string; subject?: string; body?: string }
+): Promise<ActionResult & { message?: string }> {
   await requirePlatformAdmin();
   try {
-    await notifClient.post(`/providers/configs/${configId}/test`, {});
-    return { success: true };
+    const res = await notifClient.post<{ data: { success: boolean; message: string } }>(
+      `/providers/configs/${configId}/test`,
+      payload ?? {}
+    );
+    if (!res.data.success) {
+      return { success: false, error: res.data.message };
+    }
+    return { success: true, message: res.data.message };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Test failed.' };
   }

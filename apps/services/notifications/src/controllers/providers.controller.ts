@@ -131,7 +131,8 @@ export const providersController = {
     try {
       const tenantId = req.tenantId;
       const { configId } = req.params as { configId: string };
-      const result = await testTenantProviderConfig(configId, tenantId);
+      const { toEmail, subject, body } = req.body as { toEmail?: string; subject?: string; body?: string };
+      const result = await testTenantProviderConfig(configId, tenantId, { toEmail, subject, body });
       const statusCode = result.success ? 200 : 422;
       res.status(statusCode).json({ data: result });
     } catch (err) {

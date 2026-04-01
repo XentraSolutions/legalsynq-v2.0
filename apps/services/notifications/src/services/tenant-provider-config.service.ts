@@ -296,7 +296,8 @@ export async function validateTenantProviderConfig(
 
 export async function testTenantProviderConfig(
   id: string,
-  tenantId: string | undefined
+  tenantId: string | undefined,
+  testPayload?: { toEmail?: string; subject?: string; body?: string }
 ): Promise<{ success: boolean; latencyMs?: number; message: string }> {
   const config = await repo.findByIdAndTenant(id, tenantId);
   if (!config) throw Object.assign(new Error("Provider config not found"), { statusCode: 404 });
@@ -318,7 +319,55 @@ export async function testTenantProviderConfig(
     }
   }
 
+  // When a recipient email is supplied, send a real test message instead of a health check
+  const sendRealEmail = config.channel === "email" && testPayload?.toEmail;
+
   try {
+    if (sendRealEmail) {
+      const fromEmail = endpointConfig["fromEmail"] as string;
+      const fromName  = (endpointConfig["fromName"] as string) ?? "";
+      const from      = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
+
+      const emailPayload = {
+        to:      testPayload!.toEmail!,
+        from,
+        subject: testPayload?.subject ?? "LegalSynq — Test Email",
+        body:    testPayload?.body    ?? "This is a test email sent from the LegalSynq Notifications platform.",
+      };
+
+      let sendResult: { success: boolean; providerMessageId?: string; failure?: { message?: string } };
+
+      if (config.providerType === "sendgrid") {
+        const adapter = new SendGridEmailProviderAdapter({
+          apiKey: credentials["apiKey"] as string,
+          defaultFromEmail: fromEmail,
+          defaultFromName: fromName,
+        });
+        sendResult = await adapter.send(emailPayload);
+      } else if (config.providerType === "smtp") {
+        const adapter = new SmtpEmailProviderAdapter({
+          host:     endpointConfig["host"] as string,
+          port:     Number(endpointConfig["port"]),
+          secure:   (endpointConfig["secure"] as boolean) ?? false,
+          username: credentials["username"] as string,
+          password: credentials["password"] as string,
+          fromEmail,
+          fromName: fromName || undefined,
+        });
+        sendResult = await adapter.send(emailPayload);
+      } else {
+        return { success: false, message: `Sending test emails is not supported for provider: ${config.providerType}` };
+      }
+
+      if (sendResult.success) {
+        await repo.update(id, { healthStatus: "healthy" });
+        return { success: true, message: `Test email delivered to ${testPayload!.toEmail}` };
+      } else {
+        return { success: false, message: sendResult.failure?.message ?? "Send failed — check provider logs" };
+      }
+    }
+
+    // No recipient supplied — fall back to health check
     let result: { status: "healthy" | "degraded" | "down"; latencyMs?: number };
 
     if (config.channel === "email" && config.providerType === "sendgrid") {
@@ -330,19 +379,19 @@ export async function testTenantProviderConfig(
       result = await adapter.healthCheck();
     } else if (config.channel === "email" && config.providerType === "smtp") {
       const adapter = new SmtpEmailProviderAdapter({
-        host: endpointConfig["host"] as string,
-        port: Number(endpointConfig["port"]),
-        secure: (endpointConfig["secure"] as boolean) ?? false,
+        host:     endpointConfig["host"] as string,
+        port:     Number(endpointConfig["port"]),
+        secure:   (endpointConfig["secure"] as boolean) ?? false,
         username: credentials["username"] as string,
         password: credentials["password"] as string,
         fromEmail: endpointConfig["fromEmail"] as string,
-        fromName: endpointConfig["fromName"] as string | undefined,
+        fromName:  endpointConfig["fromName"] as string | undefined,
       });
       result = await adapter.healthCheck();
     } else if (config.channel === "sms" && config.providerType === "twilio") {
       const adapter = new TwilioSmsProviderAdapter({
-        accountSid: credentials["accountSid"] as string,
-        authToken: credentials["authToken"] as string,
+        accountSid:        credentials["accountSid"] as string,
+        authToken:         credentials["authToken"] as string,
         defaultFromNumber: endpointConfig["fromNumber"] as string,
       });
       result = await adapter.healthCheck();
@@ -351,9 +400,7 @@ export async function testTenantProviderConfig(
     }
 
     const success = result.status !== "down";
-    const healthStatus = result.status;
-
-    await repo.update(id, { healthStatus });
+    await repo.update(id, { healthStatus: result.status });
 
     return {
       success,
