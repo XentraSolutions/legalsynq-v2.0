@@ -3,39 +3,65 @@ import { requireCCPlatformAdmin } from '@/lib/auth-guards';
 import { CCRoutes }               from '@/lib/control-center-routes';
 import { notifWebApi }            from '@/lib/notif-web-api';
 
-interface DeliveryEvent {
-  id:             string;
-  channel:        string;
-  recipientId?:   string | null;
-  recipientEmail?:string | null;
-  status:         string;
-  templateKey?:   string | null;
-  providerRef?:   string | null;
-  failureReason?: string | null;
-  occurredAt:     string;
+/**
+ * Notification record as returned by GET /notifications/v1/notifications
+ */
+interface NotificationRecord {
+  id:                 string;
+  channel:            string;
+  status:             string;
+  recipientJson:      string;
+  templateKey?:       string | null;
+  providerUsed?:      string | null;
+  lastErrorMessage?:  string | null;
+  failureCategory?:   string | null;
+  blockedReasonCode?: string | null;
+  createdAt:          string;
+}
+
+interface ListResponse {
+  data: NotificationRecord[];
+  meta: { total: number; limit: number; offset: number };
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  delivered: 'bg-green-50 text-green-700 border-green-200',
-  sent:      'bg-green-50 text-green-700 border-green-200',
-  failed:    'bg-red-50 text-red-700 border-red-200',
-  bounced:   'bg-orange-50 text-orange-700 border-orange-200',
-  suppressed:'bg-gray-50 text-gray-600 border-gray-200',
-  queued:    'bg-yellow-50 text-yellow-700 border-yellow-200',
+  sent:       'bg-green-50 text-green-700 border-green-200',
+  accepted:   'bg-blue-50 text-blue-700 border-blue-200',
+  processing: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+  failed:     'bg-red-50 text-red-700 border-red-200',
+  blocked:    'bg-gray-100 text-gray-600 border-gray-300',
 };
+
+function parseRecipient(recipientJson: string): string {
+  try {
+    const r = JSON.parse(recipientJson) as Record<string, string>;
+    return r.email ?? r.phoneNumber ?? r.userId ?? r.to ?? Object.values(r)[0] ?? '—';
+  } catch {
+    return recipientJson;
+  }
+}
 
 export default async function NotifLogPage() {
   await requireCCPlatformAdmin();
 
-  let events:     DeliveryEvent[] = [];
-  let fetchError: string | null   = null;
+  let records:    NotificationRecord[] = [];
+  let total:      number               = 0;
+  let fetchError: string | null        = null;
+  let noTenant    = false;
+
+  const tenantSet = true; // notifWebApi reads cc_tenant_context cookie; if missing the request will 400/401
 
   try {
-    events = await notifWebApi.get<DeliveryEvent[] | { items: DeliveryEvent[] }>('/delivery/log?pageSize=50')
-      .then(r => notifWebApi.unwrap(r as DeliveryEvent[] | { items: DeliveryEvent[] }))
-      .catch(() => []);
-  } catch (err) {
-    fetchError = err instanceof Error ? err.message : 'Failed to load delivery log.';
+    const res = await notifWebApi.get<ListResponse>('/notifications?limit=50');
+    records = res.data ?? [];
+    total   = res.meta?.total ?? records.length;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('400') || msg.includes('MISSING_TENANT')) {
+      noTenant = true;
+    } else {
+      fetchError = msg;
+    }
   }
 
   return (
@@ -47,16 +73,25 @@ export default async function NotifLogPage() {
           <span className="text-gray-700 font-medium">Delivery Log</span>
         </div>
         <h1 className="text-xl font-semibold text-gray-900">Delivery Log</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Recent notification dispatch events — last 50 entries.</p>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Recent notification dispatch records — last 50, newest first.
+          {total > 0 && <span className="font-medium text-gray-700"> {total} total.</span>}
+        </p>
       </div>
+
+      {noTenant && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+          No tenant context is set. Select a tenant context in the sidebar to view delivery records for a specific tenant.
+        </div>
+      )}
 
       {fetchError && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{fetchError}</div>
       )}
 
       <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-        {events.length === 0 && !fetchError ? (
-          <p className="px-4 py-10 text-center text-sm text-gray-400">No delivery events found.</p>
+        {records.length === 0 && !fetchError && !noTenant ? (
+          <p className="px-4 py-10 text-center text-sm text-gray-400">No delivery records found for this tenant.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-100 text-sm">
@@ -64,40 +99,40 @@ export default async function NotifLogPage() {
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium">Channel</th>
                   <th className="px-4 py-2.5 text-left font-medium">Recipient</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Template</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Template Key</th>
                   <th className="px-4 py-2.5 text-left font-medium">Status</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Provider Ref</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Failure</th>
-                  <th className="px-4 py-2.5 text-left font-medium">Time</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Provider Used</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Failure / Block Reason</th>
+                  <th className="px-4 py-2.5 text-left font-medium">Time (UTC)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {events.map(e => (
-                  <tr key={e.id} className="hover:bg-gray-50">
+                {records.map(r => (
+                  <tr key={r.id} className="hover:bg-gray-50">
                     <td className="px-4 py-2.5">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        {e.channel}
+                        {r.channel}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-gray-700">
-                      {e.recipientEmail ?? e.recipientId ?? <span className="text-gray-400 italic">—</span>}
+                    <td className="px-4 py-2.5 text-xs text-gray-700 max-w-[160px] truncate">
+                      {parseRecipient(r.recipientJson)}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-[11px] text-gray-600">
-                      {e.templateKey ?? <span className="text-gray-400 italic">—</span>}
+                      {r.templateKey ?? <span className="text-gray-400 italic">—</span>}
                     </td>
                     <td className="px-4 py-2.5">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${STATUS_COLORS[e.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                        {e.status}
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${STATUS_COLORS[r.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                        {r.status}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500">
-                      {e.providerRef ? e.providerRef.slice(0, 16) + '…' : <span className="text-gray-400 italic">—</span>}
+                      {r.providerUsed ?? <span className="text-gray-400 italic">—</span>}
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-red-600 max-w-[180px] truncate">
-                      {e.failureReason ?? <span className="text-gray-400 italic">—</span>}
+                    <td className="px-4 py-2.5 text-xs text-red-600 max-w-[200px] truncate" title={r.lastErrorMessage ?? r.blockedReasonCode ?? ''}>
+                      {r.lastErrorMessage ?? r.blockedReasonCode ?? <span className="text-gray-400 italic">—</span>}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 whitespace-nowrap">
-                      {new Date(e.occurredAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
+                      {new Date(r.createdAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
                     </td>
                   </tr>
                 ))}
