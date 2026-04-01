@@ -111,22 +111,20 @@ function AppSwitcher() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { setSelectedProductId } = useProduct();
-  const { session } = useSession();
+  const { session, isLoading } = useSession();
 
-  // Build the set of enabled product IDs from the session.
-  // When enabledProducts is empty (e.g. PlatformAdmin or not yet loaded) show all.
-  const enabledIds: Set<string> = (() => {
-    const ep = session?.enabledProducts ?? [];
-    if (ep.length === 0) return new Set(ALL_PRODUCTS.map(p => p.id));
-    const ids = new Set<string>();
-    for (const code of ep) {
-      const navKey = PRODUCT_CODE_TO_NAV_KEY[code];
-      if (navKey) ids.add(navKey);
-    }
-    return ids;
+  // Compute visible products only once the session is confirmed loaded.
+  // Distinguish three states:
+  //   isLoading=true  → session is still being fetched; show nothing yet
+  //   session loaded, enabledProducts.length > 0 → show only those products
+  //   session loaded, enabledProducts.length === 0 → PlatformAdmin / unconfigured; show all
+  const visibleProducts: typeof ALL_PRODUCTS[number][] = (() => {
+    if (isLoading || !session) return [];                   // not ready yet
+    const ep = session.enabledProducts;
+    if (ep.length === 0) return [...ALL_PRODUCTS];          // fallback: show all
+    const ids = new Set(ep.map(code => PRODUCT_CODE_TO_NAV_KEY[code]).filter(Boolean));
+    return ALL_PRODUCTS.filter(p => ids.has(p.id));
   })();
-
-  const visibleProducts = ALL_PRODUCTS.filter(p => enabledIds.has(p.id));
 
   useEffect(() => {
     if (!open) return;
