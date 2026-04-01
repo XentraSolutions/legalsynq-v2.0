@@ -92,4 +92,13 @@ export const Routes = {
 
   /** /roles/:id — Role detail */
   roleDetail: (id: string) => `/roles/${id}`,
+
+  /** /groups — Tenant groups list */
+  groups: '/groups',
+
+  /** /groups/:id — Group detail */
+  groupDetail: (id: string) => `/groups/${id}`,
+
+  /** /permissions — Platform permission catalog */
+  permissions: '/permissions',
 } as const;

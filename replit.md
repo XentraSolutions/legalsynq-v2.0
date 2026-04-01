@@ -2482,3 +2482,31 @@ monorepo at `apps/services/notifications/`.
 ### TypeScript
 - `tsc --noEmit` passes with 0 errors
 - `GET http://localhost:5008/v1/health` → `{"status":"ok","service":"notifications",...}`
+
+## UIX-001 — Control Center Admin API (22 endpoints)
+- Full design documented in `analysis/UIX-001-01.md`
+- MVP: 14 endpoints (A01–A08, A14–A17, A20–A21)
+- Phase 2: 8 endpoints (A09–A13, A18–A19, A22) — avatar, MFA, session tracking
+- `PortalOrigin` enum: `TENANT_PORTAL | CONTROL_CENTER` — used in PasswordResetTokens and UserInvitations
+
+## UIX-002 — Tenant User Management (MVP) — COMPLETED 2026-04-01
+
+### Backend changes (Identity service)
+- **Domain:** `User.Activate()`, `UserOrganizationMembership.IsPrimary/SetPrimary/ClearPrimary`, new entities `TenantGroup`, `GroupMembership`, `UserInvitation`
+- **Infrastructure:** EF configs for 3 new entities; `IdentityDbContext` updated with new DbSets
+- **Migration:** `20260401000001_UIX002_UserManagement` — auto-applies on startup
+- **Endpoints (12 new):** activate, invite, resend-invite, assign/set-primary/remove membership, list/get/create group, add/remove group member, list permissions
+- `GetUser` now returns `memberships[]`, `groups[]`, `roles[]`
+- `ListUsers` now returns `status: Invited`, `primaryOrg`, `groupCount`
+
+### Frontend changes (Control Center)
+- **Types:** `OrgMembershipSummary`, `UserGroupSummary`, `UserRoleSummary`, `GroupSummary`, `GroupDetail`, `GroupMemberSummary`, `PermissionCatalogItem`; extended `UserSummary` and `UserDetail`
+- **API client:** 12 new methods across `users.*`, `groups.*`, `permissions.*`
+- **Mappers:** `mapGroupSummary`, `mapGroupDetail`, `mapPermissionCatalogItem`; extended `mapUserSummary` and `mapUserDetail`
+- **Nav:** Groups + Permissions added to IDENTITY section
+- **Routes:** `Routes.groups`, `Routes.groupDetail(id)`, `Routes.permissions`
+- **New pages:** `/groups`, `/groups/[id]`, `/permissions`, `/tenant-users/invite`
+- **New components:** `GroupListTable`, `GroupDetailCard`, `PermissionCatalogTable`
+- **Updated components:** `UserListTable` (Primary Org + Groups columns), `UserDetailCard` (membership/group/role panels), `UserActions` (wired activate/deactivate/resend-invite to real BFF)
+- **BFF routes:** `/api/identity/admin/users/[id]/activate|deactivate|resend-invite`, `/api/identity/admin/users/invite`
+- Full report: `analysis/UIX-002-report.md`

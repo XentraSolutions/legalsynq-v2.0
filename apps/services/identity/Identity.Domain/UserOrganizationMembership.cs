@@ -6,6 +6,7 @@ public class UserOrganizationMembership
     public Guid UserId { get; private set; }
     public Guid OrganizationId { get; private set; }
     public string MemberRole { get; private set; } = string.Empty;
+    public bool IsPrimary { get; private set; }
     public bool IsActive { get; private set; }
     public DateTime JoinedAtUtc { get; private set; }
     public Guid? GrantedByUserId { get; private set; }
@@ -39,6 +40,10 @@ public class UserOrganizationMembership
     }
 
     public void Deactivate() => IsActive = false;
+
+    public void SetPrimary() => IsPrimary = true;
+
+    public void ClearPrimary() => IsPrimary = false;
 
     public void UpdateRole(string memberRole)
     {

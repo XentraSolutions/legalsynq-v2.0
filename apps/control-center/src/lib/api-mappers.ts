@@ -59,6 +59,9 @@ import type {
   AuditExport,
   IntegrityCheckpoint,
   LegalHold,
+  GroupSummary,
+  GroupDetail,
+  PermissionCatalogItem,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -295,6 +298,10 @@ export function mapUserSummary(raw: unknown): UserSummary {
     tenantCode:      str(r, 'tenant_code',   'tenantCode',   '',       'mapUserSummary.tenantCode'),
     lastLoginAtUtc:  optStr(r, 'last_login_at', 'lastLoginAtUtc')
                        ?? optStr(r, 'last_login_at_utc', 'lastLoginAtUtc'),
+    primaryOrg: optStr(r, 'primary_org', 'primaryOrg'),
+    groupCount: typeof (r['group_count'] ?? r['groupCount']) === 'number'
+      ? (r['group_count'] ?? r['groupCount']) as number
+      : undefined,
   };
 }
 
@@ -313,6 +320,11 @@ export function mapUserSummary(raw: unknown): UserSummary {
 export function mapUserDetail(raw: unknown): UserDetail {
   const r    = asObj(raw);
   const base = mapUserSummary(raw);
+
+  const rawMemberships = asArr(r['memberships']);
+  const rawGroups      = asArr(r['groups']);
+  const rawRoles       = asArr(r['roles']);
+
   return {
     ...base,
     tenantDisplayName: str(r, 'tenant_display_name', 'tenantDisplayName', base.tenantCode || base.tenantId),
@@ -320,6 +332,80 @@ export function mapUserDetail(raw: unknown): UserDetail {
     updatedAtUtc:      str(r, 'updated_at',           'updatedAtUtc',      new Date().toISOString()),
     isLocked:          bool(r, 'is_locked',           'isLocked',          false),
     inviteSentAtUtc:   optStr(r, 'invite_sent_at',    'inviteSentAtUtc'),
+    memberships: rawMemberships.map(m => {
+      const mo = asObj(m);
+      return {
+        membershipId:   str(mo, 'membership_id',   'membershipId',   ''),
+        organizationId: str(mo, 'organization_id', 'organizationId', ''),
+        orgName:        str(mo, 'org_name',         'orgName',        ''),
+        memberRole:     str(mo, 'member_role',      'memberRole',     ''),
+        isPrimary:      bool(mo, 'is_primary',      'isPrimary',      false),
+        joinedAtUtc:    str(mo, 'joined_at_utc',    'joinedAtUtc',    ''),
+      };
+    }),
+    groups: rawGroups.map(g => {
+      const go = asObj(g);
+      return {
+        groupId:     str(go, 'group_id',    'groupId',    ''),
+        groupName:   str(go, 'group_name',  'groupName',  ''),
+        joinedAtUtc: str(go, 'joined_at_utc', 'joinedAtUtc', ''),
+      };
+    }),
+    roles: rawRoles.map(ro => {
+      const r2 = asObj(ro);
+      return {
+        roleId:       str(r2, 'role_id',       'roleId',       ''),
+        roleName:     str(r2, 'role_name',      'roleName',     ''),
+        assignmentId: str(r2, 'assignment_id',  'assignmentId', ''),
+      };
+    }),
+  };
+}
+
+export function mapGroupSummary(raw: unknown): GroupSummary {
+  const r = asObj(raw);
+  return {
+    id:          str(r, 'id',           'id',          ''),
+    tenantId:    str(r, 'tenant_id',    'tenantId',    ''),
+    name:        str(r, 'name',         'name',        ''),
+    description: optStr(r, 'description', 'description'),
+    memberCount: num(r, 'member_count', 'memberCount', 0),
+    isActive:    bool(r, 'is_active',   'isActive',    true),
+    createdAtUtc: str(r, 'created_at_utc', 'createdAtUtc', ''),
+  };
+}
+
+export function mapGroupDetail(raw: unknown): GroupDetail {
+  const r    = asObj(raw);
+  const base = mapGroupSummary(raw);
+  const rawMembers = asArr(r['members']);
+  return {
+    ...base,
+    updatedAtUtc: str(r, 'updated_at_utc', 'updatedAtUtc', ''),
+    members: rawMembers.map(m => {
+      const mo = asObj(m);
+      return {
+        membershipId: str(mo, 'membership_id', 'membershipId', ''),
+        userId:       str(mo, 'user_id',       'userId',       ''),
+        firstName:    str(mo, 'first_name',    'firstName',    ''),
+        lastName:     str(mo, 'last_name',     'lastName',     ''),
+        email:        str(mo, 'email',         'email',        ''),
+        joinedAtUtc:  str(mo, 'joined_at_utc', 'joinedAtUtc',  ''),
+      };
+    }),
+  };
+}
+
+export function mapPermissionCatalogItem(raw: unknown): PermissionCatalogItem {
+  const r = asObj(raw);
+  return {
+    id:          str(r, 'id',          'id',          ''),
+    code:        str(r, 'code',        'code',        ''),
+    name:        str(r, 'name',        'name',        ''),
+    description: optStr(r, 'description', 'description'),
+    productId:   str(r, 'product_id',  'productId',   ''),
+    productName: str(r, 'product_name','productName',  ''),
+    isActive:    bool(r, 'is_active',  'isActive',    true),
   };
 }
 

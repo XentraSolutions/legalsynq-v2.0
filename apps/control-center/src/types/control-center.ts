@@ -80,6 +80,8 @@ export interface UserSummary {
   tenantId:        string;
   tenantCode:      string;
   lastLoginAtUtc?: string;
+  primaryOrg?:     string;
+  groupCount?:     number;
 }
 
 /**
@@ -95,6 +97,68 @@ export interface UserDetail extends UserSummary {
   updatedAtUtc:      string;
   isLocked?:         boolean;
   inviteSentAtUtc?:  string;
+  memberships?:      OrgMembershipSummary[];
+  groups?:           UserGroupSummary[];
+  roles?:            UserRoleSummary[];
+}
+
+export interface OrgMembershipSummary {
+  membershipId:   string;
+  organizationId: string;
+  orgName:        string;
+  memberRole:     string;
+  isPrimary:      boolean;
+  joinedAtUtc:    string;
+}
+
+export interface UserGroupSummary {
+  groupId:     string;
+  groupName:   string;
+  joinedAtUtc: string;
+}
+
+export interface UserRoleSummary {
+  roleId:       string;
+  roleName:     string;
+  assignmentId: string;
+}
+
+// ── Groups ────────────────────────────────────────────────────────────────────
+
+export interface GroupSummary {
+  id:           string;
+  tenantId:     string;
+  name:         string;
+  description?: string;
+  memberCount:  number;
+  isActive:     boolean;
+  createdAtUtc: string;
+}
+
+export interface GroupMemberSummary {
+  membershipId: string;
+  userId:       string;
+  firstName:    string;
+  lastName:     string;
+  email:        string;
+  joinedAtUtc:  string;
+}
+
+export interface GroupDetail extends GroupSummary {
+  updatedAtUtc: string;
+  members:      GroupMemberSummary[];
+}
+
+// ── Permissions catalog ────────────────────────────────────────────────────────
+
+export interface PermissionCatalogItem {
+  id:          string;
+  code:        string;
+  name:        string;
+  description?: string;
+  productId:   string;
+  productName: string;
+  isActive:    boolean;
 }
 
 // ── Roles & Permissions ───────────────────────────────────────────────────────

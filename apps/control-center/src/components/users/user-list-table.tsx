@@ -89,6 +89,8 @@ export function UserListTable({
               {showTenantColumn && (
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Tenant</th>
               )}
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Primary Org</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Groups</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Last Login</th>
             </tr>
           </thead>
@@ -117,6 +119,12 @@ export function UserListTable({
                     <p className="text-sm text-gray-700">{user.tenantCode}</p>
                   </td>
                 )}
+                <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                  {user.primaryOrg ?? <span className="text-gray-300">—</span>}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
+                  {user.groupCount !== undefined ? user.groupCount : <span className="text-gray-300">—</span>}
+                </td>
                 <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                   {user.lastLoginAtUtc ? formatLoginDate(user.lastLoginAtUtc) : '—'}
                 </td>

@@ -38,6 +38,11 @@ public class IdentityDbContext : DbContext
     public DbSet<ProductOrganizationTypeRule>   ProductOrganizationTypeRules   => Set<ProductOrganizationTypeRule>();
     public DbSet<ScopedRoleAssignment>          ScopedRoleAssignments          => Set<ScopedRoleAssignment>();
 
+    // UIX-002: User Management
+    public DbSet<TenantGroup>                   TenantGroups                   => Set<TenantGroup>();
+    public DbSet<GroupMembership>               GroupMemberships               => Set<GroupMembership>();
+    public DbSet<UserInvitation>                UserInvitations                => Set<UserInvitation>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(IdentityDbContext).Assembly);

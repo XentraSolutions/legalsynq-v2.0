@@ -32,10 +32,11 @@
  * TODO: POST /identity/api/admin/users/{userId}/resend-invite
  */
 
-import { useState }         from 'react';
-import type { UserStatus }  from '@/types/control-center';
-import { ConfirmDialog }    from '@/components/ui/confirm-dialog';
-import { track }            from '@/lib/analytics';
+import { useState }           from 'react';
+import { useRouter }          from 'next/navigation';
+import type { UserStatus }    from '@/types/control-center';
+import { ConfirmDialog }      from '@/components/ui/confirm-dialog';
+import { track }              from '@/lib/analytics';
 
 interface UserActionsProps {
   userId:        string;
@@ -65,7 +66,11 @@ const ACTION_LABELS: Record<UserAction, string> = {
   'resend-invite': 'Invitation resent',
 };
 
+const WIRED_ACTIONS = new Set<UserAction>(['activate', 'deactivate', 'resend-invite']);
+
 export function UserActions({ userId, currentStatus, isLocked = false }: UserActionsProps) {
+  const router = useRouter();
+
   const [confirming, setConfirming] = useState<UserAction | null>(null);
   const [pending, setPending]       = useState<UserAction | null>(null);
   const [feedback, setFeedback]     = useState<FeedbackState | null>(null);
@@ -84,10 +89,19 @@ export function UserActions({ userId, currentStatus, isLocked = false }: UserAct
     setPending(action);
 
     try {
-      // TODO: replace with real BFF proxy call
-      // const res = await fetch(`/api/identity/api/admin/users/${userId}/${action}`, { method: 'POST' });
-      // if (!res.ok) throw new Error('Action failed');
-      await simulateAction(action); // stub — remove when wired
+      if (WIRED_ACTIONS.has(action)) {
+        const res = await fetch(
+          `/api/identity/admin/users/${encodeURIComponent(userId)}/${action}`,
+          { method: 'POST' },
+        );
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({})) as { message?: string };
+          throw new Error(body.message ?? 'Action failed');
+        }
+        router.refresh();
+      } else {
+        await simulateAction(action);
+      }
 
       const trackEvent: Record<UserAction, string> = {
         'activate':      'user.status.change',
@@ -99,8 +113,9 @@ export function UserActions({ userId, currentStatus, isLocked = false }: UserAct
       };
       track(trackEvent[action] as import('@/lib/analytics').TrackEvent, { userId, action });
       showFeedback('success', `${ACTION_LABELS[action]}.`);
-    } catch {
-      showFeedback('error', `Failed to ${action.replace('-', ' ')}. Please try again.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : `Failed to ${action.replace(/-/g, ' ')}.`;
+      showFeedback('error', `${msg} Please try again.`);
     } finally {
       setPending(null);
     }

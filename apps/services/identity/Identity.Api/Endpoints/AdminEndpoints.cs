@@ -84,12 +84,39 @@ public static class AdminEndpoints
         // Step 27 (Phase B): user deactivation — emits identity.user.deactivated.
         routes.MapPatch("/api/admin/users/{id:guid}/deactivate",            DeactivateUser);
 
+        // UIX-002: activate user
+        routes.MapPost("/api/admin/users/{id:guid}/activate",               ActivateUser);
+
+        // UIX-002: invite user
+        routes.MapPost("/api/admin/users/invite",                           InviteUser);
+
+        // UIX-002: resend invite
+        routes.MapPost("/api/admin/users/{id:guid}/resend-invite",          ResendInvite);
+
         // ── Role assignment ───────────────────────────────────────────────────
         routes.MapPost("/api/admin/users/{id:guid}/roles",                  AssignRole);
         routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}",  RevokeRole);
 
         // Phase I: scoped role summary for a user (non-global scope visibility)
         routes.MapGet("/api/admin/users/{id:guid}/scoped-roles",            GetScopedRoles);
+
+        // ── Memberships ───────────────────────────────────────────────────────
+        // UIX-002: assign user to organization, set primary, remove (scaffold)
+        routes.MapPost("/api/admin/users/{id:guid}/memberships",                                   AssignMembership);
+        routes.MapPost("/api/admin/users/{id:guid}/memberships/{membershipId:guid}/set-primary",   SetPrimaryMembership);
+        routes.MapDelete("/api/admin/users/{id:guid}/memberships/{membershipId:guid}",             RemoveMembership);
+
+        // ── Groups ────────────────────────────────────────────────────────────
+        // UIX-002: tenant-scoped group management
+        routes.MapGet("/api/admin/groups",                              ListGroups);
+        routes.MapGet("/api/admin/groups/{id:guid}",                    GetGroup);
+        routes.MapPost("/api/admin/groups",                             CreateGroup);
+        routes.MapPost("/api/admin/groups/{id:guid}/members",           AddGroupMember);
+        routes.MapDelete("/api/admin/groups/{id:guid}/members/{userId:guid}", RemoveGroupMember);
+
+        // ── Permissions catalog ───────────────────────────────────────────────
+        // UIX-002: read-only capability/permission catalog
+        routes.MapGet("/api/admin/permissions",                         ListPermissions);
 
         return routes;
     }
@@ -538,7 +565,16 @@ public static class AdminEndpoints
                                         && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
                                .Select(s => s.Role!.Name)
                                .FirstOrDefault() ?? "User",
-                status     = u.IsActive ? "Active" : "Inactive",
+                status     = u.IsActive
+                    ? "Active"
+                    : db.UserInvitations.Any(i => i.UserId == u.Id && i.Status == UserInvitation.Statuses.Pending)
+                        ? "Invited"
+                        : "Inactive",
+                primaryOrg = db.UserOrganizationMemberships
+                               .Where(m => m.UserId == u.Id && m.IsPrimary && m.IsActive)
+                               .Select(m => m.Organization.DisplayName ?? m.Organization.Name)
+                               .FirstOrDefault(),
+                groupCount = db.GroupMemberships.Count(gm => gm.UserId == u.Id),
                 tenantId   = u.TenantId,
                 tenantCode = u.Tenant.Code,
                 createdAtUtc = u.CreatedAtUtc,
@@ -554,16 +590,28 @@ public static class AdminEndpoints
         });
     }
 
-    private static async Task<IResult> GetUser(Guid id, IdentityDbContext db)
+    private static async Task<IResult> GetUser(Guid id, IdentityDbContext db, CancellationToken ct)
     {
-        // Step 6 Phase B: ScopedRoleAssignments (GLOBAL) is the primary role source.
         var u = await db.Users
             .Include(u => u.Tenant)
             .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global))
                 .ThenInclude(s => s.Role)
-            .FirstOrDefaultAsync(u => u.Id == id);
+            .Include(u => u.OrganizationMemberships.Where(m => m.IsActive))
+                .ThenInclude(m => m.Organization)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
 
         if (u is null) return Results.NotFound();
+
+        var hasPendingInvite = await db.UserInvitations.AnyAsync(
+            i => i.UserId == id && i.Status == UserInvitation.Statuses.Pending, ct);
+
+        var groupMemberships = await db.GroupMemberships
+            .Include(gm => gm.Group)
+            .Where(gm => gm.UserId == id)
+            .Select(gm => new { groupId = gm.GroupId, groupName = gm.Group.Name, joinedAtUtc = gm.JoinedAtUtc })
+            .ToListAsync(ct);
+
+        var status = u.IsActive ? "Active" : (hasPendingInvite ? "Invited" : "Inactive");
 
         return Results.Ok(new
         {
@@ -572,13 +620,25 @@ public static class AdminEndpoints
             lastName          = u.LastName,
             email             = u.Email,
             role              = u.ScopedRoleAssignments.Select(s => s.Role.Name).FirstOrDefault() ?? "User",
-            status            = u.IsActive ? "Active" : "Inactive",
+            roles             = u.ScopedRoleAssignments.Select(s => new { roleId = s.RoleId, roleName = s.Role.Name, assignmentId = s.Id }),
+            status,
             tenantId          = u.TenantId,
             tenantCode        = u.Tenant.Code,
             tenantDisplayName = u.Tenant.Name,
             createdAtUtc      = u.CreatedAtUtc,
             updatedAtUtc      = u.UpdatedAtUtc,
             isLocked          = false,
+            memberships = u.OrganizationMemberships.Select(m => new
+            {
+                membershipId   = m.Id,
+                organizationId = m.OrganizationId,
+                orgName        = m.Organization.DisplayName ?? m.Organization.Name,
+                memberRole     = m.MemberRole,
+                isPrimary      = m.IsPrimary,
+                joinedAtUtc    = m.JoinedAtUtc,
+            }),
+            groups            = groupMemberships,
+            groupCount        = groupMemberships.Count,
         });
     }
 
@@ -1643,6 +1703,495 @@ public static class AdminEndpoints
         });
     }
 
+    // =========================================================================
+    // UIX-002: USER ACTIVATION
+    // =========================================================================
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/activate
+    /// Sets the user's IsActive flag to true. Idempotent.
+    /// Emits identity.user.activated audit event.
+    /// </summary>
+    private static async Task<IResult> ActivateUser(
+        Guid              id,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        CancellationToken ct)
+    {
+        var user = await db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        var changed = user.Activate();
+        if (!changed) return Results.NoContent();
+
+        await db.SaveChangesAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.activated",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+            Actor = new AuditEventActorDto { Type = ActorType.System, Name = "admin-api" },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "UserActivated",
+            Description = $"User '{user.Email}' activated in tenant {user.TenantId}.",
+            Before      = JsonSerializer.Serialize(new { isActive = false, email = user.Email }),
+            After       = JsonSerializer.Serialize(new { isActive = true,  email = user.Email }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.activated", user.Id.ToString()),
+            Tags = ["user-management", "lifecycle", "activation"],
+        });
+
+        return Results.NoContent();
+    }
+
+    // =========================================================================
+    // UIX-002: INVITE USER
+    // =========================================================================
+
+    /// <summary>
+    /// POST /api/admin/users/invite
+    /// Creates a new inactive user record and a pending UserInvitation.
+    /// The invitation token is logged to the console in non-production (no email sender yet).
+    /// Returns 201 with the new userId and invitationId.
+    /// </summary>
+    private static async Task<IResult> InviteUser(
+        InviteUserRequest body,
+        IdentityDbContext db,
+        IPasswordHasher   passwordHasher,
+        IAuditEventClient auditClient,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.Email))
+            return Results.BadRequest(new { error = "email is required." });
+        if (string.IsNullOrWhiteSpace(body.FirstName))
+            return Results.BadRequest(new { error = "firstName is required." });
+        if (string.IsNullOrWhiteSpace(body.LastName))
+            return Results.BadRequest(new { error = "lastName is required." });
+        if (body.TenantId == Guid.Empty)
+            return Results.BadRequest(new { error = "tenantId is required." });
+
+        var tenant = await db.Tenants.FindAsync([body.TenantId], ct);
+        if (tenant is null) return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
+
+        var emailLower = body.Email.ToLowerInvariant().Trim();
+        var existing = await db.Users.AnyAsync(u => u.TenantId == body.TenantId && u.Email == emailLower, ct);
+        if (existing)
+            return Results.Conflict(new { error = $"User with email '{emailLower}' already exists in this tenant." });
+
+        // Create user as inactive (not yet accepted invite).
+        var tempPasswordHash = passwordHasher.Hash(Guid.NewGuid().ToString());
+        var user = User.Create(body.TenantId, emailLower, tempPasswordHash, body.FirstName.Trim(), body.LastName.Trim());
+        user.Deactivate();
+        db.Users.Add(user);
+
+        // Assign initial role if provided.
+        if (body.RoleId.HasValue && body.RoleId.Value != Guid.Empty)
+        {
+            var role = await db.Roles.FindAsync([body.RoleId.Value], ct);
+            if (role is not null)
+            {
+                var sra = ScopedRoleAssignment.Create(user.Id, role.Id, ScopedRoleAssignment.ScopeTypes.Global, tenantId: body.TenantId, assignedByUserId: body.InvitedByUserId);
+                db.ScopedRoleAssignments.Add(sra);
+            }
+        }
+
+        // Create invitation token (raw token logged; hash stored).
+        var rawToken   = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var tokenHash  = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(rawToken)));
+        var invitation = UserInvitation.Create(user.Id, body.TenantId, tokenHash, UserInvitation.PortalOrigins.TenantPortal, body.InvitedByUserId);
+        db.UserInvitations.Add(invitation);
+
+        await db.SaveChangesAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.invited",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = body.TenantId.ToString() },
+            Actor = new AuditEventActorDto { Type = ActorType.System, Name = "admin-api" },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "UserInvited",
+            Description = $"User '{emailLower}' invited to tenant {body.TenantId}.",
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.invited", invitation.Id.ToString()),
+            Tags = ["user-management", "invite"],
+        });
+
+        // DEV ONLY: log the raw token so the invite link can be tested without email.
+        Console.WriteLine($"[INVITE TOKEN — dev only] userId={user.Id} token={rawToken}");
+
+        return Results.Created(
+            $"/api/admin/users/{user.Id}",
+            new { userId = user.Id, invitationId = invitation.Id, email = emailLower });
+    }
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/resend-invite
+    /// Revokes all pending invitations for the user, creates a new one.
+    /// </summary>
+    private static async Task<IResult> ResendInvite(
+        Guid              id,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        CancellationToken ct)
+    {
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        var pending = await db.UserInvitations
+            .Where(i => i.UserId == id && i.Status == UserInvitation.Statuses.Pending)
+            .ToListAsync(ct);
+
+        foreach (var inv in pending) inv.Revoke();
+
+        var rawToken  = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var tokenHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(rawToken)));
+        var newInvite = UserInvitation.Create(id, user.TenantId, tokenHash, UserInvitation.PortalOrigins.TenantPortal);
+        db.UserInvitations.Add(newInvite);
+
+        await db.SaveChangesAsync(ct);
+
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.invite_resent",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+            Actor = new AuditEventActorDto { Type = ActorType.System, Name = "admin-api" },
+            Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
+            Action      = "InviteResent",
+            Description = $"Invite resent for user '{user.Email}'.",
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.invite_resent", newInvite.Id.ToString()),
+            Tags = ["user-management", "invite"],
+        });
+
+        Console.WriteLine($"[RESEND INVITE — dev only] userId={id} token={rawToken}");
+
+        return Results.Ok(new { invitationId = newInvite.Id });
+    }
+
+    // =========================================================================
+    // UIX-002: MEMBERSHIPS
+    // =========================================================================
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/memberships
+    /// Assigns the user to an organization with the given member role.
+    /// </summary>
+    private static async Task<IResult> AssignMembership(
+        Guid                    id,
+        AssignMembershipRequest body,
+        IdentityDbContext       db,
+        CancellationToken       ct)
+    {
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        var org = await db.Organizations.FindAsync([body.OrganizationId], ct);
+        if (org is null) return Results.NotFound(new { error = $"Organization '{body.OrganizationId}' not found." });
+
+        if (org.TenantId != user.TenantId)
+            return Results.BadRequest(new { error = "Organization does not belong to the user's tenant." });
+
+        var exists = await db.UserOrganizationMemberships.AnyAsync(
+            m => m.UserId == id && m.OrganizationId == body.OrganizationId, ct);
+        if (exists)
+            return Results.Conflict(new { error = "User is already a member of this organization." });
+
+        var memberRole = string.IsNullOrWhiteSpace(body.MemberRole) ? MemberRole.Member : body.MemberRole;
+        var membership = UserOrganizationMembership.Create(id, body.OrganizationId, memberRole, body.GrantedByUserId);
+
+        // If this is the first/only membership, make it primary automatically.
+        var hasPrimary = await db.UserOrganizationMemberships.AnyAsync(m => m.UserId == id && m.IsPrimary, ct);
+        if (!hasPrimary) membership.SetPrimary();
+
+        db.UserOrganizationMemberships.Add(membership);
+        await db.SaveChangesAsync(ct);
+
+        return Results.Created(
+            $"/api/admin/users/{id}/memberships/{membership.Id}",
+            new
+            {
+                membershipId   = membership.Id,
+                userId         = id,
+                organizationId = body.OrganizationId,
+                memberRole     = membership.MemberRole,
+                isPrimary      = membership.IsPrimary,
+            });
+    }
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/memberships/{membershipId}/set-primary
+    /// Makes the specified membership the primary org for the user.
+    /// Clears the primary flag on any other memberships.
+    /// </summary>
+    private static async Task<IResult> SetPrimaryMembership(
+        Guid              id,
+        Guid              membershipId,
+        IdentityDbContext db,
+        CancellationToken ct)
+    {
+        var target = await db.UserOrganizationMemberships
+            .FirstOrDefaultAsync(m => m.Id == membershipId && m.UserId == id, ct);
+        if (target is null)
+            return Results.NotFound(new { error = $"Membership '{membershipId}' not found for user '{id}'." });
+
+        var others = await db.UserOrganizationMemberships
+            .Where(m => m.UserId == id && m.Id != membershipId && m.IsPrimary)
+            .ToListAsync(ct);
+
+        foreach (var o in others) o.ClearPrimary();
+        target.SetPrimary();
+
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// DELETE /api/admin/users/{id}/memberships/{membershipId}
+    /// Scaffold — deactivates the membership. Full removal is Phase 2.
+    /// </summary>
+    private static async Task<IResult> RemoveMembership(
+        Guid              id,
+        Guid              membershipId,
+        IdentityDbContext db,
+        CancellationToken ct)
+    {
+        var membership = await db.UserOrganizationMemberships
+            .FirstOrDefaultAsync(m => m.Id == membershipId && m.UserId == id, ct);
+        if (membership is null)
+            return Results.NotFound(new { error = $"Membership '{membershipId}' not found for user '{id}'." });
+
+        membership.Deactivate();
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // =========================================================================
+    // UIX-002: GROUPS
+    // =========================================================================
+
+    /// <summary>
+    /// GET /api/admin/groups
+    /// Returns the list of tenant-scoped groups. Optionally filtered by tenantId.
+    /// </summary>
+    private static async Task<IResult> ListGroups(
+        IdentityDbContext db,
+        string tenantId = "",
+        int    page     = 1,
+        int    pageSize = 50,
+        CancellationToken ct = default)
+    {
+        var q = db.TenantGroups
+            .Include(g => g.Members)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var tid))
+            q = q.Where(g => g.TenantId == tid);
+
+        var total = await q.CountAsync(ct);
+
+        var items = await q
+            .Where(g => g.IsActive)
+            .OrderBy(g => g.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(g => new
+            {
+                id          = g.Id,
+                tenantId    = g.TenantId,
+                name        = g.Name,
+                description = g.Description,
+                memberCount = g.Members.Count,
+                isActive    = g.IsActive,
+                createdAtUtc = g.CreatedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { items, totalCount = total, page, pageSize });
+    }
+
+    /// <summary>
+    /// GET /api/admin/groups/{id}
+    /// Returns a group with its full member list.
+    /// </summary>
+    private static async Task<IResult> GetGroup(
+        Guid              id,
+        IdentityDbContext db,
+        CancellationToken ct)
+    {
+        var group = await db.TenantGroups
+            .Include(g => g.Members)
+                .ThenInclude(m => m.User)
+            .FirstOrDefaultAsync(g => g.Id == id, ct);
+
+        if (group is null) return Results.NotFound();
+
+        return Results.Ok(new
+        {
+            id          = group.Id,
+            tenantId    = group.TenantId,
+            name        = group.Name,
+            description = group.Description,
+            isActive    = group.IsActive,
+            createdAtUtc = group.CreatedAtUtc,
+            updatedAtUtc = group.UpdatedAtUtc,
+            members = group.Members.Select(m => new
+            {
+                membershipId = m.Id,
+                userId       = m.UserId,
+                firstName    = m.User.FirstName,
+                lastName     = m.User.LastName,
+                email        = m.User.Email,
+                joinedAtUtc  = m.JoinedAtUtc,
+            }),
+            memberCount = group.Members.Count,
+        });
+    }
+
+    /// <summary>
+    /// POST /api/admin/groups
+    /// Creates a new tenant-scoped group.
+    /// </summary>
+    private static async Task<IResult> CreateGroup(
+        CreateGroupRequest body,
+        IdentityDbContext  db,
+        CancellationToken  ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.Name))
+            return Results.BadRequest(new { error = "name is required." });
+        if (body.TenantId == Guid.Empty)
+            return Results.BadRequest(new { error = "tenantId is required." });
+
+        var tenant = await db.Tenants.FindAsync([body.TenantId], ct);
+        if (tenant is null) return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
+
+        var nameExists = await db.TenantGroups.AnyAsync(
+            g => g.TenantId == body.TenantId && g.Name == body.Name.Trim(), ct);
+        if (nameExists)
+            return Results.Conflict(new { error = $"A group named '{body.Name}' already exists in this tenant." });
+
+        var group = TenantGroup.Create(body.TenantId, body.Name, body.Description, body.CreatedByUserId);
+        db.TenantGroups.Add(group);
+        await db.SaveChangesAsync(ct);
+
+        return Results.Created(
+            $"/api/admin/groups/{group.Id}",
+            new { id = group.Id, tenantId = group.TenantId, name = group.Name });
+    }
+
+    /// <summary>
+    /// POST /api/admin/groups/{id}/members
+    /// Adds a user to a group. Idempotent — ignores if already a member.
+    /// </summary>
+    private static async Task<IResult> AddGroupMember(
+        Guid                   id,
+        AddGroupMemberRequest  body,
+        IdentityDbContext      db,
+        CancellationToken      ct)
+    {
+        var group = await db.TenantGroups.FindAsync([id], ct);
+        if (group is null) return Results.NotFound(new { error = $"Group '{id}' not found." });
+
+        var user = await db.Users.FindAsync([body.UserId], ct);
+        if (user is null) return Results.NotFound(new { error = $"User '{body.UserId}' not found." });
+
+        if (user.TenantId != group.TenantId)
+            return Results.BadRequest(new { error = "User does not belong to the group's tenant." });
+
+        var alreadyMember = await db.GroupMemberships.AnyAsync(
+            m => m.GroupId == id && m.UserId == body.UserId, ct);
+        if (alreadyMember)
+            return Results.Ok(new { message = "User is already a member of this group." });
+
+        var membership = GroupMembership.Create(id, body.UserId, group.TenantId, body.AddedByUserId);
+        db.GroupMemberships.Add(membership);
+        await db.SaveChangesAsync(ct);
+
+        return Results.Created(
+            $"/api/admin/groups/{id}/members/{body.UserId}",
+            new { groupId = id, userId = body.UserId, joinedAtUtc = membership.JoinedAtUtc });
+    }
+
+    /// <summary>
+    /// DELETE /api/admin/groups/{id}/members/{userId}
+    /// Removes a user from a group.
+    /// </summary>
+    private static async Task<IResult> RemoveGroupMember(
+        Guid              id,
+        Guid              userId,
+        IdentityDbContext db,
+        CancellationToken ct)
+    {
+        var membership = await db.GroupMemberships
+            .FirstOrDefaultAsync(m => m.GroupId == id && m.UserId == userId, ct);
+        if (membership is null)
+            return Results.NotFound(new { error = $"User '{userId}' is not a member of group '{id}'." });
+
+        db.GroupMemberships.Remove(membership);
+        await db.SaveChangesAsync(ct);
+
+        return Results.NoContent();
+    }
+
+    // =========================================================================
+    // UIX-002: PERMISSIONS CATALOG
+    // =========================================================================
+
+    /// <summary>
+    /// GET /api/admin/permissions
+    /// Returns the full capabilities catalog — all active product-scoped capabilities
+    /// that represent the platform permission surface.
+    /// </summary>
+    private static async Task<IResult> ListPermissions(
+        IdentityDbContext db,
+        string productId = "",
+        CancellationToken ct = default)
+    {
+        var q = db.Capabilities
+            .Include(c => c.Product)
+            .Where(c => c.IsActive)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(productId) && Guid.TryParse(productId, out var pid))
+            q = q.Where(c => c.ProductId == pid);
+
+        var items = await q
+            .OrderBy(c => c.Product.Name)
+            .ThenBy(c => c.Code)
+            .Select(c => new
+            {
+                id          = c.Id,
+                code        = c.Code,
+                name        = c.Name,
+                description = c.Description,
+                productId   = c.ProductId,
+                productName = c.Product.Name,
+                isActive    = c.IsActive,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { items, totalCount = items.Count });
+    }
+
     // ── Request / response DTOs (private, scoped to AdminEndpoints) ─────────
 
     private record AssignRoleRequest(
@@ -1678,6 +2227,30 @@ public static class AdminEndpoints
         string  type,
         string  description,
         bool    editable);
+
+    // UIX-002 request DTOs
+    private record InviteUserRequest(
+        Guid    TenantId,
+        string  Email,
+        string  FirstName,
+        string  LastName,
+        Guid?   RoleId          = null,
+        Guid?   InvitedByUserId = null);
+
+    private record AssignMembershipRequest(
+        Guid    OrganizationId,
+        string? MemberRole      = null,
+        Guid?   GrantedByUserId = null);
+
+    private record CreateGroupRequest(
+        Guid    TenantId,
+        string  Name,
+        string? Description     = null,
+        Guid?   CreatedByUserId = null);
+
+    private record AddGroupMemberRequest(
+        Guid  UserId,
+        Guid? AddedByUserId = null);
 
 }
 

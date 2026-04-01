@@ -1,8 +1,10 @@
+import Link from 'next/link';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { getTenantContext } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { UserListTable } from '@/components/users/user-list-table';
+import { Routes } from '@/lib/routes';
 
 interface TenantUsersPageProps {
   searchParams: {
@@ -63,14 +65,12 @@ export default async function TenantUsersPage({ searchParams }: TenantUsersPageP
                 : 'All users across all tenants'}
             </p>
           </div>
-          <button
-            type="button"
-            disabled
-            className="bg-indigo-600 text-white text-sm font-medium px-4 py-2 rounded-md opacity-50 cursor-not-allowed"
-            title="Coming soon"
+          <Link
+            href="/tenant-users/invite"
+            className="bg-indigo-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors"
           >
             Invite User
-          </button>
+          </Link>
         </div>
 
         {/* Search */}

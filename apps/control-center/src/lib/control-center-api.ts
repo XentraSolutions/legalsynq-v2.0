@@ -80,6 +80,9 @@ import {
   mapAuditExport,
   mapIntegrityCheckpoint,
   mapLegalHold,
+  mapGroupSummary,
+  mapGroupDetail,
+  mapPermissionCatalogItem,
   unwrapApiResponse,
   unwrapApiResponseList,
 }                                       from '@/lib/api-mappers';
@@ -114,6 +117,9 @@ import type {
   IntegrityCheckpoint,
   LegalHold,
   AuditIngestPayload,
+  GroupSummary,
+  GroupDetail,
+  PermissionCatalogItem,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -336,6 +342,193 @@ export const controlCenterServerApi = {
         if (isNotFound(err)) return null;
         throw err;
       }
+    },
+
+    /**
+     * POST /identity/api/admin/users/{id}/activate
+     * Activates an inactive user. Revalidates cc:users cache.
+     */
+    activate: async (id: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/activate`,
+        {},
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * POST /identity/api/admin/users/{id}/deactivate
+     * Deactivates an active user. Revalidates cc:users cache.
+     */
+    deactivate: async (id: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/deactivate`,
+        {},
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * POST /identity/api/admin/users/invite
+     * Sends an invitation to a new user. Revalidates cc:users cache.
+     */
+    invite: async (payload: {
+      email:          string;
+      firstName:      string;
+      lastName:       string;
+      tenantId:       string;
+      organizationId?: string;
+      memberRole?:    string;
+    }): Promise<void> => {
+      await apiClient.post<unknown>('/identity/api/admin/users/invite', payload);
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * POST /identity/api/admin/users/{id}/resend-invite
+     * Resends a pending invitation. Revalidates cc:users cache.
+     */
+    resendInvite: async (id: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/resend-invite`,
+        {},
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * POST /identity/api/admin/users/{id}/memberships
+     * Assigns the user to an organization. Revalidates cc:users cache.
+     */
+    assignMembership: async (id: string, payload: {
+      organizationId: string;
+      memberRole?:    string;
+    }): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/memberships`,
+        payload,
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * POST /identity/api/admin/users/{id}/memberships/{membershipId}/set-primary
+     * Marks an org membership as the user's primary org. Revalidates cc:users cache.
+     */
+    setPrimaryMembership: async (id: string, membershipId: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/memberships/${encodeURIComponent(membershipId)}/set-primary`,
+        {},
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * DELETE /identity/api/admin/users/{id}/memberships/{membershipId}
+     * Removes an org membership from the user. Revalidates cc:users cache.
+     */
+    removeMembership: async (id: string, membershipId: string): Promise<void> => {
+      await apiClient.del<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/memberships/${encodeURIComponent(membershipId)}`,
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+  },
+
+  // ── Groups ────────────────────────────────────────────────────────────────
+
+  groups: {
+    /**
+     * GET /identity/api/admin/groups?tenantId=&page=&pageSize=
+     * Lists groups for a tenant. Cache: 60 s, tag cc:users.
+     */
+    list: async (params: {
+      tenantId?: string;
+      page?:     number;
+      pageSize?: number;
+    } = {}): Promise<PagedResponse<GroupSummary>> => {
+      const qs = toQs({
+        tenantId: params.tenantId,
+        page:     params.page     ?? 1,
+        pageSize: params.pageSize ?? 20,
+      });
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/groups${qs}`,
+        60,
+        [CACHE_TAGS.users],
+      );
+      return mapPagedResponse(raw, mapGroupSummary);
+    },
+
+    /**
+     * GET /identity/api/admin/groups/{id}
+     * Returns full GroupDetail including members, or null if not found.
+     */
+    getById: async (id: string): Promise<GroupDetail | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/identity/api/admin/groups/${encodeURIComponent(id)}`,
+          30,
+          [CACHE_TAGS.users],
+        );
+        return mapGroupDetail(raw);
+      } catch (err: unknown) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
+    },
+
+    /**
+     * POST /identity/api/admin/groups
+     * Creates a new tenant group. Revalidates cc:users cache.
+     */
+    create: async (payload: {
+      tenantId:     string;
+      name:         string;
+      description?: string;
+    }): Promise<void> => {
+      await apiClient.post<unknown>('/identity/api/admin/groups', payload);
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * POST /identity/api/admin/groups/{id}/members
+     * Adds a user to a group. Revalidates cc:users cache.
+     */
+    addMember: async (groupId: string, userId: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/groups/${encodeURIComponent(groupId)}/members`,
+        { userId },
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * DELETE /identity/api/admin/groups/{id}/members/{membershipId}
+     * Removes a member from a group. Revalidates cc:users cache.
+     */
+    removeMember: async (groupId: string, membershipId: string): Promise<void> => {
+      await apiClient.del<unknown>(
+        `/identity/api/admin/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(membershipId)}`,
+      );
+      revalidateTag(CACHE_TAGS.users);
+    },
+  },
+
+  // ── Permissions ───────────────────────────────────────────────────────────
+
+  permissions: {
+    /**
+     * GET /identity/api/admin/permissions
+     * Returns the full platform permission catalog. Cache: 300 s.
+     */
+    list: async (): Promise<PermissionCatalogItem[]> => {
+      const raw = await apiClient.get<unknown>(
+        '/identity/api/admin/permissions',
+        300,
+        [CACHE_TAGS.users],
+      );
+      return Array.isArray(raw) ? raw.map(mapPermissionCatalogItem) : [];
     },
   },
 

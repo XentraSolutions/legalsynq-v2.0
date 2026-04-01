@@ -19,6 +19,7 @@ public class UserOrganizationMembershipConfiguration : IEntityTypeConfiguration<
             .IsRequired()
             .HasMaxLength(50);
 
+        builder.Property(m => m.IsPrimary).IsRequired().HasDefaultValue(false);
         builder.Property(m => m.IsActive).IsRequired();
         builder.Property(m => m.JoinedAtUtc).IsRequired();
         builder.Property(m => m.GrantedByUserId);

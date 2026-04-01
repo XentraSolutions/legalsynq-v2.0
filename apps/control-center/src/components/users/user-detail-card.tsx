@@ -113,6 +113,106 @@ export function UserDetailCard({ user }: UserDetailCardProps) {
         </dl>
       </div>
 
+      {/* ── Org Memberships ───────────────────────────────────────────── */}
+      {user.memberships !== undefined && (
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Organization Memberships
+            </h2>
+            <span className="text-xs text-gray-400">
+              {user.memberships.length} org{user.memberships.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          {user.memberships.length === 0 ? (
+            <div className="px-5 py-8 text-center">
+              <p className="text-sm text-gray-400 italic">Not a member of any organization.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {user.memberships.map(m => (
+                <div key={m.membershipId} className="px-5 py-3 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{m.orgName}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Joined {formatDate(m.joinedAtUtc)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border bg-gray-50 text-gray-700 border-gray-200">
+                      {m.memberRole}
+                    </span>
+                    {m.isPrimary && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border bg-amber-50 text-amber-700 border-amber-200">
+                        Primary
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Group Memberships ──────────────────────────────────────────── */}
+      {user.groups !== undefined && (
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Groups
+            </h2>
+            <span className="text-xs text-gray-400">
+              {user.groups.length} group{user.groups.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          {user.groups.length === 0 ? (
+            <div className="px-5 py-8 text-center">
+              <p className="text-sm text-gray-400 italic">Not a member of any group.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {user.groups.map(g => (
+                <div key={g.groupId} className="px-5 py-3 flex items-center justify-between gap-4">
+                  <p className="text-sm font-medium text-gray-900">{g.groupName}</p>
+                  <p className="text-xs text-gray-400">Joined {formatDate(g.joinedAtUtc)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Role Assignments ───────────────────────────────────────────── */}
+      {user.roles !== undefined && (
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Role Assignments
+            </h2>
+            <span className="text-xs text-gray-400">
+              {user.roles.length} role{user.roles.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          {user.roles.length === 0 ? (
+            <div className="px-5 py-8 text-center">
+              <p className="text-sm text-gray-400 italic">No explicit roles assigned.</p>
+            </div>
+          ) : (
+            <div className="px-5 py-3 flex flex-wrap gap-2">
+              {user.roles.map(r => (
+                <span
+                  key={r.assignmentId}
+                  className="inline-flex items-center px-2.5 py-1 rounded text-[12px] font-semibold border bg-indigo-50 text-indigo-700 border-indigo-100"
+                >
+                  {r.roleName}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Recent Activity (placeholder) ─────────────────────────────── */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
@@ -126,7 +226,6 @@ export function UserDetailCard({ user }: UserDetailCardProps) {
             Login history and audit events will appear here once the audit log
             backend endpoint is connected.
           </p>
-          {/* TODO: render AuditLogEntry[] from GET /identity/api/admin/users/{id}/activity */}
         </div>
       </div>
 

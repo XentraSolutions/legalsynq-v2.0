@@ -32,6 +32,18 @@ public class User
         return true;
     }
 
+    /// <summary>
+    /// Marks the user as active. Idempotent — safe to call when already active.
+    /// Returns true if state changed, false if already active.
+    /// </summary>
+    public bool Activate()
+    {
+        if (IsActive) return false;
+        IsActive     = true;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
+    }
+
     public static User Create(
         Guid tenantId,
         string email,
