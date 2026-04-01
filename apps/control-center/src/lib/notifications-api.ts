@@ -213,8 +213,8 @@ export interface NotifTemplateVersion {
 
 export interface NotifProviderConfig {
   id:               string;
-  tenantId:         string;
-  provider:         string;
+  tenantId:         string | null;
+  providerType:     string;
   channel:          NotifChannel;
   ownershipMode:    string;
   displayName?:     string | null;

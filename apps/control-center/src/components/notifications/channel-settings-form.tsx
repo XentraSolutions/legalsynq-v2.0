@@ -94,7 +94,7 @@ export function ChannelSettingsForm({ setting, configs }: Props) {
                   <option value="">— None —</option>
                   {channelConfigs.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.displayName ?? c.provider} ({c.status})
+                      {c.displayName ?? c.providerType} ({c.status})
                     </option>
                   ))}
                 </select>
@@ -110,7 +110,7 @@ export function ChannelSettingsForm({ setting, configs }: Props) {
                   <option value="">— None —</option>
                   {channelConfigs.filter(c => c.id !== primaryId).map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.displayName ?? c.provider} ({c.status})
+                      {c.displayName ?? c.providerType} ({c.status})
                     </option>
                   ))}
                 </select>

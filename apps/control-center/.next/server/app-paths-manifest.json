@@ -1,1 +1,4 @@
-{}
+{
+  "/notifications/delivery-issues/page": "app/notifications/delivery-issues/page.js",
+  "/login/page": "app/login/page.js"
+}

@@ -20,16 +20,24 @@ export default async function NotificationsProvidersPage() {
   let fetchError:      string | null           = null;
 
   try {
+    // Helper: API may return a plain array, { items }, or { data }
+    function unwrapList<T>(r: T[] | { items?: T[] } | { data?: T[] }): T[] {
+      if (Array.isArray(r)) return r;
+      if ('data'  in r && Array.isArray((r as { data?: T[] }).data))  return (r as { data: T[] }).data;
+      if ('items' in r && Array.isArray((r as { items?: T[] }).items)) return (r as { items: T[] }).items;
+      return [];
+    }
+
     [configs, catalog, channelSettings] = await Promise.all([
-      notifClient.get<NotifProviderConfig[] | { items: NotifProviderConfig[] }>(
+      notifClient.get<NotifProviderConfig[] | { data: NotifProviderConfig[] } | { items: NotifProviderConfig[] }>(
         '/providers/configs', 30, [NOTIF_CACHE_TAGS.providers],
-      ).then(r => Array.isArray(r) ? r : (r as { items: NotifProviderConfig[] }).items ?? []),
-      notifClient.get<NotifCatalogProvider[] | { items: NotifCatalogProvider[] }>(
+      ).then(r => unwrapList(r)),
+      notifClient.get<NotifCatalogProvider[] | { data: NotifCatalogProvider[] } | { items: NotifCatalogProvider[] }>(
         '/providers/catalog', 300, [NOTIF_CACHE_TAGS.providers],
-      ).then(r => Array.isArray(r) ? r : (r as { items: NotifCatalogProvider[] }).items ?? []),
-      notifClient.get<NotifChannelSetting[] | { items: NotifChannelSetting[] }>(
+      ).then(r => unwrapList(r)),
+      notifClient.get<NotifChannelSetting[] | { data: NotifChannelSetting[] } | { items: NotifChannelSetting[] }>(
         '/providers/channel-settings', 30, [NOTIF_CACHE_TAGS.providers],
-      ).then(r => Array.isArray(r) ? r : (r as { items: NotifChannelSetting[] }).items ?? []),
+      ).then(r => unwrapList(r)),
     ]);
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load provider data.';
@@ -91,7 +99,7 @@ export default async function NotificationsProvidersPage() {
                 <tbody className="divide-y divide-gray-100">
                   {configs.map(c => (
                     <tr key={c.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 text-sm font-medium text-gray-800">{c.provider}</td>
+                      <td className="px-4 py-2.5 text-sm font-medium text-gray-800">{c.providerType}</td>
                       <td className="px-4 py-2.5 text-xs text-gray-600">{c.displayName ?? <span className="text-gray-400 italic">—</span>}</td>
                       <td className="px-4 py-2.5"><ChannelBadge channel={c.channel} /></td>
                       <td className="px-4 py-2.5 text-xs text-gray-600">{c.ownershipMode}</td>
@@ -118,7 +126,7 @@ export default async function NotificationsProvidersPage() {
                           <ProviderConfigForm
                             mode="edit"
                             id={c.id}
-                            initialProvider={c.provider}
+                            initialProvider={c.providerType}
                             initialChannel={c.channel}
                             initialDisplayName={c.displayName}
                           />
