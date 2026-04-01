@@ -101,13 +101,25 @@ const nextConfig = {
   experimental: {
     serverActions: {
       // Next.js 14 CSRF check: compares origin vs x-forwarded-host.
-      // The Replit dev proxy strips the port, causing a mismatch.
-      // The isCsrfOriginAllowed helper does NOT support bare '*' —
-      // it only does exact-match or subdomain wildcard patterns.
-      // Since cc_tenant_context is not HttpOnly, the Set Active feature
-      // writes cookies client-side (via document.cookie) to avoid this check.
-      // TODO: replace with explicit origin list for production hardening.
-      allowedOrigins: ['*'],
+      // The Replit dev proxy strips the port from x-forwarded-host but the
+      // browser sends origin WITH the port (e.g. `:5000`), causing a mismatch.
+      // Bare '*' is NOT supported — isCsrfOriginAllowed only does exact-match
+      // or single-level subdomain wildcard patterns.
+      // We allow *.replit.dev (dev proxy) and localhost variants for local dev.
+      // TODO: replace with explicit production domain for production hardening.
+      allowedOrigins: [
+        'localhost:5004',
+        'localhost:5000',
+        // Replit dev proxy: the browser sends origin with :5000 port but
+        // x-forwarded-host has no port — add both with and without port.
+        ...(process.env.REPLIT_DEV_DOMAIN
+          ? [
+              process.env.REPLIT_DEV_DOMAIN,
+              `${process.env.REPLIT_DEV_DOMAIN}:5000`,
+              `${process.env.REPLIT_DEV_DOMAIN}:5004`,
+            ]
+          : []),
+      ],
     },
   },
 
