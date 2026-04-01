@@ -4,6 +4,8 @@ import { CCShell }                        from '@/components/shell/cc-shell';
 import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { ProviderActionButtons }          from '@/components/notifications/provider-action-buttons';
+import { ProviderConfigForm }             from '@/components/notifications/provider-config-form';
+import { ChannelSettingsForm }            from '@/components/notifications/channel-settings-form';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type {
   NotifProviderConfig,
@@ -84,13 +86,15 @@ export default async function NotificationsProvidersPage() {
           <>
             {/* Provider Configs */}
             <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-700">Provider Configurations ({configs.length})</h2>
+                <ProviderConfigForm mode="create" />
               </div>
               <table className="min-w-full divide-y divide-gray-100 text-sm">
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
                   <tr>
                     <th className="px-4 py-2.5 text-left font-medium">Provider</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Display Name</th>
                     <th className="px-4 py-2.5 text-left font-medium">Channel</th>
                     <th className="px-4 py-2.5 text-left font-medium">Mode</th>
                     <th className="px-4 py-2.5 text-left font-medium">Status</th>
@@ -104,6 +108,7 @@ export default async function NotificationsProvidersPage() {
                   {configs.map(c => (
                     <tr key={c.id} className="hover:bg-gray-50">
                       <td className="px-4 py-2.5 text-sm font-medium text-gray-800">{c.provider}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-600">{c.displayName ?? <span className="text-gray-400 italic">—</span>}</td>
                       <td className="px-4 py-2.5"><ChannelBadge channel={c.channel} /></td>
                       <td className="px-4 py-2.5 text-xs text-gray-600">{c.ownershipMode}</td>
                       <td className="px-4 py-2.5">
@@ -125,14 +130,23 @@ export default async function NotificationsProvidersPage() {
                         {new Date(c.createdAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
                       </td>
                       <td className="px-4 py-2.5">
-                        <ProviderActionButtons configId={c.id} status={c.status} />
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <ProviderConfigForm
+                            mode="edit"
+                            id={c.id}
+                            initialProvider={c.provider}
+                            initialChannel={c.channel}
+                            initialDisplayName={c.displayName}
+                          />
+                          <ProviderActionButtons configId={c.id} status={c.status} />
+                        </div>
                       </td>
                     </tr>
                   ))}
                   {configs.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">
-                        No provider configurations found for this tenant.
+                      <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">
+                        No provider configurations found. Click "New Provider Config" to create one.
                       </td>
                     </tr>
                   )}
@@ -166,6 +180,7 @@ export default async function NotificationsProvidersPage() {
                           <p className="font-medium text-gray-800">{s.mode}</p>
                         </div>
                       </div>
+                      <ChannelSettingsForm setting={s} configs={configs} />
                     </div>
                   ))}
                 </div>

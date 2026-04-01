@@ -3,6 +3,7 @@ import { getTenantContext }               from '@/lib/auth';
 import { CCShell }                        from '@/components/shell/cc-shell';
 import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
+import { TemplateCreateForm }             from '@/components/notifications/template-create-form';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type { NotifTemplate }            from '@/lib/notifications-api';
 
@@ -46,11 +47,14 @@ export default async function NotificationsTemplatesPage() {
       <div className="space-y-4">
 
         {/* Header */}
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Templates</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Message templates for <strong>{tenantCtx.tenantName}</strong> — {templates.length} template{templates.length !== 1 ? 's' : ''}
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Templates</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Message templates for <strong>{tenantCtx.tenantName}</strong> — {templates.length} template{templates.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <TemplateCreateForm />
         </div>
 
         {fetchError && (

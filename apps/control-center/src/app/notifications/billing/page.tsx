@@ -4,11 +4,14 @@ import { CCShell }                        from '@/components/shell/cc-shell';
 import { NoTenantContext }                from '@/components/notifications/no-tenant-context';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { RateLimitForm }                  from '@/components/notifications/rate-limit-form';
+import { BillingPlanForm }               from '@/components/notifications/billing-plan-form';
+import { BillingPlanRatesModal }         from '@/components/notifications/billing-plan-rates-modal';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type {
   NotifUsageSummary,
   NotifUsageEvent,
   NotifBillingPlan,
+  NotifBillingRate,
   NotifRateLimitPolicy,
 } from '@/lib/notifications-api';
 
@@ -32,6 +35,7 @@ export default async function NotificationsBillingPage() {
   let plans:      NotifBillingPlan[]         = [];
   let rateLimits: NotifRateLimitPolicy[]     = [];
   let fetchError: string | null              = null;
+  let ratesMap:   Record<string, NotifBillingRate[]> = {};
 
   try {
     [summary, events, plans, rateLimits] = await Promise.all([
@@ -48,6 +52,17 @@ export default async function NotificationsBillingPage() {
     ]);
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load billing data.';
+  }
+
+  if (plans.length > 0) {
+    const ratesResults = await Promise.all(
+      plans.map(p =>
+        notifClient.get<NotifBillingRate[] | { items: NotifBillingRate[] }>(
+          `/billing/plans/${p.id}/rates`, 30, [NOTIF_CACHE_TAGS.billing],
+        ).then(r => Array.isArray(r) ? r : (r as { items: NotifBillingRate[] }).items ?? []).catch(() => []),
+      ),
+    );
+    plans.forEach((p, i) => { ratesMap[p.id] = ratesResults[i]; });
   }
 
   const summaryEntries = summary
@@ -101,19 +116,23 @@ export default async function NotificationsBillingPage() {
 
             {/* Billing plans */}
             <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-700">Billing Plans ({plans.length})</h2>
+                <BillingPlanForm mode="create" />
               </div>
               {plans.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-gray-400 italic">No billing plan configured.</p>
+                <p className="px-4 py-6 text-sm text-gray-400 italic">No billing plan configured. Click "New Billing Plan" to create one.</p>
               ) : (
                 <table className="min-w-full divide-y divide-gray-100 text-sm">
                   <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
                     <tr>
                       <th className="px-4 py-2.5 text-left font-medium">Name</th>
                       <th className="px-4 py-2.5 text-left font-medium">Mode</th>
+                      <th className="px-4 py-2.5 text-left font-medium">Currency</th>
                       <th className="px-4 py-2.5 text-left font-medium">Status</th>
+                      <th className="px-4 py-2.5 text-left font-medium">Effective From</th>
                       <th className="px-4 py-2.5 text-left font-medium">Created</th>
+                      <th className="px-4 py-2.5 text-left font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -121,13 +140,36 @@ export default async function NotificationsBillingPage() {
                       <tr key={p.id} className="hover:bg-gray-50">
                         <td className="px-4 py-2.5 font-medium text-gray-800">{p.name}</td>
                         <td className="px-4 py-2.5 text-xs text-gray-600">{p.mode}</td>
+                        <td className="px-4 py-2.5 text-xs text-gray-600">{p.currency ?? '—'}</td>
                         <td className="px-4 py-2.5">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${planStatusCfg[p.status] ?? planStatusCfg['inactive']}`}>
                             {p.status}
                           </span>
                         </td>
                         <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500">
+                          {p.effectiveFrom ? new Date(p.effectiveFrom).toLocaleDateString('en-US', { timeZone: 'UTC' }) : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500">
                           {new Date(p.createdAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <BillingPlanForm
+                              mode="edit"
+                              id={p.id}
+                              initialName={p.name}
+                              initialMode={p.mode}
+                              initialCurrency={p.currency}
+                              initialEffFrom={p.effectiveFrom}
+                              initialEffTo={p.effectiveTo}
+                              initialStatus={p.status}
+                            />
+                            <BillingPlanRatesModal
+                              planId={p.id}
+                              planName={p.name}
+                              rates={ratesMap[p.id] ?? []}
+                            />
+                          </div>
                         </td>
                       </tr>
                     ))}

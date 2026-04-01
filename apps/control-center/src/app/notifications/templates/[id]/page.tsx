@@ -5,6 +5,7 @@ import { NoTenantContext }                from '@/components/notifications/no-te
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
 import { TemplatePreviewModal }          from '@/components/notifications/template-preview-modal';
 import { PublishVersionButton }          from '@/components/notifications/publish-version-button';
+import { TemplateVersionForm }           from '@/components/notifications/template-version-form';
 import { notifClient }                    from '@/lib/notifications-api';
 import type { NotifTemplate, NotifTemplateVersion } from '@/lib/notifications-api';
 import { ApiError }                       from '@/lib/api-client';
@@ -107,8 +108,9 @@ export default async function TemplateDetailPage({ params }: Props) {
 
             {/* Versions */}
             <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-700">Versions ({versions.length})</h2>
+                <TemplateVersionForm templateId={template.id} channel={template.channel} />
               </div>
               {versions.length === 0 ? (
                 <p className="px-4 py-4 text-sm text-gray-400 italic">No versions yet.</p>

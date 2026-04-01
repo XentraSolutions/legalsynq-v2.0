@@ -3,7 +3,7 @@
 import { revalidateTag }        from 'next/cache';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
-import type { NotifChannel }    from '@/lib/notifications-api';
+import type { NotifChannel, NotifBillingRate, NotifBillingPlan } from '@/lib/notifications-api';
 
 // ── Shared result type ────────────────────────────────────────────────────────
 
@@ -168,5 +168,254 @@ export async function updateRateLimitPolicy(
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Failed to update rate-limit policy.' };
+  }
+}
+
+// ── Provider config create / edit ─────────────────────────────────────────────
+
+export interface ProviderConfigCreateInput {
+  channel:               NotifChannel;
+  providerType:          string;
+  displayName:           string;
+  credentials?:          Record<string, unknown>;
+  senderConfig?:         Record<string, unknown>;
+  endpointConfig?:       Record<string, unknown>;
+  allowPlatformFallback?:   boolean;
+  allowAutomaticFailover?:  boolean;
+}
+
+export async function createProviderConfig(
+  input: ProviderConfigCreateInput,
+): Promise<ActionResult<{ id: string }>> {
+  await requirePlatformAdmin();
+  try {
+    const data = await notifClient.post<{ id: string }>('/providers/configs', input);
+    revalidateTag(NOTIF_CACHE_TAGS.providers);
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to create provider config.' };
+  }
+}
+
+export interface ProviderConfigUpdateInput {
+  displayName?:          string;
+  credentials?:          Record<string, unknown>;
+  senderConfig?:         Record<string, unknown>;
+  endpointConfig?:       Record<string, unknown>;
+  allowPlatformFallback?:   boolean;
+  allowAutomaticFailover?:  boolean;
+  status?:               'active' | 'inactive';
+}
+
+export async function updateProviderConfig(
+  id:    string,
+  input: ProviderConfigUpdateInput,
+): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  try {
+    await notifClient.patch(`/providers/configs/${id}`, input);
+    revalidateTag(NOTIF_CACHE_TAGS.providers);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to update provider config.' };
+  }
+}
+
+// ── Channel settings update ───────────────────────────────────────────────────
+
+export interface ChannelSettingsInput {
+  providerMode?:                   string;
+  primaryTenantProviderConfigId?:  string | null;
+  fallbackTenantProviderConfigId?: string | null;
+  allowPlatformFallback?:          boolean;
+  allowAutomaticFailover?:         boolean;
+}
+
+export async function updateChannelSettings(
+  channel: NotifChannel,
+  input:   ChannelSettingsInput,
+): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  try {
+    await notifClient.put(`/providers/channel-settings/${channel}`, input);
+    revalidateTag(NOTIF_CACHE_TAGS.providers);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to update channel settings.' };
+  }
+}
+
+// ── Template create ───────────────────────────────────────────────────────────
+
+export interface TemplateCreateInput {
+  templateKey:  string;
+  channel:      NotifChannel;
+  name:         string;
+  description?: string | null;
+}
+
+export async function createTemplate(
+  input: TemplateCreateInput,
+): Promise<ActionResult<{ id: string }>> {
+  await requirePlatformAdmin();
+  try {
+    const data = await notifClient.post<{ id: string }>('/templates', input);
+    revalidateTag(NOTIF_CACHE_TAGS.templates);
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to create template.' };
+  }
+}
+
+// ── Template version create ───────────────────────────────────────────────────
+
+export interface TemplateVersionCreateInput {
+  bodyTemplate:         string;
+  subjectTemplate?:     string | null;
+  textTemplate?:        string | null;
+  variablesSchemaJson?: Record<string, unknown> | null;
+  sampleDataJson?:      Record<string, unknown> | null;
+}
+
+export async function createTemplateVersion(
+  templateId: string,
+  input:      TemplateVersionCreateInput,
+): Promise<ActionResult<{ id: string }>> {
+  await requirePlatformAdmin();
+  try {
+    const data = await notifClient.post<{ id: string }>(
+      `/templates/${templateId}/versions`,
+      input,
+    );
+    revalidateTag(NOTIF_CACHE_TAGS.templates);
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to create template version.' };
+  }
+}
+
+// ── Billing plan create / edit ────────────────────────────────────────────────
+
+export interface BillingPlanInput {
+  planName:      string;
+  billingMode:   'usage_based' | 'flat_rate' | 'hybrid';
+  currency:      string;
+  effectiveFrom: string;
+  effectiveTo?:  string | null;
+}
+
+export async function createBillingPlan(
+  input: BillingPlanInput,
+): Promise<ActionResult<NotifBillingPlan>> {
+  await requirePlatformAdmin();
+  try {
+    const data = await notifClient.post<NotifBillingPlan>('/billing/plans', input);
+    revalidateTag(NOTIF_CACHE_TAGS.billing);
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to create billing plan.' };
+  }
+}
+
+export interface BillingPlanUpdateInput {
+  planName?:      string;
+  billingMode?:   string;
+  currency?:      string;
+  status?:        string;
+  effectiveFrom?: string;
+  effectiveTo?:   string | null;
+}
+
+export async function updateBillingPlan(
+  id:    string,
+  input: BillingPlanUpdateInput,
+): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  try {
+    await notifClient.patch(`/billing/plans/${id}`, input);
+    revalidateTag(NOTIF_CACHE_TAGS.billing);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to update billing plan.' };
+  }
+}
+
+// ── Billing rate create / edit ────────────────────────────────────────────────
+
+export interface BillingRateInput {
+  usageUnit:             string;
+  channel?:              NotifChannel | null;
+  providerOwnershipMode?: string | null;
+  includedQuantity?:     number | null;
+  unitPrice?:            number | null;
+  isBillable?:           boolean;
+}
+
+export async function createBillingRate(
+  planId: string,
+  input:  BillingRateInput,
+): Promise<ActionResult<NotifBillingRate>> {
+  await requirePlatformAdmin();
+  try {
+    const data = await notifClient.post<NotifBillingRate>(`/billing/plans/${planId}/rates`, input);
+    revalidateTag(NOTIF_CACHE_TAGS.billing);
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to create billing rate.' };
+  }
+}
+
+export async function updateBillingRate(
+  planId: string,
+  rateId: string,
+  input:  Partial<BillingRateInput>,
+): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  try {
+    await notifClient.patch(`/billing/plans/${planId}/rates/${rateId}`, input);
+    revalidateTag(NOTIF_CACHE_TAGS.billing);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to update billing rate.' };
+  }
+}
+
+// ── Contact policy create / edit ──────────────────────────────────────────────
+
+export interface ContactPolicyInput {
+  channel?:                    NotifChannel | null;
+  blockSuppressedContacts?:    boolean;
+  blockUnsubscribedContacts?:  boolean;
+  blockComplainedContacts?:    boolean;
+  blockBouncedContacts?:       boolean;
+  blockInvalidContacts?:       boolean;
+  blockCarrierRejectedContacts?: boolean;
+  allowManualOverride?:        boolean;
+}
+
+export async function createContactPolicy(
+  input: ContactPolicyInput,
+): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  try {
+    await notifClient.post('/contacts/policies', input);
+    revalidateTag(NOTIF_CACHE_TAGS.contacts);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to create contact policy.' };
+  }
+}
+
+export async function updateContactPolicy(
+  id:    string,
+  input: ContactPolicyInput & { status?: string },
+): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  try {
+    await notifClient.patch(`/contacts/policies/${id}`, input);
+    revalidateTag(NOTIF_CACHE_TAGS.contacts);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to update contact policy.' };
   }
 }

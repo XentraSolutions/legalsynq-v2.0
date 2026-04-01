@@ -231,6 +231,7 @@ export interface NotifProviderConfig {
   provider:         string;
   channel:          NotifChannel;
   ownershipMode:    string;
+  displayName?:     string | null;
   status:           'active' | 'inactive';
   validationStatus: 'not_validated' | 'valid' | 'invalid';
   healthStatus:     string | null;
@@ -245,11 +246,16 @@ export interface NotifCatalogProvider {
 }
 
 export interface NotifChannelSetting {
-  channel:          NotifChannel;
-  primaryProvider:  string | null;
-  fallbackProvider: string | null;
-  mode:             string;
-  updatedAt:        string | null;
+  channel:                       NotifChannel;
+  primaryProvider:               string | null;
+  fallbackProvider:              string | null;
+  primaryTenantProviderConfigId?:   string | null;
+  fallbackTenantProviderConfigId?:  string | null;
+  mode:                          string;
+  providerMode?:                 string;
+  allowPlatformFallback?:        boolean;
+  allowAutomaticFailover?:       boolean;
+  updatedAt:                     string | null;
 }
 
 export interface NotifProviderHealth {
@@ -279,12 +285,27 @@ export interface NotifUsageEvent {
 }
 
 export interface NotifBillingPlan {
-  id:        string;
-  tenantId:  string;
-  name:      string;
-  mode:      string;
-  status:    string;
-  createdAt: string;
+  id:            string;
+  tenantId:      string;
+  name:          string;
+  mode:          string;
+  status:        string;
+  currency?:     string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?:  string | null;
+  createdAt:     string;
+}
+
+export interface NotifBillingRate {
+  id:                   string;
+  planId:               string;
+  usageUnit:            string;
+  channel:              NotifChannel | null;
+  providerOwnershipMode: string | null;
+  includedQuantity:     number | null;
+  unitPrice:            number | null;
+  isBillable:           boolean;
+  createdAt:            string;
 }
 
 export interface NotifRateLimitPolicy {
