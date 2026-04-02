@@ -4,8 +4,8 @@ using CareConnect.Domain;
 namespace CareConnect.Application.Interfaces;
 
 /// <summary>
-/// LSCC-005 / LSCC-005-01: Handles secure token generation and email notification dispatch
-/// for the referral flow.
+/// LSCC-005 / LSCC-005-01 / LSCC-01-002: Handles secure token generation and email notification
+/// dispatch for the referral flow.
 ///
 /// Token strategy (LSCC-005-01): HMAC-SHA256 signed token encoding referralId + tokenVersion + expiry (30 days).
 /// Token format: {referralId}:{tokenVersion}:{expiryUnixSeconds}:{hmacHex}, Base64url-encoded.
@@ -55,9 +55,10 @@ public interface IReferralEmailService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Queues acceptance confirmation notifications for both the provider and the referrer,
-    /// and attempts immediate SMTP sends.
+    /// Queues acceptance confirmation notifications for the provider, the referrer, and the client
+    /// (LSCC-01-002), and attempts immediate SMTP sends for each.
     /// Called after the referral is accepted (fire-and-observe — never gates acceptance).
+    /// Client email is skipped gracefully when ClientEmail is not stored; acceptance is never blocked.
     /// </summary>
     Task SendAcceptanceConfirmationsAsync(
         Referral referral,

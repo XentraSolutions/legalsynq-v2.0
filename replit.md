@@ -2675,3 +2675,25 @@ Full report: `analysis/UIX-005-01-report.md`
 **Tests:** 38 tests pass in `ReferralWorkflowRulesTests` — full canonical + legacy + new InProgress coverage
 
 Full report: `analysis/LSCC-01-001-01-report.md`
+
+## LSCC-01-002 — Referral Acceptance Flow Completion — COMPLETED 2026-04-02
+
+Primary gap closed: **client acceptance email** added to `SendAcceptanceConfirmationsAsync`.
+All other acceptance flow components (provider email, law firm email, token flow, login redirect) were already implemented.
+
+**Domain (`NotificationType.cs`):**
+- `ReferralAcceptedClient = "ReferralAcceptedClient"` added + registered in `All` set
+
+**Email Service (`ReferralEmailService.cs`):**
+- `SendAcceptanceConfirmationsAsync`: now sends to provider (1), referrer/law firm (2), and client (3)
+- Client email skipped gracefully if `ClientEmail` is empty — acceptance never blocked; `LogWarning` emitted
+- `BuildClientAcceptanceHtml()`: client-facing template — names provider, service, states provider will reach out; no appointment language
+- `RetryNotificationAsync`: added `case ReferralAcceptedClient` — same pattern as referrer retry (address from stored record)
+- Updated stale "schedule an appointment" copy in provider and referrer templates (decoupled per LSCC-01-001-01)
+
+**Interface (`IReferralEmailService.cs`):**
+- `SendAcceptanceConfirmationsAsync` docstring updated to document third recipient and graceful-skip contract
+
+**Tests:** 10 new tests in `ReferralClientEmailTests.cs`; total 385 pass (390 total, 5 pre-existing failures unrelated)
+
+Full report: `analysis/LSCC-01-002-report.md`

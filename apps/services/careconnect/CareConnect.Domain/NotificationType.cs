@@ -7,6 +7,8 @@ public static class NotificationType
     public const string ReferralCreated          = "ReferralCreated";
     public const string ReferralAcceptedProvider = "ReferralAcceptedProvider";
     public const string ReferralAcceptedReferrer = "ReferralAcceptedReferrer";
+    // LSCC-01-002: client acceptance notification
+    public const string ReferralAcceptedClient   = "ReferralAcceptedClient";
     public const string AppointmentScheduled     = "AppointmentScheduled";
     public const string AppointmentConfirmed     = "AppointmentConfirmed";
     public const string AppointmentCancelled     = "AppointmentCancelled";
@@ -19,7 +21,7 @@ public static class NotificationType
     public static readonly IReadOnlySet<string> All = new HashSet<string>
     {
         ReferralStatusChanged, ReferralCreated,
-        ReferralAcceptedProvider, ReferralAcceptedReferrer,
+        ReferralAcceptedProvider, ReferralAcceptedReferrer, ReferralAcceptedClient,
         AppointmentScheduled, AppointmentConfirmed,
         AppointmentCancelled, AppointmentReminder,
         ReferralEmailResent, ReferralEmailAutoRetry,

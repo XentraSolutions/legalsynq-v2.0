@@ -10,8 +10,8 @@ using Microsoft.Extensions.Logging;
 namespace CareConnect.Application.Services;
 
 /// <summary>
-/// LSCC-005 / LSCC-005-01 / LSCC-005-02: Implements secure token generation and email notification
-/// dispatch for the referral flow.
+/// LSCC-005 / LSCC-005-01 / LSCC-005-02 / LSCC-01-002: Implements secure token generation and
+/// email notification dispatch for the referral flow.
 ///
 /// Token format (URL-safe Base64, LSCC-005-01):
 ///   {referralId}:{tokenVersion}:{expiryUnixSeconds}:{hmacHex}
@@ -290,6 +290,38 @@ public class ReferralEmailService : IReferralEmailService
                 referral.Id);
         }
 
+        // 3. LSCC-01-002: Notification to the client (graceful skip if no email captured at creation)
+        if (!string.IsNullOrWhiteSpace(referral.ClientEmail))
+        {
+            var clientSubject = $"Your case has been accepted — {provider.OrganizationName ?? provider.Name}";
+            var clientBody    = BuildClientAcceptanceHtml(referral, provider);
+
+            var clientNotif = CareConnectNotification.Create(
+                tenantId:          referral.TenantId,
+                notificationType:  NotificationType.ReferralAcceptedClient,
+                relatedEntityType: NotificationRelatedEntityType.Referral,
+                relatedEntityId:   referral.Id,
+                recipientType:     NotificationRecipientType.ClientEmail,
+                recipientAddress:  referral.ClientEmail,
+                subject:           clientSubject,
+                message:           null,
+                scheduledForUtc:   null,
+                createdByUserId:   null,
+                triggerSource:     NotificationSource.Initial);
+
+            await _notifications.AddAsync(clientNotif, ct);
+            // LSCC-005-02: schedule retry on failure
+            tasks.Add(TrySendAndUpdateAsync(clientNotif, referral.ClientEmail, clientSubject, clientBody, ct,
+                nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Skipping client acceptance email for referral {ReferralId}: no ClientEmail stored. " +
+                "Acceptance is not blocked — provider and referrer have been notified.",
+                referral.Id);
+        }
+
         await Task.WhenAll(tasks);
     }
 
@@ -360,6 +392,20 @@ public class ReferralEmailService : IReferralEmailService
                 }
                 subject = $"Your referral was accepted — {referral.ClientFirstName} {referral.ClientLastName}";
                 body    = BuildReferrerAcceptanceHtml(referral, provider);
+                break;
+            }
+            // LSCC-01-002: client acceptance email retry
+            case NotificationType.ReferralAcceptedClient:
+            {
+                toAddress = notification.RecipientAddress ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(toAddress))
+                {
+                    notification.ClearRetrySchedule();
+                    await _notifications.UpdateAsync(notification, ct);
+                    return;
+                }
+                subject = $"Your case has been accepted — {provider.OrganizationName ?? provider.Name}";
+                body    = BuildClientAcceptanceHtml(referral, provider);
                 break;
             }
             default:
@@ -467,7 +513,10 @@ public class ReferralEmailService : IReferralEmailService
                 <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
                 requesting <strong>{r.RequestedService}</strong>.
               </p>
-              <p>The referring party has been notified. The next step is to schedule an appointment.</p>
+              <p>
+                The referring party has been notified. You can now begin coordinating care
+                for this client directly.
+              </p>
             </body>
             </html>
             """;
@@ -488,7 +537,38 @@ public class ReferralEmailService : IReferralEmailService
                 requesting <strong>{r.RequestedService}</strong> has been accepted by
                 <strong>{provName}</strong>.
               </p>
-              <p>They will be in touch with your client to schedule an appointment.</p>
+              <p>
+                <strong>{provName}</strong> will be in touch with your client to
+                continue coordinating care.
+              </p>
+            </body>
+            </html>
+            """;
+    }
+
+    // LSCC-01-002: client-facing acceptance notification template
+    private static string BuildClientAcceptanceHtml(Referral r, Provider p)
+    {
+        var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        return $"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
+              <h2 style="color:#057a55">Your Case Has Been Accepted</h2>
+              <p>Hello {r.ClientFirstName},</p>
+              <p>
+                We wanted to let you know that your case for
+                <strong>{r.RequestedService}</strong> has been accepted by
+                <strong>{provName}</strong>.
+              </p>
+              <p>
+                <strong>{provName}</strong> will be reaching out to you directly to
+                discuss next steps for your care.
+              </p>
+              <p style="margin-top:32px;font-size:12px;color:#888">
+                If you have any questions in the meantime, please contact the party
+                who referred you.
+              </p>
             </body>
             </html>
             """;
