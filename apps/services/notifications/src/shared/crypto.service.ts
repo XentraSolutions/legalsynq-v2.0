@@ -21,8 +21,7 @@ function getKey(): Buffer {
       "PROVIDER_SECRET_ENCRYPTION_KEY is not set — credential encryption will use a degraded fallback. " +
         "This is NOT safe for production."
     );
-    // Fallback for development — deterministic insecure key
-    encryptionKey = Buffer.alloc(KEY_LENGTH, 0x1a);
+    encryptionKey = crypto.randomBytes(KEY_LENGTH);
   } else {
     encryptionKey = deriveKey(rawKey);
   }
