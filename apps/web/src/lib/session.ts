@@ -38,7 +38,7 @@ const AUTH_ME_URL = `${GATEWAY_URL}/identity/api/auth/me`;
  * response at /auth/me.
  */
 export async function getServerSession(): Promise<PlatformSession | null> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessionCookie = cookieStore.get('platform_session');
 
   if (!sessionCookie?.value) return null;

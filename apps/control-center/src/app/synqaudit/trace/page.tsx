@@ -4,9 +4,9 @@ import { CCShell }                 from '@/components/shell/cc-shell';
 import { TraceTimeline }           from '@/components/synqaudit/trace-timeline';
 
 interface Props {
-  searchParams: {
+  searchParams: Promise<{
     correlationId?: string;
-  };
+  }>;
 }
 
 /**
@@ -16,8 +16,9 @@ interface Props {
  * chronological timeline, visualising request flows across services.
  */
 export default async function TraceViewerPage({ searchParams }: Props) {
+  const searchParamsData = await searchParams;
   const session       = await requirePlatformAdmin();
-  const correlationId = (searchParams.correlationId ?? '').trim();
+  const correlationId = (searchParamsData.correlationId ?? '').trim();
 
   let events:     Awaited<ReturnType<typeof controlCenterServerApi.auditCanonical.list>>['items'] = [];
   let fetchError: string | null = null;

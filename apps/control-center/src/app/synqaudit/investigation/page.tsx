@@ -5,7 +5,7 @@ import { CCShell }                 from '@/components/shell/cc-shell';
 import { InvestigationWorkspace }  from '@/components/synqaudit/investigation-workspace';
 
 interface Props {
-  searchParams: {
+  searchParams: Promise<{
     eventType?:     string;
     category?:      string;
     severity?:      string;
@@ -16,7 +16,7 @@ interface Props {
     dateTo?:        string;
     search?:        string;
     page?:          string;
-  };
+  }>;
 }
 
 const PAGE_SIZE = 15;
@@ -28,19 +28,20 @@ const PAGE_SIZE = 15;
  * the data to InvestigationWorkspace (client component) for interactivity.
  */
 export default async function InvestigationPage({ searchParams }: Props) {
+  const searchParamsData = await searchParams;
   const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
+  const tenantCtx = await getTenantContext();
 
-  const eventType     = searchParams.eventType     ?? '';
-  const category      = searchParams.category      ?? '';
-  const severity      = searchParams.severity      ?? '';
-  const actorId       = searchParams.actorId       ?? '';
-  const targetType    = searchParams.targetType    ?? '';
-  const correlationId = searchParams.correlationId ?? '';
-  const dateFrom      = searchParams.dateFrom      ?? '';
-  const dateTo        = searchParams.dateTo        ?? '';
-  const search        = searchParams.search        ?? '';
-  const page          = Math.max(1, parseInt(searchParams.page ?? '1', 10));
+  const eventType     = searchParamsData.eventType     ?? '';
+  const category      = searchParamsData.category      ?? '';
+  const severity      = searchParamsData.severity      ?? '';
+  const actorId       = searchParamsData.actorId       ?? '';
+  const targetType    = searchParamsData.targetType    ?? '';
+  const correlationId = searchParamsData.correlationId ?? '';
+  const dateFrom      = searchParamsData.dateFrom      ?? '';
+  const dateTo        = searchParamsData.dateTo        ?? '';
+  const search        = searchParamsData.search        ?? '';
+  const page          = Math.max(1, parseInt(searchParamsData.page ?? '1', 10));
 
   let items:      Awaited<ReturnType<typeof controlCenterServerApi.auditCanonical.list>>['items'] = [];
   let totalCount  = 0;

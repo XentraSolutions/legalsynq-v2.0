@@ -6,7 +6,7 @@ import { ServerApiError } from '@/lib/server-api-client';
 import { LienListTable } from '@/components/lien/lien-list-table';
 
 interface MyLiensPageProps {
-  searchParams: { status?: string };
+  searchParams: Promise<{ status?: string }>;
 }
 
 /**
@@ -16,6 +16,7 @@ interface MyLiensPageProps {
  * Backend scopes results to the caller's org.
  */
 export default async function MyLiensPage({ searchParams }: MyLiensPageProps) {
+  const searchParamsData = await searchParams;
   await requireProductRole(ProductRole.SynqLienSeller);
 
   let liens = null;
@@ -23,7 +24,7 @@ export default async function MyLiensPage({ searchParams }: MyLiensPageProps) {
 
   try {
     liens = await lienServerApi.liens.search({
-      status: searchParams.status || undefined,
+      status: searchParamsData.status || undefined,
     });
   } catch (err) {
     fetchError = err instanceof ServerApiError ? err.message : 'Failed to load liens.';
@@ -50,7 +51,7 @@ export default async function MyLiensPage({ searchParams }: MyLiensPageProps) {
             key={s}
             href={s ? `/lien/my-liens?status=${s}` : '/lien/my-liens'}
             className={`text-sm px-3 py-1 rounded-full border transition-colors ${
-              (searchParams.status ?? '') === s
+              (searchParamsData.status ?? '') === s
                 ? 'bg-primary text-white border-primary'
                 : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
             }`}

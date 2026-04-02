@@ -48,7 +48,7 @@ export interface NotifStats {
  * Call from Server Components only — never from Client Components.
  */
 async function notifRequest<T>(path: string, tenantId: string): Promise<T> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get('platform_session')?.value;
 
   const headers: Record<string, string> = {

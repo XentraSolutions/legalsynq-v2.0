@@ -17,10 +17,10 @@ import {
 import type { ReferralSummary, AppointmentSummary } from '@/types/careconnect';
 
 interface DashboardPageProps {
-  searchParams: {
+  searchParams: Promise<{
     analyticsFrom?: string;
     analyticsTo?:   string;
-  };
+  }>;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -178,6 +178,7 @@ function QuickAction({ href, icon, label, desc }: {
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+  const searchParamsData = await searchParams;
   const session = await requireOrg();
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
@@ -186,8 +187,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   // ── Date range ─────────────────────────────────────────────────────────────
   const { range: analyticsRange, activePreset } = parseDateRangeParams(
-    searchParams.analyticsFrom,
-    searchParams.analyticsTo,
+    searchParamsData.analyticsFrom,
+    searchParamsData.analyticsTo,
   );
 
   // ── Operational data ───────────────────────────────────────────────────────

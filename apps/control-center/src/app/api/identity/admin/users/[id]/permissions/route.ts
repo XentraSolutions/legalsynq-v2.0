@@ -14,17 +14,18 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { requireAdmin }                   from '@/lib/auth-guards';
 import { controlCenterServerApi }         from '@/lib/control-center-api';
 
-type Ctx = { params: { id: string } };
+type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(
   _request: NextRequest,
   { params }: Ctx,
 ): Promise<NextResponse> {
+  const { id } = await params;
   try { await requireAdmin(); }
   catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
 
   try {
-    const result = await controlCenterServerApi.users.getEffectivePermissions(params.id);
+    const result = await controlCenterServerApi.users.getEffectivePermissions(id);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to load user permissions.';

@@ -5,10 +5,10 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { GroupListTable } from '@/components/users/group-list-table';
 
 interface GroupsPageProps {
-  searchParams: {
+  searchParams: Promise<{
     page?:     string;
     tenantId?: string;
-  };
+  }>;
 }
 
 /**
@@ -16,11 +16,12 @@ interface GroupsPageProps {
  * Access: PlatformAdmin only.
  */
 export default async function GroupsPage({ searchParams }: GroupsPageProps) {
+  const searchParamsData = await searchParams;
   const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
+  const tenantCtx = await getTenantContext();
 
-  const page     = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
-  const tenantId = searchParams.tenantId ?? tenantCtx?.tenantId;
+  const page     = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
+  const tenantId = searchParamsData.tenantId ?? tenantCtx?.tenantId;
 
   let result = null;
   let fetchError: string | null = null;

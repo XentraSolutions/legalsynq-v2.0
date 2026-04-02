@@ -14,8 +14,9 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const { id } = await params;
   try {
     await requireAdmin();
   } catch {
@@ -28,7 +29,7 @@ export async function GET(
   const category = searchParams.get('category') ?? '';
 
   try {
-    const result = await controlCenterServerApi.users.getActivity(params.id, {
+    const result = await controlCenterServerApi.users.getActivity(id, {
       page,
       pageSize,
       category: category || undefined,

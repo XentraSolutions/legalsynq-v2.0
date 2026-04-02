@@ -6,10 +6,10 @@ import { TenantListTable } from '@/components/tenants/tenant-list-table';
 import { CreateTenantButton } from '@/components/tenants/create-tenant-button';
 
 interface TenantsPageProps {
-  searchParams: {
+  searchParams: Promise<{
     page?:   string;
     search?: string;
-  };
+  }>;
 }
 
 /**
@@ -21,11 +21,12 @@ interface TenantsPageProps {
  * TODO: When GET /identity/api/admin/tenants is live, the stub auto-wires — no page change needed.
  */
 export default async function TenantsPage({ searchParams }: TenantsPageProps) {
+  const searchParamsData = await searchParams;
   const session    = await requirePlatformAdmin();
-  const tenantCtx  = getTenantContext();
+  const tenantCtx  = await getTenantContext();
 
-  const page   = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
-  const search = searchParams.search ?? '';
+  const page   = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
+  const search = searchParamsData.search ?? '';
 
   let result = null;
   let fetchError: string | null = null;

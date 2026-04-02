@@ -12,15 +12,16 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 export async function POST(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const { id } = await params;
   try {
     await requirePlatformAdmin();
   } catch {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
 
-  const holdId = params.id;
+  const holdId = id;
   if (!holdId) {
     return NextResponse.json({ message: 'holdId is required' }, { status: 400 });
   }

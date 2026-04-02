@@ -9,11 +9,11 @@ import { Routes } from '@/lib/routes';
 type StatusFilter = 'all' | 'active' | 'inactive' | 'invited';
 
 interface TenantUsersPageProps {
-  searchParams: {
+  searchParams: Promise<{
     page?:   string;
     search?: string;
     status?: string;
-  };
+  }>;
 }
 
 /**
@@ -33,13 +33,14 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 ];
 
 export default async function TenantUsersPage({ searchParams }: TenantUsersPageProps) {
+  const searchParamsData = await searchParams;
   const session   = await requireAdmin();
-  const tenantCtx = getTenantContext();
+  const tenantCtx = await getTenantContext();
 
-  const page   = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
-  const search = searchParams.search ?? '';
-  const status = (STATUS_FILTERS.map(f => f.value) as string[]).includes(searchParams.status ?? '')
-    ? (searchParams.status as StatusFilter)
+  const page   = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
+  const search = searchParamsData.search ?? '';
+  const status = (STATUS_FILTERS.map(f => f.value) as string[]).includes(searchParamsData.status ?? '')
+    ? (searchParamsData.status as StatusFilter)
     : 'all';
 
   let result = null;

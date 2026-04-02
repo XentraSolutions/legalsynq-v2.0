@@ -23,15 +23,16 @@ const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
  * Cookie reading: uses cookies() from next/headers (server-side store) rather
  * than request.cookies — more reliable inside App Router Route Handlers.
  */
-type RouteContext = { params: { path: string[] } };
+type RouteContext = { params: Promise<{ path: string[] }> };
 
 async function proxy(request: NextRequest, { params }: RouteContext): Promise<NextResponse> {
   // Use the server-side cookie store — same mechanism as server-api-client.ts
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get('platform_session')?.value;
 
   // Reconstruct the gateway path: /api/careconnect/api/providers → /careconnect/api/providers
-  const gatewayPath = `/careconnect/${params.path.join('/')}`;
+  const { path: pathSegments } = await params;
+  const gatewayPath = `/careconnect/${pathSegments.join('/')}`;
   const qs = request.nextUrl.searchParams.toString();
   const url = `${GATEWAY_URL}${gatewayPath}${qs ? `?${qs}` : ''}`;
 

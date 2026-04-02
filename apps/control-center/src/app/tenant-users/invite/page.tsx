@@ -15,7 +15,7 @@ export default async function InviteUserPage() {
   const session = await getSession();
   if (!session) redirect('/login');
 
-  const tenantCtx = getTenantContext();
+  const tenantCtx = await getTenantContext();
 
   return (
     <InviteUserForm

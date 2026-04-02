@@ -168,8 +168,8 @@ export async function apiFetch<T>(
   // Read active tenant + impersonation context from cookies.
   // getTenantContext() and getImpersonation() both call cookies() internally;
   // Next.js memoises cookies() per-request so there is no extra overhead.
-  const tenantCtx      = getTenantContext();
-  const impersonation  = getImpersonation();
+  const tenantCtx      = await getTenantContext();
+  const impersonation  = await getImpersonation();
 
   // Build a shared meta object for all log entries in this request's lifecycle
   const method  = options.method ?? 'GET';
@@ -186,7 +186,7 @@ export async function apiFetch<T>(
 
   // ── 2. Auth header ────────────────────────────────────────────────────────
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get('platform_session')?.value;
 
   // ── Session pre-flight check ───────────────────────────────────────────

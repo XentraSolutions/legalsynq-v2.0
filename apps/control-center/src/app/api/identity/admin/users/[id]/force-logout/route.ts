@@ -16,8 +16,9 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 export async function POST(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const { id } = await params;
   try {
     await requireAdmin();
   } catch {
@@ -25,7 +26,7 @@ export async function POST(
   }
 
   try {
-    await controlCenterServerApi.users.forceLogout(params.id);
+    await controlCenterServerApi.users.forceLogout(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to force logout user.';

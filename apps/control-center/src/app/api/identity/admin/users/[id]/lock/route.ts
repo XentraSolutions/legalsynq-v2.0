@@ -14,8 +14,9 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 export async function POST(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const { id } = await params;
   try {
     await requireAdmin();
   } catch {
@@ -23,7 +24,7 @@ export async function POST(
   }
 
   try {
-    await controlCenterServerApi.users.lock(params.id);
+    await controlCenterServerApi.users.lock(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to lock user.';

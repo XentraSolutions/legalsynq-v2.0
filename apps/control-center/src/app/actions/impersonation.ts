@@ -83,14 +83,14 @@ export async function startImpersonationAction(user: {
   // Auto-align tenant context with the impersonation target.
   // getImpersonation() enforces tenantId matching — if we write an impersonation
   // cookie without matching the tenant context, the first read would reject it.
-  const currentTenantCtx = getTenantContext();
+  const currentTenantCtx = await getTenantContext();
   if (!currentTenantCtx || currentTenantCtx.tenantId !== user.tenantId) {
     const alignedCtx: TenantContext = {
       tenantId:   user.tenantId,
       tenantName: user.tenantName,
       tenantCode: user.tenantName.toUpperCase().replace(/\s+/g, '').slice(0, 10),
     };
-    setTenantContext(alignedCtx);
+    await setTenantContext(alignedCtx);
   }
 
   const impersonation: UserImpersonationSession = {
@@ -102,7 +102,7 @@ export async function startImpersonationAction(user: {
     startedAtUtc:          new Date().toISOString(),
   };
 
-  setImpersonation(impersonation);
+  await setImpersonation(impersonation);
 
   // 1. Local structured log (visible in dev and prod NDJSON streams)
   logImpersonationStart(session.userId, user.id, user.tenantId);
@@ -147,9 +147,9 @@ export async function stopImpersonationAction(): Promise<never> {
 
   // Read current impersonation before clearing so we can include it in the
   // audit log entry (after clearing, the cookie is gone).
-  const impersonation = getImpersonation();
+  const impersonation = await getImpersonation();
 
-  clearImpersonation();
+  await clearImpersonation();
 
   // 1. Local structured log
   if (impersonation) {

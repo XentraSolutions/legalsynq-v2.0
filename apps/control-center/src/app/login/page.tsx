@@ -1,11 +1,11 @@
 import { LoginForm } from './login-form';
 
 interface LoginPageProps {
-  searchParams: { reason?: string };
+  searchParams: Promise<{ reason?: string }>;
 }
 
 export default function LoginPage({ searchParams }: LoginPageProps) {
-  const reason = searchParams.reason;
+  const reason = searchParamsData.reason;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">

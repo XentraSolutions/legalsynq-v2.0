@@ -4,7 +4,7 @@ import { CCShell }                 from '@/components/shell/cc-shell';
 import { LegalHoldManager }        from '@/components/synqaudit/legal-hold-manager';
 
 interface Props {
-  searchParams: { auditId?: string };
+  searchParams: Promise<{ auditId?: string }>;
 }
 
 /**
@@ -14,8 +14,9 @@ interface Props {
  * place new holds, and release existing ones.
  */
 export default async function LegalHoldsPage({ searchParams }: Props) {
+  const searchParamsData = await searchParams;
   const session = await requirePlatformAdmin();
-  const auditId = (searchParams.auditId ?? '').trim();
+  const auditId = (searchParamsData.auditId ?? '').trim();
 
   let holds:     Awaited<ReturnType<typeof controlCenterServerApi.auditLegalHolds.listForRecord>> = [];
   let fetchError: string | null = null;

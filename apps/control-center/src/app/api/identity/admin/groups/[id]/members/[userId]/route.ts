@@ -12,13 +12,14 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string; userId: string } },
+  { params }: { params: Promise<{ id: string; userId: string }> },
 ): Promise<NextResponse> {
+  const { id, userId } = await params;
   try { await requireAdmin(); }
   catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
 
   try {
-    await controlCenterServerApi.groups.removeMember(params.id, params.userId);
+    await controlCenterServerApi.groups.removeMember(id, userId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to remove group member.';

@@ -15,17 +15,18 @@ import { ReferralAuditTimeline } from '@/components/careconnect/referral-audit-t
 import { ReferralAccessBlocked } from '@/components/careconnect/referral-access-blocked';
 
 interface ReferralDetailPageProps {
-  params:       { id: string };
-  searchParams: {
+  params:       Promise<{ id: string }>;
+  searchParams: Promise<{
     from?:        string;
     status?:      string;
     search?:      string;
     createdFrom?: string;
     createdTo?:   string;
-  };
+  }>;
 }
 
 export default async function ReferralDetailPage({ params, searchParams }: ReferralDetailPageProps) {
+  const { id } = await params;
   const session = await requireOrg();
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
@@ -43,7 +44,7 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
   let fetchError: string | null = null;
 
   try {
-    referral = await careConnectServerApi.referrals.getById(params.id);
+    referral = await careConnectServerApi.referrals.getById(id);
   } catch (err) {
     if (err instanceof ServerApiError) {
       if (err.isNotFound) notFound();
@@ -57,7 +58,8 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
     }
   }
 
-  const { href: backHref, label: backLabel } = resolveReferralDetailBack(searchParams);
+  const resolvedSearchParams = await searchParams;
+  const { href: backHref, label: backLabel } = resolveReferralDetailBack(resolvedSearchParams);
 
   return (
     <div className="space-y-4">

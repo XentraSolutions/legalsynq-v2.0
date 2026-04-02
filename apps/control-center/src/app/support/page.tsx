@@ -6,12 +6,12 @@ import { SupportCaseTable } from '@/components/support/support-case-table';
 import type { SupportCase } from '@/types/control-center';
 
 interface SupportPageProps {
-  searchParams: {
+  searchParams: Promise<{
     page?:     string;
     search?:   string;
     status?:   string;
     priority?: string;
-  };
+  }>;
 }
 
 const PAGE_SIZE = 10;
@@ -27,13 +27,14 @@ const PAGE_SIZE = 10;
  * Filtering: search (title/tenant/user), status, priority — all via URL params.
  */
 export default async function SupportPage({ searchParams }: SupportPageProps) {
+  const searchParamsData = await searchParams;
   const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
+  const tenantCtx = await getTenantContext();
 
-  const page     = Math.max(1, parseInt(searchParams.page ?? '1', 10) || 1);
-  const search   = searchParams.search   ?? '';
-  const status   = searchParams.status   ?? '';
-  const priority = searchParams.priority ?? '';
+  const page     = Math.max(1, parseInt(searchParamsData.page ?? '1', 10) || 1);
+  const search   = searchParamsData.search   ?? '';
+  const status   = searchParamsData.status   ?? '';
+  const priority = searchParamsData.priority ?? '';
 
   let result: { items: SupportCase[]; totalCount: number } | null = null;
   let fetchError: string | null = null;

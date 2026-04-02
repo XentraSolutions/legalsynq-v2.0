@@ -12,13 +12,14 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 export async function POST(
   _request: NextRequest,
-  { params }: { params: { id: string; membershipId: string } },
+  { params }: { params: Promise<{ id: string; membershipId: string }> },
 ): Promise<NextResponse> {
+  const { id, membershipId } = await params;
   try { await requireAdmin(); }
   catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
 
   try {
-    await controlCenterServerApi.users.setPrimaryMembership(params.id, params.membershipId);
+    await controlCenterServerApi.users.setPrimaryMembership(id, membershipId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to set primary membership.';

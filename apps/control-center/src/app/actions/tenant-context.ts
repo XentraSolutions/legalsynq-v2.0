@@ -55,7 +55,7 @@ import type { TenantContext } from '@/types/control-center';
 export async function switchTenantContextAction(tenant: TenantContext): Promise<never> {
   const session = await requirePlatformAdmin();
 
-  setTenantContext(tenant);
+  await setTenantContext(tenant);
 
   // Emit audit log after writing the cookie
   logTenantContextSwitch(session.userId, tenant.tenantId, 'enter');
@@ -82,7 +82,7 @@ export async function switchTenantContextAction(tenant: TenantContext): Promise<
 export async function exitTenantContextAction(): Promise<never> {
   const session = await requirePlatformAdmin();
 
-  clearTenantContext();
+  await clearTenantContext();
 
   // Emit audit log after clearing the cookie
   logTenantContextSwitch(session.userId, null, 'exit');

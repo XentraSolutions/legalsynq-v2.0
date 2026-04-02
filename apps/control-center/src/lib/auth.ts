@@ -127,8 +127,8 @@ export function toSessionUser(session: PlatformSession): SessionUser {
  * TODO: validate tenantId ownership against backend session
  * TODO: persist tenant context in backend session
  */
-export function getTenantContext(): TenantContext | null {
-  const cookieStore = cookies();
+export async function getTenantContext(): Promise<TenantContext | null> {
+  const cookieStore = await cookies();
   const raw = cookieStore.get(TENANT_CONTEXT_COOKIE_NAME)?.value;
   if (!raw) return null;
   try {
@@ -181,8 +181,8 @@ export function getTenantContext(): TenantContext | null {
  * TODO: persist tenant context in backend session
  * TODO: add CSRF protection
  */
-export function setTenantContext(tenant: TenantContext): void {
-  const cookieStore = cookies();
+export async function setTenantContext(tenant: TenantContext): Promise<void> {
+  const cookieStore = await cookies();
   cookieStore.set(TENANT_CONTEXT_COOKIE_NAME, JSON.stringify(tenant), {
     httpOnly: false,
     secure:   IS_PROD,
@@ -203,8 +203,8 @@ export function setTenantContext(tenant: TenantContext): void {
  *
  * TODO: persist tenant context in backend session
  */
-export function clearTenantContext(): void {
-  const cookieStore = cookies();
+export async function clearTenantContext(): Promise<void> {
+  const cookieStore = await cookies();
   cookieStore.delete(TENANT_CONTEXT_COOKIE_NAME);
 }
 
@@ -231,8 +231,8 @@ export function clearTenantContext(): void {
  * TODO: integrate with Identity service impersonation endpoint
  * TODO: validate impersonation token server-side
  */
-export function getImpersonation(): UserImpersonationSession | null {
-  const cookieStore = cookies();
+export async function getImpersonation(): Promise<UserImpersonationSession | null> {
+  const cookieStore = await cookies();
   const raw = cookieStore.get(IMPERSONATION_COOKIE_NAME)?.value;
   if (!raw) return null;
   try {
@@ -262,7 +262,7 @@ export function getImpersonation(): UserImpersonationSession | null {
       // If an active tenant context exists, the impersonation tenantId must
       // match it. A mismatch means cookies are out of sync; reject the
       // impersonation to prevent cross-tenant access.
-      const tenantCtx = getTenantContext();
+      const tenantCtx = await getTenantContext();
       if (tenantCtx && tenantCtx.tenantId !== session.tenantId) {
         logWarn('security.impersonation.tenant_mismatch', {
           impersonatedUserId: session.impersonatedUserId,
@@ -306,8 +306,8 @@ export function getImpersonation(): UserImpersonationSession | null {
  * TODO: integrate with Identity service impersonation endpoint
  * TODO: issue temporary impersonation token
  */
-export function setImpersonation(session: UserImpersonationSession): void {
-  const cookieStore = cookies();
+export async function setImpersonation(session: UserImpersonationSession): Promise<void> {
+  const cookieStore = await cookies();
   cookieStore.set(IMPERSONATION_COOKIE_NAME, JSON.stringify(session), {
     httpOnly: true,
     secure:   IS_PROD,
@@ -330,8 +330,8 @@ export function setImpersonation(session: UserImpersonationSession): void {
  *
  * TODO: revoke impersonation token on Identity service
  */
-export function clearImpersonation(): void {
-  const cookieStore = cookies();
+export async function clearImpersonation(): Promise<void> {
+  const cookieStore = await cookies();
   cookieStore.delete(IMPERSONATION_COOKIE_NAME);
 }
 

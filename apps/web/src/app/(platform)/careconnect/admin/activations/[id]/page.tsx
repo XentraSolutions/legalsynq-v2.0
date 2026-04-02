@@ -15,7 +15,7 @@ import { ServerApiError } from '@/lib/server-api-client';
 import { ApproveAction } from './approve-action';
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -49,13 +49,14 @@ function formatDateTime(iso: string | null) {
 }
 
 export default async function ActivationDetailPage({ params }: PageProps) {
+  const { id } = await params;
   await requireAdmin();
 
   let detail = null;
   let errorMessage: string | null = null;
 
   try {
-    detail = await careConnectServerApi.adminActivations.getById(params.id);
+    detail = await careConnectServerApi.adminActivations.getById(id);
   } catch (err) {
     if (err instanceof ServerApiError && err.status === 404) {
       notFound();

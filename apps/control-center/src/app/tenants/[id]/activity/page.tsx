@@ -4,13 +4,13 @@ import { Routes }                 from '@/lib/routes';
 
 interface Props {
   params: { id: string };
-  searchParams: {
+  searchParams: Promise<{
     actorId?:  string;
     category?: string;
     dateFrom?: string;
     dateTo?:   string;
     page?:     string;
-  };
+  }>;
 }
 
 const PAGE_SIZE = 20;
@@ -32,14 +32,15 @@ const CATEGORY_TABS = [
  * Access: PlatformAdmin only (enforced by layout + requirePlatformAdmin below).
  */
 export default async function TenantActivityPage({ params, searchParams }: Props) {
+  const searchParamsData = await searchParams;
   await requirePlatformAdmin();
 
   const { id }   = params;
-  const actorId  = searchParams.actorId  ?? '';
-  const category = searchParams.category ?? '';
-  const dateFrom = searchParams.dateFrom ?? '';
-  const dateTo   = searchParams.dateTo   ?? '';
-  const page     = Math.max(1, parseInt(searchParams.page ?? '1', 10));
+  const actorId  = searchParamsData.actorId  ?? '';
+  const category = searchParamsData.category ?? '';
+  const dateFrom = searchParamsData.dateFrom ?? '';
+  const dateTo   = searchParamsData.dateTo   ?? '';
+  const page     = Math.max(1, parseInt(searchParamsData.page ?? '1', 10));
 
   let items:      Awaited<ReturnType<typeof controlCenterServerApi.auditCanonical.list>>['items'] = [];
   let totalCount  = 0;

@@ -80,16 +80,17 @@ const CATEGORY_TABS = [
  * Scope: events scoped to the authenticated user's tenantId only.
  */
 export default async function ActivityPage({ searchParams }: PageProps) {
+  const searchParamsData = await searchParams;
   const session = await requireOrg();
 
-  const category  = searchParams.category  || undefined;
-  const eventType = searchParams.eventType?.trim() || undefined;
-  const severity  = searchParams.severity  || undefined;
-  const dateFrom  = searchParams.dateFrom  || undefined;
-  const dateTo    = searchParams.dateTo    || undefined;
-  const page      = Math.max(1, parseInt(searchParams.page ?? '1', 10));
+  const category  = searchParamsData.category  || undefined;
+  const eventType = searchParamsData.eventType?.trim() || undefined;
+  const severity  = searchParamsData.severity  || undefined;
+  const dateFrom  = searchParamsData.dateFrom  || undefined;
+  const dateTo    = searchParamsData.dateTo    || undefined;
+  const page      = Math.max(1, parseInt(searchParamsData.page ?? '1', 10));
 
-  const rawActorId = searchParams.actorId || undefined;
+  const rawActorId = searchParamsData.actorId || undefined;
   const actorId    = rawActorId === 'me' ? session.userId : rawActorId;
   const isMyView   = rawActorId === 'me' || actorId === session.userId;
 

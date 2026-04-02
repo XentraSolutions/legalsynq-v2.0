@@ -14,8 +14,9 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const { id } = await params;
   try {
     await requireAdmin();
   } catch {
@@ -23,7 +24,7 @@ export async function GET(
   }
 
   try {
-    const data = await controlCenterServerApi.users.getSecurity(params.id);
+    const data = await controlCenterServerApi.users.getSecurity(id);
     return NextResponse.json(data ?? {});
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to load security info.';

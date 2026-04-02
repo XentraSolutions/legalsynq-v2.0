@@ -7,7 +7,7 @@ import { CanonicalAuditTableInteractive }  from '@/components/audit-logs/canonic
 import type { AuditLogEntry, CanonicalAuditEvent, AuditReadMode } from '@/types/control-center';
 
 interface AuditLogsPageProps {
-  searchParams: {
+  searchParams: Promise<{
     search?:        string;
     entityType?:    string;
     actor?:         string;
@@ -18,7 +18,7 @@ interface AuditLogsPageProps {
     dateFrom?:      string;
     dateTo?:        string;
     page?:          string;
-  };
+  }>;
 }
 
 const PAGE_SIZE = 15;
@@ -53,19 +53,20 @@ const MODE_COLORS: Record<AuditReadMode, string> = {
  * Filtering: server-side via URL searchParams (plain GET form, no JS required).
  */
 export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps) {
+  const searchParamsData = await searchParams;
   const session   = await requireAdmin();
-  const tenantCtx = getTenantContext();
+  const tenantCtx = await getTenantContext();
 
-  const search        = searchParams.search        ?? '';
-  const entityType    = searchParams.entityType    ?? '';
-  const actor         = searchParams.actor         ?? '';
-  const eventType     = searchParams.eventType     ?? '';
-  const severity      = searchParams.severity      ?? '';
-  const category      = searchParams.category      ?? '';
-  const correlationId = searchParams.correlationId ?? '';
-  const dateFrom      = searchParams.dateFrom      ?? '';
-  const dateTo        = searchParams.dateTo        ?? '';
-  const page          = Math.max(1, parseInt(searchParams.page ?? '1', 10));
+  const search        = searchParamsData.search        ?? '';
+  const entityType    = searchParamsData.entityType    ?? '';
+  const actor         = searchParamsData.actor         ?? '';
+  const eventType     = searchParamsData.eventType     ?? '';
+  const severity      = searchParamsData.severity      ?? '';
+  const category      = searchParamsData.category      ?? '';
+  const correlationId = searchParamsData.correlationId ?? '';
+  const dateFrom      = searchParamsData.dateFrom      ?? '';
+  const dateTo        = searchParamsData.dateTo        ?? '';
+  const page          = Math.max(1, parseInt(searchParamsData.page ?? '1', 10));
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 

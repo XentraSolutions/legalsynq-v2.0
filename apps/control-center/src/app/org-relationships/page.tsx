@@ -4,10 +4,10 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { OrgRelationshipTable } from '@/components/platform/org-relationship-table';
 
 interface OrgRelationshipsPageProps {
-  searchParams: {
+  searchParams: Promise<{
     page?:       string;
     activeOnly?: string;
-  };
+  }>;
 }
 
 /**
@@ -24,9 +24,10 @@ interface OrgRelationshipsPageProps {
  *       (cached 60 s, tag: cc:org-relationships).
  */
 export default async function OrgRelationshipsPage({ searchParams }: OrgRelationshipsPageProps) {
+  const searchParamsData = await searchParams;
   const session    = await requirePlatformAdmin();
-  const page       = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
-  const activeOnly = searchParams.activeOnly !== 'false';
+  const page       = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
+  const activeOnly = searchParamsData.activeOnly !== 'false';
 
   let result    = null;
   let fetchError: string | null = null;

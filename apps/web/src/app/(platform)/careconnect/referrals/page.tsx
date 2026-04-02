@@ -11,7 +11,7 @@ import { ReferralQueueToolbar } from '@/components/careconnect/referral-queue-to
 import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
 
 interface ReferralsPageProps {
-  searchParams: {
+  searchParams: Promise<{
     status?:      string;
     urgency?:     string;
     providerId?:  string;
@@ -19,10 +19,11 @@ interface ReferralsPageProps {
     createdTo?:   string;
     page?:        string;
     search?:      string;
-  };
+  }>;
 }
 
 export default async function ReferralsPage({ searchParams }: ReferralsPageProps) {
+  const searchParamsData = await searchParams;
   const session = await requireOrg();
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
@@ -36,23 +37,23 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
     return <ReferralAccessBlocked reason={readiness.reason} />;
   }
 
-  const page = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
+  const page = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
 
-  const createdFrom = (searchParams.createdFrom && isValidIsoDate(searchParams.createdFrom))
-    ? searchParams.createdFrom : undefined;
-  const createdTo   = (searchParams.createdTo && isValidIsoDate(searchParams.createdTo))
-    ? searchParams.createdTo : undefined;
+  const createdFrom = (searchParamsData.createdFrom && isValidIsoDate(searchParamsData.createdFrom))
+    ? searchParamsData.createdFrom : undefined;
+  const createdTo   = (searchParamsData.createdTo && isValidIsoDate(searchParamsData.createdTo))
+    ? searchParamsData.createdTo : undefined;
 
-  const searchText = searchParams.search?.trim() || undefined;
+  const searchText = searchParamsData.search?.trim() || undefined;
 
   let result = null;
   let fetchError: string | null = null;
 
   try {
     result = await careConnectServerApi.referrals.search({
-      status:      searchParams.status     || undefined,
-      urgency:     searchParams.urgency    || undefined,
-      providerId:  searchParams.providerId || undefined,
+      status:      searchParamsData.status     || undefined,
+      urgency:     searchParamsData.urgency    || undefined,
+      providerId:  searchParamsData.providerId || undefined,
       clientName:  searchText,
       createdFrom,
       createdTo,
@@ -69,10 +70,10 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
 
   // Build query string for pagination links to preserve current filters
   const qsParts: string[] = [];
-  if (searchParams.status)    qsParts.push(`status=${encodeURIComponent(searchParams.status)}`);
-  if (searchParams.search)    qsParts.push(`search=${encodeURIComponent(searchParams.search)}`);
-  if (searchParams.createdFrom) qsParts.push(`createdFrom=${searchParams.createdFrom}`);
-  if (searchParams.createdTo)   qsParts.push(`createdTo=${searchParams.createdTo}`);
+  if (searchParamsData.status)    qsParts.push(`status=${encodeURIComponent(searchParamsData.status)}`);
+  if (searchParamsData.search)    qsParts.push(`search=${encodeURIComponent(searchParamsData.search)}`);
+  if (searchParamsData.createdFrom) qsParts.push(`createdFrom=${searchParamsData.createdFrom}`);
+  if (searchParamsData.createdTo)   qsParts.push(`createdTo=${searchParamsData.createdTo}`);
   const currentQs = qsParts.join('&');
 
   return (
@@ -118,7 +119,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
       <Suspense fallback={null}>
         <ReferralQueueToolbar
           currentSearch={searchText ?? ''}
-          currentStatus={searchParams.status ?? ''}
+          currentStatus={searchParamsData.status ?? ''}
         />
       </Suspense>
 
@@ -130,7 +131,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
       )}
 
       {/* Results summary when filtering */}
-      {result && (searchText || searchParams.status) && (
+      {result && (searchText || searchParamsData.status) && (
         <p className="text-xs text-gray-400">
           {result.totalCount === 0
             ? 'No referrals match your filters.'

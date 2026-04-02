@@ -9,10 +9,11 @@ import { AppointmentActions } from '@/components/careconnect/appointment-actions
 import { AppointmentCancelButton } from '@/components/careconnect/appointment-cancel-button';
 
 interface AppointmentDetailPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function AppointmentDetailPage({ params }: AppointmentDetailPageProps) {
+  const { id } = await params;
   const session = await requireOrg();
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
@@ -30,7 +31,7 @@ export default async function AppointmentDetailPage({ params }: AppointmentDetai
   let fetchError: string | null = null;
 
   try {
-    appointment = await careConnectServerApi.appointments.getById(params.id);
+    appointment = await careConnectServerApi.appointments.getById(id);
   } catch (err) {
     if (err instanceof ServerApiError) {
       if (err.isNotFound) notFound();

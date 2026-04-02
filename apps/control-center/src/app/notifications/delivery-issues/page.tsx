@@ -8,7 +8,7 @@ import type { NotifListResponse }        from '@/lib/notifications-api';
 const PAGE_SIZE = 25;
 
 interface Props {
-  searchParams: { page?: string };
+  searchParams: Promise<{ page?: string }>;
 }
 
 /**
@@ -21,9 +21,10 @@ interface Props {
  * them client-side to present a single delivery-issue view.
  */
 export default async function DeliveryIssuesPage({ searchParams }: Props) {
+  const searchParamsData = await searchParams;
   const session = await requirePlatformAdmin();
 
-  const page = Math.max(1, parseInt(searchParams.page ?? '1', 10));
+  const page = Math.max(1, parseInt(searchParamsData.page ?? '1', 10));
 
   let failedData:  NotifListResponse | null = null;
   let blockedData: NotifListResponse | null = null;

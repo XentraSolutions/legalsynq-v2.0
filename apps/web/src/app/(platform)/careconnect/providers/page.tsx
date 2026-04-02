@@ -6,7 +6,7 @@ import { ProviderSearchFilters } from '@/components/careconnect/provider-search-
 import { ProviderMapShell } from '@/components/careconnect/provider-map-shell';
 
 interface ProvidersPageProps {
-  searchParams: {
+  searchParams: Promise<{
     name?:               string;
     city?:               string;
     state?:              string;
@@ -21,7 +21,7 @@ interface ProvidersPageProps {
     sLat?:               string;
     eLng?:               string;
     wLng?:               string;
-  };
+  }>;
 }
 
 /**
@@ -43,6 +43,7 @@ interface ProvidersPageProps {
  *   nLat, sLat, eLng, wLng                               — viewport bounds (map pan)
  */
 export default async function ProvidersPage({ searchParams }: ProvidersPageProps) {
+  const searchParamsData = await searchParams;
   const session = await requireOrg();
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
@@ -56,15 +57,15 @@ export default async function ProvidersPage({ searchParams }: ProvidersPageProps
     );
   }
 
-  const page = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
+  const page = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
 
-  const lat    = searchParams.lat    ? parseFloat(searchParams.lat)    : undefined;
-  const lng    = searchParams.lng    ? parseFloat(searchParams.lng)    : undefined;
-  const radius = searchParams.radius ? parseFloat(searchParams.radius) : undefined;
-  const nLat   = searchParams.nLat   ? parseFloat(searchParams.nLat)   : undefined;
-  const sLat   = searchParams.sLat   ? parseFloat(searchParams.sLat)   : undefined;
-  const eLng   = searchParams.eLng   ? parseFloat(searchParams.eLng)   : undefined;
-  const wLng   = searchParams.wLng   ? parseFloat(searchParams.wLng)   : undefined;
+  const lat    = searchParamsData.lat    ? parseFloat(searchParamsData.lat)    : undefined;
+  const lng    = searchParamsData.lng    ? parseFloat(searchParamsData.lng)    : undefined;
+  const radius = searchParamsData.radius ? parseFloat(searchParamsData.radius) : undefined;
+  const nLat   = searchParamsData.nLat   ? parseFloat(searchParamsData.nLat)   : undefined;
+  const sLat   = searchParamsData.sLat   ? parseFloat(searchParamsData.sLat)   : undefined;
+  const eLng   = searchParamsData.eLng   ? parseFloat(searchParamsData.eLng)   : undefined;
+  const wLng   = searchParamsData.wLng   ? parseFloat(searchParamsData.wLng)   : undefined;
 
   const geoParams =
     lat && lng && radius
@@ -78,11 +79,11 @@ export default async function ProvidersPage({ searchParams }: ProvidersPageProps
 
   try {
     result = await careConnectServerApi.providers.search({
-      name:               searchParams.name               || undefined,
-      city:               searchParams.city               || undefined,
-      state:              searchParams.state              || undefined,
-      categoryCode:       searchParams.categoryCode       || undefined,
-      acceptingReferrals: searchParams.acceptingReferrals === 'true' ? true : undefined,
+      name:               searchParamsData.name               || undefined,
+      city:               searchParamsData.city               || undefined,
+      state:              searchParamsData.state              || undefined,
+      categoryCode:       searchParamsData.categoryCode       || undefined,
+      acceptingReferrals: searchParamsData.acceptingReferrals === 'true' ? true : undefined,
       isActive:           true,
       page,
       pageSize:           20,

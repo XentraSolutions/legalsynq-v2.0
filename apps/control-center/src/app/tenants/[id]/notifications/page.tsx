@@ -8,11 +8,11 @@ import { ChannelBadge }                  from '@/components/notifications/channe
 
 interface Props {
   params:       { id: string };
-  searchParams: {
+  searchParams: Promise<{
     status?:  string;
     channel?: string;
     page?:    string;
-  };
+  }>;
 }
 
 const PAGE_SIZE = 20;
@@ -35,12 +35,13 @@ function parseRecipient(j: string): string {
  * Access: PlatformAdmin only (enforced by layout + requirePlatformAdmin below).
  */
 export default async function TenantNotificationsPage({ params, searchParams }: Props) {
+  const searchParamsData = await searchParams;
   await requirePlatformAdmin();
 
   const { id } = params;
-  const status  = searchParams.status  ?? '';
-  const channel = searchParams.channel ?? '';
-  const page    = Math.max(1, parseInt(searchParams.page ?? '1', 10));
+  const status  = searchParamsData.status  ?? '';
+  const channel = searchParamsData.channel ?? '';
+  const page    = Math.max(1, parseInt(searchParamsData.page ?? '1', 10));
 
   // ── Fetch notification stats ───────────────────────────────────────────────
   let stats:    NotifStats | null = null;

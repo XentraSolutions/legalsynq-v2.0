@@ -4,7 +4,7 @@ import { UserListTable }              from '@/components/users/user-list-table';
 
 interface TenantUsersPageProps {
   params:       { id: string };
-  searchParams: { page?: string; search?: string };
+  searchParams: Promise<{ page?: string; search?: string }>;
 }
 
 /**
@@ -19,11 +19,12 @@ export default async function TenantScopedUsersPage({
   params,
   searchParams,
 }: TenantUsersPageProps) {
+  const searchParamsData = await searchParams;
   await requirePlatformAdmin();
 
   const { id }   = params;
-  const page     = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
-  const search   = searchParams.search ?? '';
+  const page     = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
+  const search   = searchParamsData.search ?? '';
 
   let usersData    = null;
   let usersError: string | null = null;

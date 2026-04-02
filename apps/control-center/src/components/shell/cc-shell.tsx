@@ -25,8 +25,8 @@ interface CCShellProps {
  *   [light sidebar + scrollable main content]
  */
 export async function CCShell({ children, userEmail }: CCShellProps) {
-  const tenantCtx     = getTenantContext();
-  const impersonation = getImpersonation();
+  const tenantCtx     = await getTenantContext();
+  const impersonation = await getImpersonation();
   const session       = await getServerSession();
   const avatarDocId   = session?.avatarDocumentId;
 

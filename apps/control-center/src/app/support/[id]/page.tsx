@@ -28,7 +28,7 @@ const PRIORITY_STYLES = {
  */
 export default async function SupportCaseDetailPage({ params }: SupportCaseDetailPageProps) {
   const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
+  const tenantCtx = await getTenantContext();
 
   const kase = await controlCenterServerApi.support.getById(params.id);
   if (!kase) notFound();

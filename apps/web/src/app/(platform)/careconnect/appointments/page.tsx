@@ -7,16 +7,17 @@ import { AppointmentListTable } from '@/components/careconnect/appointment-list-
 import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
 
 interface AppointmentsPageProps {
-  searchParams: {
+  searchParams: Promise<{
     status?:     string;
     providerId?: string;
     from?:       string;
     to?:         string;
     page?:       string;
-  };
+  }>;
 }
 
 export default async function AppointmentsPage({ searchParams }: AppointmentsPageProps) {
+  const searchParamsData = await searchParams;
   const session = await requireOrg();
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
@@ -30,19 +31,19 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
     );
   }
 
-  const page = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
+  const page = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
 
   // Date range from drilldown links — only used if valid
-  const from = (searchParams.from && isValidIsoDate(searchParams.from)) ? searchParams.from : undefined;
-  const to   = (searchParams.to   && isValidIsoDate(searchParams.to))   ? searchParams.to   : undefined;
+  const from = (searchParamsData.from && isValidIsoDate(searchParamsData.from)) ? searchParamsData.from : undefined;
+  const to   = (searchParamsData.to   && isValidIsoDate(searchParamsData.to))   ? searchParamsData.to   : undefined;
 
   let result = null;
   let fetchError: string | null = null;
 
   try {
     result = await careConnectServerApi.appointments.search({
-      status:     searchParams.status     || undefined,
-      providerId: searchParams.providerId || undefined,
+      status:     searchParamsData.status     || undefined,
+      providerId: searchParamsData.providerId || undefined,
       from,
       to,
       page,
@@ -99,7 +100,7 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
             key={s}
             href={s ? `/careconnect/appointments?status=${s}` : '/careconnect/appointments'}
             className={`text-sm px-3 py-1 rounded-full border transition-colors ${
-              (searchParams.status ?? '') === s
+              (searchParamsData.status ?? '') === s
                 ? 'bg-primary text-white border-primary'
                 : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
             }`}

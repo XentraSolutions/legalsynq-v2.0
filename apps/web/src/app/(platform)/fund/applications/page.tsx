@@ -6,7 +6,7 @@ import { ServerApiError } from '@/lib/server-api-client';
 import { FundingApplicationListTable } from '@/components/fund/funding-application-list-table';
 
 interface ApplicationsPageProps {
-  searchParams: { status?: string };
+  searchParams: Promise<{ status?: string }>;
 }
 
 /**
@@ -22,6 +22,7 @@ interface ApplicationsPageProps {
  * The status filter is applied on this page (backend supports ?status= query param).
  */
 export default async function ApplicationsPage({ searchParams }: ApplicationsPageProps) {
+  const searchParamsData = await searchParams;
   const session = await requireOrg();
 
   const isReferrer = session.productRoles.includes(ProductRole.SynqFundReferrer);
@@ -40,7 +41,7 @@ export default async function ApplicationsPage({ searchParams }: ApplicationsPag
 
   try {
     applications = await fundServerApi.applications.search({
-      status: searchParams.status || undefined,
+      status: searchParamsData.status || undefined,
     });
   } catch (err) {
     fetchError = err instanceof ServerApiError ? err.message : 'Failed to load applications.';
@@ -74,7 +75,7 @@ export default async function ApplicationsPage({ searchParams }: ApplicationsPag
             key={s}
             href={s ? `/fund/applications?status=${s}` : '/fund/applications'}
             className={`text-sm px-3 py-1 rounded-full border transition-colors ${
-              (searchParams.status ?? '') === s
+              (searchParamsData.status ?? '') === s
                 ? 'bg-primary text-white border-primary'
                 : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
             }`}

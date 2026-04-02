@@ -13,8 +13,9 @@ import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  const { id } = await params;
   try { await requireAdmin(); }
   catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
 
@@ -27,7 +28,7 @@ export async function POST(
   }
 
   try {
-    await controlCenterServerApi.groups.addMember(params.id, body.userId);
+    await controlCenterServerApi.groups.addMember(id, body.userId);
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to add group member.';

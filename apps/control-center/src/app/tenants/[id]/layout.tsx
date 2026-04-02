@@ -29,7 +29,7 @@ export default async function TenantDetailLayout({
   params,
 }: TenantDetailLayoutProps) {
   const session   = await requirePlatformAdmin();
-  const tenantCtx = getTenantContext();
+  const tenantCtx = await getTenantContext();
   const { id }    = params;
 
   let tenant     = null;

@@ -16,17 +16,18 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { requireAdmin }                   from '@/lib/auth-guards';
 import { controlCenterServerApi }         from '@/lib/control-center-api';
 
-type Ctx = { params: { id: string } };
+type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(
   _request: NextRequest,
   { params }: Ctx,
 ): Promise<NextResponse> {
+  const { id } = await params;
   try { await requireAdmin(); }
   catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
 
   try {
-    const items = await controlCenterServerApi.roles.getPermissions(params.id);
+    const items = await controlCenterServerApi.roles.getPermissions(id);
     return NextResponse.json(items);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to load role permissions.';
@@ -50,7 +51,7 @@ export async function POST(
   }
 
   try {
-    await controlCenterServerApi.roles.assignPermission(params.id, body.capabilityId);
+    await controlCenterServerApi.roles.assignPermission(id, body.capabilityId);
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to assign permission.';

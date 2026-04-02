@@ -173,12 +173,13 @@ function PageLink({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default async function NotificationLogPage({ searchParams }: PageProps) {
+  const searchParamsData = await searchParams;
   const session = await requireOrg();
   const { tenantId } = session;
 
-  const status  = searchParams.status  || '';
-  const channel = searchParams.channel || '';
-  const page    = Math.max(1, parseInt(searchParams.page ?? '1', 10));
+  const status  = searchParamsData.status  || '';
+  const channel = searchParamsData.channel || '';
+  const page    = Math.max(1, parseInt(searchParamsData.page ?? '1', 10));
   const offset  = (page - 1) * PAGE_SIZE;
 
   const baseHref = '/notifications/log';
