@@ -1,5 +1,8 @@
 {
+  "/login/page": "app/login/page.js",
   "/tenants/page": "app/tenants/page.js",
-  "/api/auth/logout/route": "app/api/auth/logout/route.js",
-  "/login/page": "app/login/page.js"
+  "/tenants/[id]/page": "app/tenants/[id]/page.js",
+  "/tenants/[id]/users/page": "app/tenants/[id]/users/page.js",
+  "/tenants/[id]/notifications/page": "app/tenants/[id]/notifications/page.js",
+  "/tenants/[id]/activity/page": "app/tenants/[id]/activity/page.js"
 }

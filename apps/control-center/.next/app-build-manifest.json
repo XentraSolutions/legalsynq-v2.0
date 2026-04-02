@@ -25,6 +25,31 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/login/page.js"
+    ],
+    "/tenants/[id]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenants/[id]/page.js"
+    ],
+    "/tenants/[id]/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenants/[id]/layout.js"
+    ],
+    "/tenants/[id]/users/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenants/[id]/users/page.js"
+    ],
+    "/tenants/[id]/notifications/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenants/[id]/notifications/page.js"
+    ],
+    "/tenants/[id]/activity/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenants/[id]/activity/page.js"
     ]
   }
 }
