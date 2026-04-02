@@ -52,6 +52,35 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
 
+        // LSCC-01-002-02: Returns the explicit readiness result for the current caller
+        // as a provider in the CareConnect receiver path.
+        // Checks whether the caller's JWT product roles satisfy the full receiver-ready bundle:
+        //   CareConnectReceiver role + ReferralReadAddressed + ReferralAccept capabilities.
+        // Read-only — no side effects, no provisioning, no role assignment.
+        // NOTE: must be registered before /{id:guid} to avoid the GUID route capturing "access-readiness".
+        group.MapGet("/access-readiness", async (
+            IProviderAccessReadinessService readinessSvc,
+            ICurrentRequestContext ctx,
+            CancellationToken ct) =>
+        {
+            // PlatformAdmin and TenantAdmin are always considered access-ready —
+            // they bypass capability checks throughout the platform.
+            if (ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase))
+            {
+                return Results.Ok(new ProviderAccessReadinessResult
+                {
+                    IsProvisioned     = true,
+                    HasReceiverRole   = true,
+                    HasReferralAccess = true,
+                    HasReferralAccept = true,
+                });
+            }
+
+            var result = await readinessSvc.GetReadinessAsync(ctx.ProductRoles, ct);
+            return Results.Ok(result);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser);
+
         // LSCC-002: Row-level access control — caller must be an admin or a participant
         // (ReferringOrganizationId or ReceivingOrganizationId matches their org).
         // Returns 404 (not 403) for non-participants to avoid confirming record existence.
@@ -214,8 +243,8 @@ public static class ReferralEndpoints
         // ── LSCC-005: Public token-based endpoints (no auth required) ──────────
 
         // Resolves a view token to determine how to route the provider:
-        //   "pending"  → route to public accept page (/referrals/accept/{id}?token=...)
-        //   "active"   → route through platform login then to /careconnect/referrals/{id}
+        //   "pending"  → LSCC-01-002-01: route to login + returnTo=/careconnect/referrals/{id}
+        //   "active"   → route to login + returnTo=/careconnect/referrals/{id}
         //   "invalid"  → token is bad or expired
         //   "notfound" → referral was deleted
         group.MapGet("/resolve-view-token", async (

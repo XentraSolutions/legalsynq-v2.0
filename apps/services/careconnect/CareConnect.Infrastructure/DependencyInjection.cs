@@ -93,6 +93,10 @@ public static class DependencyInjection
         services.AddSingleton<ICapabilityService, CareConnectCapabilityService>();
         services.AddScoped<AuthorizationService>();
 
+        // LSCC-01-002-02: Centralized, read-only provider access-readiness verification.
+        // Singleton — depends only on ICapabilityService (also singleton); no request-scoped deps.
+        services.AddSingleton<IProviderAccessReadinessService, ProviderAccessReadinessService>();
+
         return services;
     }
 }

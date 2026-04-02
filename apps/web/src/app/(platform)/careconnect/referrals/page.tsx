@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
+import { checkCareConnectReceiverAccess } from '@/lib/careconnect-access';
+import { ReferralAccessBlocked } from '@/components/careconnect/referral-access-blocked';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { ReferralListTable } from '@/components/careconnect/referral-list-table';
@@ -26,12 +28,12 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
 
+  // LSCC-01-002-02: Enforce the admin-controlled access model.
+  // Only users with a CareConnect role may enter the referral list.
+  // No referral data is fetched or rendered in the blocked state.
   if (!isReferrer && !isReceiver) {
-    return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-700">
-        You do not have a CareConnect role. Contact your administrator to gain access.
-      </div>
-    );
+    const readiness = checkCareConnectReceiverAccess(session);
+    return <ReferralAccessBlocked reason={readiness.reason} />;
   }
 
   const page = Math.max(1, parseInt(searchParams.page ?? '1') || 1);

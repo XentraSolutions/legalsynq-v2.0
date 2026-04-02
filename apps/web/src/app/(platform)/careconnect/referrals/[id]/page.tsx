@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
+import { checkCareConnectReceiverAccess } from '@/lib/careconnect-access';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { resolveReferralDetailBack } from '@/lib/referral-nav';
@@ -11,6 +12,7 @@ import { ReferralDeliveryCard } from '@/components/careconnect/referral-delivery
 import { ReferralStatusActions } from '@/components/careconnect/referral-status-actions';
 import { ReferralTimeline } from '@/components/careconnect/referral-timeline';
 import { ReferralAuditTimeline } from '@/components/careconnect/referral-audit-timeline';
+import { ReferralAccessBlocked } from '@/components/careconnect/referral-access-blocked';
 
 interface ReferralDetailPageProps {
   params:       { id: string };
@@ -29,12 +31,12 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
   const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
 
+  // LSCC-01-002-02: Enforce the admin-controlled access model.
+  // Only users with a CareConnect role may enter the referral flow.
+  // Referral details are NOT rendered in the blocked state.
   if (!isReferrer && !isReceiver) {
-    return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-700">
-        You do not have a CareConnect role.
-      </div>
-    );
+    const readiness = checkCareConnectReceiverAccess(session);
+    return <ReferralAccessBlocked reason={readiness.reason} />;
   }
 
   let referral = null;
