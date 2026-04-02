@@ -32,6 +32,9 @@ public class CareConnectDbContext : DbContext
     // LSCC-009: Provider activation queue
     public DbSet<ActivationRequest> ActivationRequests => Set<ActivationRequest>();
 
+    // LSCC-01-004: Operational visibility — blocked access event log.
+    public DbSet<BlockedProviderAccessLog> BlockedProviderAccessLogs => Set<BlockedProviderAccessLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CareConnectDbContext).Assembly);

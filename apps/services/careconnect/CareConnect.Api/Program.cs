@@ -109,6 +109,7 @@ app.MapGet("/info",   () => Results.Ok(new { service = "CareConnect", version = 
 // API endpoints
 app.MapCareConnectIntegrityEndpoints();
 app.MapProviderAdminEndpoints();
+app.MapAdminDashboardEndpoints();   // LSCC-01-004: admin dashboard, blocked queue, referral monitor
 app.MapAdminBackfillEndpoints();
 app.MapActivationAdminEndpoints(); // LSCC-009
 app.MapAnalyticsEndpoints();      // LSCC-011

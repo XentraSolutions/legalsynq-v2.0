@@ -57,11 +57,14 @@ public static class ReferralEndpoints
         // Checks whether the caller's JWT product roles satisfy the full receiver-ready bundle:
         //   CareConnectReceiver role + ReferralReadAddressed + ReferralAccept capabilities.
         // Read-only — no side effects, no provisioning, no role assignment.
+        // LSCC-01-004: On IsProvisioned=false, fires a best-effort blocked-access log entry
+        //   for admin operational visibility. Log failure never blocks the response.
         // NOTE: must be registered before /{id:guid} to avoid the GUID route capturing "access-readiness".
         group.MapGet("/access-readiness", async (
             IProviderAccessReadinessService readinessSvc,
-            ICurrentRequestContext ctx,
-            CancellationToken ct) =>
+            IBlockedAccessLogService        blockedLogSvc,
+            ICurrentRequestContext          ctx,
+            CancellationToken               ct) =>
         {
             // PlatformAdmin and TenantAdmin are always considered access-ready —
             // they bypass capability checks throughout the platform.
@@ -77,6 +80,21 @@ public static class ReferralEndpoints
             }
 
             var result = await readinessSvc.GetReadinessAsync(ctx.ProductRoles, ct);
+
+            // LSCC-01-004: Best-effort log — fire and observe. Must never block the response.
+            if (!result.IsProvisioned)
+            {
+                _ = blockedLogSvc.LogAsync(
+                    tenantId:       ctx.TenantId,
+                    userId:         ctx.UserId,
+                    userEmail:      ctx.Email,
+                    organizationId: ctx.OrgId,
+                    providerId:     null,
+                    referralId:     null,
+                    failureReason:  result.Reason ?? "unknown",
+                    ct:             CancellationToken.None);
+            }
+
             return Results.Ok(result);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);

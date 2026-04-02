@@ -405,3 +405,64 @@ export interface ProviderActivationResult {
   isActive:           boolean;
   acceptingReferrals: boolean;
 }
+
+// ── LSCC-01-004: Admin Queue & Operational Visibility ─────────────────────────
+
+/** Aggregate dashboard metrics returned by GET /api/admin/dashboard */
+export interface DashboardMetrics {
+  referralCountToday:        number;
+  referralCountLast7Days:    number;
+  openReferrals:             number;
+  blockedAccessToday:        number;
+  blockedAccessLast7Days:    number;
+  distinctBlockedUsersToday: number;
+  generatedAtUtc:            string;
+}
+
+/**
+ * One row in the blocked-provider queue.
+ * Represents the most-recent log entry for a (userId, failureReason) pair.
+ */
+export interface BlockedProviderLogItem {
+  userId:          string | null;
+  userEmail:       string | null;
+  organizationId:  string | null;
+  tenantId:        string | null;
+  failureReason:   string;
+  attemptCount:    number;
+  lastAttemptUtc:  string;
+  /** Relative path to the provisioning page pre-filled with this userId. */
+  remediationPath: string | null;
+}
+
+export interface BlockedProviderLogPage {
+  items:      BlockedProviderLogItem[];
+  total:      number;
+  page:       number;
+  pageSize:   number;
+  windowFrom: string;
+}
+
+/** One row in the admin referral monitor. */
+export interface AdminReferralItem {
+  id:                      string;
+  tenantId:                string;
+  status:                  string;
+  urgency:                 string;
+  requestedService:        string;
+  providerName:            string | null;
+  providerEmail:           string | null;
+  referringOrganizationId: string | null;
+  receivingOrganizationId: string | null;
+  referrerName:            string | null;
+  referrerEmail:           string | null;
+  createdAtUtc:            string;
+  updatedAtUtc:            string;
+}
+
+export interface AdminReferralPage {
+  items:    AdminReferralItem[];
+  total:    number;
+  page:     number;
+  pageSize: number;
+}

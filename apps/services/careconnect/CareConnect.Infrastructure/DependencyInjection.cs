@@ -97,6 +97,10 @@ public static class DependencyInjection
         // Singleton — depends only on ICapabilityService (also singleton); no request-scoped deps.
         services.AddSingleton<IProviderAccessReadinessService, ProviderAccessReadinessService>();
 
+        // LSCC-01-004: Blocked-access logging — best-effort, never blocks the user flow.
+        services.AddScoped<IBlockedAccessLogRepository, BlockedAccessLogRepository>();
+        services.AddScoped<IBlockedAccessLogService, BlockedAccessLogService>();
+
         return services;
     }
 }

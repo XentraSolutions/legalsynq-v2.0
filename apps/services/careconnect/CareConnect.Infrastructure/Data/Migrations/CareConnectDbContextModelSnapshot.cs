@@ -22,6 +22,50 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
+            modelBuilder.Entity("CareConnect.Domain.BlockedProviderAccessLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("AttemptedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("FailureReason")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("ProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("ReferralId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("UserEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttemptedAtUtc")
+                        .HasDatabaseName("IX_BlockedProviderAccessLogs_AttemptedAtUtc");
+
+                    b.HasIndex("UserId", "AttemptedAtUtc")
+                        .HasDatabaseName("IX_BlockedProviderAccessLogs_UserId_AttemptedAtUtc");
+
+                    b.ToTable("BlockedProviderAccessLogs", (string)null);
+                });
+
             modelBuilder.Entity("CareConnect.Domain.ActivationRequest", b =>
                 {
                     b.Property<Guid>("Id")

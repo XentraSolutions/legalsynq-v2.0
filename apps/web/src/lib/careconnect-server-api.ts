@@ -19,6 +19,9 @@ import type {
   ProviderReadinessDiagnostics,
   ProvisionCareConnectResult,
   ProviderActivationResult,
+  DashboardMetrics,
+  BlockedProviderLogPage,
+  AdminReferralPage,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -117,6 +120,31 @@ export const careConnectServerApi = {
       serverApi.post<ProviderActivationResult>(
         `/careconnect/api/admin/providers/${providerId}/activate-for-careconnect`,
         {},
+      ),
+  },
+
+  // LSCC-01-004: Admin dashboard, blocked-provider queue, referral monitor (server-side only)
+  adminDashboard: {
+    // GET /api/admin/dashboard — aggregate operational metrics
+    getMetrics: () =>
+      serverApi.get<DashboardMetrics>(`/careconnect/api/admin/dashboard`),
+
+    // GET /api/admin/providers/blocked — paged blocked-access log
+    getBlockedProviders: (params: { page?: number; pageSize?: number; since?: string } = {}) =>
+      serverApi.get<BlockedProviderLogPage>(
+        `/careconnect/api/admin/providers/blocked${toQs(params as Record<string, unknown>)}`,
+      ),
+
+    // GET /api/admin/referrals — cross-tenant referral monitor
+    getReferrals: (params: {
+      page?:     number;
+      pageSize?: number;
+      status?:   string;
+      tenantId?: string;
+      since?:    string;
+    } = {}) =>
+      serverApi.get<AdminReferralPage>(
+        `/careconnect/api/admin/referrals${toQs(params as Record<string, unknown>)}`,
       ),
   },
 };
