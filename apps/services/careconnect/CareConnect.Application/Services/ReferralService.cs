@@ -768,13 +768,15 @@ public class ReferralService : IReferralService
         {
             var (label, category) = h.NewStatus switch
             {
-                "New"       => ("Referral Created",       "info"),
-                "Accepted"  => ("Referral Accepted",      "success"),
-                "Declined"  => ("Referral Declined",      "error"),
-                "Cancelled" => ("Referral Cancelled",     "warning"),
-                "Completed" => ("Referral Completed",     "success"),
-                "Scheduled" => ("Appointment Scheduled",  "success"),
-                _           => ($"Status → {h.NewStatus}", "info"),
+                "New"        => ("Referral Created",      "info"),
+                "Accepted"   => ("Referral Accepted",     "success"),
+                "InProgress" => ("Referral In Progress",  "success"),
+                "Declined"   => ("Referral Declined",     "error"),
+                "Cancelled"  => ("Referral Cancelled",    "warning"),
+                "Completed"  => ("Referral Completed",    "success"),
+                // Legacy: Scheduled kept for historical audit entries pre-LSCC-01-001-01
+                "Scheduled"  => ("Referral Scheduled",    "info"),
+                _            => ($"Status → {h.NewStatus}", "info"),
             };
             events.Add(new ReferralAuditEventResponse
             {

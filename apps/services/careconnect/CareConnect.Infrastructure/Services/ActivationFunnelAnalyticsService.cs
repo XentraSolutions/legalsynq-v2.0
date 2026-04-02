@@ -81,10 +81,11 @@ public sealed class ActivationFunnelAnalyticsService : IActivationFunnelAnalytic
         // ── Referrals Accepted (advanced status within date range) ────────────
         // Uses UpdatedAtUtc as a proxy for "when the referral was accepted".
         // Limitation: UpdatedAtUtc updates on any change, not just Accept.
+        // LSCC-01-001-01: Scheduled replaced by InProgress as canonical active state.
         var acceptedStatuses = new[]
         {
             Referral.ValidStatuses.Accepted,
-            Referral.ValidStatuses.Scheduled,
+            Referral.ValidStatuses.InProgress,
             Referral.ValidStatuses.Completed,
         };
         var referralsAccepted = await _db.Referrals

@@ -27,8 +27,9 @@ function statusLabel(status: string): string {
 }
 
 function rowHighlight(status: string): string {
-  if (status === 'New') return 'bg-blue-50/40 hover:bg-blue-50 border-l-4 border-l-blue-400';
-  if (status === 'Accepted') return 'hover:bg-gray-50 border-l-4 border-l-teal-400';
+  if (status === 'New')        return 'bg-blue-50/40 hover:bg-blue-50 border-l-4 border-l-blue-400';
+  if (status === 'Accepted')   return 'hover:bg-gray-50 border-l-4 border-l-teal-400';
+  if (status === 'InProgress') return 'bg-amber-50/30 hover:bg-amber-50/60 border-l-4 border-l-amber-400';
   return 'hover:bg-gray-50 border-l-4 border-l-transparent';
 }
 

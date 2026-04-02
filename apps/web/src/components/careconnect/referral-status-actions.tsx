@@ -14,9 +14,10 @@ interface ReferralStatusActionsProps {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  Accepted:  'Referral accepted.',
-  Declined:  'Referral declined.',
-  Cancelled: 'Referral cancelled.',
+  Accepted:   'Referral accepted.',
+  InProgress: 'Referral marked as in progress.',
+  Declined:   'Referral declined.',
+  Cancelled:  'Referral cancelled.',
 };
 
 /**
@@ -24,9 +25,14 @@ const STATUS_LABELS: Record<string, string> = {
  *
  * Receiver (provider):
  *   - New / Received / Contacted → Accept | Decline (with optional notes)
+ *   - Accepted                   → Mark In Progress | Decline
  *
  * Referrer (law firm):
  *   - Non-terminal statuses → Cancel (with confirmation)
+ *
+ * LSCC-01-001-01: InProgress is the canonical active state after Accepted.
+ * Accepted → Completed is blocked; the receiver must explicitly mark In Progress first.
+ * Appointment booking is decoupled from referral status and handled separately.
  *
  * Uses PUT /api/referrals/{id} which routes through ReferralWorkflowRules.
  * All actions show toast notifications on success or failure.
@@ -77,11 +83,13 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
     }
   }
 
-  const canAccept  = isReceiver && ['New', 'Received', 'Contacted'].includes(currentStatus);
-  const canDecline = isReceiver && ['New', 'Received', 'Contacted', 'Accepted'].includes(currentStatus);
-  const canCancel  = (isReferrer || isReceiver) && !['Completed', 'Cancelled', 'Declined'].includes(currentStatus);
+  const canAccept         = isReceiver && ['New', 'Received', 'Contacted'].includes(currentStatus);
+  // LSCC-01-001-01: receiver can mark In Progress once referral is Accepted
+  const canMarkInProgress = isReceiver && currentStatus === 'Accepted';
+  const canDecline        = isReceiver && ['New', 'Received', 'Contacted', 'Accepted'].includes(currentStatus);
+  const canCancel         = (isReferrer || isReceiver) && !['Completed', 'Cancelled', 'Declined'].includes(currentStatus);
 
-  if (!canAccept && !canDecline && !canCancel) return null;
+  if (!canAccept && !canMarkInProgress && !canDecline && !canCancel) return null;
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 space-y-3">
@@ -93,8 +101,8 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
         </div>
       )}
 
-      {/* Receiver: Accept / Decline */}
-      {(canAccept || canDecline) && (
+      {/* Receiver: Accept / Mark In Progress / Decline */}
+      {(canAccept || canMarkInProgress || canDecline) && (
         <div className="space-y-3">
           <div className="flex items-center gap-3 flex-wrap">
             {canAccept && !showDeclineNotes && (
@@ -104,6 +112,16 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
                 className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-60 transition-colors"
               >
                 {loading === 'Accepted' ? 'Accepting…' : 'Accept Referral'}
+              </button>
+            )}
+
+            {canMarkInProgress && !showDeclineNotes && (
+              <button
+                onClick={() => doUpdate('InProgress')}
+                disabled={!!loading}
+                className="bg-amber-500 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-amber-600 disabled:opacity-60 transition-colors"
+              >
+                {loading === 'InProgress' ? 'Updating…' : 'Mark In Progress'}
               </button>
             )}
 

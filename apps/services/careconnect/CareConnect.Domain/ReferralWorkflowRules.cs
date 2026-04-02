@@ -4,20 +4,26 @@ namespace CareConnect.Domain;
 
 public static class ReferralWorkflowRules
 {
+    // LSCC-01-001-01: InProgress replaces Scheduled as the canonical active state.
+    // Accepted → Completed is explicitly blocked; caller must move through InProgress first.
+    // Scheduled entries are retained as legacy-compat so pre-migration rows can still
+    // transition out safely (Scheduled → InProgress | Cancelled only).
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> AllowedTransitions =
         new Dictionary<string, IReadOnlyList<string>>
         {
-            [Referral.ValidStatuses.New]       = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
-            [Referral.ValidStatuses.Accepted]  = new[] { Referral.ValidStatuses.Scheduled, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
-            [Referral.ValidStatuses.Scheduled] = new[] { Referral.ValidStatuses.Completed, Referral.ValidStatuses.Cancelled },
-            [Referral.ValidStatuses.Completed] = Array.Empty<string>(),
-            [Referral.ValidStatuses.Declined]  = Array.Empty<string>(),
-            [Referral.ValidStatuses.Cancelled] = Array.Empty<string>(),
+            [Referral.ValidStatuses.New]        = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
+            [Referral.ValidStatuses.Accepted]   = new[] { Referral.ValidStatuses.InProgress, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
+            [Referral.ValidStatuses.InProgress] = new[] { Referral.ValidStatuses.Completed, Referral.ValidStatuses.Cancelled },
+            [Referral.ValidStatuses.Completed]  = Array.Empty<string>(),
+            [Referral.ValidStatuses.Declined]   = Array.Empty<string>(),
+            [Referral.ValidStatuses.Cancelled]  = Array.Empty<string>(),
 
             // Legacy status values kept for data that pre-dates the canonical migration.
-            // They are treated as read-only states; transitions out follow the Accepted path.
-            [Referral.ValidStatuses.Legacy.Received]  = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Scheduled, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
-            [Referral.ValidStatuses.Legacy.Contacted] = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Scheduled, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
+            // Received / Contacted: follow the Accepted path (can move to InProgress directly).
+            // Scheduled: demoted to legacy; can only move to InProgress or Cancelled.
+            [Referral.ValidStatuses.Legacy.Received]  = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.InProgress, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
+            [Referral.ValidStatuses.Legacy.Contacted] = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.InProgress, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
+            [Referral.ValidStatuses.Legacy.Scheduled] = new[] { Referral.ValidStatuses.InProgress, Referral.ValidStatuses.Cancelled },
         };
 
     public static bool IsValidTransition(string fromStatus, string toStatus)
@@ -55,11 +61,13 @@ public static class ReferralWorkflowRules
     /// Used by endpoints to enforce capability-based authorization on referral updates.
     /// </summary>
     // LSCC-001: CareConnect permission enforcement — status-driven capability gate
+    // LSCC-01-001-01: InProgress is explicit; Scheduled kept as fall-through for legacy rows.
     public static string RequiredCapabilityFor(string toStatus) => toStatus switch
     {
-        Referral.ValidStatuses.Accepted  => BuildingBlocks.Authorization.CapabilityCodes.ReferralAccept,
-        Referral.ValidStatuses.Declined  => BuildingBlocks.Authorization.CapabilityCodes.ReferralDecline,
-        Referral.ValidStatuses.Cancelled => BuildingBlocks.Authorization.CapabilityCodes.ReferralCancel,
-        _                                => BuildingBlocks.Authorization.CapabilityCodes.ReferralUpdateStatus,
+        Referral.ValidStatuses.Accepted   => BuildingBlocks.Authorization.CapabilityCodes.ReferralAccept,
+        Referral.ValidStatuses.Declined   => BuildingBlocks.Authorization.CapabilityCodes.ReferralDecline,
+        Referral.ValidStatuses.Cancelled  => BuildingBlocks.Authorization.CapabilityCodes.ReferralCancel,
+        Referral.ValidStatuses.InProgress => BuildingBlocks.Authorization.CapabilityCodes.ReferralUpdateStatus,
+        _                                 => BuildingBlocks.Authorization.CapabilityCodes.ReferralUpdateStatus,
     };
 }

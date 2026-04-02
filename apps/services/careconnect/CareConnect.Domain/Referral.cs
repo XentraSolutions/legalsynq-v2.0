@@ -7,21 +7,27 @@ public class Referral : AuditableEntity
     public static class ValidStatuses
     {
         // ── Canonical statuses (source of truth) ─────────────────────────
-        public const string New       = "New";
-        public const string Accepted  = "Accepted";
-        public const string Scheduled = "Scheduled";
-        public const string Completed = "Completed";
-        public const string Declined  = "Declined";
-        public const string Cancelled = "Cancelled";
+        public const string New        = "New";
+        public const string Accepted   = "Accepted";
+        public const string InProgress = "InProgress";
+        public const string Completed  = "Completed";
+        public const string Declined   = "Declined";
+        public const string Cancelled  = "Cancelled";
 
         public static readonly IReadOnlyList<string> All =
-            new[] { New, Accepted, Scheduled, Completed, Declined, Cancelled };
+            new[] { New, Accepted, InProgress, Completed, Declined, Cancelled };
 
         // ── Legacy compat aliases (read-only, accepted on ingest, never produced) ─
+        // LSCC-01-001-01: Scheduled demoted from canonical to legacy.
+        // Existing rows with Status='Scheduled' are migrated to 'InProgress'
+        // via 20260402000000_ReferralInProgressState migration.
+        // The entry is retained here so pre-migration data in transit can
+        // still be normalized without hard errors.
         public static class Legacy
         {
             public const string Received  = "Received";
             public const string Contacted = "Contacted";
+            public const string Scheduled = "Scheduled";
 
             /// <summary>
             /// Maps a legacy status string to its canonical equivalent.
@@ -31,6 +37,7 @@ public class Referral : AuditableEntity
             {
                 Received  => Accepted,
                 Contacted => Accepted,
+                Scheduled => InProgress,
                 _         => status
             };
         }

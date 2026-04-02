@@ -87,21 +87,9 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
             isReferrer={isReferrer}
           />
 
-          {/* Book appointment — referrer action once accepted */}
-          {isReferrer && referral.status === 'Accepted' && (
-            <div className="bg-teal-50 border border-teal-200 rounded-lg px-5 py-4 flex items-center gap-4">
-              <div className="flex-1">
-                <p className="text-sm font-medium text-teal-800">This referral has been accepted.</p>
-                <p className="text-xs text-teal-600 mt-0.5">You can now schedule an appointment with the provider.</p>
-              </div>
-              <Link
-                href={`/careconnect/providers/${referral.providerId}/availability?referralId=${referral.id}`}
-                className="bg-teal-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-teal-700 transition-colors shrink-0"
-              >
-                Book Appointment
-              </Link>
-            </div>
-          )}
+          {/* LSCC-01-001-01: Book appointment prompt removed.
+              Appointment scheduling is decoupled from referral status.
+              Referrers can book via the provider availability page at any time. */}
 
           {/* 3. Referral details — body only (header rendered above) */}
           <ReferralDetailPanel referral={referral} hideHeader />

@@ -9,13 +9,13 @@ interface ReferralQueueToolbarProps {
 }
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
-  { value: '',          label: 'All'       },
-  { value: 'New',       label: 'Pending'   },
-  { value: 'Accepted',  label: 'Accepted'  },
-  { value: 'Declined',  label: 'Declined'  },
-  { value: 'Scheduled', label: 'Scheduled' },
-  { value: 'Completed', label: 'Completed' },
-  { value: 'Cancelled', label: 'Cancelled' },
+  { value: '',           label: 'All'         },
+  { value: 'New',        label: 'Pending'     },
+  { value: 'Accepted',   label: 'Accepted'    },
+  { value: 'InProgress', label: 'In Progress' },
+  { value: 'Declined',   label: 'Declined'    },
+  { value: 'Completed',  label: 'Completed'   },
+  { value: 'Cancelled',  label: 'Cancelled'   },
 ];
 
 export function ReferralQueueToolbar({ currentSearch = '', currentStatus = '' }: ReferralQueueToolbarProps) {

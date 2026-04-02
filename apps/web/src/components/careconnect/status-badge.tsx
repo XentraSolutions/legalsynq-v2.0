@@ -6,17 +6,18 @@ interface StatusBadgeProps {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  New:       'bg-blue-50    text-blue-700    border-blue-200',
-  Accepted:  'bg-teal-50    text-teal-700    border-teal-200',
-  Declined:  'bg-red-50     text-red-700     border-red-200',
-  Scheduled: 'bg-yellow-50  text-yellow-700  border-yellow-200',
-  Confirmed: 'bg-green-50   text-green-700   border-green-200',
-  Completed: 'bg-green-50   text-green-700   border-green-200',
-  Cancelled: 'bg-gray-50    text-gray-600    border-gray-200',
-  NoShow:    'bg-orange-50  text-orange-700  border-orange-200',
-  // legacy statuses kept for backward compat
-  Received:  'bg-indigo-50  text-indigo-700  border-indigo-200',
-  Contacted: 'bg-purple-50  text-purple-700  border-purple-200',
+  New:        'bg-blue-50    text-blue-700    border-blue-200',
+  Accepted:   'bg-teal-50    text-teal-700    border-teal-200',
+  InProgress: 'bg-amber-50   text-amber-700   border-amber-200',
+  Declined:   'bg-red-50     text-red-700     border-red-200',
+  Confirmed:  'bg-green-50   text-green-700   border-green-200',
+  Completed:  'bg-green-50   text-green-700   border-green-200',
+  Cancelled:  'bg-gray-50    text-gray-600    border-gray-200',
+  NoShow:     'bg-orange-50  text-orange-700  border-orange-200',
+  // legacy statuses kept for backward compat during rollout
+  Scheduled:  'bg-yellow-50  text-yellow-700  border-yellow-200',
+  Received:   'bg-indigo-50  text-indigo-700  border-indigo-200',
+  Contacted:  'bg-purple-50  text-purple-700  border-purple-200',
 };
 
 const URGENCY_STYLES: Record<string, string> = {

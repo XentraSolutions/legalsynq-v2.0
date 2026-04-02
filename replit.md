@@ -2646,3 +2646,32 @@ Extends UIX-005 to TenantAdmins and closes API security gaps.
 **UIX-004 audit:** All T001–T008 tasks confirmed already implemented — no further work needed.
 
 Full report: `analysis/UIX-005-01-report.md`
+
+## LSCC-01-001-01 — Referral State Machine Correction — COMPLETED 2026-04-02
+
+**Domain:**
+- `Referral.ValidStatuses.InProgress` added as canonical active state
+- `Referral.ValidStatuses.Scheduled` demoted to `ValidStatuses.Legacy.Scheduled`
+- `ValidStatuses.All` now: New, Accepted, InProgress, Completed, Declined, Cancelled
+- `Legacy.Normalize` maps Scheduled → InProgress (in addition to Received/Contacted → Accepted)
+
+**Workflow Rules (`ReferralWorkflowRules.cs`):**
+- `Accepted → InProgress | Declined | Cancelled` (Scheduled removed, Completed blocked)
+- `InProgress → Completed | Cancelled`
+- Legacy Scheduled entry: `Scheduled → InProgress | Cancelled`
+- `RequiredCapabilityFor("InProgress")` → `ReferralUpdateStatus`
+
+**Migration:** `20260402000000_ReferralInProgressState.cs` — SQL UPDATE Scheduled → InProgress
+
+**Frontend:**
+- `status-badge.tsx`: InProgress = amber badge; Scheduled kept for legacy display
+- `referral-queue-toolbar.tsx`: STATUS_OPTIONS has InProgress (not Scheduled)
+- `referral-list-table.tsx`: amber row highlight for InProgress
+- `referral-status-actions.tsx`: "Mark In Progress" button for receiver when Accepted
+- `referrals/[id]/page.tsx`: "Book Appointment" prompt removed (decoupled from referral status)
+
+**Analytics:** `ActivationFunnelAnalyticsService` counts InProgress (not Scheduled) as accepted
+
+**Tests:** 38 tests pass in `ReferralWorkflowRulesTests` — full canonical + legacy + new InProgress coverage
+
+Full report: `analysis/LSCC-01-001-01-report.md`
