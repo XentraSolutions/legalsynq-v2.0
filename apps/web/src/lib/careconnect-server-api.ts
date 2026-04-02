@@ -22,6 +22,7 @@ import type {
   DashboardMetrics,
   BlockedProviderLogPage,
   AdminReferralPage,
+  ReferralPerformanceResult,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -145,6 +146,15 @@ export const careConnectServerApi = {
     } = {}) =>
       serverApi.get<AdminReferralPage>(
         `/careconnect/api/admin/referrals${toQs(params as Record<string, unknown>)}`,
+      ),
+  },
+
+  // LSCC-01-005: Referral performance metrics (admin-only, server-side)
+  adminPerformance: {
+    // GET /api/admin/performance — summary, aging distribution, provider rows
+    getMetrics: (params: { days?: number; since?: string } = {}) =>
+      serverApi.get<ReferralPerformanceResult>(
+        `/careconnect/api/admin/performance${toQs(params as Record<string, unknown>)}`,
       ),
   },
 };

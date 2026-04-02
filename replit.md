@@ -2719,3 +2719,47 @@ Email link → /referrals/view?token= → /login?returnTo=/careconnect/referrals
 **Tests:** 18 new tests in `ReferralAcceptanceLockdownTests.cs`; total 403 pass (408 total, 5 pre-existing failures unrelated)
 
 Full report: `analysis/LSCC-01-002-01-report.md`
+
+## LSCC-01-005 — Referral Performance Metrics (2026-04-02)
+
+Admin-facing referral performance dashboard. Pure calculator layer is fully decoupled from EF — all metrics computed in-memory after two bounded DB queries.
+
+### Metric Definitions
+- **Cohort anchor:** `referral.CreatedAtUtc >= windowFrom` for all cohort metrics
+- **AcceptedAt:** earliest `ChangedAtUtc` from `ReferralStatusHistory` where `NewStatus=="Accepted"`
+- **TTA (Time to Accept):** `(AcceptedAtUtc - CreatedAtUtc).TotalHours` — negatives excluded (corrupt data)
+- **Acceptance Rate:** `Accepted / Total`; returns `0.0` when Total=0
+- **Avg TTA:** `null` when no valid accepted referrals
+- **Aging:** ALL currently-New referrals (no window filter); buckets: <1h | [1h,24h) | [24h,72h) | ≥72h
+- **Default window:** last 7 days (`?days=7`); max 90 days; `?since=<ISO>` overrides days
+
+### New Files — Backend
+- `CareConnect.Application/DTOs/ReferralPerformanceResult.cs` — `PerformanceSummary`, `AgingDistribution`, `ProviderPerformanceRow`, `RawReferralRecord`, `ReferralPerformanceResult`
+- `CareConnect.Application/Interfaces/IReferralPerformanceService.cs`
+- `CareConnect.Infrastructure/Services/ReferralPerformanceCalculator.cs` — pure static calculator (no DB)
+- `CareConnect.Infrastructure/Services/ReferralPerformanceService.cs` — loads bounded dataset, calls calculator
+- `CareConnect.Api/Endpoints/PerformanceEndpoints.cs` — `GET /api/admin/performance?days=7&since=<ISO>` (PlatformOrTenantAdmin)
+- `CareConnect.Tests/Application/ReferralPerformanceCalculatorTests.cs` — 13 tests, all pass
+
+### New Files — Frontend
+- `apps/web/src/app/(platform)/careconnect/admin/performance/page.tsx` — server component; time-window presets, summary cards, aging bars, provider table
+
+### Modified Files
+- `CareConnect.Api/Program.cs` — `app.MapPerformanceEndpoints()`
+- `CareConnect.Infrastructure/DependencyInjection.cs` — `IReferralPerformanceService` registered
+- `apps/web/src/types/careconnect.ts` — `ReferralPerformanceResult`, `PerformanceSummary`, `AgingDistribution`, `ProviderPerformanceRow`
+- `apps/web/src/lib/careconnect-server-api.ts` — `adminPerformance.getMetrics({ days?, since? })`
+
+### API
+```
+GET /api/admin/performance?days=7        → last 7 days cohort (default)
+GET /api/admin/performance?days=30       → last 30 days cohort
+GET /api/admin/performance?since=<ISO>   → explicit UTC start
+```
+Response: `{ windowFrom, windowTo, summary, aging, providers[] }`
+
+### Test Results
+- 13/13 LSCC-01-005 calculator tests pass
+- Total suite: 451 pass / 457 total (5 pre-existing `ProviderAvailabilityServiceTests` failures unchanged)
+
+Full report: `analysis/LSCC-01-005-report.md`

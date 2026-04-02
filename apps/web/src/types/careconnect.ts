@@ -466,3 +466,39 @@ export interface AdminReferralPage {
   page:     number;
   pageSize: number;
 }
+
+// ── LSCC-01-005: Referral Performance Metrics ─────────────────────────────────
+
+export interface PerformanceSummary {
+  totalReferrals:       number;
+  acceptedReferrals:    number;
+  acceptanceRate:       number;   // [0, 1]
+  avgTimeToAcceptHours: number | null;
+  currentNewReferrals:  number;
+}
+
+/** Aging distribution for currently-New referrals. */
+export interface AgingDistribution {
+  lt1h:   number;
+  h1to24: number;
+  d1to3:  number;
+  gt3d:   number;
+  total:  number;
+}
+
+export interface ProviderPerformanceRow {
+  providerId:           string;
+  providerName:         string;
+  totalReferrals:       number;
+  acceptedReferrals:    number;
+  acceptanceRate:       number;   // [0, 1]
+  avgTimeToAcceptHours: number | null;
+}
+
+export interface ReferralPerformanceResult {
+  windowFrom: string;
+  windowTo:   string;
+  summary:    PerformanceSummary;
+  aging:      AgingDistribution;
+  providers:  ProviderPerformanceRow[];
+}
