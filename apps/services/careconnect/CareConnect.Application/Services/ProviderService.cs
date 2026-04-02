@@ -379,6 +379,23 @@ public class ProviderService : IProviderService
         return ToResponse(loaded!);
     }
 
+    // LSCC-01-005-01 (DEF-001): Cross-tenant provider org-link — used by activation approval
+    // when the provider TenantId differs from the requesting tenant's TenantId.
+    public async Task<ProviderResponse> LinkOrganizationGlobalAsync(
+        Guid providerId,
+        Guid organizationId,
+        CancellationToken ct = default)
+    {
+        var provider = await _providers.GetByIdCrossAsync(providerId, ct)
+            ?? throw new NotFoundException($"Provider '{providerId}' was not found.");
+
+        provider.LinkOrganization(organizationId);
+        await _providers.UpdateAsync(provider, ct);
+
+        var loaded = await _providers.GetByIdCrossAsync(providerId, ct);
+        return ToResponse(loaded!);
+    }
+
     // LSCC-002-01: List active providers with no Identity org link (backfill candidates).
     public async Task<List<ProviderResponse>> GetUnlinkedProvidersAsync(
         Guid tenantId,

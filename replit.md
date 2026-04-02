@@ -2763,3 +2763,46 @@ Response: `{ windowFrom, windowTo, summary, aging, providers[] }`
 - Total suite: 451 pass / 457 total (5 pre-existing `ProviderAvailabilityServiceTests` failures unchanged)
 
 Full report: `analysis/LSCC-01-005-report.md`
+
+---
+
+## E2E Test Readiness Validation (2026-04-02)
+
+Full report: `analysis/CC-E2E-VALIDATION-REPORT.md`
+
+### Credentials
+- margaret@hartwell.law / hartwell123! / HARTWELL → TenantAdmin, LAW_FIRM, orgId=40000000-...-0010
+- james.whitmore@hartwell.law / hartwell123! / HARTWELL → StandardUser
+- olivia.chen@hartwell.law / hartwell123! / HARTWELL → StandardUser
+- dr.ramirez@meridiancare.com / meridian123! / MERIDIAN → TenantAdmin, PROVIDER, orgId=42000000-...-0001
+- alex.diallo@meridiancare.com / meridian123! / MERIDIAN → StandardUser
+- **admin@legalsynq.com / Admin1234! / LEGALSYNQ → PlatformAdmin** (password confirmed via bcrypt)
+
+### Bugs Fixed
+1. **BUG-001**: `BlockedProviderAccessLogs` table missing — migration was in history but table didn't exist; created table manually. `GET /api/admin/dashboard` and `GET /api/admin/providers/blocked` now return 200.
+2. **BUG-002**: `ForbiddenException` → HTTP 500 — ExceptionHandlingMiddleware had no `catch (ForbiddenException)` handler. Fixed; now returns HTTP 403 with `code: "FORBIDDEN"`.
+
+### LSCC-01-005-01 — PlatformAdmin Cross-Tenant Access Corrections (2026-04-02)
+
+**DEF-001 FIXED**: `POST /api/admin/activations/{id}/approve` 404 for cross-tenant providers.
+- Root cause: `ActivationRequestService.ApproveAsync` delegated to `IProviderService.LinkOrganizationAsync(tenantId, ...)` which used tenant-scoped lookup. Provider (MERIDIAN) had different TenantId than activation request (HARTWELL).
+- Fix: Added `IProviderService.LinkOrganizationGlobalAsync(providerId, organizationId)` implemented with `GetByIdCrossAsync`. `ActivationRequestService.ApproveAsync` now always uses the global method (activation is always admin-only).
+
+**DEF-002 FIXED**: PlatformAdmin 404 on per-record referral endpoints for other-tenant referrals.
+- Root cause: `GetByIdAsync`, `GetHistoryAsync`, `ResendEmailAsync`, `GetNotificationsAsync`, `GetAuditTimelineAsync` all used tenant-scoped record lookup (`tenantId` from PlatformAdmin's JWT = `LEGALSYNQ`, not the referral's owner tenant).
+- Fix: Added `bool isPlatformAdmin = false` parameter to all 5 `IReferralService` methods. When true, routes to `GetByIdGlobalAsync` (already existed). After global load, uses `referral.TenantId` for all sub-queries (notifications, history). Endpoints pass `ctx.IsPlatformAdmin`.
+- E2E validation confirmed: 200 for `GET /referrals/{id}`, `/history`, `/notifications`, `/audit`, `POST /resend-email` all return 200 for PlatformAdmin on cross-tenant referrals.
+
+**Architecture note**: `PlatformAdmin sees cross-tenant referral list AND now all per-record endpoints` (corrected from prior "limited to own tenant for single-record").
+
+### Token Flow (Referral Public Token)
+- Dev fallback secret: `LEGALSYNQ-DEV-REFERRAL-TOKEN-SECRET-2026`
+- Format: `Base64url({referralId}:{tokenVersion}:{expiryUnixSeconds}:{hmacHex})`
+- `resolve-view-token` → `routeType:"pending"` (provider not linked to org) or `"active"`
+- `accept-by-token` → 410 by design (providers must log in)
+- `revoke-token` increments `tokenVersion`, invalidating all prior tokens
+
+### Architecture Notes
+- BFF proxy path: `/api/careconnect/api/...` (double-api, by design — gateway routing)
+- TenantAdmin bypasses ALL capability checks in `CareConnectAuthHelper.RequireAsync` (by design, line 26)
+- PlatformAdmin sees cross-tenant referral list but is limited to their own tenant for single-record lookups

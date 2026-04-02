@@ -36,6 +36,17 @@ public interface IProviderService
         CancellationToken ct = default);
 
     /// <summary>
+    /// LSCC-01-005-01 (DEF-001): Cross-tenant variant of LinkOrganizationAsync.
+    /// Uses a global (tenant-agnostic) provider lookup, allowing a PlatformAdmin to
+    /// link a provider whose TenantId differs from the activation request's TenantId.
+    /// </summary>
+    // LSCC-01-005-01: Cross-tenant activation approval — provider link without tenant scope
+    Task<ProviderResponse> LinkOrganizationGlobalAsync(
+        Guid providerId,
+        Guid organizationId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// LSCC-002-01: Returns active providers that have no Identity OrganizationId set.
     /// Used by admins to identify what requires manual backfill.
     /// </summary>

@@ -109,7 +109,8 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var referral = await service.GetByIdAsync(tenantId, id, ct);
+            // LSCC-01-005-01 (DEF-002): pass isPlatformAdmin so the service can bypass tenant scoping.
+            var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
 
             if (!CareConnectParticipantHelper.IsAdmin(ctx))
             {
@@ -133,7 +134,8 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var history = await service.GetHistoryAsync(tenantId, id, ct);
+            // LSCC-01-005-01 (DEF-002)
+            var history = await service.GetHistoryAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
             return Results.Ok(history);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
@@ -181,7 +183,8 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var notifs = await service.GetNotificationsAsync(tenantId, id, ct);
+            // LSCC-01-005-01 (DEF-002)
+            var notifs = await service.GetNotificationsAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
             return Results.Ok(notifs);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
@@ -200,7 +203,8 @@ public static class ReferralEndpoints
 
             try
             {
-                var referral = await service.ResendEmailAsync(tenantId, id, ct);
+                // LSCC-01-005-01 (DEF-002)
+                var referral = await service.ResendEmailAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
                 return Results.Ok(referral);
             }
             catch (NotFoundException)
@@ -248,7 +252,8 @@ public static class ReferralEndpoints
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             try
             {
-                var timeline = await service.GetAuditTimelineAsync(tenantId, id, ct);
+                // LSCC-01-005-01 (DEF-002)
+                var timeline = await service.GetAuditTimelineAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
                 return Results.Ok(timeline);
             }
             catch (NotFoundException)

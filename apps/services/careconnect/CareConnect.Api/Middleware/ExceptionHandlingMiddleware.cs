@@ -59,7 +59,28 @@ public class ExceptionHandlingMiddleware
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             }));
         }
-        catch (BadHttpRequestException ex)
+        catch (ForbiddenException ex)
+        {
+            _logger.LogWarning("Forbidden: {Message}", ex.Message);
+
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "application/json";
+
+            var response = new
+            {
+                error = new
+                {
+                    code = "FORBIDDEN",
+                    message = ex.Message
+                }
+            };
+
+            await context.Response.WriteAsync(JsonSerializer.Serialize(response, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            }));
+        }
+        catch (BadHttpRequestException)
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             context.Response.ContentType = "application/json";

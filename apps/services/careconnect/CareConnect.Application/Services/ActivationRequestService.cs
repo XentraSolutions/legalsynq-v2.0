@@ -176,8 +176,10 @@ public class ActivationRequestService : IActivationRequestService
 
         if (!alreadyLinked)
         {
-            // Delegate link to IProviderService — handles its own save + audit
-            await _providerService.LinkOrganizationAsync(request.TenantId, request.ProviderId, organizationId, ct);
+            // LSCC-01-005-01 (DEF-001): Use global (tenant-agnostic) provider lookup so that
+            // a PlatformAdmin can approve an activation where the provider's TenantId in the
+            // CareConnect DB differs from the activation request's TenantId (cross-tenant case).
+            await _providerService.LinkOrganizationGlobalAsync(request.ProviderId, organizationId, ct);
             _logger.LogInformation(
                 "LSCC-009 Provider {ProviderId} linked to org {OrgId}.", request.ProviderId, organizationId);
         }

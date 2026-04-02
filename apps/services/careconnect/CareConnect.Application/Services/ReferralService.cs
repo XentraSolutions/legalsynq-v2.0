@@ -66,13 +66,19 @@ public class ReferralService : IReferralService
         };
     }
 
-    public async Task<ReferralResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    public async Task<ReferralResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default, bool isPlatformAdmin = false)
     {
-        var referral = await _referrals.GetByIdAsync(tenantId, id, ct)
-            ?? throw new NotFoundException($"Referral '{id}' was not found.");
+        // LSCC-01-005-01 (DEF-002): PlatformAdmin bypasses tenant scoping for cross-tenant record access.
+        var referral = isPlatformAdmin
+            ? await _referrals.GetByIdGlobalAsync(id, ct)
+            : await _referrals.GetByIdAsync(tenantId, id, ct);
+        if (referral is null)
+            throw new NotFoundException($"Referral '{id}' was not found.");
 
+        // After a global lookup the real owner tenant may differ from the caller's tenantId.
+        var effectiveTenantId = referral.TenantId;
         // LSCC-005-01: load latest notification for email status display
-        var latestNotif = await _notificationRepo.GetLatestByReferralAsync(tenantId, id, ct: ct);
+        var latestNotif = await _notificationRepo.GetLatestByReferralAsync(effectiveTenantId, id, ct: ct);
         return ToResponse(referral, latestNotif);
     }
 
@@ -265,12 +271,17 @@ public class ReferralService : IReferralService
         return ToResponse(loaded!);
     }
 
-    public async Task<List<ReferralStatusHistoryResponse>> GetHistoryAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    public async Task<List<ReferralStatusHistoryResponse>> GetHistoryAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false)
     {
-        _ = await _referrals.GetByIdAsync(tenantId, referralId, ct)
-            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+        // LSCC-01-005-01 (DEF-002): PlatformAdmin bypasses tenant scoping.
+        var referral = isPlatformAdmin
+            ? await _referrals.GetByIdGlobalAsync(referralId, ct)
+            : await _referrals.GetByIdAsync(tenantId, referralId, ct);
+        if (referral is null)
+            throw new NotFoundException($"Referral '{referralId}' was not found.");
 
-        var history = await _referrals.GetHistoryByReferralAsync(tenantId, referralId, ct);
+        var effectiveTenantId = referral.TenantId;
+        var history = await _referrals.GetHistoryByReferralAsync(effectiveTenantId, referralId, ct);
         return history.Select(ToHistoryResponse).ToList();
     }
 
@@ -478,10 +489,17 @@ public class ReferralService : IReferralService
     /// Only available when the referral is still in New status.
     /// Creates a fresh notification record (ReferralEmailResent) with the current token version.
     /// </summary>
-    public async Task<ReferralResponse> ResendEmailAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    public async Task<ReferralResponse> ResendEmailAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false)
     {
-        var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
-            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+        // LSCC-01-005-01 (DEF-002): PlatformAdmin bypasses tenant scoping.
+        var referral = isPlatformAdmin
+            ? await _referrals.GetByIdGlobalAsync(referralId, ct)
+            : await _referrals.GetByIdAsync(tenantId, referralId, ct);
+        if (referral is null)
+            throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        // Use the referral's actual TenantId for notification sub-queries.
+        var effectiveTenantId = referral.TenantId;
 
         if (referral.Status != Referral.ValidStatuses.New)
             throw new InvalidOperationException(
@@ -494,7 +512,7 @@ public class ReferralService : IReferralService
         // LSCC-005-02: capture any existing failed notification with an active retry schedule
         // so we can clear it if the manual resend succeeds (retry no longer needed).
         var existingFailedNotif = await _notificationRepo.GetLatestByReferralAsync(
-            tenantId, referralId,
+            effectiveTenantId, referralId,
             notificationType: NotificationType.ReferralCreated,
             ct: ct);
         bool hadRetryScheduled = existingFailedNotif is { Status: "Failed", NextRetryAfterUtc: not null };
@@ -508,7 +526,7 @@ public class ReferralService : IReferralService
         {
             // Fetch the notification just created by the resend to check its status.
             var newNotif = await _notificationRepo.GetLatestByReferralAsync(
-                tenantId, referralId,
+                effectiveTenantId, referralId,
                 notificationType: NotificationType.ReferralEmailResent,
                 ct: ct);
 
@@ -534,7 +552,7 @@ public class ReferralService : IReferralService
             Visibility    = AuditVisibility.Tenant,
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = now,
-            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = effectiveTenantId.ToString() },
             Actor         = new AuditEventActorDto { Type = ActorType.User },
             Entity        = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
             Action        = "ReferralEmailResent",
@@ -544,7 +562,7 @@ public class ReferralService : IReferralService
             Tags           = ["referral", "email", "resent"],
         });
 
-        var latest = await _notificationRepo.GetLatestByReferralAsync(tenantId, referralId, ct: ct);
+        var latest = await _notificationRepo.GetLatestByReferralAsync(effectiveTenantId, referralId, ct: ct);
         return ToResponse(referral, latest);
     }
 
@@ -594,12 +612,17 @@ public class ReferralService : IReferralService
     /// <summary>
     /// Returns the notification history for a referral (email delivery records).
     /// </summary>
-    public async Task<List<ReferralNotificationResponse>> GetNotificationsAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    public async Task<List<ReferralNotificationResponse>> GetNotificationsAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false)
     {
-        _ = await _referrals.GetByIdAsync(tenantId, referralId, ct)
-            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+        // LSCC-01-005-01 (DEF-002): PlatformAdmin bypasses tenant scoping.
+        var referral = isPlatformAdmin
+            ? await _referrals.GetByIdGlobalAsync(referralId, ct)
+            : await _referrals.GetByIdAsync(tenantId, referralId, ct);
+        if (referral is null)
+            throw new NotFoundException($"Referral '{referralId}' was not found.");
 
-        var notifs = await _notificationRepo.GetAllByReferralAsync(tenantId, referralId, ct);
+        var effectiveTenantId = referral.TenantId;
+        var notifs = await _notificationRepo.GetAllByReferralAsync(effectiveTenantId, referralId, ct);
         return notifs.Select(ToNotificationResponse).ToList();
     }
 
@@ -755,15 +778,21 @@ public class ReferralService : IReferralService
     public async Task<List<ReferralAuditEventResponse>> GetAuditTimelineAsync(
         Guid tenantId,
         Guid referralId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool isPlatformAdmin = false)
     {
-        _ = await _referrals.GetByIdAsync(tenantId, referralId, ct)
-            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+        // LSCC-01-005-01 (DEF-002): PlatformAdmin bypasses tenant scoping.
+        var referralCheck = isPlatformAdmin
+            ? await _referrals.GetByIdGlobalAsync(referralId, ct)
+            : await _referrals.GetByIdAsync(tenantId, referralId, ct);
+        if (referralCheck is null)
+            throw new NotFoundException($"Referral '{referralId}' was not found.");
 
+        var effectiveTenantId = referralCheck.TenantId;
         var events = new List<ReferralAuditEventResponse>();
 
         // ── Source 1: status history ───────────────────────────────────────
-        var history = await _referrals.GetHistoryByReferralAsync(tenantId, referralId, ct);
+        var history = await _referrals.GetHistoryByReferralAsync(effectiveTenantId, referralId, ct);
         foreach (var h in history)
         {
             var (label, category) = h.NewStatus switch
@@ -789,7 +818,7 @@ public class ReferralService : IReferralService
         }
 
         // ── Source 2: notification records ────────────────────────────────
-        var notifications = await _notificationRepo.GetAllByReferralAsync(tenantId, referralId, ct);
+        var notifications = await _notificationRepo.GetAllByReferralAsync(effectiveTenantId, referralId, ct);
         foreach (var n in notifications)
         {
             var derived = ReferralRetryPolicy.GetDerivedStatus(n);
