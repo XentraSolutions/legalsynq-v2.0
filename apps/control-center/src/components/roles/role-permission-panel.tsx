@@ -9,6 +9,8 @@ interface RolePermissionPanelProps {
   isSystemRole:     boolean;
   assignedItems:    RoleCapabilityItem[];
   catalog:          PermissionCatalogItem[];
+  /** Pass true when the caller is a TenantAdmin — adjusts context text. */
+  isTenantAdmin?:   boolean;
 }
 
 function ProductBadge({ name }: { name: string }) {
@@ -30,15 +32,17 @@ export function RolePermissionPanel({
   isSystemRole,
   assignedItems,
   catalog,
+  isTenantAdmin = false,
 }: RolePermissionPanelProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [showPicker, setShowPicker]   = useState(false);
-  const [pickerSearch, setPickerSearch] = useState('');
-  const [assigningId, setAssigningId] = useState<string | null>(null);
-  const [revokingId,  setRevokingId]  = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [showPicker,    setShowPicker]    = useState(false);
+  const [pickerSearch,  setPickerSearch]  = useState('');
+  const [assigningId,   setAssigningId]   = useState<string | null>(null);
+  const [revokingId,    setRevokingId]    = useState<string | null>(null);
+  const [actionError,   setActionError]   = useState<string | null>(null);
+  const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   const assignedIds = new Set(assignedItems.map(i => i.id));
 
@@ -64,6 +68,14 @@ export function RolePermissionPanel({
     return acc;
   }, {});
 
+  // TenantAdmin cannot modify system roles (enforced by backend too)
+  const canEdit = !isSystemRole && (!isTenantAdmin || !isSystemRole);
+
+  function showSuccess(msg: string) {
+    setSuccessBanner(msg);
+    setTimeout(() => setSuccessBanner(null), 3500);
+  }
+
   async function handleAssign(capabilityId: string) {
     setAssigningId(capabilityId);
     setActionError(null);
@@ -82,6 +94,7 @@ export function RolePermissionPanel({
       }
       setShowPicker(false);
       setPickerSearch('');
+      showSuccess('Permission assigned successfully.');
       startTransition(() => router.refresh());
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to assign permission.');
@@ -102,6 +115,7 @@ export function RolePermissionPanel({
         const err = await res.json().catch(() => ({}));
         throw new Error((err as { message?: string }).message ?? 'Failed to revoke permission.');
       }
+      showSuccess('Permission removed.');
       startTransition(() => router.refresh());
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Failed to revoke permission.');
@@ -124,7 +138,7 @@ export function RolePermissionPanel({
               : `${assignedItems.length} capability${assignedItems.length !== 1 ? 's' : ''} assigned`}
           </p>
         </div>
-        {!isSystemRole && (
+        {canEdit && (
           <button
             onClick={() => { setShowPicker(p => !p); setPickerSearch(''); setActionError(null); }}
             disabled={isBusy}
@@ -138,16 +152,27 @@ export function RolePermissionPanel({
         )}
       </div>
 
-      {/* System role notice */}
+      {/* System role notice — context-aware copy for TenantAdmin vs PlatformAdmin */}
       {isSystemRole && (
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
           <svg className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
           </svg>
           <span>
-            System roles cannot be modified. Permissions for this role are managed by the
-            platform engineering team.
+            {isTenantAdmin
+              ? 'This is a platform-managed system role. You can view its permissions but cannot modify them. Contact your platform administrator for changes.'
+              : 'System roles cannot be modified. Permissions for this role are managed by the platform engineering team.'}
           </span>
+        </div>
+      )}
+
+      {/* Success banner */}
+      {successBanner && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+          <svg className="h-4 w-4 text-green-500 shrink-0" viewBox="0 0 16 16" fill="currentColor">
+            <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd" />
+          </svg>
+          <p className="text-sm text-green-700">{successBanner}</p>
         </div>
       )}
 
@@ -228,7 +253,7 @@ export function RolePermissionPanel({
       {assignedItems.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-lg p-8 text-center">
           <p className="text-sm text-gray-400">No permissions assigned yet.</p>
-          {!isSystemRole && (
+          {canEdit && (
             <p className="text-xs text-gray-400 mt-1">
               Use the &quot;Assign Permission&quot; button above to add capabilities.
             </p>
@@ -254,7 +279,7 @@ export function RolePermissionPanel({
                         <p className="text-xs text-gray-500">{cap.description}</p>
                       )}
                     </div>
-                    {!isSystemRole && (
+                    {canEdit && (
                       <button
                         onClick={() => handleRevoke(cap.id)}
                         disabled={revokingId === cap.id || isBusy}

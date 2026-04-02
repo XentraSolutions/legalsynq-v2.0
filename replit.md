@@ -2618,3 +2618,31 @@ Full report: `analysis/UIX-004-report.md`
 - `/groups/[id]` — `GroupPermissionsPanel` wired in
 
 Full report: `analysis/UIX-005-report.md`
+
+## UIX-005-01 — Permissions Hardening — COMPLETED 2026-04-02
+
+Extends UIX-005 to TenantAdmins and closes API security gaps.
+
+**Backend (`AdminEndpoints.cs`):**
+- `GetRolePermissions`: Added `ClaimsPrincipal caller`; cross-tenant guard (non-system roles only)
+- `AssignRolePermission`: System-role guard (403 for TenantAdmin) + cross-tenant guard
+- `RevokeRolePermission`: Same guards via `assignment.Role` navigation property
+
+**BFF routes:**
+- `GET/POST/DELETE /api/identity/admin/roles/[id]/permissions*` — widened `requirePlatformAdmin` → `requireAdmin`
+
+**CC pages:**
+- `/permissions` — widened to `requireAdmin`
+- `/roles/[id]` — widened to `requireAdmin`; reads `session.isTenantAdmin` → `RolePermissionPanel`
+
+**UI — `RolePermissionPanel`:**
+- `isTenantAdmin?` prop for context-aware system-role notice text
+- Success banner (auto-dismiss 3.5 s) after assign/revoke
+
+**UI — `PermissionCatalogTable`:**
+- Replaced flat table with product-grouped section cards
+- Colour-coded product badges; per-product permission count; running total footer
+
+**UIX-004 audit:** All T001–T008 tasks confirmed already implemented — no further work needed.
+
+Full report: `analysis/UIX-005-01-report.md`

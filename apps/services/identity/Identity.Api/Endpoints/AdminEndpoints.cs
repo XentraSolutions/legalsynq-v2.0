@@ -2972,15 +2972,22 @@ public static class AdminEndpoints
     /// GET /api/admin/roles/{id}/permissions
     ///
     /// Returns all capabilities assigned to a role.
-    /// Access: PlatformAdmin or TenantAdmin.
+    /// Access: PlatformAdmin (any role) or TenantAdmin (own-tenant non-system roles; system roles readable).
+    /// UIX-005-01: Added caller + cross-tenant boundary enforcement.
     /// </summary>
     private static async Task<IResult> GetRolePermissions(
         Guid              id,
         IdentityDbContext db,
+        ClaimsPrincipal   caller,
         CancellationToken ct = default)
     {
-        var roleExists = await db.Roles.AnyAsync(r => r.Id == id, ct);
-        if (!roleExists) return Results.NotFound();
+        var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (role is null) return Results.NotFound();
+
+        // Cross-tenant guard: TenantAdmin may not read non-system roles from other tenants.
+        // System roles are global (readable by all authenticated admins).
+        if (!role.IsSystemRole && IsCrossTenantAccess(caller, role.TenantId))
+            return Results.Forbid();
 
         var assignments = await db.RoleCapabilityAssignments
             .Where(a => a.RoleId == id)
@@ -3028,6 +3035,14 @@ public static class AdminEndpoints
 
         var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == id, ct);
         if (role is null) return Results.NotFound(new { error = "Role not found." });
+
+        // UIX-005-01: system roles may only be modified by PlatformAdmin
+        if (role.IsSystemRole && !caller.IsInRole("PlatformAdmin"))
+            return Results.Json(new { error = "System roles cannot be modified. Contact the platform administrator." }, statusCode: 403);
+
+        // UIX-005-01: TenantAdmin may not assign permissions to roles outside their tenant
+        if (IsCrossTenantAccess(caller, role.TenantId))
+            return Results.Forbid();
 
         var capability = await db.Capabilities.FirstOrDefaultAsync(c => c.Id == body.CapabilityId && c.IsActive, ct);
         if (capability is null) return Results.NotFound(new { error = "Capability not found or inactive." });
@@ -3101,6 +3116,14 @@ public static class AdminEndpoints
 
         if (assignment is null)
             return Results.NotFound(new { error = "Permission assignment not found." });
+
+        // UIX-005-01: system roles may only be modified by PlatformAdmin
+        if (assignment.Role.IsSystemRole && !caller.IsInRole("PlatformAdmin"))
+            return Results.Json(new { error = "System roles cannot be modified. Contact the platform administrator." }, statusCode: 403);
+
+        // UIX-005-01: TenantAdmin may not revoke permissions from roles outside their tenant
+        if (IsCrossTenantAccess(caller, assignment.Role.TenantId))
+            return Results.Forbid();
 
         db.RoleCapabilityAssignments.Remove(assignment);
         await db.SaveChangesAsync(ct);

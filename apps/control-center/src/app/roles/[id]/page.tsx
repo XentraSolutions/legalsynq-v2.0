@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requirePlatformAdmin }    from '@/lib/auth-guards';
+import { requireAdmin }            from '@/lib/auth-guards';
 import { controlCenterServerApi }  from '@/lib/control-center-api';
 import { Routes }                  from '@/lib/routes';
 import { CCShell }                 from '@/components/shell/cc-shell';
@@ -23,7 +23,8 @@ interface RoleDetailPageProps {
  * UIX-005: RolePermissionPanel wired — assign / revoke capabilities.
  */
 export default async function RoleDetailPage({ params }: RoleDetailPageProps) {
-  const session = await requirePlatformAdmin();
+  const session       = await requireAdmin();
+  const isTenantAdmin = session.isTenantAdmin;
   const { id }  = params;
 
   let role = null;
@@ -120,6 +121,7 @@ export default async function RoleDetailPage({ params }: RoleDetailPageProps) {
                 isSystemRole={role.isSystemRole ?? false}
                 assignedItems={assignedPermissions}
                 catalog={catalog}
+                isTenantAdmin={isTenantAdmin}
               />
             )}
           </>

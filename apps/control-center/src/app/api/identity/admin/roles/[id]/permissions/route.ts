@@ -8,11 +8,12 @@
  * POST: Assigns a capability to the role.
  *       Body: { capabilityId: string }
  *
- * Access: PlatformAdmin only (via requirePlatformAdmin).
- * UIX-005
+ * Access: PlatformAdmin or TenantAdmin (boundary enforced by Identity service).
+ * UIX-005-01: Widened from requirePlatformAdmin → requireAdmin.
+ *             The Identity service enforces system-role and cross-tenant guards.
  */
 import { type NextRequest, NextResponse } from 'next/server';
-import { requirePlatformAdmin }           from '@/lib/auth-guards';
+import { requireAdmin }                   from '@/lib/auth-guards';
 import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 type Ctx = { params: { id: string } };
@@ -21,7 +22,7 @@ export async function GET(
   _request: NextRequest,
   { params }: Ctx,
 ): Promise<NextResponse> {
-  try { await requirePlatformAdmin(); }
+  try { await requireAdmin(); }
   catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
 
   try {
@@ -37,7 +38,7 @@ export async function POST(
   request: NextRequest,
   { params }: Ctx,
 ): Promise<NextResponse> {
-  try { await requirePlatformAdmin(); }
+  try { await requireAdmin(); }
   catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
 
   let body: { capabilityId?: string };
@@ -55,6 +56,7 @@ export async function POST(
     const message = err instanceof Error ? err.message : 'Failed to assign permission.';
     const status  = message.includes('409') || message.toLowerCase().includes('conflict') ? 409
                   : message.includes('404') ? 404
+                  : message.includes('403') ? 403
                   : 500;
     return NextResponse.json({ message }, { status });
   }

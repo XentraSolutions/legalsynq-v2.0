@@ -1,4 +1,4 @@
-import { requirePlatformAdmin }       from '@/lib/auth-guards';
+import { requireAdmin }                from '@/lib/auth-guards';
 import { controlCenterServerApi }     from '@/lib/control-center-api';
 import { CCShell }                    from '@/components/shell/cc-shell';
 import { PermissionCatalogTable }     from '@/components/users/permission-catalog-table';
@@ -17,7 +17,7 @@ interface PermissionsPageProps {
  *   ?product=<uuid>    → filters by product
  */
 export default async function PermissionsPage({ searchParams }: PermissionsPageProps) {
-  const session    = await requirePlatformAdmin();
+  const session    = await requireAdmin();
   const search     = searchParams?.search ?? '';
   const productId  = searchParams?.product ?? '';
 
