@@ -2,6 +2,7 @@
 
 import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useSession } from '@/hooks/use-session';
 
 /**
  * Login form — calls the Next.js BFF route POST /api/auth/login.
@@ -17,6 +18,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 export function LoginForm() {
   const router       = useRouter();
   const searchParams = useSearchParams();
+  const { refresh }  = useSession();
 
   const [mounted,    setMounted]    = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -48,6 +50,8 @@ export function LoginForm() {
         setError(err.message ?? 'Invalid credentials. Please try again.');
         return;
       }
+
+      await refresh();
 
       // Honor returnTo for deep-link flows (e.g. referral view); guard against open redirects
       const rawReturnTo = searchParams.get('returnTo') ?? '';
