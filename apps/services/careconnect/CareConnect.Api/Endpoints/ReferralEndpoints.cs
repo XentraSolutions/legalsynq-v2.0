@@ -296,39 +296,17 @@ public static class ReferralEndpoints
         });
         // Note: no .RequireAuthorization — intentionally public, token-gated
 
-        // Accepts a referral on behalf of a pending (unlinked) provider.
-        // The token proves the provider received the notification email.
-        group.MapPost("/{id:guid}/accept-by-token", async (
-            Guid id,
-            [FromBody] AcceptByTokenRequest request,
-            IReferralService service,
-            CancellationToken ct) =>
-        {
-            if (string.IsNullOrWhiteSpace(request.Token))
-                return Results.BadRequest(new { error = "token is required." });
-
-            try
-            {
-                var referral = await service.AcceptByTokenAsync(id, request.Token, ct);
-                return Results.Ok(referral);
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return Results.Problem(
-                    detail: ex.Message,
-                    statusCode: StatusCodes.Status401Unauthorized,
-                    title: "Invalid or expired token");
-            }
-            catch (NotFoundException)
-            {
-                return Results.NotFound();
-            }
-            catch (InvalidOperationException ex)
-            {
-                return Results.Conflict(new { error = ex.Message });
-            }
-        });
-        // Note: no .RequireAuthorization — intentionally public
+        // LSCC-01-002-01: Public token-only acceptance is permanently retired.
+        // This endpoint no longer mutates referral state.
+        // Providers must log in to accept referrals from the authenticated referral detail page.
+        // Valid token links are still routed into the login + returnTo flow by /referrals/view.
+        group.MapPost("/{id:guid}/accept-by-token", (Guid id) =>
+            Results.Problem(
+                detail: "Direct token-based acceptance is no longer supported. " +
+                        "Please log in to the platform to view and accept this referral.",
+                statusCode: StatusCodes.Status410Gone,
+                title: "Acceptance path retired"));
+        // Note: intentionally public — must remain accessible to serve legacy links safely
     }
 }
 

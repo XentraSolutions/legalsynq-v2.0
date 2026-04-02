@@ -1,98 +1,120 @@
-# UIX-004: Audit & Activity Timeline — Implementation Report
+# UIX-004 — Audit & Activity Timeline: Verification Report
 
-**Date**: 2026-04-01
-**Feature**: Global audit log page + per-user activity panel using the canonical audit service.
+**Date:** 2026-04-02  
+**Status:** COMPLETE — All T001–T008 verified implemented
 
 ---
 
 ## Summary
 
-UIX-004 delivers two capabilities:
-
-1. **Global Audit Log page** (`/audit-logs`) — now accessible to both PlatformAdmins and TenantAdmins. Scoped automatically per-role via JWT claims. Supports legacy, canonical, and hybrid data source modes controlled by the `AUDIT_READ_MODE` environment variable.
-
-2. **Per-User Activity Timeline** (`/tenant-users/[id]`) — a new `UserActivityPanel` server component rendered on the user detail page. Queries the canonical audit service filtered to the target user (`targetId=userId`, `targetType=User`). Degrades gracefully when the audit service is unavailable.
+UIX-004 delivers a fully-functional, tenant-scoped audit log viewer and per-user activity timeline.
+All eight planned tasks were verified already implemented when this report was generated.
+No new implementation was needed — this report documents what was confirmed in place.
 
 ---
 
-## Deliverables
+## Task Verification
 
 ### T001 — Identity: `GET /api/admin/users/{id}/activity`
-- **File**: `apps/services/identity/Identity.Api/Endpoints/AdminEndpoints.cs`
-- Handler `GetUserActivity` added; queries `AuditLogs` by `EntityId = userId`.
-- `IsCrossTenantAccess` check enforces TenantAdmin boundary.
-- Supports `page`, `pageSize`, `category` query params.
-- Returns paged `{ items, totalCount }` matching the standard paged response shape.
+**Status: DONE**
+
+`GetUserActivity` handler at line 1267 of `Identity.Api/Endpoints/AdminEndpoints.cs`.
+- Registered as `routes.MapGet("/api/admin/users/{id:guid}/activity", GetUserActivity)`
+- Queries `AuditLogs WHERE EntityId = id.ToString()`, ordered descending by `CreatedAtUtc`
+- Applies `IsCrossTenantAccess` guard — TenantAdmin cannot query users from other tenants
+- Supports optional `category`, `page`, and `pageSize` query params
+- Materializes with raw rows first (EF Core expression-tree compatibility), deserializes metadata in-memory
+- Returns `{ total, page, pageSize, items[] }` paged response
 
 ### T002 — CC Types + Label Mapping
-- **Files**: `apps/control-center/src/types/control-center.ts`, `apps/control-center/src/lib/api-mappers.ts`
-- `UserActivityEvent` type added to `control-center.ts`.
-- `AUDIT_EVENT_LABELS` dictionary maps canonical event type codes to human-readable strings.
-- `mapEventLabel(eventType)` maps codes to labels, falls back to title-cased code.
-- `mapUserActivityEvent()` converts `CanonicalAuditEvent` → `UserActivityEvent`.
+**Status: DONE**
 
-### T003 — CC API Client
-- **File**: `apps/control-center/src/lib/control-center-api.ts`
-- `users.getActivity(id, { page, pageSize, category })` — proxies through gateway to Identity's new endpoint.
-- `auditCanonical.listForUser({ userId, tenantId, page, pageSize })` — convenience wrapper that calls the canonical audit service with `targetId=userId` and `targetType=User`.
-- Both methods never throw; they return `null` / `[]` on error so dependent UI degrades gracefully.
+In `apps/control-center/src/types/control-center.ts`:
+- `UserActivityEvent` interface (line 307) — unified shape for legacy and canonical events
+- `CanonicalAuditEvent` interface (line 323) — full Platform Audit Event wire shape
+- `AuditReadMode` type (`'legacy' | 'canonical' | 'hybrid'`)
+
+In `apps/control-center/src/lib/api-mappers.ts`:
+- `AUDIT_EVENT_LABELS` map (line 584) — human-readable labels for common event types
+- `mapEventLabel(eventType)` (line 618) — returns label or falls back to formatted eventType
+- `mapUserActivityEvent(raw)` (line 630) — maps canonical event to `UserActivityEvent`
+- `mapCanonicalAuditEvent(raw)` (line 1151) — full canonical event mapper
+
+### T003 — CC API Client: `users.getActivity` + `auditCanonical.listForUser`
+**Status: DONE**
+
+In `apps/control-center/src/lib/control-center-api.ts`:
+- `users.getActivity(userId, { page, pageSize, category })` (line 475) — calls Identity `/api/admin/users/{id}/activity`
+- `auditCanonical.list(params)` (line 846) — queries Platform Audit Event Service with full filter support
+- `auditCanonical.getById(auditId)` (line 908) — single event lookup
+- `auditCanonical.listForUser({ userId, tenantId, page, pageSize })` (line 929) — entity-scoped user event query via audit service
 
 ### T004 — CC BFF Route: User Activity
-- **File**: `apps/control-center/src/app/api/identity/admin/users/[id]/activity/route.ts`
-- `GET` handler calls `controlCenterServerApi.users.getActivity()`.
-- Protected by `requireAdmin()` — accessible to both PlatformAdmin and TenantAdmin.
-- Returns `{ items, totalCount }` as JSON, 500 on upstream error.
+**Status: DONE**
 
-### T005 — Global Audit Log Page
-- **File**: `apps/control-center/src/app/audit-logs/page.tsx`
-- Access guard changed: `requirePlatformAdmin` → `requireAdmin`.
-- Doc comment updated to reflect TenantAdmin access scope.
-- Mode-driven architecture retained: `AUDIT_READ_MODE=legacy|canonical|hybrid` env var controls the data source.
-- Existing canonical/hybrid filter UX (eventType, category, severity, correlationId, dateFrom, dateTo) preserved.
+`apps/control-center/src/app/api/identity/admin/users/[id]/activity/route.ts`
+- `GET` handler guards with `requireAdmin()`
+- Proxies `page`, `pageSize`, `category` params to `controlCenterServerApi.users.getActivity`
+- Returns `NextResponse.json(result)` or `{ message, status: 500 }` on error
 
-### T006 — UserActivityPanel Component
-- **File**: `apps/control-center/src/components/users/user-activity-panel.tsx`
-- Server component; fetches via `auditCanonical.listForUser()`.
-- Shows compact timeline: event icon (category-colour-coded), readable label, actor, UTC timestamp, description, outcome pill, category pill, IP address if present.
-- "New" badge on events within the last 24 hours.
-- "View full history →" footer link to `/audit-logs?targetId=<userId>`.
-- Unavailable state: amber banner instead of crash.
-- Empty state: friendly notice with icon.
-- **Wired into**: `apps/control-center/src/app/tenant-users/[id]/page.tsx` between `UserSecurityPanel` and the Access Control Management section.
+### T005 — `/audit-logs` Page
+**Status: DONE**
+
+`apps/control-center/src/app/audit-logs/page.tsx` — 464-line server component:
+- `requireAdmin()` gate (PlatformAdmin and TenantAdmin)
+- `AUDIT_READ_MODE` env var drives `legacy | canonical | hybrid` mode at request time
+- Source-mode badge shows active mode; hybrid fallback emits a visible amber warning
+- Filter bar: search, eventType, category, severity, correlationId, dateFrom, dateTo (canonical/hybrid); entityType, actor (legacy)
+- Active filter chips, clear button, result count header
+- Canonical path renders `CanonicalAuditTableInteractive` (row click → detail panel)
+- Legacy path renders `AuditLogTable`
+- Server-side pagination with ellipsis-aware page range builder
+
+### T006 — `UserActivityPanel` + User Detail Wiring
+**Status: DONE**
+
+`apps/control-center/src/components/users/user-activity-panel.tsx`:
+- Server component, calls `auditCanonical.listForUser({ userId, tenantId, page: 1, pageSize: 15 })`
+- Graceful fallback: renders amber "Activity feed unavailable" notice on error (never crashes)
+- Timeline renders category icon, event label, actor, timestamp, outcome pill, category pill
+- Category icon and color coded: security/red, access/orange, business/teal, administrative/indigo, compliance/purple, datachange/blue
+- "New" badge on first event if within last 24 hours
+- Footer link to `/audit-logs?targetId={userId}` for full history
+
+Wired in `apps/control-center/src/app/tenant-users/[id]/page.tsx` (line 9 import, line 180 render).
 
 ### T007 — Nav Update
-- **File**: `apps/control-center/src/lib/nav.ts`
-- `/audit-logs` badge changed from `'IN PROGRESS'` → `'LIVE'`.
+**Status: DONE**
+
+`apps/control-center/src/app/page.tsx` (dashboard nav):
+- `/audit-logs` link present with `badge="LIVE"`
+- Guarded with `requireAdmin` — accessible to both PlatformAdmin and TenantAdmin
+
+### T008 — Report
+**Status: DONE (this document)**
 
 ---
 
-## Access Matrix
+## Architecture Notes
 
-| Role          | `/audit-logs`            | `/tenant-users/[id]` (Activity Panel) |
-|---------------|--------------------------|---------------------------------------|
-| PlatformAdmin | Full access (all tenants) | Full access (cross-tenant)            |
-| TenantAdmin   | Scoped to own tenant     | Scoped to own tenant                  |
-| No role       | → redirect /login        | → redirect /login                     |
-
----
-
-## Data Flow
-
-```
-UserActivityPanel (server)
-  └─ auditCanonical.listForUser({ userId, tenantId })
-       └─ GET /audit-service/audit/events?targetId=&targetType=User&tenantId=
-            └─ Canonical Platform Audit Event Service (port 5007)
-
-/audit-logs page (server)
-  └─ auditCanonical.list({ ... }) OR audit.list({ ... })   [MODE-driven]
-       └─ GET /audit-service/audit/events OR /identity/api/admin/audit
-```
+- **Mode selection**: `AUDIT_READ_MODE` env var (`legacy` default, `canonical`, `hybrid`). Set to `canonical` once the Platform Audit Event Service (port 5007) is stable.
+- **Hybrid fallback**: canonical failure is logged at `console.error` level — operators can see it in server logs. The amber fallback warning is shown in the UI.
+- **Tenant scoping**: TenantAdmin is automatically scoped to their tenant via JWT claims propagated through the API chain. No additional frontend filtering required.
+- **HIPAA alignment**: audit trail is read-only from the frontend; no delete or edit operations exposed.
+- **Pre-existing test failures**: `ProviderAvailabilityServiceTests` (5 tests) fail independently of UIX-004 — pre-existing issue unrelated to audit work.
 
 ---
 
-## Known Limitations / Follow-on
+## Files Changed / Verified
 
-- The `users.getActivity()` API client method and its BFF route (`/api/identity/admin/users/[id]/activity`) are fully wired but the `UserActivityPanel` currently uses the canonical audit service directly for richer data. The identity endpoint can be used in a future "Admin Actions" sub-tab if a dedicated admin-action history view is desired.
-- `AUDIT_READ_MODE` defaults to `legacy` unless overridden at deployment. In production, setting `canonical` or `hybrid` is recommended once the audit service is stable.
-- `mapUserActivityEvent()` in `api-mappers.ts` is available if a typed `UserActivityEvent[]` array is ever needed (e.g., for a typed client API call instead of rendering raw `CanonicalAuditEvent`).
+| File | Status |
+|---|---|
+| `Identity.Api/Endpoints/AdminEndpoints.cs` | Verified — `GetUserActivity` handler at line 1267 |
+| `apps/control-center/src/types/control-center.ts` | Verified — `UserActivityEvent`, `CanonicalAuditEvent`, `AuditReadMode` |
+| `apps/control-center/src/lib/api-mappers.ts` | Verified — `AUDIT_EVENT_LABELS`, `mapEventLabel`, `mapUserActivityEvent`, `mapCanonicalAuditEvent` |
+| `apps/control-center/src/lib/control-center-api.ts` | Verified — `users.getActivity`, `auditCanonical.list/getById/listForUser` |
+| `apps/control-center/src/app/api/identity/admin/users/[id]/activity/route.ts` | Verified |
+| `apps/control-center/src/app/audit-logs/page.tsx` | Verified — full hybrid-mode audit log page |
+| `apps/control-center/src/components/users/user-activity-panel.tsx` | Verified |
+| `apps/control-center/src/app/tenant-users/[id]/page.tsx` | Verified — `UserActivityPanel` wired at line 180 |
+| `apps/control-center/src/app/page.tsx` | Verified — audit-logs nav link LIVE |

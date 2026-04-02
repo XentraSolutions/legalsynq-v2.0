@@ -1,7 +1,20 @@
-'use client';
-
-import { useState } from 'react';
 import Link from 'next/link';
+
+/**
+ * LSCC-01-002-01: Public direct acceptance removed.
+ *
+ * This landing page is now a legacy routing surface for old email links
+ * that point directly to /referrals/accept/{referralId}. New email links
+ * are routed through /referrals/view → /login via the secure view token.
+ *
+ * This component no longer presents or handles direct token-based
+ * acceptance. Providers must log in (or activate an account first)
+ * before they can accept a referral.
+ *
+ * CTAs:
+ *   Primary  — "Activate & Accept Referral" → /referrals/activate (new providers)
+ *   Secondary — "Already have an account? Log in" → /login?returnTo=...
+ */
 
 interface ReferralPublicSummary {
   referralId:       string;
@@ -21,66 +34,8 @@ interface ActivationLandingProps {
 }
 
 export function ActivationLanding({ summary, token, referralId }: ActivationLandingProps) {
-  const [quickAcceptOpen, setQuickAcceptOpen] = useState(false);
-  const [acceptStatus, setAcceptStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [acceptMsg, setAcceptMsg] = useState('');
-
   const activateUrl = `/referrals/activate?referralId=${referralId}&token=${encodeURIComponent(token)}`;
   const loginUrl    = `/login?returnTo=${encodeURIComponent(`/careconnect/referrals/${referralId}`)}&reason=referral-view`;
-
-  async function handleDirectAccept() {
-    setAcceptStatus('loading');
-    setAcceptMsg('');
-    try {
-      const resp = await fetch(`/api/careconnect/api/referrals/${referralId}/accept-by-token`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ token }),
-      });
-      if (resp.ok) {
-        setAcceptStatus('success');
-        setAcceptMsg('Referral accepted. The referring party has been notified.');
-      } else if (resp.status === 409) {
-        setAcceptStatus('error');
-        setAcceptMsg('This referral has already been accepted.');
-      } else {
-        const data = await resp.json().catch(() => null);
-        const detail = data?.detail ?? data?.error ?? '';
-        setAcceptStatus('error');
-        setAcceptMsg(
-          detail.toLowerCase().includes('revoked')
-            ? 'This link has been revoked. Please check your inbox for a newer link.'
-            : 'This link has expired or is invalid. Please contact the referring party.'
-        );
-      }
-    } catch {
-      setAcceptStatus('error');
-      setAcceptMsg('Connection error. Please try again.');
-    }
-  }
-
-  if (acceptStatus === 'success') {
-    return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="h-1.5 w-full bg-green-400" />
-          <div className="p-8 text-center">
-            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Referral Accepted</h1>
-            <p className="text-sm text-gray-500">{acceptMsg}</p>
-            <p className="mt-4 text-xs text-gray-400">
-              To track this referral and manage future referrals in one place,{' '}
-              <Link href={loginUrl} className="text-primary hover:underline">log in to your account</Link>.
-            </p>
-          </div>
-        </div>
-      </main>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -129,12 +84,13 @@ export function ActivationLanding({ summary, token, referralId }: ActivationLand
           </div>
         </div>
 
-        {/* Benefits + activation CTA card */}
+        {/* Auth-required CTA card */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 px-6 py-5 space-y-4">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900 mb-1">Activate your CareConnect account</h2>
+            <h2 className="text-sm font-semibold text-gray-900 mb-1">Log in to view and accept this referral</h2>
             <p className="text-sm text-gray-500 leading-relaxed">
-              Create your free account to accept this referral and manage future referrals in one place.
+              Accepting a referral requires platform access. Log in if you already have a CareConnect account,
+              or activate your account to get started.
             </p>
           </div>
 
@@ -154,7 +110,7 @@ export function ActivationLanding({ summary, token, referralId }: ActivationLand
             ))}
           </ul>
 
-          {/* Primary CTA */}
+          {/* Primary CTA — new providers without an account */}
           <Link
             href={activateUrl}
             className="block w-full bg-primary text-white text-sm font-medium text-center py-2.5 rounded-lg hover:opacity-90 transition-opacity"
@@ -162,43 +118,11 @@ export function ActivationLanding({ summary, token, referralId }: ActivationLand
             Activate &amp; Accept Referral
           </Link>
 
-          {/* Secondary CTA */}
+          {/* Secondary CTA — existing platform users */}
           <div className="text-center">
             <Link href={loginUrl} className="text-sm text-primary hover:underline font-medium">
               Already have an account? Log in
             </Link>
-          </div>
-
-          {/* Tertiary: direct accept (deemphasised) */}
-          <div className="border-t border-gray-100 pt-3">
-            <button
-              onClick={() => setQuickAcceptOpen(v => !v)}
-              className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1 mx-auto"
-            >
-              {quickAcceptOpen ? '▾' : '▸'} Accept without creating an account
-            </button>
-
-            {quickAcceptOpen && (
-              <div className="mt-3 space-y-2">
-                <p className="text-xs text-gray-500 text-center leading-relaxed">
-                  You can accept this specific referral without an account, but you won&apos;t be able to track it or receive future referrals digitally.
-                </p>
-
-                {acceptStatus === 'error' && (
-                  <div className="bg-red-50 border border-red-200 rounded px-3 py-2 text-xs text-red-700">
-                    {acceptMsg}
-                  </div>
-                )}
-
-                <button
-                  onClick={handleDirectAccept}
-                  disabled={acceptStatus === 'loading'}
-                  className="w-full border border-gray-300 text-gray-600 text-xs font-medium py-2 rounded-lg hover:bg-gray-50 disabled:opacity-60 transition-colors"
-                >
-                  {acceptStatus === 'loading' ? 'Accepting…' : 'Accept referral (no account)'}
-                </button>
-              </div>
-            )}
           </div>
         </div>
 

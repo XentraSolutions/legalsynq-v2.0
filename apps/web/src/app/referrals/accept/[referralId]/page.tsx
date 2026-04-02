@@ -1,8 +1,13 @@
 /**
- * LSCC-005 / LSCC-008: Public referral acceptance + provider activation landing.
+ * LSCC-005 / LSCC-008 / LSCC-01-002-01: Legacy referral landing.
  *
  * Server component — fetches referral context from the backend before rendering.
  * No authentication required; the view token is the proof-of-identity.
+ *
+ * LSCC-01-002-01: New email links are now routed directly to login via
+ * /referrals/view → /login?returnTo=... This page is retained as a safe
+ * handler for legacy links (old emails pointing to /referrals/accept/{id}).
+ * Direct token-based acceptance is no longer available here.
  *
  * Routing:
  *   referralId === 'invalid'
@@ -11,8 +16,8 @@
  *   token validates but referral already accepted
  *     → <AlreadyAcceptedScreen>
  *
- *   token validates, referral is New (pending acceptance)
- *     → <ActivationLanding>  (LSCC-008 funnel: Activate & Accept | Log in | Direct accept)
+ *   token validates, referral is New
+ *     → <ActivationLanding> (auth-required: Activate & Accept | Log in)
  *
  *   token cannot be validated (null summary)
  *     → redirect to invalid screen

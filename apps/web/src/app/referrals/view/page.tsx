@@ -1,17 +1,22 @@
 import { redirect } from 'next/navigation';
 
 /**
- * LSCC-005: Public referral view router.
+ * LSCC-005 / LSCC-01-002-01: Public referral view router.
  *
  * This page is intentionally outside (platform) — no auth middleware,
  * no session required. It decodes the secure view token and routes the
- * provider to the correct experience:
+ * provider into the authenticated referral flow.
+ *
+ * LSCC-01-002-01: Both "pending" and "active" providers are now routed
+ * to login with a safe returnTo so acceptance always happens from the
+ * authenticated referral detail page. Direct token-only acceptance
+ * is no longer supported.
  *
  *   "pending" provider (OrganizationId = null)
- *     → /referrals/accept/{referralId}?token={token}  (public accept page)
+ *     → /login?returnTo=/careconnect/referrals/{referralId}&reason=referral-view
  *
  *   "active" tenant provider (OrganizationId != null)
- *     → /login?returnTo=/careconnect/referrals/{referralId}  (platform login → deep link)
+ *     → /login?returnTo=/careconnect/referrals/{referralId}&reason=referral-view
  *
  *   "invalid" / "notfound" token
  *     → /referrals/accept/invalid  (error page)
@@ -48,11 +53,10 @@ export default async function ReferralViewPage({ searchParams }: Props) {
     routeType = 'invalid';
   }
 
-  if (routeType === 'pending' && referralId) {
-    redirect(`/referrals/accept/${referralId}?token=${encodeURIComponent(token)}`);
-  }
-
-  if (routeType === 'active' && referralId) {
+  // LSCC-01-002-01: Both pending and active providers go to login.
+  // The returnTo path lands them on the authenticated referral detail
+  // page where acceptance is the only mechanism.
+  if ((routeType === 'pending' || routeType === 'active') && referralId) {
     const returnTo = encodeURIComponent(`/careconnect/referrals/${referralId}`);
     redirect(`/login?returnTo=${returnTo}&reason=referral-view`);
   }

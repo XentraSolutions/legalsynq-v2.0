@@ -2697,3 +2697,25 @@ All other acceptance flow components (provider email, law firm email, token flow
 **Tests:** 10 new tests in `ReferralClientEmailTests.cs`; total 385 pass (390 total, 5 pre-existing failures unrelated)
 
 Full report: `analysis/LSCC-01-002-report.md`
+
+## LSCC-01-002-01 — Acceptance Model Lockdown — COMPLETED 2026-04-02
+
+Eliminated the dual acceptance model. Providers **must now log in** before accepting a referral.
+
+**Changes:**
+- **Backend:** `POST /{id:guid}/accept-by-token` now returns **410 Gone** — no longer mutates referral state; safe handler for legacy links
+- **Frontend `/referrals/view`:** Both `pending` AND `active` providers now route to `/login?returnTo=/careconnect/referrals/{id}&reason=referral-view` (unified; previously `pending` went to the public accept page)
+- **Frontend `activation-landing.tsx`:** "Accept without creating an account" tertiary CTA and all direct-accept state/handlers removed; `'use client'` removed (no hooks remain); copy updated to "Log in to view and accept this referral"
+- **Page docstrings** updated in `accept/[referralId]/page.tsx` and `view/page.tsx`
+
+**Canonical flow post-lockdown:**
+```
+Email link → /referrals/view?token= → /login?returnTo=/careconnect/referrals/{id}
+           → authenticated referral detail → ReferralStatusActions → Accept Referral
+           → PUT /api/referrals/{id} (ReferralAccept capability gate) → New → Accepted
+           → law firm + client notifications fire
+```
+
+**Tests:** 18 new tests in `ReferralAcceptanceLockdownTests.cs`; total 403 pass (408 total, 5 pre-existing failures unrelated)
+
+Full report: `analysis/LSCC-01-002-01-report.md`
