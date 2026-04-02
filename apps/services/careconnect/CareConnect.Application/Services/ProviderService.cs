@@ -428,6 +428,30 @@ public class ProviderService : IProviderService
             Unresolved: unresolved);
     }
 
+    // LSCC-01-003: Admin CareConnect receiver provisioning — CC-side idempotent activation.
+    public async Task<ProviderActivationResult> ActivateForCareConnectAsync(
+        Guid providerId,
+        CancellationToken ct = default)
+    {
+        var provider = await _providers.GetByIdCrossAsync(providerId, ct);
+        if (provider is null)
+            throw new NotFoundException($"Provider '{providerId}' was not found.");
+
+        bool alreadyActive = provider.IsActive && provider.AcceptingReferrals;
+
+        if (!alreadyActive)
+        {
+            provider.Activate();
+            await _providers.UpdateAsync(provider, ct);
+        }
+
+        return new ProviderActivationResult(
+            ProviderId:        provider.Id,
+            AlreadyActive:     alreadyActive,
+            IsActive:          provider.IsActive,
+            AcceptingReferrals: provider.AcceptingReferrals);
+    }
+
     private static string BuildSubtitle(string city, string state, string? primaryCategory)
     {
         var location = $"{city}, {state}";

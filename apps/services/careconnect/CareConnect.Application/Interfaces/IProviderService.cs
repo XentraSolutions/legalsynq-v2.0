@@ -54,6 +54,15 @@ public interface IProviderService
         Guid tenantId,
         IReadOnlyList<ProviderOrgLinkItem> items,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// LSCC-01-003: Admin-safe idempotent activation — ensures provider IsActive and
+    /// AcceptingReferrals are both true. Used by the admin provisioning interface to
+    /// unblock a provider after Identity-side provisioning is complete.
+    /// Cross-tenant: the admin operates across tenants.
+    /// </summary>
+    // LSCC-01-003: CareConnect receiver provisioning — CC-side activation
+    Task<ProviderActivationResult> ActivateForCareConnectAsync(Guid providerId, CancellationToken ct = default);
 }
 
 /// <summary>LSCC-002-01: Single provider-to-org mapping item for bulk backfill.</summary>
@@ -61,3 +70,10 @@ public sealed record ProviderOrgLinkItem(Guid ProviderId, Guid OrganizationId);
 
 /// <summary>LSCC-002-01: Result of a bulk provider org-link operation.</summary>
 public sealed record BulkLinkReport(int Total, int Updated, int Skipped, int Unresolved);
+
+/// <summary>LSCC-01-003: Result of admin CareConnect activation for a provider.</summary>
+public sealed record ProviderActivationResult(
+    Guid ProviderId,
+    bool AlreadyActive,
+    bool IsActive,
+    bool AcceptingReferrals);

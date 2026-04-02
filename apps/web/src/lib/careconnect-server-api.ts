@@ -16,6 +16,9 @@ import type {
   AppointmentSearchParams,
   PagedResponse,
   ActivationFunnelMetrics,
+  ProviderReadinessDiagnostics,
+  ProvisionCareConnectResult,
+  ProviderActivationResult,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -91,6 +94,29 @@ export const careConnectServerApi = {
     getFunnel: (params: { days?: number; startDate?: string; endDate?: string } = {}) =>
       serverApi.get<ActivationFunnelMetrics>(
         `/careconnect/api/admin/analytics/funnel${toQs(params as Record<string, unknown>)}`,
+      ),
+  },
+
+  // LSCC-01-003: Admin CareConnect receiver provisioning (server-side only)
+  adminProvisioning: {
+    // GET /api/admin/users/{userId}/careconnect-readiness  (Identity service)
+    getReadiness: (userId: string) =>
+      serverApi.get<ProviderReadinessDiagnostics>(
+        `/identity/api/admin/users/${userId}/careconnect-readiness`,
+      ),
+
+    // POST /api/admin/users/{userId}/provision-careconnect  (Identity service)
+    provision: (userId: string) =>
+      serverApi.post<ProvisionCareConnectResult>(
+        `/identity/api/admin/users/${userId}/provision-careconnect`,
+        {},
+      ),
+
+    // POST /api/admin/providers/{providerId}/activate-for-careconnect  (CareConnect service)
+    activateProvider: (providerId: string) =>
+      serverApi.post<ProviderActivationResult>(
+        `/careconnect/api/admin/providers/${providerId}/activate-for-careconnect`,
+        {},
       ),
   },
 };

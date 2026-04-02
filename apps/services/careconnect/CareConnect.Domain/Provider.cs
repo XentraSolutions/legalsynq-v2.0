@@ -81,6 +81,14 @@ public class Provider : AuditableEntity
         };
     }
 
+    // LSCC-01-003: Admin-safe idempotent activation — sets IsActive + AcceptingReferrals = true.
+    public void Activate()
+    {
+        IsActive           = true;
+        AcceptingReferrals = true;
+        UpdatedAtUtc       = DateTime.UtcNow;
+    }
+
     public void Update(
         string  name,
         string? organizationName,

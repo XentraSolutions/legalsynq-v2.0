@@ -375,3 +375,33 @@ export interface ActivationFunnelMetrics {
   counts:    FunnelCounts;
   rates:     FunnelRates;
 }
+
+// ── LSCC-01-003: Admin CareConnect provider provisioning ──────────────────────
+
+export interface ProviderReadinessDiagnostics {
+  userId:               string;
+  hasPrimaryOrg:        boolean;
+  primaryOrgId:         string | null;
+  primaryOrgType:       string | null;
+  tenantHasCareConnect: boolean;
+  orgHasCareConnect:    boolean;
+  hasCareConnectRole:   boolean;
+  isFullyProvisioned:   boolean;
+}
+
+export interface ProvisionCareConnectResult {
+  userId:              string;
+  organizationId:      string;
+  organizationName:    string;
+  tenantProductAdded:  boolean;
+  orgProductAdded:     boolean;
+  roleAdded:           boolean;
+  isFullyProvisioned:  boolean;
+}
+
+export interface ProviderActivationResult {
+  providerId:         string;
+  alreadyActive:      boolean;
+  isActive:           boolean;
+  acceptingReferrals: boolean;
+}

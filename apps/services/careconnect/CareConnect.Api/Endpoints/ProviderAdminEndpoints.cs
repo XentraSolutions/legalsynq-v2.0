@@ -1,5 +1,6 @@
 // LSCC-002: Admin provider org-linkage backfill endpoint.
 // LSCC-002-01: Extended with unlinked-list and bulk-link endpoints.
+// LSCC-01-003: Extended with CareConnect receiver activation endpoint.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using CareConnect.Application.Interfaces;
@@ -10,9 +11,10 @@ namespace CareConnect.Api.Endpoints;
 /// <summary>
 /// Admin-only endpoints for CareConnect provider management.
 ///
-/// PUT  /api/admin/providers/{id}/link-organization       — single provider org-link (LSCC-002)
-/// GET  /api/admin/providers/unlinked                     — list providers with no org link (LSCC-002-01)
-/// POST /api/admin/providers/bulk-link-organization       — batch org-link from explicit mapping (LSCC-002-01)
+/// PUT  /api/admin/providers/{id}/link-organization           — single provider org-link (LSCC-002)
+/// GET  /api/admin/providers/unlinked                         — list providers with no org link (LSCC-002-01)
+/// POST /api/admin/providers/bulk-link-organization           — batch org-link from explicit mapping (LSCC-002-01)
+/// POST /api/admin/providers/{id}/activate-for-careconnect   — idempotent CC receiver activation (LSCC-01-003)
 ///
 /// All operations are explicit, idempotent, and require PlatformOrTenantAdmin.
 /// </summary>
@@ -34,6 +36,11 @@ public static class ProviderAdminEndpoints
         // LSCC-002-01: Bulk-link providers to organizations from an explicit admin-supplied mapping.
         routes
             .MapPost("/api/admin/providers/bulk-link-organization", BulkLinkOrganizationAsync)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+
+        // LSCC-01-003: Admin receiver provisioning — activate a specific provider for CareConnect.
+        routes
+            .MapPost("/api/admin/providers/{id:guid}/activate-for-careconnect", ActivateForCareConnectAsync)
             .RequireAuthorization(Policies.PlatformOrTenantAdmin);
 
         return routes;
@@ -91,6 +98,26 @@ public static class ProviderAdminEndpoints
 
         var report = await service.BulkLinkOrganizationAsync(tenantId, items, ct);
         return Results.Ok(report);
+    }
+
+    // LSCC-01-003: Activate provider IsActive + AcceptingReferrals = true (idempotent).
+    // POST /api/admin/providers/{id}/activate-for-careconnect
+    // Requires PlatformOrTenantAdmin. Cross-tenant: admin activates the provider record
+    // regardless of which tenant owns it. Returns activation result.
+    private static async Task<IResult> ActivateForCareConnectAsync(
+        Guid                   id,
+        IProviderService       service,
+        ICurrentRequestContext ctx,
+        CancellationToken      ct)
+    {
+        var result = await service.ActivateForCareConnectAsync(id, ct);
+        return Results.Ok(new
+        {
+            providerId         = result.ProviderId,
+            alreadyActive      = result.AlreadyActive,
+            isActive           = result.IsActive,
+            acceptingReferrals = result.AcceptingReferrals,
+        });
     }
 }
 

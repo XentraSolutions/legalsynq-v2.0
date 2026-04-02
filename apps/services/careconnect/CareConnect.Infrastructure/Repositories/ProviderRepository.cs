@@ -134,6 +134,10 @@ public class ProviderRepository : IProviderRepository
         if (query.IsActive.HasValue)
             q = q.Where(p => p.IsActive == query.IsActive.Value);
 
+        // LSCC-01-003: Admin filter — find provider linked to a specific Identity org
+        if (query.OrganizationId.HasValue)
+            q = q.Where(p => p.OrganizationId == query.OrganizationId.Value);
+
         if (query.Latitude.HasValue && query.Longitude.HasValue && query.RadiusMiles.HasValue)
         {
             var (minLat, maxLat, minLon, maxLon) = ProviderGeoHelper.BoundingBox(

@@ -39,7 +39,8 @@ public static class ProviderEndpoints
                 NorthLat           = p.NorthLat,
                 SouthLat           = p.SouthLat,
                 EastLng            = p.EastLng,
-                WestLng            = p.WestLng
+                WestLng            = p.WestLng,
+                OrganizationId     = p.OrganizationId,
             };
 
             var result = await service.SearchAsync(tenantId, query, ct);
@@ -159,6 +160,8 @@ internal sealed class ProviderSearchParams
     public double? SouthLat           { get; init; }
     public double? EastLng            { get; init; }
     public double? WestLng            { get; init; }
+    // LSCC-01-003: Admin provisioning — filter by Identity OrganizationId
+    public Guid?   OrganizationId     { get; init; }
 }
 
 internal sealed class ProviderAvailabilityParams

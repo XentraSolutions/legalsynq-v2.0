@@ -19,4 +19,7 @@ public class GetProvidersQuery
     public double? SouthLat          { get; init; }
     public double? EastLng           { get; init; }
     public double? WestLng           { get; init; }
+
+    // LSCC-01-003: Admin provisioning — filter by Identity OrganizationId
+    public Guid?   OrganizationId    { get; init; }
 }

@@ -108,6 +108,10 @@ public static class AdminEndpoints
         // UIX-004: user activity audit trail (queries local AuditLogs by EntityId)
         routes.MapGet("/api/admin/users/{id:guid}/activity",                GetUserActivity);
 
+        // LSCC-01-003: Admin CareConnect provider provisioning
+        routes.MapGet("/api/admin/users/{id:guid}/careconnect-readiness",   GetCareConnectReadiness);
+        routes.MapPost("/api/admin/users/{id:guid}/provision-careconnect",  ProvisionForCareConnect);
+
         // ── Role assignment ───────────────────────────────────────────────────
         routes.MapPost("/api/admin/users/{id:guid}/roles",                  AssignRole);
         routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}",  RevokeRole);
@@ -1334,6 +1338,203 @@ public static class AdminEndpoints
             totalCount = total,
             page,
             pageSize,
+        });
+    }
+
+    // =========================================================================
+    // LSCC-01-003: CareConnect provider provisioning
+    // =========================================================================
+
+    private static readonly Guid CcProductId          = new("10000000-0000-0000-0000-000000000003");
+    private static readonly Guid CcReceiverRoleId      = new("50000000-0000-0000-0000-000000000002");
+    private static readonly Guid CcReferrerRoleId      = new("50000000-0000-0000-0000-000000000001");
+
+    /// <summary>
+    /// GET /api/admin/users/{id}/careconnect-readiness
+    /// Returns a diagnostic snapshot of the four conditions required before a user's
+    /// provider organization can receive CareConnect referrals.
+    /// </summary>
+    private static async Task<IResult> GetCareConnectReadiness(
+        Guid              id,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        CancellationToken ct)
+    {
+        var u = await db.Users
+            .AsNoTracking()
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (u is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, u.TenantId)) return Results.Forbid();
+
+        // ── Primary org membership ────────────────────────────────────────────
+        var membership = await db.UserOrganizationMemberships
+            .AsNoTracking()
+            .Include(m => m.Organization)
+            .Where(m => m.UserId == id && m.IsPrimary && m.IsActive)
+            .FirstOrDefaultAsync(ct);
+
+        bool hasPrimaryOrg = membership is not null;
+        var  orgId         = membership?.OrganizationId;
+        var  orgType       = membership?.Organization?.OrgType;
+
+        // ── Tenant-level CareConnect entitlement ─────────────────────────────
+        bool tenantHasCareConnect = await db.Set<Identity.Domain.TenantProduct>()
+            .AsNoTracking()
+            .AnyAsync(tp => tp.TenantId == u.TenantId
+                         && tp.ProductId == CcProductId
+                         && tp.IsEnabled, ct);
+
+        // ── Org-level CareConnect entitlement ────────────────────────────────
+        bool orgHasCareConnect = false;
+        if (orgId.HasValue)
+        {
+            orgHasCareConnect = await db.OrganizationProducts
+                .AsNoTracking()
+                .AnyAsync(op => op.OrganizationId == orgId.Value
+                              && op.ProductId == CcProductId
+                              && op.IsEnabled, ct);
+        }
+
+        // ── CareConnect role (RECEIVER or REFERRER) ───────────────────────────
+        bool hasCareConnectRole = await db.ScopedRoleAssignments
+            .AsNoTracking()
+            .AnyAsync(s => s.UserId == id
+                        && s.IsActive
+                        && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
+                        && (s.RoleId == CcReceiverRoleId || s.RoleId == CcReferrerRoleId), ct);
+
+        bool isFullyProvisioned = hasPrimaryOrg && tenantHasCareConnect && orgHasCareConnect && hasCareConnectRole;
+
+        return Results.Ok(new
+        {
+            userId                = id,
+            hasPrimaryOrg,
+            primaryOrgId          = orgId,
+            primaryOrgType        = orgType,
+            tenantHasCareConnect,
+            orgHasCareConnect,
+            hasCareConnectRole,
+            isFullyProvisioned,
+        });
+    }
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/provision-careconnect
+    /// Idempotent. Ensures:
+    ///   1. Tenant has SYNQ_CARECONNECT TenantProduct (enabled).
+    ///   2. User's primary org has SYNQ_CARECONNECT OrganizationProduct (enabled).
+    ///   3. User has the CARECONNECT_RECEIVER ScopedRoleAssignment (global).
+    /// Returns a summary of what was done vs already in place.
+    /// </summary>
+    private static async Task<IResult> ProvisionForCareConnect(
+        Guid              id,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        CancellationToken ct)
+    {
+        var callerId = caller.FindFirstValue(ClaimTypes.NameIdentifier) is { } cid
+                       && Guid.TryParse(cid, out var cGuid) ? cGuid : (Guid?)null;
+
+        var u = await db.Users
+            .AsNoTracking()
+            .Include(u => u.Tenant)
+                .ThenInclude(t => t.TenantProducts)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (u is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, u.TenantId)) return Results.Forbid();
+
+        // ── Primary org membership ────────────────────────────────────────────
+        var membership = await db.UserOrganizationMemberships
+            .AsNoTracking()
+            .Include(m => m.Organization)
+            .Where(m => m.UserId == id && m.IsPrimary && m.IsActive)
+            .FirstOrDefaultAsync(ct);
+
+        if (membership is null)
+            return Results.UnprocessableEntity(new
+            {
+                error = "User does not have an active primary organization membership. " +
+                        "Link the user to a PROVIDER org first.",
+                code  = "NO_PRIMARY_ORG",
+            });
+
+        var org = await db.Organizations
+            .Include(o => o.OrganizationProducts)
+            .FirstOrDefaultAsync(o => o.Id == membership.OrganizationId, ct);
+
+        if (org is null)
+            return Results.UnprocessableEntity(new
+            {
+                error = "Primary organization record not found.",
+                code  = "ORG_NOT_FOUND",
+            });
+
+        bool tpAdded    = false;
+        bool opAdded    = false;
+        bool roleAdded  = false;
+
+        // ── 1. TenantProduct ─────────────────────────────────────────────────
+        var existingTp = u.Tenant.TenantProducts.FirstOrDefault(tp => tp.ProductId == CcProductId);
+        if (existingTp is null)
+        {
+            var tp = Identity.Domain.TenantProduct.Create(u.TenantId, CcProductId);
+            db.Set<Identity.Domain.TenantProduct>().Add(tp);
+            tpAdded = true;
+        }
+        else if (!existingTp.IsEnabled)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "UPDATE TenantProducts SET IsEnabled = 1, EnabledAtUtc = {0} WHERE TenantId = {1} AND ProductId = {2}",
+                DateTime.UtcNow, u.TenantId, CcProductId, ct);
+            tpAdded = true;
+        }
+
+        // ── 2. OrganizationProduct ───────────────────────────────────────────
+        var existingOp = org.OrganizationProducts.FirstOrDefault(op => op.ProductId == CcProductId);
+        if (existingOp is null)
+        {
+            db.OrganizationProducts.Add(OrganizationProduct.Create(org.Id, CcProductId));
+            opAdded = true;
+        }
+        else if (!existingOp.IsEnabled)
+        {
+            existingOp.Enable();
+            opAdded = true;
+        }
+
+        // ── 3. ScopedRoleAssignment (CARECONNECT_RECEIVER) ───────────────────
+        var existingRole = await db.ScopedRoleAssignments
+            .FirstOrDefaultAsync(s => s.UserId == id
+                                   && s.IsActive
+                                   && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
+                                   && (s.RoleId == CcReceiverRoleId || s.RoleId == CcReferrerRoleId), ct);
+
+        if (existingRole is null)
+        {
+            var sra = ScopedRoleAssignment.Create(
+                userId:           id,
+                roleId:           CcReceiverRoleId,
+                scopeType:        ScopedRoleAssignment.ScopeTypes.Global,
+                tenantId:         u.TenantId,
+                assignedByUserId: callerId);
+            db.ScopedRoleAssignments.Add(sra);
+            roleAdded = true;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        return Results.Ok(new
+        {
+            userId             = id,
+            organizationId     = org.Id,
+            organizationName   = org.DisplayName ?? org.Name,
+            tenantProductAdded = tpAdded,
+            orgProductAdded    = opAdded,
+            roleAdded,
+            isFullyProvisioned = true,
         });
     }
 
