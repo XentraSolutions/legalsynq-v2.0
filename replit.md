@@ -21,6 +21,16 @@ Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router 
 - **Environment:** `apps/web/.env.local` (gitignored) — `NEXT_PUBLIC_ENV=development`, `NEXT_PUBLIC_TENANT_CODE=LEGALSYNQ`, `GATEWAY_URL=http://localhost:5000`
 - **node_modules:** Installed at monorepo root (`/home/runner/workspace/node_modules`) — `apps/web` inherits via Node.js module resolution traversal
 
+## Control Center (apps/control-center)
+- **Framework:** Next.js 15.2.3 App Router + TypeScript + Tailwind CSS v4 (React 18.3.1)
+- **Port:** 5004 (dev) — started by `scripts/run-dev.sh`
+- **Purpose:** Internal platform administration portal for LegalSynq operators. Tenant management, cross-tenant user management, RBAC, audit logs, monitoring, notifications, CareConnect integrity, SynqAudit investigation.
+- **Auth:** Requires `PlatformAdmin` system role. Cookie-based session (`platform_session`) validated via Identity service `/auth/me`.
+- **API:** BFF pattern — `/api/auth/login` and `/api/auth/logout` are local route handlers; all other `/api/*` requests rewrite to the gateway (`CONTROL_CENTER_API_BASE` or `GATEWAY_URL`, default `http://localhost:5010`).
+- **Environment:** `apps/control-center/.env.local` — `CONTROL_CENTER_API_BASE=http://localhost:5010`
+- **node_modules:** Uses root monorepo `node_modules` (no local `node_modules`). Must NOT have its own `node_modules` — a local copy causes duplicate React, which triggers the `useReducer` null error on every render.
+- **Key files:** `src/lib/env.ts` (centralised env access), `src/lib/session.ts` (server session), `src/lib/auth-guards.ts` (requirePlatformAdmin), `src/lib/control-center-api.ts` (API client with stubbed data), `src/middleware.ts` (route protection)
+
 ### Frontend Structure
 ```
 apps/web/

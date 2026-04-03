@@ -4,7 +4,8 @@ interface LoginPageProps {
   searchParams: Promise<{ reason?: string }>;
 }
 
-export default function LoginPage({ searchParams }: LoginPageProps) {
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const searchParamsData = await searchParams;
   const reason = searchParamsData.reason;
 
   return (

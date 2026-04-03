@@ -31,7 +31,7 @@ export async function notifFetch<T>(
   const requestId = crypto.randomUUID();
   const method    = options.method ?? 'GET';
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get('platform_session')?.value;
 
   if (!token) {
