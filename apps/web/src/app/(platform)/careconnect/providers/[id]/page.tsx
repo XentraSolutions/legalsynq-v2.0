@@ -6,6 +6,7 @@ import { useSession } from '@/hooks/use-session';
 import { ProductRole } from '@/types';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
+import { useSettings } from '@/contexts/settings-context';
 import { ProviderDetailCard } from '@/components/careconnect/provider-detail-card';
 import { CreateReferralForm } from '@/components/careconnect/create-referral-form';
 import { ProviderAvailabilityPreview } from '@/components/careconnect/provider-availability-preview';
@@ -31,6 +32,7 @@ export default function ProviderDetailPage() {
   const params  = useParams<{ id: string }>();
   const router  = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
+  const { careConnect } = useSettings();
 
   const [provider, setProvider] = useState<ProviderDetail | null>(null);
   const [loading,  setLoading]  = useState(true);
@@ -99,8 +101,10 @@ export default function ProviderDetailPage() {
       {/* Provider detail card */}
       <ProviderDetailCard provider={provider} />
 
-      {/* Availability preview — first 5 open slots in the next 2 weeks */}
-      <ProviderAvailabilityPreview providerId={provider.id} providerName={provider.displayLabel} />
+      {/* Availability preview — shown only when availability checking is enabled */}
+      {careConnect.requireAvailabilityCheck && (
+        <ProviderAvailabilityPreview providerId={provider.id} providerName={provider.displayLabel} />
+      )}
 
       {/* Create Referral CTA — only for referrers */}
       {isReferrer && (

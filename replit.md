@@ -36,7 +36,11 @@ apps/web/
       use-session.ts            ← useSession() / useRequiredSession()
       use-tenant-branding.ts    ← re-exports useTenantBranding()
     contexts/
+      settings-context.tsx        ← SettingsProvider + useSettings() — resolves AppSettings (appearance, careConnect)
       product-context.tsx         ← ProductProvider + useProduct() — infers activeProductId from pathname
+    config/
+      app-settings.ts             ← AppSettings interface, GLOBAL_DEFAULTS, TENANT_OVERRIDES, resolveSettings()
+                                     Includes CareConnectSettings.requireAvailabilityCheck (default: false)
     lib/
       product-config.ts           ← PRODUCT_DEFS array + inferProductIdFromPath() (single source of truth for product→route mapping)
     components/

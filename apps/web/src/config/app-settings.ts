@@ -32,8 +32,13 @@ export interface Appearance {
   nav: NavAppearance;
 }
 
+export interface CareConnectSettings {
+  requireAvailabilityCheck: boolean;
+}
+
 export interface AppSettings {
   appearance: Appearance;
+  careConnect: CareConnectSettings;
 }
 
 // ── Global defaults ────────────────────────────────────────────────────────────
@@ -44,6 +49,9 @@ export const GLOBAL_DEFAULTS: AppSettings = {
       activeColor: '#f97316',   // orange-500
       activeBg:    '#fff7ed',   // orange-50
     },
+  },
+  careConnect: {
+    requireAvailabilityCheck: false,
   },
 };
 

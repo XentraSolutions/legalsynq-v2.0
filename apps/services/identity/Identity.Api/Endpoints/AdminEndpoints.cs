@@ -1720,6 +1720,7 @@ public static class AdminEndpoints
         new("allow_self_registration","Allow Self-Registration",  false, "boolean", "Allow users to register without an invitation.",                                          true),
         new("default_product_code",   "Default Product",          "SynqFund", "string", "Product assigned to new tenants by default.",                                        true),
         new("support_email",          "Support Email",            "support@legalsynq.com", "string", "Email address displayed in the support footer.",                        true),
+        new("require_availability_check","Require Availability Check", false, "boolean", "When enabled, law firms must verify provider availability before creating a referral. When disabled, referrals can be sent to any provider.", true),
     ];
 
     private static IResult ListSettings()
