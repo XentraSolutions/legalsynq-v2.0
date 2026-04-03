@@ -6,24 +6,20 @@ import { logger } from "../shared/logger";
 
 const router = Router();
 
-/**
- * POST /internal/send-email
- * Platform-internal endpoint used by CareConnect (and any other service) to dispatch
- * a transactional email via the platform-level SendGrid provider configured in Control Center.
- *
- * Body: { to: string, subject: string, htmlBody: string }
- * Returns: 200 on success, 503 if no platform provider configured, 500 on failure.
- *
- * No x-tenant-id header required — this is always platform-level.
- */
-router.post("/send-email", async (req: Request, res: Response): Promise<void> => {
-  const { to, subject, htmlBody } = req.body as { to?: string; subject?: string; htmlBody?: string };
+function resolveAdapterFromEnv(): SendGridEmailProviderAdapter | null {
+  const apiKey = process.env["SENDGRID_API_KEY"];
+  const fromEmail = process.env["SENDGRID_DEFAULT_FROM_EMAIL"];
+  if (!apiKey || !fromEmail) return null;
+  const fromName = process.env["SENDGRID_DEFAULT_FROM_NAME"] ?? "";
+  return new SendGridEmailProviderAdapter({ apiKey, defaultFromEmail: fromEmail, defaultFromName: fromName });
+}
 
-  if (!to || !subject || !htmlBody) {
-    res.status(400).json({ error: "Missing required fields: to, subject, htmlBody" });
-    return;
-  }
-
+async function resolveAdapterFromDb(): Promise<{
+  adapter: SendGridEmailProviderAdapter;
+  fromEmail: string;
+  fromName: string;
+  configId: string;
+} | null> {
   const config = await TenantProviderConfig.findOne({
     where: {
       tenantId: null,
@@ -34,70 +30,93 @@ router.post("/send-email", async (req: Request, res: Response): Promise<void> =>
     order: [["createdAt", "DESC"]],
   });
 
-  if (!config) {
-    logger.warn("Internal send-email: no active platform-level SendGrid config found");
-    res.status(503).json({ error: "No active platform email provider configured. Set one up in Control Center." });
-    return;
-  }
+  if (!config) return null;
 
   const endpointConfig = config.endpointConfigJson
     ? (JSON.parse(config.endpointConfigJson) as Record<string, unknown>)
     : {};
 
-  if (!config.credentialReference) {
-    logger.warn("Internal send-email: platform SendGrid config has no credentials", { configId: config.id });
-    res.status(503).json({ error: "Platform email provider has no credentials configured." });
-    return;
-  }
+  if (!config.credentialReference) return null;
 
   let credentials: Record<string, unknown>;
   try {
     credentials = JSON.parse(decrypt(config.credentialReference)) as Record<string, unknown>;
   } catch (err) {
-    logger.error("Internal send-email: failed to decrypt credentials", { configId: config.id, error: String(err) });
-    res.status(500).json({ error: "Failed to decrypt provider credentials." });
-    return;
+    logger.warn("Internal send-email: DB credential decryption failed, will try env fallback", {
+      configId: config.id,
+      error: String(err),
+    });
+    return null;
   }
 
   const fromEmail = endpointConfig["fromEmail"] as string;
-  const fromName  = (endpointConfig["fromName"] as string) ?? "";
-
-  if (!fromEmail) {
-    logger.warn("Internal send-email: endpointConfig missing fromEmail", { configId: config.id });
-    res.status(503).json({ error: "Platform email provider is missing a From address." });
-    return;
-  }
-
+  const fromName = (endpointConfig["fromName"] as string) ?? "";
   const apiKey = credentials["apiKey"] as string;
-  if (!apiKey) {
-    logger.warn("Internal send-email: credentials missing apiKey", { configId: config.id });
-    res.status(503).json({ error: "Platform email provider is missing an API key." });
+
+  if (!fromEmail || !apiKey) return null;
+
+  return {
+    adapter: new SendGridEmailProviderAdapter({ apiKey, defaultFromEmail: fromEmail, defaultFromName: fromName }),
+    fromEmail,
+    fromName,
+    configId: config.id,
+  };
+}
+
+router.post("/send-email", async (req: Request, res: Response): Promise<void> => {
+  const { to, subject, htmlBody } = req.body as { to?: string; subject?: string; htmlBody?: string };
+
+  if (!to || !subject || !htmlBody) {
+    res.status(400).json({ error: "Missing required fields: to, subject, htmlBody" });
     return;
   }
 
-  const adapter = new SendGridEmailProviderAdapter({
-    apiKey,
-    defaultFromEmail: fromEmail,
-    defaultFromName:  fromName,
-  });
+  let adapter: SendGridEmailProviderAdapter | null = null;
+  let fromEmail = "";
+  let fromName = "";
+  let source = "unknown";
+
+  const dbResult = await resolveAdapterFromDb();
+  if (dbResult) {
+    adapter = dbResult.adapter;
+    fromEmail = dbResult.fromEmail;
+    fromName = dbResult.fromName;
+    source = `db:${dbResult.configId}`;
+  } else {
+    const envAdapter = resolveAdapterFromEnv();
+    if (envAdapter) {
+      adapter = envAdapter;
+      fromEmail = process.env["SENDGRID_DEFAULT_FROM_EMAIL"]!;
+      fromName = process.env["SENDGRID_DEFAULT_FROM_NAME"] ?? "";
+      source = "env";
+    }
+  }
+
+  if (!adapter) {
+    logger.warn("Internal send-email: no SendGrid config found in DB or environment variables");
+    res.status(503).json({
+      error: "No active email provider configured. Set SENDGRID_API_KEY and SENDGRID_DEFAULT_FROM_EMAIL environment variables, or configure in Control Center.",
+    });
+    return;
+  }
 
   const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
 
   try {
     const result = await adapter.send({ to, from, subject, body: htmlBody });
     if (result.success) {
-      logger.info("Internal send-email: sent successfully", { to, configId: config.id });
+      logger.info("Internal send-email: sent successfully", { to, source });
       res.status(200).json({ success: true });
     } else {
       logger.warn("Internal send-email: provider rejected send", {
         to,
-        configId: config.id,
+        source,
         failure: result.failure?.message,
       });
       res.status(500).json({ error: result.failure?.message ?? "Provider rejected the send request." });
     }
   } catch (err) {
-    logger.error("Internal send-email: unexpected error", { to, error: String(err) });
+    logger.error("Internal send-email: unexpected error", { to, source, error: String(err) });
     res.status(500).json({ error: "Unexpected error while sending email." });
   }
 });
