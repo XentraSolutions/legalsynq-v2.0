@@ -102,6 +102,7 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/users/{id:guid}/lock",                   LockUser);
         routes.MapPost("/api/admin/users/{id:guid}/unlock",                 UnlockUser);
         routes.MapPost("/api/admin/users/{id:guid}/reset-password",         AdminResetPassword);
+        routes.MapPost("/api/admin/users/{id:guid}/set-password",           AdminSetPassword);
         routes.MapPost("/api/admin/users/{id:guid}/force-logout",           ForceLogout);
         routes.MapGet("/api/admin/users/{id:guid}/security",                GetUserSecurity);
 
@@ -1201,6 +1202,70 @@ public static class AdminEndpoints
         });
 
         return Results.Ok(new { message = "Password reset email will be sent to the user." });
+    }
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/set-password
+    ///
+    /// Admin-sets a new password directly for a user. The password must be at
+    /// least 8 characters. The user's session version is bumped so all existing
+    /// sessions are invalidated.
+    ///
+    /// Access: PlatformAdmin only. Tenant-scoped for TenantAdmin callers.
+    /// Emits identity.user.password_set_by_admin audit event.
+    /// </summary>
+    private static async Task<IResult> AdminSetPassword(
+        Guid              id,
+        SetPasswordRequest body,
+        ClaimsPrincipal   caller,
+        IdentityDbContext db,
+        IPasswordHasher   passwordHasher,
+        IAuditEventClient auditClient,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
+            return Results.BadRequest(new { error = "Password must be at least 8 characters." });
+
+        var user = await db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
+        if (user is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var hash = passwordHasher.Hash(body.NewPassword);
+        user.SetPassword(hash);
+
+        await db.SaveChangesAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.password_set_by_admin",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = user.TenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Type = ActorType.User,
+                Name = "admin",
+            },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "PasswordSetByAdmin",
+            Description = $"Admin directly set a new password for user '{user.Email}' in tenant {user.TenantId}.",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.password_set_by_admin", user.Id.ToString()),
+            Tags = ["user-management", "security", "password-set"],
+        });
+
+        return Results.Ok(new { message = "Password updated successfully." });
     }
 
     /// <summary>
@@ -3518,6 +3583,7 @@ public static class AdminEndpoints
         string  AdminFirstName,
         string  AdminLastName,
         string? OrgType = null);  // LAW_FIRM | PROVIDER | FUNDER | LIEN_OWNER (defaults to LAW_FIRM)
+    private record SetPasswordRequest(string NewPassword);
     private record EntitlementRequest(bool Enabled);
     private record SessionSettingsRequest(int? SessionTimeoutMinutes);
     private record CreateOrgRelationshipRequest(

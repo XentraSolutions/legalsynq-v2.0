@@ -175,7 +175,12 @@ export function UserListTable({
                   {user.lastLoginAtUtc ? formatLoginDate(user.lastLoginAtUtc) : '—'}
                 </td>
                 <td className="px-4 py-3">
-                  <UserRowActions userId={user.id} currentStatus={user.status} />
+                  <UserRowActions
+                    userId={user.id}
+                    userName={fullName(user)}
+                    userEmail={user.email}
+                    currentStatus={user.status}
+                  />
                 </td>
               </tr>
             ))}

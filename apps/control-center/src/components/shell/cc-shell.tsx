@@ -3,7 +3,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { SignOutButton } from './sign-out-button';
 import { CCSidebar } from './cc-sidebar';
-import { AppSwitcher } from './app-switcher';
 import { TenantContextBanner } from '@/components/layout/tenant-context-banner';
 import { ImpersonationBanner } from '@/components/layout/impersonation-banner';
 import { getTenantContext, getImpersonation } from '@/lib/auth';
@@ -67,8 +66,6 @@ export async function CCShell({ children, userEmail }: CCShellProps) {
 
         {/* User area */}
         <div className="flex items-center gap-3 shrink-0">
-          <AppSwitcher />
-          <div className="h-4 w-px" style={{ backgroundColor: 'rgba(255,255,255,0.12)' }} />
           <Link href="/profile" title="My profile" className="shrink-0">
             {avatarDocId ? (
               <img
