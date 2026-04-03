@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "node patches/next-cold-compile-guard.js",
     "dev:web": "cd apps/web && next dev -p 5000",
     "dev:control-center": "cd apps/control-center && next dev -p 5004"
   },
