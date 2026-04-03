@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReferralSummary } from '@/types/careconnect';
+import { formatTimestamp } from '@/lib/format-date';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 import { ReferralQuickActions } from './referral-quick-actions';
 
@@ -11,14 +12,6 @@ interface ReferralListTableProps {
   isReferrer: boolean;
   isReceiver: boolean;
   currentQs?: string;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day:   'numeric',
-    year:  'numeric',
-  });
 }
 
 function rowHighlight(status: string): string {
@@ -99,8 +92,8 @@ export function ReferralListTable({
                 </td>
 
                 {/* Created */}
-                <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap hidden lg:table-cell">
-                  {formatDate(r.createdAtUtc)}
+                <td className="px-4 py-3 whitespace-nowrap hidden lg:table-cell">
+                  {(() => { const ts = formatTimestamp(r.createdAtUtc); return (<><p className="text-xs text-gray-500">{ts.date}</p><p className="text-[11px] text-gray-400">{ts.time}</p></>); })()}
                 </td>
 
                 {/* Quick actions */}
