@@ -4,6 +4,8 @@ const http = require('http');
 const NEXT_PORT = parseInt(process.env.NEXT_INTERNAL_PORT || '3050', 10);
 const LISTEN_PORT = parseInt(process.env.PROXY_PORT || '5000', 10);
 let ready = false;
+let readyTimestamp = 0;
+const COLD_COMPILE_GUARD_MS = 30000;
 
 const LOADING_HTML = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Loading...</title>
@@ -19,19 +21,23 @@ border-radius:50%;animation:spin .8s linear infinite;margin-right:16px}
 
 let consecutiveErrors = 0;
 
-function isDocumentRequest(req) {
+function isPageRequest(req) {
   const method = (req.method || '').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') return false;
-  const fetchDest = req.headers['sec-fetch-dest'] || '';
-  if (fetchDest === 'document') return true;
-  const fetchMode = req.headers['sec-fetch-mode'] || '';
-  if (fetchMode === 'navigate') return true;
-  const accept = req.headers['accept'] || '';
-  return accept.includes('text/html');
+  const url = (req.url || '').split('?')[0];
+  if (url.startsWith('/_next/') || url.startsWith('/__next')) return false;
+  if (url.startsWith('/api/')) return false;
+  if (/\.\w{1,5}$/.test(url)) return false;
+  return true;
+}
+
+function shouldIntercept500(req) {
+  if (!isPageRequest(req)) return false;
+  if (readyTimestamp === 0) return true;
+  return (Date.now() - readyTimestamp) < COLD_COMPILE_GUARD_MS;
 }
 
 function proxyRequest(req, res) {
-  const isDoc = isDocumentRequest(req);
   const opts = {
     hostname: '127.0.0.1',
     port: NEXT_PORT,
@@ -39,10 +45,11 @@ function proxyRequest(req, res) {
     method: req.method,
     headers: { ...req.headers, host: req.headers.host },
   };
+  const intercept = shouldIntercept500(req);
   const proxy = http.request(opts, (upstream) => {
     consecutiveErrors = 0;
 
-    if (isDoc && upstream.statusCode >= 500) {
+    if (intercept && upstream.statusCode >= 500) {
       upstream.resume();
       console.log(`[proxy] Intercepted ${upstream.statusCode} for ${req.url} — serving loading page`);
       res.writeHead(200, {
@@ -61,9 +68,10 @@ function proxyRequest(req, res) {
     if (consecutiveErrors >= 3) {
       console.log('[proxy] Next.js unreachable — re-entering warmup mode');
       ready = false;
+      readyTimestamp = 0;
       warmup();
     }
-    if (isDoc) {
+    if (isPageRequest(req)) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(LOADING_HTML);
     } else {
@@ -84,8 +92,13 @@ const server = http.createServer((req, res) => {
     res.end();
     return;
   }
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-  res.end(LOADING_HTML);
+  if (isPageRequest(req)) {
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(LOADING_HTML);
+  } else {
+    res.writeHead(503, { 'content-type': 'text/plain' });
+    res.end('Service Unavailable');
+  }
 });
 
 server.on('upgrade', (req, socket, head) => {
@@ -126,6 +139,7 @@ function warmup() {
     if (Date.now() - start > MAX_WAIT) {
       console.log('[proxy] Warmup timeout — forwarding anyway');
       ready = true;
+      readyTimestamp = Date.now();
       return;
     }
     const req = http.get(`http://127.0.0.1:${NEXT_PORT}/login`, (res) => {
@@ -135,6 +149,7 @@ function warmup() {
         if (res.statusCode === 200 || res.statusCode === 302 || res.statusCode === 307) {
           console.log(`[proxy] Next.js ready (HTTP ${res.statusCode}) — now proxying`);
           ready = true;
+          readyTimestamp = Date.now();
         } else {
           console.log(`[proxy] /login returned ${res.statusCode}, retrying in 2s...`);
           setTimeout(attempt, 2000);
