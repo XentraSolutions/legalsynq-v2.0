@@ -47,6 +47,7 @@ apps/web/
     hooks/
       use-session.ts            ← useSession() / useRequiredSession()
       use-tenant-branding.ts    ← re-exports useTenantBranding()
+      use-nav-badges.ts         ← useNavBadges() — polls new referral count for Provider/CareConnectReceiver users (30s interval)
     contexts/
       settings-context.tsx        ← SettingsProvider + useSettings() — resolves AppSettings (appearance, careConnect)
       product-context.tsx         ← ProductProvider + useProduct() — infers activeProductId from pathname

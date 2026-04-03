@@ -109,6 +109,7 @@ export interface NavItem {
   label: string;
   icon?: string;
   requiredRoles?: ProductRoleValue[];
+  badgeKey?: string;
 }
 
 /** A labelled group of items within a single product's sidebar. */

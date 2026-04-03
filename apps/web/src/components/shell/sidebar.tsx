@@ -7,6 +7,7 @@ import { useProduct } from '@/contexts/product-context';
 import { useSettings } from '@/contexts/settings-context';
 import { PRODUCT_NAV, PRODUCT_META, GLOBAL_BOTTOM_NAV, buildNavGroups, filterNavByRoles } from '@/lib/nav';
 import { useSession } from '@/hooks/use-session';
+import { useNavBadges } from '@/hooks/use-nav-badges';
 import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
 
@@ -18,6 +19,7 @@ export function Sidebar() {
   const settings              = useSettings();
   const nav                   = settings.appearance.nav;
   const { session }           = useSession();
+  const badges                = useNavBadges();
   const adminSections         = session ? buildNavGroups(session) : [];
 
   const [collapsed, setCollapsed] = useState(false);
@@ -113,6 +115,7 @@ export function Sidebar() {
                   collapsed={collapsed}
                   activeColor={nav.activeColor}
                   activeBg={nav.activeBg}
+                  badgeCount={item.badgeKey ? badges[item.badgeKey] : undefined}
                 />
               ))}
             </nav>
@@ -171,20 +174,22 @@ export function Sidebar() {
 }
 
 function SidebarItem({
-  item, pathname, collapsed, activeColor, activeBg,
+  item, pathname, collapsed, activeColor, activeBg, badgeCount,
 }: {
   item:        NavItem;
   pathname:    string;
   collapsed:   boolean;
   activeColor: string;
   activeBg:    string;
+  badgeCount?: number;
 }) {
   const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+  const showBadge = typeof badgeCount === 'number' && badgeCount > 0;
 
   return (
     <Link
       href={item.href}
-      title={collapsed ? item.label : undefined}
+      title={collapsed ? `${item.label}${showBadge ? ` (${badgeCount})` : ''}` : undefined}
       className={clsx(
         'relative flex items-center rounded-lg text-[12px] font-medium transition-colors',
         collapsed ? 'w-8 h-8 justify-center mx-auto' : 'gap-2.5 px-3 py-2.5',
@@ -213,7 +218,15 @@ function SidebarItem({
           />
         : <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
       }
-      {!collapsed && <span>{item.label}</span>}
+      {!collapsed && <span className="flex-1">{item.label}</span>}
+      {showBadge && !collapsed && (
+        <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-none">
+          {badgeCount > 99 ? '99+' : badgeCount}
+        </span>
+      )}
+      {showBadge && collapsed && (
+        <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+      )}
     </Link>
   );
 }
