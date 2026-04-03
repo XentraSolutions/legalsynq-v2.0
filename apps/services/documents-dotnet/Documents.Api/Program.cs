@@ -131,11 +131,11 @@ builder.Services.AddCors(opts => opts.AddDefaultPolicy(policy =>
     if (allowedOrigins.Length == 0 || allowedOrigins.Contains("*"))
         policy.AllowAnyOrigin();
     else
-        policy.WithOrigins(allowedOrigins);
+        policy.WithOrigins(allowedOrigins)
+              .AllowCredentials();
 
     policy.WithHeaders("Authorization", "Content-Type", "X-Correlation-Id")
-          .WithExposedHeaders("X-Correlation-Id")
-          .AllowCredentials();
+          .WithExposedHeaders("X-Correlation-Id");
 }));
 
 // ── Swagger ───────────────────────────────────────────────────────────────────
