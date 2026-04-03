@@ -100,10 +100,8 @@ router.post("/send-email", async (req: Request, res: Response): Promise<void> =>
     return;
   }
 
-  const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
-
   try {
-    const result = await adapter.send({ to, from, subject, body: htmlBody });
+    const result = await adapter.send({ to, from: fromEmail, subject, body: htmlBody, html: htmlBody });
     if (result.success) {
       logger.info("Internal send-email: sent successfully", { to, source });
       res.status(200).json({ success: true });

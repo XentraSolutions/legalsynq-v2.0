@@ -290,6 +290,8 @@ shared/
 | `ConnectionStrings__IdentityDb` | Identity.Api | MySQL, identity_db |
 | `ConnectionStrings__FundDb` | Fund.Api | MySQL, fund_db |
 | `ConnectionStrings__CareConnectDb` | CareConnect.Api | MySQL, careconnect_db |
+| `SENDGRID_API_KEY` | Notifications service | SendGrid API key for transactional email |
+| `SENDGRID_DEFAULT_FROM_EMAIL` | Notifications service | Verified sender email address |
 
 ## JWT
 
