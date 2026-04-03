@@ -92,6 +92,8 @@ public class ReferralService : IReferralService
         var provider = await _providers.GetByIdCrossAsync(request.ProviderId, ct)
             ?? throw new NotFoundException($"Provider '{request.ProviderId}' was not found.");
 
+        request.ReceivingOrganizationId = provider.OrganizationId;
+
         // Phase C: resolve the Identity OrganizationRelationship when both org IDs are provided.
         // The null resolver (default) always returns null — no runtime side-effects.
         Guid? orgRelationshipId = null;

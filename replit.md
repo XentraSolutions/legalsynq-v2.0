@@ -2847,6 +2847,13 @@ MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it sh
 - `TenantOrganizationsPanel` component — client component on tenant detail page listing organizations with inline org-type editing (dropdown + save/cancel)
 - Tenant detail page (`tenants/[id]/page.tsx`) — fetches organizations via `controlCenterServerApi.organizations.listByTenant(id)` and renders the panel
 
+### Cross-Tenant Referral Visibility
+- Referrals are created under the **law firm's tenant** with `ReferringOrganizationId` (auto-set from caller's org) and `ReceivingOrganizationId` (auto-resolved from `Provider.OrganizationId`).
+- **Provider orgs** (OrgType=PROVIDER) use cross-tenant receiver mode: referral search queries by `ReceivingOrganizationId` instead of `TenantId`, so providers see referrals addressed to them regardless of which tenant created them.
+- **GetById** uses global lookup for provider orgs but enforces participant check (caller's org must match ReferringOrganizationId or ReceivingOrganizationId) for all users except PlatformAdmin.
+- **Law firm orgs** use standard tenant-scoped queries. TenantAdmin on law firm sees all referrals in their tenant; regular users see only their org's outbound referrals.
+- Key files: `ReferralEndpoints.cs`, `ReferralRepository.cs`, `GetReferralsQuery.cs` (CrossTenantReceiver flag), `ReferralService.cs` (auto-populates ReceivingOrganizationId).
+
 ### Valid OrgType Values
 `LAW_FIRM`, `PROVIDER`, `FUNDER`, `LIEN_OWNER`, `INTERNAL`
 

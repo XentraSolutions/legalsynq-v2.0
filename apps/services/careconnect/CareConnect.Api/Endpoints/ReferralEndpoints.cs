@@ -24,9 +24,8 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            // LSCC-001: Org-participant scoping — referrers see outbound, receivers see addressed.
-            // Admins and PlatformAdmin bypass capability checks and see all referrals.
-            var isReceiver = await authSvc.IsAuthorizedAsync(ctx, CapabilityCodes.ReferralReadAddressed, ct);
+            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var isAdmin = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin);
 
             var query = new GetReferralsQuery
             {
@@ -39,13 +38,25 @@ public static class ReferralEndpoints
                 CreatedTo          = p.CreatedTo,
                 Page               = p.Page ?? 1,
                 PageSize           = p.PageSize ?? 20,
-                ReferringOrgId     = (!isReceiver && !ctx.IsPlatformAdmin
-                                       && !ctx.Roles.Contains(Roles.TenantAdmin))
-                                     ? ctx.OrgId : null,
-                ReceivingOrgId     = (isReceiver && !ctx.IsPlatformAdmin
-                                       && !ctx.Roles.Contains(Roles.TenantAdmin))
-                                     ? ctx.OrgId : null,
             };
+
+            if (ctx.IsPlatformAdmin)
+            {
+                // PlatformAdmin: all referrals in the tenant, no org scoping
+            }
+            else if (isProviderOrg)
+            {
+                query.CrossTenantReceiver = true;
+                query.ReceivingOrgId      = ctx.OrgId;
+            }
+            else if (isAdmin)
+            {
+                // TenantAdmin on a referrer org: all referrals in the tenant
+            }
+            else
+            {
+                query.ReferringOrgId = ctx.OrgId;
+            }
 
             var result = await service.SearchAsync(tenantId, query, ct);
             return Results.Ok(result);
@@ -109,12 +120,12 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            // LSCC-01-005-01 (DEF-002): pass isPlatformAdmin so the service can bypass tenant scoping.
-            var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
+            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var globalLookup = ctx.IsPlatformAdmin || isProviderOrg;
+            var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
 
-            if (!CareConnectParticipantHelper.IsAdmin(ctx))
+            if (!ctx.IsPlatformAdmin)
             {
-                // Re-construct the domain participant view from the response DTO org IDs.
                 var isParticipant =
                     (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
                     (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId);
@@ -149,6 +160,7 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+            request.ReferringOrganizationId = ctx.OrgId;
             var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/referrals/{referral.Id}", referral);
         })
