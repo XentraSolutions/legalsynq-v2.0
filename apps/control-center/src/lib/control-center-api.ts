@@ -608,6 +608,21 @@ export const controlCenterServerApi = {
       }
       return [];
     },
+
+    update: async (orgId: string, body: { name?: string; displayName?: string; orgType?: string }): Promise<OrgSummary> => {
+      const raw = await apiClient.put<Record<string, unknown>>(
+        `/identity/api/admin/organizations/${encodeURIComponent(orgId)}`,
+        body,
+      );
+      return {
+        id:          String(raw.id ?? ''),
+        tenantId:    String(raw.tenantId ?? ''),
+        name:        String(raw.name ?? ''),
+        displayName: String(raw.displayName ?? raw.name ?? ''),
+        orgType:     String(raw.orgType ?? ''),
+        isActive:    Boolean(raw.isActive ?? true),
+      };
+    },
   },
 
   // ── Groups ────────────────────────────────────────────────────────────────

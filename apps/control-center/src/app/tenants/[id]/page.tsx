@@ -4,6 +4,7 @@ import { TenantDetailCard }               from '@/components/tenants/tenant-deta
 import { ProductEntitlementsPanel }       from '@/components/tenants/product-entitlements-panel';
 import { TenantSessionSettingsPanel }     from '@/components/tenants/tenant-session-settings-panel';
 import { TenantLogoUpload }              from '@/components/tenants/TenantLogoUpload';
+import { TenantOrganizationsPanel }      from '@/components/tenants/tenant-organizations-panel';
 
 interface TenantDetailPageProps {
   params: { id: string };
@@ -40,6 +41,13 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
 
   if (!tenant) return null;
 
+  let organizations = [];
+  try {
+    organizations = await controlCenterServerApi.organizations.listByTenant(id);
+  } catch {
+    // non-fatal
+  }
+
   return (
     <div className="space-y-5">
       <TenantDetailCard tenant={tenant} />
@@ -48,6 +56,8 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
         tenantId={tenant.id}
         logoDocumentId={tenant.logoDocumentId}
       />
+
+      <TenantOrganizationsPanel organizations={organizations} />
 
       <TenantSessionSettingsPanel
         tenantId={tenant.id}

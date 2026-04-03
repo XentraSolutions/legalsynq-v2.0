@@ -61,6 +61,7 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/organizations",           ListOrganizations);
         routes.MapPost("/api/admin/organizations",          AdminEndpointsLscc010.CreateProviderOrganization);
         routes.MapGet("/api/admin/organizations/{id:guid}", AdminEndpointsLscc010.GetOrganizationById);
+        routes.MapPut("/api/admin/organizations/{id:guid}", UpdateOrganization);
 
         // ── Platform Foundation — Phase 1-6 ──────────────────────────────
         routes.MapGet("/api/admin/organization-types",             ListOrganizationTypes);
@@ -3566,6 +3567,47 @@ public static class AdminEndpoints
         return Results.Ok(new { items, totalCount = items.Count });
     }
 
+    private static async Task<IResult> UpdateOrganization(
+        Guid              id,
+        UpdateOrganizationRequest body,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == id, ct);
+        if (org is null) return Results.NotFound(new { error = $"Organization '{id}' not found." });
+
+        Guid? resolvedTypeId = null;
+        if (!string.IsNullOrWhiteSpace(body.OrgType))
+        {
+            if (!Domain.OrgType.IsValid(body.OrgType))
+                return Results.BadRequest(new { error = $"Invalid OrgType: {body.OrgType}. Valid: {string.Join(", ", Domain.OrgType.All)}" });
+            resolvedTypeId = OrgTypeMapper.TryResolve(body.OrgType);
+        }
+
+        org.Update(
+            name:               body.Name ?? org.Name,
+            displayName:        body.DisplayName ?? org.DisplayName,
+            updatedByUserId:    null,
+            organizationTypeId: resolvedTypeId,
+            orgTypeCode:        body.OrgType);
+
+        await db.SaveChangesAsync(ct);
+
+        return Results.Ok(new
+        {
+            id          = org.Id,
+            tenantId    = org.TenantId,
+            name        = org.Name,
+            displayName = org.DisplayName ?? org.Name,
+            orgType     = org.OrgType,
+            isActive    = org.IsActive,
+        });
+    }
+
     // ── Request / response DTOs (private, scoped to AdminEndpoints) ─────────
 
     private record AssignRoleRequest(
@@ -3586,6 +3628,10 @@ public static class AdminEndpoints
     private record SetPasswordRequest(string NewPassword);
     private record EntitlementRequest(bool Enabled);
     private record SessionSettingsRequest(int? SessionTimeoutMinutes);
+    private record UpdateOrganizationRequest(
+        string? Name        = null,
+        string? DisplayName = null,
+        string? OrgType     = null);
     private record CreateOrgRelationshipRequest(
         Guid  SourceOrganizationId,
         Guid  TargetOrganizationId,

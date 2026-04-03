@@ -2822,3 +2822,37 @@ Full report: `analysis/CC-E2E-VALIDATION-REPORT.md`
 - BFF proxy path: `/api/careconnect/api/...` (double-api, by design — gateway routing)
 - TenantAdmin bypasses ALL capability checks in `CareConnectAuthHelper.RequireAsync` (by design, line 26)
 - PlatformAdmin sees cross-tenant referral list but is limited to their own tenant for single-record lookups
+
+---
+
+## Organization Type Management — Admin Update Endpoint (2026-04-03)
+
+Added `PUT /api/admin/organizations/{id}` to the Identity service and wired it through the Control Center for managing organization types.
+
+### Problem
+MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it should be `"LAW_FIRM"`. No admin endpoint existed to update an organization's type — the admin organizations page was a blank placeholder.
+
+### Changes
+
+**Identity Service (`AdminEndpoints.cs`):**
+- `PUT /api/admin/organizations/{id}` — updates org name, display name, and/or org type
+- Accepts `UpdateOrganizationRequest(Name?, DisplayName?, OrgType?)` — partial update semantics (omitted fields preserve existing values)
+- Validates OrgType against `OrgType.IsValid()`, resolves `OrganizationTypeId` via `OrgTypeMapper`
+- Calls `Organization.Update()` which keeps `OrgType` string and `OrganizationTypeId` FK in sync
+- PlatformAdmin role check enforced in-handler (not just gateway)
+
+**Control Center:**
+- `control-center-api.ts` — `organizations.update(orgId, body)` method added (PUT via `apiClient.put`)
+- `tenants/[id]/actions.ts` — `updateOrganizationType(orgId, orgType)` server action with `revalidateTag(CACHE_TAGS.tenants)` cache invalidation
+- `TenantOrganizationsPanel` component — client component on tenant detail page listing organizations with inline org-type editing (dropdown + save/cancel)
+- Tenant detail page (`tenants/[id]/page.tsx`) — fetches organizations via `controlCenterServerApi.organizations.listByTenant(id)` and renders the panel
+
+### Valid OrgType Values
+`LAW_FIRM`, `PROVIDER`, `FUNDER`, `LIEN_OWNER`, `INTERNAL`
+
+### OrganizationType Seed IDs
+- Internal: `70000000-0000-0000-0000-000000000001`
+- LawFirm: `70000000-0000-0000-0000-000000000002`
+- Provider: `70000000-0000-0000-0000-000000000003`
+- Funder: `70000000-0000-0000-0000-000000000004`
+- LienOwner: `70000000-0000-0000-0000-000000000005`
