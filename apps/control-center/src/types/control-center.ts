@@ -4,7 +4,7 @@
 
 // ── Tenants ───────────────────────────────────────────────────────────────────
 
-export type TenantType   = 'LawFirm' | 'Provider' | 'Corporate' | 'Government' | 'Other';
+export type TenantType   = 'LawFirm' | 'Provider' | 'Funder' | 'LienOwner' | 'Corporate' | 'Government' | 'Other';
 export type TenantStatus = 'Active' | 'Inactive' | 'Suspended';
 
 export interface TenantSummary {

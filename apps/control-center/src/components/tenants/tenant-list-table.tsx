@@ -21,6 +21,8 @@ function formatType(type: TenantType): string {
   const labels: Record<TenantType, string> = {
     LawFirm:    'Law Firm',
     Provider:   'Provider',
+    Funder:     'Funder',
+    LienOwner:  'Lien Owner',
     Corporate:  'Corporate',
     Government: 'Government',
     Other:      'Other',

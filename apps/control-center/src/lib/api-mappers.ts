@@ -183,19 +183,27 @@ function oneOf<T extends string>(
 
 // ── Tenant mappers ────────────────────────────────────────────────────────────
 
-const TENANT_TYPES:   readonly TenantType[]   = ['LawFirm', 'Provider', 'Corporate', 'Government', 'Other'];
+const TENANT_TYPES:   readonly TenantType[]   = ['LawFirm', 'Provider', 'Funder', 'LienOwner', 'Corporate', 'Government', 'Other'];
 const TENANT_STATUSES: readonly TenantStatus[] = ['Active', 'Inactive', 'Suspended'];
+
+const ORG_TYPE_NORMALIZE: Record<string, TenantType> = {
+  LAW_FIRM:  'LawFirm',
+  PROVIDER:  'Provider',
+  FUNDER:    'Funder',
+  LIEN_OWNER: 'LienOwner',
+  INTERNAL:  'Other',
+};
+
+function normalizeTenantType(r: Record<string, unknown>): TenantType {
+  const val = (r['type'] as string) ?? '';
+  const normalized = ORG_TYPE_NORMALIZE[val];
+  if (normalized) return normalized;
+  if ((TENANT_TYPES as readonly string[]).includes(val)) return val as TenantType;
+  return 'Other';
+}
 
 /**
  * mapTenantSummary — normalises a raw backend tenant list item.
- *
- * Handles:
- *   display_name / displayName → displayName
- *   primary_contact_name / primaryContactName → primaryContactName
- *   is_active / isActive → isActive
- *   user_count / userCount → userCount
- *   org_count / orgCount → orgCount
- *   created_at / createdAt / createdAtUtc → createdAtUtc
  *
  * TODO: replace manual mappers with generated types from OpenAPI spec
  */
@@ -206,7 +214,7 @@ export function mapTenantSummary(raw: unknown): TenantSummary {
     id,
     code:               str(r, 'code',                 'code',               '',        'mapTenantSummary.code'),
     displayName:        str(r, 'display_name',          'displayName',         '',        'mapTenantSummary.displayName'),
-    type:               oneOf(r, 'type',                'type',               TENANT_TYPES,   'Other', 'mapTenantSummary.type'),
+    type:               normalizeTenantType(r),
     status:             oneOf(r, 'status',              'status',             TENANT_STATUSES, 'Inactive', 'mapTenantSummary.status'),
     primaryContactName: str(r, 'primary_contact_name',  'primaryContactName', '',        'mapTenantSummary.primaryContactName'),
     isActive:           bool(r, 'is_active',            'isActive',           false),

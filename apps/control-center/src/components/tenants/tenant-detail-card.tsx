@@ -90,6 +90,8 @@ function formatType(type: string): string {
   const labels: Record<string, string> = {
     LawFirm:    'Law Firm',
     Provider:   'Provider',
+    Funder:     'Funder',
+    LienOwner:  'Lien Owner',
     Corporate:  'Corporate',
     Government: 'Government',
     Other:      'Other',

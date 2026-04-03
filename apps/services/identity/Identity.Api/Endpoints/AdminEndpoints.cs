@@ -177,7 +177,7 @@ public static class AdminEndpoints
                 id                 = t.Id,
                 code               = t.Code,
                 displayName        = t.Name,
-                type               = "LawFirm",
+                type               = t.Organizations.OrderBy(o => o.CreatedAtUtc).Select(o => o.OrgType).FirstOrDefault() ?? "LAW_FIRM",
                 status             = t.IsActive ? "Active" : "Inactive",
                 primaryContactName = t.Users.OrderBy(u => u.CreatedAtUtc).Select(u => u.FirstName + " " + u.LastName).FirstOrDefault() ?? "",
                 isActive           = t.IsActive,
@@ -233,12 +233,13 @@ public static class AdminEndpoints
             };
         }).ToList();
 
+        var defaultOrg = t.Organizations.OrderBy(o => o.CreatedAtUtc).FirstOrDefault();
         return Results.Ok(new
         {
             id                    = t.Id,
             code                  = t.Code,
             displayName           = t.Name,
-            type                  = "LawFirm",
+            type                  = defaultOrg?.OrgType ?? "LAW_FIRM",
             status                = t.IsActive ? "Active" : "Inactive",
             primaryContactName    = firstUser is null ? "" : $"{firstUser.FirstName} {firstUser.LastName}",
             email                 = firstUser?.Email,
