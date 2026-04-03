@@ -19,7 +19,19 @@ border-radius:50%;animation:spin .8s linear infinite;margin-right:16px}
 
 let consecutiveErrors = 0;
 
+function isDocumentRequest(req) {
+  const method = (req.method || '').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') return false;
+  const fetchDest = req.headers['sec-fetch-dest'] || '';
+  if (fetchDest === 'document') return true;
+  const fetchMode = req.headers['sec-fetch-mode'] || '';
+  if (fetchMode === 'navigate') return true;
+  const accept = req.headers['accept'] || '';
+  return accept.includes('text/html');
+}
+
 function proxyRequest(req, res) {
+  const isDoc = isDocumentRequest(req);
   const opts = {
     hostname: '127.0.0.1',
     port: NEXT_PORT,
@@ -29,6 +41,18 @@ function proxyRequest(req, res) {
   };
   const proxy = http.request(opts, (upstream) => {
     consecutiveErrors = 0;
+
+    if (isDoc && upstream.statusCode >= 500) {
+      upstream.resume();
+      console.log(`[proxy] Intercepted ${upstream.statusCode} for ${req.url} — serving loading page`);
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+      });
+      res.end(LOADING_HTML);
+      return;
+    }
+
     res.writeHead(upstream.statusCode, upstream.headers);
     upstream.pipe(res, { end: true });
   });
@@ -39,8 +63,13 @@ function proxyRequest(req, res) {
       ready = false;
       warmup();
     }
-    res.writeHead(502, { 'content-type': 'text/html' });
-    res.end(LOADING_HTML);
+    if (isDoc) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(LOADING_HTML);
+    } else {
+      res.writeHead(502, { 'content-type': 'text/plain' });
+      res.end('Bad Gateway');
+    }
   });
   req.pipe(proxy, { end: true });
 }
