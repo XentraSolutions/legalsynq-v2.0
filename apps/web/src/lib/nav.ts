@@ -10,7 +10,6 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         { href: '/careconnect/dashboard',    label: 'Dashboard',    icon: 'ri-dashboard-line' },
         { href: '/careconnect/providers',    label: 'Providers',    icon: 'ri-hospital-line', requiredRoles: [ProductRole.CareConnectReferrer] },
         { href: '/careconnect/referrals',    label: 'Referrals',    icon: 'ri-file-list-3-line' },
-        { href: '/careconnect/appointments', label: 'Appointments', icon: 'ri-calendar-2-line' },
       ],
     },
   ],
