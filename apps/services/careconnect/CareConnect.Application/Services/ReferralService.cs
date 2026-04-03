@@ -202,10 +202,15 @@ public class ReferralService : IReferralService
         return ToResponse(loaded!);
     }
 
-    public async Task<ReferralResponse> UpdateAsync(Guid tenantId, Guid id, Guid? userId, UpdateReferralRequest request, CancellationToken ct = default)
+    public async Task<ReferralResponse> UpdateAsync(Guid tenantId, Guid id, Guid? userId, UpdateReferralRequest request, CancellationToken ct = default, bool bypassTenantScope = false)
     {
-        var referral = await _referrals.GetByIdAsync(tenantId, id, ct)
-            ?? throw new NotFoundException($"Referral '{id}' was not found.");
+        var referral = bypassTenantScope
+            ? await _referrals.GetByIdGlobalAsync(id, ct)
+            : await _referrals.GetByIdAsync(tenantId, id, ct);
+        if (referral is null)
+            throw new NotFoundException($"Referral '{id}' was not found.");
+
+        var effectiveTenantId = referral.TenantId;
 
         ValidateUpdate(request);
 
@@ -217,7 +222,7 @@ public class ReferralService : IReferralService
 
             history = ReferralStatusHistory.Create(
                 referral.Id,
-                tenantId,
+                effectiveTenantId,
                 referral.Status,
                 request.Status,
                 userId,
@@ -229,10 +234,9 @@ public class ReferralService : IReferralService
         referral.Update(request.RequestedService, request.Urgency, request.Status, request.Notes, userId);
         await _referrals.UpdateAsync(referral, history, ct);
 
-        // Fire notification hook after successful save — non-blocking on failure.
         if (statusChanged)
         {
-            try { await _notifications.CreateReferralStatusChangedAsync(tenantId, referral.Id, userId, ct); }
+            try { await _notifications.CreateReferralStatusChangedAsync(effectiveTenantId, referral.Id, userId, ct); }
             catch { /* Notification failure must not break the referral update. */ }
         }
 
@@ -247,7 +251,7 @@ public class ReferralService : IReferralService
             Visibility    = AuditVisibility.Tenant,
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = auditNow,
-            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = effectiveTenantId.ToString() },
             Actor = new AuditEventActorDto
             {
                 Id   = userId?.ToString(),
@@ -269,7 +273,9 @@ public class ReferralService : IReferralService
             Tags = ["referral", "clinical", "status-change"],
         });
 
-        var loaded = await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
+        var loaded = bypassTenantScope
+            ? await _referrals.GetByIdGlobalAsync(referral.Id, ct)
+            : await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
         return ToResponse(loaded!);
     }
 

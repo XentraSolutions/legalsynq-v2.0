@@ -145,8 +145,8 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            // LSCC-01-005-01 (DEF-002)
-            var history = await service.GetHistoryAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
+            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var history = await service.GetHistoryAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin || isProviderOrg);
             return Results.Ok(history);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
@@ -176,11 +176,12 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            // Determine the required capability based on the target status.
             var requiredCapability = ReferralWorkflowRules.RequiredCapabilityFor(request.Status);
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredCapability, ct);
 
-            var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
+            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var bypassTenant = ctx.IsPlatformAdmin || isProviderOrg;
+            var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct, bypassTenantScope: bypassTenant);
             return Results.Ok(referral);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
@@ -195,8 +196,8 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            // LSCC-01-005-01 (DEF-002)
-            var notifs = await service.GetNotificationsAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
+            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var notifs = await service.GetNotificationsAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin || isProviderOrg);
             return Results.Ok(notifs);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
