@@ -24,7 +24,8 @@ import type { ProviderDetail } from '@/types/careconnect';
  *   - Backend enforces tenant-scoped access; a 403 is surfaced gracefully.
  *
  * UX shaping:
- *   - "Create Referral" CTA is visible only to CARECONNECT_REFERRER.
+ *   - "Create Referral" CTA is visible to CARECONNECT_REFERRER, TenantAdmin,
+ *     and PlatformAdmin users — any user who can view a provider can refer.
  *   - If the provider is not accepting referrals, the button is disabled
  *     with a tooltip — the backend would reject it anyway.
  */
@@ -39,7 +40,10 @@ export default function ProviderDetailPage() {
   const [error,    setError]    = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const isReferrer = session?.productRoles.includes(ProductRole.CareConnectReferrer) ?? false;
+  const canRefer =
+    (session?.productRoles.includes(ProductRole.CareConnectReferrer) ||
+     session?.isPlatformAdmin ||
+     session?.isTenantAdmin) ?? false;
 
   useEffect(() => {
     if (sessionLoading) return;
@@ -107,7 +111,7 @@ export default function ProviderDetailPage() {
       )}
 
       {/* Create Referral CTA — only for referrers */}
-      {isReferrer && (
+      {canRefer && (
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowForm(true)}
