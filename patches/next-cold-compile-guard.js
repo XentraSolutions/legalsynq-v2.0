@@ -13,28 +13,49 @@ if (!fs.existsSync(target)) {
 
 let src = fs.readFileSync(target, 'utf8');
 
-const marker = "typeof createMetadataComponents !== 'function'";
-if (src.includes(marker)) {
+const MARKER = '__COLD_COMPILE_PATCHED__';
+if (src.includes(MARKER)) {
   console.log('[patch] next app-render.js already patched');
   process.exit(0);
 }
 
-const needle =
-  `const serveStreamingMetadata = !!ctx.renderOpts.serveStreamingMetadata;\n` +
-  `    const searchParams = createServerSearchParamsForMetadata(query, workStore);`;
+const fallbackFn = `
+/* ${MARKER} */
+var __fallbackMetadataComponents = function() {
+  var Noop = function() { return null; };
+  return {
+    MetadataTree: Noop,
+    ViewportTree: Noop,
+    getViewportReady: function() { return Promise.resolve(); },
+    getMetadataReady: function() { return Promise.resolve(); },
+    StreamingMetadataOutlet: Noop
+  };
+};
+`;
 
-const replacement =
-  `if (typeof createMetadataComponents !== 'function') {\n` +
-  `        throw Object.defineProperty(new Error('Module not yet initialized (cold-compile race). Refresh to retry.'), "__NEXT_ERROR_CODE", { value: "E000", enumerable: false, configurable: true });\n` +
-  `    }\n` +
-  `    const serveStreamingMetadata = !!ctx.renderOpts.serveStreamingMetadata;\n` +
-  `    const searchParams = createServerSearchParamsForMetadata(query, workStore);`;
+src = fallbackFn + src;
 
-if (!src.includes(needle)) {
-  console.log('[patch] next app-render.js: needle not found (version mismatch?), skipping');
+let count = 0;
+
+src = src.replace(
+  /(\bcreateDivergedMetadataComponents\b)/,
+  function(match) {
+    return match;
+  }
+);
+
+src = src.replace(
+  /\bcreateMetadataComponents\s*\(\s*\{/g,
+  function(match) {
+    count++;
+    return '(typeof createMetadataComponents === "function" ? createMetadataComponents : __fallbackMetadataComponents)({';
+  }
+);
+
+if (count === 0) {
+  console.log('[patch] next app-render.js: no createMetadataComponents calls found, skipping');
   process.exit(0);
 }
 
-src = src.replace(needle, replacement);
 fs.writeFileSync(target, src, 'utf8');
-console.log('[patch] next app-render.js patched: cold-compile guard added to getErrorRSCPayload');
+console.log(`[patch] next app-render.js patched: ${count} createMetadataComponents call(s) guarded with fallback`);
