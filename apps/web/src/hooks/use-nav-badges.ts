@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import { useSession } from '@/hooks/use-session';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { OrgType, ProductRole } from '@/types';
@@ -9,6 +10,7 @@ const POLL_INTERVAL_MS = 30_000;
 
 export function useNavBadges(): Record<string, number> {
   const { session } = useSession();
+  const pathname = usePathname();
   const [badges, setBadges] = useState<Record<string, number>>({});
 
   const isProvider =
@@ -30,7 +32,6 @@ export function useNavBadges(): Record<string, number> {
         return { ...prev, newReferrals: count };
       });
     } catch {
-      // silently ignore — badge is non-critical
     }
   }, [isProvider]);
 
@@ -44,6 +45,14 @@ export function useNavBadges(): Record<string, number> {
     const id = setInterval(fetchBadges, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [fetchBadges, isProvider]);
+
+  useEffect(() => {
+    if (!isProvider) return;
+    if (/^\/careconnect\/referrals\/[^/]+$/.test(pathname ?? '')) {
+      const timer = setTimeout(fetchBadges, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [pathname, isProvider, fetchBadges]);
 
   return badges;
 }
