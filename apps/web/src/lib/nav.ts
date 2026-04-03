@@ -1,4 +1,5 @@
-import type { NavSection, PlatformSession } from '@/types';
+import type { NavSection, PlatformSession, ProductRoleValue } from '@/types';
+import { ProductRole } from '@/types';
 
 // ── Per-product sidebar navigation (sections) ─────────────────────────────────
 
@@ -7,7 +8,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     {
       items: [
         { href: '/careconnect/dashboard',    label: 'Dashboard',    icon: 'ri-dashboard-line' },
-        { href: '/careconnect/providers',    label: 'Providers',    icon: 'ri-hospital-line' },
+        { href: '/careconnect/providers',    label: 'Providers',    icon: 'ri-hospital-line', requiredRoles: [ProductRole.CareConnectReferrer] },
         { href: '/careconnect/referrals',    label: 'Referrals',    icon: 'ri-file-list-3-line' },
         { href: '/careconnect/appointments', label: 'Appointments', icon: 'ri-calendar-2-line' },
       ],
@@ -104,6 +105,18 @@ export function resolveEnabledNavKeys(enabledProducts: string[]): Set<string> {
     if (key && key in PRODUCT_META) keys.add(key);
   }
   return keys;
+}
+
+export function filterNavByRoles(sections: NavSection[], userRoles: ProductRoleValue[]): NavSection[] {
+  return sections
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        if (!item.requiredRoles || item.requiredRoles.length === 0) return true;
+        return item.requiredRoles.some(role => userRoles.includes(role));
+      }),
+    }))
+    .filter(section => section.items.length > 0);
 }
 
 // ── Infer product from pathname ───────────────────────────────────────────────

@@ -1,6 +1,1 @@
-{
-  "/api/identity/admin/users/[id]/set-password/route": "app/api/identity/admin/users/[id]/set-password/route.js",
-  "/api/auth/logout/route": "app/api/auth/logout/route.js",
-  "/login/page": "app/login/page.js",
-  "/tenants/[id]/users/page": "app/tenants/[id]/users/page.js"
-}
+{}

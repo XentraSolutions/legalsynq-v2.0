@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useProduct } from '@/contexts/product-context';
 import { useSettings } from '@/contexts/settings-context';
-import { PRODUCT_NAV, PRODUCT_META, GLOBAL_BOTTOM_NAV, buildNavGroups } from '@/lib/nav';
+import { PRODUCT_NAV, PRODUCT_META, GLOBAL_BOTTOM_NAV, buildNavGroups, filterNavByRoles } from '@/lib/nav';
 import { useSession } from '@/hooks/use-session';
 import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
@@ -47,7 +47,8 @@ export function Sidebar() {
   }, []);
 
   const width    = !mounted ? 220 : collapsed ? 52 : 220;
-  const sections = selectedProductId ? (PRODUCT_NAV[selectedProductId] ?? []) : [];
+  const rawSections = selectedProductId ? (PRODUCT_NAV[selectedProductId] ?? []) : [];
+  const sections = session ? filterNavByRoles(rawSections, session.productRoles) : rawSections;
   const meta     = selectedProductId ? PRODUCT_META[selectedProductId] : null;
 
   return (
