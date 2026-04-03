@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: ['*.spock.replit.dev', '*.replit.dev'],
   experimental: {
     serverActions: {
       // Next.js 14 CSRF check: the Replit dev proxy can cause origin/host

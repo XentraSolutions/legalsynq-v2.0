@@ -11,6 +11,25 @@ echo "[web] Starting Next.js on :5000"
 (cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$ROOT/node_modules/next/dist/bin/next" dev -p 5000) &
 PID_WEB=$!
 
+# Warmup: keep hitting /login until we get a 200, absorbing any 500s from the
+# Next.js 15 + React 18 cold-compile race condition.  The loop is deliberately
+# persistent — it does NOT exit on the first 500, only on a confirmed 200 or
+# after 90 seconds timeout.
+(
+  echo "[warmup] Waiting for Next.js /login to return 200..."
+  for i in $(seq 1 90); do
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/login 2>/dev/null) || STATUS="000"
+    if [ "$STATUS" = "200" ] || [ "$STATUS" = "307" ] || [ "$STATUS" = "302" ]; then
+      echo "[warmup] /login ready (HTTP $STATUS, attempt $i)"
+      break
+    fi
+    if [ "$STATUS" != "000" ]; then
+      echo "[warmup] /login returned HTTP $STATUS (attempt $i), retrying..."
+    fi
+    sleep 1
+  done
+) &
+
 # Start Control Center — port 5004
 echo "[control-center] Starting Next.js on :5004"
 (cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$ROOT/node_modules/next/dist/bin/next" dev -p 5004) &
