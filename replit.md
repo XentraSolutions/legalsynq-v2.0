@@ -13,7 +13,7 @@ Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router 
 ## Frontend (apps/web)
 - **Framework:** Next.js 15.2.3 App Router + TypeScript + Tailwind CSS (React 18.3.1)
 - **Port:** 5000 (dev)
-- **Dev warmup:** `run-dev.sh` includes a background warmup loop that pre-compiles `/login` before the Replit preview pane sends its first request, avoiding a known Next.js 15 + React 18 cold-compile race condition in dev mode
+- **Dev proxy:** `scripts/dev-proxy.js` — lightweight HTTP proxy on port 5000 that gates browser requests until Next.js (on internal port 3050) returns HTTP 200 for `/login`. Prevents the Next.js 15 + React 18 cold-compile race condition (`createMetadataComponents is not a function`) from ever reaching the browser. Auto re-gates if Next.js becomes unreachable. WebSocket upgrade passthrough for HMR.
 - **Error boundary:** `global-error.tsx` at app root catches any rendering errors gracefully
 - **Session:** HttpOnly cookie (`platform_session`) set by BFF login route; validated via BFF `/api/auth/me` — frontend never decodes raw JWT
 - **BFF Routes:** `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` — Next.js API routes that proxy to Identity service with Bearer auth

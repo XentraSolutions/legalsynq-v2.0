@@ -6,29 +6,16 @@ NODE="/nix/store/51gywl5jn4nna7al9waj142pw4vfhy0k-nodejs-22.19.0/bin/node"
 
 echo "====== LegalSynq dev startup ======"
 
-# Start Next.js immediately — port 5000 must open for the preview pane
-echo "[web] Starting Next.js on :5000"
-(cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$ROOT/node_modules/next/dist/bin/next" dev -p 5000) &
+# Start Next.js on an internal port; the proxy on :5000 gates requests
+# until the cold-compile race condition is resolved (HTTP 200 on /login).
+NEXT_INTERNAL_PORT=3050
+echo "[web] Starting Next.js on :$NEXT_INTERNAL_PORT (internal)"
+(cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$ROOT/node_modules/next/dist/bin/next" dev -p "$NEXT_INTERNAL_PORT") &
 PID_WEB=$!
 
-# Warmup: keep hitting /login until we get a 200, absorbing any 500s from the
-# Next.js 15 + React 18 cold-compile race condition.  The loop is deliberately
-# persistent — it does NOT exit on the first 500, only on a confirmed 200 or
-# after 90 seconds timeout.
-(
-  echo "[warmup] Waiting for Next.js /login to return 200..."
-  for i in $(seq 1 90); do
-    STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/login 2>/dev/null) || STATUS="000"
-    if [ "$STATUS" = "200" ] || [ "$STATUS" = "307" ] || [ "$STATUS" = "302" ]; then
-      echo "[warmup] /login ready (HTTP $STATUS, attempt $i)"
-      break
-    fi
-    if [ "$STATUS" != "000" ]; then
-      echo "[warmup] /login returned HTTP $STATUS (attempt $i), retrying..."
-    fi
-    sleep 1
-  done
-) &
+echo "[proxy] Starting dev proxy on :5000 → :$NEXT_INTERNAL_PORT"
+NEXT_INTERNAL_PORT=$NEXT_INTERNAL_PORT PROXY_PORT=5000 "$NODE" "$ROOT/scripts/dev-proxy.js" &
+PID_PROXY=$!
 
 # Start Control Center — port 5004
 echo "[control-center] Starting Next.js on :5004"
@@ -85,9 +72,9 @@ echo "[notifications:worker] Starting status-sync worker"
 PID_STATUS_SYNC=$!
 
 cleanup() {
-    kill "$PID_WEB" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC" 2>/dev/null || true
+    kill "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC" 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-wait "$PID_WEB" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC"
+wait "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC"
