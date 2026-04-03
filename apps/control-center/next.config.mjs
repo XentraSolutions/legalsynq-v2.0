@@ -135,24 +135,21 @@ const nextConfig = {
   },
 
   async rewrites() {
-    // Direct non-auth API calls to the gateway.
-    // NOTE: /api/auth/* routes are handled by BFF route handlers
-    // (src/app/api/auth/login/route.ts, logout/route.ts) and must NOT
-    // be rewritten here — they handle their own gateway forwarding.
-    //
-    // All gateway URL resolution is in env.ts; the value is read here
-    // because next.config.mjs runs in a different module context.
     const gatewayUrl =
       process.env.CONTROL_CENTER_API_BASE ??
       process.env.GATEWAY_URL             ??
       'http://localhost:5010';
 
-    return [
-      {
-        source:      '/api/:path*',
-        destination: `${gatewayUrl}/:path*`,
-      },
-    ];
+    return {
+      beforeFiles: [],
+      afterFiles: [],
+      fallback: [
+        {
+          source:      '/api/:path*',
+          destination: `${gatewayUrl}/:path*`,
+        },
+      ],
+    };
   },
 };
 

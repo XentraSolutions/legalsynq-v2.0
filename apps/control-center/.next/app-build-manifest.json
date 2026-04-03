@@ -1,5 +1,10 @@
 {
   "pages": {
+    "/api/identity/admin/users/[id]/set-password/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/identity/admin/users/[id]/set-password/route.js"
+    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -10,6 +15,26 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/error.js"
+    ],
+    "/tenants/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenants/loading.js"
+    ],
+    "/tenants/[id]/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenants/[id]/layout.js"
+    ],
+    "/tenants/[id]/users/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/tenants/[id]/users/page.js"
+    ],
+    "/api/auth/logout/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/auth/logout/route.js"
     ],
     "/login/page": [
       "static/chunks/webpack.js",
