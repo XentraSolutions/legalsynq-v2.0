@@ -11,7 +11,8 @@ public static class ReferralWorkflowRules
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> AllowedTransitions =
         new Dictionary<string, IReadOnlyList<string>>
         {
-            [Referral.ValidStatuses.New]        = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
+            [Referral.ValidStatuses.New]        = new[] { Referral.ValidStatuses.NewOpened, Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
+            [Referral.ValidStatuses.NewOpened] = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
             [Referral.ValidStatuses.Accepted]   = new[] { Referral.ValidStatuses.InProgress, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
             [Referral.ValidStatuses.InProgress] = new[] { Referral.ValidStatuses.Completed, Referral.ValidStatuses.Cancelled },
             [Referral.ValidStatuses.Completed]  = Array.Empty<string>(),

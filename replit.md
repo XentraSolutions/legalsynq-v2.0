@@ -497,7 +497,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 | `CARECONNECT_RECEIVER` | `referral:read:addressed`, `referral:accept`, `referral:decline`, `appointment:create`, `appointment:update`, `appointment:manage`, `appointment:read:own`, `schedule:manage`, `provider:search`, `provider:map`, `dashboard:read` |
 
 **Status models (canonical):**
-- Referral: `New → Accepted → Scheduled → Completed/Cancelled`; `New → Declined`. Legacy: `Received`/`Contacted` normalize to `Accepted` via `Referral.ValidStatuses.Legacy.Normalize()`.
+- Referral: `New (Unopened) → NewOpened → Accepted → Scheduled → Completed/Cancelled`; `New → Declined`; `NewOpened → Declined/Cancelled`. Auto-transition: when a receiving provider org views referral detail, `New` auto-transitions to `NewOpened` (inline await in GET endpoint). Nav badge counts only `New` (unopened). Queue toolbar exposes separate "Unopened" / "Opened" filters. Legacy: `Received`/`Contacted` normalize to `Accepted` via `Referral.ValidStatuses.Legacy.Normalize()`.
 - Appointment: `Pending → Confirmed → Completed/Cancelled`; `Rescheduled` as real status. `Scheduled` retained as backward-compat alias.
 
 **Org-scoped referral list:** `GET /api/referrals` applies `ReferringOrgId`/`ReceivingOrgId` filters from JWT `org_id` claim based on user's product roles. Admins see all.

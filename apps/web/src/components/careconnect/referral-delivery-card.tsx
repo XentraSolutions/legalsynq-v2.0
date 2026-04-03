@@ -45,7 +45,7 @@ export function ReferralDeliveryCard({ referral }: ReferralDeliveryCardProps) {
   const [notifications,   setNotifications]   = useState<ReferralNotification[] | null>(null);
   const [historyLoading,  setHistoryLoading]  = useState(false);
 
-  const canResend = referral.status === 'New';
+  const canResend = referral.status === 'New' || referral.status === 'NewOpened';
 
   async function handleResend() {
     if (!canResend) return;

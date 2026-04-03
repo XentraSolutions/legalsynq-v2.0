@@ -82,6 +82,21 @@ public class ReferralService : IReferralService
         return ToResponse(referral, latestNotif);
     }
 
+    public async Task MarkAsOpenedAsync(Guid id, CancellationToken ct = default)
+    {
+        var referral = await _referrals.GetByIdGlobalAsync(id, ct);
+        if (referral is null) return;
+
+        if (referral.MarkAsOpened())
+        {
+            var history = ReferralStatusHistory.Create(
+                referral.Id, referral.TenantId,
+                Referral.ValidStatuses.New, Referral.ValidStatuses.NewOpened,
+                null, "Referral opened by receiver.");
+            await _referrals.UpdateAsync(referral, history, ct);
+        }
+    }
+
     public async Task<ReferralResponse> CreateAsync(Guid tenantId, Guid? userId, CreateReferralRequest request, CancellationToken ct = default)
     {
         ValidateCreate(request);
@@ -395,7 +410,7 @@ public class ReferralService : IReferralService
         }
 
         // LSCC-005-01: Duplicate/replay hardening — status check prevents double-acceptance
-        if (referral.Status != Referral.ValidStatuses.New)
+        if (referral.Status != Referral.ValidStatuses.New && referral.Status != Referral.ValidStatuses.NewOpened)
         {
             _logger.LogInformation(
                 "Replay acceptance attempt for referral {ReferralId}: already in status {Status}.",
@@ -509,7 +524,7 @@ public class ReferralService : IReferralService
         // Use the referral's actual TenantId for notification sub-queries.
         var effectiveTenantId = referral.TenantId;
 
-        if (referral.Status != Referral.ValidStatuses.New)
+        if (referral.Status != Referral.ValidStatuses.New && referral.Status != Referral.ValidStatuses.NewOpened)
             throw new InvalidOperationException(
                 $"Cannot resend provider notification: referral is already '{referral.Status}'. " +
                 $"The provider has already actioned this referral.");

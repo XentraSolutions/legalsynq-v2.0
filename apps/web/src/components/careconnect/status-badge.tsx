@@ -7,6 +7,7 @@ interface StatusBadgeProps {
 
 const STATUS_STYLES: Record<string, string> = {
   New:        'bg-blue-50    text-blue-700    border-blue-200',
+  NewOpened:  'bg-sky-50     text-sky-700     border-sky-200',
   Accepted:   'bg-teal-50    text-teal-700    border-teal-200',
   InProgress: 'bg-amber-50   text-amber-700   border-amber-200',
   Declined:   'bg-red-50     text-red-700     border-red-200',
@@ -20,6 +21,11 @@ const STATUS_STYLES: Record<string, string> = {
   Contacted:  'bg-purple-50  text-purple-700  border-purple-200',
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  NewOpened:  'New Opened',
+  InProgress: 'In Progress',
+};
+
 const URGENCY_STYLES: Record<string, string> = {
   Low:       'bg-gray-50    text-gray-600    border-gray-200',
   Normal:    'bg-blue-50    text-blue-600    border-blue-200',
@@ -31,9 +37,11 @@ export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
   const style = STATUS_STYLES[status] ?? 'bg-gray-50 text-gray-600 border-gray-200';
   const sizeClass = size === 'md' ? 'px-2.5 py-1 text-sm' : 'px-2 py-0.5 text-xs';
 
+  const label = STATUS_LABELS[status] ?? status;
+
   return (
     <span className={`inline-flex items-center rounded-full border font-medium ${sizeClass} ${style}`}>
-      {status}
+      {label}
     </span>
   );
 }

@@ -77,12 +77,13 @@ export interface ReferralHistoryItem {
 // ── Referral ──────────────────────────────────────────────────────────────────
 
 export const ReferralStatus = {
-  New:       'New',
-  Received:  'Received',
-  Contacted: 'Contacted',
-  Scheduled: 'Scheduled',
-  Completed: 'Completed',
-  Cancelled: 'Cancelled',
+  New:        'New',
+  NewOpened:  'NewOpened',
+  Received:   'Received',
+  Contacted:  'Contacted',
+  Scheduled:  'Scheduled',
+  Completed:  'Completed',
+  Cancelled:  'Cancelled',
 } as const;
 export type ReferralStatusValue = typeof ReferralStatus[keyof typeof ReferralStatus];
 

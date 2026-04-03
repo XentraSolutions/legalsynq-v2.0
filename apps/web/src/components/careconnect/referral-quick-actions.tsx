@@ -17,7 +17,7 @@ interface ReferralQuickActionsProps {
   contextQs?: string;
 }
 
-const ACTIONABLE_FOR_RECEIVER = ['New', 'Received', 'Contacted'];
+const ACTIONABLE_FOR_RECEIVER = ['New', 'NewOpened', 'Received', 'Contacted'];
 
 export function ReferralQuickActions({ referral, isReferrer, isReceiver, contextQs = '' }: ReferralQuickActionsProps) {
   const router          = useRouter();
@@ -27,7 +27,7 @@ export function ReferralQuickActions({ referral, isReferrer, isReceiver, context
   const [confirming, setConfirming] = useState<string | null>(null);
 
   const canAccept  = isReceiver && ACTIONABLE_FOR_RECEIVER.includes(referral.status);
-  const canResend  = isReferrer && referral.status === 'New';
+  const canResend  = isReferrer && (referral.status === 'New' || referral.status === 'NewOpened');
   const canRevoke  = isReferrer;
 
   async function handleAccept() {

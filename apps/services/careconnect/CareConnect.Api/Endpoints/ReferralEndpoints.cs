@@ -134,6 +134,13 @@ public static class ReferralEndpoints
                     return Results.NotFound();
             }
 
+            if (isProviderOrg && ctx.OrgId.HasValue && referral.ReceivingOrganizationId == ctx.OrgId
+                && referral.Status == "New")
+            {
+                try { await service.MarkAsOpenedAsync(id, ct); }
+                catch { }
+            }
+
             return Results.Ok(referral);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);

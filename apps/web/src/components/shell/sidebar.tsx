@@ -220,11 +220,8 @@ function SidebarItem({
       }
       {!collapsed && <span className="flex-1">{item.label}</span>}
       {showBadge && !collapsed && (
-        <span className="ml-auto inline-flex items-center gap-1 shrink-0">
-          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-none">
-            {badgeCount > 99 ? '99+' : badgeCount}
-          </span>
-          <span className="text-[9px] font-medium text-red-500 uppercase leading-none">New</span>
+        <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-none">
+          {badgeCount > 99 ? '99+' : badgeCount}
         </span>
       )}
       {showBadge && collapsed && (

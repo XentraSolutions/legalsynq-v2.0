@@ -10,6 +10,7 @@ public interface IReferralService
     /// Must only be set to true by endpoint handlers that have confirmed PlatformAdmin role.
     /// </param>
     Task<ReferralResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default, bool isPlatformAdmin = false);
+    Task MarkAsOpenedAsync(Guid id, CancellationToken ct = default);
     Task<ReferralResponse> CreateAsync(Guid tenantId, Guid? userId, CreateReferralRequest request, CancellationToken ct = default);
     Task<ReferralResponse> UpdateAsync(Guid tenantId, Guid id, Guid? userId, UpdateReferralRequest request, CancellationToken ct = default, bool bypassTenantScope = false);
     /// <inheritdoc cref="GetByIdAsync"/>
