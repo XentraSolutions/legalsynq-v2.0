@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { requireAdmin }                   from '@/lib/auth-guards';
-import { apiClient, ApiError }            from '@/lib/api-client';
+import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 export async function POST(
   request: NextRequest,
@@ -22,16 +22,13 @@ export async function POST(
       );
     }
 
-    await apiClient.post(
-      `/identity/api/admin/users/${encodeURIComponent(id)}/set-password`,
-      { newPassword: body.newPassword },
-    );
+    await controlCenterServerApi.users.setPassword(id, body.newPassword);
     return NextResponse.json({ ok: true });
-  } catch (err) {
-    if (err instanceof ApiError) {
-      return NextResponse.json({ message: err.message }, { status: err.status });
-    }
+  } catch (err: unknown) {
+    const status  = typeof (err as { status?: number }).status === 'number'
+      ? (err as { status: number }).status
+      : 500;
     const message = err instanceof Error ? err.message : 'Failed to set password.';
-    return NextResponse.json({ message }, { status: 500 });
+    return NextResponse.json({ message }, { status });
   }
 }

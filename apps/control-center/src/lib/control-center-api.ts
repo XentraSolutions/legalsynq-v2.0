@@ -427,6 +427,13 @@ export const controlCenterServerApi = {
       revalidateTag(CACHE_TAGS.users);
     },
 
+    setPassword: async (id: string, newPassword: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/set-password`,
+        { newPassword },
+      );
+    },
+
     /**
      * UIX-003-03: POST /identity/api/admin/users/{id}/reset-password
      * Triggers an admin-initiated password reset workflow.
