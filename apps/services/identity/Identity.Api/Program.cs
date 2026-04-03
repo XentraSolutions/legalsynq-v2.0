@@ -154,6 +154,99 @@ catch (Exception ex)
         "Phase G startup diagnostic skipped — could not query the database at startup.");
 }
 
+// ── Dev-only: ensure every user has a primary org membership ─────────────
+// Some tenants were created with the org added separately, leaving the user
+// without a UserOrganizationMembership.  This block auto-heals that gap.
+if (app.Environment.IsDevelopment())
+{
+    try
+    {
+        using var fixScope = app.Services.CreateScope();
+        var fixDb = fixScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+
+        var usersWithoutMembership = await fixDb.Users
+            .Where(u => u.IsActive)
+            .Where(u => !fixDb.UserOrganizationMemberships.Any(m => m.UserId == u.Id))
+            .ToListAsync();
+
+        foreach (var orphan in usersWithoutMembership)
+        {
+            var org = await fixDb.Organizations
+                .Where(o => o.TenantId == orphan.TenantId && o.IsActive)
+                .OrderBy(o => o.CreatedAtUtc)
+                .FirstOrDefaultAsync();
+
+            if (org is null) continue;
+
+            var membership = Identity.Domain.UserOrganizationMembership.Create(
+                orphan.Id, org.Id, Identity.Domain.MemberRole.Admin);
+            membership.SetPrimary();
+            fixDb.UserOrganizationMemberships.Add(membership);
+
+            app.Logger.LogInformation(
+                "Dev fixup: created org membership for user {UserId} ({Email}) → org {OrgId} ({OrgName})",
+                orphan.Id, orphan.Email, org.Id, org.Name);
+        }
+
+        if (usersWithoutMembership.Count > 0)
+            await fixDb.SaveChangesAsync();
+
+        var allMemberships = await fixDb.UserOrganizationMemberships
+            .Where(m => m.IsActive)
+            .ToListAsync();
+
+        var userIdsWithPrimary = allMemberships.Where(m => m.IsPrimary).Select(m => m.UserId).ToHashSet();
+        var needsPrimary = allMemberships
+            .Where(m => !userIdsWithPrimary.Contains(m.UserId))
+            .GroupBy(m => m.UserId)
+            .Select(g => g.OrderBy(m => m.JoinedAtUtc).First())
+            .ToList();
+
+        foreach (var m in needsPrimary)
+        {
+            m.SetPrimary();
+            app.Logger.LogInformation(
+                "Dev fixup: set primary org membership for user {UserId} → org {OrgId}",
+                m.UserId, m.OrganizationId);
+        }
+
+        if (needsPrimary.Count > 0)
+            await fixDb.SaveChangesAsync();
+
+        // Also ensure OrganizationProduct rows exist for every active TenantProduct + Org pair
+        var tenantProducts = await fixDb.Set<Identity.Domain.TenantProduct>()
+            .Where(tp => tp.IsEnabled)
+            .ToListAsync();
+
+        foreach (var tp in tenantProducts)
+        {
+            var orgs = await fixDb.Organizations
+                .Include(o => o.OrganizationProducts)
+                .Where(o => o.TenantId == tp.TenantId && o.IsActive)
+                .ToListAsync();
+
+            foreach (var org in orgs)
+            {
+                if (org.OrganizationProducts.Any(op => op.ProductId == tp.ProductId))
+                    continue;
+
+                var op = Identity.Domain.OrganizationProduct.Create(org.Id, tp.ProductId);
+                fixDb.Set<Identity.Domain.OrganizationProduct>().Add(op);
+
+                app.Logger.LogInformation(
+                    "Dev fixup: created OrganizationProduct for org {OrgId} ({OrgName}) → product {ProductId}",
+                    org.Id, org.Name, tp.ProductId);
+            }
+        }
+
+        await fixDb.SaveChangesAsync();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Dev fixup for user/org memberships encountered an error");
+    }
+}
+
 // ── Middleware pipeline ───────────────────────────────────────────────────
 // UseAuthentication + UseAuthorization must precede all endpoint maps
 app.UseAuthentication();
