@@ -126,3 +126,9 @@ id = "n9WYEXqwv1Y_EH4a8rEGb"
 uri = "file://UIX-002-01-AdminNavigationExposure.md"
 type = "text"
 title = "UIX-002-01 — Admin Navigation Exposure Report"
+
+[[outputs]]
+id = "hMNeuWk-d-3VCNyuuqNU_"
+uri = "file://exports/legalsynq-source.tar.gz"
+type = "unspecified"
+title = "LegalSynq Source Code (tar.gz)"
