@@ -412,7 +412,13 @@ export default async function ActivityPage({
                     <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
                       {fmtDate(n.createdAt)}
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-3 text-right">
+                      {n.status.toLowerCase() === 'failed' && (
+                        <span className="text-[10px] text-red-500 font-medium mr-2 hidden sm:inline">Review</span>
+                      )}
+                      {n.status.toLowerCase() === 'blocked' && (
+                        <span className="text-[10px] text-amber-500 font-medium mr-2 hidden sm:inline">Blocked</span>
+                      )}
                       <Link
                         href={`/notifications/activity/${n.id}`}
                         className="text-indigo-600 hover:text-indigo-500 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity"

@@ -39,10 +39,10 @@ export interface NotifStats {
 
 // ── Re-export client-safe branding types from shared module ──────────────────
 
-export type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, OverrideStatus, TemplatePreviewResult, NotifDetail, NotifEvent, NotifIssue } from './notifications-shared';
+export type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, OverrideStatus, TemplatePreviewResult, NotifDetail, NotifEvent, NotifIssue, RetryResult, ContactHealth, ContactSuppression, ActionEligibility } from './notifications-shared';
 export { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from './notifications-shared';
 
-import type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, TemplatePreviewResult, NotifDetail, NotifEvent, NotifIssue } from './notifications-shared';
+import type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, TemplatePreviewResult, NotifDetail, NotifEvent, NotifIssue, RetryResult, ContactHealth, ContactSuppression } from './notifications-shared';
 
 // ── Core request ─────────────────────────────────────────────────────────────
 
@@ -218,6 +218,24 @@ export const notificationsServerApi = {
 
   issues(tenantId: string, notificationId: string): Promise<{ data: NotifIssue[] }> {
     return notifRequest<{ data: NotifIssue[] }>(`/v1/notifications/${notificationId}/issues`, tenantId);
+  },
+
+  retry(tenantId: string, notificationId: string): Promise<{ data: RetryResult }> {
+    return notifRequest<{ data: RetryResult }>(`/v1/notifications/${notificationId}/retry`, tenantId, { method: 'POST' });
+  },
+
+  resend(tenantId: string, notificationId: string): Promise<{ data: RetryResult }> {
+    return notifRequest<{ data: RetryResult }>(`/v1/notifications/${notificationId}/resend`, tenantId, { method: 'POST' });
+  },
+
+  contactHealth(tenantId: string, channel: string, contactValue: string): Promise<{ data: ContactHealth }> {
+    const qs = new URLSearchParams({ channel, contactValue });
+    return notifRequest<{ data: ContactHealth }>(`/v1/contacts/health?${qs}`, tenantId);
+  },
+
+  contactSuppressions(tenantId: string, channel: string, contactValue: string): Promise<{ data: ContactSuppression[] }> {
+    const qs = new URLSearchParams({ channel, contactValue });
+    return notifRequest<{ data: ContactSuppression[] }>(`/v1/contacts/suppressions?${qs}`, tenantId);
   },
 };
 

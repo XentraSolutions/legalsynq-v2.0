@@ -185,3 +185,36 @@ export interface NotifIssue {
   resolvedAt:  string | null;
   createdAt:   string;
 }
+
+export interface RetryResult {
+  notificationId: string;
+  newNotificationId?: string;
+  status:  string;
+  message: string;
+}
+
+export interface ContactHealth {
+  channel:      string;
+  contactValue: string;
+  status:       string;
+  lastEvent:    string | null;
+  lastEventAt:  string | null;
+  bounceCount:  number;
+  complaintCount: number;
+  isSuppressed: boolean;
+  suppressionReason: string | null;
+}
+
+export interface ContactSuppression {
+  id:            string;
+  channel:       string;
+  contactValue:  string;
+  reason:        string;
+  source:        string;
+  detail:        string | null;
+  createdAt:     string;
+}
+
+export type ActionEligibility =
+  | { eligible: true; actions: Array<'retry' | 'resend'> }
+  | { eligible: false; reason: string };

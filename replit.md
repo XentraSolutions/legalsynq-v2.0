@@ -2888,12 +2888,42 @@ MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it sh
 - `NotifDetail`, `NotifEvent`, `NotifIssue` in `notifications-shared.ts`
 
 ### Key Rules
-- Strictly read-only — no resend/retry actions
 - Tenant-scoped via `requireOrg()` + `x-tenant-id`
 - Events/issues endpoints gracefully degrade if unavailable
 - HTML content rendered in sandboxed iframes (CSP `script-src 'none'`)
 - Template source (global vs override) displayed when backend provides it
 - Metadata JSON fallback for template key, subject, body when direct fields unavailable
+
+## NOTIF-UI-010 — Delivery Controls (Retry / Resend / Suppression Awareness)
+
+### Capabilities
+- Retry/resend failed notifications with confirmation dialogs on the activity detail page
+- Suppression awareness panel for blocked/suppressed notifications
+- Contact health card with on-demand health + suppression data loading
+- Eligibility gating: only failed notifications can be retried/resent; blocked/suppressed/delivered cannot
+- Post-action feedback with success/error banners and link to new notification
+
+### Architecture
+- **Server/Client split:** Detail page remains server component for data fetching; `DeliveryActionsClient` is client component for interactive actions
+- **Server actions:** `retryNotification`, `resendNotification`, `fetchContactHealth`, `fetchContactSuppressions` in `activity/actions.ts`
+- **Eligibility logic:** Derived client-side from notification status + failure category (conservative defaults)
+- **Confirmation required:** Both retry and resend require explicit user confirmation via dialog
+
+### API Client Methods Added
+- `retry(tenantId, notificationId)` — POST, triggers retry
+- `resend(tenantId, notificationId)` — POST, creates new notification attempt
+- `contactHealth(tenantId, channel, contactValue)` — GET, contact health status
+- `contactSuppressions(tenantId, channel, contactValue)` — GET, active suppressions
+
+### Shared Types Added
+- `RetryResult`, `ContactHealth`, `ContactSuppression`, `ActionEligibility` in `notifications-shared.ts`
+
+### Key Rules
+- Single-notification actions only — no bulk retry/resend
+- Backend denial (409/422) mapped to clear user-facing messages
+- Contact health loaded lazily (user clicks "Check Health")
+- No suppression mutation (read-only suppression data)
+- `router.refresh()` after successful action refreshes server-rendered data
 
 ## NOTIF-UI-008 — Tenant Template Override
 

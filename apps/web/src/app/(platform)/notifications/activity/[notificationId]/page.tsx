@@ -10,6 +10,7 @@ import {
   type NotifIssue,
 } from '@/lib/notifications-server-api';
 import { PRODUCT_TYPE_LABELS, type ProductType } from '@/lib/notifications-shared';
+import DeliveryActionsClient from './delivery-actions-client';
 
 const STATUS_CLS: Record<string, string> = {
   sent:       'bg-emerald-50 text-emerald-700 border border-emerald-200',
@@ -434,6 +435,8 @@ export default async function NotificationDetailPage({
       </div>
 
       <FailureReasonPanel notification={notification} />
+
+      <DeliveryActionsClient notification={notification} />
 
       <TemplateUsageSection notification={notification} />
 
