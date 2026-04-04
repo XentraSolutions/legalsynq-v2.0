@@ -2871,6 +2871,37 @@ MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it sh
 - **Law firm orgs** use standard tenant-scoped queries. TenantAdmin on law firm sees all referrals in their tenant; regular users see only their org's outbound referrals.
 - Key files: `ReferralEndpoints.cs`, `ReferralRepository.cs`, `GetReferralsQuery.cs` (CrossTenantReceiver flag), `ReferralService.cs` (auto-populates ReceivingOrganizationId).
 
+## NOTIF-UI-005 — Control Center Global Templates + Branding Admin UI
+
+### Pages
+| Path | Purpose |
+|------|---------|
+| `/notifications/templates/global` | Global templates list with product type/channel filters |
+| `/notifications/templates/global/[id]` | Template detail + versions + metadata edit |
+| `/notifications/branding` | Tenant branding list with product filter, create/edit forms |
+
+### Components
+| Component | File | Purpose |
+|-----------|------|---------|
+| `WysiwygEmailEditor` | `src/components/notifications/wysiwyg-email-editor.tsx` | Block-based email editor (heading/paragraph/button/divider/image blocks, brand token insertion, variable insertion) |
+| `BrandedPreviewModal` | `src/components/notifications/branded-preview-modal.tsx` | Preview rendered template with tenant branding context |
+| `GlobalTemplateCreateForm` | `src/components/notifications/global-template-create-form.tsx` | Create global template modal |
+| `GlobalTemplateEditForm` | `src/components/notifications/global-template-edit-form.tsx` | Edit template metadata modal |
+| `GlobalTemplateVersionForm` | `src/components/notifications/global-template-version-form.tsx` | Version create with WYSIWYG or HTML editor |
+| `GlobalPublishVersionButton` | `src/components/notifications/global-publish-version-button.tsx` | Publish version with confirmation |
+| `BrandingCreateForm` | `src/components/notifications/branding-create-form.tsx` | Create tenant branding |
+| `BrandingEditForm` | `src/components/notifications/branding-edit-form.tsx` | Edit tenant branding |
+
+### Cache Tags
+- `notif:global-templates` — invalidated on template/version create/update/publish
+- `notif:branding` — invalidated on branding create/update
+
+### Server Actions (in `actions.ts`)
+`createGlobalTemplate`, `updateGlobalTemplate`, `createGlobalTemplateVersion`, `publishGlobalTemplateVersion`, `previewGlobalTemplateVersion`, `createBranding`, `updateBranding`
+
+### API Response Shape
+Backend wraps all responses in `{ data: ... }`. `BrandedPreviewResult` has flat `subject`/`body`/`text` + nested `branding: { source, name, primaryColor }`.
+
 ## NOTIF-008 — Global Product Templates + Tenant Branding Backend
 
 ### New Route Groups (all prefixed `/v1/`)

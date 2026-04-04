@@ -63,6 +63,8 @@ export default async function NotificationsOverviewPage() {
   const quickNav = [
     { href: '/notifications/log',                icon: 'ri-mail-send-line',       title: 'Delivery Log',    desc: 'Browse and filter all outbound notifications.' },
     { href: '/notifications/templates',          icon: 'ri-file-text-line',       title: 'Templates',       desc: 'Manage message templates and version history.'  },
+    { href: '/notifications/templates/global',   icon: 'ri-layout-masonry-line',  title: 'Global Templates', desc: 'Product-aware global templates with WYSIWYG editor.' },
+    { href: '/notifications/branding',           icon: 'ri-palette-line',         title: 'Tenant Branding',  desc: 'Manage per-tenant, per-product brand configuration.' },
     { href: '/notifications/providers',          icon: 'ri-plug-line',            title: 'Providers',       desc: 'Configure email/SMS provider integrations.'     },
     { href: '/notifications/billing',            icon: 'ri-bar-chart-2-line',     title: 'Usage & Billing', desc: 'View usage events and rate-limit policies.'      },
     { href: '/notifications/contacts/suppressions', icon: 'ri-user-forbid-line', title: 'Suppressions',    desc: 'Manage contact suppression lists.'               },
