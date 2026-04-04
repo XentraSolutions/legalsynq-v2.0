@@ -141,3 +141,47 @@ export interface BrandedPreviewResult {
     primaryColor: string;
   };
 }
+
+export interface NotifDetail {
+  id:                string;
+  tenantId:          string;
+  channel:           string;
+  status:            string;
+  recipientJson:     string;
+  providerUsed:      string | null;
+  lastErrorMessage:  string | null;
+  failureCategory:   string | null;
+  blockedReason:     string | null;
+  suppressionReason: string | null;
+  metadataJson:      string | null;
+  templateId:        string | null;
+  templateKey:       string | null;
+  templateName:      string | null;
+  templateSource:    string | null;
+  templateVersionId: string | null;
+  productType:       string | null;
+  subject:           string | null;
+  bodyHtml:          string | null;
+  bodyText:          string | null;
+  createdAt:         string;
+  updatedAt:         string;
+}
+
+export interface NotifEvent {
+  id:        string;
+  type:      string;
+  status:    string;
+  detail:    string | null;
+  provider:  string | null;
+  timestamp: string;
+}
+
+export interface NotifIssue {
+  id:          string;
+  category:    string;
+  severity:    string;
+  message:     string;
+  detail:      string | null;
+  resolvedAt:  string | null;
+  createdAt:   string;
+}

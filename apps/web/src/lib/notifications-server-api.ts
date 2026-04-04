@@ -39,12 +39,19 @@ export interface NotifStats {
 
 // ── Re-export client-safe branding types from shared module ──────────────────
 
-export type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, OverrideStatus, TemplatePreviewResult } from './notifications-shared';
+export type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, OverrideStatus, TemplatePreviewResult, NotifDetail, NotifEvent, NotifIssue } from './notifications-shared';
 export { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from './notifications-shared';
 
-import type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, TemplatePreviewResult } from './notifications-shared';
+import type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, TemplatePreviewResult, NotifDetail, NotifEvent, NotifIssue } from './notifications-shared';
 
 // ── Core request ─────────────────────────────────────────────────────────────
+
+export class NotifApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = 'NotifApiError';
+  }
+}
 
 async function notifRequest<T>(
   path: string,
@@ -82,7 +89,7 @@ async function notifRequest<T>(
         }
       } else if (typeof errBody.error === 'string') message = errBody.error;
     } catch { /* ignore non-JSON */ }
-    throw new Error(message);
+    throw new NotifApiError(message, res.status);
   }
 
   if (res.status === 204) return undefined as T;
@@ -199,6 +206,18 @@ export const notificationsServerApi = {
 
   tenantTemplatePreviewVersion(tenantId: string, templateId: string, versionId: string, body: { templateData: Record<string, unknown> }): Promise<{ data: TemplatePreviewResult }> {
     return notifRequest<{ data: TemplatePreviewResult }>(`/v1/templates/${templateId}/versions/${versionId}/preview`, tenantId, { method: 'POST', body });
+  },
+
+  get(tenantId: string, id: string): Promise<{ data: NotifDetail }> {
+    return notifRequest<{ data: NotifDetail }>(`/v1/notifications/${id}`, tenantId);
+  },
+
+  events(tenantId: string, notificationId: string): Promise<{ data: NotifEvent[] }> {
+    return notifRequest<{ data: NotifEvent[] }>(`/v1/notifications/${notificationId}/events`, tenantId);
+  },
+
+  issues(tenantId: string, notificationId: string): Promise<{ data: NotifIssue[] }> {
+    return notifRequest<{ data: NotifIssue[] }>(`/v1/notifications/${notificationId}/issues`, tenantId);
   },
 };
 

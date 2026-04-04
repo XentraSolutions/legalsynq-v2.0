@@ -2871,6 +2871,30 @@ MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it sh
 - **Law firm orgs** use standard tenant-scoped queries. TenantAdmin on law firm sees all referrals in their tenant; regular users see only their org's outbound referrals.
 - Key files: `ReferralEndpoints.cs`, `ReferralRepository.cs`, `GetReferralsQuery.cs` (CrossTenantReceiver flag), `ReferralService.cs` (auto-populates ReceivingOrganizationId).
 
+## NOTIF-UI-009 — Tenant Notification Activity + Delivery Visibility
+
+### Pages (apps/web — tenant portal)
+| Path | Purpose |
+|------|---------|
+| `/notifications/activity` | Activity list — summary cards, delivery breakdown, filterable paginated table |
+| `/notifications/activity/[notificationId]` | Activity detail — metadata, status, failure/block reasons, template usage, content preview, event timeline, issues |
+
+### API Client Extensions
+- `get(tenantId, id)` — single notification detail
+- `events(tenantId, notificationId)` — delivery event timeline
+- `issues(tenantId, notificationId)` — related delivery issues
+
+### Shared Types Added
+- `NotifDetail`, `NotifEvent`, `NotifIssue` in `notifications-shared.ts`
+
+### Key Rules
+- Strictly read-only — no resend/retry actions
+- Tenant-scoped via `requireOrg()` + `x-tenant-id`
+- Events/issues endpoints gracefully degrade if unavailable
+- HTML content rendered in sandboxed iframes (CSP `script-src 'none'`)
+- Template source (global vs override) displayed when backend provides it
+- Metadata JSON fallback for template key, subject, body when direct fields unavailable
+
 ## NOTIF-UI-008 — Tenant Template Override
 
 ### Capabilities
