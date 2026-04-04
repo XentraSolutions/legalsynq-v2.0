@@ -3081,6 +3081,21 @@ Backend wraps all responses in `{ data: ... }`. `BrandedPreviewResult` has flat 
 ### Valid OrgType Values
 `LAW_FIRM`, `PROVIDER`, `FUNDER`, `LIEN_OWNER`, `INTERNAL`
 
+## Artifacts API Server (artifacts/api-server)
+- **Framework:** Express + Sequelize + PostgreSQL (TypeScript)
+- **Port:** 5020 (dev) — started by `scripts/run-dev.sh`
+- **Purpose:** Feedback traceability and artifact management service for Xenia v2.0
+
+### XNA_Core-08-011 — Reverse Traceability & Artifact-Centric Feedback View
+- Reverse lookup from artifact → feedback_action_links → feedback_action_items → feedback_records
+- Admin-only API: `GET /api/admin/artifacts/:artifactType/:artifactId/feedback-links`
+- Supported artifact types: FEATURE, DEFECT, REQUIREMENT, MITIGATION
+- JWT-based admin RBAC middleware (requires PlatformAdmin or TenantAdmin)
+- Deterministic ordering: status priority (OPEN → IN_PROGRESS → RESOLVED → DISMISSED), then date descending, then ID ascending
+- CC UI: `/artifacts` pages with LinkedFeedbackPanel component
+- CC nav: "TRACEABILITY → Artifacts" section in sidebar
+- Database tables: `feedback_records`, `feedback_action_items`, `feedback_action_links`, `artifacts`
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`

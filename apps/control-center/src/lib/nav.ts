@@ -95,6 +95,13 @@ export const CC_NAV: NavSection[] = [
   },
 
   {
+    heading: 'TRACEABILITY',
+    items: [
+      { href: '/artifacts', label: 'Artifacts', icon: 'ri-git-merge-line', badge: 'LIVE' },
+    ],
+  },
+
+  {
     heading: 'OPERATIONS',
     items: [
       { href: '/support',    label: 'Support Tools', icon: 'ri-customer-service-2-line', badge: 'IN PROGRESS' },

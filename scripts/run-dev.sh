@@ -36,6 +36,15 @@ PID_CC=$!
 ) &
 PID_DOTNET=$!
 
+# Start artifacts API server — port 5020
+echo "[artifacts] Starting on :5020"
+(
+  cd "$ROOT/artifacts/api-server"
+  ARTIFACTS_PORT=5020 NODE_ENV=development \
+    node_modules/.bin/ts-node-dev --respawn --transpile-only src/server.ts
+) &
+PID_ARTIFACTS=$!
+
 # Start notifications service — port 5008
 echo "[notifications] Starting on :5008"
 (
@@ -72,9 +81,9 @@ echo "[notifications:worker] Starting status-sync worker"
 PID_STATUS_SYNC=$!
 
 cleanup() {
-    kill "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC" 2>/dev/null || true
+    kill "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_ARTIFACTS" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC" 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-wait "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC"
+wait "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_ARTIFACTS" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC"
