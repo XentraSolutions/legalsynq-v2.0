@@ -36,3 +36,57 @@ export interface BrandingListResponse {
   data: TenantBranding[];
   meta: { total: number; limit: number; offset: number };
 }
+
+export interface GlobalTemplate {
+  id:              string;
+  tenantId:        string | null;
+  templateKey:     string;
+  channel:         string;
+  name:            string;
+  description:     string | null;
+  status:          string;
+  isSystemTemplate: boolean;
+  productType:     ProductType | null;
+  templateScope:   string;
+  editorType:      string;
+  category:        string | null;
+  isBrandable:     boolean;
+  createdAt:       string;
+  updatedAt:       string;
+}
+
+export interface GlobalTemplateVersion {
+  id:                  string;
+  templateId:          string;
+  versionNumber:       number;
+  subjectTemplate:     string | null;
+  bodyTemplate:        string;
+  textTemplate:        string | null;
+  variablesSchemaJson: string | null;
+  sampleDataJson:      string | null;
+  editorJson:          string | null;
+  designTokensJson:    string | null;
+  layoutType:          string | null;
+  status:              string;
+  publishedAt:         string | null;
+  createdAt:           string;
+  updatedAt:           string;
+}
+
+export interface GlobalTemplateListResponse {
+  data: GlobalTemplate[];
+  meta: { total: number; limit: number; offset: number };
+}
+
+export interface BrandedPreviewResult {
+  templateId: string;
+  versionId:  string;
+  subject:    string;
+  body:       string;
+  text:       string;
+  branding: {
+    source:       string;
+    name:         string;
+    primaryColor: string;
+  };
+}

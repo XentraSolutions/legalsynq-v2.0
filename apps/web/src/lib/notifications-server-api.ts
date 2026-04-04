@@ -39,10 +39,10 @@ export interface NotifStats {
 
 // ── Re-export client-safe branding types from shared module ──────────────────
 
-export type { ProductType, TenantBranding, BrandingListResponse } from './notifications-shared';
+export type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult } from './notifications-shared';
 export { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from './notifications-shared';
 
-import type { ProductType, TenantBranding, BrandingListResponse } from './notifications-shared';
+import type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult } from './notifications-shared';
 
 // ── Core request ─────────────────────────────────────────────────────────────
 
@@ -141,6 +141,26 @@ export const notificationsServerApi = {
 
   brandingUpdate(tenantId: string, id: string, body: Record<string, unknown>): Promise<{ data: TenantBranding }> {
     return notifRequest<{ data: TenantBranding }>(`/v1/branding/${id}`, tenantId, { method: 'PATCH', body });
+  },
+
+  globalTemplatesList(tenantId: string, params: { productType: string; limit?: number; offset?: number }): Promise<GlobalTemplateListResponse> {
+    const qs = new URLSearchParams();
+    qs.set('productType', params.productType);
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params.offset !== undefined) qs.set('offset', String(params.offset));
+    return notifRequest<GlobalTemplateListResponse>(`/v1/templates/global?${qs}`, tenantId);
+  },
+
+  globalTemplateGet(tenantId: string, id: string): Promise<{ data: GlobalTemplate }> {
+    return notifRequest<{ data: GlobalTemplate }>(`/v1/templates/global/${id}`, tenantId);
+  },
+
+  globalTemplateVersions(tenantId: string, templateId: string): Promise<{ data: GlobalTemplateVersion[] }> {
+    return notifRequest<{ data: GlobalTemplateVersion[] }>(`/v1/templates/global/${templateId}/versions`, tenantId);
+  },
+
+  globalTemplatePreview(tenantId: string, templateId: string, versionId: string, body: { tenantId: string; productType: string; templateData: Record<string, unknown> }): Promise<{ data: BrandedPreviewResult }> {
+    return notifRequest<{ data: BrandedPreviewResult }>(`/v1/templates/global/${templateId}/versions/${versionId}/preview`, tenantId, { method: 'POST', body });
   },
 };
 

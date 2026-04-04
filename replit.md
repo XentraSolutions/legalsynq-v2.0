@@ -2871,6 +2871,37 @@ MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it sh
 - **Law firm orgs** use standard tenant-scoped queries. TenantAdmin on law firm sees all referrals in their tenant; regular users see only their org's outbound referrals.
 - Key files: `ReferralEndpoints.cs`, `ReferralRepository.cs`, `GetReferralsQuery.cs` (CrossTenantReceiver flag), `ReferralService.cs` (auto-populates ReceivingOrganizationId).
 
+## NOTIF-UI-007 — Tenant Template Visibility (Read-Only)
+
+### Pages (apps/web — tenant portal)
+| Path | Purpose |
+|------|---------|
+| `/notifications/templates` | Product selection entry — cards for each product type |
+| `/notifications/templates/[productType]` | Product-scoped template list (table) |
+| `/notifications/templates/[productType]/[templateId]` | Template detail + versions + branded preview |
+
+### Components
+| Component | File | Purpose |
+|-----------|------|---------|
+| `TemplateDetailClient` | `src/app/(platform)/notifications/templates/[productType]/[templateId]/template-detail-client.tsx` | Version viewer, preview panel, variable input form |
+
+### Server Actions
+- `previewTemplateVersion` — POST branded preview via backend (tenantId from session)
+
+### API Client Extensions
+- `globalTemplatesList(tenantId, { productType })` — product-scoped template list
+- `globalTemplateGet(tenantId, id)` — single template detail
+- `globalTemplateVersions(tenantId, templateId)` — version list
+- `globalTemplatePreview(tenantId, templateId, versionId, body)` — branded preview
+
+### Shared Types Added
+- `GlobalTemplate`, `GlobalTemplateVersion`, `GlobalTemplateListResponse`, `BrandedPreviewResult` in `notifications-shared.ts`
+
+### Key Rules
+- Product-first access enforced: templates never shown without product selection
+- Strictly read-only — no edit, publish, or override capabilities
+- tenantId derived from session, never from user input
+
 ## NOTIF-UI-006 — Tenant Branding Self-Service (Tenant Portal)
 
 ### Pages

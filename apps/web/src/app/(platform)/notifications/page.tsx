@@ -133,6 +133,13 @@ export default async function NotificationsPage() {
         </div>
         <div className="flex items-center gap-3">
           <Link
+            href="/notifications/templates"
+            className="inline-flex items-center gap-1.5 rounded-md bg-white border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            <i className="ri-file-text-line text-base" />
+            Templates
+          </Link>
+          <Link
             href="/notifications/branding"
             className="inline-flex items-center gap-1.5 rounded-md bg-white border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
           >
