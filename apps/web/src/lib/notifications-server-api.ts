@@ -37,19 +37,23 @@ export interface NotifStats {
   last7d:   { total: number; sent: number; failed: number; blocked: number };
 }
 
+// ── Re-export client-safe branding types from shared module ──────────────────
+
+export type { ProductType, TenantBranding, BrandingListResponse } from './notifications-shared';
+export { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from './notifications-shared';
+
+import type { ProductType, TenantBranding, BrandingListResponse } from './notifications-shared';
+
 // ── Core request ─────────────────────────────────────────────────────────────
 
-/**
- * Tenant-scoped server-side fetch helper for the Notifications service.
- *
- * Attaches both the session Bearer token (for gateway auth) and the
- * x-tenant-id header (for notifications service tenant isolation).
- *
- * Call from Server Components only — never from Client Components.
- */
-async function notifRequest<T>(path: string, tenantId: string): Promise<T> {
+async function notifRequest<T>(
+  path: string,
+  tenantId: string,
+  options: { method?: string; body?: unknown } = {},
+): Promise<T> {
   const cookieStore = await cookies();
   const token = cookieStore.get('platform_session')?.value;
+  const method = options.method ?? 'GET';
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -58,16 +62,25 @@ async function notifRequest<T>(path: string, tenantId: string): Promise<T> {
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${GATEWAY_URL}/notifications${path}`, {
-    method: 'GET',
+    method,
     headers,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     cache: 'no-store',
   });
 
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
     try {
-      const err = await res.json() as Record<string, unknown>;
-      message = (err.message as string) ?? (err.title as string) ?? message;
+      const errBody = await res.json() as Record<string, unknown>;
+      if (typeof errBody.message === 'string') message = errBody.message;
+      else if (typeof errBody.title === 'string') message = errBody.title;
+      else if (typeof errBody.error === 'object' && errBody.error !== null) {
+        const nested = errBody.error as Record<string, unknown>;
+        if (typeof nested.message === 'string') message = nested.message;
+        if (Array.isArray(nested.details) && nested.details.length > 0) {
+          message += ': ' + nested.details.join('; ');
+        }
+      } else if (typeof errBody.error === 'string') message = errBody.error;
     } catch { /* ignore non-JSON */ }
     throw new Error(message);
   }
@@ -107,6 +120,27 @@ export const notificationsServerApi = {
    */
   stats(tenantId: string): Promise<{ data: NotifStats }> {
     return notifRequest<{ data: NotifStats }>('/v1/notifications/stats', tenantId);
+  },
+
+  brandingList(tenantId: string, params: { productType?: string; limit?: number; offset?: number } = {}): Promise<BrandingListResponse> {
+    const qs = new URLSearchParams();
+    if (params.productType) qs.set('productType', params.productType);
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params.offset !== undefined) qs.set('offset', String(params.offset));
+    const q = qs.toString();
+    return notifRequest<BrandingListResponse>(`/v1/branding${q ? `?${q}` : ''}`, tenantId);
+  },
+
+  brandingGet(tenantId: string, id: string): Promise<{ data: TenantBranding }> {
+    return notifRequest<{ data: TenantBranding }>(`/v1/branding/${id}`, tenantId);
+  },
+
+  brandingCreate(tenantId: string, body: Record<string, unknown>): Promise<{ data: TenantBranding }> {
+    return notifRequest<{ data: TenantBranding }>('/v1/branding', tenantId, { method: 'POST', body });
+  },
+
+  brandingUpdate(tenantId: string, id: string, body: Record<string, unknown>): Promise<{ data: TenantBranding }> {
+    return notifRequest<{ data: TenantBranding }>(`/v1/branding/${id}`, tenantId, { method: 'PATCH', body });
   },
 };
 

@@ -2871,6 +2871,31 @@ MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it sh
 - **Law firm orgs** use standard tenant-scoped queries. TenantAdmin on law firm sees all referrals in their tenant; regular users see only their org's outbound referrals.
 - Key files: `ReferralEndpoints.cs`, `ReferralRepository.cs`, `GetReferralsQuery.cs` (CrossTenantReceiver flag), `ReferralService.cs` (auto-populates ReceivingOrganizationId).
 
+## NOTIF-UI-006 — Tenant Branding Self-Service (Tenant Portal)
+
+### Pages
+| Path | Purpose |
+|------|---------|
+| `/notifications/branding` | Tenant branding list + create/edit/detail (apps/web tenant portal) |
+
+### Components (apps/web)
+| Component | File | Purpose |
+|-----------|------|---------|
+| `TenantBrandingForm` | `src/components/notifications/tenant-branding-form.tsx` | Shared create+edit form with live preview |
+| `BrandingPreviewCard` | `src/components/notifications/branding-preview-card.tsx` | Visual brand preview (header, body, footer) |
+| `BrandingEmptyState` | `src/components/notifications/branding-empty-state.tsx` | Empty state with CTA |
+| `ProductTypeBadge` | `src/components/notifications/product-type-badge.tsx` | Colour-coded product type badge |
+| `ColorSwatchField` | `src/components/notifications/color-swatch-field.tsx` | Colour picker + hex text input |
+
+### Server Actions (apps/web)
+- `createBranding` — creates branding for the authenticated tenant (tenantId from session)
+- `updateBranding` — updates existing branding record
+
+### API Client
+- Extended `notifications-server-api.ts` with `brandingList`, `brandingGet`, `brandingCreate`, `brandingUpdate`
+- `notifRequest()` supports POST/PATCH via `method` + `body` options
+- All requests inject `x-tenant-id` from `session.tenantId` — never from user input
+
 ## NOTIF-UI-005 — Control Center Global Templates + Branding Admin UI
 
 ### Pages
