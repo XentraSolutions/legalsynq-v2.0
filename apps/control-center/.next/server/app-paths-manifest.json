@@ -1,6 +1,1 @@
-{
-  "/roles/page": "app/roles/page.js",
-  "/legacy-coverage/page": "app/legacy-coverage/page.js",
-  "/tenant-users/page": "app/tenant-users/page.js",
-  "/login/page": "app/login/page.js"
-}
+{}
