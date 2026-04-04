@@ -140,6 +140,26 @@ export type TenantChannelProviderMode = "platform_managed" | "tenant_managed";
 
 export type TenantProviderConfigStatus = "active" | "inactive";
 
+// ─── NOTIF-008: Product Types ────────────────────────────────────────────────
+
+export type ProductType = "careconnect" | "synqlien" | "synqfund" | "synqrx" | "synqpayout";
+
+export const ProductTypes: ProductType[] = [
+  "careconnect",
+  "synqlien",
+  "synqfund",
+  "synqrx",
+  "synqpayout",
+];
+
+export type TemplateScope = "global" | "tenant";
+
+export const TemplateScopes: TemplateScope[] = ["global", "tenant"];
+
+export type EditorType = "wysiwyg" | "html" | "text";
+
+export const EditorTypes: EditorType[] = ["wysiwyg", "html", "text"];
+
 // ─── Express Augmentation ────────────────────────────────────────────────────
 
 declare global {

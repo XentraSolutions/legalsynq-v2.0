@@ -2871,6 +2871,39 @@ MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it sh
 - **Law firm orgs** use standard tenant-scoped queries. TenantAdmin on law firm sees all referrals in their tenant; regular users see only their org's outbound referrals.
 - Key files: `ReferralEndpoints.cs`, `ReferralRepository.cs`, `GetReferralsQuery.cs` (CrossTenantReceiver flag), `ReferralService.cs` (auto-populates ReceivingOrganizationId).
 
+## NOTIF-008 — Global Product Templates + Tenant Branding Backend
+
+### New Route Groups (all prefixed `/v1/`)
+| Prefix | Description |
+|--------|-------------|
+| `/v1/templates/global` | Global template CRUD + versioning + branded preview |
+| `/v1/branding` | Tenant branding CRUD |
+
+### New Models
+- **TenantBranding** — per-tenant, per-product branding (colors, logo, support info, email header/footer)
+  - Unique: `(tenant_id, product_type)`
+
+### Template Model Extensions
+- `productType` (nullable) — which product owns the template (careconnect, synqlien, etc.)
+- `templateScope` — `global` or `tenant`
+- `editorType` — `wysiwyg`, `html`, or `text`
+- `category` (nullable) — optional grouping
+- `isBrandable` — whether branding tokens are injected at render time
+
+### TemplateVersion Extensions
+- `editorJson` — WYSIWYG editor source of truth (JSON)
+- `designTokensJson` — design token overrides
+- `layoutType` — layout classification
+
+### Branding Token System
+- Reserved tokens: `{{brand.name}}`, `{{brand.logoUrl}}`, `{{brand.primaryColor}}`, etc.
+- Injected at render time by `BrandingResolutionService`
+- Fallback: product defaults → platform defaults (code-backed, replaceable)
+- Caller template data cannot override branding tokens
+
+### Product Types
+`careconnect`, `synqlien`, `synqfund`, `synqrx`, `synqpayout`
+
 ### Valid OrgType Values
 `LAW_FIRM`, `PROVIDER`, `FUNDER`, `LIEN_OWNER`, `INTERNAL`
 

@@ -47,7 +47,14 @@ export type AuditEventType =
   | "contact_policy.updated"
   | "notification.blocked_by_suppression"
   | "notification.override_used"
-  | "contact_suppression.auto_created_from_provider_event";
+  | "contact_suppression.auto_created_from_provider_event"
+  | "global_template.created"
+  | "global_template.updated"
+  | "global_template.version.created"
+  | "global_template.version.published"
+  | "global_template.preview.branded"
+  | "tenant_branding.created"
+  | "tenant_branding.updated";
 
 export interface AuditEvent {
   eventType: AuditEventType;

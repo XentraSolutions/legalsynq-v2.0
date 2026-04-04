@@ -1,7 +1,7 @@
 import { Template } from "../models/template.model";
 import { TemplateVersion } from "../models/template-version.model";
 import { TemplateRepository, TemplateVersionRepository } from "../repositories/template.repository";
-import { NotificationChannel } from "../types";
+import { NotificationChannel, ProductType } from "../types";
 import { logger } from "../shared/logger";
 
 export interface ResolvedTemplate {
@@ -29,7 +29,6 @@ export class TemplateResolutionService {
     templateKey: string,
     channel: NotificationChannel
   ): Promise<ResolvedTemplate | null> {
-    // 1. Try tenant-specific
     const tenantTemplate = await this.templateRepo.findByKey(templateKey, channel, tenantId);
     if (tenantTemplate && tenantTemplate.status === "active") {
       const version = await this.versionRepo.findPublishedByTemplateId(tenantTemplate.id);
@@ -45,7 +44,6 @@ export class TemplateResolutionService {
       }
     }
 
-    // 2. Try global/system fallback (tenantId = null)
     const globalTemplate = await this.templateRepo.findByKey(templateKey, channel, null);
     if (globalTemplate && globalTemplate.status === "active") {
       const version = await this.versionRepo.findPublishedByTemplateId(globalTemplate.id);
@@ -67,5 +65,35 @@ export class TemplateResolutionService {
       channel,
     });
     return null;
+  }
+
+  async resolveByProduct(
+    tenantId: string,
+    templateKey: string,
+    channel: NotificationChannel,
+    productType: ProductType
+  ): Promise<ResolvedTemplate | null> {
+    const globalTemplate = await this.templateRepo.findGlobalByProductKey(
+      productType,
+      channel,
+      templateKey,
+      "global"
+    );
+    if (globalTemplate && globalTemplate.status === "active") {
+      const version = await this.versionRepo.findPublishedByTemplateId(globalTemplate.id);
+      if (version) {
+        logger.debug("Template resolved via product-type global template", {
+          tenantId,
+          templateKey,
+          channel,
+          productType,
+          templateId: globalTemplate.id,
+          versionId: version.id,
+        });
+        return { template: globalTemplate, version };
+      }
+    }
+
+    return this.resolve(tenantId, templateKey, channel);
   }
 }

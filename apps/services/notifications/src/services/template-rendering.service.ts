@@ -1,5 +1,4 @@
-const PLACEHOLDER_REGEX = /\{\{(\w+)\}\}/g;
-const UNRESOLVED_CHECK_REGEX = /\{\{\w+\}\}/;
+const PLACEHOLDER_REGEX = /\{\{([\w.]+)\}\}/g;
 
 export interface VariablesSchema {
   required?: string[];
@@ -17,6 +16,13 @@ export interface ValidationResult {
   errors: string[];
 }
 
+export interface BrandedRenderInput {
+  subjectTemplate: string | null;
+  bodyTemplate: string;
+  textTemplate: string | null;
+  variablesSchemaJson: string | null;
+}
+
 export class TemplateRenderingService {
   validateVariables(
     schema: VariablesSchema | null,
@@ -26,7 +32,6 @@ export class TemplateRenderingService {
 
     const errors: string[] = [];
 
-    // Check required fields
     if (schema.required) {
       for (const key of schema.required) {
         if (data[key] === undefined || data[key] === null) {
@@ -35,10 +40,9 @@ export class TemplateRenderingService {
       }
     }
 
-    // Type validation where schema.properties is specified
     if (schema.properties) {
       for (const [key, def] of Object.entries(schema.properties)) {
-        if (data[key] === undefined) continue; // missing optionals are fine
+        if (data[key] === undefined) continue;
         const value = data[key];
         if (def.type) {
           const actualType = typeof value;
@@ -60,7 +64,6 @@ export class TemplateRenderingService {
     return template.replace(PLACEHOLDER_REGEX, (_match, key: string) => {
       const value = data[key];
       if (value === undefined || value === null) {
-        // Return the original placeholder — will be caught by unresolved check
         return `{{${key}}}`;
       }
       return String(value);
@@ -70,7 +73,7 @@ export class TemplateRenderingService {
   checkUnresolved(rendered: string): string[] {
     const unresolved: string[] = [];
     let match: RegExpExecArray | null;
-    const re = /\{\{(\w+)\}\}/g;
+    const re = /\{\{([\w.]+)\}\}/g;
     while ((match = re.exec(rendered)) !== null) {
       if (!unresolved.includes(match[1]!)) unresolved.push(match[1]!);
     }
@@ -86,7 +89,6 @@ export class TemplateRenderingService {
     },
     data: Record<string, unknown>
   ): { result: RenderResult; errors: string[] } {
-    // Parse and validate schema
     let schema: VariablesSchema | null = null;
     if (input.variablesSchemaJson) {
       try {
@@ -101,12 +103,10 @@ export class TemplateRenderingService {
       return { result: { subject: null, body: "", text: null }, errors: validation.errors };
     }
 
-    // Render each template part
     const body = this.renderTemplate(input.bodyTemplate, data);
     const subject = input.subjectTemplate ? this.renderTemplate(input.subjectTemplate, data) : null;
     const text = input.textTemplate ? this.renderTemplate(input.textTemplate, data) : null;
 
-    // Check for unresolved placeholders
     const errors: string[] = [];
     const unresolved = [
       ...this.checkUnresolved(body),
@@ -123,6 +123,26 @@ export class TemplateRenderingService {
     }
 
     return { result: { subject, body, text }, errors: [] };
+  }
+
+  renderBranded(
+    input: BrandedRenderInput,
+    templateData: Record<string, unknown>,
+    brandingTokens: Record<string, string>
+  ): { result: RenderResult; errors: string[] } {
+    const mergedData: Record<string, unknown> = {};
+
+    for (const [key, value] of Object.entries(templateData)) {
+      if (!key.startsWith("brand.")) {
+        mergedData[key] = value;
+      }
+    }
+
+    for (const [key, value] of Object.entries(brandingTokens)) {
+      mergedData[key] = value;
+    }
+
+    return this.render(input, mergedData);
   }
 }
 

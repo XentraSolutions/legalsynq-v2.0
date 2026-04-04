@@ -3,6 +3,7 @@ import { NotificationAttemptRepository } from "../repositories/notification-atte
 import { ProviderRoutingService, isFailoverEligible, ResolvedProvider } from "./provider-routing.service";
 import { TemplateResolutionService } from "./template-resolution.service";
 import { templateRenderingService } from "./template-rendering.service";
+import { brandingResolutionService } from "./branding-resolution.service";
 import { resolveProviderCredentials } from "./tenant-provider-config.service";
 import { providerRegistry } from "../integrations/providers/registry/provider.registry";
 import { SendGridEmailProviderAdapter } from "../integrations/providers/adapters/sendgrid.adapter";
@@ -33,6 +34,7 @@ export interface SubmitNotificationInput {
   // Template mode
   templateKey?: string;
   templateData?: Record<string, unknown>;
+  productType?: import("../types").ProductType;
   // NOTIF-007: Override suppression
   sendOptions?: {
     overrideSuppression?: boolean;
@@ -111,7 +113,9 @@ export class NotificationService {
     if (isTemplateMode) {
       const { templateKey, templateData = {} } = input;
 
-      const resolved = await this.templateResolutionSvc.resolve(tenantId, templateKey!, channel);
+      const resolved = input.productType
+        ? await this.templateResolutionSvc.resolveByProduct(tenantId, templateKey!, channel, input.productType)
+        : await this.templateResolutionSvc.resolve(tenantId, templateKey!, channel);
       if (!resolved) {
         await auditClient.publishEvent({
           eventType: "template.resolution.failed",
@@ -125,7 +129,15 @@ export class NotificationService {
         );
       }
 
-      const { result: rendered, errors } = templateRenderingService.render(resolved.version, templateData);
+      let renderResult: { result: import("./template-rendering.service").RenderResult; errors: string[] };
+      if (resolved.template.isBrandable && resolved.template.productType) {
+        const branding = await brandingResolutionService.resolve(tenantId, resolved.template.productType);
+        const brandingTokens = brandingResolutionService.buildBrandingTokens(branding);
+        renderResult = templateRenderingService.renderBranded(resolved.version, templateData, brandingTokens);
+      } else {
+        renderResult = templateRenderingService.render(resolved.version, templateData);
+      }
+      const { result: rendered, errors } = renderResult;
       if (errors.length > 0) {
         throw Object.assign(
           new Error(`Template rendering failed: ${errors.join("; ")}`),

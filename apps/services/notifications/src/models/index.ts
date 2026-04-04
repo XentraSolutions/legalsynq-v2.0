@@ -19,6 +19,7 @@ import { initTenantBillingRateModel } from "./tenant-billing-rate.model";
 import { initTenantRateLimitPolicyModel } from "./tenant-rate-limit-policy.model";
 import { initContactSuppressionModel } from "./contact-suppression.model";
 import { initTenantContactPolicyModel } from "./tenant-contact-policy.model";
+import { initTenantBrandingModel } from "./tenant-branding.model";
 
 let sequelize: Sequelize | null = null;
 
@@ -63,6 +64,7 @@ export async function initDatabase(config: AppConfig, opts: { skipSync?: boolean
   initTenantRateLimitPolicyModel(sequelize);
   initContactSuppressionModel(sequelize);
   initTenantContactPolicyModel(sequelize);
+  initTenantBrandingModel(sequelize);
 
   // Associations
   NotificationAttempt.belongsTo(Notification, { foreignKey: "notificationId", as: "notification" });

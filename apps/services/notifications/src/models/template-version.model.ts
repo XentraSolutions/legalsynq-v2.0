@@ -11,6 +11,9 @@ interface TemplateVersionAttributes {
   textTemplate: string | null;
   variablesSchemaJson: string | null;
   sampleDataJson: string | null;
+  editorJson: string | null;
+  designTokensJson: string | null;
+  layoutType: string | null;
   status: TemplateVersionStatus;
   publishedAt: Date | null;
   createdAt?: Date;
@@ -26,6 +29,9 @@ interface TemplateVersionCreationAttributes
     | "textTemplate"
     | "variablesSchemaJson"
     | "sampleDataJson"
+    | "editorJson"
+    | "designTokensJson"
+    | "layoutType"
     | "status"
     | "publishedAt"
   > {}
@@ -39,6 +45,9 @@ export class TemplateVersion extends Model<TemplateVersionAttributes, TemplateVe
   declare textTemplate: string | null;
   declare variablesSchemaJson: string | null;
   declare sampleDataJson: string | null;
+  declare editorJson: string | null;
+  declare designTokensJson: string | null;
+  declare layoutType: string | null;
   declare status: TemplateVersionStatus;
   declare publishedAt: Date | null;
   declare createdAt: Date;
@@ -71,7 +80,7 @@ export function initTemplateVersionModel(sequelize: Sequelize): void {
         field: "subject_template",
       },
       bodyTemplate: {
-        type: DataTypes.TEXT,
+        type: DataTypes.TEXT("long"),
         allowNull: false,
         field: "body_template",
       },
@@ -92,6 +101,24 @@ export function initTemplateVersionModel(sequelize: Sequelize): void {
         allowNull: true,
         defaultValue: null,
         field: "sample_data_json",
+      },
+      editorJson: {
+        type: DataTypes.TEXT("long"),
+        allowNull: true,
+        defaultValue: null,
+        field: "editor_json",
+      },
+      designTokensJson: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        defaultValue: null,
+        field: "design_tokens_json",
+      },
+      layoutType: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+        defaultValue: null,
+        field: "layout_type",
       },
       status: {
         type: DataTypes.ENUM("draft", "published", "retired"),
