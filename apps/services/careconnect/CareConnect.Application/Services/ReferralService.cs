@@ -253,6 +253,44 @@ public class ReferralService : IReferralService
         {
             try { await _notifications.CreateReferralStatusChangedAsync(effectiveTenantId, referral.Id, userId, ct); }
             catch { /* Notification failure must not break the referral update. */ }
+
+            var scopeFactory = _scopeFactory;
+            var logger       = _logger;
+            var newStatus    = request.Status;
+            var referralId   = referral.Id;
+            var providerId   = referral.ProviderId;
+            var actingUserId = userId;
+
+            _ = Task.Run(async () =>
+            {
+                using var scope   = scopeFactory.CreateScope();
+                var       emailSvc  = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
+                var       provRepo  = scope.ServiceProvider.GetRequiredService<IProviderRepository>();
+                try
+                {
+                    var provider = await provRepo.GetByIdCrossAsync(providerId, CancellationToken.None);
+                    if (provider is null) return;
+
+                    switch (newStatus)
+                    {
+                        case Referral.ValidStatuses.Accepted:
+                            await emailSvc.SendAcceptanceConfirmationsAsync(referral, provider, CancellationToken.None);
+                            break;
+                        case Referral.ValidStatuses.Declined:
+                            await emailSvc.SendRejectionNotificationsAsync(referral, provider, actingUserId, CancellationToken.None);
+                            break;
+                        case Referral.ValidStatuses.Cancelled:
+                            await emailSvc.SendCancellationNotificationsAsync(referral, provider, actingUserId, CancellationToken.None);
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "Background referral status notification failed for referral {ReferralId} (status={Status}).",
+                        referralId, newStatus);
+                }
+            });
         }
 
         // Canonical audit: careconnect.referral.updated — fire-and-observe.

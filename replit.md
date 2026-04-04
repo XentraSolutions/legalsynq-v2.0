@@ -589,6 +589,20 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - **Tests:** 35 new tests in `ReferralRetryTests.cs` covering policy eligibility, delay schedule, derived-state derivation, domain methods, retry/resend distinction, constants. **292 tests pass** (5 pre-existing `ProviderAvailabilityServiceTests` failures unchanged).
 - **Report:** `/analysis/LSCC-005-02.md`
 
+**CCX-002 — CareConnect Referral Notifications & Delivery Wiring (complete):**
+- **Scope:** Wired all four referral lifecycle events (submitted, accepted, rejected, cancelled) to notification creation and email delivery.
+- **New notification types:** `ReferralRejectedProvider`, `ReferralRejectedReferrer`, `ReferralCancelledProvider`, `ReferralCancelledReferrer` added to `NotificationType.cs`.
+- **Idempotency:** `DedupeKey` field added to `CareConnectNotification` model (varchar 500, nullable, unique index). Format: `referral:{referralId}:{event}:{recipientRole}`. All referral notification creation paths check `ExistsByDedupeKeyAsync` before creating. Applied to new AND existing paths (created, accepted, rejected, cancelled).
+- **Rejection notifications:** `SendRejectionNotificationsAsync` on `IReferralEmailService` — notifies provider and referrer when status → Declined.
+- **Cancellation notifications:** `SendCancellationNotificationsAsync` on `IReferralEmailService` — notifies provider and referrer when status → Cancelled.
+- **Wiring:** `ReferralService.UpdateAsync` dispatches email notifications via fire-and-observe `Task.Run` for Accepted/Declined/Cancelled status transitions. Uses `GetByIdCrossAsync` for cross-tenant provider lookup.
+- **Retry support:** All 4 new notification types added to `RetryNotificationAsync` switch cases in `ReferralEmailService`.
+- **Email templates:** 4 new HTML templates (BuildProviderRejectionHtml, BuildReferrerRejectionHtml, BuildProviderCancellationHtml, BuildReferrerCancellationHtml).
+- **Migration:** `20260404000000_AddNotificationDedupeKey` — adds `DedupeKey` column + unique index.
+- **No frontend changes:** Backend-only feature, fire-and-observe pattern.
+- **No appointment notifications added.**
+- **Report:** `/analysis/CCX-002-report.md`
+
 ## CareConnect Provider Geo / Map-Ready Discovery
 
 - **Radius search:** `latitude` + `longitude` + `radiusMiles` (max 100 mi). Bounding-box filter in `ProviderGeoHelper.BoundingBox`.

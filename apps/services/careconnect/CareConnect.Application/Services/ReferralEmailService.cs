@@ -150,6 +150,8 @@ public class ReferralEmailService : IReferralEmailService
             return;
         }
 
+        var dedupeKey = $"referral:{referral.Id}:created:provider";
+
         var token     = GenerateViewToken(referral.Id, referral.TokenVersion);
         var viewLink  = $"{_appBaseUrl}/referrals/view?token={token}";
         var subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
@@ -166,9 +168,14 @@ public class ReferralEmailService : IReferralEmailService
             message:           viewLink,
             scheduledForUtc:   null,
             createdByUserId:   referral.CreatedByUserId,
-            triggerSource:     NotificationSource.Initial);
+            triggerSource:     NotificationSource.Initial,
+            dedupeKey:         dedupeKey);
 
-        await _notifications.AddAsync(notification, ct);
+        if (!await _notifications.TryAddWithDedupeAsync(notification, ct))
+        {
+            _logger.LogInformation("Duplicate new-referral notification skipped for referral {ReferralId}.", referral.Id);
+            return;
+        }
 
         // LSCC-005-02: schedule retry on failure (attempt 1 → retry after 5 min)
         await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct,
@@ -227,10 +234,11 @@ public class ReferralEmailService : IReferralEmailService
         CancellationToken ct = default)
     {
         var tasks = new List<Task>();
+        var dedupePrefix = $"referral:{referral.Id}:accepted";
 
-        // 1. Confirmation to the provider
         if (!string.IsNullOrWhiteSpace(provider.Email))
         {
+            var provDedupeKey = $"{dedupePrefix}:provider";
             var provSubject = $"Referral accepted — {referral.ClientFirstName} {referral.ClientLastName}";
             var provBody    = BuildProviderAcceptanceHtml(referral, provider);
 
@@ -245,12 +253,14 @@ public class ReferralEmailService : IReferralEmailService
                 message:           null,
                 scheduledForUtc:   null,
                 createdByUserId:   null,
-                triggerSource:     NotificationSource.Initial);
+                triggerSource:     NotificationSource.Initial,
+                dedupeKey:         provDedupeKey);
 
-            await _notifications.AddAsync(provNotif, ct);
-            // LSCC-005-02: schedule retry on failure (attempt 1 → retry after 5 min)
-            tasks.Add(TrySendAndUpdateAsync(provNotif, provider.Email, provSubject, provBody, ct,
-                nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            if (await _notifications.TryAddWithDedupeAsync(provNotif, ct))
+            {
+                tasks.Add(TrySendAndUpdateAsync(provNotif, provider.Email, provSubject, provBody, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            }
         }
         else
         {
@@ -259,9 +269,9 @@ public class ReferralEmailService : IReferralEmailService
                 provider.Id);
         }
 
-        // 2. Confirmation to the referrer (if email was captured at creation)
         if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
         {
+            var refDedupeKey = $"{dedupePrefix}:referrer";
             var refSubject = $"Your referral was accepted — {referral.ClientFirstName} {referral.ClientLastName}";
             var refBody    = BuildReferrerAcceptanceHtml(referral, provider);
 
@@ -276,12 +286,14 @@ public class ReferralEmailService : IReferralEmailService
                 message:           null,
                 scheduledForUtc:   null,
                 createdByUserId:   null,
-                triggerSource:     NotificationSource.Initial);
+                triggerSource:     NotificationSource.Initial,
+                dedupeKey:         refDedupeKey);
 
-            await _notifications.AddAsync(refNotif, ct);
-            // LSCC-005-02: schedule retry on failure
-            tasks.Add(TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct,
-                nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            if (await _notifications.TryAddWithDedupeAsync(refNotif, ct))
+            {
+                tasks.Add(TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            }
         }
         else
         {
@@ -290,9 +302,9 @@ public class ReferralEmailService : IReferralEmailService
                 referral.Id);
         }
 
-        // 3. LSCC-01-002: Notification to the client (graceful skip if no email captured at creation)
         if (!string.IsNullOrWhiteSpace(referral.ClientEmail))
         {
+            var clientDedupeKey = $"{dedupePrefix}:client";
             var clientSubject = $"Your case has been accepted — {provider.OrganizationName ?? provider.Name}";
             var clientBody    = BuildClientAcceptanceHtml(referral, provider);
 
@@ -307,12 +319,14 @@ public class ReferralEmailService : IReferralEmailService
                 message:           null,
                 scheduledForUtc:   null,
                 createdByUserId:   null,
-                triggerSource:     NotificationSource.Initial);
+                triggerSource:     NotificationSource.Initial,
+                dedupeKey:         clientDedupeKey);
 
-            await _notifications.AddAsync(clientNotif, ct);
-            // LSCC-005-02: schedule retry on failure
-            tasks.Add(TrySendAndUpdateAsync(clientNotif, referral.ClientEmail, clientSubject, clientBody, ct,
-                nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            if (await _notifications.TryAddWithDedupeAsync(clientNotif, ct))
+            {
+                tasks.Add(TrySendAndUpdateAsync(clientNotif, referral.ClientEmail, clientSubject, clientBody, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            }
         }
         else
         {
@@ -320,6 +334,144 @@ public class ReferralEmailService : IReferralEmailService
                 "Skipping client acceptance email for referral {ReferralId}: no ClientEmail stored. " +
                 "Acceptance is not blocked — provider and referrer have been notified.",
                 referral.Id);
+        }
+
+        await Task.WhenAll(tasks);
+    }
+
+    // ── CCX-002: Rejection notifications ─────────────────────────────────────
+
+    public async Task SendRejectionNotificationsAsync(
+        Referral referral,
+        Provider provider,
+        Guid? actingUserId,
+        CancellationToken ct = default)
+    {
+        var tasks = new List<Task>();
+
+        var dedupePrefix = $"referral:{referral.Id}:declined";
+
+        if (!string.IsNullOrWhiteSpace(provider.Email))
+        {
+            var provDedupeKey = $"{dedupePrefix}:provider";
+            var provSubject = $"Referral declined — {referral.ClientFirstName} {referral.ClientLastName}";
+            var provBody    = BuildProviderRejectionHtml(referral, provider);
+
+            var provNotif = CareConnectNotification.Create(
+                tenantId:          referral.TenantId,
+                notificationType:  NotificationType.ReferralRejectedProvider,
+                relatedEntityType: NotificationRelatedEntityType.Referral,
+                relatedEntityId:   referral.Id,
+                recipientType:     NotificationRecipientType.Provider,
+                recipientAddress:  provider.Email,
+                subject:           provSubject,
+                message:           null,
+                scheduledForUtc:   null,
+                createdByUserId:   actingUserId,
+                triggerSource:     NotificationSource.Initial,
+                dedupeKey:         provDedupeKey);
+
+            if (await _notifications.TryAddWithDedupeAsync(provNotif, ct))
+            {
+                tasks.Add(TrySendAndUpdateAsync(provNotif, provider.Email, provSubject, provBody, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
+        {
+            var refDedupeKey = $"{dedupePrefix}:referrer";
+            var refSubject = $"Your referral was declined — {referral.ClientFirstName} {referral.ClientLastName}";
+            var refBody    = BuildReferrerRejectionHtml(referral, provider);
+
+            var refNotif = CareConnectNotification.Create(
+                tenantId:          referral.TenantId,
+                notificationType:  NotificationType.ReferralRejectedReferrer,
+                relatedEntityType: NotificationRelatedEntityType.Referral,
+                relatedEntityId:   referral.Id,
+                recipientType:     NotificationRecipientType.InternalUser,
+                recipientAddress:  referral.ReferrerEmail,
+                subject:           refSubject,
+                message:           null,
+                scheduledForUtc:   null,
+                createdByUserId:   actingUserId,
+                triggerSource:     NotificationSource.Initial,
+                dedupeKey:         refDedupeKey);
+
+            if (await _notifications.TryAddWithDedupeAsync(refNotif, ct))
+            {
+                tasks.Add(TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            }
+        }
+
+        await Task.WhenAll(tasks);
+    }
+
+    // ── CCX-002: Cancellation notifications ───────────────────────────────────
+
+    public async Task SendCancellationNotificationsAsync(
+        Referral referral,
+        Provider provider,
+        Guid? actingUserId,
+        CancellationToken ct = default)
+    {
+        var tasks = new List<Task>();
+
+        var dedupePrefix = $"referral:{referral.Id}:cancelled";
+
+        if (!string.IsNullOrWhiteSpace(provider.Email))
+        {
+            var provDedupeKey = $"{dedupePrefix}:provider";
+            var provSubject = $"Referral cancelled — {referral.ClientFirstName} {referral.ClientLastName}";
+            var provBody    = BuildProviderCancellationHtml(referral, provider);
+
+            var provNotif = CareConnectNotification.Create(
+                tenantId:          referral.TenantId,
+                notificationType:  NotificationType.ReferralCancelledProvider,
+                relatedEntityType: NotificationRelatedEntityType.Referral,
+                relatedEntityId:   referral.Id,
+                recipientType:     NotificationRecipientType.Provider,
+                recipientAddress:  provider.Email,
+                subject:           provSubject,
+                message:           null,
+                scheduledForUtc:   null,
+                createdByUserId:   actingUserId,
+                triggerSource:     NotificationSource.Initial,
+                dedupeKey:         provDedupeKey);
+
+            if (await _notifications.TryAddWithDedupeAsync(provNotif, ct))
+            {
+                tasks.Add(TrySendAndUpdateAsync(provNotif, provider.Email, provSubject, provBody, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
+        {
+            var refDedupeKey = $"{dedupePrefix}:referrer";
+            var refSubject = $"Your referral was cancelled — {referral.ClientFirstName} {referral.ClientLastName}";
+            var refBody    = BuildReferrerCancellationHtml(referral, provider);
+
+            var refNotif = CareConnectNotification.Create(
+                tenantId:          referral.TenantId,
+                notificationType:  NotificationType.ReferralCancelledReferrer,
+                relatedEntityType: NotificationRelatedEntityType.Referral,
+                relatedEntityId:   referral.Id,
+                recipientType:     NotificationRecipientType.InternalUser,
+                recipientAddress:  referral.ReferrerEmail,
+                subject:           refSubject,
+                message:           null,
+                scheduledForUtc:   null,
+                createdByUserId:   actingUserId,
+                triggerSource:     NotificationSource.Initial,
+                dedupeKey:         refDedupeKey);
+
+            if (await _notifications.TryAddWithDedupeAsync(refNotif, ct))
+            {
+                tasks.Add(TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct,
+                    nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
+            }
         }
 
         await Task.WhenAll(tasks);
@@ -406,6 +558,58 @@ public class ReferralEmailService : IReferralEmailService
                 }
                 subject = $"Your case has been accepted — {provider.OrganizationName ?? provider.Name}";
                 body    = BuildClientAcceptanceHtml(referral, provider);
+                break;
+            }
+            case NotificationType.ReferralRejectedProvider:
+            {
+                if (string.IsNullOrWhiteSpace(provider.Email))
+                {
+                    notification.ClearRetrySchedule();
+                    await _notifications.UpdateAsync(notification, ct);
+                    return;
+                }
+                subject   = $"Referral declined — {referral.ClientFirstName} {referral.ClientLastName}";
+                body      = BuildProviderRejectionHtml(referral, provider);
+                toAddress = provider.Email;
+                break;
+            }
+            case NotificationType.ReferralRejectedReferrer:
+            {
+                toAddress = notification.RecipientAddress ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(toAddress))
+                {
+                    notification.ClearRetrySchedule();
+                    await _notifications.UpdateAsync(notification, ct);
+                    return;
+                }
+                subject = $"Your referral was declined — {referral.ClientFirstName} {referral.ClientLastName}";
+                body    = BuildReferrerRejectionHtml(referral, provider);
+                break;
+            }
+            case NotificationType.ReferralCancelledProvider:
+            {
+                if (string.IsNullOrWhiteSpace(provider.Email))
+                {
+                    notification.ClearRetrySchedule();
+                    await _notifications.UpdateAsync(notification, ct);
+                    return;
+                }
+                subject   = $"Referral cancelled — {referral.ClientFirstName} {referral.ClientLastName}";
+                body      = BuildProviderCancellationHtml(referral, provider);
+                toAddress = provider.Email;
+                break;
+            }
+            case NotificationType.ReferralCancelledReferrer:
+            {
+                toAddress = notification.RecipientAddress ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(toAddress))
+                {
+                    notification.ClearRetrySchedule();
+                    await _notifications.UpdateAsync(notification, ct);
+                    return;
+                }
+                subject = $"Your referral was cancelled — {referral.ClientFirstName} {referral.ClientLastName}";
+                body    = BuildReferrerCancellationHtml(referral, provider);
                 break;
             }
             default:
@@ -546,7 +750,6 @@ public class ReferralEmailService : IReferralEmailService
             """;
     }
 
-    // LSCC-01-002: client-facing acceptance notification template
     private static string BuildClientAcceptanceHtml(Referral r, Provider p)
     {
         var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
@@ -568,6 +771,93 @@ public class ReferralEmailService : IReferralEmailService
               <p style="margin-top:32px;font-size:12px;color:#888">
                 If you have any questions in the meantime, please contact the party
                 who referred you.
+              </p>
+            </body>
+            </html>
+            """;
+    }
+
+    private static string BuildProviderRejectionHtml(Referral r, Provider p)
+    {
+        var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        return $"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
+              <h2 style="color:#c81e1e">Referral Declined</h2>
+              <p>Hello{(!string.IsNullOrWhiteSpace(provName) ? $" {provName}" : "")},</p>
+              <p>
+                You have declined the referral for
+                <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
+                requesting <strong>{r.RequestedService}</strong>.
+              </p>
+              <p>The referring party has been notified of your decision.</p>
+            </body>
+            </html>
+            """;
+    }
+
+    private static string BuildReferrerRejectionHtml(Referral r, Provider p)
+    {
+        var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        var recipientGreeting = r.ReferrerName is { Length: > 0 } n ? $" {n}" : "";
+        return $"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
+              <h2 style="color:#c81e1e">Your Referral Was Declined</h2>
+              <p>Hello{recipientGreeting},</p>
+              <p>
+                Your referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
+                requesting <strong>{r.RequestedService}</strong> has been declined by
+                <strong>{provName}</strong>.
+              </p>
+              <p>
+                You may wish to search for an alternative provider or contact
+                <strong>{provName}</strong> for more information.
+              </p>
+            </body>
+            </html>
+            """;
+    }
+
+    private static string BuildProviderCancellationHtml(Referral r, Provider p)
+    {
+        var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        return $"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
+              <h2 style="color:#9b1c1c">Referral Cancelled</h2>
+              <p>Hello{(!string.IsNullOrWhiteSpace(provName) ? $" {provName}" : "")},</p>
+              <p>
+                The referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
+                requesting <strong>{r.RequestedService}</strong> has been cancelled.
+              </p>
+              <p>No further action is required on your part.</p>
+            </body>
+            </html>
+            """;
+    }
+
+    private static string BuildReferrerCancellationHtml(Referral r, Provider p)
+    {
+        var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        var recipientGreeting = r.ReferrerName is { Length: > 0 } n ? $" {n}" : "";
+        return $"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
+              <h2 style="color:#9b1c1c">Your Referral Was Cancelled</h2>
+              <p>Hello{recipientGreeting},</p>
+              <p>
+                Your referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
+                requesting <strong>{r.RequestedService}</strong> to
+                <strong>{provName}</strong> has been cancelled.
+              </p>
+              <p>
+                If this was not expected, please contact the involved parties for
+                more information.
               </p>
             </body>
             </html>
