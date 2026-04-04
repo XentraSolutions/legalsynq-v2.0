@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "remixicon/fonts/remixicon.css";
 
 @theme {
   --color-indigo-600: #4f46e5;

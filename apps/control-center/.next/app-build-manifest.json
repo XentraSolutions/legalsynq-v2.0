@@ -11,6 +11,21 @@
       "static/chunks/main-app.js",
       "static/chunks/app/error.js"
     ],
+    "/roles/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/roles/loading.js"
+    ],
+    "/roles/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/roles/page.js"
+    ],
+    "/legacy-coverage/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/legacy-coverage/page.js"
+    ],
     "/tenant-users/loading": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -21,35 +36,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/tenant-users/page.js"
     ],
-    "/notifications/providers/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/notifications/providers/page.js"
-    ],
-    "/api/auth/logout/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/auth/logout/route.js"
-    ],
     "/login/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/login/page.js"
-    ],
-    "/api/auth/login/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/auth/login/route.js"
-    ],
-    "/tenants/loading": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/tenants/loading.js"
-    ],
-    "/tenants/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/tenants/page.js"
     ]
   }
 }

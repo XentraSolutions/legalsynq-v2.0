@@ -1,5 +1,6 @@
 {
-  "/api/auth/login/route": "app/api/auth/login/route.js",
-  "/login/page": "app/login/page.js",
-  "/tenants/page": "app/tenants/page.js"
+  "/roles/page": "app/roles/page.js",
+  "/legacy-coverage/page": "app/legacy-coverage/page.js",
+  "/tenant-users/page": "app/tenant-users/page.js",
+  "/login/page": "app/login/page.js"
 }
