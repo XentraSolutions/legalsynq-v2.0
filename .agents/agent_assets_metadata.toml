@@ -132,3 +132,9 @@ id = "hMNeuWk-d-3VCNyuuqNU_"
 uri = "file://exports/legalsynq-source.tar.gz"
 type = "unspecified"
 title = "LegalSynq Source Code (tar.gz)"
+
+[[outputs]]
+id = "C6F4ylIiluOOk8Xkvng_F"
+uri = "file://analysis/NOTIF-UI-010-report.md"
+type = "text"
+title = "NOTIF-UI-010 — Delivery Controls Report"
