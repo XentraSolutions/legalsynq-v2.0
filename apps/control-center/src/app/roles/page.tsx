@@ -43,8 +43,8 @@ export default async function RolesPage() {
 
         {/* Info banner */}
         <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3 text-sm text-indigo-700">
-          These are system-defined platform roles. Role definitions are managed by the platform
-          engineering team and cannot be edited through the UI.
+          System roles are platform-managed. Product roles are auto-provisioned from product definitions
+          and enforce org-type eligibility and product enablement rules during assignment.
         </div>
 
         {/* Error banner */}

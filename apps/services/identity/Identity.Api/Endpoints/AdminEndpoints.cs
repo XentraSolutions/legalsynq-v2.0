@@ -118,6 +118,9 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/users/{id:guid}/roles",                  AssignRole);
         routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}",  RevokeRole);
 
+        // UIX-002-C: assignable roles with eligibility metadata
+        routes.MapGet("/api/admin/users/{id:guid}/assignable-roles",        GetAssignableRoles);
+
         // Phase I: scoped role summary for a user (non-global scope visibility)
         routes.MapGet("/api/admin/users/{id:guid}/scoped-roles",            GetScopedRoles);
 
@@ -1619,7 +1622,8 @@ public static class AdminEndpoints
         // UIX-005: materialize roles first, then join capability counts
         // (EF Core LINQ restriction: cannot call Count inside Select on nav collections)
         var roleList = await db.Roles
-            .OrderBy(r => r.Name)
+            .OrderBy(r => r.IsSystemRole ? 0 : 1)
+            .ThenBy(r => r.Name)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -1642,15 +1646,35 @@ public static class AdminEndpoints
         var userCountMap = userCounts.ToDictionary(x => x.roleId, x => x.count);
         var capCountMap  = capCounts.ToDictionary(x => x.roleId, x => x.count);
 
-        var roles = roleList.Select(r => new
+        // UIX-002-C: resolve product metadata for non-system roles
+        var productRoles = await db.ProductRoles
+            .Include(pr => pr.Product)
+            .Include(pr => pr.OrgTypeRules)
+                .ThenInclude(r => r.OrganizationType)
+            .Where(pr => pr.IsActive)
+            .ToListAsync();
+        var prLookup = productRoles.ToDictionary(pr => pr.Code, StringComparer.OrdinalIgnoreCase);
+
+        var roles = roleList.Select(r =>
         {
-            id              = r.Id,
-            name            = r.Name,
-            description     = r.Description ?? "",
-            isSystemRole    = r.IsSystemRole,
-            userCount       = userCountMap.GetValueOrDefault(r.Id, 0),
-            capabilityCount = capCountMap.GetValueOrDefault(r.Id, 0),
-            permissions     = Array.Empty<string>(),
+            prLookup.TryGetValue(r.Name, out var pr);
+            var isProductRole = !r.IsSystemRole && pr is not null;
+            return new
+            {
+                id              = r.Id,
+                name            = r.Name,
+                description     = r.Description ?? "",
+                isSystemRole    = r.IsSystemRole,
+                isProductRole,
+                productCode     = isProductRole ? pr!.Product.Code : (string?)null,
+                productName     = isProductRole ? pr!.Product.Name : (string?)null,
+                allowedOrgTypes = isProductRole
+                    ? pr!.OrgTypeRules.Where(rule => rule.IsActive).Select(rule => rule.OrganizationType.Code).ToArray()
+                    : null,
+                userCount       = userCountMap.GetValueOrDefault(r.Id, 0),
+                capabilityCount = capCountMap.GetValueOrDefault(r.Id, 0),
+                permissions     = Array.Empty<string>(),
+            };
         });
 
         return Results.Ok(new
@@ -2322,6 +2346,75 @@ public static class AdminEndpoints
         var role = await db.Roles.FindAsync(body.RoleId);
         if (role is null) return Results.NotFound(new { error = $"Role '{body.RoleId}' not found." });
 
+        // ── UIX-002-C: Product Role Eligibility Guardrails ──────────────────
+        // If this role maps to a ProductRole (IsSystemRole == false and name matches
+        // a ProductRole code), enforce org-type and product-enablement rules.
+        if (!role.IsSystemRole)
+        {
+            var productRole = await db.ProductRoles
+                .Include(pr => pr.Product)
+                .Include(pr => pr.OrgTypeRules)
+                    .ThenInclude(r => r.OrganizationType)
+                .FirstOrDefaultAsync(pr => pr.Code == role.Name && pr.IsActive);
+
+            if (productRole is not null)
+            {
+                // 1. Tenant product enablement check
+                var tenantHasProduct = await db.TenantProducts
+                    .AnyAsync(tp => tp.TenantId == user.TenantId
+                                 && tp.ProductId == productRole.ProductId
+                                 && tp.IsEnabled);
+                if (!tenantHasProduct)
+                    return Results.BadRequest(new
+                    {
+                        error = "PRODUCT_NOT_ENABLED_FOR_TENANT",
+                        message = $"Product '{productRole.Product.Name}' is not enabled for this user's tenant. " +
+                                  "Enable the product entitlement before assigning this role.",
+                    });
+
+                // 2. Org type eligibility check
+                var primaryMembership = await db.UserOrganizationMemberships
+                    .Include(m => m.Organization)
+                    .Where(m => m.UserId == id && m.IsActive)
+                    .OrderByDescending(m => m.IsPrimary)
+                    .ThenBy(m => m.JoinedAtUtc)
+                    .FirstOrDefaultAsync();
+
+                if (primaryMembership is null)
+                    return Results.BadRequest(new
+                    {
+                        error = "NO_ORGANIZATION_MEMBERSHIP",
+                        message = "User must belong to an organization before product roles can be assigned.",
+                    });
+
+                var userOrgTypeId = primaryMembership.Organization.OrganizationTypeId;
+                var userOrgType   = primaryMembership.Organization.OrgType;
+
+                if (productRole.OrgTypeRules.Count > 0)
+                {
+                    var orgTypeAllowed = userOrgTypeId.HasValue
+                        ? productRole.OrgTypeRules.Any(r => r.IsActive && r.OrganizationTypeId == userOrgTypeId.Value)
+                        : productRole.OrgTypeRules.Any(r => r.IsActive &&
+                            r.OrganizationType.Code.Equals(userOrgType, StringComparison.OrdinalIgnoreCase));
+
+                    if (!orgTypeAllowed)
+                    {
+                        var allowedTypes = productRole.OrgTypeRules
+                            .Where(r => r.IsActive)
+                            .Select(r => r.OrganizationType.Code)
+                            .ToList();
+
+                        return Results.BadRequest(new
+                        {
+                            error = "INVALID_ORG_TYPE_FOR_ROLE",
+                            message = $"Role '{productRole.Name}' requires org type [{string.Join(", ", allowedTypes)}] " +
+                                      $"but user's organization is '{userOrgType}'.",
+                        });
+                    }
+                }
+            }
+        }
+
         // Phase I: validate scope context
         var scopeType = body.ScopeType ?? ScopedRoleAssignment.ScopeTypes.Global;
         if (!ScopedRoleAssignment.ScopeTypes.IsValid(scopeType))
@@ -2420,6 +2513,144 @@ public static class AdminEndpoints
                 organizationRelationshipId = body.OrganizationRelationshipId,
                 assignedAtUtc             = now,
             });
+    }
+
+    /// <summary>
+    /// GET /api/admin/users/{id}/assignable-roles
+    ///
+    /// UIX-002-C: Returns all roles (system + product) with eligibility metadata
+    /// for a specific user. Product roles include org-type and tenant product
+    /// enablement checks based on the user's primary organization.
+    /// </summary>
+    private static async Task<IResult> GetAssignableRoles(
+        Guid              id,
+        IdentityDbContext db,
+        HttpContext        ctx)
+    {
+        var user = await db.Users.FindAsync(id);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        if (IsCrossTenantAccess(ctx.User, user.TenantId)) return Results.Forbid();
+
+        // Resolve user's primary org type
+        var primaryMembership = await db.UserOrganizationMemberships
+            .Include(m => m.Organization)
+            .Where(m => m.UserId == id && m.IsActive)
+            .OrderByDescending(m => m.IsPrimary)
+            .ThenBy(m => m.JoinedAtUtc)
+            .FirstOrDefaultAsync();
+
+        var userOrgType   = primaryMembership?.Organization.OrgType;
+        var userOrgTypeId = primaryMembership?.Organization.OrganizationTypeId;
+
+        // Get enabled products for this tenant
+        var enabledProductIds = await db.TenantProducts
+            .Where(tp => tp.TenantId == user.TenantId && tp.IsEnabled)
+            .Select(tp => tp.ProductId)
+            .ToListAsync();
+        var enabledProductSet = new HashSet<Guid>(enabledProductIds);
+
+        // Get all product roles with their rules
+        var productRoles = await db.ProductRoles
+            .Include(pr => pr.Product)
+            .Include(pr => pr.OrgTypeRules)
+                .ThenInclude(r => r.OrganizationType)
+            .Where(pr => pr.IsActive)
+            .ToListAsync();
+
+        // Build code → ProductRole lookup
+        var productRoleLookup = productRoles.ToDictionary(pr => pr.Code, StringComparer.OrdinalIgnoreCase);
+
+        // All roles
+        var allRoles = await db.Roles
+            .OrderBy(r => r.IsSystemRole ? 0 : 1)
+            .ThenBy(r => r.Name)
+            .ToListAsync();
+
+        // Currently assigned role IDs
+        var assignedRoleIds = await db.ScopedRoleAssignments
+            .Where(s => s.UserId == id && s.IsActive
+                     && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
+            .Select(s => s.RoleId)
+            .ToListAsync();
+        var assignedSet = new HashSet<Guid>(assignedRoleIds);
+
+        var result = allRoles.Select(r =>
+        {
+            var isAssigned = assignedSet.Contains(r.Id);
+            productRoleLookup.TryGetValue(r.Name, out var pr);
+            var isProductRole = !r.IsSystemRole && pr is not null;
+
+            string? productCode = null;
+            string? productName = null;
+            List<string>? allowedOrgTypes = null;
+            var assignable = true;
+            string? disabledReason = null;
+
+            if (isProductRole && pr is not null)
+            {
+                productCode = pr.Product.Code;
+                productName = pr.Product.Name;
+                allowedOrgTypes = pr.OrgTypeRules
+                    .Where(rule => rule.IsActive)
+                    .Select(rule => rule.OrganizationType.Code)
+                    .ToList();
+
+                // Check product enablement
+                if (!enabledProductSet.Contains(pr.ProductId))
+                {
+                    assignable = false;
+                    disabledReason = $"Product '{pr.Product.Name}' is not enabled for this tenant.";
+                }
+                // Check org type eligibility
+                else if (primaryMembership is null)
+                {
+                    assignable = false;
+                    disabledReason = "User has no organization membership.";
+                }
+                else if (allowedOrgTypes.Count > 0)
+                {
+                    var orgTypeAllowed = userOrgTypeId.HasValue
+                        ? pr.OrgTypeRules.Any(rule => rule.IsActive && rule.OrganizationTypeId == userOrgTypeId.Value)
+                        : pr.OrgTypeRules.Any(rule => rule.IsActive &&
+                            rule.OrganizationType.Code.Equals(userOrgType ?? "", StringComparison.OrdinalIgnoreCase));
+
+                    if (!orgTypeAllowed)
+                    {
+                        assignable = false;
+                        disabledReason = $"Requires org type: {string.Join(", ", allowedOrgTypes)}. User org is '{userOrgType}'.";
+                    }
+                }
+            }
+
+            if (isAssigned)
+            {
+                assignable = false;
+                disabledReason = "Already assigned.";
+            }
+
+            return new
+            {
+                id             = r.Id,
+                name           = r.Name,
+                description    = r.Description ?? "",
+                isSystemRole   = r.IsSystemRole,
+                isProductRole,
+                productCode,
+                productName,
+                allowedOrgTypes,
+                assignable,
+                disabledReason,
+                isAssigned,
+            };
+        });
+
+        return Results.Ok(new
+        {
+            items       = result,
+            userOrgType = userOrgType ?? "UNKNOWN",
+            tenantEnabledProducts = enabledProductIds.Count,
+        });
     }
 
     /// <summary>

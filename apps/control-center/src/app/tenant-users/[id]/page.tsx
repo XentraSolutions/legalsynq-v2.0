@@ -45,8 +45,10 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
   }
 
   // Fetch access-control reference data + security summary in parallel; failures are non-fatal.
-  const [rolesResult, orgsResult, groupsResult, securityResult, permissionsResult] = await Promise.allSettled([
-    controlCenterServerApi.roles.list(),
+  const [assignableRolesResult, orgsResult, groupsResult, securityResult, permissionsResult] = await Promise.allSettled([
+    user
+      ? controlCenterServerApi.users.getAssignableRoles(user.id)
+      : Promise.resolve(null),
     user
       ? controlCenterServerApi.organizations.listByTenant(user.tenantId)
       : Promise.resolve([]),
@@ -56,18 +58,17 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     user
       ? controlCenterServerApi.users.getSecurity(user.id)
       : Promise.resolve(null),
-    // UIX-005: effective permissions for this user
     user
       ? controlCenterServerApi.users.getEffectivePermissions(user.id)
       : Promise.resolve(null),
   ]);
 
-  const availableRoles  = rolesResult.status      === 'fulfilled' ? rolesResult.value              : [];
-  const availableOrgs   = orgsResult.status       === 'fulfilled' ? orgsResult.value               : [];
-  const availableGroups = groupsResult.status     === 'fulfilled' ? groupsResult.value.items       : [];
-  const security        = securityResult.status   === 'fulfilled' ? securityResult.value           : null;
-  const effectivePerms  = permissionsResult.status === 'fulfilled' ? permissionsResult.value       : null;
-  const permsError      = permissionsResult.status === 'rejected'
+  const assignableData    = assignableRolesResult.status  === 'fulfilled' ? assignableRolesResult.value   : null;
+  const availableOrgs     = orgsResult.status            === 'fulfilled' ? orgsResult.value               : [];
+  const availableGroups   = groupsResult.status          === 'fulfilled' ? groupsResult.value.items       : [];
+  const security          = securityResult.status        === 'fulfilled' ? securityResult.value           : null;
+  const effectivePerms    = permissionsResult.status     === 'fulfilled' ? permissionsResult.value       : null;
+  const permsError        = permissionsResult.status     === 'rejected'
     ? (permissionsResult.reason instanceof Error ? permissionsResult.reason.message : 'Failed to load permissions.')
     : null;
 
@@ -204,7 +205,8 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
               <RoleAssignmentPanel
                 userId={user.id}
                 currentRoles={user.roles ?? []}
-                availableRoles={availableRoles}
+                assignableRoles={assignableData?.items}
+                userOrgType={assignableData?.userOrgType}
               />
 
               <OrgMembershipPanel

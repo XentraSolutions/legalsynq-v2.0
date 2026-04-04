@@ -466,14 +466,45 @@ export function mapRoleSummary(raw: unknown): RoleSummary {
     return str(po, 'key', 'key', '');
   }).filter(Boolean);
 
+  const rawAllowedOrgTypes = r['allowedOrgTypes'] ?? r['allowed_org_types'];
+  const allowedOrgTypes = Array.isArray(rawAllowedOrgTypes)
+    ? (rawAllowedOrgTypes as unknown[]).map(v => String(v))
+    : undefined;
+
   return {
     id:              str(r, 'id',               'id',              '',    'mapRoleSummary.id'),
     name:            str(r, 'name',             'name',            '',    'mapRoleSummary.name'),
     description:     str(r, 'description',      'description',     ''),
     isSystemRole:    bool(r, 'is_system_role',  'isSystemRole',    false),
+    isProductRole:   bool(r, 'is_product_role', 'isProductRole',   false),
+    productCode:     r['productCode'] as string | undefined ?? r['product_code'] as string | undefined,
+    productName:     r['productName'] as string | undefined ?? r['product_name'] as string | undefined,
+    allowedOrgTypes,
     userCount:       num(r, 'user_count',       'userCount',       0),
     capabilityCount: num(r, 'capability_count', 'capabilityCount', 0),
     permissions,
+  };
+}
+
+export function mapAssignableRole(raw: unknown): import('@/types/control-center').AssignableRole {
+  const r = asObj(raw);
+  const rawAllowedOrgTypes = r['allowedOrgTypes'] ?? r['allowed_org_types'];
+  const allowedOrgTypes = Array.isArray(rawAllowedOrgTypes)
+    ? (rawAllowedOrgTypes as unknown[]).map(v => String(v))
+    : null;
+
+  return {
+    id:              str(r, 'id',               'id',              ''),
+    name:            str(r, 'name',             'name',            ''),
+    description:     str(r, 'description',      'description',     ''),
+    isSystemRole:    bool(r, 'is_system_role',  'isSystemRole',    false),
+    isProductRole:   bool(r, 'is_product_role', 'isProductRole',   false),
+    productCode:     (r['productCode'] ?? r['product_code'] ?? null) as string | null,
+    productName:     (r['productName'] ?? r['product_name'] ?? null) as string | null,
+    allowedOrgTypes,
+    assignable:      bool(r, 'assignable',      'assignable',      true),
+    disabledReason:  (r['disabledReason'] ?? r['disabled_reason'] ?? null) as string | null,
+    isAssigned:      bool(r, 'is_assigned',     'isAssigned',      false),
   };
 }
 

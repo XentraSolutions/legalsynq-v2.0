@@ -41,11 +41,35 @@ export function RoleDetailCard({ role }: RoleDetailCardProps) {
         <dl className="divide-y divide-gray-100">
           <InfoRow label="Name"        value={role.name} />
           <InfoRow label="Description" value={role.description} />
-          <InfoRow label="System Role" value={
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border bg-gray-100 text-gray-600 border-gray-200">
-              System-defined
-            </span>
+          <InfoRow label="Role Type" value={
+            role.isProductRole ? (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border bg-purple-50 text-purple-600 border-purple-200">
+                  Product Role
+                </span>
+                {role.productName && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-50 text-blue-700 border-blue-200">
+                    {role.productName}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border bg-gray-100 text-gray-600 border-gray-200">
+                System-defined
+              </span>
+            )
           } />
+          {role.isProductRole && role.allowedOrgTypes && role.allowedOrgTypes.length > 0 && (
+            <InfoRow label="Allowed Org Types" value={
+              <div className="flex flex-wrap gap-1">
+                {role.allowedOrgTypes.map((t: string) => (
+                  <span key={t} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium border bg-gray-50 text-gray-600 border-gray-200">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            } />
+          )}
           <InfoRow label="Created"      value={formatDate(role.createdAtUtc)} />
           <InfoRow label="Last Updated" value={formatDate(role.updatedAtUtc)} />
         </dl>

@@ -85,6 +85,7 @@ import {
   mapPermissionCatalogItem,
   mapRoleCapabilityItem,
   mapEffectivePermissionsResult,
+  mapAssignableRole,
   unwrapApiResponse,
   unwrapApiResponseList,
 }                                       from '@/lib/api-mappers';
@@ -549,6 +550,28 @@ export const controlCenterServerApi = {
         { roleId },
       );
       revalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * UIX-002-C: GET /identity/api/admin/users/{id}/assignable-roles
+     * Returns all roles with eligibility metadata for a specific user.
+     * Cache: 10 s  Tag: cc:users
+     */
+    getAssignableRoles: async (id: string): Promise<import('@/types/control-center').AssignableRolesResponse> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/assignable-roles`,
+        10,
+        [CACHE_TAGS.users],
+      );
+      const r = raw as Record<string, unknown>;
+      const items = Array.isArray(r.items)
+        ? (r.items as unknown[]).map(mapAssignableRole)
+        : [];
+      return {
+        items,
+        userOrgType: String(r.userOrgType ?? r.user_org_type ?? 'UNKNOWN'),
+        tenantEnabledProducts: Number(r.tenantEnabledProducts ?? r.tenant_enabled_products ?? 0),
+      };
     },
 
     /**

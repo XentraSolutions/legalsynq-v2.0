@@ -219,9 +219,33 @@ export interface RoleSummary {
   name:            string;
   description:     string;
   isSystemRole:    boolean;
+  isProductRole?:  boolean;
+  productCode?:    string;
+  productName?:    string;
+  allowedOrgTypes?: string[];
   userCount:       number;
   capabilityCount: number;
   permissions:     string[];   // permission keys
+}
+
+export interface AssignableRole {
+  id:              string;
+  name:            string;
+  description:     string;
+  isSystemRole:    boolean;
+  isProductRole:   boolean;
+  productCode:     string | null;
+  productName:     string | null;
+  allowedOrgTypes: string[] | null;
+  assignable:      boolean;
+  disabledReason:  string | null;
+  isAssigned:      boolean;
+}
+
+export interface AssignableRolesResponse {
+  items:                 AssignableRole[];
+  userOrgType:           string;
+  tenantEnabledProducts: number;
 }
 
 /**

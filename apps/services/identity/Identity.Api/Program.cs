@@ -154,6 +154,72 @@ catch (Exception ex)
         "Phase G startup diagnostic skipped — could not query the database at startup.");
 }
 
+// ── UIX-002-C: Ensure each active ProductRole has a corresponding entry in the Roles table ──
+// Product roles are defined in the ProductRoles table but need corresponding entries in the
+// Roles table (with IsSystemRole = false) so they can be assigned through ScopedRoleAssignment.
+// This seeder is idempotent — it only creates missing entries.
+try
+{
+    using var prScope = app.Services.CreateScope();
+    var prDb = prScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+
+    var activeProductRoles = await prDb.ProductRoles
+        .Include(pr => pr.Product)
+        .Where(pr => pr.IsActive)
+        .ToListAsync();
+
+    var existingRoleNames = await prDb.Roles
+        .Select(r => r.Name)
+        .ToListAsync();
+
+    var existingNameSet = new HashSet<string>(existingRoleNames, StringComparer.OrdinalIgnoreCase);
+
+    var platformTenantId = await prDb.Tenants
+        .Where(t => t.IsActive)
+        .OrderBy(t => t.CreatedAtUtc)
+        .Select(t => t.Id)
+        .FirstOrDefaultAsync();
+
+    if (platformTenantId == Guid.Empty)
+    {
+        app.Logger.LogWarning("UIX-002-C: No active tenant found — skipping product role seed.");
+    }
+
+    var created = 0;
+    foreach (var pr in activeProductRoles)
+    {
+        if (platformTenantId == Guid.Empty)
+            break;
+
+        if (existingNameSet.Contains(pr.Code))
+            continue;
+
+        var role = Identity.Domain.Role.Create(
+            tenantId: platformTenantId,
+            name: pr.Code,
+            description: $"[Product] {pr.Name} — {pr.Description ?? pr.Product.Name}",
+            isSystemRole: false);
+        prDb.Roles.Add(role);
+        existingNameSet.Add(pr.Code);
+        created++;
+
+        app.Logger.LogInformation(
+            "UIX-002-C: Seeded Role '{RoleName}' for ProductRole {ProductRoleCode} (Product: {Product})",
+            pr.Code, pr.Code, pr.Product.Name);
+    }
+
+    if (created > 0)
+        await prDb.SaveChangesAsync();
+
+    app.Logger.LogInformation(
+        "UIX-002-C product role sync complete — {Created} new Role(s) seeded, {Total} product roles active.",
+        created, activeProductRoles.Count);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "UIX-002-C product role seed encountered an error");
+}
+
 // ── Dev-only: ensure every user has a primary org membership ─────────────
 // Some tenants were created with the org added separately, leaving the user
 // without a UserOrganizationMembership.  This block auto-heals that gap.
