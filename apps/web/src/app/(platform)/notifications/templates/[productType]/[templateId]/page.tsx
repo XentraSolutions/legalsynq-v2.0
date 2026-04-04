@@ -7,6 +7,8 @@ import {
   PRODUCT_TYPE_LABELS,
   type GlobalTemplate,
   type GlobalTemplateVersion,
+  type TenantTemplate,
+  type TenantTemplateVersion,
   type ProductType,
 } from '@/lib/notifications-server-api';
 import { TemplateDetailClient } from './template-detail-client';
@@ -26,6 +28,8 @@ export default async function TemplateDetailPage({
   const pt = productType as ProductType;
   let template: GlobalTemplate | null = null;
   let versions: GlobalTemplateVersion[] = [];
+  let override: TenantTemplate | null = null;
+  let overrideVersions: TenantTemplateVersion[] = [];
   let fetchError: string | null = null;
 
   try {
@@ -38,6 +42,17 @@ export default async function TemplateDetailPage({
 
     if (template && template.productType !== pt) {
       redirect(`/notifications/templates/${pt}`);
+    }
+
+    const tenantRes = await notificationsServerApi.tenantTemplatesList(session.tenantId, { limit: 200 });
+    const matchingOverride = tenantRes.data.find(
+      t => t.templateKey === template!.templateKey && t.channel === template!.channel && t.productType === pt,
+    );
+
+    if (matchingOverride) {
+      override = matchingOverride;
+      const ovRes = await notificationsServerApi.tenantTemplateVersions(session.tenantId, matchingOverride.id);
+      overrideVersions = ovRes.data;
     }
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Unable to load template.';
@@ -72,6 +87,8 @@ export default async function TemplateDetailPage({
           versions={versions}
           productType={pt}
           tenantId={session.tenantId}
+          override={override}
+          overrideVersions={overrideVersions}
         />
       ) : null}
     </div>

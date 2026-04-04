@@ -6,7 +6,9 @@ import {
   PRODUCT_TYPES,
   PRODUCT_TYPE_LABELS,
   type GlobalTemplate,
+  type TenantTemplate,
   type ProductType,
+  type OverrideStatus,
 } from '@/lib/notifications-server-api';
 
 function fmtDate(iso: string): string {
@@ -24,6 +26,27 @@ const CHANNEL_CLS: Record<string, string> = {
   'in-app': 'bg-teal-50 text-teal-700 border-teal-200',
 };
 
+const OVERRIDE_BADGE: Record<OverrideStatus, { label: string; cls: string }> = {
+  none:      { label: 'Using Global', cls: 'bg-gray-50 text-gray-600 border-gray-200' },
+  draft:     { label: 'Override Draft', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  published: { label: 'Override Active', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+};
+
+function getOverrideStatus(
+  globalTpl: GlobalTemplate,
+  overrides: TenantTemplate[],
+  overrideVersionStatuses: Map<string, string | null>,
+): { status: OverrideStatus; overrideId?: string } {
+  const match = overrides.find(
+    o => o.templateKey === globalTpl.templateKey && o.channel === globalTpl.channel,
+  );
+  if (!match) return { status: 'none' };
+  const versionStatus = overrideVersionStatuses.get(match.id);
+  if (versionStatus === 'published') return { status: 'published', overrideId: match.id };
+  if (versionStatus === 'draft') return { status: 'draft', overrideId: match.id };
+  return { status: 'draft', overrideId: match.id };
+}
+
 export default async function TemplateListPage({
   params,
 }: {
@@ -38,14 +61,32 @@ export default async function TemplateListPage({
 
   const pt = productType as ProductType;
   let templates: GlobalTemplate[] = [];
+  let overrides: TenantTemplate[] = [];
+  let overrideVersionStatuses = new Map<string, string>();
   let fetchError: string | null = null;
 
   try {
-    const res = await notificationsServerApi.globalTemplatesList(session.tenantId, {
-      productType: pt,
-      limit: 100,
-    });
-    templates = res.data;
+    const [globalRes, tenantRes] = await Promise.all([
+      notificationsServerApi.globalTemplatesList(session.tenantId, { productType: pt, limit: 100 }),
+      notificationsServerApi.tenantTemplatesList(session.tenantId, { limit: 200 }),
+    ]);
+    templates = globalRes.data;
+    overrides = tenantRes.data.filter(t => t.productType === pt);
+
+    if (overrides.length > 0) {
+      const versionResults = await Promise.all(
+        overrides.map(async o => {
+          try {
+            const vRes = await notificationsServerApi.tenantTemplateVersions(session.tenantId, o.id);
+            const published = vRes.data.find(v => v.status === 'published');
+            return { id: o.id, status: published ? 'published' : 'draft' };
+          } catch {
+            return { id: o.id, status: 'draft' };
+          }
+        }),
+      );
+      overrideVersionStatuses = new Map(versionResults.map(r => [r.id, r.status]));
+    }
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Unable to load templates.';
   }
@@ -66,8 +107,8 @@ export default async function TemplateListPage({
             {PRODUCT_TYPE_LABELS[pt]} Templates
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            Notification templates for {PRODUCT_TYPE_LABELS[pt]}. These are managed by the platform &mdash;
-            you can view and preview them with your branding.
+            Notification templates for {PRODUCT_TYPE_LABELS[pt]}. You can view global templates,
+            create overrides, and preview them with your branding.
           </p>
         </div>
         <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -99,14 +140,16 @@ export default async function TemplateListPage({
                 <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Name</th>
                 <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Key</th>
                 <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Channel</th>
-                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Category</th>
-                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Branded</th>
+                <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Override Status</th>
                 <th className="px-5 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Updated</th>
+                <th className="px-5 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {templates.map(t => {
                 const channelCls = CHANNEL_CLS[t.channel.toLowerCase()] ?? 'bg-gray-50 text-gray-600 border-gray-200';
+                const { status: overrideStatus } = getOverrideStatus(t, overrides, overrideVersionStatuses);
+                const badge = OVERRIDE_BADGE[overrideStatus];
                 return (
                   <tr key={t.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-5 py-3">
@@ -126,17 +169,20 @@ export default async function TemplateListPage({
                         {t.channel}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-xs text-gray-500">{t.category ?? '—'}</td>
                     <td className="px-5 py-3">
-                      {t.isBrandable ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-emerald-600">
-                          <i className="ri-check-line" /> Yes
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">No</span>
-                      )}
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${badge.cls}`}>
+                        {badge.label}
+                      </span>
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">{fmtDate(t.updatedAt)}</td>
+                    <td className="px-5 py-3 text-right">
+                      <Link
+                        href={`/notifications/templates/${pt}/${t.id}`}
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-500"
+                      >
+                        {overrideStatus === 'none' ? 'View' : 'Manage'}
+                      </Link>
+                    </td>
                   </tr>
                 );
               })}

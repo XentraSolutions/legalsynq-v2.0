@@ -39,10 +39,10 @@ export interface NotifStats {
 
 // ── Re-export client-safe branding types from shared module ──────────────────
 
-export type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult } from './notifications-shared';
+export type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, OverrideStatus, TemplatePreviewResult } from './notifications-shared';
 export { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from './notifications-shared';
 
-import type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult } from './notifications-shared';
+import type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, TemplatePreviewResult } from './notifications-shared';
 
 // ── Core request ─────────────────────────────────────────────────────────────
 
@@ -161,6 +161,44 @@ export const notificationsServerApi = {
 
   globalTemplatePreview(tenantId: string, templateId: string, versionId: string, body: { tenantId: string; productType: string; templateData: Record<string, unknown> }): Promise<{ data: BrandedPreviewResult }> {
     return notifRequest<{ data: BrandedPreviewResult }>(`/v1/templates/global/${templateId}/versions/${versionId}/preview`, tenantId, { method: 'POST', body });
+  },
+
+  tenantTemplatesList(tenantId: string, params: { channel?: string; status?: string; limit?: number; offset?: number } = {}): Promise<TenantTemplateListResponse> {
+    const qs = new URLSearchParams();
+    if (params.channel) qs.set('channel', params.channel);
+    if (params.status) qs.set('status', params.status);
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params.offset !== undefined) qs.set('offset', String(params.offset));
+    const q = qs.toString();
+    return notifRequest<TenantTemplateListResponse>(`/v1/templates${q ? `?${q}` : ''}`, tenantId);
+  },
+
+  tenantTemplateGet(tenantId: string, id: string): Promise<{ data: TenantTemplate }> {
+    return notifRequest<{ data: TenantTemplate }>(`/v1/templates/${id}`, tenantId);
+  },
+
+  tenantTemplateCreate(tenantId: string, body: Record<string, unknown>): Promise<{ data: TenantTemplate }> {
+    return notifRequest<{ data: TenantTemplate }>('/v1/templates', tenantId, { method: 'POST', body });
+  },
+
+  tenantTemplateUpdate(tenantId: string, id: string, body: Record<string, unknown>): Promise<{ data: Record<string, unknown> }> {
+    return notifRequest<{ data: Record<string, unknown> }>(`/v1/templates/${id}`, tenantId, { method: 'PATCH', body });
+  },
+
+  tenantTemplateVersions(tenantId: string, templateId: string): Promise<{ data: TenantTemplateVersion[] }> {
+    return notifRequest<{ data: TenantTemplateVersion[] }>(`/v1/templates/${templateId}/versions`, tenantId);
+  },
+
+  tenantTemplateCreateVersion(tenantId: string, templateId: string, body: Record<string, unknown>): Promise<{ data: TenantTemplateVersion }> {
+    return notifRequest<{ data: TenantTemplateVersion }>(`/v1/templates/${templateId}/versions`, tenantId, { method: 'POST', body });
+  },
+
+  tenantTemplatePublishVersion(tenantId: string, templateId: string, versionId: string): Promise<{ data: { templateId: string; versionId: string; status: string } }> {
+    return notifRequest<{ data: { templateId: string; versionId: string; status: string } }>(`/v1/templates/${templateId}/versions/${versionId}/publish`, tenantId, { method: 'POST' });
+  },
+
+  tenantTemplatePreviewVersion(tenantId: string, templateId: string, versionId: string, body: { templateData: Record<string, unknown> }): Promise<{ data: TemplatePreviewResult }> {
+    return notifRequest<{ data: TemplatePreviewResult }>(`/v1/templates/${templateId}/versions/${versionId}/preview`, tenantId, { method: 'POST', body });
   },
 };
 

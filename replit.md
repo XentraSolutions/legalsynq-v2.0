@@ -2871,6 +2871,40 @@ MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it sh
 - **Law firm orgs** use standard tenant-scoped queries. TenantAdmin on law firm sees all referrals in their tenant; regular users see only their org's outbound referrals.
 - Key files: `ReferralEndpoints.cs`, `ReferralRepository.cs`, `GetReferralsQuery.cs` (CrossTenantReceiver flag), `ReferralService.cs` (auto-populates ReceivingOrganizationId).
 
+## NOTIF-UI-008 — Tenant Template Override
+
+### Capabilities
+- Create tenant-scoped template overrides for any global template (same `templateKey + channel + productType`)
+- Edit override draft content (HTML subject/body/text)
+- Preview override with real backend rendering
+- Publish override with confirmation — makes tenant override active
+- Clear global vs override distinction at every level
+
+### Pages Enhanced (apps/web — tenant portal)
+| Path | Changes |
+|------|---------|
+| `/notifications/templates/[productType]` | Override status badges per template (Using Global / Override Draft / Override Active) |
+| `/notifications/templates/[productType]/[templateId]` | Tabbed Global/Override view; override create/edit/publish/preview flows |
+
+### Server Actions
+- `createTenantOverride(globalTemplateId, productType)` — creates override template + initial version pre-populated from global
+- `createOverrideVersion(overrideTemplateId, body)` — saves new version draft
+- `publishOverrideVersion(overrideTemplateId, versionId)` — publishes override
+- `previewOverrideVersion(overrideTemplateId, versionId, templateData)` — renders preview
+
+### API Client Extensions
+- `tenantTemplatesList`, `tenantTemplateGet`, `tenantTemplateCreate`, `tenantTemplateUpdate`
+- `tenantTemplateVersions`, `tenantTemplateCreateVersion`, `tenantTemplatePublishVersion`, `tenantTemplatePreviewVersion`
+
+### Shared Types Added
+- `TenantTemplate`, `TenantTemplateListResponse`, `TenantTemplateVersion`, `OverrideStatus`, `TemplatePreviewResult`
+
+### Backend Model
+- Tenant overrides use the same `Template` model with `tenantId` set (not null)
+- Backend route: `/v1/templates` (standard CRUD with `x-tenant-id` context)
+- Resolution: tenant template > global template (by `templateKey + channel`)
+- Immutable version lifecycle: draft → published → retired
+
 ## NOTIF-UI-007 — Tenant Template Visibility (Read-Only)
 
 ### Pages (apps/web — tenant portal)
@@ -2883,7 +2917,7 @@ MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it sh
 ### Components
 | Component | File | Purpose |
 |-----------|------|---------|
-| `TemplateDetailClient` | `src/app/(platform)/notifications/templates/[productType]/[templateId]/template-detail-client.tsx` | Version viewer, preview panel, variable input form |
+| `TemplateDetailClient` | `src/app/(platform)/notifications/templates/[productType]/[templateId]/template-detail-client.tsx` | Global version viewer, override editor, preview panel |
 
 ### Server Actions
 - `previewTemplateVersion` — POST branded preview via backend (tenantId from session)
@@ -2899,7 +2933,6 @@ MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it sh
 
 ### Key Rules
 - Product-first access enforced: templates never shown without product selection
-- Strictly read-only — no edit, publish, or override capabilities
 - tenantId derived from session, never from user input
 
 ## NOTIF-UI-006 — Tenant Branding Self-Service (Tenant Portal)

@@ -78,6 +78,57 @@ export interface GlobalTemplateListResponse {
   meta: { total: number; limit: number; offset: number };
 }
 
+export interface TenantTemplate {
+  id:              string;
+  tenantId:        string | null;
+  templateKey:     string;
+  channel:         string;
+  name:            string;
+  description:     string | null;
+  status:          string;
+  isSystemTemplate: boolean;
+  productType:     ProductType | null;
+  templateScope:   string;
+  editorType:      string;
+  category:        string | null;
+  isBrandable:     boolean;
+  createdAt:       string;
+  updatedAt:       string;
+}
+
+export interface TenantTemplateListResponse {
+  data: TenantTemplate[];
+  meta: { total: number; limit: number; offset: number };
+}
+
+export interface TenantTemplateVersion {
+  id:                  string;
+  templateId:          string;
+  versionNumber:       number;
+  subjectTemplate:     string | null;
+  bodyTemplate:        string;
+  textTemplate:        string | null;
+  variablesSchemaJson: string | null;
+  sampleDataJson:      string | null;
+  editorJson:          string | null;
+  designTokensJson:    string | null;
+  layoutType:          string | null;
+  status:              string;
+  publishedAt:         string | null;
+  createdAt:           string;
+  updatedAt:           string;
+}
+
+export type OverrideStatus = 'none' | 'draft' | 'published';
+
+export interface TemplatePreviewResult {
+  templateId: string;
+  versionId:  string;
+  subject?:   string;
+  body:       string;
+  text?:      string;
+}
+
 export interface BrandedPreviewResult {
   templateId: string;
   versionId:  string;
