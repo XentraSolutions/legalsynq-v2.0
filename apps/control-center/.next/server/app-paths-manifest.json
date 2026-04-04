@@ -1,1 +1,3 @@
-{}
+{
+  "/platform-readiness/page": "app/platform-readiness/page.js"
+}
