@@ -21,7 +21,7 @@ export const CC_NAV: NavSection[] = [
   {
     heading: 'PLATFORM',
     items: [
-      { href: '/platform-readiness', label: 'Platform Readiness', icon: 'ri-checkbox-circle-line' },
+      { href: '/platform-readiness', label: 'Platform Readiness', icon: 'ri-checkbox-circle-line', badge: 'LIVE' },
       { href: '/legacy-coverage',    label: 'Legacy Coverage',    icon: 'ri-history-fill'         },
     ],
   },
