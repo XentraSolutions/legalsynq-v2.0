@@ -80,6 +80,25 @@ public class ExceptionHandlingMiddleware
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             }));
         }
+        catch (ConflictException ex)
+        {
+            context.Response.StatusCode = StatusCodes.Status409Conflict;
+            context.Response.ContentType = "application/json";
+
+            var response = new
+            {
+                error = new
+                {
+                    code = ex.ErrorCode ?? "CONFLICT",
+                    message = ex.Message
+                }
+            };
+
+            await context.Response.WriteAsync(JsonSerializer.Serialize(response, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            }));
+        }
         catch (BadHttpRequestException)
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;

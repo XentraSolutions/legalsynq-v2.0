@@ -194,11 +194,13 @@ export interface ReferralSearchParams {
 // ── Appointment ───────────────────────────────────────────────────────────────
 
 export const AppointmentStatus = {
-  Scheduled:  'Scheduled',
-  Confirmed:  'Confirmed',
-  Cancelled:  'Cancelled',
-  Completed:  'Completed',
-  NoShow:     'NoShow',
+  Pending:     'Pending',
+  Scheduled:   'Scheduled',
+  Confirmed:   'Confirmed',
+  Rescheduled: 'Rescheduled',
+  Cancelled:   'Cancelled',
+  Completed:   'Completed',
+  NoShow:      'NoShow',
 } as const;
 export type AppointmentStatusValue = typeof AppointmentStatus[keyof typeof AppointmentStatus];
 

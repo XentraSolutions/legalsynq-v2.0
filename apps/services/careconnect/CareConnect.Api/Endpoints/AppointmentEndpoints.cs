@@ -83,7 +83,43 @@ public static class AppointmentEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentUpdate, ct);
+            var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
+            if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
             var appointment = await service.UpdateAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
+            return Results.Ok(appointment);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser);
+
+        app.MapPost("/api/appointments/{id:guid}/confirm", async (
+            Guid id,
+            [FromBody] ConfirmAppointmentRequest request,
+            IAppointmentService service,
+            ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentManage, ct);
+            var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
+            if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
+            var appointment = await service.ConfirmAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
+            return Results.Ok(appointment);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser);
+
+        app.MapPost("/api/appointments/{id:guid}/complete", async (
+            Guid id,
+            [FromBody] CompleteAppointmentRequest request,
+            IAppointmentService service,
+            ICurrentRequestContext ctx,
+            AuthorizationService authSvc,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentManage, ct);
+            var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
+            if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
+            var appointment = await service.CompleteAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
@@ -98,6 +134,8 @@ public static class AppointmentEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentManage, ct);
+            var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
+            if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
             var appointment = await service.CancelAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
@@ -113,6 +151,8 @@ public static class AppointmentEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentManage, ct);
+            var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
+            if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
             var appointment = await service.RescheduleAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
@@ -125,9 +165,18 @@ public static class AppointmentEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
+            if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
             var history = await service.GetAppointmentHistoryAsync(tenantId, id, ct);
             return Results.Ok(history);
         })
         .RequireAuthorization(Policies.AuthenticatedUser);
+    }
+
+    private static bool RequireAppointmentParticipant(ICurrentRequestContext ctx, AppointmentResponse appointment)
+    {
+        if (CareConnectParticipantHelper.IsAdmin(ctx)) return true;
+        return ctx.OrgId.HasValue
+            && (appointment.ReferringOrganizationId == ctx.OrgId || appointment.ReceivingOrganizationId == ctx.OrgId);
     }
 }

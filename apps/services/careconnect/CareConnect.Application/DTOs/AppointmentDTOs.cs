@@ -13,6 +13,16 @@ public class UpdateAppointmentRequest
     public string? Notes { get; set; }
 }
 
+public class ConfirmAppointmentRequest
+{
+    public string? Notes { get; set; }
+}
+
+public class CompleteAppointmentRequest
+{
+    public string? Notes { get; set; }
+}
+
 public class CancelAppointmentRequest
 {
     public string? Notes { get; set; }

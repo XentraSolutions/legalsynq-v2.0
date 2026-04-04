@@ -56,7 +56,7 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
   const heading = isReferrer ? 'Sent Appointments' : 'Incoming Appointments';
   const hasDateFilter = !!(from || to);
 
-  const STATUS_FILTERS = ['', 'Scheduled', 'Confirmed', 'Completed', 'Cancelled', 'NoShow'];
+  const STATUS_FILTERS = ['', 'Pending', 'Confirmed', 'Rescheduled', 'Completed', 'Cancelled', 'NoShow'];
 
   return (
     <div className="space-y-4">

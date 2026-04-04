@@ -10,6 +10,8 @@ public interface IAppointmentService
     Task<PagedResponse<AppointmentResponse>> SearchAppointmentsAsync(Guid tenantId, AppointmentSearchParams query, Guid? referringOrgId = null, Guid? receivingOrgId = null, CancellationToken ct = default);
     Task<AppointmentResponse> GetAppointmentByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<AppointmentResponse> UpdateAppointmentAsync(Guid tenantId, Guid id, Guid? userId, UpdateAppointmentRequest request, CancellationToken ct = default);
+    Task<AppointmentResponse> ConfirmAppointmentAsync(Guid tenantId, Guid id, Guid? userId, ConfirmAppointmentRequest request, CancellationToken ct = default);
+    Task<AppointmentResponse> CompleteAppointmentAsync(Guid tenantId, Guid id, Guid? userId, CompleteAppointmentRequest request, CancellationToken ct = default);
     Task<AppointmentResponse> CancelAppointmentAsync(Guid tenantId, Guid id, Guid? userId, CancelAppointmentRequest request, CancellationToken ct = default);
     Task<AppointmentResponse> RescheduleAppointmentAsync(Guid tenantId, Guid id, Guid? userId, RescheduleAppointmentRequest request, CancellationToken ct = default);
     Task<List<AppointmentStatusHistoryResponse>> GetAppointmentHistoryAsync(Guid tenantId, Guid id, CancellationToken ct = default);

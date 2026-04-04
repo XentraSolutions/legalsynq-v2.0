@@ -14,7 +14,9 @@ const STATUS_STYLES: Record<string, string> = {
   Confirmed:  'bg-green-50   text-green-700   border-green-200',
   Completed:  'bg-green-50   text-green-700   border-green-200',
   Cancelled:  'bg-gray-50    text-gray-600    border-gray-200',
-  NoShow:     'bg-orange-50  text-orange-700  border-orange-200',
+  NoShow:      'bg-orange-50  text-orange-700  border-orange-200',
+  Pending:     'bg-yellow-50  text-yellow-700  border-yellow-200',
+  Rescheduled: 'bg-purple-50  text-purple-700  border-purple-200',
   // legacy statuses kept for backward compat during rollout
   Scheduled:  'bg-yellow-50  text-yellow-700  border-yellow-200',
   Received:   'bg-indigo-50  text-indigo-700  border-indigo-200',
