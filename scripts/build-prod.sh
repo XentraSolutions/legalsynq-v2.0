@@ -33,4 +33,14 @@ echo "====== Building control center ======"
 cd "$ROOT/apps/control-center"
 node "$NEXT_BIN" build
 
+echo "====== Building .NET services ======"
+cd "$ROOT"
+if command -v dotnet &>/dev/null; then
+  dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal
+  dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Release --verbosity minimal
+  echo "[dotnet] Build succeeded"
+else
+  echo "[dotnet] WARNING: dotnet SDK not found — .NET services will not be available"
+fi
+
 echo "====== Build complete ======"

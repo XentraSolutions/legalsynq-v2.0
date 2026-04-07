@@ -33,18 +33,32 @@ echo "[control-center] Starting Next.js on :5004"
 (cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 node "$NEXT_BIN" start -p 5004) &
 PID_CC=$!
 
-(
-  dotnet restore "$ROOT/LegalSynq.sln" --verbosity quiet
-  dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Release --verbosity quiet
-  dotnet run --no-build --configuration Release --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
-  dotnet run --no-build --configuration Release --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
-  dotnet run --no-build --configuration Release --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
-  ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS=http://0.0.0.0:5007 dotnet run --no-build --configuration Release --project "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" &
-  ASPNETCORE_ENVIRONMENT=Production dotnet run --no-build --configuration Release --project "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" &
-  dotnet run --no-build --configuration Release --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
-  wait
-) &
-PID_DOTNET=$!
+echo "[dotnet] Starting .NET services"
+if command -v dotnet &>/dev/null; then
+  (
+    set +e
+    echo "[dotnet] Restoring and building..."
+    dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal 2>&1
+    dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Release --verbosity minimal 2>&1
+    if [ $? -ne 0 ]; then
+      echo "[dotnet] ERROR: Build failed — .NET services will not start"
+      exit 1
+    fi
+    echo "[dotnet] Build succeeded, starting services..."
+    dotnet run --no-build --configuration Release --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
+    dotnet run --no-build --configuration Release --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
+    dotnet run --no-build --configuration Release --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
+    ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS=http://0.0.0.0:5007 dotnet run --no-build --configuration Release --project "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" &
+    ASPNETCORE_ENVIRONMENT=Production dotnet run --no-build --configuration Release --project "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" &
+    dotnet run --no-build --configuration Release --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
+    echo "[dotnet] All .NET services launched"
+    wait
+  ) &
+  PID_DOTNET=$!
+else
+  echo "[dotnet] WARNING: dotnet SDK not found — .NET services will not start"
+  PID_DOTNET=""
+fi
 
 echo "[artifacts] Starting on :5020"
 (
@@ -85,10 +99,13 @@ echo "[notifications:worker] Starting status-sync worker"
 ) &
 PID_STATUS_SYNC=$!
 
+ALL_PIDS="$PID_WEB $PID_PROXY $PID_CC $PID_ARTIFACTS $PID_NOTIF $PID_NOTIF_WORKER $PID_STATUS_SYNC"
+[ -n "$PID_DOTNET" ] && ALL_PIDS="$ALL_PIDS $PID_DOTNET"
+
 cleanup() {
-    kill "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_ARTIFACTS" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC" 2>/dev/null || true
+    kill $ALL_PIDS 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-wait "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_ARTIFACTS" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC"
+wait $ALL_PIDS
