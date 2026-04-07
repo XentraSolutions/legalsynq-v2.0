@@ -3,10 +3,10 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { TenantListTable }        from '@/components/control-center/tenant-list-table';
 
 interface TenantsPageProps {
-  searchParams: {
+  searchParams: Promise<{
     page?:   string;
     search?: string;
-  };
+  }>;
 }
 
 /**
@@ -20,8 +20,9 @@ interface TenantsPageProps {
 export default async function TenantsPage({ searchParams }: TenantsPageProps) {
   await requireCCPlatformAdmin();
 
-  const page   = Math.max(1, parseInt(searchParams.page ?? '1') || 1);
-  const search = searchParams.search ?? '';
+  const sp     = await searchParams;
+  const page   = Math.max(1, parseInt(sp.page ?? '1') || 1);
+  const search = sp.search ?? '';
 
   let result = null;
   let fetchError: string | null = null;
