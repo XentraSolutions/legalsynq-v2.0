@@ -79,3 +79,26 @@ export async function retryProvisioningAction(tenantId: string): Promise<RetryPr
     };
   }
 }
+
+export interface RetryVerificationResult {
+  success:            boolean;
+  provisioningStatus: string;
+  hostname?:          string;
+  error?:             string;
+  failureStage?:      string;
+}
+
+export async function retryVerificationAction(tenantId: string): Promise<RetryVerificationResult> {
+  await requirePlatformAdmin();
+
+  try {
+    const result = await controlCenterServerApi.tenants.retryVerification(tenantId);
+    return result;
+  } catch (err) {
+    return {
+      success: false,
+      provisioningStatus: 'Failed',
+      error: err instanceof Error ? err.message : 'Failed to retry verification.',
+    };
+  }
+}

@@ -6,7 +6,8 @@
 
 export type TenantType   = 'LawFirm' | 'Provider' | 'Funder' | 'LienOwner' | 'Corporate' | 'Government' | 'Other';
 export type TenantStatus = 'Active' | 'Inactive' | 'Suspended';
-export type ProvisioningStatus = 'Pending' | 'InProgress' | 'Active' | 'Failed';
+export type ProvisioningStatus = 'Pending' | 'InProgress' | 'Provisioned' | 'Verifying' | 'Active' | 'Failed';
+export type ProvisioningFailureStage = 'None' | 'DnsProvisioning' | 'DnsVerification' | 'HttpVerification';
 
 export interface TenantSummary {
   id:                 string;
@@ -37,6 +38,7 @@ export interface TenantDetail extends TenantSummary {
   productEntitlements:        ProductEntitlementSummary[];
   lastProvisioningAttemptUtc?: string;
   provisioningFailureReason?: string;
+  provisioningFailureStage?:  ProvisioningFailureStage;
   hostname?:                  string;
 }
 

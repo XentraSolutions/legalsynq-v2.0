@@ -40,18 +40,20 @@ public static class DependencyInjection
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IAuthService, AuthService>();
 
-        // Capability-based authorization
         services.AddMemoryCache();
         services.AddHttpContextAccessor();
         services.AddScoped<ICapabilityService, CapabilityService>();
         services.AddScoped<AuthorizationService>();
         services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 
-        // Phase I: scoped authorization service (real non-global scope checks)
         services.AddScoped<IScopedAuthorizationService, ScopedAuthorizationService>();
 
         services.Configure<Route53DnsOptions>(configuration.GetSection("Route53"));
         services.AddSingleton<IDnsService, Route53DnsService>();
+
+        services.Configure<TenantVerificationOptions>(configuration.GetSection("TenantVerification"));
+        services.AddScoped<ITenantVerificationService, TenantVerificationService>();
+
         services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
 
         return services;

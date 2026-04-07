@@ -21,6 +21,8 @@ import type {
   TenantDetail,
   TenantStatus,
   TenantType,
+  ProvisioningStatus,
+  ProvisioningFailureStage,
   ProductEntitlementSummary,
   ProductCode,
   EntitlementStatus,
@@ -207,6 +209,9 @@ function normalizeTenantType(r: Record<string, unknown>): TenantType {
  *
  * TODO: replace manual mappers with generated types from OpenAPI spec
  */
+const PROVISIONING_STATUSES: readonly ProvisioningStatus[] = ['Pending', 'InProgress', 'Provisioned', 'Verifying', 'Active', 'Failed'];
+const PROVISIONING_FAILURE_STAGES: readonly ProvisioningFailureStage[] = ['None', 'DnsProvisioning', 'DnsVerification', 'HttpVerification'];
+
 export function mapTenantSummary(raw: unknown): TenantSummary {
   const r = asObj(raw);
   const id = str(r, 'id', 'id', '', 'mapTenantSummary.id');
@@ -221,6 +226,10 @@ export function mapTenantSummary(raw: unknown): TenantSummary {
     userCount:          num(r,  'user_count',            'userCount',          0),
     orgCount:           num(r,  'org_count',             'orgCount',           0),
     createdAtUtc:       str(r, 'created_at',            'createdAtUtc',       new Date().toISOString()),
+    subdomain:          optStr(r, 'subdomain',          'subdomain'),
+    provisioningStatus: (r['provisioning_status'] ?? r['provisioningStatus']) as ProvisioningStatus | undefined
+      ? oneOf(r, 'provisioning_status', 'provisioningStatus', PROVISIONING_STATUSES, 'Pending', 'mapTenantSummary.provisioningStatus')
+      : undefined,
   };
 }
 
@@ -270,6 +279,12 @@ export function mapTenantDetail(raw: unknown): TenantDetail {
     productEntitlements: asArr(
       r['product_entitlements'] ?? r['productEntitlements'],
     ).map(mapEntitlement),
+    lastProvisioningAttemptUtc: optStr(r, 'last_provisioning_attempt_utc', 'lastProvisioningAttemptUtc'),
+    provisioningFailureReason: optStr(r, 'provisioning_failure_reason', 'provisioningFailureReason'),
+    provisioningFailureStage: (r['provisioning_failure_stage'] ?? r['provisioningFailureStage']) as ProvisioningFailureStage | undefined
+      ? oneOf(r, 'provisioning_failure_stage', 'provisioningFailureStage', PROVISIONING_FAILURE_STAGES, 'None', 'mapTenantDetail.provisioningFailureStage')
+      : undefined,
+    hostname: optStr(r, 'hostname', 'hostname'),
   };
 }
 

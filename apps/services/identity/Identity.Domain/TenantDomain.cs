@@ -9,6 +9,7 @@ public class TenantDomain
     public bool IsPrimary { get; private set; }
     public bool IsVerified { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
+    public DateTime? VerifiedAtUtc { get; private set; }
 
     public Tenant Tenant { get; private set; } = null!;
 
@@ -27,7 +28,14 @@ public class TenantDomain
             DomainType = domainType.ToUpperInvariant(),
             IsPrimary = isPrimary,
             IsVerified = false,
+            VerifiedAtUtc = null,
             CreatedAtUtc = DateTime.UtcNow
         };
+    }
+
+    public void MarkVerified()
+    {
+        IsVerified = true;
+        VerifiedAtUtc = DateTime.UtcNow;
     }
 }

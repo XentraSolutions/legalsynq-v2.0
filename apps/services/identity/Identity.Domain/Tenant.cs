@@ -6,8 +6,18 @@ public enum ProvisioningStatus
 {
     Pending,
     InProgress,
+    Provisioned,
+    Verifying,
     Active,
     Failed
+}
+
+public enum ProvisioningFailureStage
+{
+    None,
+    DnsProvisioning,
+    DnsVerification,
+    HttpVerification
 }
 
 public class Tenant
@@ -19,23 +29,15 @@ public class Tenant
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
-    /// <summary>
-    /// Per-tenant idle session timeout in minutes.
-    /// Null means "use the platform default" (30 minutes).
-    /// Set via the Control Center tenant settings panel.
-    /// </summary>
     public int? SessionTimeoutMinutes { get; private set; }
 
-    /// <summary>
-    /// Document ID of the tenant's logo image, stored in the Documents service.
-    /// Null means no custom logo — the platform default (LegalSynq) is displayed.
-    /// </summary>
     public Guid? LogoDocumentId { get; private set; }
 
     public string? Subdomain { get; private set; }
     public ProvisioningStatus ProvisioningStatus { get; private set; }
     public DateTime? LastProvisioningAttemptUtc { get; private set; }
     public string? ProvisioningFailureReason { get; private set; }
+    public ProvisioningFailureStage ProvisioningFailureStage { get; private set; }
 
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string? PreferredSubdomain { get; private set; }
@@ -65,6 +67,7 @@ public class Tenant
                 ? null
                 : SlugGenerator.Normalize(preferredSubdomain),
             ProvisioningStatus = ProvisioningStatus.Pending,
+            ProvisioningFailureStage = ProvisioningFailureStage.None,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
@@ -95,6 +98,23 @@ public class Tenant
         ProvisioningStatus = ProvisioningStatus.InProgress;
         LastProvisioningAttemptUtc = DateTime.UtcNow;
         ProvisioningFailureReason = null;
+        ProvisioningFailureStage = ProvisioningFailureStage.None;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkProvisioningProvisioned()
+    {
+        ProvisioningStatus = ProvisioningStatus.Provisioned;
+        ProvisioningFailureReason = null;
+        ProvisioningFailureStage = ProvisioningFailureStage.None;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkProvisioningVerifying()
+    {
+        ProvisioningStatus = ProvisioningStatus.Verifying;
+        ProvisioningFailureReason = null;
+        ProvisioningFailureStage = ProvisioningFailureStage.None;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
@@ -102,13 +122,15 @@ public class Tenant
     {
         ProvisioningStatus = ProvisioningStatus.Active;
         ProvisioningFailureReason = null;
+        ProvisioningFailureStage = ProvisioningFailureStage.None;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    public void MarkProvisioningFailed(string reason)
+    public void MarkProvisioningFailed(string reason, ProvisioningFailureStage stage = ProvisioningFailureStage.None)
     {
         ProvisioningStatus = ProvisioningStatus.Failed;
         ProvisioningFailureReason = reason;
+        ProvisioningFailureStage = stage;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 

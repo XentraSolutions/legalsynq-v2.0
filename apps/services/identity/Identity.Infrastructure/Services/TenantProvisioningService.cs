@@ -10,15 +10,18 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
 {
     private readonly IdentityDbContext _db;
     private readonly IDnsService _dns;
+    private readonly ITenantVerificationService _verification;
     private readonly ILogger<TenantProvisioningService> _log;
 
     public TenantProvisioningService(
         IdentityDbContext db,
         IDnsService dns,
+        ITenantVerificationService verification,
         ILogger<TenantProvisioningService> log)
     {
         _db = db;
         _dns = dns;
+        _verification = verification;
         _log = log;
     }
 
@@ -46,26 +49,34 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
         if (slug != tenant.Subdomain)
             tenant.SetSubdomain(slug);
 
+        var priorStatus = tenant.ProvisioningStatus;
+        var canSkipDns = isRetry &&
+            (priorStatus == ProvisioningStatus.Provisioned ||
+             priorStatus == ProvisioningStatus.Verifying);
+
         tenant.MarkProvisioningInProgress();
         await _db.SaveChangesAsync(ct);
 
         _log.LogInformation(
-            "Provisioning {Action} for tenant {TenantCode} with subdomain {Slug}",
-            isRetry ? "retry" : "started", tenant.Code, slug);
+            "Provisioning {Action} for tenant {TenantCode} with subdomain {Slug} (priorStatus={PriorStatus})",
+            isRetry ? "retry" : "started", tenant.Code, slug, priorStatus);
+
+        var hostname = $"{slug}.{_dns.BaseDomain}";
 
         try
         {
-            var dnsCreated = await _dns.CreateSubdomainAsync(slug, ct);
-            if (!dnsCreated)
+            if (!canSkipDns)
             {
-                var msg = "DNS record creation returned failure.";
-                tenant.MarkProvisioningFailed(msg);
-                await _db.SaveChangesAsync(ct);
-                _log.LogWarning("Provisioning failed for tenant {TenantCode}: {Reason}", tenant.Code, msg);
-                return new ProvisioningResult(false, null, msg);
+                var dnsCreated = await _dns.CreateSubdomainAsync(slug, ct);
+                if (!dnsCreated)
+                {
+                    var msg = "DNS record creation returned failure.";
+                    tenant.MarkProvisioningFailed(msg, ProvisioningFailureStage.DnsProvisioning);
+                    await _db.SaveChangesAsync(ct);
+                    _log.LogWarning("Provisioning failed for tenant {TenantCode}: {Reason}", tenant.Code, msg);
+                    return new ProvisioningResult(false, null, msg, ProvisioningFailureStage.DnsProvisioning);
+                }
             }
-
-            var hostname = $"{slug}.{_dns.BaseDomain}";
 
             var existingDomain = await _db.TenantDomains
                 .FirstOrDefaultAsync(d => d.TenantId == tenant.Id && d.DomainType == "SUBDOMAIN", ct);
@@ -80,11 +91,43 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
                 _db.TenantDomains.Add(tenantDomain);
             }
 
+            tenant.MarkProvisioningProvisioned();
+            await _db.SaveChangesAsync(ct);
+
+            _log.LogInformation(
+                "DNS provisioning succeeded for tenant {TenantCode}: hostname={Hostname}. Starting verification.",
+                tenant.Code, hostname);
+
+            tenant.MarkProvisioningVerifying();
+            await _db.SaveChangesAsync(ct);
+
+            _log.LogInformation("Verification started for tenant {TenantCode}", tenant.Code);
+
+            var verifyResult = await _verification.VerifyAsync(tenant, hostname, ct);
+
+            if (!verifyResult.Success)
+            {
+                tenant.MarkProvisioningFailed(
+                    verifyResult.ErrorMessage ?? "Verification failed.",
+                    verifyResult.FailureStage);
+                await _db.SaveChangesAsync(ct);
+
+                _log.LogWarning(
+                    "Verification failed for tenant {TenantCode}: stage={Stage}, reason={Reason}",
+                    tenant.Code, verifyResult.FailureStage, verifyResult.ErrorMessage);
+
+                return new ProvisioningResult(false, hostname, verifyResult.ErrorMessage, verifyResult.FailureStage);
+            }
+
+            var domain = await _db.TenantDomains
+                .FirstOrDefaultAsync(d => d.TenantId == tenant.Id && d.DomainType == "SUBDOMAIN", ct);
+            domain?.MarkVerified();
+
             tenant.MarkProvisioningActive();
             await _db.SaveChangesAsync(ct);
 
             _log.LogInformation(
-                "Provisioning succeeded for tenant {TenantCode}: hostname={Hostname}",
+                "Provisioning and verification succeeded for tenant {TenantCode}: hostname={Hostname}",
                 tenant.Code, hostname);
 
             return new ProvisioningResult(true, hostname, null);

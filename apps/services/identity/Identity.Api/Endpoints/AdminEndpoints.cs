@@ -32,6 +32,7 @@ public static class AdminEndpoints
         routes.MapPatch("/api/admin/tenants/{id:guid}/logo",             SetTenantLogo);
         routes.MapDelete("/api/admin/tenants/{id:guid}/logo",            ClearTenantLogo);
         routes.MapPost("/api/admin/tenants/{id:guid}/provisioning/retry", RetryProvisioning);
+        routes.MapPost("/api/admin/tenants/{id:guid}/verification/retry", RetryVerification);
 
         // ── Infrastructure DNS ──────────────────────────────────────────
         routes.MapPost("/api/admin/dns/provision", ProvisionInfraSubdomain);
@@ -269,7 +270,8 @@ public static class AdminEndpoints
             provisioningStatus         = t.ProvisioningStatus.ToString(),
             lastProvisioningAttemptUtc  = t.LastProvisioningAttemptUtc,
             provisioningFailureReason  = t.ProvisioningFailureReason,
-            hostname                   = t.ProvisioningStatus == ProvisioningStatus.Active && t.Subdomain != null
+            provisioningFailureStage   = t.ProvisioningFailureStage.ToString(),
+            hostname                   = t.Subdomain != null
                 ? $"{t.Subdomain}.{dnsBaseDomain}"
                 : (string?)null,
         });
@@ -533,6 +535,114 @@ public static class AdminEndpoints
             provisioningStatus = tenant.ProvisioningStatus.ToString(),
             hostname           = result.Hostname,
             error              = result.ErrorMessage,
+        });
+    }
+
+    private static async Task<IResult> RetryVerification(
+        Guid                       id,
+        IdentityDbContext          db,
+        ITenantVerificationService verificationService,
+        IDnsService                dnsService,
+        IAuditEventClient          auditClient,
+        ILoggerFactory             loggerFactory,
+        CancellationToken          ct)
+    {
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (tenant is null)
+            return Results.NotFound(new { error = "Tenant not found." });
+
+        if (tenant.ProvisioningStatus == ProvisioningStatus.Active)
+            return Results.Ok(new { success = true, provisioningStatus = "Active", hostname = (string?)null, error = (string?)null });
+
+        if (tenant.Subdomain is null)
+            return Results.BadRequest(new { error = "Tenant has no subdomain assigned. Run provisioning first." });
+
+        if (tenant.ProvisioningStatus == ProvisioningStatus.InProgress ||
+            tenant.ProvisioningStatus == ProvisioningStatus.Verifying)
+            return Results.Conflict(new { error = "Provisioning or verification is already in progress." });
+
+        var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
+        log.LogInformation("Verification retry requested for tenant {TenantCode}", tenant.Code);
+
+        var hostname = $"{tenant.Subdomain}.{dnsService.BaseDomain}";
+
+        tenant.MarkProvisioningVerifying();
+        await db.SaveChangesAsync(ct);
+
+        var verifyResult = await verificationService.VerifyAsync(tenant, hostname, ct);
+
+        if (!verifyResult.Success)
+        {
+            tenant.MarkProvisioningFailed(
+                verifyResult.ErrorMessage ?? "Verification failed.",
+                verifyResult.FailureStage);
+            await db.SaveChangesAsync(ct);
+
+            var now = DateTimeOffset.UtcNow;
+            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "platform.admin.tenant.verification.retry.failed",
+                EventCategory = EventCategory.Administrative,
+                SourceSystem  = "identity-service",
+                SourceService = "admin-api",
+                Visibility    = VisibilityScope.Platform,
+                Severity      = SeverityLevel.Warn,
+                OccurredAtUtc = now,
+                Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Platform },
+                Actor         = new AuditEventActorDto { Type = ActorType.System },
+                Entity        = new AuditEventEntityDto { Type = "Tenant", Id = tenant.Id.ToString() },
+                Action        = "VerificationRetryFailed",
+                Description   = $"Verification retry failed for tenant '{tenant.Code}': {verifyResult.ErrorMessage}",
+                After         = JsonSerializer.Serialize(new { hostname, error = verifyResult.ErrorMessage, stage = verifyResult.FailureStage.ToString() }),
+                IdempotencyKey = IdempotencyKey.For("identity-service", "verification.retry.failed", $"{tenant.Id}:{now.Ticks}"),
+                Tags = ["tenant-management", "verification", "retry"],
+            });
+
+            return Results.Ok(new
+            {
+                success            = false,
+                provisioningStatus = tenant.ProvisioningStatus.ToString(),
+                hostname           = hostname,
+                error              = verifyResult.ErrorMessage,
+                failureStage       = verifyResult.FailureStage.ToString(),
+            });
+        }
+
+        var domain = await db.TenantDomains
+            .FirstOrDefaultAsync(d => d.TenantId == tenant.Id && d.DomainType == "SUBDOMAIN", ct);
+        domain?.MarkVerified();
+
+        tenant.MarkProvisioningActive();
+        await db.SaveChangesAsync(ct);
+
+        var nowOk = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "platform.admin.tenant.verification.retry.succeeded",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = nowOk,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Platform },
+            Actor         = new AuditEventActorDto { Type = ActorType.System },
+            Entity        = new AuditEventEntityDto { Type = "Tenant", Id = tenant.Id.ToString() },
+            Action        = "VerificationRetrySucceeded",
+            Description   = $"Verification retry succeeded for tenant '{tenant.Code}': {hostname}",
+            After         = JsonSerializer.Serialize(new { hostname }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "verification.retry.succeeded", $"{tenant.Id}:{nowOk.Ticks}"),
+            Tags = ["tenant-management", "verification", "retry"],
+        });
+
+        log.LogInformation("Verification retry succeeded for tenant {TenantCode}: {Hostname}", tenant.Code, hostname);
+
+        return Results.Ok(new
+        {
+            success            = true,
+            provisioningStatus = tenant.ProvisioningStatus.ToString(),
+            hostname           = hostname,
+            error              = (string?)null,
         });
     }
 

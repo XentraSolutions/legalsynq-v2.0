@@ -5,7 +5,8 @@ namespace Identity.Application.Interfaces;
 public record ProvisioningResult(
     bool Success,
     string? Hostname,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    ProvisioningFailureStage FailureStage = ProvisioningFailureStage.None);
 
 public interface ITenantProvisioningService
 {

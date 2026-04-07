@@ -310,6 +310,24 @@ export const controlCenterServerApi = {
       revalidateTag(CACHE_TAGS.tenants);
       return raw;
     },
+
+    retryVerification: async (tenantId: string): Promise<{
+      success:            boolean;
+      provisioningStatus: string;
+      hostname?:          string;
+      error?:             string;
+      failureStage?:      string;
+    }> => {
+      const raw = await apiClient.post<{
+        success:            boolean;
+        provisioningStatus: string;
+        hostname?:          string;
+        error?:             string;
+        failureStage?:      string;
+      }>(`/identity/api/admin/tenants/${tenantId}/verification/retry`, {});
+      revalidateTag(CACHE_TAGS.tenants);
+      return raw;
+    },
   },
 
   // ── Users ─────────────────────────────────────────────────────────────────

@@ -49,6 +49,12 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException();
         }
 
+        if (tenant.ProvisioningStatus != ProvisioningStatus.Active)
+        {
+            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotProvisioned", ipAddress: ipAddress);
+            throw new InvalidOperationException($"Tenant '{tenantCodeNorm}' is not fully provisioned (status: {tenant.ProvisioningStatus}). Please wait for setup to complete.");
+        }
+
         var normalizedEmail = emailNorm;
         var user = await _userRepository.GetByTenantAndEmailAsync(tenant.Id, normalizedEmail, ct);
         if (user is null || !user.IsActive)

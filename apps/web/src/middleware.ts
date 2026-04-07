@@ -26,6 +26,7 @@ const PUBLIC_PATHS = [
   '/portal/login',
   '/_next',
   '/favicon.ico',
+  '/.well-known',
   // Auth API endpoints must be reachable before a session cookie exists
   '/api/auth/login',
   '/api/auth/logout',

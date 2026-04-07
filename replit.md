@@ -334,16 +334,22 @@ shared/
 | Product | Products | Id (Guid) | Code unique |
 | TenantProduct | TenantProducts | (TenantId, ProductId) | FK→Tenants Cascade |
 
-### Tenant Provisioning (LSCC-01-006)
-- **Flow:** `Tenant.Create()` → `TenantProvisioningService.ProvisionAsync()` → slug resolution → DNS (Route53 CNAME) → `TenantDomain` upsert → status tracking
-- **Fields:** `Subdomain` (varchar 63, unique filtered), `ProvisioningStatus` (enum: Pending/InProgress/Active/Failed), `LastProvisioningAttemptUtc`, `ProvisioningFailureReason`
+### Tenant Provisioning & Verification (LSCC-01-006 + LSCC-01-006-01)
+- **Lifecycle:** `Pending → InProgress → Provisioned → Verifying → Active` (with `Failed` branch at each stage)
+- **Fields:** `Subdomain` (varchar 63, unique filtered), `ProvisioningStatus` (enum: Pending/InProgress/Provisioned/Verifying/Active/Failed), `ProvisioningFailureStage` (enum: None/DnsProvisioning/DnsVerification/HttpVerification), `LastProvisioningAttemptUtc`, `ProvisioningFailureReason`
+- **TenantDomain:** Added `VerifiedAtUtc` (nullable datetime) and `MarkVerified()` method
 - **Slug:** `SlugGenerator` (static class in Tenant.cs) — `Generate()`, `Normalize()`, `Validate()`, `AppendSuffix()`. Reserved: www, api, app, admin, mail, ftp, login, status. Rules: 3-63 chars, lowercase a-z0-9 + hyphens, no leading/trailing hyphens.
 - **`PreferredSubdomain`:** `[NotMapped]` property on Tenant — set during `Create()`, consumed by provisioning service. Subdomain is NOT persisted until provisioning resolves uniqueness (prevents unique-index conflicts).
-- **Retry:** `POST /api/admin/tenants/{id}/provisioning/retry` — only for Failed/Pending status
-- **DI:** `ITenantProvisioningService` (Scoped), `IDnsService` (Singleton)
+- **Verification Service:** `ITenantVerificationService` (Scoped) — two-phase: DNS resolution + HTTP check against `/.well-known/tenant-verify`
+- **Verification Config:** `TenantVerification` section in appsettings.json — `Enabled`, `DevBypass` (true in dev), `DnsTimeoutSeconds`, `HttpTimeoutSeconds`, `VerificationEndpointPath`
+- **Web Endpoint:** `GET /.well-known/tenant-verify` returns `tenant-verify-ok` (anonymous, used by verification service)
+- **Retry Provisioning:** `POST /api/admin/tenants/{id}/provisioning/retry` — re-runs full flow
+- **Retry Verification:** `POST /api/admin/tenants/{id}/verification/retry` — re-runs verification only (when DNS is already provisioned)
+- **Login Hardening:** `AuthService.LoginAsync` rejects tenants with `ProvisioningStatus != Active` (throws `InvalidOperationException`); BFF returns 503 with "still being set up" message
+- **DI:** `ITenantProvisioningService` (Scoped), `ITenantVerificationService` (Scoped), `IDnsService` (Singleton)
 - **Secrets:** `Route53__HostedZoneId`, `Route53__BaseDomain`, `Route53__RecordValue`
 - **Login:** `extractTenantCodeFromHost()` in BFF route resolves tenant from Host header in production; explicit `tenantCode` only accepted when `NEXT_PUBLIC_ENV=development`
-- **Migration:** `20260407000001_AddTenantProvisioningFields` — adds columns, unique filtered index on Subdomain, seeds LEGALSYNQ as Active
+- **Migration needed:** `ProvisioningFailureStage` (int column) on Tenants, `VerifiedAtUtc` (nullable datetime) on TenantDomains
 
 ## Exception Handling (Fund.Api)
 
