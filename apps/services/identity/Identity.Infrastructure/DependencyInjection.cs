@@ -11,6 +11,7 @@ using LegalSynq.AuditClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Identity.Infrastructure;
 
@@ -48,6 +49,9 @@ public static class DependencyInjection
 
         // Phase I: scoped authorization service (real non-global scope checks)
         services.AddScoped<IScopedAuthorizationService, ScopedAuthorizationService>();
+
+        services.Configure<Route53DnsOptions>(configuration.GetSection("Route53"));
+        services.AddSingleton<IDnsService, Route53DnsService>();
 
         return services;
     }

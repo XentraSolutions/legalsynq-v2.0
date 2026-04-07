@@ -1,0 +1,104 @@
+using Amazon;
+using Amazon.Route53;
+using Amazon.Route53.Model;
+using Identity.Application.Interfaces;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
+namespace Identity.Infrastructure.Services;
+
+public sealed class Route53DnsOptions
+{
+    public string HostedZoneId { get; set; } = string.Empty;
+    public string BaseDomain { get; set; } = string.Empty;
+    public string RecordType { get; set; } = "CNAME";
+    public string RecordValue { get; set; } = string.Empty;
+    public long Ttl { get; set; } = 300;
+    public string Region { get; set; } = "us-east-2";
+    public string? AccessKeyId { get; set; }
+    public string? SecretAccessKey { get; set; }
+}
+
+public sealed class Route53DnsService : IDnsService, IDisposable
+{
+    private readonly IAmazonRoute53 _route53;
+    private readonly Route53DnsOptions _opts;
+    private readonly ILogger<Route53DnsService> _log;
+
+    public string BaseDomain => _opts.BaseDomain;
+
+    public Route53DnsService(IOptions<Route53DnsOptions> opts, ILogger<Route53DnsService> log)
+    {
+        _opts = opts.Value;
+        _log = log;
+
+        var config = new AmazonRoute53Config
+        {
+            RegionEndpoint = RegionEndpoint.GetBySystemName(_opts.Region)
+        };
+
+        _route53 = _opts.AccessKeyId is not null
+            ? new AmazonRoute53Client(_opts.AccessKeyId, _opts.SecretAccessKey, config)
+            : new AmazonRoute53Client(config);
+    }
+
+    public async Task<bool> CreateSubdomainAsync(string subdomain, CancellationToken ct = default)
+    {
+        var fqdn = $"{subdomain.ToLowerInvariant()}.{_opts.BaseDomain}";
+        return await UpsertRecordAsync(fqdn, ChangeAction.UPSERT, ct);
+    }
+
+    public async Task<bool> DeleteSubdomainAsync(string subdomain, CancellationToken ct = default)
+    {
+        var fqdn = $"{subdomain.ToLowerInvariant()}.{_opts.BaseDomain}";
+        return await UpsertRecordAsync(fqdn, ChangeAction.DELETE, ct);
+    }
+
+    private async Task<bool> UpsertRecordAsync(string fqdn, ChangeAction action, CancellationToken ct)
+    {
+        try
+        {
+            var change = new Change
+            {
+                Action = action,
+                ResourceRecordSet = new ResourceRecordSet
+                {
+                    Name = fqdn,
+                    Type = RRType.FindValue(_opts.RecordType),
+                    TTL = _opts.Ttl,
+                    ResourceRecords = new List<ResourceRecord>
+                    {
+                        new ResourceRecord { Value = _opts.RecordValue }
+                    }
+                }
+            };
+
+            var request = new ChangeResourceRecordSetsRequest
+            {
+                HostedZoneId = _opts.HostedZoneId,
+                ChangeBatch = new ChangeBatch
+                {
+                    Changes = new List<Change> { change },
+                    Comment = $"LegalSynq tenant subdomain: {action.Value} {fqdn}"
+                }
+            };
+
+            var response = await _route53.ChangeResourceRecordSetsAsync(request, ct);
+            _log.LogInformation(
+                "Route53 {Action} for {Fqdn}: status={Status}, changeId={ChangeId}",
+                action.Value, fqdn, response.ChangeInfo.Status.Value, response.ChangeInfo.Id);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Route53 {Action} failed for {Fqdn}", action.Value, fqdn);
+            return false;
+        }
+    }
+
+    public void Dispose()
+    {
+        _route53.Dispose();
+    }
+}

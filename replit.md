@@ -11,7 +11,7 @@ Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router 
 - **Frontend entry point:** `cd apps/web && node /home/runner/workspace/node_modules/.bin/next dev -p 3000`
 
 ## Frontend (apps/web)
-- **Framework:** Next.js 15.2.3 App Router + TypeScript + Tailwind CSS (React 18.3.1)
+- **Framework:** Next.js 15.2.9 App Router + TypeScript + Tailwind CSS (React 18.3.1)
 - **Port:** 5000 (dev)
 - **Dev proxy:** `scripts/dev-proxy.js` — lightweight HTTP proxy on port 5000 that (1) gates browser requests until Next.js (on internal port 3050) returns HTTP 200 for `/login`, and (2) intercepts 5xx responses for page requests during a 30-second post-warmup window and serves an auto-refreshing loading page. Page detection uses URL pattern matching (excludes `/_next/`, `/api/`, file extensions) rather than browser headers (which Replit's proxy strips). Non-page requests (API calls, assets) get proper 503/502 during warmup. After the 30s cold-compile guard window, real 500s pass through for debugging. Auto re-gates if Next.js becomes unreachable (3+ consecutive connection errors). WebSocket upgrade passthrough for HMR. The `postinstall` patch (`patches/next-cold-compile-guard.js`) has been removed — it was ineffective because Next.js dev mode webpack-compiles its own server code into `.next/server/vendor-chunks/next.js`, bypassing the dist file entirely.
 - **Error boundary:** `global-error.tsx` at app root catches any rendering errors gracefully
@@ -22,7 +22,7 @@ Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router 
 - **node_modules:** Installed at monorepo root (`/home/runner/workspace/node_modules`) — `apps/web` inherits via Node.js module resolution traversal
 
 ## Control Center (apps/control-center)
-- **Framework:** Next.js 15.2.3 App Router + TypeScript + Tailwind CSS v4 (React 18.3.1)
+- **Framework:** Next.js 15.2.9 App Router + TypeScript + Tailwind CSS v4 (React 18.3.1)
 - **Port:** 5004 (dev) — started by `scripts/run-dev.sh`
 - **Purpose:** Internal platform administration portal for LegalSynq operators. Tenant management, cross-tenant user management, RBAC, audit logs, monitoring, notifications, CareConnect integrity, SynqAudit investigation.
 - **Auth:** Requires `PlatformAdmin` system role. Cookie-based session (`platform_session`) validated via Identity service `/auth/me`.
@@ -293,6 +293,11 @@ shared/
 | `ConnectionStrings__CareConnectDb` | CareConnect.Api | MySQL, careconnect_db |
 | `SENDGRID_API_KEY` | Notifications service | SendGrid API key for transactional email |
 | `SENDGRID_DEFAULT_FROM_EMAIL` | Notifications service | Verified sender email address |
+| `Route53__HostedZoneId` | Identity.Api | AWS Route53 hosted zone ID for tenant subdomains |
+| `Route53__BaseDomain` | Identity.Api | Base domain for subdomains (default: legalsynq.com) |
+| `Route53__RecordValue` | Identity.Api | CNAME target for tenant subdomains |
+| `Route53__AccessKeyId` | Identity.Api | AWS access key (optional; falls back to instance role) |
+| `Route53__SecretAccessKey` | Identity.Api | AWS secret key (optional; falls back to instance role) |
 
 ## JWT
 

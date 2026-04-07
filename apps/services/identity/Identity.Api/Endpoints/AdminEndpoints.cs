@@ -277,6 +277,8 @@ public static class AdminEndpoints
         IdentityDbContext    db,
         IPasswordHasher      passwordHasher,
         IAuditEventClient    auditClient,
+        IDnsService          dnsService,
+        ILoggerFactory       loggerFactory,
         CancellationToken    ct)
     {
         // ── Validate inputs ───────────────────────────────────────────────────
@@ -364,6 +366,34 @@ public static class AdminEndpoints
 
         await db.SaveChangesAsync(ct);
 
+        // ── Create Route53 subdomain + TenantDomain record ──────────────────
+        var subdomainCreated = await dnsService.CreateSubdomainAsync(code, ct);
+        string? subdomain = null;
+
+        if (subdomainCreated)
+        {
+            subdomain = $"{code.ToLowerInvariant()}.{dnsService.BaseDomain}";
+            var tenantDomain = TenantDomain.Create(
+                tenantId:   tenant.Id,
+                domain:     subdomain,
+                domainType: "SUBDOMAIN",
+                isPrimary:  true);
+            db.TenantDomains.Add(tenantDomain);
+            await db.SaveChangesAsync(ct);
+
+            var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
+            log.LogInformation("Route53 subdomain {Subdomain} created for tenant {TenantCode}",
+                subdomain, tenant.Code);
+        }
+        else
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
+            log.LogWarning(
+                "Route53 subdomain creation failed for tenant {TenantCode}. " +
+                "The tenant was created but the DNS record must be configured manually.",
+                tenant.Code);
+        }
+
         // ── Canonical audit event ──────────────────────────────────────────────
         var now = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
@@ -380,7 +410,7 @@ public static class AdminEndpoints
             Entity        = new AuditEventEntityDto { Type = "Tenant", Id = tenant.Id.ToString() },
             Action        = "TenantCreated",
             Description   = $"Tenant '{tenant.Name}' ({tenant.Code}) created with default admin '{emailNorm}'.",
-            After         = JsonSerializer.Serialize(new { tenantId = tenant.Id, code = tenant.Code, adminEmail = emailNorm }),
+            After         = JsonSerializer.Serialize(new { tenantId = tenant.Id, code = tenant.Code, adminEmail = emailNorm, subdomain }),
             IdempotencyKey = IdempotencyKey.For("identity-service", "platform.admin.tenant.created", tenant.Id.ToString()),
             Tags = ["tenant-management", "onboarding"],
         });
@@ -396,6 +426,8 @@ public static class AdminEndpoints
                 adminUserId       = user.Id,
                 adminEmail        = user.Email,
                 temporaryPassword = tempPassword,
+                subdomain,
+                subdomainCreated,
             });
     }
 
