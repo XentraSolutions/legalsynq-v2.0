@@ -34,14 +34,18 @@ echo "[control-center] Starting Next.js on :5004"
 PID_CC=$!
 
 echo "[dotnet] Starting .NET services"
-launch_dotnet() {
-  local name="$1" dll="$2"
+launch_svc() {
+  local name="$1" project="$2"
   shift 2
-  if [ -f "$dll" ]; then
-    "$@" dotnet exec "$dll" &
+  local dll_dir
+  dll_dir="$(dirname "$project")/bin/Release/net8.0"
+  local dll_name
+  dll_name="$(basename "$project" .csproj).dll"
+  if [ -f "$dll_dir/$dll_name" ]; then
+    (cd "$(dirname "$project")" && "$@" dotnet run --no-build --configuration Release) &
     echo "[dotnet] $name launched (pid $!)"
   else
-    echo "[dotnet] $name SKIPPED — DLL not found: $dll"
+    echo "[dotnet] $name SKIPPED — binary not found"
   fi
 }
 
@@ -64,14 +68,14 @@ if command -v dotnet &>/dev/null; then
     fi
 
     echo "[dotnet] Launching services..."
-    launch_dotnet "Identity API" "$ROOT/apps/services/identity/Identity.Api/bin/Release/net8.0/Identity.Api.dll"
-    launch_dotnet "Fund API"     "$ROOT/apps/services/fund/Fund.Api/bin/Release/net8.0/Fund.Api.dll"
-    launch_dotnet "CareConnect"  "$ROOT/apps/services/careconnect/CareConnect.Api/bin/Release/net8.0/CareConnect.Api.dll"
-    launch_dotnet "Documents"    "$ROOT/apps/services/documents-dotnet/Documents.Api/bin/Release/net8.0/Documents.Api.dll" \
+    launch_svc "Identity API" "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
+    launch_svc "Fund API"     "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
+    launch_svc "CareConnect"  "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
+    launch_svc "Documents"    "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" \
       env ASPNETCORE_ENVIRONMENT=Production
-    launch_dotnet "Audit"        "$ROOT/apps/services/audit/bin/Release/net8.0/PlatformAuditEventService.dll" \
+    launch_svc "Audit"        "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" \
       env ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS=http://0.0.0.0:5007
-    launch_dotnet "Gateway"      "$ROOT/apps/gateway/Gateway.Api/bin/Release/net8.0/Gateway.Api.dll"
+    launch_svc "Gateway"      "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
 
     echo "[dotnet] Service launch complete"
     wait
