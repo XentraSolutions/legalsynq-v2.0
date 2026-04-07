@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import type { TenantDetail } from '@/types/control-center';
+import type { TenantDetail, ProvisioningStatus } from '@/types/control-center';
+import { RetryProvisioningButton } from './retry-provisioning-button';
 
 interface TenantDetailCardProps {
   tenant: TenantDetail;
@@ -13,15 +14,27 @@ function formatDate(iso: string): string {
   });
 }
 
-/**
- * Tenant detail card — sections B, C, D.
- * Pure Server Component: receives a fully-resolved TenantDetail prop.
- *
- * Sections:
- *   B. Core information (contact details, dates)
- *   C. Stats row (users, orgs, products)
- *   D. Product entitlements table
- */
+function provisioningStatusBadge(status?: ProvisioningStatus) {
+  if (!status) return null;
+  const styles: Record<ProvisioningStatus, string> = {
+    Pending:    'bg-gray-100 text-gray-600 border-gray-200',
+    InProgress: 'bg-blue-50 text-blue-700 border-blue-200',
+    Active:     'bg-green-50 text-green-700 border-green-200',
+    Failed:     'bg-red-50 text-red-700 border-red-200',
+  };
+  const labels: Record<ProvisioningStatus, string> = {
+    Pending:    'Pending',
+    InProgress: 'In Progress',
+    Active:     'Active',
+    Failed:     'Failed',
+  };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${styles[status]}`}>
+      {labels[status] ?? status}
+    </span>
+  );
+}
+
 export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
   const enabledCount = tenant.productEntitlements.filter(p => p.enabled).length;
 
@@ -34,6 +47,41 @@ export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
         <StatCard label="Active Users"     value={tenant.activeUserCount} />
         <StatCard label="Linked Orgs"      value={tenant.linkedOrgCount ?? tenant.orgCount} />
         <StatCard label="Products Enabled" value={`${enabledCount} / ${tenant.productEntitlements.length}`} />
+      </div>
+
+      {/* ── Subdomain / Provisioning ─────────────────────────────────────── */}
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Subdomain &amp; Provisioning
+          </h2>
+        </div>
+        <dl className="divide-y divide-gray-100">
+          <InfoRow label="Subdomain" value={
+            tenant.subdomain
+              ? <code className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{tenant.subdomain}</code>
+              : <span className="text-gray-400 italic">Not set</span>
+          } />
+          <InfoRow label="Provisioning" value={provisioningStatusBadge(tenant.provisioningStatus)} />
+          {tenant.hostname && (
+            <InfoRow label="Hostname" value={
+              <code className="font-mono text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">{tenant.hostname}</code>
+            } />
+          )}
+          {tenant.provisioningFailureReason && (
+            <InfoRow label="Failure Reason" value={
+              <span className="text-xs text-red-600">{tenant.provisioningFailureReason}</span>
+            } />
+          )}
+          {tenant.lastProvisioningAttemptUtc && (
+            <InfoRow label="Last Attempt" value={formatDate(tenant.lastProvisioningAttemptUtc)} />
+          )}
+          {(tenant.provisioningStatus === 'Failed' || tenant.provisioningStatus === 'Pending') && (
+            <div className="px-5 py-3">
+              <RetryProvisioningButton tenantId={tenant.id} />
+            </div>
+          )}
+        </dl>
       </div>
 
       {/* ── B. Core information ───────────────────────────────────────────── */}

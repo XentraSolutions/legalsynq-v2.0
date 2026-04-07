@@ -7,6 +7,13 @@ import { useSession } from '@/hooks/use-session';
 /**
  * Login form — calls the Next.js BFF route POST /api/auth/login.
  *
+ * Tenant resolution:
+ *   - Production: tenant is resolved from the subdomain (Host header).
+ *     The tenant code field is hidden. If the subdomain doesn't map to a
+ *     tenant, the BFF returns an error and we show a clear message.
+ *   - Development/Replit: NEXT_PUBLIC_ENV=development enables the manual
+ *     tenant code input, pre-populated from NEXT_PUBLIC_TENANT_CODE.
+ *
  * isDev is deferred to after mount so the server render and the initial
  * client render always agree (both see isDev = false), eliminating the
  * hydration mismatch caused by NEXT_PUBLIC_ENV being available in the
@@ -47,13 +54,17 @@ export function LoginForm() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setError(err.message ?? 'Invalid credentials. Please try again.');
+        const msg = err.message ?? 'Invalid credentials. Please try again.';
+        if (msg.includes('Tenant could not be resolved')) {
+          setError('This login page is not associated with an active organization. Please check the URL or contact your administrator.');
+        } else {
+          setError(msg);
+        }
         return;
       }
 
       await refresh();
 
-      // Honor returnTo for deep-link flows (e.g. referral view); guard against open redirects
       const rawReturnTo = searchParams.get('returnTo') ?? '';
       const safeDest    = rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//')
         ? rawReturnTo
@@ -69,7 +80,7 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
 
-      {/* Dev-only tenant code */}
+      {/* Dev-only tenant code — hidden in production (tenant resolved from subdomain) */}
       {isDev && (
         <Field label="Tenant Code" hint="dev only">
           <input

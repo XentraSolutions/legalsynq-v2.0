@@ -6,6 +6,7 @@
 
 export type TenantType   = 'LawFirm' | 'Provider' | 'Funder' | 'LienOwner' | 'Corporate' | 'Government' | 'Other';
 export type TenantStatus = 'Active' | 'Inactive' | 'Suspended';
+export type ProvisioningStatus = 'Pending' | 'InProgress' | 'Active' | 'Failed';
 
 export interface TenantSummary {
   id:                 string;
@@ -18,6 +19,8 @@ export interface TenantSummary {
   userCount:          number;
   orgCount:           number;
   createdAtUtc:       string;
+  subdomain?:         string;
+  provisioningStatus?: ProvisioningStatus;
 }
 
 /**
@@ -25,13 +28,16 @@ export interface TenantSummary {
  * Extends TenantSummary with enriched fields not present in the list view.
  */
 export interface TenantDetail extends TenantSummary {
-  email?:                string;
-  updatedAtUtc:          string;
-  activeUserCount:       number;
-  linkedOrgCount?:       number;
-  sessionTimeoutMinutes?: number;
-  logoDocumentId?:       string;
-  productEntitlements:   ProductEntitlementSummary[];
+  email?:                     string;
+  updatedAtUtc:               string;
+  activeUserCount:            number;
+  linkedOrgCount?:            number;
+  sessionTimeoutMinutes?:     number;
+  logoDocumentId?:            string;
+  productEntitlements:        ProductEntitlementSummary[];
+  lastProvisioningAttemptUtc?: string;
+  provisioningFailureReason?: string;
+  hostname?:                  string;
 }
 
 // ── Product Entitlements ──────────────────────────────────────────────────────

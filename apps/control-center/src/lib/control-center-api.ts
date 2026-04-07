@@ -260,30 +260,53 @@ export const controlCenterServerApi = {
      * Revalidates: cc:tenants so the list refreshes immediately.
      */
     create: async (body: {
-      name:           string;
-      code:           string;
-      orgType:        string;
-      adminEmail:     string;
-      adminFirstName: string;
-      adminLastName:  string;
+      name:               string;
+      code:               string;
+      orgType:            string;
+      adminEmail:         string;
+      adminFirstName:     string;
+      adminLastName:      string;
+      preferredSubdomain?: string;
     }): Promise<{
-      tenantId:          string;
-      displayName:       string;
-      code:              string;
-      status:            string;
-      adminUserId:       string;
-      adminEmail:        string;
-      temporaryPassword: string;
+      tenantId:            string;
+      displayName:         string;
+      code:                string;
+      status:              string;
+      adminUserId:         string;
+      adminEmail:          string;
+      temporaryPassword:   string;
+      subdomain?:          string;
+      provisioningStatus?: string;
+      hostname?:           string;
     }> => {
       const raw = await apiClient.post<{
-        tenantId:          string;
-        displayName:       string;
-        code:              string;
-        status:            string;
-        adminUserId:       string;
-        adminEmail:        string;
-        temporaryPassword: string;
+        tenantId:            string;
+        displayName:         string;
+        code:                string;
+        status:              string;
+        adminUserId:         string;
+        adminEmail:          string;
+        temporaryPassword:   string;
+        subdomain?:          string;
+        provisioningStatus?: string;
+        hostname?:           string;
       }>('/identity/api/admin/tenants', body);
+      revalidateTag(CACHE_TAGS.tenants);
+      return raw;
+    },
+
+    retryProvisioning: async (tenantId: string): Promise<{
+      success:            boolean;
+      provisioningStatus: string;
+      hostname?:          string;
+      error?:             string;
+    }> => {
+      const raw = await apiClient.post<{
+        success:            boolean;
+        provisioningStatus: string;
+        hostname?:          string;
+        error?:             string;
+      }>(`/identity/api/admin/tenants/${tenantId}/provisioning/retry`, {});
       revalidateTag(CACHE_TAGS.tenants);
       return raw;
     },

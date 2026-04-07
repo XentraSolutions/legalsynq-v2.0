@@ -29,8 +29,25 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(t => t.UpdatedAtUtc)
             .IsRequired();
 
+        builder.Property(t => t.Subdomain)
+            .HasMaxLength(63);
+
+        builder.Property(t => t.ProvisioningStatus)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .HasDefaultValue(ProvisioningStatus.Pending);
+
+        builder.Property(t => t.LastProvisioningAttemptUtc);
+
+        builder.Property(t => t.ProvisioningFailureReason)
+            .HasMaxLength(500);
+
         builder.HasIndex(t => t.Code)
             .IsUnique();
+
+        builder.HasIndex(t => t.Subdomain)
+            .IsUnique()
+            .HasFilter("`Subdomain` IS NOT NULL");
 
         builder.HasData(new
         {
@@ -38,6 +55,7 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
             Name = "LegalSynq Internal",
             Code = "LEGALSYNQ",
             IsActive = true,
+            ProvisioningStatus = ProvisioningStatus.Active,
             CreatedAtUtc = SeedIds.SeededAt,
             UpdatedAtUtc = SeedIds.SeededAt
         });

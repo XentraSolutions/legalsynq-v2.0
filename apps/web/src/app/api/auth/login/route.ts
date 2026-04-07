@@ -38,9 +38,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
   }
 
-  // Resolve tenantCode: explicit value (dev) falls back to subdomain extraction (prod)
-  const tenantCode = explicitTenantCode?.trim()
-    || extractTenantCodeFromHost(request);
+  const isDev = process.env.NEXT_PUBLIC_ENV === 'development';
+  const tenantCode = isDev
+    ? (explicitTenantCode?.trim() || extractTenantCodeFromHost(request))
+    : extractTenantCodeFromHost(request);
 
   if (!tenantCode) {
     return NextResponse.json(

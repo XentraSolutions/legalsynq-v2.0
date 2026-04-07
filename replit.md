@@ -327,12 +327,23 @@ shared/
 
 | Entity | Table | PK | Key constraints |
 |---|---|---|---|
-| Tenant | Tenants | Id (Guid) | Code unique |
+| Tenant | Tenants | Id (Guid) | Code unique; Subdomain unique (filtered, nullable) |
 | User | Users | Id (Guid) | (TenantId, Email) unique |
 | Role | Roles | Id (Guid) | (TenantId, Name) unique |
 | UserRole | UserRoles | (UserId, RoleId) | FK→Users Cascade, FK→Roles Cascade |
 | Product | Products | Id (Guid) | Code unique |
 | TenantProduct | TenantProducts | (TenantId, ProductId) | FK→Tenants Cascade |
+
+### Tenant Provisioning (LSCC-01-006)
+- **Flow:** `Tenant.Create()` → `TenantProvisioningService.ProvisionAsync()` → slug resolution → DNS (Route53 CNAME) → `TenantDomain` upsert → status tracking
+- **Fields:** `Subdomain` (varchar 63, unique filtered), `ProvisioningStatus` (enum: Pending/InProgress/Active/Failed), `LastProvisioningAttemptUtc`, `ProvisioningFailureReason`
+- **Slug:** `SlugGenerator` (static class in Tenant.cs) — `Generate()`, `Normalize()`, `Validate()`, `AppendSuffix()`. Reserved: www, api, app, admin, mail, ftp, login, status. Rules: 3-63 chars, lowercase a-z0-9 + hyphens, no leading/trailing hyphens.
+- **`PreferredSubdomain`:** `[NotMapped]` property on Tenant — set during `Create()`, consumed by provisioning service. Subdomain is NOT persisted until provisioning resolves uniqueness (prevents unique-index conflicts).
+- **Retry:** `POST /api/admin/tenants/{id}/provisioning/retry` — only for Failed/Pending status
+- **DI:** `ITenantProvisioningService` (Scoped), `IDnsService` (Singleton)
+- **Secrets:** `Route53__HostedZoneId`, `Route53__BaseDomain`, `Route53__RecordValue`
+- **Login:** `extractTenantCodeFromHost()` in BFF route resolves tenant from Host header in production; explicit `tenantCode` only accepted when `NEXT_PUBLIC_ENV=development`
+- **Migration:** `20260407000001_AddTenantProvisioningFields` — adds columns, unique filtered index on Subdomain, seeds LEGALSYNQ as Active
 
 ## Exception Handling (Fund.Api)
 

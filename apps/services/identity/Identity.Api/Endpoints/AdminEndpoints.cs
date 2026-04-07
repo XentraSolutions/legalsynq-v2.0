@@ -31,6 +31,7 @@ public static class AdminEndpoints
         routes.MapPatch("/api/admin/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings);
         routes.MapPatch("/api/admin/tenants/{id:guid}/logo",             SetTenantLogo);
         routes.MapDelete("/api/admin/tenants/{id:guid}/logo",            ClearTenantLogo);
+        routes.MapPost("/api/admin/tenants/{id:guid}/provisioning/retry", RetryProvisioning);
 
         // ── Users ─────────────────────────────────────────────────────────
         routes.MapGet("/api/admin/users",           ListUsers);
@@ -189,6 +190,8 @@ public static class AdminEndpoints
                 userCount          = t.Users.Count,
                 orgCount           = t.Organizations.Count,
                 createdAtUtc       = t.CreatedAtUtc,
+                subdomain          = t.Subdomain,
+                provisioningStatus = t.ProvisioningStatus.ToString(),
             })
             .ToListAsync();
 
@@ -201,8 +204,9 @@ public static class AdminEndpoints
         });
     }
 
-    private static async Task<IResult> GetTenant(Guid id, IdentityDbContext db)
+    private static async Task<IResult> GetTenant(Guid id, IdentityDbContext db, IDnsService dnsService)
     {
+        var dnsBaseDomain = dnsService.BaseDomain;
         var t = await db.Tenants
             .Include(t => t.Users)
             .Include(t => t.Organizations)
@@ -258,6 +262,13 @@ public static class AdminEndpoints
             sessionTimeoutMinutes = t.SessionTimeoutMinutes,
             logoDocumentId        = t.LogoDocumentId,
             productEntitlements   = entitlements,
+            subdomain                  = t.Subdomain,
+            provisioningStatus         = t.ProvisioningStatus.ToString(),
+            lastProvisioningAttemptUtc  = t.LastProvisioningAttemptUtc,
+            provisioningFailureReason  = t.ProvisioningFailureReason,
+            hostname                   = t.ProvisioningStatus == ProvisioningStatus.Active && t.Subdomain != null
+                ? $"{t.Subdomain}.{dnsBaseDomain}"
+                : (string?)null,
         });
     }
 
@@ -273,13 +284,13 @@ public static class AdminEndpoints
     ///   - Code: 2–12 alphanumeric characters (uppercased automatically).
     /// </summary>
     private static async Task<IResult> CreateTenant(
-        CreateTenantRequest  body,
-        IdentityDbContext    db,
-        IPasswordHasher      passwordHasher,
-        IAuditEventClient    auditClient,
-        IDnsService          dnsService,
-        ILoggerFactory       loggerFactory,
-        CancellationToken    ct)
+        CreateTenantRequest       body,
+        IdentityDbContext         db,
+        IPasswordHasher           passwordHasher,
+        IAuditEventClient         auditClient,
+        ITenantProvisioningService provisioningService,
+        ILoggerFactory            loggerFactory,
+        CancellationToken         ct)
     {
         // ── Validate inputs ───────────────────────────────────────────────────
         if (string.IsNullOrWhiteSpace(body.Name))
@@ -291,6 +302,13 @@ public static class AdminEndpoints
         var code = body.Code.ToUpperInvariant().Trim();
         if (code.Length < 2 || code.Length > 12 || !code.All(c => char.IsLetterOrDigit(c)))
             return Results.BadRequest(new { error = "Code must be 2–12 alphanumeric characters." });
+
+        if (!string.IsNullOrWhiteSpace(body.PreferredSubdomain))
+        {
+            var (slugValid, slugError) = SlugGenerator.Validate(SlugGenerator.Normalize(body.PreferredSubdomain));
+            if (!slugValid)
+                return Results.BadRequest(new { error = slugError });
+        }
 
         if (string.IsNullOrWhiteSpace(body.AdminEmail))
             return Results.BadRequest(new { error = "Admin email is required." });
@@ -312,13 +330,12 @@ public static class AdminEndpoints
             return Results.Conflict(new { error = $"A user with email '{emailNorm}' already exists." });
 
         // ── Resolve organization type ──────────────────────────────────────────
-        // GUIDs mirror SeedIds in Identity.Infrastructure (which is internal to that assembly).
         var orgTypeId = body.OrgType switch
         {
             "PROVIDER"   => new Guid("70000000-0000-0000-0000-000000000003"),
             "FUNDER"     => new Guid("70000000-0000-0000-0000-000000000004"),
             "LIEN_OWNER" => new Guid("70000000-0000-0000-0000-000000000005"),
-            _            => new Guid("70000000-0000-0000-0000-000000000002"),  // default: LAW_FIRM
+            _            => new Guid("70000000-0000-0000-0000-000000000002"),
         };
 
         // ── Find TenantAdmin role ──────────────────────────────────────────────
@@ -331,10 +348,9 @@ public static class AdminEndpoints
         var passwordHash = passwordHasher.Hash(tempPassword);
 
         // ── Create tenant + org + user + membership + role assignment ──────────
-        var tenant = Tenant.Create(body.Name.Trim(), code);
+        var tenant = Tenant.Create(body.Name.Trim(), code, body.PreferredSubdomain);
         db.Tenants.Add(tenant);
 
-        // Default organization — same name as the tenant, typed by OrgType.
         var org = Organization.Create(
             tenantId:         tenant.Id,
             name:             body.Name.Trim(),
@@ -350,7 +366,6 @@ public static class AdminEndpoints
             lastName:     body.AdminLastName.Trim());
         db.Users.Add(user);
 
-        // Add the admin user as an ADMIN member of the default organization.
         var membership = UserOrganizationMembership.Create(
             userId:         user.Id,
             organizationId: org.Id,
@@ -366,35 +381,22 @@ public static class AdminEndpoints
 
         await db.SaveChangesAsync(ct);
 
-        // ── Create Route53 subdomain + TenantDomain record ──────────────────
-        var subdomainCreated = await dnsService.CreateSubdomainAsync(code, ct);
-        string? subdomain = null;
+        // ── Provision subdomain (DNS + TenantDomain record) ──────────────────
+        var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
+        var provResult = await provisioningService.ProvisionAsync(tenant, ct);
 
-        if (subdomainCreated)
+        if (provResult.Success)
         {
-            subdomain = $"{code.ToLowerInvariant()}.{dnsService.BaseDomain}";
-            var tenantDomain = TenantDomain.Create(
-                tenantId:   tenant.Id,
-                domain:     subdomain,
-                domainType: "SUBDOMAIN",
-                isPrimary:  true);
-            db.TenantDomains.Add(tenantDomain);
-            await db.SaveChangesAsync(ct);
-
-            var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
-            log.LogInformation("Route53 subdomain {Subdomain} created for tenant {TenantCode}",
-                subdomain, tenant.Code);
+            log.LogInformation("Subdomain provisioned for tenant {TenantCode}: {Hostname}",
+                tenant.Code, provResult.Hostname);
         }
         else
         {
-            var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
-            log.LogWarning(
-                "Route53 subdomain creation failed for tenant {TenantCode}. " +
-                "The tenant was created but the DNS record must be configured manually.",
-                tenant.Code);
+            log.LogWarning("Subdomain provisioning failed for tenant {TenantCode}: {Reason}",
+                tenant.Code, provResult.ErrorMessage);
         }
 
-        // ── Canonical audit event ──────────────────────────────────────────────
+        // ── Audit events ────────────────────────────────────────────────────────
         var now = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
         {
@@ -410,25 +412,125 @@ public static class AdminEndpoints
             Entity        = new AuditEventEntityDto { Type = "Tenant", Id = tenant.Id.ToString() },
             Action        = "TenantCreated",
             Description   = $"Tenant '{tenant.Name}' ({tenant.Code}) created with default admin '{emailNorm}'.",
-            After         = JsonSerializer.Serialize(new { tenantId = tenant.Id, code = tenant.Code, adminEmail = emailNorm, subdomain }),
+            After         = JsonSerializer.Serialize(new { tenantId = tenant.Id, code = tenant.Code, adminEmail = emailNorm, subdomain = tenant.Subdomain }),
             IdempotencyKey = IdempotencyKey.For("identity-service", "platform.admin.tenant.created", tenant.Id.ToString()),
             Tags = ["tenant-management", "onboarding"],
         });
+
+        if (provResult.Success)
+        {
+            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "platform.admin.tenant.provisioning.succeeded",
+                EventCategory = EventCategory.Administrative,
+                SourceSystem  = "identity-service",
+                SourceService = "admin-api",
+                Visibility    = VisibilityScope.Platform,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = now,
+                Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Platform },
+                Actor         = new AuditEventActorDto { Type = ActorType.System },
+                Entity        = new AuditEventEntityDto { Type = "Tenant", Id = tenant.Id.ToString() },
+                Action        = "ProvisioningSucceeded",
+                Description   = $"Subdomain '{tenant.Subdomain}' provisioned for tenant '{tenant.Code}'.",
+                After         = JsonSerializer.Serialize(new { hostname = provResult.Hostname, subdomain = tenant.Subdomain }),
+                IdempotencyKey = IdempotencyKey.For("identity-service", "platform.admin.tenant.provisioning.succeeded", tenant.Id.ToString()),
+                Tags = ["tenant-management", "provisioning"],
+            });
+        }
+        else
+        {
+            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "platform.admin.tenant.provisioning.failed",
+                EventCategory = EventCategory.Administrative,
+                SourceSystem  = "identity-service",
+                SourceService = "admin-api",
+                Visibility    = VisibilityScope.Platform,
+                Severity      = SeverityLevel.Warn,
+                OccurredAtUtc = now,
+                Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Platform },
+                Actor         = new AuditEventActorDto { Type = ActorType.System },
+                Entity        = new AuditEventEntityDto { Type = "Tenant", Id = tenant.Id.ToString() },
+                Action        = "ProvisioningFailed",
+                Description   = $"Subdomain provisioning failed for tenant '{tenant.Code}': {provResult.ErrorMessage}",
+                After         = JsonSerializer.Serialize(new { subdomain = tenant.Subdomain, error = provResult.ErrorMessage }),
+                IdempotencyKey = IdempotencyKey.For("identity-service", "platform.admin.tenant.provisioning.failed", tenant.Id.ToString()),
+                Tags = ["tenant-management", "provisioning"],
+            });
+        }
 
         return Results.Created(
             $"/api/admin/tenants/{tenant.Id}",
             new
             {
-                tenantId          = tenant.Id,
-                displayName       = tenant.Name,
-                code              = tenant.Code,
-                status            = "Active",
-                adminUserId       = user.Id,
-                adminEmail        = user.Email,
-                temporaryPassword = tempPassword,
-                subdomain,
-                subdomainCreated,
+                tenantId            = tenant.Id,
+                displayName         = tenant.Name,
+                code                = tenant.Code,
+                status              = "Active",
+                adminUserId         = user.Id,
+                adminEmail          = user.Email,
+                temporaryPassword   = tempPassword,
+                subdomain           = tenant.Subdomain,
+                provisioningStatus  = tenant.ProvisioningStatus.ToString(),
+                hostname            = provResult.Hostname,
             });
+    }
+
+    private static async Task<IResult> RetryProvisioning(
+        Guid                       id,
+        IdentityDbContext          db,
+        ITenantProvisioningService provisioningService,
+        IAuditEventClient          auditClient,
+        ILoggerFactory             loggerFactory,
+        CancellationToken          ct)
+    {
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (tenant is null)
+            return Results.NotFound(new { error = "Tenant not found." });
+
+        if (tenant.ProvisioningStatus == ProvisioningStatus.Active)
+            return Results.Ok(new { success = true, provisioningStatus = "Active", hostname = (string?)null, error = (string?)null });
+
+        if (tenant.ProvisioningStatus == ProvisioningStatus.InProgress)
+            return Results.Conflict(new { error = "Provisioning is already in progress." });
+
+        var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
+        log.LogInformation("Provisioning retry requested for tenant {TenantCode}", tenant.Code);
+
+        var result = await provisioningService.RetryProvisioningAsync(tenant, ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = result.Success
+                ? "platform.admin.tenant.provisioning.retry.succeeded"
+                : "platform.admin.tenant.provisioning.retry.failed",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = result.Success ? SeverityLevel.Info : SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Platform },
+            Actor         = new AuditEventActorDto { Type = ActorType.System },
+            Entity        = new AuditEventEntityDto { Type = "Tenant", Id = tenant.Id.ToString() },
+            Action        = result.Success ? "ProvisioningRetrySucceeded" : "ProvisioningRetryFailed",
+            Description   = result.Success
+                ? $"Provisioning retry succeeded for tenant '{tenant.Code}': {result.Hostname}"
+                : $"Provisioning retry failed for tenant '{tenant.Code}': {result.ErrorMessage}",
+            After         = JsonSerializer.Serialize(new { hostname = result.Hostname, error = result.ErrorMessage }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", result.Success ? "provisioning.retry.succeeded" : "provisioning.retry.failed", $"{tenant.Id}:{now.Ticks}"),
+            Tags = ["tenant-management", "provisioning", "retry"],
+        });
+
+        return Results.Ok(new
+        {
+            success            = result.Success,
+            provisioningStatus = tenant.ProvisioningStatus.ToString(),
+            hostname           = result.Hostname,
+            error              = result.ErrorMessage,
+        });
     }
 
     /// <summary>
@@ -3887,7 +3989,8 @@ public static class AdminEndpoints
         string  AdminEmail,
         string  AdminFirstName,
         string  AdminLastName,
-        string? OrgType = null);  // LAW_FIRM | PROVIDER | FUNDER | LIEN_OWNER (defaults to LAW_FIRM)
+        string? OrgType = null,
+        string? PreferredSubdomain = null);
     private record SetPasswordRequest(string NewPassword);
     private record EntitlementRequest(bool Enabled);
     private record SessionSettingsRequest(int? SessionTimeoutMinutes);

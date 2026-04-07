@@ -52,6 +52,7 @@ public static class DependencyInjection
 
         services.Configure<Route53DnsOptions>(configuration.GetSection("Route53"));
         services.AddSingleton<IDnsService, Route53DnsService>();
+        services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
 
         return services;
     }
