@@ -344,12 +344,24 @@ shared/
 - **Verification Config:** `TenantVerification` section in appsettings.json — `Enabled`, `DevBypass` (true in dev), `DnsTimeoutSeconds`, `HttpTimeoutSeconds`, `VerificationEndpointPath`
 - **Web Endpoint:** `GET /.well-known/tenant-verify` returns `tenant-verify-ok` (anonymous, used by verification service)
 - **Retry Provisioning:** `POST /api/admin/tenants/{id}/provisioning/retry` — re-runs full flow
-- **Retry Verification:** `POST /api/admin/tenants/{id}/verification/retry` — re-runs verification only (when DNS is already provisioned)
-- **Login Hardening:** `AuthService.LoginAsync` rejects tenants with `ProvisioningStatus != Active` (throws `InvalidOperationException`); BFF returns 503 with "still being set up" message
-- **DI:** `ITenantProvisioningService` (Scoped), `ITenantVerificationService` (Scoped), `IDnsService` (Singleton)
+- **Retry Verification:** `POST /api/admin/tenants/{id}/verification/retry` — re-runs verification only via `IVerificationRetryService` with smart backoff
+- **Login Hardening:** `AuthService.LoginAsync` rejects tenants with `ProvisioningStatus == Verifying` (DNS verifying message) or `!= Active` (not provisioned); BFF returns 503 with user-friendly messages
+- **DI:** `ITenantProvisioningService` (Scoped), `ITenantVerificationService` (Scoped), `IVerificationRetryService` (Scoped), `IDnsService` (Singleton)
 - **Secrets:** `Route53__HostedZoneId`, `Route53__BaseDomain`, `Route53__RecordValue`
 - **Login:** `extractTenantCodeFromHost()` in BFF route resolves tenant from Host header in production; explicit `tenantCode` only accepted when `NEXT_PUBLIC_ENV=development`
-- **Migration needed:** `ProvisioningFailureStage` (int column) on Tenants, `VerifiedAtUtc` (nullable datetime) on TenantDomains
+- **Migration:** `20260407100001_AddVerificationRetryFields` — adds `VerificationAttemptCount`, `LastVerificationAttemptUtc`, `NextVerificationRetryAtUtc`, `IsVerificationRetryExhausted`, `ProvisioningFailureStage` to Tenants; `VerifiedAtUtc` to TenantDomains
+
+### Smart Verification Retry (LSCC-01-006-02)
+- **Purpose:** DNS propagation can take time after subdomain creation. Instead of immediately marking as Failed, the system auto-retries verification with exponential backoff.
+- **Retry Options:** `VerificationRetry` config section — `MaxAttempts` (5), `InitialDelaySeconds` (30), `MaxDelaySeconds` (300), `BackoffMultiplier` (2.0), `MaxRetryWindowMinutes` (30)
+- **Domain Fields:** `VerificationAttemptCount` (int), `LastVerificationAttemptUtc` (nullable), `NextVerificationRetryAtUtc` (nullable), `IsVerificationRetryExhausted` (bool)
+- **Domain Methods:** `RecordVerificationAttempt()`, `ScheduleVerificationRetry()`, `MarkVerificationRetryExhausted()`, `ResetVerificationRetryState()`
+- **Service:** `IVerificationRetryService` / `VerificationRetryService` — `ExecuteRetryAsync()` (single retry attempt with backoff scheduling), `ProcessPendingRetriesAsync()` (batch process all tenants with due retries)
+- **Integration:** `TenantProvisioningService` delegates first verification attempt through retry service. `AdminEndpoints.RetryVerification` resets retry state and delegates to retry service.
+- **API Response:** `GET /tenants/{id}` now includes `verificationAttemptCount`, `lastVerificationAttemptUtc`, `nextVerificationRetryAtUtc`, `isVerificationRetryExhausted`
+- **Control Center UI:** Tenant detail card shows retry attempt count, last verification time, next retry time (amber), "Auto-retrying" pulse badge, "Retries exhausted" badge. Tenant list table pulses the "Verifying…" badge.
+- **Login Gating:** `AuthService` returns specific "verifying DNS configuration" message for `Verifying` status; BFF routes (web + control-center) detect this and return 503 with "typically completes within a few minutes" message
+- **Audit Events:** Retry success/failure emitted with attempt number, stage, exhaustion state
 
 ## Exception Handling (Fund.Api)
 

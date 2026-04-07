@@ -40,6 +40,10 @@ export interface TenantDetail extends TenantSummary {
   provisioningFailureReason?: string;
   provisioningFailureStage?:  ProvisioningFailureStage;
   hostname?:                  string;
+  verificationAttemptCount?:       number;
+  lastVerificationAttemptUtc?:     string;
+  nextVerificationRetryAtUtc?:     string;
+  isVerificationRetryExhausted?:   boolean;
 }
 
 // ── Product Entitlements ──────────────────────────────────────────────────────

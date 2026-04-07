@@ -15,6 +15,16 @@ function formatDate(iso: string): string {
   });
 }
 
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short',
+    day:   'numeric',
+    year:  'numeric',
+    hour:  'numeric',
+    minute: '2-digit',
+  });
+}
+
 function provisioningStatusBadge(status?: ProvisioningStatus) {
   if (!status) return null;
   const styles: Record<ProvisioningStatus, string> = {
@@ -62,8 +72,17 @@ function canRetryVerification(status?: ProvisioningStatus, stage?: ProvisioningF
   return status === 'Failed' && (stage === 'DnsVerification' || stage === 'HttpVerification');
 }
 
+function isActivelyRetrying(tenant: TenantDetail): boolean {
+  return (
+    tenant.provisioningStatus === 'Verifying' &&
+    tenant.nextVerificationRetryAtUtc != null &&
+    !tenant.isVerificationRetryExhausted
+  );
+}
+
 export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
   const enabledCount = tenant.productEntitlements.filter(p => p.enabled).length;
+  const retrying = isActivelyRetrying(tenant);
 
   return (
     <div className="space-y-5">
@@ -87,7 +106,21 @@ export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
               ? <code className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{tenant.subdomain}</code>
               : <span className="text-gray-400 italic">Not set</span>
           } />
-          <InfoRow label="Provisioning" value={provisioningStatusBadge(tenant.provisioningStatus)} />
+          <InfoRow label="Provisioning" value={
+            <div className="flex items-center gap-2">
+              {provisioningStatusBadge(tenant.provisioningStatus)}
+              {retrying && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-amber-50 text-amber-700 border-amber-200 animate-pulse">
+                  Auto-retrying
+                </span>
+              )}
+              {tenant.isVerificationRetryExhausted && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-red-50 text-red-600 border-red-200">
+                  Retries exhausted
+                </span>
+              )}
+            </div>
+          } />
           {tenant.hostname && (
             <InfoRow label="Hostname" value={
               <code className="font-mono text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">{tenant.hostname}</code>
@@ -101,8 +134,25 @@ export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
           {tenant.provisioningFailureStage && tenant.provisioningFailureStage !== 'None' && (
             <InfoRow label="Failure Stage" value={failureStageBadge(tenant.provisioningFailureStage)} />
           )}
+          {(tenant.verificationAttemptCount != null && tenant.verificationAttemptCount > 0) && (
+            <InfoRow label="Retry Attempts" value={
+              <span className="text-xs text-gray-700">
+                {tenant.verificationAttemptCount} attempt{tenant.verificationAttemptCount !== 1 ? 's' : ''}
+              </span>
+            } />
+          )}
+          {tenant.lastVerificationAttemptUtc && (
+            <InfoRow label="Last Verification" value={
+              <span className="text-xs text-gray-600">{formatDateTime(tenant.lastVerificationAttemptUtc)}</span>
+            } />
+          )}
+          {tenant.nextVerificationRetryAtUtc && !tenant.isVerificationRetryExhausted && (
+            <InfoRow label="Next Retry" value={
+              <span className="text-xs text-amber-700 font-medium">{formatDateTime(tenant.nextVerificationRetryAtUtc)}</span>
+            } />
+          )}
           {tenant.lastProvisioningAttemptUtc && (
-            <InfoRow label="Last Attempt" value={formatDate(tenant.lastProvisioningAttemptUtc)} />
+            <InfoRow label="Last Provisioning" value={formatDate(tenant.lastProvisioningAttemptUtc)} />
           )}
           {canRetryProvisioning(tenant.provisioningStatus) && (
             <div className="px-5 py-3">

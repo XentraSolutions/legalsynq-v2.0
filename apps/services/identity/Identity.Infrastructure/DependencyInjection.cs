@@ -54,6 +54,10 @@ public static class DependencyInjection
         services.Configure<TenantVerificationOptions>(configuration.GetSection("TenantVerification"));
         services.AddScoped<ITenantVerificationService, TenantVerificationService>();
 
+        services.Configure<VerificationRetryOptions>(configuration.GetSection("VerificationRetry"));
+        services.AddScoped<IVerificationRetryService, VerificationRetryService>();
+        services.AddHostedService<VerificationRetryBackgroundService>();
+
         services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
 
         return services;

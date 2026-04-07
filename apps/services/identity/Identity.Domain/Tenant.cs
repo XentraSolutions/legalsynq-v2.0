@@ -39,6 +39,11 @@ public class Tenant
     public string? ProvisioningFailureReason { get; private set; }
     public ProvisioningFailureStage ProvisioningFailureStage { get; private set; }
 
+    public int VerificationAttemptCount { get; private set; }
+    public DateTime? LastVerificationAttemptUtc { get; private set; }
+    public DateTime? NextVerificationRetryAtUtc { get; private set; }
+    public bool IsVerificationRetryExhausted { get; private set; }
+
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string? PreferredSubdomain { get; private set; }
 
@@ -68,6 +73,8 @@ public class Tenant
                 : SlugGenerator.Normalize(preferredSubdomain),
             ProvisioningStatus = ProvisioningStatus.Pending,
             ProvisioningFailureStage = ProvisioningFailureStage.None,
+            VerificationAttemptCount = 0,
+            IsVerificationRetryExhausted = false,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
@@ -123,6 +130,8 @@ public class Tenant
         ProvisioningStatus = ProvisioningStatus.Active;
         ProvisioningFailureReason = null;
         ProvisioningFailureStage = ProvisioningFailureStage.None;
+        NextVerificationRetryAtUtc = null;
+        IsVerificationRetryExhausted = false;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
@@ -131,6 +140,44 @@ public class Tenant
         ProvisioningStatus = ProvisioningStatus.Failed;
         ProvisioningFailureReason = reason;
         ProvisioningFailureStage = stage;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void RecordVerificationAttempt(string? failureReason, ProvisioningFailureStage failureStage)
+    {
+        VerificationAttemptCount++;
+        LastVerificationAttemptUtc = DateTime.UtcNow;
+        ProvisioningFailureReason = failureReason;
+        ProvisioningFailureStage = failureStage;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ScheduleVerificationRetry(DateTime nextRetryUtc)
+    {
+        ProvisioningStatus = ProvisioningStatus.Verifying;
+        NextVerificationRetryAtUtc = nextRetryUtc;
+        IsVerificationRetryExhausted = false;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkVerificationRetryExhausted(string reason, ProvisioningFailureStage stage)
+    {
+        ProvisioningStatus = ProvisioningStatus.Failed;
+        ProvisioningFailureReason = reason;
+        ProvisioningFailureStage = stage;
+        NextVerificationRetryAtUtc = null;
+        IsVerificationRetryExhausted = true;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ResetVerificationRetryState()
+    {
+        VerificationAttemptCount = 0;
+        LastVerificationAttemptUtc = null;
+        NextVerificationRetryAtUtc = null;
+        IsVerificationRetryExhausted = false;
+        ProvisioningFailureReason = null;
+        ProvisioningFailureStage = ProvisioningFailureStage.None;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 

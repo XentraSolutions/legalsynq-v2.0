@@ -42,6 +42,21 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(t => t.ProvisioningFailureReason)
             .HasMaxLength(500);
 
+        builder.Property(t => t.ProvisioningFailureStage)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .HasDefaultValue(ProvisioningFailureStage.None);
+
+        builder.Property(t => t.VerificationAttemptCount)
+            .HasDefaultValue(0);
+
+        builder.Property(t => t.LastVerificationAttemptUtc);
+
+        builder.Property(t => t.NextVerificationRetryAtUtc);
+
+        builder.Property(t => t.IsVerificationRetryExhausted)
+            .HasDefaultValue(false);
+
         builder.HasIndex(t => t.Code)
             .IsUnique();
 

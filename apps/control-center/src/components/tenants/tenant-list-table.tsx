@@ -61,8 +61,9 @@ function ProvisioningBadge({ status }: { status?: ProvisioningStatus }) {
     Active:      'DNS Active',
     Failed:      'DNS Failed',
   };
+  const isRetrying = status === 'Verifying';
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${styles[status] ?? styles.Pending}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${styles[status] ?? styles.Pending} ${isRetrying ? 'animate-pulse' : ''}`}>
       {labels[status] ?? status}
     </span>
   );

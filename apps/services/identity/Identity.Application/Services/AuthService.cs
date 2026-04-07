@@ -49,6 +49,14 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException();
         }
 
+        if (tenant.ProvisioningStatus == ProvisioningStatus.Verifying)
+        {
+            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantVerificationRetrying", ipAddress: ipAddress);
+            throw new InvalidOperationException(
+                $"Tenant '{tenantCodeNorm}' is currently verifying DNS configuration. " +
+                "This process typically completes within a few minutes. Please try again shortly.");
+        }
+
         if (tenant.ProvisioningStatus != ProvisioningStatus.Active)
         {
             EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotProvisioned", ipAddress: ipAddress);

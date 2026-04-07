@@ -157,7 +157,7 @@ function PageLink({ page, current, baseHref, otherParams }: {
 export default async function ActivityPage({
   searchParams,
 }: {
-  searchParams: SearchParams;
+  searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
   const session = await requireOrg();

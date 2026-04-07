@@ -314,7 +314,7 @@ function ContentPreview({ notification }: { notification: NotifDetail }) {
 export default async function NotificationDetailPage({
   params,
 }: {
-  params: { notificationId: string };
+  params: Promise<{ notificationId: string }>;
 }) {
   const { notificationId } = await params;
   const session = await requireOrg();

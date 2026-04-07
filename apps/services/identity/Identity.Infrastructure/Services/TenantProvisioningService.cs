@@ -11,17 +11,20 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
     private readonly IdentityDbContext _db;
     private readonly IDnsService _dns;
     private readonly ITenantVerificationService _verification;
+    private readonly IVerificationRetryService _retryService;
     private readonly ILogger<TenantProvisioningService> _log;
 
     public TenantProvisioningService(
         IdentityDbContext db,
         IDnsService dns,
         ITenantVerificationService verification,
+        IVerificationRetryService retryService,
         ILogger<TenantProvisioningService> log)
     {
         _db = db;
         _dns = dns;
         _verification = verification;
+        _retryService = retryService;
         _log = log;
     }
 
@@ -55,6 +58,7 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
              priorStatus == ProvisioningStatus.Verifying);
 
         tenant.MarkProvisioningInProgress();
+        tenant.ResetVerificationRetryState();
         await _db.SaveChangesAsync(ct);
 
         _log.LogInformation(
@@ -95,42 +99,35 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
             await _db.SaveChangesAsync(ct);
 
             _log.LogInformation(
-                "DNS provisioning succeeded for tenant {TenantCode}: hostname={Hostname}. Starting verification.",
+                "DNS provisioning succeeded for tenant {TenantCode}: hostname={Hostname}. Starting verification with smart retry.",
                 tenant.Code, hostname);
 
-            tenant.MarkProvisioningVerifying();
-            await _db.SaveChangesAsync(ct);
+            var retryOutcome = await _retryService.ExecuteRetryAsync(tenant, hostname, ct);
 
-            _log.LogInformation("Verification started for tenant {TenantCode}", tenant.Code);
-
-            var verifyResult = await _verification.VerifyAsync(tenant, hostname, ct);
-
-            if (!verifyResult.Success)
+            if (retryOutcome.Succeeded)
             {
-                tenant.MarkProvisioningFailed(
-                    verifyResult.ErrorMessage ?? "Verification failed.",
-                    verifyResult.FailureStage);
-                await _db.SaveChangesAsync(ct);
-
-                _log.LogWarning(
-                    "Verification failed for tenant {TenantCode}: stage={Stage}, reason={Reason}",
-                    tenant.Code, verifyResult.FailureStage, verifyResult.ErrorMessage);
-
-                return new ProvisioningResult(false, hostname, verifyResult.ErrorMessage, verifyResult.FailureStage);
+                _log.LogInformation(
+                    "Provisioning and verification succeeded for tenant {TenantCode}: hostname={Hostname}",
+                    tenant.Code, hostname);
+                return new ProvisioningResult(true, hostname, null);
             }
 
-            var domain = await _db.TenantDomains
-                .FirstOrDefaultAsync(d => d.TenantId == tenant.Id && d.DomainType == "SUBDOMAIN", ct);
-            domain?.MarkVerified();
+            if (retryOutcome.StillRetrying)
+            {
+                _log.LogInformation(
+                    "Verification attempt {Attempt} failed for tenant {TenantCode}, auto-retry scheduled at {NextRetry}",
+                    retryOutcome.AttemptNumber, tenant.Code, retryOutcome.NextRetryAtUtc);
+                return new ProvisioningResult(false, hostname,
+                    $"Verification pending — retry {retryOutcome.AttemptNumber} scheduled. {retryOutcome.LastFailureReason}",
+                    retryOutcome.LastFailureStage);
+            }
 
-            tenant.MarkProvisioningActive();
-            await _db.SaveChangesAsync(ct);
-
-            _log.LogInformation(
-                "Provisioning and verification succeeded for tenant {TenantCode}: hostname={Hostname}",
-                tenant.Code, hostname);
-
-            return new ProvisioningResult(true, hostname, null);
+            _log.LogWarning(
+                "Verification retry exhausted for tenant {TenantCode}: {Reason}",
+                tenant.Code, retryOutcome.LastFailureReason);
+            return new ProvisioningResult(false, hostname,
+                retryOutcome.LastFailureReason ?? "Verification failed after all retry attempts.",
+                retryOutcome.LastFailureStage);
         }
         catch (Exception ex)
         {

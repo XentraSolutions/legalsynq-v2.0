@@ -66,6 +66,14 @@ export async function POST(request: NextRequest) {
     const errBody = await identityRes.json().catch(() => ({}));
     const message = errBody.detail ?? errBody.title ?? 'Invalid credentials';
 
+    const isVerifying = typeof message === 'string' && message.includes('verifying DNS configuration');
+    if (isVerifying) {
+      return NextResponse.json(
+        { message: 'Your workspace is verifying DNS configuration. This typically completes within a few minutes. Please try again shortly.' },
+        { status: 503 },
+      );
+    }
+
     const isNotProvisioned = typeof message === 'string' && message.includes('not fully provisioned');
     if (isNotProvisioned) {
       return NextResponse.json(

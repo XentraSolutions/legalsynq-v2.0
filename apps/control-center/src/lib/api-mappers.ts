@@ -285,6 +285,14 @@ export function mapTenantDetail(raw: unknown): TenantDetail {
       ? oneOf(r, 'provisioning_failure_stage', 'provisioningFailureStage', PROVISIONING_FAILURE_STAGES, 'None', 'mapTenantDetail.provisioningFailureStage')
       : undefined,
     hostname: optStr(r, 'hostname', 'hostname'),
+    verificationAttemptCount: typeof (r['verification_attempt_count'] ?? r['verificationAttemptCount']) === 'number'
+      ? (r['verification_attempt_count'] ?? r['verificationAttemptCount']) as number
+      : undefined,
+    lastVerificationAttemptUtc: optStr(r, 'last_verification_attempt_utc', 'lastVerificationAttemptUtc'),
+    nextVerificationRetryAtUtc: optStr(r, 'next_verification_retry_at_utc', 'nextVerificationRetryAtUtc'),
+    isVerificationRetryExhausted: typeof (r['is_verification_retry_exhausted'] ?? r['isVerificationRetryExhausted']) === 'boolean'
+      ? (r['is_verification_retry_exhausted'] ?? r['isVerificationRetryExhausted']) as boolean
+      : undefined,
   };
 }
 
