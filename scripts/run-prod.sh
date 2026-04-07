@@ -63,6 +63,7 @@ if command -v dotnet &>/dev/null; then
       dotnet build "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
       dotnet build "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
       dotnet build "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
+      dotnet build "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" --configuration Release --verbosity minimal 2>&1 || true
     else
       echo "[dotnet] Pre-built binaries found — skipping build"
     fi
