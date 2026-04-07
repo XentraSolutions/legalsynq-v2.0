@@ -41,7 +41,7 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
 
   if (!tenant) return null;
 
-  let organizations = [];
+  let organizations: Awaited<ReturnType<typeof controlCenterServerApi.organizations.listByTenant>> = [];
   try {
     organizations = await controlCenterServerApi.organizations.listByTenant(id);
   } catch {
