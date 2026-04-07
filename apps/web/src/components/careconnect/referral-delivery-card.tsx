@@ -86,8 +86,8 @@ export function ReferralDeliveryCard({ referral }: ReferralDeliveryCardProps) {
     if (notifications !== null) return;
     setHistoryLoading(true);
     try {
-      const data = await careConnectApi.referrals.getNotifications(referral.id);
-      setNotifications(data);
+      const response = await careConnectApi.referrals.getNotifications(referral.id);
+      setNotifications(response.data);
     } catch {
       setNotifications([]);
     } finally {
