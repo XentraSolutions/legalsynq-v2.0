@@ -46,20 +46,20 @@ export function LoginForm() {
   }
 
   const inputCls =
-    'w-full rounded-lg border border-white/[0.08] bg-white/[0.04] px-3.5 py-2.5 text-sm text-white placeholder-slate-500 ' +
-    'focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/50 transition-colors';
+    'w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 ' +
+    'focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 transition-colors';
 
-  const labelCls = 'block text-[13px] font-medium text-slate-400 mb-1.5';
+  const labelCls = 'block text-[13px] font-medium text-gray-700 mb-1.5';
 
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-6 sm:p-7 space-y-5 backdrop-blur-sm"
+      className="rounded-xl border border-gray-200 bg-white p-6 sm:p-7 space-y-5 shadow-sm"
     >
       {isDev && (
         <div>
           <label htmlFor="cc-tenant-code" className={labelCls}>
-            Tenant Code <span className="text-slate-600 font-normal">(dev only)</span>
+            Tenant Code <span className="text-gray-400 font-normal">(dev only)</span>
           </label>
           <input
             id="cc-tenant-code"
@@ -101,7 +101,7 @@ export function LoginForm() {
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:rounded transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 focus-visible:rounded transition-colors"
             aria-label={showPassword ? 'Hide password' : 'Show password'}
           >
             <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -119,18 +119,18 @@ export function LoginForm() {
       </div>
 
       {error && (
-        <div role="alert" className="flex items-start gap-2.5 bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2.5">
-          <svg className="w-4 h-4 text-red-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <div role="alert" className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-lg px-3.5 py-2.5">
+          <svg className="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
           </svg>
-          <p className="text-sm text-red-300">{error}</p>
+          <p className="text-sm text-red-700">{error}</p>
         </div>
       )}
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#060d1b] disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+        className="w-full flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
       >
         {loading ? (
           <>
@@ -146,10 +146,10 @@ export function LoginForm() {
       </button>
 
       <div className="flex items-center justify-center gap-1.5 pt-1">
-        <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
         </svg>
-        <span className="text-[11px] text-slate-500">Encrypted and secured connection</span>
+        <span className="text-[11px] text-gray-400">Encrypted and secured connection</span>
       </div>
     </form>
   );
