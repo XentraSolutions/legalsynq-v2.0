@@ -34,47 +34,46 @@ echo "[control-center] Starting Next.js on :5004"
 PID_CC=$!
 
 echo "[dotnet] Starting .NET services"
+launch_dotnet() {
+  local name="$1" dll="$2"
+  shift 2
+  if [ -f "$dll" ]; then
+    "$@" dotnet exec "$dll" &
+    echo "[dotnet] $name launched (pid $!)"
+  else
+    echo "[dotnet] $name SKIPPED — DLL not found: $dll"
+  fi
+}
+
 if command -v dotnet &>/dev/null; then
   (
     set +e
     GATEWAY_DLL="$ROOT/apps/gateway/Gateway.Api/bin/Release/net8.0/Gateway.Api.dll"
-    if [ ! -f "$GATEWAY_DLL" ]; then
-      echo "[dotnet] Binaries not found — restoring and building..."
-      dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal 2>&1
-      dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Release --verbosity minimal 2>&1
-      if [ $? -ne 0 ]; then
-        echo "[dotnet] ERROR: Build failed — .NET services will not start"
-        exit 1
-      fi
-      echo "[dotnet] Build succeeded"
+    IDENTITY_DLL="$ROOT/apps/services/identity/Identity.Api/bin/Release/net8.0/Identity.Api.dll"
+
+    if [ ! -f "$GATEWAY_DLL" ] || [ ! -f "$IDENTITY_DLL" ]; then
+      echo "[dotnet] Critical binaries missing — building now..."
+      dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal 2>&1 || true
+      dotnet build "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
+      dotnet build "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
+      dotnet build "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
+      dotnet build "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
+      dotnet build "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
     else
       echo "[dotnet] Pre-built binaries found — skipping build"
     fi
-    echo "[dotnet] Starting services..."
-    BIN="$ROOT/apps/services/identity/Identity.Api/bin/Release/net8.0"
-    dotnet exec "$BIN/Identity.Api.dll" &
-    echo "[dotnet] Identity API launched (pid $!)"
 
-    BIN_FUND="$ROOT/apps/services/fund/Fund.Api/bin/Release/net8.0"
-    dotnet exec "$BIN_FUND/Fund.Api.dll" &
-    echo "[dotnet] Fund API launched (pid $!)"
+    echo "[dotnet] Launching services..."
+    launch_dotnet "Identity API" "$ROOT/apps/services/identity/Identity.Api/bin/Release/net8.0/Identity.Api.dll"
+    launch_dotnet "Fund API"     "$ROOT/apps/services/fund/Fund.Api/bin/Release/net8.0/Fund.Api.dll"
+    launch_dotnet "CareConnect"  "$ROOT/apps/services/careconnect/CareConnect.Api/bin/Release/net8.0/CareConnect.Api.dll"
+    launch_dotnet "Documents"    "$ROOT/apps/services/documents-dotnet/Documents.Api/bin/Release/net8.0/Documents.Api.dll" \
+      env ASPNETCORE_ENVIRONMENT=Production
+    launch_dotnet "Audit"        "$ROOT/apps/services/audit/bin/Release/net8.0/PlatformAuditEventService.dll" \
+      env ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS=http://0.0.0.0:5007
+    launch_dotnet "Gateway"      "$ROOT/apps/gateway/Gateway.Api/bin/Release/net8.0/Gateway.Api.dll"
 
-    BIN_CC="$ROOT/apps/services/careconnect/CareConnect.Api/bin/Release/net8.0"
-    dotnet exec "$BIN_CC/CareConnect.Api.dll" &
-    echo "[dotnet] CareConnect API launched (pid $!)"
-
-    BIN_AUDIT="$ROOT/apps/services/audit/bin/Release/net8.0"
-    ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS=http://0.0.0.0:5007 dotnet exec "$BIN_AUDIT/PlatformAuditEventService.dll" &
-    echo "[dotnet] Audit API launched (pid $!)"
-
-    BIN_DOCS="$ROOT/apps/services/documents-dotnet/Documents.Api/bin/Release/net8.0"
-    ASPNETCORE_ENVIRONMENT=Production dotnet exec "$BIN_DOCS/Documents.Api.dll" &
-    echo "[dotnet] Documents API launched (pid $!)"
-
-    BIN_GW="$ROOT/apps/gateway/Gateway.Api/bin/Release/net8.0"
-    dotnet exec "$BIN_GW/Gateway.Api.dll" &
-    echo "[dotnet] Gateway API launched (pid $!)"
-    echo "[dotnet] All .NET services launched"
+    echo "[dotnet] Service launch complete"
     wait
   ) &
   PID_DOTNET=$!

@@ -36,13 +36,35 @@ node "$NEXT_BIN" build
 echo "====== Building .NET services ======"
 cd "$ROOT"
 if command -v dotnet &>/dev/null; then
-  dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal
-  dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Release --verbosity minimal
-  dotnet publish "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" \
-    --configuration Release \
-    --output "$ROOT/apps/services/audit/bin/Release/net8.0/" \
-    --no-restore --verbosity quiet
-  echo "[dotnet] Build succeeded"
+  DOTNET_FAIL=0
+
+  build_service() {
+    local name="$1"
+    local project="$2"
+    echo "[dotnet] Building $name..."
+    if dotnet build "$project" --configuration Release --verbosity minimal 2>&1; then
+      echo "[dotnet] $name — OK"
+    else
+      echo "[dotnet] $name — FAILED (non-fatal)"
+      DOTNET_FAIL=$((DOTNET_FAIL + 1))
+    fi
+  }
+
+  echo "[dotnet] Restoring packages..."
+  dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal 2>&1 || true
+
+  build_service "Gateway"     "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
+  build_service "Identity"    "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
+  build_service "Fund"        "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
+  build_service "CareConnect" "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
+  build_service "Documents"   "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj"
+  build_service "Audit"       "$ROOT/apps/services/audit/PlatformAuditEventService.csproj"
+
+  if [ "$DOTNET_FAIL" -gt 0 ]; then
+    echo "[dotnet] WARNING: $DOTNET_FAIL service(s) failed to build"
+  else
+    echo "[dotnet] All services built successfully"
+  fi
 else
   echo "[dotnet] WARNING: dotnet SDK not found — .NET services will not be available"
 fi
