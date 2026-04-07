@@ -74,7 +74,7 @@ if command -v dotnet &>/dev/null; then
     launch_svc "Documents"    "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" \
       env ASPNETCORE_ENVIRONMENT=Production
     launch_svc "Audit"        "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" \
-      env ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS=http://0.0.0.0:5007
+      env ASPNETCORE_ENVIRONMENT=Development ASPNETCORE_URLS=http://0.0.0.0:5007
     launch_svc "Gateway"      "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
 
     echo "[dotnet] Service launch complete"

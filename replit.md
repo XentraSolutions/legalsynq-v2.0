@@ -298,6 +298,7 @@ shared/
 | `Route53__RecordValue` | Identity.Api | CNAME target for tenant subdomains |
 | `Route53__AccessKeyId` | Identity.Api | AWS access key (optional; falls back to instance role) |
 | `Route53__SecretAccessKey` | Identity.Api | AWS secret key (optional; falls back to instance role) |
+| `ConnectionStrings__AuditEventDb` | Audit Service | MySQL connection string for audit_db (NOT YET PROVISIONED — service runs InMemory until this is set) |
 
 ## JWT
 
