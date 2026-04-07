@@ -33,6 +33,9 @@ public static class AdminEndpoints
         routes.MapDelete("/api/admin/tenants/{id:guid}/logo",            ClearTenantLogo);
         routes.MapPost("/api/admin/tenants/{id:guid}/provisioning/retry", RetryProvisioning);
 
+        // ── Infrastructure DNS ──────────────────────────────────────────
+        routes.MapPost("/api/admin/dns/provision", ProvisionInfraSubdomain);
+
         // ── Users ─────────────────────────────────────────────────────────
         routes.MapGet("/api/admin/users",           ListUsers);
         routes.MapGet("/api/admin/users/{id:guid}", GetUser);
@@ -531,6 +534,50 @@ public static class AdminEndpoints
             hostname           = result.Hostname,
             error              = result.ErrorMessage,
         });
+    }
+
+    private static async Task<IResult> ProvisionInfraSubdomain(
+        InfraSubdomainRequest    body,
+        IDnsService              dns,
+        IAuditEventClient        auditClient,
+        ILoggerFactory           loggerFactory,
+        CancellationToken        ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.Subdomain))
+            return Results.BadRequest(new { error = "Subdomain is required." });
+
+        var slug = body.Subdomain.Trim().ToLowerInvariant();
+        var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
+
+        log.LogInformation("Infrastructure DNS provisioning requested for subdomain {Slug}", slug);
+
+        var success = await dns.CreateSubdomainAsync(slug, ct);
+        var hostname = $"{slug}.{dns.BaseDomain}";
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = success ? "platform.admin.infra.dns.created" : "platform.admin.infra.dns.failed",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = success ? SeverityLevel.Info : SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Platform },
+            Actor         = new AuditEventActorDto { Type = ActorType.System },
+            Entity        = new AuditEventEntityDto { Type = "InfraSubdomain", Id = slug },
+            Action        = success ? "InfraDnsCreated" : "InfraDnsFailed",
+            Description   = success
+                ? $"Infrastructure subdomain '{hostname}' provisioned successfully."
+                : $"Infrastructure subdomain '{hostname}' provisioning failed.",
+            IdempotencyKey = IdempotencyKey.For("identity-service", "infra.dns", $"{slug}:{now.Ticks}"),
+            Tags = ["infrastructure", "dns"],
+        });
+
+        return success
+            ? Results.Ok(new { success = true, hostname, subdomain = slug })
+            : Results.Problem($"DNS provisioning failed for '{hostname}'. Check Route53 configuration.", statusCode: 502);
     }
 
     /// <summary>
@@ -3991,6 +4038,7 @@ public static class AdminEndpoints
         string  AdminLastName,
         string? OrgType = null,
         string? PreferredSubdomain = null);
+    private record InfraSubdomainRequest(string Subdomain);
     private record SetPasswordRequest(string NewPassword);
     private record EntitlementRequest(bool Enabled);
     private record SessionSettingsRequest(int? SessionTimeoutMinutes);

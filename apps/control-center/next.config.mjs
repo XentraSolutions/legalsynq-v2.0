@@ -110,14 +110,16 @@ const nextConfig = {
       allowedOrigins: [
         'localhost:5004',
         'localhost:5000',
-        // Replit dev proxy: the browser sends origin with :5000 port but
-        // x-forwarded-host has no port — add both with and without port.
+        'controlcenter-demo.legalsynq.com',
         ...(process.env.REPLIT_DEV_DOMAIN
           ? [
               process.env.REPLIT_DEV_DOMAIN,
               `${process.env.REPLIT_DEV_DOMAIN}:5000`,
               `${process.env.REPLIT_DEV_DOMAIN}:5004`,
             ]
+          : []),
+        ...(process.env.NEXT_PUBLIC_CONTROL_CENTER_ORIGIN
+          ? [process.env.NEXT_PUBLIC_CONTROL_CENTER_ORIGIN]
           : []),
       ],
     },
