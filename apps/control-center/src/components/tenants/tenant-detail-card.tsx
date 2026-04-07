@@ -123,7 +123,14 @@ export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
           } />
           {tenant.hostname && (
             <InfoRow label="Hostname" value={
-              <code className="font-mono text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">{tenant.hostname}</code>
+              <a
+                href={`https://${tenant.hostname}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded hover:underline hover:bg-blue-100 transition-colors"
+              >
+                {tenant.hostname}
+              </a>
             } />
           )}
           {tenant.provisioningFailureReason && (
