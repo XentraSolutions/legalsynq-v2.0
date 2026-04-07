@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import { LoginForm } from './login-form';
 
 interface LoginPageProps {
@@ -21,13 +20,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <div className="hidden lg:flex lg:w-[48%] xl:w-[44%] flex-col justify-between p-10 xl:p-14 relative z-10">
 
         <div>
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src="/legalsynq-logo-white.png"
             alt="LegalSynq"
-            width={200}
-            height={48}
-            priority
-            unoptimized
             className="h-10 w-auto"
           />
         </div>
@@ -83,13 +79,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <div className="flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 px-6 py-12 relative z-10">
 
         <div className="lg:hidden mb-10 text-center">
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src="/legalsynq-logo-white.png"
             alt="LegalSynq"
-            width={160}
-            height={38}
-            priority
-            unoptimized
             className="h-9 w-auto mx-auto mb-3"
           />
           <span className="text-[10px] font-semibold text-indigo-400 tracking-[0.15em] uppercase">
@@ -123,11 +116,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
           <LoginForm />
 
-          <p className="mt-8 text-center text-[11px] text-slate-600">
+          <p className="mt-8 text-center text-[11px] text-slate-500">
             Need access?{' '}
             <a
               href="mailto:support@legalsynq.com"
-              className="text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors"
+              className="text-slate-400 hover:text-slate-300 underline underline-offset-2 transition-colors"
             >
               Contact support
             </a>

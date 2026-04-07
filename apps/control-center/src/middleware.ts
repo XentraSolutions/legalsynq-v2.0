@@ -22,13 +22,15 @@ const PUBLIC_PATHS = [
   '/favicon.ico',
   '/api/auth/login',
   '/api/auth/logout',
-  '/api/health',   // unauthenticated — called by load balancers / orchestrators
+  '/api/health',
 ];
+
+const PUBLIC_FILE_EXT = /\.(png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|eot|css|js|map)$/i;
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
+  if (PUBLIC_PATHS.some(p => pathname.startsWith(p)) || PUBLIC_FILE_EXT.test(pathname)) {
     return NextResponse.next();
   }
 
