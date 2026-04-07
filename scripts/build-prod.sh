@@ -38,6 +38,10 @@ cd "$ROOT"
 if command -v dotnet &>/dev/null; then
   dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal
   dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Release --verbosity minimal
+  dotnet publish "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" \
+    --configuration Release \
+    --output "$ROOT/apps/services/audit/bin/Release/net8.0/" \
+    --no-restore --verbosity quiet
   echo "[dotnet] Build succeeded"
 else
   echo "[dotnet] WARNING: dotnet SDK not found — .NET services will not be available"

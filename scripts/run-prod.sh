@@ -37,20 +37,43 @@ echo "[dotnet] Starting .NET services"
 if command -v dotnet &>/dev/null; then
   (
     set +e
-    echo "[dotnet] Restoring and building..."
-    dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal 2>&1
-    dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Release --verbosity minimal 2>&1
-    if [ $? -ne 0 ]; then
-      echo "[dotnet] ERROR: Build failed — .NET services will not start"
-      exit 1
+    GATEWAY_DLL="$ROOT/apps/gateway/Gateway.Api/bin/Release/net8.0/Gateway.Api.dll"
+    if [ ! -f "$GATEWAY_DLL" ]; then
+      echo "[dotnet] Binaries not found — restoring and building..."
+      dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal 2>&1
+      dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Release --verbosity minimal 2>&1
+      if [ $? -ne 0 ]; then
+        echo "[dotnet] ERROR: Build failed — .NET services will not start"
+        exit 1
+      fi
+      echo "[dotnet] Build succeeded"
+    else
+      echo "[dotnet] Pre-built binaries found — skipping build"
     fi
-    echo "[dotnet] Build succeeded, starting services..."
-    dotnet run --no-build --configuration Release --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
-    dotnet run --no-build --configuration Release --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
-    dotnet run --no-build --configuration Release --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
-    ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS=http://0.0.0.0:5007 dotnet run --no-build --configuration Release --project "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" &
-    ASPNETCORE_ENVIRONMENT=Production dotnet run --no-build --configuration Release --project "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" &
-    dotnet run --no-build --configuration Release --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
+    echo "[dotnet] Starting services..."
+    BIN="$ROOT/apps/services/identity/Identity.Api/bin/Release/net8.0"
+    dotnet exec "$BIN/Identity.Api.dll" &
+    echo "[dotnet] Identity API launched (pid $!)"
+
+    BIN_FUND="$ROOT/apps/services/fund/Fund.Api/bin/Release/net8.0"
+    dotnet exec "$BIN_FUND/Fund.Api.dll" &
+    echo "[dotnet] Fund API launched (pid $!)"
+
+    BIN_CC="$ROOT/apps/services/careconnect/CareConnect.Api/bin/Release/net8.0"
+    dotnet exec "$BIN_CC/CareConnect.Api.dll" &
+    echo "[dotnet] CareConnect API launched (pid $!)"
+
+    BIN_AUDIT="$ROOT/apps/services/audit/bin/Release/net8.0"
+    ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS=http://0.0.0.0:5007 dotnet exec "$BIN_AUDIT/PlatformAuditEventService.dll" &
+    echo "[dotnet] Audit API launched (pid $!)"
+
+    BIN_DOCS="$ROOT/apps/services/documents-dotnet/Documents.Api/bin/Release/net8.0"
+    ASPNETCORE_ENVIRONMENT=Production dotnet exec "$BIN_DOCS/Documents.Api.dll" &
+    echo "[dotnet] Documents API launched (pid $!)"
+
+    BIN_GW="$ROOT/apps/gateway/Gateway.Api/bin/Release/net8.0"
+    dotnet exec "$BIN_GW/Gateway.Api.dll" &
+    echo "[dotnet] Gateway API launched (pid $!)"
     echo "[dotnet] All .NET services launched"
     wait
   ) &
