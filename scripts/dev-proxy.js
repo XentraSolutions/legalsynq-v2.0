@@ -4,7 +4,7 @@ const http = require('http');
 const NEXT_PORT = parseInt(process.env.NEXT_INTERNAL_PORT || '3050', 10);
 const CC_PORT = parseInt(process.env.CC_INTERNAL_PORT || '5004', 10);
 const LISTEN_PORT = parseInt(process.env.PROXY_PORT || '5000', 10);
-const CC_HOSTNAMES = (process.env.CC_HOSTNAMES || 'controlcenter-demo.legalsynq.com')
+const CC_HOSTNAMES = (process.env.CC_HOSTNAMES || 'controlcenter.demo.legalsynq.com')
   .split(',')
   .map(h => h.trim().toLowerCase());
 let ready = false;

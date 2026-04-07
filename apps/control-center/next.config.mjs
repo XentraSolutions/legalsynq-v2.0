@@ -110,7 +110,7 @@ const nextConfig = {
       allowedOrigins: [
         'localhost:5004',
         'localhost:5000',
-        'controlcenter-demo.legalsynq.com',
+        'controlcenter.demo.legalsynq.com',
         ...(process.env.REPLIT_DEV_DOMAIN
           ? [
               process.env.REPLIT_DEV_DOMAIN,
