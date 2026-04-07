@@ -6,10 +6,11 @@ import { notifClient, NOTIF_CACHE_TAGS }  from '@/lib/notifications-api';
 import type { GlobalTemplate }            from '@/lib/notifications-api';
 
 interface Props {
-  searchParams: { productType?: string; channel?: string };
+  searchParams: Promise<{ productType?: string; channel?: string }>;
 }
 
-export default async function GlobalTemplatesPage({ searchParams }: Props) {
+export default async function GlobalTemplatesPage(props: Props) {
+  const searchParams = await props.searchParams;
   const session = await requirePlatformAdmin();
 
   let templates: GlobalTemplate[] = [];

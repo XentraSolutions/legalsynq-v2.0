@@ -5,7 +5,7 @@ import { PermissionCatalogTable }     from '@/components/users/permission-catalo
 import { PermissionSearchBar }        from '@/components/users/permission-search-bar';
 
 interface PermissionsPageProps {
-  searchParams?: { search?: string; product?: string };
+  searchParams?: Promise<{ search?: string; product?: string }>;
 }
 
 /**
@@ -16,7 +16,8 @@ interface PermissionsPageProps {
  *   ?search=referral   → filters by code/name/description substring
  *   ?product=<uuid>    → filters by product
  */
-export default async function PermissionsPage({ searchParams }: PermissionsPageProps) {
+export default async function PermissionsPage(props: PermissionsPageProps) {
+  const searchParams = await props.searchParams;
   const session    = await requireAdmin();
   const search     = searchParams?.search ?? '';
   const productId  = searchParams?.product ?? '';

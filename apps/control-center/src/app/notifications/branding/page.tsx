@@ -6,10 +6,11 @@ import { BrandingCreateForm }              from '@/components/notifications/bran
 import { BrandingEditForm }                from '@/components/notifications/branding-edit-form';
 
 interface Props {
-  searchParams: { productType?: string };
+  searchParams: Promise<{ productType?: string }>;
 }
 
-export default async function BrandingPage({ searchParams }: Props) {
+export default async function BrandingPage(props: Props) {
+  const searchParams = await props.searchParams;
   const session = await requirePlatformAdmin();
 
   let records: TenantBranding[] = [];
