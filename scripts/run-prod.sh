@@ -3,11 +3,26 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+NEXT_BIN=""
+for candidate in \
+  "$ROOT/node_modules/.bin/next" \
+  "$ROOT/node_modules/next/dist/bin/next" \
+  "$(npm root 2>/dev/null)/next/dist/bin/next"; do
+  if [ -f "$candidate" ]; then
+    NEXT_BIN="$candidate"
+    break
+  fi
+done
+if [ -z "$NEXT_BIN" ]; then
+  NEXT_BIN="$(which next 2>/dev/null || echo next)"
+fi
+
 echo "====== LegalSynq production startup ======"
+echo "[next] Using: $NEXT_BIN"
 
 NEXT_INTERNAL_PORT=3050
 echo "[web] Starting Next.js on :$NEXT_INTERNAL_PORT (internal)"
-(cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 node "$ROOT/node_modules/next/dist/bin/next" start -p "$NEXT_INTERNAL_PORT") &
+(cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 node "$NEXT_BIN" start -p "$NEXT_INTERNAL_PORT") &
 PID_WEB=$!
 
 echo "[proxy] Starting prod proxy on :5000 → :$NEXT_INTERNAL_PORT"
@@ -15,7 +30,7 @@ NEXT_INTERNAL_PORT=$NEXT_INTERNAL_PORT PROXY_PORT=5000 node "$ROOT/scripts/dev-p
 PID_PROXY=$!
 
 echo "[control-center] Starting Next.js on :5004"
-(cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 node "$ROOT/node_modules/next/dist/bin/next" start -p 5004) &
+(cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 node "$NEXT_BIN" start -p 5004) &
 PID_CC=$!
 
 (
