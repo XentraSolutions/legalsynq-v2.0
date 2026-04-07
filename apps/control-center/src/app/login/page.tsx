@@ -56,8 +56,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               { icon: 'M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z', label: 'Platform health monitoring' },
             ].map(({ icon, label }) => (
               <div key={label} className="flex items-center gap-3.5 group">
-                <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center shrink-0 group-hover:bg-white/[0.07] transition-colors">
-                  <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <div className="w-9 h-9 rounded-lg bg-orange-500/[0.12] flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
                   </svg>
                 </div>
