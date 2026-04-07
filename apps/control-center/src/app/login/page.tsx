@@ -11,12 +11,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
 
-      <div className="hidden lg:flex lg:w-[48%] xl:w-[44%] flex-col justify-between p-10 xl:p-14 relative overflow-hidden bg-gradient-to-br from-orange-500 to-orange-600">
+      <div className="hidden lg:flex lg:w-[48%] xl:w-[44%] flex-col justify-between p-10 xl:p-14 relative overflow-hidden bg-[#0f1928]">
 
         <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:48px_48px]" />
-          <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-orange-400/30 blur-[100px]" />
-          <div className="absolute bottom-[-15%] right-[-10%] w-[400px] h-[400px] rounded-full bg-orange-700/20 blur-[80px]" />
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:48px_48px]" />
+          <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-blue-500/[0.06] blur-[100px]" />
+          <div className="absolute bottom-[-15%] right-[-10%] w-[400px] h-[400px] rounded-full bg-slate-700/20 blur-[80px]" />
         </div>
 
         <div className="relative z-10">
@@ -30,12 +30,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
         <div className="py-8 relative z-10">
           <div className="flex items-center gap-2.5 mb-8">
-            <div className="w-8 h-8 rounded-lg bg-white/15 border border-white/20 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <div className="w-8 h-8 rounded-lg bg-orange-500/15 border border-orange-500/25 flex items-center justify-center">
+              <svg className="w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
               </svg>
             </div>
-            <span className="text-[11px] font-semibold text-white/80 tracking-[0.15em] uppercase">
+            <span className="text-[11px] font-semibold text-orange-400 tracking-[0.15em] uppercase">
               Platform Administration
             </span>
           </div>
@@ -44,7 +44,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             Control Center
           </h2>
 
-          <p className="text-[15px] text-white/70 leading-relaxed max-w-sm mb-12">
+          <p className="text-[15px] text-slate-400 leading-relaxed max-w-sm mb-12">
             Manage tenants, users, entitlements, and platform operations from a single secure interface.
           </p>
 
@@ -56,19 +56,19 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               { icon: 'M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z', label: 'Platform health monitoring' },
             ].map(({ icon, label }) => (
               <div key={label} className="flex items-center gap-3.5 group">
-                <div className="w-9 h-9 rounded-lg bg-white/10 border border-white/15 flex items-center justify-center shrink-0 group-hover:bg-white/15 transition-colors">
-                  <svg className="w-4 h-4 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center shrink-0 group-hover:bg-white/[0.07] transition-colors">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
                   </svg>
                 </div>
-                <span className="text-[13px] text-white/80">{label}</span>
+                <span className="text-[13px] text-slate-400">{label}</span>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="pt-6 border-t border-white/15 relative z-10">
-          <div className="flex items-center gap-3 text-[11px] text-white/50">
+        <div className="pt-6 border-t border-white/[0.08] relative z-10">
+          <div className="flex items-center gap-3 text-[11px] text-slate-600">
             <span>&copy; {new Date().getFullYear()} LegalSynq</span>
             <span>&bull;</span>
             <span>Protected access for authorized administrators</span>
