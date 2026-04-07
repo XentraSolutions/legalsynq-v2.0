@@ -46,7 +46,7 @@ export default async function ProviderLogsPage({ params, searchParams }: Props) 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const configLabel = config
-    ? `${config.displayName ?? config.provider} — ${config.channel}`
+    ? `${config.displayName ?? config.providerType} — ${config.channel}`
     : configId;
 
   return (
