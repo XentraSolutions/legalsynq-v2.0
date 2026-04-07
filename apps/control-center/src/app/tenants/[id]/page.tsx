@@ -7,7 +7,7 @@ import { TenantLogoUpload }              from '@/components/tenants/TenantLogoUp
 import { TenantOrganizationsPanel }      from '@/components/tenants/tenant-organizations-panel';
 
 interface TenantDetailPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -20,7 +20,7 @@ interface TenantDetailPageProps {
  */
 export default async function TenantDetailPage({ params }: TenantDetailPageProps) {
   await requirePlatformAdmin();
-  const { id } = params;
+  const { id } = await params;
 
   let tenant     = null;
   let fetchError: string | null = null;

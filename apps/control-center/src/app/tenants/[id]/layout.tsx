@@ -12,7 +12,7 @@ import type { TenantStatus, TenantType } from '@/types/control-center';
 
 interface TenantDetailLayoutProps {
   children: ReactNode;
-  params:   { id: string };
+  params:   Promise<{ id: string }>;
 }
 
 /**
@@ -30,7 +30,7 @@ export default async function TenantDetailLayout({
 }: TenantDetailLayoutProps) {
   const session   = await requirePlatformAdmin();
   const tenantCtx = await getTenantContext();
-  const { id }    = params;
+  const { id }    = await params;
 
   let tenant     = null;
   let fetchError: string | null = null;

@@ -10,10 +10,11 @@ import type { GlobalTemplate, GlobalTemplateVersion }  from '@/lib/notifications
 import { ApiError }                                    from '@/lib/api-client';
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default async function GlobalTemplateDetailPage({ params }: Props) {
+export default async function GlobalTemplateDetailPage(props: Props) {
+  const params = await props.params;
   const session = await requirePlatformAdmin();
 
   let template:   GlobalTemplate | null         = null;

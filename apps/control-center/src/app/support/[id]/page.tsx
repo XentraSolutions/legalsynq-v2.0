@@ -8,7 +8,7 @@ import { SupportDetailPanel } from '@/components/support/support-detail-panel';
 import { Routes } from '@/lib/routes';
 
 interface SupportCaseDetailPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 const PRIORITY_STYLES = {
@@ -26,7 +26,8 @@ const PRIORITY_STYLES = {
  *
  * Returns 404 if case not found.
  */
-export default async function SupportCaseDetailPage({ params }: SupportCaseDetailPageProps) {
+export default async function SupportCaseDetailPage(props: SupportCaseDetailPageProps) {
+  const params = await props.params;
   const session   = await requirePlatformAdmin();
   const tenantCtx = await getTenantContext();
 

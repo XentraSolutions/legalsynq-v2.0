@@ -7,7 +7,7 @@ import { GroupDetailCard }           from '@/components/users/group-detail-card'
 import { GroupPermissionsPanel }     from '@/components/users/group-permissions-panel';
 
 interface GroupDetailPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -19,7 +19,7 @@ interface GroupDetailPageProps {
  */
 export default async function GroupDetailPage({ params }: GroupDetailPageProps) {
   const session = await requirePlatformAdmin();
-  const { id }  = params;
+  const { id }  = await params;
 
   let group = null;
   let fetchError: string | null = null;

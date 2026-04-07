@@ -15,7 +15,7 @@ import { startImpersonationAction }       from '@/app/actions/impersonation';
 import type { UserStatus }                from '@/types/control-center';
 
 interface UserDetailPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -33,7 +33,7 @@ interface UserDetailPageProps {
  */
 export default async function UserDetailPage({ params }: UserDetailPageProps) {
   const session = await requireAdmin();
-  const { id }  = params;
+  const { id }  = await params;
 
   let user        = null;
   let fetchError: string | null = null;
