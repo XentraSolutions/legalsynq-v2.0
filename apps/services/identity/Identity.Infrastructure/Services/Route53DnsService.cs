@@ -45,6 +45,7 @@ public sealed class Route53DnsService : IDnsService, IDisposable
     public async Task<bool> CreateSubdomainAsync(string subdomain, CancellationToken ct = default)
     {
         var fqdn = $"{subdomain.ToLowerInvariant()}.{_opts.BaseDomain}";
+        await DeleteConflictingRecordsAsync(fqdn, ct);
         return await UpsertRecordAsync(fqdn, ChangeAction.UPSERT, ct);
     }
 
@@ -52,6 +53,62 @@ public sealed class Route53DnsService : IDnsService, IDisposable
     {
         var fqdn = $"{subdomain.ToLowerInvariant()}.{_opts.BaseDomain}";
         return await UpsertRecordAsync(fqdn, ChangeAction.DELETE, ct);
+    }
+
+    private async Task DeleteConflictingRecordsAsync(string fqdn, CancellationToken ct)
+    {
+        var targetType = RRType.FindValue(_opts.RecordType);
+        var conflictTypes = new[] { RRType.CNAME, RRType.A, RRType.AAAA }
+            .Where(t => t != targetType)
+            .ToList();
+
+        try
+        {
+            var listRequest = new ListResourceRecordSetsRequest
+            {
+                HostedZoneId = _opts.HostedZoneId,
+                StartRecordName = fqdn,
+                MaxItems = "10"
+            };
+
+            var listResponse = await _route53.ListResourceRecordSetsAsync(listRequest, ct);
+            var changes = new List<Change>();
+
+            foreach (var rrs in listResponse.ResourceRecordSets)
+            {
+                if (!string.Equals(rrs.Name.TrimEnd('.'), fqdn.TrimEnd('.'), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (conflictTypes.Contains(rrs.Type))
+                {
+                    _log.LogInformation("Deleting conflicting {Type} record for {Fqdn}", rrs.Type.Value, fqdn);
+                    changes.Add(new Change
+                    {
+                        Action = ChangeAction.DELETE,
+                        ResourceRecordSet = rrs
+                    });
+                }
+            }
+
+            if (changes.Count > 0)
+            {
+                var deleteRequest = new ChangeResourceRecordSetsRequest
+                {
+                    HostedZoneId = _opts.HostedZoneId,
+                    ChangeBatch = new ChangeBatch
+                    {
+                        Changes = changes,
+                        Comment = $"LegalSynq: removing conflicting records before creating {targetType.Value} for {fqdn}"
+                    }
+                };
+                await _route53.ChangeResourceRecordSetsAsync(deleteRequest, ct);
+                _log.LogInformation("Deleted {Count} conflicting record(s) for {Fqdn}", changes.Count, fqdn);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Could not check/delete conflicting records for {Fqdn} — proceeding with upsert", fqdn);
+        }
     }
 
     private async Task<bool> UpsertRecordAsync(string fqdn, ChangeAction action, CancellationToken ct)
@@ -85,8 +142,8 @@ public sealed class Route53DnsService : IDnsService, IDisposable
 
             var response = await _route53.ChangeResourceRecordSetsAsync(request, ct);
             _log.LogInformation(
-                "Route53 {Action} for {Fqdn}: status={Status}, changeId={ChangeId}",
-                action.Value, fqdn, response.ChangeInfo.Status.Value, response.ChangeInfo.Id);
+                "Route53 {Action} {Type} for {Fqdn}: status={Status}, changeId={ChangeId}",
+                action.Value, _opts.RecordType, fqdn, response.ChangeInfo.Status.Value, response.ChangeInfo.Id);
 
             return true;
         }
