@@ -11,8 +11,9 @@ public sealed class Route53DnsOptions
 {
     public string HostedZoneId { get; set; } = string.Empty;
     public string BaseDomain { get; set; } = string.Empty;
-    public string RecordType { get; set; } = "CNAME";
+    public string RecordType { get; set; } = "A";
     public string RecordValue { get; set; } = string.Empty;
+    public string? TxtVerificationValue { get; set; }
     public long Ttl { get; set; } = 300;
     public string Region { get; set; } = "us-east-2";
     public string? AccessKeyId { get; set; }
@@ -46,13 +47,28 @@ public sealed class Route53DnsService : IDnsService, IDisposable
     {
         var fqdn = $"{subdomain.ToLowerInvariant()}.{_opts.BaseDomain}";
         await DeleteConflictingRecordsAsync(fqdn, ct);
-        return await UpsertRecordAsync(fqdn, ChangeAction.UPSERT, ct);
+
+        var aSuccess = await UpsertRecordAsync(fqdn, ChangeAction.UPSERT, ct);
+
+        if (aSuccess && !string.IsNullOrWhiteSpace(_opts.TxtVerificationValue))
+        {
+            var txtSuccess = await UpsertTxtRecordAsync(fqdn, ChangeAction.UPSERT, ct);
+            if (!txtSuccess)
+                _log.LogWarning("A record created but TXT verification record failed for {Fqdn}", fqdn);
+        }
+
+        return aSuccess;
     }
 
     public async Task<bool> DeleteSubdomainAsync(string subdomain, CancellationToken ct = default)
     {
         var fqdn = $"{subdomain.ToLowerInvariant()}.{_opts.BaseDomain}";
-        return await UpsertRecordAsync(fqdn, ChangeAction.DELETE, ct);
+        var deleted = await UpsertRecordAsync(fqdn, ChangeAction.DELETE, ct);
+
+        if (!string.IsNullOrWhiteSpace(_opts.TxtVerificationValue))
+            await UpsertTxtRecordAsync(fqdn, ChangeAction.DELETE, ct);
+
+        return deleted;
     }
 
     private async Task DeleteConflictingRecordsAsync(string fqdn, CancellationToken ct)
@@ -150,6 +166,50 @@ public sealed class Route53DnsService : IDnsService, IDisposable
         catch (Exception ex)
         {
             _log.LogError(ex, "Route53 {Action} failed for {Fqdn}", action.Value, fqdn);
+            return false;
+        }
+    }
+
+    private async Task<bool> UpsertTxtRecordAsync(string fqdn, ChangeAction action, CancellationToken ct)
+    {
+        try
+        {
+            var txtValue = $"\"{_opts.TxtVerificationValue}\"";
+            var change = new Change
+            {
+                Action = action,
+                ResourceRecordSet = new ResourceRecordSet
+                {
+                    Name = fqdn,
+                    Type = RRType.TXT,
+                    TTL = _opts.Ttl,
+                    ResourceRecords = new List<ResourceRecord>
+                    {
+                        new ResourceRecord { Value = txtValue }
+                    }
+                }
+            };
+
+            var request = new ChangeResourceRecordSetsRequest
+            {
+                HostedZoneId = _opts.HostedZoneId,
+                ChangeBatch = new ChangeBatch
+                {
+                    Changes = new List<Change> { change },
+                    Comment = $"LegalSynq tenant TXT verification: {action.Value} {fqdn}"
+                }
+            };
+
+            var response = await _route53.ChangeResourceRecordSetsAsync(request, ct);
+            _log.LogInformation(
+                "Route53 {Action} TXT for {Fqdn}: status={Status}, changeId={ChangeId}",
+                action.Value, fqdn, response.ChangeInfo.Status.Value, response.ChangeInfo.Id);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Route53 TXT {Action} failed for {Fqdn}", action.Value, fqdn);
             return false;
         }
     }
