@@ -29,7 +29,13 @@ export function LoginForm() {
 
   const [mounted,    setMounted]    = useState(false);
   useEffect(() => { setMounted(true); }, []);
-  const isDev = mounted && process.env.NEXT_PUBLIC_ENV === 'development';
+
+  const hasSubdomain = mounted && (() => {
+    const host = window.location.hostname;
+    const parts = host.split('.');
+    return parts.length >= 3 && !host.startsWith('localhost');
+  })();
+  const showTenantField = mounted && !hasSubdomain && process.env.NEXT_PUBLIC_ENV === 'development';
 
   const [email,      setEmail]      = useState('');
   const [password,   setPassword]   = useState('');
@@ -80,8 +86,8 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
 
-      {/* Dev-only tenant code — hidden in production (tenant resolved from subdomain) */}
-      {isDev && (
+      {/* Dev-only tenant code — hidden when a subdomain is detected (tenant resolved from Host) */}
+      {showTenantField && (
         <Field label="Tenant Code" hint="dev only">
           <input
             type="text"

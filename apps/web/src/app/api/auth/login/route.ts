@@ -136,15 +136,22 @@ export async function POST(request: NextRequest) {
  *   "localhost:3000" → null (no subdomain)
  */
 function extractTenantCodeFromHost(request: NextRequest): string | null {
-  const host = request.headers.get('x-forwarded-host')
+  const rawHost = request.headers.get('x-forwarded-host')
     ?? request.headers.get('host')
     ?? '';
 
+  const host = rawHost.split(',')[0].trim();
   const hostWithoutPort = host.includes(':') ? host.split(':')[0] : host;
-  const parts = hostWithoutPort.split('.');
+  const lower = hostWithoutPort.toLowerCase();
+
+  if (!/^[a-z0-9.-]+$/.test(lower)) return null;
+
+  const parts = lower.split('.');
 
   if (parts.length >= 3) {
-    return parts[0].replace(/-/g, '').toUpperCase();
+    const sub = parts[0];
+    if (sub === 'www') return null;
+    return sub.replace(/-/g, '').toUpperCase();
   }
 
   return null;
