@@ -1,9 +1,20 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 
 export function ForgotPasswordForm() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  const hasSubdomain = mounted && (() => {
+    const host = window.location.hostname;
+    const parts = host.split('.');
+    return parts.length >= 3 && !host.startsWith('localhost');
+  })();
+  const showTenantField = mounted && !hasSubdomain && process.env.NEXT_PUBLIC_ENV === 'development';
+
   const [email, setEmail] = useState('');
+  const [tenantCode, setTenantCode] = useState(process.env.NEXT_PUBLIC_TENANT_CODE ?? '');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resetLink, setResetLink] = useState<string | null>(null);
@@ -15,10 +26,13 @@ export function ForgotPasswordForm() {
     setResetLink(null);
     setLoading(true);
     try {
+      const body: Record<string, string> = { email };
+      if (tenantCode) body.tenantCode = tenantCode;
+
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -86,6 +100,24 @@ export function ForgotPasswordForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+      {showTenantField && (
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-1.5 text-[13px] font-medium text-gray-700">
+            Tenant Code
+            <span className="text-[11px] font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+              dev only
+            </span>
+          </label>
+          <input
+            type="text"
+            value={tenantCode}
+            onChange={e => setTenantCode(e.target.value)}
+            placeholder="e.g. MANER-LAW"
+            className={inputCls}
+          />
+        </div>
+      )}
+
       <div className="space-y-1.5">
         <label className="flex items-center gap-1.5 text-[13px] font-medium text-gray-700">
           Email address
