@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE_NAME } from '@/lib/app-config';
 
-const DOCS_URL    = 'http://localhost:5006';
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? process.env.CONTROL_CENTER_API_BASE ?? 'http://localhost:5010';
 const TENANT_LOGO_DOC_TYPE = '20000000-0000-0000-0000-000000000002';
 
 function parseJwtPayload(token: string): Record<string, unknown> | null {
@@ -56,7 +55,7 @@ export async function POST(
   uploadForm.append('title',          'Tenant Logo');
   uploadForm.append('file',           file, file.name || 'logo');
 
-  const docsRes = await fetch(`${DOCS_URL}/documents`, {
+  const docsRes = await fetch(`${GATEWAY_URL}/documents/documents`, {
     method:  'POST',
     headers: {
       Authorization:           `Bearer ${token}`,
