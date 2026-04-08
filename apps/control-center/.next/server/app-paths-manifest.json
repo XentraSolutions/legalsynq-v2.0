@@ -1,8 +1,1 @@
-{
-  "/login/page": "app/login/page.js",
-  "/tenants/page": "app/tenants/page.js",
-  "/platform-readiness/page": "app/platform-readiness/page.js",
-  "/tenant-users/page": "app/tenant-users/page.js",
-  "/groups/page": "app/groups/page.js",
-  "/tenants/[id]/page": "app/tenants/[id]/page.js"
-}
+{}

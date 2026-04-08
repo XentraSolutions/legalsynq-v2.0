@@ -191,20 +191,17 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// ── DB migration (dev only) ───────────────────────────────────────────────────
-if (app.Environment.IsDevelopment())
+// ── DB migration ─────────────────────────────────────────────────────────────
+try
 {
-    try
-    {
-        using var scope = app.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocsDbContext>();
-        db.Database.Migrate();
-        app.Logger.LogInformation("Database migrations applied");
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogWarning(ex, "Could not apply migrations — ensure PostgreSQL is running");
-    }
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<DocsDbContext>();
+    db.Database.Migrate();
+    app.Logger.LogInformation("Database migrations applied");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Could not apply migrations — ensure PostgreSQL is running");
 }
 
 // ── Middleware pipeline ────────────────────────────────────────────────────────
