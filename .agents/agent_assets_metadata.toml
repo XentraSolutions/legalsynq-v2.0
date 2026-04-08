@@ -150,3 +150,9 @@ id = "ZHLgIm8qWjW2WTSDi4Z0a"
 uri = "file://analysis/LSCC-01-006-report.md"
 type = "text"
 title = "LSCC-01-006 Report — Tenant Logo Display on Login"
+
+[[outputs]]
+id = "BRimKA1N4Froggm56pgDp"
+uri = "file://analysis/LS-COR-PRD-001-report.md"
+type = "text"
+title = "LS-COR-PRD-001 Product Provisioning Engine Report"

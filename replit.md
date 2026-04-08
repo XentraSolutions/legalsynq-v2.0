@@ -197,6 +197,8 @@ apps/
                                             CorrectSynqLienRoleMappings (SELLER→PROVIDER)
                                             DropStaleApplicationsTable (identity_db cleanup)
         Services/JwtTokenService.cs       ← emits org_id, org_type, product_roles JWT claims
+        Services/ProductProvisioningService.cs ← centralized product provisioning engine
+        Services/CareConnectProvisioningHandler.cs ← CareConnect-specific provisioning hook
         DependencyInjection.cs
     fund/
       Fund.Api/                           → ASP.NET Core Web API (port 5002)
@@ -338,6 +340,16 @@ shared/
 | UserRole | UserRoles | (UserId, RoleId) | FK→Users Cascade, FK→Roles Cascade |
 | Product | Products | Id (Guid) | Code unique |
 | TenantProduct | TenantProducts | (TenantId, ProductId) | FK→Tenants Cascade |
+
+### Product Provisioning Engine (LS-COR-PRD-001)
+- **Engine:** `IProductProvisioningService` → `ProductProvisioningService` (Identity.Infrastructure)
+- **Flow:** `ProvisionAsync(tenantId, productCode, enabled)` → TenantProduct creation → OrganizationProduct cascading (eligibility-filtered) → product-specific handler execution
+- **Eligibility:** `ProductEligibilityConfig` (Identity.Domain) — centralized OrgType → Product mapping. LAW_FIRM→[CC,FUND,LIENS], PROVIDER→[CC], FUNDER→[FUND], LIEN_OWNER→[LIENS], INTERNAL→[ALL]
+- **Handler abstraction:** `IProductProvisioningHandler` — resolved by ProductCode, executed after org products are created
+- **CareConnect handler:** `CareConnectProvisioningHandler` — calls CareConnect `/internal/provision-provider` to create/link/activate Provider records for PROVIDER orgs
+- **Internal endpoint:** CareConnect `POST /internal/provision-provider` (AllowAnonymous) — idempotent provider creation/activation by OrganizationId
+- **Integration points:** `UpdateEntitlement`, `ProvisionForCareConnect`, and `CreateTenant` all delegate to the engine
+- **CreateTenant extension:** Accepts optional `products` array in request body for onboarding-time provisioning
 
 ### Tenant Provisioning & Verification (LSCC-01-006 + LSCC-01-006-01)
 - **Lifecycle:** `Pending → InProgress → Provisioned → Verifying → Active` (with `Failed` branch at each stage)

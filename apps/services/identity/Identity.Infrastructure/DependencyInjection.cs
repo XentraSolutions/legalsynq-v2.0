@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using System;
 
 namespace Identity.Infrastructure;
 
@@ -59,6 +60,16 @@ public static class DependencyInjection
         services.AddHostedService<VerificationRetryBackgroundService>();
 
         services.AddScoped<ITenantProvisioningService, TenantProvisioningService>();
+
+        services.AddHttpClient("CareConnectInternal", client =>
+        {
+            var ccUrl = configuration["CareConnect:InternalUrl"] ?? "http://localhost:5005";
+            client.BaseAddress = new Uri(ccUrl);
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+
+        services.AddScoped<IProductProvisioningHandler, CareConnectProvisioningHandler>();
+        services.AddScoped<IProductProvisioningService, ProductProvisioningService>();
 
         return services;
     }

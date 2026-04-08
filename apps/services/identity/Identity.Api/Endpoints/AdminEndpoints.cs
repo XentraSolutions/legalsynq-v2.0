@@ -298,6 +298,7 @@ public static class AdminEndpoints
         IPasswordHasher           passwordHasher,
         IAuditEventClient         auditClient,
         ITenantProvisioningService provisioningService,
+        IProductProvisioningService productProvisioningEngine,
         ILoggerFactory            loggerFactory,
         CancellationToken         ct)
     {
@@ -405,6 +406,27 @@ public static class AdminEndpoints
                 tenant.Code, provResult.ErrorMessage);
         }
 
+        // ── Product provisioning (if products specified) ────────────────────────
+        var productResults = new List<ProvisionProductResult>();
+        if (body.Products is { Count: > 0 })
+        {
+            foreach (var rawCode in body.Products)
+            {
+                var dbCode = FrontendToDbProductCode.TryGetValue(rawCode, out var mapped)
+                    ? mapped : rawCode;
+                try
+                {
+                    var pr = await productProvisioningEngine.ProvisionAsync(
+                        new ProvisionProductRequest(tenant.Id, dbCode, true), ct);
+                    productResults.Add(pr);
+                }
+                catch (Exception ex)
+                {
+                    log.LogWarning(ex, "Product provisioning for {ProductCode} failed during tenant onboarding", dbCode);
+                }
+            }
+        }
+
         // ── Audit events ────────────────────────────────────────────────────────
         var now = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
@@ -483,6 +505,12 @@ public static class AdminEndpoints
                 subdomain           = tenant.Subdomain,
                 provisioningStatus  = tenant.ProvisioningStatus.ToString(),
                 hostname            = provResult.Hostname,
+                productsProvisioned = productResults.Select(p => new
+                {
+                    productCode = p.ProductCode,
+                    enabled     = p.Enabled,
+                    orgProductsCreated = p.OrganizationProductsCreated,
+                }).ToList(),
             });
     }
 
@@ -865,83 +893,25 @@ public static class AdminEndpoints
 
     private static async Task<IResult> UpdateEntitlement(
         Guid   id,
-        string productCode,   // from route: /entitlements/{productCode}
+        string productCode,
         IdentityDbContext db,
         EntitlementRequest body,
-        IAuditEventClient auditClient)
+        IAuditEventClient auditClient,
+        IProductProvisioningService provisioningEngine)
     {
-        // Resolve the frontend productCode ('SynqFund') → DB code ('SYNQ_FUND').
         if (!FrontendToDbProductCode.TryGetValue(productCode, out var dbCode))
-            dbCode = productCode; // pass-through if already a raw DB code
+            dbCode = productCode;
 
-        var tenant = await db.Tenants
-            .Include(t => t.TenantProducts)
-                .ThenInclude(tp => tp.Product)
-            .FirstOrDefaultAsync(t => t.Id == id);
+        var tenantExists = await db.Tenants.AnyAsync(t => t.Id == id);
+        if (!tenantExists) return Results.NotFound();
 
-        if (tenant is null) return Results.NotFound();
-
-        var product = await db.Products
-            .FirstOrDefaultAsync(p => p.Code == dbCode);
-
-        if (product is null)
+        var productExists = await db.Products.AnyAsync(p => p.Code == dbCode);
+        if (!productExists)
             return Results.NotFound(new { error = $"Product '{productCode}' not found." });
 
-        // ── 1. Update TenantProducts (tenant-level license) ──────────────────
-        var existing = tenant.TenantProducts.FirstOrDefault(tp => tp.ProductId == product.Id);
+        var result = await provisioningEngine.ProvisionAsync(
+            new ProvisionProductRequest(id, dbCode, body.Enabled));
 
-        if (existing is null)
-        {
-            if (body.Enabled)
-            {
-                var tp = Identity.Domain.TenantProduct.Create(tenant.Id, product.Id);
-                db.Set<Identity.Domain.TenantProduct>().Add(tp);
-            }
-        }
-        else
-        {
-            // Toggle — update via raw SQL since TenantProduct fields are private
-            if (!body.Enabled)
-                await db.Database.ExecuteSqlRawAsync(
-                    "UPDATE TenantProducts SET IsEnabled = 0 WHERE TenantId = {0} AND ProductId = {1}",
-                    tenant.Id, product.Id);
-            else
-                await db.Database.ExecuteSqlRawAsync(
-                    "UPDATE TenantProducts SET IsEnabled = 1, EnabledAtUtc = {0} WHERE TenantId = {1} AND ProductId = {2}",
-                    DateTime.UtcNow, tenant.Id, product.Id);
-        }
-
-        // ── 2. Cascade to OrganizationProducts (org-level, drives product roles) ─
-        // Product roles in the JWT are derived from OrganizationProducts, so the
-        // tenant-level toggle must propagate to every active org in the tenant.
-        var tenantOrgs = await db.Organizations
-            .Include(o => o.OrganizationProducts)
-            .Where(o => o.TenantId == id && o.IsActive)
-            .ToListAsync();
-
-        foreach (var org in tenantOrgs)
-        {
-            var orgProduct = org.OrganizationProducts
-                .FirstOrDefault(op => op.ProductId == product.Id);
-
-            if (orgProduct is null)
-            {
-                if (body.Enabled)
-                    db.OrganizationProducts.Add(
-                        OrganizationProduct.Create(org.Id, product.Id));
-            }
-            else
-            {
-                if (body.Enabled)
-                    orgProduct.Enable();
-                else
-                    orgProduct.Disable();
-            }
-        }
-
-        await db.SaveChangesAsync();
-
-        // Canonical audit — fire-and-observe, never gates the response.
         var auditNow = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
         {
@@ -964,10 +934,17 @@ public static class AdminEndpoints
 
         return Results.Ok(new
         {
-            tenantId    = tenant.Id,
-            productCode,            // frontend ProductCode (e.g., 'SynqFund')
+            tenantId    = id,
+            productCode,
             enabled     = body.Enabled,
             status      = body.Enabled ? "Active" : "Disabled",
+            provisioningResult = new
+            {
+                tenantProductCreated       = result.TenantProductCreated,
+                organizationProductsCreated = result.OrganizationProductsCreated,
+                organizationProductsUpdated = result.OrganizationProductsUpdated,
+                handlerExecuted            = result.HandlerResult is not null,
+            },
         });
     }
 
@@ -1772,6 +1749,7 @@ public static class AdminEndpoints
         Guid              id,
         ClaimsPrincipal   caller,
         IdentityDbContext db,
+        IProductProvisioningService provisioningEngine,
         CancellationToken ct)
     {
         var callerId = caller.FindFirstValue(ClaimTypes.NameIdentifier) is { } cid
@@ -1786,7 +1764,6 @@ public static class AdminEndpoints
         if (u is null) return Results.NotFound();
         if (IsCrossTenantAccess(caller, u.TenantId)) return Results.Forbid();
 
-        // ── Primary org membership ────────────────────────────────────────────
         var membership = await db.UserOrganizationMemberships
             .AsNoTracking()
             .Include(m => m.Organization)
@@ -1812,40 +1789,10 @@ public static class AdminEndpoints
                 code  = "ORG_NOT_FOUND",
             });
 
-        bool tpAdded    = false;
-        bool opAdded    = false;
-        bool roleAdded  = false;
+        var provResult = await provisioningEngine.ProvisionAsync(
+            new ProvisionProductRequest(u.TenantId, ProductCodes.SynqCareConnect, true), ct);
 
-        // ── 1. TenantProduct ─────────────────────────────────────────────────
-        var existingTp = u.Tenant.TenantProducts.FirstOrDefault(tp => tp.ProductId == CcProductId);
-        if (existingTp is null)
-        {
-            var tp = Identity.Domain.TenantProduct.Create(u.TenantId, CcProductId);
-            db.Set<Identity.Domain.TenantProduct>().Add(tp);
-            tpAdded = true;
-        }
-        else if (!existingTp.IsEnabled)
-        {
-            await db.Database.ExecuteSqlRawAsync(
-                "UPDATE TenantProducts SET IsEnabled = 1, EnabledAtUtc = {0} WHERE TenantId = {1} AND ProductId = {2}",
-                DateTime.UtcNow, u.TenantId, CcProductId, ct);
-            tpAdded = true;
-        }
-
-        // ── 2. OrganizationProduct ───────────────────────────────────────────
-        var existingOp = org.OrganizationProducts.FirstOrDefault(op => op.ProductId == CcProductId);
-        if (existingOp is null)
-        {
-            db.OrganizationProducts.Add(OrganizationProduct.Create(org.Id, CcProductId));
-            opAdded = true;
-        }
-        else if (!existingOp.IsEnabled)
-        {
-            existingOp.Enable();
-            opAdded = true;
-        }
-
-        // ── 3. ScopedRoleAssignment (CARECONNECT_RECEIVER) ───────────────────
+        bool roleAdded = false;
         var existingRole = await db.ScopedRoleAssignments
             .FirstOrDefaultAsync(s => s.UserId == id
                                    && s.IsActive
@@ -1862,17 +1809,16 @@ public static class AdminEndpoints
                 assignedByUserId: callerId);
             db.ScopedRoleAssignments.Add(sra);
             roleAdded = true;
+            await db.SaveChangesAsync(ct);
         }
-
-        await db.SaveChangesAsync(ct);
 
         return Results.Ok(new
         {
             userId             = id,
             organizationId     = org.Id,
             organizationName   = org.DisplayName ?? org.Name,
-            tenantProductAdded = tpAdded,
-            orgProductAdded    = opAdded,
+            tenantProductAdded = provResult.TenantProductCreated,
+            orgProductAdded    = provResult.OrganizationProductsCreated > 0 || provResult.OrganizationProductsUpdated > 0,
             roleAdded,
             isFullyProvisioned = true,
         });
@@ -4126,7 +4072,8 @@ public static class AdminEndpoints
         string  AdminFirstName,
         string  AdminLastName,
         string? OrgType = null,
-        string? PreferredSubdomain = null);
+        string? PreferredSubdomain = null,
+        List<string>? Products = null);
     private record InfraSubdomainRequest(string Subdomain);
     private record SetPasswordRequest(string NewPassword);
     private record EntitlementRequest(bool Enabled);
