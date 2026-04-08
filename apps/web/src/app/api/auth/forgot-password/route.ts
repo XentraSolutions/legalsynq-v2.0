@@ -26,10 +26,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Email is required' }, { status: 400 });
   }
 
-  const isDev = process.env.NEXT_PUBLIC_ENV === 'development';
-  const tenantCode = isDev
-    ? (explicitTenantCode?.trim() || extractTenantCodeFromHost(request))
-    : extractTenantCodeFromHost(request);
+  const tenantCode = explicitTenantCode?.trim() || extractTenantCodeFromHost(request);
 
   if (!tenantCode) {
     return NextResponse.json(

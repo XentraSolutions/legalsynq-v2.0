@@ -6,12 +6,11 @@ export function ForgotPasswordForm() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  const hasSubdomain = mounted && (() => {
+  const hasTenantSubdomain = mounted && (() => {
     const host = window.location.hostname;
-    const parts = host.split('.');
-    return parts.length >= 3 && !host.startsWith('localhost');
+    return /^[a-z0-9-]+\.demo\.legalsynq\.com$/i.test(host);
   })();
-  const showTenantField = mounted && !hasSubdomain && process.env.NEXT_PUBLIC_ENV === 'development';
+  const showTenantField = mounted && !hasTenantSubdomain;
 
   const [email, setEmail] = useState('');
   const [tenantCode, setTenantCode] = useState(process.env.NEXT_PUBLIC_TENANT_CODE ?? '');
@@ -104,9 +103,6 @@ export function ForgotPasswordForm() {
         <div className="space-y-1.5">
           <label className="flex items-center gap-1.5 text-[13px] font-medium text-gray-700">
             Tenant Code
-            <span className="text-[11px] font-normal text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-              dev only
-            </span>
           </label>
           <input
             type="text"
