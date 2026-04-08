@@ -2610,17 +2610,22 @@ monorepo at `apps/services/notifications/`.
   - `DELETE /api/admin/tenants/{id}/logo` — clear logo with `identity.tenant.logo_cleared` audit event
 
 #### CC Frontend
-- `apps/control-center/src/app/api/tenants/[id]/logo/route.ts` — `POST` (upload to Docs + persist) / `DELETE`
-- `apps/control-center/src/app/api/tenants/[id]/logo/content/[docId]/route.ts` — image proxy (X-Admin-Target-Tenant)
+- `apps/control-center/src/app/api/tenants/[id]/logo/route.ts` — `POST` (upload to Docs via gateway + persist) / `DELETE`. Routes Documents upload through `GATEWAY_URL/documents/documents` (not direct localhost:5006) for production compatibility.
+- `apps/control-center/src/app/api/tenants/[id]/logo/content/[docId]/route.ts` — image proxy via gateway public logo endpoint (`/documents/public/logo/{docId}`). Anonymous, no auth needed.
 - `apps/control-center/src/components/tenants/TenantLogoUpload.tsx` — logo upload/replace/remove panel
 - `apps/control-center/src/app/tenants/[id]/page.tsx` — logo panel added to tenant detail (above session settings)
 - `apps/control-center/src/types/control-center.ts` — `TenantDetail` extended with `logoDocumentId?`
 - `apps/control-center/src/lib/api-mappers.ts` — `mapTenantDetail` maps `logoDocumentId`
 
 #### Web Portal
+- `apps/web/src/app/api/branding/logo/public/route.ts` — public logo proxy for tenant login pages. Routes through gateway for both branding lookup and logo retrieval. Supports `?tenantCode=` query param and hostname-based subdomain extraction.
+- `apps/web/src/middleware.ts` — `/api/branding` added to `PUBLIC_PATHS` so login page can fetch tenant logo without auth
 - `apps/web/src/app/api/branding/logo/[docId]/route.ts` — logo image proxy (requires session)
 - `apps/web/src/types/index.ts` — `TenantBranding` extended with `logoDocumentId?`
 - `apps/web/src/components/shell/top-bar.tsx` — shows tenant logo (`/api/branding/logo/{docId}`) when authenticated + logo set; falls back to LegalSynq logo
+
+#### Gateway
+- `documents-public-logo` route added: `GET /documents/public/logo/{id}` → Documents service `/public/logo/{id}` (Anonymous, Order 53)
 
 ### Document Type IDs
 - Profile avatar: `20000000-0000-0000-0000-000000000001`

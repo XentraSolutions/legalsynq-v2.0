@@ -34,6 +34,8 @@ const PUBLIC_PATHS = [
   '/api/auth/reset-password',
   '/forgot-password',
   '/reset-password',
+  // Public branding / logo routes — no session required (used by login page)
+  '/api/branding',
   // LSCC-005: Public referral token routes — no session required
   '/referrals/view',
   '/referrals/accept',
