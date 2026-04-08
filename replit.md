@@ -16,7 +16,7 @@ Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router 
 - **Dev proxy:** `scripts/dev-proxy.js` — lightweight HTTP proxy on port 5000 that (1) gates browser requests until Next.js (on internal port 3050) returns HTTP 200 for `/login`, and (2) intercepts 5xx responses for page requests during a 30-second post-warmup window and serves an auto-refreshing loading page. Page detection uses URL pattern matching (excludes `/_next/`, `/api/`, file extensions) rather than browser headers (which Replit's proxy strips). Non-page requests (API calls, assets) get proper 503/502 during warmup. After the 30s cold-compile guard window, real 500s pass through for debugging. Auto re-gates if Next.js becomes unreachable (3+ consecutive connection errors). WebSocket upgrade passthrough for HMR. The `postinstall` patch (`patches/next-cold-compile-guard.js`) has been removed — it was ineffective because Next.js dev mode webpack-compiles its own server code into `.next/server/vendor-chunks/next.js`, bypassing the dist file entirely.
 - **Error boundary:** `global-error.tsx` at app root catches any rendering errors gracefully
 - **Session:** HttpOnly cookie (`platform_session`) set by BFF login route; validated via BFF `/api/auth/me` — frontend never decodes raw JWT
-- **BFF Routes:** `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` — Next.js API routes that proxy to Identity service with Bearer auth
+- **BFF Routes:** `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, `POST /api/auth/forgot-password`, `POST /api/auth/reset-password` — Next.js API routes that proxy to Identity service with Bearer auth
 - **API:** All requests proxy through gateway via Next.js rewrites `/api/*` → `http://localhost:5000/*`
 - **Environment:** `apps/web/.env.local` (gitignored) — `NEXT_PUBLIC_ENV=development`, `NEXT_PUBLIC_TENANT_CODE=LEGALSYNQ`, `GATEWAY_URL=http://localhost:5000`
 - **node_modules:** Installed at monorepo root (`/home/runner/workspace/node_modules`) — `apps/web` inherits via Node.js module resolution traversal
@@ -139,6 +139,10 @@ apps/web/
       portal/                   ← injured party portal (separate session shape — Phase 2)
         login/page.tsx
         my-application/page.tsx
+    forgot-password/page.tsx    ← forgot password page (email input → reset link)
+    forgot-password/forgot-password-form.tsx ← forgot password form component
+    reset-password/page.tsx     ← set new password page (token from URL)
+    reset-password/reset-password-form.tsx   ← reset password form component
     middleware.ts               ← global cookie gate (platform_session / portal_session)
 ```
 

@@ -136,6 +136,15 @@ export function LoginForm() {
         </div>
       </Field>
 
+      <div className="flex justify-end -mt-1">
+        <a
+          href="/forgot-password"
+          className="text-[13px] text-gray-500 hover:text-gray-700 underline underline-offset-2 transition-colors"
+        >
+          Forgot password?
+        </a>
+      </div>
+
       {/* Error banner */}
       {error && (
         <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-3">

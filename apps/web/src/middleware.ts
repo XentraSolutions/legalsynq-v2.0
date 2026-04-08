@@ -30,6 +30,10 @@ const PUBLIC_PATHS = [
   // Auth API endpoints must be reachable before a session cookie exists
   '/api/auth/login',
   '/api/auth/logout',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/forgot-password',
+  '/reset-password',
   // LSCC-005: Public referral token routes — no session required
   '/referrals/view',
   '/referrals/accept',
