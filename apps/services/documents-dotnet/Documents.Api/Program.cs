@@ -207,6 +207,7 @@ try
         app.Logger.LogInformation("Database already exists — applying schema patches");
         db.Database.ExecuteSqlRaw(@"
             ALTER TABLE document_audits ADD COLUMN IF NOT EXISTS actor_email VARCHAR(500);
+            ALTER TABLE document_audits ALTER COLUMN actor_id DROP NOT NULL;
         ");
         app.Logger.LogInformation("Schema patches applied successfully");
     }

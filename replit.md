@@ -749,9 +749,12 @@ dotnet build apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj
 ### Database Setup
 At startup, `Program.cs` handles schema automatically:
 - **Fresh database**: `EnsureCreated()` creates all tables from the EF model
-- **Existing database**: Runs idempotent `ALTER TABLE` patches for any missing columns (e.g., `actor_email` on `document_audits`)
+- **Existing database**: Runs idempotent `ALTER TABLE` patches for any missing columns/constraints:
+  - `ALTER TABLE document_audits ADD COLUMN IF NOT EXISTS actor_email VARCHAR(500);`
+  - `ALTER TABLE document_audits ALTER COLUMN actor_id DROP NOT NULL;` (scan worker audits have no actor)
 - **No EF Core migrations**: The migration snapshot is a placeholder; schema is managed via `EnsureCreated` + startup patches
 - **Dev vs Prod Postgres**: Dev uses `helium:5432` (Replit built-in); Prod uses `DATABASE_URL` (Replit deployment Postgres). Document IDs are NOT portable between environments.
+- **Storage**: Dev uses `/tmp/docs-local`; Prod uses `/home/runner/data/docs-local` (via `appsettings.Production.json`). Note: Replit deployment filesystem is ephemeral for Autoscale deployments — uploaded files may be lost on redeploy. Reserved VM deployments should persist `/home/runner` data.
 
 Reference schema: `apps/services/documents-dotnet/Documents.Infrastructure/Database/schema.sql`
 
