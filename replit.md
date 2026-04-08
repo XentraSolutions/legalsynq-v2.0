@@ -747,15 +747,13 @@ dotnet build apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj
 ```
 
 ### Database Setup
-```bash
-# Apply EF Core migrations
-dotnet ef migrations add InitialCreate \
-  --project apps/services/documents-dotnet/Documents.Infrastructure \
-  --startup-project apps/services/documents-dotnet/Documents.Api
-dotnet ef database update \
-  --startup-project apps/services/documents-dotnet/Documents.Api
-```
-Or run `apps/services/documents-dotnet/Documents.Infrastructure/Database/schema.sql` directly against PostgreSQL.
+At startup, `Program.cs` handles schema automatically:
+- **Fresh database**: `EnsureCreated()` creates all tables from the EF model
+- **Existing database**: Runs idempotent `ALTER TABLE` patches for any missing columns (e.g., `actor_email` on `document_audits`)
+- **No EF Core migrations**: The migration snapshot is a placeholder; schema is managed via `EnsureCreated` + startup patches
+- **Dev vs Prod Postgres**: Dev uses `helium:5432` (Replit built-in); Prod uses `DATABASE_URL` (Replit deployment Postgres). Document IDs are NOT portable between environments.
+
+Reference schema: `apps/services/documents-dotnet/Documents.Infrastructure/Database/schema.sql`
 
 ### Analysis Documents (7 + 6 phases)
 Architecture phases in `apps/services/documents-nodejs/analysis/`:

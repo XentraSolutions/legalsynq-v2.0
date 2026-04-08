@@ -191,17 +191,29 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-// ── DB migration ─────────────────────────────────────────────────────────────
+// ── DB schema setup ──────────────────────────────────────────────────────────
 try
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<DocsDbContext>();
-    db.Database.Migrate();
-    app.Logger.LogInformation("Database migrations applied");
+
+    var created = db.Database.EnsureCreated();
+    if (created)
+    {
+        app.Logger.LogInformation("Database created with full schema from EF model");
+    }
+    else
+    {
+        app.Logger.LogInformation("Database already exists — applying schema patches");
+        db.Database.ExecuteSqlRaw(@"
+            ALTER TABLE document_audits ADD COLUMN IF NOT EXISTS actor_email VARCHAR(500);
+        ");
+        app.Logger.LogInformation("Schema patches applied successfully");
+    }
 }
 catch (Exception ex)
 {
-    app.Logger.LogWarning(ex, "Could not apply migrations — ensure PostgreSQL is running");
+    app.Logger.LogWarning(ex, "Could not set up database schema — ensure PostgreSQL is running");
 }
 
 // ── Middleware pipeline ────────────────────────────────────────────────────────
