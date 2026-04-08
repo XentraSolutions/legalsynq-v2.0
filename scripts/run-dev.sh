@@ -26,6 +26,7 @@ PID_CC=$!
 (
   dotnet restore "$ROOT/LegalSynq.sln" --verbosity quiet
   dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Debug --verbosity quiet
+  dotnet build "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" --configuration Debug --verbosity quiet
   dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &

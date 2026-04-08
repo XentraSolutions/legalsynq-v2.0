@@ -221,6 +221,7 @@ app.MapMetrics("/metrics").AllowAnonymous();
 app.MapHealthEndpoints();
 app.MapDocumentEndpoints();
 app.MapAccessEndpoints();
+app.MapPublicLogoEndpoints();
 
 // ── Local file serving (dev only) ─────────────────────────────────────────────
 if (app.Environment.IsDevelopment())

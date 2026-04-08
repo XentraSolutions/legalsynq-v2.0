@@ -24,27 +24,18 @@ const HIGHLIGHTS = [
 ];
 
 function TenantLogo() {
-  const [logoSrc, setLogoSrc] = useState<string | null>(null);
-  const [visible, setVisible] = useState(true);
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
 
-  useEffect(() => {
-    const host = window.location.hostname;
-    const parts = host.split('.');
-    if (parts.length >= 3 && !host.startsWith('localhost')) {
-      const slug = parts[0].toLowerCase();
-      setLogoSrc(`/logos/${slug}.png`);
-    }
-  }, []);
-
-  if (!logoSrc || !visible) return null;
+  if (status === 'error') return null;
 
   return (
-    <div className="flex justify-center mb-6">
+    <div className="mb-6" style={status === 'loading' ? { height: 0, overflow: 'hidden' } : undefined}>
       <img
-        src={logoSrc}
+        src="/api/branding/logo/public"
         alt="Organization logo"
-        className="max-h-16 max-w-[180px] object-contain"
-        onError={() => setVisible(false)}
+        className="max-h-16 max-w-[220px] object-contain"
+        onLoad={() => setStatus('loaded')}
+        onError={() => setStatus('error')}
       />
     </div>
   );
