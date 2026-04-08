@@ -125,21 +125,26 @@ export async function POST(request: NextRequest) {
 
 /**
  * Extracts a tenantCode from the request's Host header.
- * "firm-a.legalsynq.com" → "firm-a"
- * "localhost:3000"        → null (no subdomain)
+ *
+ * Subdomain slugs use hyphens for readability (URL-friendly), but tenant
+ * codes are stored without hyphens in uppercase.
+ *
+ * Examples:
+ *   "maner-law.demo.legalsynq.com" → "MANERLAW"
+ *   "lisa-medical.demo.legalsynq.com" → "LISAMEDICAL"
+ *   "legalsynq.demo.legalsynq.com" → "LEGALSYNQ"
+ *   "localhost:3000" → null (no subdomain)
  */
 function extractTenantCodeFromHost(request: NextRequest): string | null {
   const host = request.headers.get('x-forwarded-host')
     ?? request.headers.get('host')
     ?? '';
 
-  // Strip port
   const hostWithoutPort = host.includes(':') ? host.split(':')[0] : host;
   const parts = hostWithoutPort.split('.');
 
-  // A subdomain exists when there are at least 3 parts (sub.domain.tld)
   if (parts.length >= 3) {
-    return parts[0].toUpperCase();
+    return parts[0].replace(/-/g, '').toUpperCase();
   }
 
   return null;
