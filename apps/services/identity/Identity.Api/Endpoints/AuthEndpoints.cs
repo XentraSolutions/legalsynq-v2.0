@@ -488,17 +488,33 @@ public static class AuthEndpoints
             if (string.IsNullOrWhiteSpace(body.Email))
                 return Results.BadRequest(new { error = "email is required." });
 
+            logger.LogInformation("[forgot-password] Received request: tenantCode={TenantCode}, email={Email}",
+                body.TenantCode, body.Email);
+
             var tenant = await db.Tenants
                 .FirstOrDefaultAsync(t => t.Code == body.TenantCode && t.IsActive, ct);
 
             if (tenant is null)
+            {
+                logger.LogWarning("[forgot-password] Tenant not found for code={TenantCode}", body.TenantCode);
+                var allTenants = await db.Tenants.Select(t => new { t.Code, t.IsActive }).ToListAsync(ct);
+                logger.LogInformation("[forgot-password] Available tenants: {Tenants}",
+                    string.Join(", ", allTenants.Select(t => $"{t.Code}(active={t.IsActive})")));
                 return Results.Ok(new { message = "If an account exists with that email, a password reset link has been generated." });
+            }
+
+            logger.LogInformation("[forgot-password] Tenant found: {TenantId} ({TenantCode})", tenant.Id, tenant.Code);
 
             var user = await db.Users
                 .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Email == body.Email && u.IsActive, ct);
 
             if (user is null)
+            {
+                logger.LogWarning("[forgot-password] User not found: email={Email}, tenantId={TenantId}", body.Email, tenant.Id);
                 return Results.Ok(new { message = "If an account exists with that email, a password reset link has been generated." });
+            }
+
+            logger.LogInformation("[forgot-password] User found: {UserId} ({Email})", user.Id, user.Email);
 
             var existingTokens = await db.PasswordResetTokens
                 .Where(t => t.UserId == user.Id && t.Status == PasswordResetToken.Statuses.Pending)
