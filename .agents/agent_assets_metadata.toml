@@ -144,3 +144,9 @@ id = "ZY4BpKY0Tz-ewVLh-Tmj5"
 uri = "file://legalsynq-source-codes-20260408.zip"
 type = "unspecified"
 title = "LegalSynq Source Codes (2026-04-08)"
+
+[[outputs]]
+id = "ZHLgIm8qWjW2WTSDi4Z0a"
+uri = "file://analysis/LSCC-01-006-report.md"
+type = "text"
+title = "LSCC-01-006 Report — Tenant Logo Display on Login"
