@@ -1,12 +1,11 @@
 {
-  "/api/auth/login/route": "app/api/auth/login/route.js",
-  "/api/monitoring/summary/route": "app/api/monitoring/summary/route.js",
-  "/login/page": "app/login/page.js",
-  "/tenants/page": "app/tenants/page.js",
-  "/settings/page": "app/settings/page.js",
-  "/artifacts/[artifactType]/page": "app/artifacts/[artifactType]/page.js",
-  "/artifacts/page": "app/artifacts/page.js",
   "/platform-readiness/page": "app/platform-readiness/page.js",
   "/page": "app/page.js",
-  "/monitoring/page": "app/monitoring/page.js"
+  "/monitoring/page": "app/monitoring/page.js",
+  "/synqaudit/user-activity/page": "app/synqaudit/user-activity/page.js",
+  "/synqaudit/page": "app/synqaudit/page.js",
+  "/groups/page": "app/groups/page.js",
+  "/org-types/page": "app/org-types/page.js",
+  "/artifacts/page": "app/artifacts/page.js",
+  "/artifacts/[artifactType]/page": "app/artifacts/[artifactType]/page.js"
 }
