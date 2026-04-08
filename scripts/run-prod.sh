@@ -42,7 +42,7 @@ launch_svc() {
   local dll_name
   dll_name="$(basename "$project" .csproj).dll"
   if [ -f "$dll_dir/$dll_name" ]; then
-    (cd "$(dirname "$project")" && "$@" dotnet run --no-build --configuration Release) &
+    (cd "$(dirname "$project")" && "$@" dotnet run --no-build --no-launch-profile --configuration Release) &
     echo "[dotnet] $name launched (pid $!)"
   else
     echo "[dotnet] $name SKIPPED — binary not found"
