@@ -50,7 +50,7 @@ export function LoginForm() {
     setLoading(true);
     try {
       const body: Record<string, string> = { email, password };
-      if (tenantCode) body.tenantCode = tenantCode;
+      if (showTenantField && tenantCode) body.tenantCode = tenantCode;
 
       const res = await fetch('/api/auth/login', {
         method:  'POST',

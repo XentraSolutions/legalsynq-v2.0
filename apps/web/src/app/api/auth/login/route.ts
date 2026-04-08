@@ -38,13 +38,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
   }
 
-  const isDev = process.env.NEXT_PUBLIC_ENV === 'development';
-  const tenantCode = isDev
-    ? (explicitTenantCode?.trim() || extractTenantCodeFromHost(request))
-    : extractTenantCodeFromHost(request);
+  const subdomainTenant = extractTenantCodeFromHost(request);
+  const tenantCode = subdomainTenant || explicitTenantCode?.trim() || null;
 
   const rawHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
-  console.log(`[login] host=${rawHost}, resolvedTenantCode=${tenantCode}, email=${email}, isDev=${isDev}`);
+  console.log(`[login] host=${rawHost}, subdomainTenant=${subdomainTenant}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, email=${email}`);
 
   if (!tenantCode) {
     return NextResponse.json(
