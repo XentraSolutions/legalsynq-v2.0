@@ -43,6 +43,9 @@ export async function POST(request: NextRequest) {
     ? (explicitTenantCode?.trim() || extractTenantCodeFromHost(request))
     : extractTenantCodeFromHost(request);
 
+  const rawHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
+  console.log(`[login] host=${rawHost}, resolvedTenantCode=${tenantCode}, email=${email}, isDev=${isDev}`);
+
   if (!tenantCode) {
     return NextResponse.json(
       { message: 'Tenant could not be resolved. Please provide a tenant code.' },
@@ -57,13 +60,15 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ tenantCode, email, password }),
     });
-  } catch {
+  } catch (err) {
+    console.error(`[login] Identity service fetch error:`, err);
     return NextResponse.json({ message: 'Identity service unavailable' }, { status: 503 });
   }
 
   if (!identityRes.ok) {
     const errBody = await identityRes.json().catch(() => ({}));
     const message = errBody.detail ?? errBody.title ?? 'Invalid credentials';
+    console.log(`[login] Identity returned ${identityRes.status}: ${JSON.stringify(errBody)}`);
 
     const isVerifying = typeof message === 'string' && message.includes('verifying DNS configuration');
     if (isVerifying) {
