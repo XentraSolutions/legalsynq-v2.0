@@ -90,6 +90,11 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/org-types/page.js"
+    ],
+    "/synqaudit/investigation/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/synqaudit/investigation/page.js"
     ]
   }
 }

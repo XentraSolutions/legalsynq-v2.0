@@ -50,7 +50,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Forward login to Identity service via gateway
+  console.log('[BFF login]', JSON.stringify({
+    resolvedTenant: tenantCode,
+    email,
+    host: request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '(none)',
+    gatewayUrl: GATEWAY_URL,
+  }));
+
   let identityRes: Response;
   try {
     identityRes = await fetch(`${GATEWAY_URL}/identity/api/auth/login`, {
@@ -58,12 +64,16 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ tenantCode, email, password }),
     });
-  } catch {
+  } catch (err) {
+    console.error('[BFF login] Gateway fetch failed:', err);
     return NextResponse.json({ message: 'Identity service unavailable' }, { status: 503 });
   }
 
+  console.log('[BFF login] Identity response:', identityRes.status);
+
   if (!identityRes.ok) {
     const errBody = await identityRes.json().catch(() => ({}));
+    console.log('[BFF login] Identity error body:', JSON.stringify(errBody));
     const message = errBody.detail ?? errBody.title ?? 'Invalid credentials';
 
     const isVerifying = typeof message === 'string' && message.includes('verifying DNS configuration');
