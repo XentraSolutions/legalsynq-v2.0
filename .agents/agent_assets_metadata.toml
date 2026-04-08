@@ -138,3 +138,9 @@ id = "C6F4ylIiluOOk8Xkvng_F"
 uri = "file://analysis/NOTIF-UI-010-report.md"
 type = "text"
 title = "NOTIF-UI-010 — Delivery Controls Report"
+
+[[outputs]]
+id = "ZY4BpKY0Tz-ewVLh-Tmj5"
+uri = "file://legalsynq-source-codes-20260408.zip"
+type = "unspecified"
+title = "LegalSynq Source Codes (2026-04-08)"
