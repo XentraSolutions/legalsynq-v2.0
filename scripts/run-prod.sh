@@ -52,6 +52,7 @@ launch_svc() {
 if command -v dotnet &>/dev/null; then
   (
     set +e
+    export ASPNETCORE_ENVIRONMENT=Production
     GATEWAY_DLL="$ROOT/apps/gateway/Gateway.Api/bin/Release/net8.0/Gateway.Api.dll"
     IDENTITY_DLL="$ROOT/apps/services/identity/Identity.Api/bin/Release/net8.0/Identity.Api.dll"
 
@@ -72,8 +73,7 @@ if command -v dotnet &>/dev/null; then
     launch_svc "Identity API" "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
     launch_svc "Fund API"     "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
     launch_svc "CareConnect"  "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
-    launch_svc "Documents"    "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" \
-      env ASPNETCORE_ENVIRONMENT=Production
+    launch_svc "Documents"    "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj"
     launch_svc "Audit"        "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" \
       env ASPNETCORE_ENVIRONMENT=Development ASPNETCORE_URLS=http://0.0.0.0:5007
     launch_svc "Gateway"      "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"

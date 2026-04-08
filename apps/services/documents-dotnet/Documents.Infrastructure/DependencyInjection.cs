@@ -23,8 +23,26 @@ public static class DependencyInjection
         IConfiguration          config)
     {
         // ── PostgreSQL / EF Core ─────────────────────────────────────────────
-        var connStr = config.GetConnectionString("DocsDb")
-            ?? throw new InvalidOperationException("Connection string 'DocsDb' is required.");
+        var connStr = config.GetConnectionString("DocsDb");
+        if (string.IsNullOrWhiteSpace(connStr))
+        {
+            var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+            if (!string.IsNullOrWhiteSpace(databaseUrl))
+            {
+                var uri = new Uri(databaseUrl);
+                var userInfo = uri.UserInfo.Split(':');
+                var host = uri.Host;
+                var port = uri.Port > 0 ? uri.Port : 5432;
+                var database = uri.AbsolutePath.TrimStart('/');
+                var user = userInfo.Length > 0 ? userInfo[0] : "";
+                var password = userInfo.Length > 1 ? userInfo[1] : "";
+                connStr = $"Host={host};Port={port};Database={database};Username={user}";
+                if (!string.IsNullOrEmpty(password))
+                    connStr += $";Password={password}";
+            }
+        }
+        if (string.IsNullOrWhiteSpace(connStr))
+            throw new InvalidOperationException("Connection string 'DocsDb' or DATABASE_URL env var is required.");
 
         services.AddDbContext<DocsDbContext>(opts =>
             opts.UseNpgsql(connStr, npg =>

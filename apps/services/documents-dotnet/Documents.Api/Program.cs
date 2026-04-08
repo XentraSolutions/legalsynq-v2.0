@@ -79,6 +79,25 @@ builder.Services
         {
             throw new InvalidOperationException("Either Jwt:SigningKey or Jwt:JwksUri must be configured.");
         }
+
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnAuthenticationFailed = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("JwtAuth");
+                logger.LogError(context.Exception, "JWT authentication failed for {Path}", context.HttpContext.Request.Path);
+                return Task.CompletedTask;
+            },
+            OnChallenge = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("JwtAuth");
+                logger.LogWarning("JWT challenge issued for {Path}: {Error} - {ErrorDescription}",
+                    context.Request.Path, context.Error, context.ErrorDescription);
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
