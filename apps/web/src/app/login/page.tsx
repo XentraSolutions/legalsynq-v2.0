@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import Image from 'next/image';
 import { LoginForm } from './login-form';
 
@@ -22,6 +22,33 @@ const HIGHLIGHTS = [
     text: 'Secure, auditable, and operationally efficient',
   },
 ];
+
+function TenantLogo() {
+  const [logoSrc, setLogoSrc] = useState<string | null>(null);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const host = window.location.hostname;
+    const parts = host.split('.');
+    if (parts.length >= 3 && !host.startsWith('localhost')) {
+      const slug = parts[0].toLowerCase();
+      setLogoSrc(`/logos/${slug}.png`);
+    }
+  }, []);
+
+  if (!logoSrc || !visible) return null;
+
+  return (
+    <div className="flex justify-center mb-6">
+      <img
+        src={logoSrc}
+        alt="Organization logo"
+        className="max-h-16 max-w-[180px] object-contain"
+        onError={() => setVisible(false)}
+      />
+    </div>
+  );
+}
 
 export default function LoginPage() {
   return (
@@ -124,6 +151,8 @@ export default function LoginPage() {
         </div>
 
         <div className="w-full max-w-sm">
+          <TenantLogo />
+
           {/* Heading */}
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Welcome back</h1>
