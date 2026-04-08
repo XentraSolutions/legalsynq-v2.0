@@ -1,1 +1,12 @@
-{}
+{
+  "/api/auth/login/route": "app/api/auth/login/route.js",
+  "/api/monitoring/summary/route": "app/api/monitoring/summary/route.js",
+  "/login/page": "app/login/page.js",
+  "/tenants/page": "app/tenants/page.js",
+  "/settings/page": "app/settings/page.js",
+  "/artifacts/[artifactType]/page": "app/artifacts/[artifactType]/page.js",
+  "/artifacts/page": "app/artifacts/page.js",
+  "/platform-readiness/page": "app/platform-readiness/page.js",
+  "/page": "app/page.js",
+  "/monitoring/page": "app/monitoring/page.js"
+}
