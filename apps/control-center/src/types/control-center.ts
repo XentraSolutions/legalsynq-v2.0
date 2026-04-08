@@ -486,6 +486,7 @@ export interface IntegrationStatus {
   status:           MonitoringStatus;
   latencyMs?:       number;
   lastCheckedAtUtc: string;
+  category?:        string;
 }
 
 export interface SystemAlert {
