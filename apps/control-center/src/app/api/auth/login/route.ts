@@ -28,14 +28,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
   }
 
-  const tenantCode = explicitTenantCode?.trim() || extractTenantCodeFromHost(request);
+  const tenantCode = explicitTenantCode?.trim() || extractTenantCodeFromHost(request) || 'LEGALSYNQ';
 
-  if (!tenantCode) {
-    return NextResponse.json(
-      { message: 'Tenant could not be resolved. Please provide a tenant code.' },
-      { status: 400 },
-    );
-  }
 
   let identityRes: Response;
   try {

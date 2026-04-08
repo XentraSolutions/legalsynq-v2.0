@@ -12,7 +12,7 @@ export function LoginForm() {
 
   const [email,      setEmail]      = useState('');
   const [password,   setPassword]   = useState('');
-  const [tenantCode, setTenantCode] = useState(process.env.NEXT_PUBLIC_TENANT_CODE ?? 'LEGALSYNQ');
+  const [tenantCode, setTenantCode] = useState(process.env.NEXT_PUBLIC_TENANT_CODE || 'LEGALSYNQ');
   const [showPassword, setShowPassword] = useState(false);
   const [error,      setError]      = useState<string | null>(null);
   const [loading,    setLoading]    = useState(false);
