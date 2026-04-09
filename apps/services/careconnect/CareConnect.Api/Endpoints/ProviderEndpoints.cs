@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
@@ -11,7 +12,8 @@ public static class ProviderEndpoints
 {
     public static void MapProviderEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/providers");
+        var group = app.MapGroup("/api/providers")
+            .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapGet("/", async (
             [AsParameters] ProviderSearchParams p,
@@ -108,7 +110,9 @@ public static class ProviderEndpoints
             var provider = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/providers/{provider.Id}", provider);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductRole(ProductCodes.SynqCareConnect,
+            ProductRoleCodes.CareConnectReceiver, "CARECONNECT_ADMIN");
 
         group.MapPut("/{id:guid}", async (
             Guid id,
@@ -123,7 +127,9 @@ public static class ProviderEndpoints
             var provider = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(provider);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductRole(ProductCodes.SynqCareConnect,
+            ProductRoleCodes.CareConnectReceiver, "CARECONNECT_ADMIN");
 
         // ── Availability endpoint ──────────────────────────────────────────
         group.MapGet("/{providerId:guid}/availability", async (

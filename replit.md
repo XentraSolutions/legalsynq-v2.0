@@ -543,6 +543,24 @@ dotnet tool run dotnet-ef migrations add <Name> \
 - **EF migrations via RDS:** EF tools hang due to RDS latency. Write migrations manually (`.cs` + `.Designer.cs` + Snapshot update) and rely on `db.Database.Migrate()` on startup.
 - **double? geo columns:** Entity `double?` fields mapped to `decimal(10,7)` — migrations must use `AddColumn<double>`, snapshot must use `b.Property<double?>()`
 
+## CareConnect Product Authorization Enforcement (LS-COR-AUT-001)
+
+Declarative endpoint filters enforce product-level access control on all CareConnect routes using JWT `product_roles` claims. Applied as `IEndpointFilter` in the minimal API pipeline, running after authentication but before endpoint handlers.
+
+**Shared building blocks** (`BuildingBlocks/Authorization/Filters/`):
+- `RequireProductAccessFilter` — coarse product check via `HasProductAccess(productCode)`
+- `RequireProductRoleFilter` — product-scoped role check via `HasProductRole(productCode, roles)`
+- `RequireOrgProductAccessFilter` — org-scoped check, stores `org_id` in `HttpContext.Items["ProductAuth:OrgId"]`
+- `ProductAuthorizationExtensions` — fluent `.RequireProductAccess()`, `.RequireProductRole()`, `.RequireOrgProductAccess()` on `RouteHandlerBuilder`/`RouteGroupBuilder`
+
+**Claim extensions** (`ProductRoleClaimExtensions`): `HasProductAccess()`, `HasProductRole()`, `IsTenantAdminOrAbove()`. Deny-by-default for unknown product codes. Product-scoped role validation (roles must belong to product's valid role set in `ProductToRolesMap`).
+
+**Bypass rules**: PlatformAdmin and TenantAdmin always bypass product filters. Product-level enforcement applies to Member role users.
+
+**Structured 403 response**: `{"error":{"code":"PRODUCT_ACCESS_DENIED","message":"...","productCode":"SYNQ_CARECONNECT","requiredRoles":null,"organizationId":null}}`. Handled by `ExceptionHandlingMiddleware` catching `ProductAccessDeniedException`.
+
+**Coverage**: All authenticated CareConnect endpoints have `.RequireProductAccess(ProductCodes.SynqCareConnect)`. Write endpoints additionally have `RequireOrgProductAccess` or `RequireProductRole`. Excluded: `InternalProvisionEndpoints` (service-to-service), `CareConnectIntegrityEndpoints` (anonymous), 5 public referral routes (token-gated). Admin endpoints (`PlatformOrTenantAdmin`) implicitly covered by bypass.
+
 ## CareConnect Capability-Based Authorization
 
 Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass capability checks; all other users are evaluated against a static role→capability map.

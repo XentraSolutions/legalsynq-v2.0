@@ -1,4 +1,5 @@
 using BuildingBlocks.Exceptions;
+using System.Security.Claims;
 using System.Text.Json;
 
 namespace CareConnect.Api.Middleware;
@@ -57,6 +58,34 @@ public class ExceptionHandlingMiddleware
             await context.Response.WriteAsync(JsonSerializer.Serialize(response, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            }));
+        }
+        catch (ProductAccessDeniedException pex)
+        {
+            _logger.LogWarning(
+                "Product authorization denied: code={ErrorCode} product={ProductCode} org={OrgId} user={User} path={Path}",
+                pex.ErrorCode, pex.ProductCode, pex.OrganizationId,
+                context.User.FindFirst("sub")?.Value, context.Request.Path);
+
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "application/json";
+
+            var response = new
+            {
+                error = new
+                {
+                    code = pex.ErrorCode,
+                    message = pex.DenialReason ?? pex.Message,
+                    productCode = pex.ProductCode,
+                    requiredRoles = pex.RequiredRoles,
+                    organizationId = pex.OrganizationId
+                }
+            };
+
+            await context.Response.WriteAsync(JsonSerializer.Serialize(response, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
             }));
         }
         catch (ForbiddenException ex)

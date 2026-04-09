@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
@@ -23,7 +24,8 @@ public static class AvailabilityTemplateEndpoints
             var templates = await service.GetByProviderAsync(tenantId, providerId, ct);
             return Results.Ok(templates);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPost("/api/providers/{providerId:guid}/availability-templates", async (
             Guid providerId,
@@ -38,7 +40,8 @@ public static class AvailabilityTemplateEndpoints
             var template = await service.CreateAsync(tenantId, providerId, ctx.UserId, request, ct);
             return Results.Created($"/api/availability-templates/{template.Id}", template);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPut("/api/availability-templates/{id:guid}", async (
             Guid id,
@@ -53,6 +56,7 @@ public static class AvailabilityTemplateEndpoints
             var template = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(template);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
     }
 }

@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
@@ -21,7 +22,8 @@ public static class ServiceOfferingEndpoints
             var offerings = await service.GetAllAsync(tenantId, ct);
             return Results.Ok(offerings);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapPost("/", async (
             [FromBody] CreateServiceOfferingRequest request,
@@ -33,7 +35,8 @@ public static class ServiceOfferingEndpoints
             var offering = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/service-offerings/{offering.Id}", offering);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapPut("/{id:guid}", async (
             Guid id,
@@ -46,6 +49,7 @@ public static class ServiceOfferingEndpoints
             var offering = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(offering);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
     }
 }

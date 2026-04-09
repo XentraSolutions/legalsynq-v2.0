@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
@@ -23,7 +24,9 @@ public static class AppointmentEndpoints
             var appointment = await service.CreateAppointmentAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/appointments/{appointment.Id}", appointment);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         // LSCC-002: Org-participant scoping — mirrors referral list scoping:
         // receivers filter by receiving org; all others filter by referring org.
@@ -45,7 +48,8 @@ public static class AppointmentEndpoints
                 tenantId, query, referringOrgId, receivingOrgId, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         // LSCC-002: Row-level access control — caller must be an admin or a participant
         // (ReferringOrganizationId or ReceivingOrganizationId matches their org).
@@ -71,7 +75,8 @@ public static class AppointmentEndpoints
 
             return Results.Ok(appointment);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPut("/api/appointments/{id:guid}", async (
             Guid id,
@@ -88,7 +93,9 @@ public static class AppointmentEndpoints
             var appointment = await service.UpdateAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPost("/api/appointments/{id:guid}/confirm", async (
             Guid id,
@@ -105,7 +112,9 @@ public static class AppointmentEndpoints
             var appointment = await service.ConfirmAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPost("/api/appointments/{id:guid}/complete", async (
             Guid id,
@@ -122,7 +131,9 @@ public static class AppointmentEndpoints
             var appointment = await service.CompleteAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPost("/api/appointments/{id:guid}/cancel", async (
             Guid id,
@@ -139,7 +150,9 @@ public static class AppointmentEndpoints
             var appointment = await service.CancelAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPost("/api/appointments/{id:guid}/reschedule", async (
             Guid id,
@@ -156,7 +169,9 @@ public static class AppointmentEndpoints
             var appointment = await service.RescheduleAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(appointment);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapGet("/api/appointments/{id:guid}/history", async (
             Guid id,
@@ -170,7 +185,8 @@ public static class AppointmentEndpoints
             var history = await service.GetAppointmentHistoryAsync(tenantId, id, ct);
             return Results.Ok(history);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
     }
 
     private static bool RequireAppointmentParticipant(ICurrentRequestContext ctx, AppointmentResponse appointment)
