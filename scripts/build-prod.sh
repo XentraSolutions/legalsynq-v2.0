@@ -28,7 +28,7 @@ echo "Using next binary: $NEXT_BIN"
 echo "====== Building web app ======"
 cd "$ROOT/apps/web"
 rm -rf .next
-NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://localhost:5010 node "$NEXT_BIN" build
+NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 node "$NEXT_BIN" build
 
 echo "====== Building control center ======"
 cd "$ROOT/apps/control-center"
@@ -60,7 +60,8 @@ if command -v dotnet &>/dev/null; then
   build_service "Fund"        "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
   build_service "CareConnect" "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
   build_service "Documents"   "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
-  build_service "Audit"       "$ROOT/apps/services/audit/PlatformAuditEventService.csproj"
+  build_service "Audit"         "$ROOT/apps/services/audit/PlatformAuditEventService.csproj"
+  build_service "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
 
   if [ "$DOTNET_FAIL" -gt 0 ]; then
     echo "[dotnet] WARNING: $DOTNET_FAIL service(s) failed to build"

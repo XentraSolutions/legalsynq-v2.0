@@ -22,7 +22,7 @@ echo "[next] Using: $NEXT_BIN"
 
 NEXT_INTERNAL_PORT=3050
 echo "[web] Starting Next.js on :$NEXT_INTERNAL_PORT (internal)"
-(cd "$ROOT/apps/web" && NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://localhost:5010 node "$NEXT_BIN" start -p "$NEXT_INTERNAL_PORT") &
+(cd "$ROOT/apps/web" && NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 node "$NEXT_BIN" start -p "$NEXT_INTERNAL_PORT") &
 PID_WEB=$!
 
 echo "[proxy] Starting prod proxy on :5000 → :$NEXT_INTERNAL_PORT"
@@ -30,7 +30,7 @@ NEXT_INTERNAL_PORT=$NEXT_INTERNAL_PORT PROXY_PORT=5000 node "$ROOT/scripts/dev-p
 PID_PROXY=$!
 
 echo "[control-center] Starting Next.js on :5004"
-(cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 node "$NEXT_BIN" start -p 5004) &
+(cd "$ROOT/apps/control-center" && GATEWAY_URL=http://127.0.0.1:5010 node "$NEXT_BIN" start -p 5004) &
 PID_CC=$!
 
 echo "[dotnet] Starting .NET services"
