@@ -260,6 +260,50 @@ apps/
         Data/Migrations/                  ← InitialCareConnectSchema
         Repositories/ProviderRepository.cs, ReferralRepository.cs, CategoryRepository.cs
         DependencyInjection.cs
+    notifications-dotnet/
+      Notifications.Api/                     → ASP.NET Core Web API (port 5006)
+        Program.cs                           ← Minimal API; no auth (multi-tenant via X-Tenant-Id header)
+        Middleware/
+          TenantMiddleware.cs                ← extracts X-Tenant-Id header → HttpContext.Items
+          InternalTokenMiddleware.cs          ← validates X-Internal-Service-Token for /internal routes
+          RawBodyMiddleware.cs               ← captures raw body for /v1/webhooks signature verification
+        Endpoints/
+          NotificationEndpoints.cs           ← POST/GET /v1/notifications
+          TemplateEndpoints.cs               ← CRUD /v1/templates + /v1/templates/global
+          ProviderEndpoints.cs               ← CRUD /v1/providers/configs + channel-settings
+          WebhookEndpoints.cs                ← POST /v1/webhooks/sendgrid, /v1/webhooks/twilio
+          BillingEndpoints.cs                ← GET /v1/billing/plan, /plans, /rates, /rate-limits
+          ContactEndpoints.cs                ← CRUD /v1/contacts/suppressions + health
+          BrandingEndpoints.cs               ← CRUD /v1/branding + resolved
+          InternalEndpoints.cs               ← POST /internal/send-email
+          HealthEndpoints.cs                 ← GET /health, /info
+        appsettings.json
+      Notifications.Application/
+        DTOs/                                ← NotificationDtos, TemplateDtos, ProviderDtos, BillingDtos, ContactDtos, InternalDtos
+        Interfaces/                          ← 15+ repository + 10+ service interfaces
+      Notifications.Domain/                  → 18 entities + comprehensive Enums.cs
+      Notifications.Infrastructure/
+        Data/NotificationsDbContext.cs        ← 18 DbSets, all entity configurations
+        Data/Configurations/                 ← 18 IEntityTypeConfiguration per entity
+        Repositories/                        ← All repository implementations
+        Providers/Adapters/
+          SendGridAdapter.cs                 ← HTTP-based SendGrid v3 mail/send
+          TwilioAdapter.cs                   ← HTTP-based Twilio Messages API
+          SmtpAdapter.cs                     ← MailKit-based SMTP adapter
+        Webhooks/
+          Verifiers/SendGridVerifier.cs      ← ECDSA P-256+SHA256 verification
+          Verifiers/TwilioVerifier.cs        ← HMAC-SHA1 verification
+          Normalizers/SendGridNormalizer.cs   ← Raw event → normalized event type
+          Normalizers/TwilioNormalizer.cs     ← Form params → normalized event type
+        Services/                            ← NotificationService, TemplateService, DeliveryStatusService,
+                                                ContactEnforcementService, UsageEvaluationService,
+                                                UsageMeteringService, ProviderRoutingService,
+                                                WebhookIngestionService, BrandingResolutionService, etc.
+        Workers/
+          NotificationWorker.cs              ← BackgroundService (queue processing placeholder)
+          ProviderHealthWorker.cs            ← BackgroundService (platform provider health checks, 2min interval)
+          StatusSyncWorker.cs                ← BackgroundService (delivery status sync, 5min interval)
+        DependencyInjection.cs               ← AddInfrastructure() extension method
 shared/
   contracts/
     Contracts/                            → HealthResponse, InfoResponse, ServiceResponse<T>
