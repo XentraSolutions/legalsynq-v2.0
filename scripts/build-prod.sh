@@ -59,7 +59,7 @@ if command -v dotnet &>/dev/null; then
   build_service "Identity"    "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
   build_service "Fund"        "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
   build_service "CareConnect" "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
-  build_service "Documents"   "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj"
+  build_service "Documents"   "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
   build_service "Audit"       "$ROOT/apps/services/audit/PlatformAuditEventService.csproj"
 
   if [ "$DOTNET_FAIL" -gt 0 ]; then

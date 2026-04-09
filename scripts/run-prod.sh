@@ -63,9 +63,9 @@ if command -v dotnet &>/dev/null; then
       dotnet build "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
       dotnet build "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
       dotnet build "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
-      dotnet build "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
+      dotnet build "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
       dotnet build "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" --configuration Release --verbosity minimal 2>&1 || true
-      dotnet build "$ROOT/apps/services/notifications-dotnet/Notifications.Api/Notifications.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
+      dotnet build "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
     else
       echo "[dotnet] Pre-built binaries found — skipping build"
     fi
@@ -74,10 +74,10 @@ if command -v dotnet &>/dev/null; then
     launch_svc "Identity API" "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
     launch_svc "Fund API"     "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
     launch_svc "CareConnect"  "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
-    launch_svc "Documents"    "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj"
+    launch_svc "Documents"    "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
     launch_svc "Audit"        "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" \
       env ASPNETCORE_ENVIRONMENT=Development ASPNETCORE_URLS=http://0.0.0.0:5007
-    launch_svc "Notifications" "$ROOT/apps/services/notifications-dotnet/Notifications.Api/Notifications.Api.csproj"
+    launch_svc "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
     launch_svc "Gateway"      "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
 
     echo "[dotnet] Service launch complete"

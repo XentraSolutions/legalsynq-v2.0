@@ -31,7 +31,7 @@ public static class HealthEndpoints
         var result = new
         {
             status        = report.Status.ToString().ToLowerInvariant(),
-            service       = "documents-dotnet",
+            service       = "documents",
             timestamp     = DateTime.UtcNow,
             totalDuration = report.TotalDuration.TotalMilliseconds,
             checks        = report.Entries.Select(e => new

@@ -15,7 +15,7 @@ public sealed class DocumentScanCompletedEvent
     public Guid       EventId       { get; init; } = Guid.NewGuid();
 
     /// <summary>Name of the originating service — for routing in multi-service consumers.</summary>
-    public string     ServiceName   { get; init; } = "documents-dotnet";
+    public string     ServiceName   { get; init; } = "documents";
 
     /// <summary>Document that was scanned.</summary>
     public Guid       DocumentId    { get; init; }

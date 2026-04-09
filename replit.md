@@ -260,7 +260,7 @@ apps/
         Data/Migrations/                  ← InitialCareConnectSchema
         Repositories/ProviderRepository.cs, ReferralRepository.cs, CategoryRepository.cs
         DependencyInjection.cs
-    notifications-dotnet/
+    notifications/
       Notifications.Api/                     → ASP.NET Core Web API (port 5006)
         Program.cs                           ← Minimal API; no auth (multi-tenant via X-Tenant-Id header)
         Middleware/
@@ -738,7 +738,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - **Display fields (both endpoints):** `DisplayLabel = OrganizationName ?? Name`; `MarkerSubtitle = "City, State[ · PrimaryCategory]"`; `PrimaryCategory` = first category alphabetically.
 - **`BuildBaseQuery`:** Shared LINQ filter builder in `ProviderRepository` used by both `SearchAsync` and `GetMarkersAsync` to avoid duplication.
 
-## Docs Service (_archived/documents-nodejs) — ARCHIVED (replaced by documents-dotnet)
+## Docs Service (_archived/documents-nodejs) — ARCHIVED (replaced by documents)
 
 **258 tests across 14 suites, all passing.**
 
@@ -778,7 +778,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 
 ---
 
-## .NET Documents Service (apps/services/documents-dotnet)
+## .NET Documents Service (apps/services/documents)
 
 **Port**: 5006  
 **Framework**: .NET 8 Minimal APIs + EF Core 8 + Npgsql (PostgreSQL)  
@@ -817,7 +817,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 
 ### Build Command
 ```bash
-dotnet build apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj
+dotnet build apps/services/documents/Documents.Api/Documents.Api.csproj
 ```
 
 ### Database Setup
@@ -830,7 +830,7 @@ At startup, `Program.cs` handles schema automatically:
 - **Dev vs Prod Postgres**: Dev uses `helium:5432` (Replit built-in); Prod uses `DATABASE_URL` (Replit deployment Postgres). Document IDs are NOT portable between environments.
 - **Storage**: Dev uses `/tmp/docs-local`; Prod uses `/home/runner/data/docs-local` (via `appsettings.Production.json`). Note: Replit deployment filesystem is ephemeral for Autoscale deployments — uploaded files may be lost on redeploy. Reserved VM deployments should persist `/home/runner` data.
 
-Reference schema: `apps/services/documents-dotnet/Documents.Infrastructure/Database/schema.sql`
+Reference schema: `apps/services/documents/Documents.Infrastructure/Database/schema.sql`
 
 ### Analysis Documents (7 + 6 phases)
 Architecture phases in `_archived/documents-nodejs/analysis/`:
@@ -842,7 +842,7 @@ Architecture phases in `_archived/documents-nodejs/analysis/`:
 - `dotnet_phase6_security_and_tenancy.md` — threat model, three-layer isolation, HIPAA notes
 - `dotnet_phase7_parity_review.md` — 13/13 endpoint parity, A- grade, gaps, next steps
 
-ClamAV phases in `apps/services/documents-dotnet/analysis/`:
+ClamAV phases in `apps/services/documents/analysis/`:
 - `dotnet_clamav_phase1_design.md` — async scan architecture, quarantine model, ADRs
 - `dotnet_clamav_phase2_provider.md` — ClamAV TCP implementation, provider selection
 - `dotnet_clamav_phase3_worker.md` — BackgroundService, Channel queue, scan lifecycle
@@ -850,7 +850,7 @@ ClamAV phases in `apps/services/documents-dotnet/analysis/`:
 - `dotnet_clamav_phase5_review.md` — audit events, config reference, parity gaps, production notes
 - `dotnet_clamav_final_summary.md` — complete summary, security posture, schema changes
 
-Enterprise hardening phases in `apps/services/documents-dotnet/analysis/`:
+Enterprise hardening phases in `apps/services/documents/analysis/`:
 - `dotnet_enterprise_phase1_durable_queue.md` — Redis Streams durable queue, IScanJobQueue lease/ack redesign
 - `dotnet_enterprise_phase2_retries_and_scaling.md` — exponential backoff retry, WorkerCount concurrency, duplicate prevention
 - `dotnet_enterprise_phase3_backpressure.md` — QueueSaturationException (503), fail-fast upload, Retry-After header
@@ -858,7 +858,7 @@ Enterprise hardening phases in `apps/services/documents-dotnet/analysis/`:
 - `dotnet_enterprise_phase5_clamav_hardening.md` — ClamAV PING/PONG health, timeout isolation, fail-closed review
 - `dotnet_enterprise_final_summary.md` — complete architecture, production deployment guidance, remaining risks
 
-Phase 4 Final Hardening in `apps/services/documents-dotnet/analysis/`:
+Phase 4 Final Hardening in `apps/services/documents/analysis/`:
 - `dotnet_phase4_final_hardening.md` — Redis circuit breaker, durable Redis Streams publisher, correlation propagation, production runbook, alert rules
 
 ### Phase 4 Final Hardening Summary (COMPLETE — 0 errors, 0 regressions)
@@ -1619,7 +1619,7 @@ The legacy `AuditEvents` table is tracked in the EF model snapshot (so the ORM k
 
 ### Production deployment
 - **Build:** `scripts/build-prod.sh` — cleans `.next` directories before building (prevents stale dev cache from causing hydration/hook errors), builds both Next.js apps and all .NET services in Release mode
-- **Run:** `scripts/run-prod.sh` — starts web (port 3050 internal → 5000 proxy), control center (port 5004), gateway (port 5010), all .NET services (including notifications-dotnet on port 5008), artifacts server (port 5020)
+- **Run:** `scripts/run-prod.sh` — starts web (port 3050 internal → 5000 proxy), control center (port 5004), gateway (port 5010), all .NET services (including notifications on port 5008), artifacts server (port 5020)
 - **CareConnect internal provisioning:** Identity service calls CareConnect on port 5003 (fallback in `DependencyInjection.cs`; override via `CareConnect:InternalUrl` config)
 - **Documents `appsettings.Production.json`:** Sets `BasePath` to `/home/runner/data/docs-local` (persists on Reserved VM, not Autoscale)
 ```bash
@@ -2589,7 +2589,7 @@ Admin-only dashboard showing provider activation funnel metrics derived entirely
 
 ## Step 38 — Notifications Service (ARCHIVED Node.js → replaced by .NET 8)
 
-Original Node.js notifications service was at `apps/services/notifications-nodejs/` — now archived to `_archived/notifications-nodejs/`. Replaced by `apps/services/notifications-dotnet/` (.NET 8, 4-layer architecture: Api/Application/Domain/Infrastructure). The .NET version runs on the same port (5008) with identical gateway routing.
+Original Node.js notifications service was at `apps/services/notifications-nodejs/` — now archived to `_archived/notifications-nodejs/`. Replaced by `apps/services/notifications/` (.NET 8, 4-layer architecture: Api/Application/Domain/Infrastructure). The .NET version runs on the same port (5008) with identical gateway routing.
 
 ### Service Overview (.NET)
 - **Port**: 5008
@@ -2629,14 +2629,14 @@ Original Node.js notifications service was at `apps/services/notifications-nodej
 - `PROVIDER_SECRET_ENCRYPTION_KEY` — AES-256 key for BYOP credential encryption
 
 ### .NET Service Files
-- `apps/services/notifications-dotnet/Notifications.Api/` — Program.cs, middleware (Tenant, InternalToken, RawBody), 9 endpoint groups
-- `apps/services/notifications-dotnet/Notifications.Application/` — DTOs, repository + service interfaces
-- `apps/services/notifications-dotnet/Notifications.Domain/` — 18 entities, Enums.cs
-- `apps/services/notifications-dotnet/Notifications.Infrastructure/` — DbContext, 18 entity configs, repositories, SendGrid/Twilio/SMTP adapters, webhook verifiers, 15 service implementations, 3 BackgroundService workers, DependencyInjection.cs
+- `apps/services/notifications/Notifications.Api/` — Program.cs, middleware (Tenant, InternalToken, RawBody), 9 endpoint groups
+- `apps/services/notifications/Notifications.Application/` — DTOs, repository + service interfaces
+- `apps/services/notifications/Notifications.Domain/` — 18 entities, Enums.cs
+- `apps/services/notifications/Notifications.Infrastructure/` — DbContext, 18 entity configs, repositories, SendGrid/Twilio/SMTP adapters, webhook verifiers, 15 service implementations, 3 BackgroundService workers, DependencyInjection.cs
 
 ### Archived Node.js Files
 - `_archived/notifications-nodejs/` — original Node.js service (kept for reference)
-- `_archived/documents-nodejs/` — original Node.js documents service (replaced by documents-dotnet)
+- `_archived/documents-nodejs/` — original Node.js documents service (replaced by documents)
 
 ### Gateway Routing
 - `GET /notifications/v1/health` — anonymous
