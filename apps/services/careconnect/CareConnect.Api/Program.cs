@@ -53,12 +53,16 @@ builder.Services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 
 var app = builder.Build();
 
-// Auto-migrate in Development
-if (app.Environment.IsDevelopment())
+// Auto-migrate — apply pending EF Core migrations on startup in all environments.
+// CareConnect uses MySQL (RDS) and the __EFMigrationsHistory table tracks which
+// migrations have already been applied, so this is safe and idempotent.
+// Fail fast if migrations cannot be applied — serving traffic with an incompatible
+// schema causes silent 500s and process crashes that are harder to diagnose.
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<CareConnectDbContext>();
     db.Database.Migrate();
+    app.Logger.LogInformation("CareConnect database migrations applied successfully.");
 }
 
 // ── Phase H startup diagnostic: provider/facility Identity linkage health ─────

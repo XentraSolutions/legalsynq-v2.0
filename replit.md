@@ -829,6 +829,7 @@ Analysis report: `analysis/step1_platform-foundation-upgrade.md`
 ```
 
 ### CareConnect Migrations
+EF Core migrations run at startup in **all environments** (not dev-only). The `__EFMigrationsHistory` table tracks which have been applied. If migration fails, the service crashes immediately (fail-fast) to prevent serving traffic on an incompatible schema.
 ```
 20260330110001_AlignCareConnectToPlatformIdentity.cs   — Provider.OrganizationId, Facility.OrganizationId,
                                                           Referral.OrganizationRelationshipId, Appointment.OrganizationRelationshipId
