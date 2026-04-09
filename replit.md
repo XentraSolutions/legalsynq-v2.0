@@ -2639,12 +2639,12 @@ Original Node.js notifications service was at `apps/services/notifications-nodej
 - `_archived/documents-nodejs/` — original Node.js documents service (replaced by documents)
 
 ### Gateway Routing
-- `GET /notifications/v1/health` — anonymous
+- `GET /notifications/health` — anonymous (health endpoint is at `/health`, not `/v1/health`)
 - `* /notifications/**` — JWT-protected, strips `/notifications` prefix before forwarding to `:5008`
 
 ### TypeScript
 - `tsc --noEmit` passes with 0 errors
-- `GET http://localhost:5008/v1/health` → `{"status":"ok","service":"notifications",...}`
+- `GET http://localhost:5008/health` → `{"status":"healthy","service":"notifications",...}`
 
 ## UIX-001 — Control Center Admin API (22 endpoints)
 - Full design documented in `analysis/UIX-001-01.md`
