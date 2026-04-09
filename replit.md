@@ -738,7 +738,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - **Display fields (both endpoints):** `DisplayLabel = OrganizationName ?? Name`; `MarkerSubtitle = "City, State[ · PrimaryCategory]"`; `PrimaryCategory` = first category alphabetically.
 - **`BuildBaseQuery`:** Shared LINQ filter builder in `ProviderRepository` used by both `SearchAsync` and `GetMarkersAsync` to avoid duplication.
 
-## Docs Service (apps/services/documents-nodejs) — Test Coverage
+## Docs Service (_archived/documents-nodejs) — ARCHIVED (replaced by documents-dotnet)
 
 **258 tests across 14 suites, all passing.**
 
@@ -833,7 +833,7 @@ At startup, `Program.cs` handles schema automatically:
 Reference schema: `apps/services/documents-dotnet/Documents.Infrastructure/Database/schema.sql`
 
 ### Analysis Documents (7 + 6 phases)
-Architecture phases in `apps/services/documents-nodejs/analysis/`:
+Architecture phases in `_archived/documents-nodejs/analysis/`:
 - `dotnet_phase1_discovery_and_mapping.md` — TS→.NET translation decisions
 - `dotnet_phase2_scaffolding.md` — project structure and dependency graph
 - `dotnet_phase3_domain_and_contracts.md` — entities, enums, interfaces, invariants
@@ -1619,7 +1619,7 @@ The legacy `AuditEvents` table is tracked in the EF model snapshot (so the ORM k
 
 ### Production deployment
 - **Build:** `scripts/build-prod.sh` — cleans `.next` directories before building (prevents stale dev cache from causing hydration/hook errors), builds both Next.js apps and all .NET services in Release mode
-- **Run:** `scripts/run-prod.sh` — starts web (port 3050 internal → 5000 proxy), control center (port 5004), gateway (port 5010), all .NET services, artifacts server (port 5020), notifications (port 5008)
+- **Run:** `scripts/run-prod.sh` — starts web (port 3050 internal → 5000 proxy), control center (port 5004), gateway (port 5010), all .NET services (including notifications-dotnet on port 5008), artifacts server (port 5020)
 - **CareConnect internal provisioning:** Identity service calls CareConnect on port 5003 (fallback in `DependencyInjection.cs`; override via `CareConnect:InternalUrl` config)
 - **Documents `appsettings.Production.json`:** Sets `BasePath` to `/home/runner/data/docs-local` (persists on Reserved VM, not Autoscale)
 ```bash
@@ -2587,16 +2587,15 @@ Admin-only dashboard showing provider activation funnel metrics derived entirely
 - 19/19 LSCC-011 tests pass
 - Total suite: 360 pass (pre-existing 5 ProviderAvailability failures unchanged)
 
-## Step 38 — Notifications Service Merge (2026-03-31)
+## Step 38 — Notifications Service (ARCHIVED Node.js → replaced by .NET 8)
 
-Merged the standalone TypeScript/Node.js notifications backend into the main platform
-monorepo at `apps/services/notifications/`.
+Original Node.js notifications service was at `apps/services/notifications-nodejs/` — now archived to `_archived/notifications-nodejs/`. Replaced by `apps/services/notifications-dotnet/` (.NET 8, 4-layer architecture: Api/Application/Domain/Infrastructure). The .NET version runs on the same port (5008) with identical gateway routing.
 
-### Service Overview
+### Service Overview (.NET)
 - **Port**: 5008
-- **Stack**: Express + Sequelize (mysql2) + custom JSON logger
-- **DB**: Sequelize `sync({ alter: true })` in dev — no separate migration step
-- **Auth**: Tenant context via `x-tenant-id` header; Gateway JWT gate for protected routes
+- **Stack**: ASP.NET Core 8 Minimal API + EF Core (Pomelo MySQL) + 3 BackgroundService workers
+- **DB**: EF Core with MySQL (notifications_db); env vars `NOTIF_DB_*`
+- **Auth**: Tenant context via `X-Tenant-Id` header; internal routes gated by `X-Internal-Service-Token`
 
 ### Route Groups (all prefixed `/v1/`)
 | Prefix | Description |
@@ -2629,15 +2628,15 @@ monorepo at `apps/services/notifications/`.
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_DEFAULT_FROM_NUMBER`
 - `PROVIDER_SECRET_ENCRYPTION_KEY` — AES-256 key for BYOP credential encryption
 
-### New Files
-- `apps/services/notifications/` — entire service directory (100+ files)
-- `apps/services/notifications/package.json` — `@legalsynq/notifications-service`
-- `apps/services/notifications/tsconfig.json`
-- `apps/services/notifications/src/` — all source (controllers, services, models, repositories, integrations, workers)
+### .NET Service Files
+- `apps/services/notifications-dotnet/Notifications.Api/` — Program.cs, middleware (Tenant, InternalToken, RawBody), 9 endpoint groups
+- `apps/services/notifications-dotnet/Notifications.Application/` — DTOs, repository + service interfaces
+- `apps/services/notifications-dotnet/Notifications.Domain/` — 18 entities, Enums.cs
+- `apps/services/notifications-dotnet/Notifications.Infrastructure/` — DbContext, 18 entity configs, repositories, SendGrid/Twilio/SMTP adapters, webhook verifiers, 15 service implementations, 3 BackgroundService workers, DependencyInjection.cs
 
-### Modified Files
-- `apps/gateway/Gateway.Api/appsettings.json` — added `notifications-health` route (anon), `notifications-protected` route, and `notifications-cluster` (`:5008`)
-- `scripts/run-dev.sh` — added notifications server (port 5008) + provider-health worker
+### Archived Node.js Files
+- `_archived/notifications-nodejs/` — original Node.js service (kept for reference)
+- `_archived/documents-nodejs/` — original Node.js documents service (replaced by documents-dotnet)
 
 ### Gateway Routing
 - `GET /notifications/v1/health` — anonymous

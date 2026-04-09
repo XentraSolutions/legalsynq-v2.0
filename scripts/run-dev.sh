@@ -32,6 +32,7 @@ PID_CC=$!
   dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
   ASPNETCORE_ENVIRONMENT=Development ASPNETCORE_URLS=http://0.0.0.0:5007 dotnet run --no-build --project "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj" &
+  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/notifications-dotnet/Notifications.Api/Notifications.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
   wait
 ) &
@@ -46,45 +47,10 @@ echo "[artifacts] Starting on :5020"
 ) &
 PID_ARTIFACTS=$!
 
-# Start notifications service — port 5008
-echo "[notifications] Starting on :5008"
-(
-  cd "$ROOT/apps/services/notifications"
-  PORT=5008 NODE_ENV=development \
-    node_modules/.bin/ts-node-dev --respawn --transpile-only src/server.ts
-) &
-PID_NOTIF=$!
-
-# Start notifications provider-health worker (long-running, uses setInterval — respawn is correct)
-echo "[notifications:worker] Starting provider-health worker"
-(
-  cd "$ROOT/apps/services/notifications"
-  NODE_ENV=development \
-    node_modules/.bin/ts-node-dev --respawn --transpile-only src/workers/provider-health.worker.ts
-) &
-PID_NOTIF_WORKER=$!
-
-# Start notifications dispatch worker (stub — exits immediately, no respawn to avoid restart loop)
-echo "[notifications:worker] Starting dispatch worker (stub)"
-(
-  cd "$ROOT/apps/services/notifications"
-  NODE_ENV=development \
-    node_modules/.bin/ts-node --transpile-only src/workers/notification.worker.ts
-) || true &
-
-# Start notifications status-sync worker (polls SendGrid for accepted → real status every 2 min)
-echo "[notifications:worker] Starting status-sync worker"
-(
-  cd "$ROOT/apps/services/notifications"
-  NODE_ENV=development \
-    node_modules/.bin/ts-node-dev --respawn --transpile-only src/workers/status-sync.worker.ts
-) &
-PID_STATUS_SYNC=$!
-
 cleanup() {
-    kill "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_ARTIFACTS" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC" 2>/dev/null || true
+    kill "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_ARTIFACTS" 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-wait "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_ARTIFACTS" "$PID_NOTIF" "$PID_NOTIF_WORKER" "$PID_STATUS_SYNC"
+wait "$PID_WEB" "$PID_PROXY" "$PID_CC" "$PID_DOTNET" "$PID_ARTIFACTS"
