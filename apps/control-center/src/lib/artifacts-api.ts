@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 
-const ARTIFACTS_API_BASE = process.env.ARTIFACTS_API_BASE ?? 'http://localhost:5020';
+const ARTIFACTS_API_BASE = process.env.ARTIFACTS_API_BASE ?? 'http://127.0.0.1:5020';
 
 export type ArtifactFeedbackLink = {
   linkId: number;

@@ -17,8 +17,9 @@ Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router 
 - **Error boundary:** `global-error.tsx` at app root catches any rendering errors gracefully
 - **Session:** HttpOnly cookie (`platform_session`) set by BFF login route; validated via BFF `/api/auth/me` — frontend never decodes raw JWT
 - **BFF Routes:** `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, `POST /api/auth/forgot-password`, `POST /api/auth/reset-password` — Next.js API routes that proxy to Identity service with Bearer auth
-- **API:** All requests proxy through gateway via Next.js rewrites `/api/*` → `http://localhost:5000/*`
-- **Environment:** `apps/web/.env.local` (gitignored) — `NEXT_PUBLIC_ENV=development`, `NEXT_PUBLIC_TENANT_CODE=LEGALSYNQ`, `GATEWAY_URL=http://localhost:5000`
+- **API:** All requests proxy through gateway via Next.js rewrites `/api/*` → `http://127.0.0.1:5000/*`
+- **Environment:** `apps/web/.env.local` (gitignored) — `NEXT_PUBLIC_ENV=development`, `NEXT_PUBLIC_TENANT_CODE=LEGALSYNQ`, `GATEWAY_URL=http://127.0.0.1:5000`
+- **IPv6 note:** All server-side `localhost` fallbacks use `127.0.0.1` because Node.js resolves `localhost` to `::1` (IPv6) first, but .NET services bind to `0.0.0.0` (IPv4 only). Using `127.0.0.1` avoids connection failures.
 - **node_modules:** Installed at monorepo root (`/home/runner/workspace/node_modules`) — `apps/web` inherits via Node.js module resolution traversal
 
 ## Control Center (apps/control-center)
@@ -26,8 +27,8 @@ Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router 
 - **Port:** 5004 (dev) — started by `scripts/run-dev.sh`
 - **Purpose:** Internal platform administration portal for LegalSynq operators. Tenant management, cross-tenant user management, RBAC, audit logs, monitoring, notifications, CareConnect integrity, SynqAudit investigation.
 - **Auth:** Requires `PlatformAdmin` system role. Cookie-based session (`platform_session`) validated via Identity service `/auth/me`.
-- **API:** BFF pattern — `/api/auth/login`, `/api/auth/logout`, and `/api/identity/admin/users/[id]/set-password` are local route handlers; unmatched `/api/*` requests fall through to a `fallback` rewrite to the gateway (`CONTROL_CENTER_API_BASE` or `GATEWAY_URL`, default `http://localhost:5010`). The rewrite uses the `fallback` strategy (not a plain array) so filesystem route handlers (including dynamic `[id]` segments) are always checked first.
-- **Environment:** `apps/control-center/.env.local` — `CONTROL_CENTER_API_BASE=http://localhost:5010`
+- **API:** BFF pattern — `/api/auth/login`, `/api/auth/logout`, and `/api/identity/admin/users/[id]/set-password` are local route handlers; unmatched `/api/*` requests fall through to a `fallback` rewrite to the gateway (`CONTROL_CENTER_API_BASE` or `GATEWAY_URL`, default `http://127.0.0.1:5010`). The rewrite uses the `fallback` strategy (not a plain array) so filesystem route handlers (including dynamic `[id]` segments) are always checked first.
+- **Environment:** `apps/control-center/.env.local` — `CONTROL_CENTER_API_BASE=http://127.0.0.1:5010`
 - **node_modules:** Uses root monorepo `node_modules` (no local `node_modules`). Must NOT have its own `node_modules` — a local copy causes duplicate React, which triggers the `useReducer` null error on every render.
 - **Key files:** `src/lib/env.ts` (centralised env access), `src/lib/session.ts` (server session), `src/lib/auth-guards.ts` (requirePlatformAdmin), `src/lib/control-center-api.ts` (API client with stubbed data), `src/middleware.ts` (route protection)
 

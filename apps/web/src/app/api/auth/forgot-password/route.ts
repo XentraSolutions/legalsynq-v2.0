@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5000';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 
 function extractTenantCodeFromHost(req: NextRequest): string | null {
   const host =

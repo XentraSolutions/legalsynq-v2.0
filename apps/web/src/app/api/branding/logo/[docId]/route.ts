@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-const DOCS_URL = 'http://localhost:5006';
+const DOCS_URL = 'http://127.0.0.1:5006';
 
 /**
  * GET /api/branding/logo/[docId]

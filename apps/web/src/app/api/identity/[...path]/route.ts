@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 /**
  * Catch-all BFF proxy for Identity API calls made by Client Components.

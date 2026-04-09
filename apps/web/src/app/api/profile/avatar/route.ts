@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-const DOCS_URL    = 'http://localhost:5006';
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const DOCS_URL    = 'http://127.0.0.1:5006';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 const PROFILE_AVATAR_DOC_TYPE = '20000000-0000-0000-0000-000000000001';
 
 function parseJwtPayload(token: string): Record<string, unknown> | null {

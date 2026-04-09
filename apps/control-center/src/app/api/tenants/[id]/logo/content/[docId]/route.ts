@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? process.env.CONTROL_CENTER_API_BASE ?? 'http://localhost:5010';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? process.env.CONTROL_CENTER_API_BASE ?? 'http://127.0.0.1:5010';
 
 export async function GET(
   _req: NextRequest,
