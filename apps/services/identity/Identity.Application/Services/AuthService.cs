@@ -17,6 +17,7 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuditEventClient _auditClient;
+    private readonly IProductRoleResolutionService _roleResolutionService;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -25,6 +26,7 @@ public class AuthService : IAuthService
         IPasswordHasher passwordHasher,
         IJwtTokenService jwtTokenService,
         IAuditEventClient auditClient,
+        IProductRoleResolutionService roleResolutionService,
         ILogger<AuthService> logger)
     {
         _userRepository = userRepository;
@@ -32,6 +34,7 @@ public class AuthService : IAuthService
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
         _auditClient = auditClient;
+        _roleResolutionService = roleResolutionService;
         _logger = logger;
     }
 
@@ -100,55 +103,19 @@ public class AuthService : IAuthService
             .Select(s => s.Role.Name)
             .ToList();
 
-        // Load org membership and compute product roles
+        // Load org membership for JWT context (primary org)
         var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);
         var org = orgMembership?.Organization;
 
-        List<string> productRoles = [];
-        if (org is not null)
+        // LS-COR-ROL-001: centralized product role resolution via ProductRoleResolutionService
+        var accessContext = await _roleResolutionService.ResolveAsync(user.Id, tenant.Id, ct);
+        var productRoles = accessContext.GetEffectiveProductRoles().ToList();
+
+        if (accessContext.DeniedReasons.Count > 0)
         {
-            // Phase I: warn when the OrgType string fallback path will be taken during
-            // product-role eligibility checks.  After migration 200005 this should never
-            // fire; if it does, the admin should re-run the backfill migration.
-            if (!org.OrganizationTypeId.HasValue)
-                _logger.LogWarning(
-                    "Organization {OrgId} has no OrganizationTypeId set; " +
-                    "product-role eligibility will use the OrgType string fallback. " +
-                    "Run migration 200005 (PhaseI_BackfillOrganizationTypeId) to resolve.",
-                    org.Id);
-
-            // Phase F: resolve product roles exclusively via ProductOrganizationTypeRule (DB-backed).
-            // EligibleOrgType legacy fallback removed — see migration 20260330200003.
-            int dbRuleCount       = 0;
-            int unrestrictedCount = 0;
-
-            var eligibleCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var op in org.OrganizationProducts.Where(op => op.IsEnabled))
-            {
-                foreach (var pr in op.Product.ProductRoles.Where(pr => pr.IsActive))
-                {
-                    var (eligible, path) = IsEligibleWithPath(pr, org);
-                    if (!eligible) continue;
-
-                    if (eligibleCodes.Add(pr.Code))
-                    {
-                        switch (path)
-                        {
-                            case EligibilityPath.DbRule:       dbRuleCount++;       break;
-                            case EligibilityPath.Unrestricted: unrestrictedCount++; break;
-                        }
-                    }
-                }
-            }
-
-            productRoles = eligibleCodes.OrderBy(c => c).ToList();
-
-            // Log eligibility resolution summary — once per login, structured, non-noisy.
             _logger.LogDebug(
-                "Product role eligibility resolved for user={UserId} org={OrgId}: " +
-                "{TotalRoles} role(s) — DB-rule={DbRule}, unrestricted={Unrestricted}.",
-                user.Id, org.Id, productRoles.Count, dbRuleCount, unrestrictedCount);
+                "Product role resolution for user={UserId}: {DeniedCount} denial(s) recorded.",
+                user.Id, accessContext.DeniedReasons.Count);
         }
 
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
@@ -418,39 +385,4 @@ public class AuthService : IAuthService
         });
     }
 
-    // ── Eligibility helpers ────────────────────────────────────────────────────
-
-    private enum EligibilityPath { DbRule, Unrestricted }
-
-    /// <summary>
-    /// Returns whether the given product role is eligible for the organization,
-    /// and which eligibility path was used (for observability/logging).
-    ///
-    /// Phase F: EligibleOrgType column removed (migration 20260330200003).
-    /// Eligibility is now exclusively controlled by ProductOrganizationTypeRules.
-    ///
-    /// Resolution order:
-    ///   1. DB-backed rule table (OrgTypeRules nav property).
-    ///      - If org.OrganizationTypeId is set: match by ID (authoritative, no string drift).
-    ///      - Else: match by OrgType code string (transitional fallback within Phase 3).
-    ///   2. No OrgTypeRules configured → allow (unrestricted).
-    /// </summary>
-    private static (bool Eligible, EligibilityPath Path) IsEligibleWithPath(ProductRole pr, Organization org)
-    {
-        // Path 1: DB-backed rule table (Phase 3+)
-        if (pr.OrgTypeRules is { Count: > 0 })
-        {
-            var matched = pr.OrgTypeRules.Any(r =>
-            {
-                if (!r.IsActive || r.OrganizationType is null) return false;
-                if (org.OrganizationTypeId.HasValue)
-                    return r.OrganizationTypeId == org.OrganizationTypeId.Value;
-                return r.OrganizationType.Code == org.OrgType;
-            });
-            return (matched, EligibilityPath.DbRule);
-        }
-
-        // Path 2: no OrgTypeRules → unrestricted access
-        return (true, EligibilityPath.Unrestricted);
-    }
 }

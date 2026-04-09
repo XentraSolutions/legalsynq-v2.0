@@ -341,6 +341,18 @@ shared/
 | Product | Products | Id (Guid) | Code unique |
 | TenantProduct | TenantProducts | (TenantId, ProductId) | FK→Tenants Cascade |
 
+### Product Role Resolution Engine (LS-COR-ROL-001)
+- **Engine:** `IProductRoleResolutionService` → `ProductRoleResolutionService` (Identity.Infrastructure)
+- **Flow:** `ResolveAsync(userId, tenantId)` → load tenant-enabled products → load all active org memberships with product/role graph → for each org+product: eligibility gate → dispatch to product-specific mapper or default mapper → return `EffectiveAccessContext`
+- **EffectiveAccessContext:** `ProductAccess` (per-org, per-product entries with grant/deny, effective roles, access source tracing), `DeniedReasons`, helper methods (`GetEffectiveProductRoles()`, `HasProductAccess()`, `GetRolesForProduct()`, `GetAccessForOrganization()`)
+- **Mapper interface:** `IProductRoleMapper` — `ProductCode` property + `ResolveRoles(ProductRoleMapperContext)`. Registered via DI; engine dispatches by product code.
+- **CareConnectRoleMapper:** 3-tier resolution: (1) ScopedRoleAssignment (PRODUCT scope), (2) ProductOrganizationTypeRule DB rules, (3) OrgType fallback (PROVIDER→CARECONNECT_RECEIVER, LAW_FIRM→CARECONNECT_REFERRER, INTERNAL→CARECONNECT_ADMIN)
+- **Default mapper:** Handles any product without a registered IProductRoleMapper — uses scoped assignments + DB OrgType rules
+- **AuthService integration:** `LoginAsync` calls `_roleResolutionService.ResolveAsync()` → `accessContext.GetEffectiveProductRoles()` — replaces previous inline loop
+- **Repository:** `UserRepository.GetActiveMembershipsWithProductsAsync()` — eager loads Organization → OrganizationProducts → Product → ProductRoles → OrgTypeRules
+- **DI:** `IProductRoleMapper → CareConnectRoleMapper` (scoped), `IProductRoleResolutionService → ProductRoleResolutionService` (scoped)
+- **Report:** `analysis/LS-COR-ROL-001-report.md`
+
 ### Product Provisioning Engine (LS-COR-PRD-001)
 - **Engine:** `IProductProvisioningService` → `ProductProvisioningService` (Identity.Infrastructure)
 - **Flow:** `ProvisionAsync(tenantId, productCode, enabled)` → TenantProduct creation → OrganizationProduct cascading (eligibility-filtered) → product-specific handler execution
