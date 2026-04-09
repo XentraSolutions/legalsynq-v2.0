@@ -27,10 +27,12 @@ echo "Using next binary: $NEXT_BIN"
 
 echo "====== Building web app ======"
 cd "$ROOT/apps/web"
+rm -rf .next
 NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://localhost:5010 node "$NEXT_BIN" build
 
 echo "====== Building control center ======"
 cd "$ROOT/apps/control-center"
+rm -rf .next
 node "$NEXT_BIN" build
 
 echo "====== Building .NET services ======"

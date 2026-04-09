@@ -1544,6 +1544,10 @@ The legacy `AuditEvents` table is tracked in the EF model snapshot (so the ORM k
 | `IngestSourceRegistrations` | bigint AI | — | 2 indexes; (SourceSystem, SourceService) UNIQUE |
 
 ### Production deployment
+- **Build:** `scripts/build-prod.sh` — cleans `.next` directories before building (prevents stale dev cache from causing hydration/hook errors), builds both Next.js apps and all .NET services in Release mode
+- **Run:** `scripts/run-prod.sh` — starts web (port 3050 internal → 5000 proxy), control center (port 5004), gateway (port 5010), all .NET services, artifacts server (port 5020), notifications (port 5008)
+- **CareConnect internal provisioning:** Identity service calls CareConnect on port 5003 (fallback in `DependencyInjection.cs`; override via `CareConnect:InternalUrl` config)
+- **Documents `appsettings.Production.json`:** Sets `BasePath` to `/home/runner/data/docs-local` (persists on Reserved VM, not Autoscale)
 ```bash
 # Idempotent SQL (safe to run multiple times):
 dotnet ef migrations script --idempotent -o migration.sql

@@ -63,7 +63,7 @@ public static class DependencyInjection
 
         services.AddHttpClient("CareConnectInternal", client =>
         {
-            var ccUrl = configuration["CareConnect:InternalUrl"] ?? "http://localhost:5005";
+            var ccUrl = configuration["CareConnect:InternalUrl"] ?? "http://localhost:5003";
             client.BaseAddress = new Uri(ccUrl);
             client.Timeout = TimeSpan.FromSeconds(10);
         });
