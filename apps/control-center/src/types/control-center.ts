@@ -198,6 +198,59 @@ export interface GroupDetail extends GroupSummary {
   members:      GroupMemberSummary[];
 }
 
+// ── Access Groups (LS-COR-AUT-004 / LS-COR-AUT-005) ─────────────────────────
+
+export type AccessGroupStatus = 'Active' | 'Archived';
+export type AccessGroupScopeType = 'Tenant' | 'Product' | 'Organization';
+export type AccessGroupMembershipStatus = 'Active' | 'Removed';
+export type GroupProductAccessStatus = 'Granted' | 'Revoked';
+export type GroupRoleAssignmentStatus = 'Active' | 'Removed';
+
+export interface AccessGroupSummary {
+  id:              string;
+  tenantId:        string;
+  name:            string;
+  description?:    string;
+  status:          AccessGroupStatus;
+  scopeType:       AccessGroupScopeType;
+  productCode?:    string;
+  organizationId?: string;
+  createdAtUtc:    string;
+  updatedAtUtc:    string;
+}
+
+export interface AccessGroupMember {
+  id:               string;
+  tenantId:         string;
+  groupId:          string;
+  userId:           string;
+  membershipStatus: AccessGroupMembershipStatus;
+  addedAtUtc:       string;
+  removedAtUtc?:    string;
+}
+
+export interface GroupProductAccess {
+  id:           string;
+  tenantId:     string;
+  groupId:      string;
+  productCode:  string;
+  accessStatus: GroupProductAccessStatus;
+  grantedAtUtc: string;
+  revokedAtUtc?: string;
+}
+
+export interface GroupRoleAssignment {
+  id:               string;
+  tenantId:         string;
+  groupId:          string;
+  roleCode:         string;
+  productCode?:     string;
+  organizationId?:  string;
+  assignmentStatus: GroupRoleAssignmentStatus;
+  assignedAtUtc:    string;
+  removedAtUtc?:    string;
+}
+
 // ── Permissions catalog ────────────────────────────────────────────────────────
 
 export interface PermissionCatalogItem {

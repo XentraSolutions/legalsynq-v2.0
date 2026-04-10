@@ -3258,6 +3258,35 @@ Backend wraps all responses in `{ data: ... }`. `BrandedPreviewResult` has flat 
 - CC nav: "TRACEABILITY → Artifacts" section in sidebar
 - Database tables: `feedback_records`, `feedback_action_items`, `feedback_action_links`, `artifacts`
 
+## LS-COR-AUT-005 — Admin UI Access Management Layer — COMPLETED 2026-04-10
+
+Control Center UI for managing LS-COR-AUT-004 tenant-scoped Access Groups.
+
+**Types (`types/control-center.ts`):**
+- `AccessGroupSummary`, `AccessGroupMember`, `GroupProductAccess`, `GroupRoleAssignment`
+
+**API client (`lib/control-center-api.ts`):**
+- `controlCenterServerApi.accessGroups` namespace — full CRUD: list, getById, create, update, archive, addMember, removeMember, listMembers, grantProduct, revokeProduct, listProducts, assignRole, removeRole, listRoles, listUserGroups
+- Gateway paths: `/identity/api/tenants/{tenantId}/groups/...`
+
+**BFF routes (`app/api/access-groups/[tenantId]/...`):**
+- POST create, PATCH update, DELETE archive groups
+- POST add / DELETE remove members
+- PUT grant / DELETE revoke products
+- POST assign / DELETE remove roles
+- All routes: `requireAdmin()` auth, `ServerApiError` status passthrough
+
+**Pages:**
+- `/groups` — tenant-context-aware list; shows Access Groups when tenant selected, legacy groups otherwise; `CreateAccessGroupButton` modal (Tenant/Product scope)
+- `/access-groups/[tenantId]/[groupId]` — detail page with `AccessGroupInfoCard`, `AccessGroupMembersPanel`, `GroupProductAccessPanel`, `GroupRoleAssignmentPanel`, `AccessGroupActions`
+
+**User detail integration:**
+- `AccessGroupMembershipPanel` component on `/tenant-users/[id]` page — shows user's access group memberships with add/remove
+
+**Route builder:** `Routes.accessGroupDetail(tenantId, groupId)` → `/access-groups/{tenantId}/{groupId}`
+
+**Nav:** Groups entry marked `badge: 'LIVE'` in sidebar
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`

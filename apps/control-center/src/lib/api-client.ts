@@ -348,6 +348,8 @@ export const CACHE_TAGS = {
   ccIntegrity:          'cc:careconnect-integrity',
   // Step 24 — canonical audit (Platform Audit Event Service)
   auditCanonical:       'cc:audit-canonical',
+  // LS-COR-AUT-005 — Access Groups
+  accessGroups:         'cc:access-groups',
   // Step 28 — SynqAudit extensions
   auditExports:         'cc:audit-exports',
   auditIntegrity:       'cc:audit-integrity',

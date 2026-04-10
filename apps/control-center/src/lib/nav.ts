@@ -30,7 +30,7 @@ export const CC_NAV: NavSection[] = [
     heading: 'IDENTITY',
     items: [
       { href: '/tenant-users', label: 'Users',            icon: 'ri-group-line'           },
-      { href: '/groups',       label: 'Groups',           icon: 'ri-team-line'            },
+      { href: '/groups',       label: 'Groups',           icon: 'ri-team-line',   badge: 'LIVE' },
       { href: '/permissions',  label: 'Permissions',      icon: 'ri-key-2-line'           },
       { href: '/roles',        label: 'Roles',            icon: 'ri-shield-keyhole-line'  },
       { href: '/scoped-roles', label: 'Scoped Roles',     icon: 'ri-focus-3-line', badge: 'MOCKUP' },

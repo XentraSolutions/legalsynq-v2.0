@@ -82,6 +82,10 @@ import {
   mapLegalHold,
   mapGroupSummary,
   mapGroupDetail,
+  mapAccessGroupSummary,
+  mapAccessGroupMember,
+  mapGroupProductAccess,
+  mapGroupRoleAssignment,
   mapPermissionCatalogItem,
   mapRoleCapabilityItem,
   mapEffectivePermissionsResult,
@@ -123,6 +127,10 @@ import type {
   GroupSummary,
   GroupDetail,
   OrgSummary,
+  AccessGroupSummary,
+  AccessGroupMember,
+  GroupProductAccess,
+  GroupRoleAssignment,
   PermissionCatalogItem,
   RoleCapabilityItem,
   EffectivePermissionsResult,
@@ -1640,6 +1648,165 @@ export const controlCenterServerApi = {
      */
     emit: async (payload: AuditIngestPayload): Promise<void> => {
       await apiClient.post<unknown>('/audit-service/audit/ingest', payload);
+    },
+  },
+
+  // ── Access Groups (LS-COR-AUT-005) ───────────────────────────────────────
+
+  accessGroups: {
+    list: async (tenantId: string): Promise<AccessGroupSummary[]> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups`,
+        30,
+        [CACHE_TAGS.accessGroups],
+      );
+      const arr = Array.isArray(raw) ? raw : [];
+      return arr.map(mapAccessGroupSummary);
+    },
+
+    getById: async (tenantId: string, groupId: string): Promise<AccessGroupSummary | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}`,
+          30,
+          [CACHE_TAGS.accessGroups],
+        );
+        return mapAccessGroupSummary(raw);
+      } catch (err: unknown) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
+    },
+
+    create: async (tenantId: string, body: {
+      name:            string;
+      description?:    string;
+      scopeType?:      string;
+      productCode?:    string;
+      organizationId?: string;
+    }): Promise<AccessGroupSummary> => {
+      const raw = await apiClient.post<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups`,
+        body,
+      );
+      revalidateTag(CACHE_TAGS.accessGroups);
+      revalidateTag(CACHE_TAGS.users);
+      return mapAccessGroupSummary(raw);
+    },
+
+    update: async (tenantId: string, groupId: string, body: {
+      name:         string;
+      description?: string;
+    }): Promise<AccessGroupSummary> => {
+      const raw = await apiClient.patch<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}`,
+        body,
+      );
+      revalidateTag(CACHE_TAGS.accessGroups);
+      return mapAccessGroupSummary(raw);
+    },
+
+    archive: async (tenantId: string, groupId: string): Promise<void> => {
+      await apiClient.del<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}`,
+      );
+      revalidateTag(CACHE_TAGS.accessGroups);
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    listMembers: async (tenantId: string, groupId: string): Promise<AccessGroupMember[]> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/members`,
+        30,
+        [CACHE_TAGS.accessGroups],
+      );
+      const arr = Array.isArray(raw) ? raw : [];
+      return arr.map(mapAccessGroupMember);
+    },
+
+    addMember: async (tenantId: string, groupId: string, userId: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/members`,
+        { userId },
+      );
+      revalidateTag(CACHE_TAGS.accessGroups);
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    removeMember: async (tenantId: string, groupId: string, userId: string): Promise<void> => {
+      await apiClient.del<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
+      );
+      revalidateTag(CACHE_TAGS.accessGroups);
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    listProducts: async (tenantId: string, groupId: string): Promise<GroupProductAccess[]> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/products`,
+        30,
+        [CACHE_TAGS.accessGroups],
+      );
+      const arr = Array.isArray(raw) ? raw : [];
+      return arr.map(mapGroupProductAccess);
+    },
+
+    grantProduct: async (tenantId: string, groupId: string, productCode: string): Promise<void> => {
+      await apiClient.put<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/products/${encodeURIComponent(productCode)}`,
+        {},
+      );
+      revalidateTag(CACHE_TAGS.accessGroups);
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    revokeProduct: async (tenantId: string, groupId: string, productCode: string): Promise<void> => {
+      await apiClient.del<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/products/${encodeURIComponent(productCode)}`,
+      );
+      revalidateTag(CACHE_TAGS.accessGroups);
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    listRoles: async (tenantId: string, groupId: string): Promise<GroupRoleAssignment[]> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/roles`,
+        30,
+        [CACHE_TAGS.accessGroups],
+      );
+      const arr = Array.isArray(raw) ? raw : [];
+      return arr.map(mapGroupRoleAssignment);
+    },
+
+    assignRole: async (tenantId: string, groupId: string, body: {
+      roleCode:        string;
+      productCode?:    string;
+      organizationId?: string;
+    }): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/roles`,
+        body,
+      );
+      revalidateTag(CACHE_TAGS.accessGroups);
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    removeRole: async (tenantId: string, groupId: string, assignmentId: string): Promise<void> => {
+      await apiClient.del<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(assignmentId)}`,
+      );
+      revalidateTag(CACHE_TAGS.accessGroups);
+      revalidateTag(CACHE_TAGS.users);
+    },
+
+    listUserGroups: async (tenantId: string, userId: string): Promise<AccessGroupMember[]> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(userId)}/groups`,
+        30,
+        [CACHE_TAGS.accessGroups],
+      );
+      const arr = Array.isArray(raw) ? raw : [];
+      return arr.map(mapAccessGroupMember);
     },
   },
 

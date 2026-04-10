@@ -11,6 +11,7 @@ import { EffectivePermissionsPanel }     from '@/components/users/effective-perm
 import { RoleAssignmentPanel }            from '@/components/users/role-assignment-panel';
 import { OrgMembershipPanel }             from '@/components/users/org-membership-panel';
 import { GroupMembershipPanel }           from '@/components/users/group-membership-panel';
+import { AccessGroupMembershipPanel }    from '@/components/access-groups/access-group-membership-panel';
 import { startImpersonationAction }       from '@/app/actions/impersonation';
 import type { UserStatus }                from '@/types/control-center';
 
@@ -44,8 +45,7 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     fetchError = err instanceof Error ? err.message : 'Failed to load user.';
   }
 
-  // Fetch access-control reference data + security summary in parallel; failures are non-fatal.
-  const [assignableRolesResult, orgsResult, groupsResult, securityResult, permissionsResult] = await Promise.allSettled([
+  const [assignableRolesResult, orgsResult, groupsResult, securityResult, permissionsResult, accessGroupsResult, userAccessGroupsResult] = await Promise.allSettled([
     user
       ? controlCenterServerApi.users.getAssignableRoles(user.id)
       : Promise.resolve(null),
@@ -61,6 +61,12 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     user
       ? controlCenterServerApi.users.getEffectivePermissions(user.id)
       : Promise.resolve(null),
+    user
+      ? controlCenterServerApi.accessGroups.list(user.tenantId)
+      : Promise.resolve([]),
+    user
+      ? controlCenterServerApi.accessGroups.listUserGroups(user.tenantId, user.id)
+      : Promise.resolve([]),
   ]);
 
   const assignableData    = assignableRolesResult.status  === 'fulfilled' ? assignableRolesResult.value   : null;
@@ -71,6 +77,8 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
   const permsError        = permissionsResult.status     === 'rejected'
     ? (permissionsResult.reason instanceof Error ? permissionsResult.reason.message : 'Failed to load permissions.')
     : null;
+  const accessGroupsList  = accessGroupsResult.status    === 'fulfilled' ? accessGroupsResult.value      : [];
+  const userAccessGroups  = userAccessGroupsResult.status === 'fulfilled' ? userAccessGroupsResult.value : [];
 
   return (
     <CCShell userEmail={session.email}>
@@ -219,6 +227,13 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
                 userId={user.id}
                 currentGroups={user.groups ?? []}
                 availableGroups={availableGroups}
+              />
+
+              <AccessGroupMembershipPanel
+                tenantId={user.tenantId}
+                userId={user.id}
+                userMemberships={userAccessGroups}
+                allAccessGroups={accessGroupsList}
               />
             </div>
           </>

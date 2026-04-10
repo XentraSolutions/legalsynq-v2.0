@@ -63,6 +63,10 @@ import type {
   LegalHold,
   GroupSummary,
   GroupDetail,
+  AccessGroupSummary,
+  AccessGroupMember,
+  GroupProductAccess,
+  GroupRoleAssignment,
   PermissionCatalogItem,
   UserActivityEvent,
   RoleCapabilityItem,
@@ -437,6 +441,63 @@ export function mapGroupDetail(raw: unknown): GroupDetail {
         joinedAtUtc:  str(mo, 'joined_at_utc', 'joinedAtUtc',  ''),
       };
     }),
+  };
+}
+
+export function mapAccessGroupSummary(raw: unknown): AccessGroupSummary {
+  const r = asObj(raw);
+  return {
+    id:              str(r, 'id',              'id',              ''),
+    tenantId:        str(r, 'tenant_id',       'tenantId',        ''),
+    name:            str(r, 'name',            'name',            ''),
+    description:     optStr(r, 'description',  'description'),
+    status:          str(r, 'status',          'status',          'Active') as AccessGroupSummary['status'],
+    scopeType:       str(r, 'scope_type',      'scopeType',       'Tenant') as AccessGroupSummary['scopeType'],
+    productCode:     optStr(r, 'product_code', 'productCode'),
+    organizationId:  optStr(r, 'organization_id', 'organizationId'),
+    createdAtUtc:    str(r, 'created_at_utc',  'createdAtUtc',    ''),
+    updatedAtUtc:    str(r, 'updated_at_utc',  'updatedAtUtc',    ''),
+  };
+}
+
+export function mapAccessGroupMember(raw: unknown): AccessGroupMember {
+  const r = asObj(raw);
+  return {
+    id:               str(r, 'id',                'id',               ''),
+    tenantId:         str(r, 'tenant_id',         'tenantId',         ''),
+    groupId:          str(r, 'group_id',          'groupId',          ''),
+    userId:           str(r, 'user_id',           'userId',           ''),
+    membershipStatus: str(r, 'membership_status', 'membershipStatus', 'Active') as AccessGroupMember['membershipStatus'],
+    addedAtUtc:       str(r, 'added_at_utc',      'addedAtUtc',       ''),
+    removedAtUtc:     optStr(r, 'removed_at_utc',  'removedAtUtc'),
+  };
+}
+
+export function mapGroupProductAccess(raw: unknown): GroupProductAccess {
+  const r = asObj(raw);
+  return {
+    id:           str(r, 'id',            'id',           ''),
+    tenantId:     str(r, 'tenant_id',     'tenantId',     ''),
+    groupId:      str(r, 'group_id',      'groupId',      ''),
+    productCode:  str(r, 'product_code',  'productCode',  ''),
+    accessStatus: str(r, 'access_status', 'accessStatus', 'Granted') as GroupProductAccess['accessStatus'],
+    grantedAtUtc: str(r, 'granted_at_utc','grantedAtUtc', ''),
+    revokedAtUtc: optStr(r, 'revoked_at_utc', 'revokedAtUtc'),
+  };
+}
+
+export function mapGroupRoleAssignment(raw: unknown): GroupRoleAssignment {
+  const r = asObj(raw);
+  return {
+    id:               str(r, 'id',                'id',               ''),
+    tenantId:         str(r, 'tenant_id',         'tenantId',         ''),
+    groupId:          str(r, 'group_id',          'groupId',          ''),
+    roleCode:         str(r, 'role_code',         'roleCode',         ''),
+    productCode:      optStr(r, 'product_code',   'productCode'),
+    organizationId:   optStr(r, 'organization_id','organizationId'),
+    assignmentStatus: str(r, 'assignment_status', 'assignmentStatus', 'Active') as GroupRoleAssignment['assignmentStatus'],
+    assignedAtUtc:    str(r, 'assigned_at_utc',   'assignedAtUtc',    ''),
+    removedAtUtc:     optStr(r, 'removed_at_utc', 'removedAtUtc'),
   };
 }
 
