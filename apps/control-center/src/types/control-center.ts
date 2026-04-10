@@ -172,32 +172,6 @@ export interface UserRoleSummary {
   assignmentId: string;
 }
 
-// ── Groups ────────────────────────────────────────────────────────────────────
-
-export interface GroupSummary {
-  id:           string;
-  tenantId:     string;
-  name:         string;
-  description?: string;
-  memberCount:  number;
-  isActive:     boolean;
-  createdAtUtc: string;
-}
-
-export interface GroupMemberSummary {
-  membershipId: string;
-  userId:       string;
-  firstName:    string;
-  lastName:     string;
-  email:        string;
-  joinedAtUtc:  string;
-}
-
-export interface GroupDetail extends GroupSummary {
-  updatedAtUtc: string;
-  members:      GroupMemberSummary[];
-}
-
 // ── Access Groups (LS-COR-AUT-004 / LS-COR-AUT-005) ─────────────────────────
 
 export type AccessGroupStatus = 'Active' | 'Archived';

@@ -71,9 +71,6 @@ public static class DependencyInjection
         services.AddScoped<IProductProvisioningHandler, CareConnectProvisioningHandler>();
         services.AddScoped<IProductProvisioningService, ProductProvisioningService>();
 
-        services.AddScoped<IProductRoleMapper, CareConnectRoleMapper>();
-        services.AddScoped<IProductRoleResolutionService, ProductRoleResolutionService>();
-
         services.AddScoped<IAuditPublisher, AuditPublisher>();
         services.AddScoped<ITenantProductEntitlementService, TenantProductEntitlementService>();
         services.AddScoped<IUserProductAccessService, UserProductAccessService>();

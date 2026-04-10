@@ -61,8 +61,6 @@ import type {
   AuditExport,
   IntegrityCheckpoint,
   LegalHold,
-  GroupSummary,
-  GroupDetail,
   AccessGroupSummary,
   AccessGroupMember,
   GroupProductAccess,
@@ -405,40 +403,6 @@ export function mapUserDetail(raw: unknown): UserDetail {
         roleId:       str(r2, 'role_id',       'roleId',       ''),
         roleName:     str(r2, 'role_name',      'roleName',     ''),
         assignmentId: str(r2, 'assignment_id',  'assignmentId', ''),
-      };
-    }),
-  };
-}
-
-export function mapGroupSummary(raw: unknown): GroupSummary {
-  const r = asObj(raw);
-  return {
-    id:          str(r, 'id',           'id',          ''),
-    tenantId:    str(r, 'tenant_id',    'tenantId',    ''),
-    name:        str(r, 'name',         'name',        ''),
-    description: optStr(r, 'description', 'description'),
-    memberCount: num(r, 'member_count', 'memberCount', 0),
-    isActive:    bool(r, 'is_active',   'isActive',    true),
-    createdAtUtc: str(r, 'created_at_utc', 'createdAtUtc', ''),
-  };
-}
-
-export function mapGroupDetail(raw: unknown): GroupDetail {
-  const r    = asObj(raw);
-  const base = mapGroupSummary(raw);
-  const rawMembers = asArr(r['members']);
-  return {
-    ...base,
-    updatedAtUtc: str(r, 'updated_at_utc', 'updatedAtUtc', ''),
-    members: rawMembers.map(m => {
-      const mo = asObj(m);
-      return {
-        membershipId: str(mo, 'membership_id', 'membershipId', ''),
-        userId:       str(mo, 'user_id',       'userId',       ''),
-        firstName:    str(mo, 'first_name',    'firstName',    ''),
-        lastName:     str(mo, 'last_name',     'lastName',     ''),
-        email:        str(mo, 'email',         'email',        ''),
-        joinedAtUtc:  str(mo, 'joined_at_utc', 'joinedAtUtc',  ''),
       };
     }),
   };

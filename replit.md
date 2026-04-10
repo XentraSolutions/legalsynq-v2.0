@@ -624,7 +624,7 @@ Declarative endpoint filters enforce product-level access control on all CareCon
 - `RequireOrgProductAccessFilter` — org-scoped check, stores `org_id` in `HttpContext.Items["ProductAuth:OrgId"]`
 - `ProductAuthorizationExtensions` — fluent `.RequireProductAccess()`, `.RequireProductRole()`, `.RequireOrgProductAccess()` on `RouteHandlerBuilder`/`RouteGroupBuilder`
 
-**Claim extensions** (`ProductRoleClaimExtensions`): `HasProductAccess()`, `HasProductRole()`, `IsTenantAdminOrAbove()`. Deny-by-default for unknown product codes. Product-scoped role validation (roles must belong to product's valid role set in `ProductToRolesMap`).
+**Claim extensions** (`ProductRoleClaimExtensions`): `HasProductAccess(productCode)` checks if any `product_roles` claim starts with `{productCode}:`. `HasProductRole(productCode, roles)` checks for exact `{productCode}:{role}` match. `IsTenantAdminOrAbove()` bypasses all product checks. LS-COR-AUT-006: removed static `ProductToRolesMap` — product prefix is now parsed dynamically from `PRODUCT:Role` format claims.
 
 **Bypass rules**: PlatformAdmin and TenantAdmin always bypass product filters. Product-level enforcement applies to Member role users.
 
@@ -3277,7 +3277,7 @@ Control Center UI for managing LS-COR-AUT-004 tenant-scoped Access Groups.
 - All routes: `requireAdmin()` auth, `ServerApiError` status passthrough
 
 **Pages:**
-- `/groups` — tenant-context-aware list; shows Access Groups when tenant selected, legacy groups otherwise; `CreateAccessGroupButton` modal (Tenant/Product scope)
+- `/groups` — tenant-context-aware Access Groups list (requires tenant context); `CreateAccessGroupButton` modal (Tenant/Product scope)
 - `/access-groups/[tenantId]/[groupId]` — detail page with `AccessGroupInfoCard`, `AccessGroupMembersPanel`, `GroupProductAccessPanel`, `GroupRoleAssignmentPanel`, `AccessGroupActions`
 
 **User detail integration:**
@@ -3286,6 +3286,25 @@ Control Center UI for managing LS-COR-AUT-004 tenant-scoped Access Groups.
 **Route builder:** `Routes.accessGroupDetail(tenantId, groupId)` → `/access-groups/{tenantId}/{groupId}`
 
 **Nav:** Groups entry marked `badge: 'LIVE'` in sidebar
+
+## LS-COR-AUT-006 — Legacy Cleanup + Model Unification — COMPLETED 2026-04-10
+
+Removed all legacy role resolution and group management systems. JWT `product_roles` claims now use exclusively `PRODUCT:Role` format (e.g., `SYNQ_CARECONNECT:CARECONNECT_RECEIVER`) from `EffectiveAccessService`.
+
+**Removed:**
+- `ProductRoleResolutionService`, `CareConnectRoleMapper`, `IProductRoleMapper`, `IProductRoleResolutionService`, `EffectiveAccessContext` DTO
+- Legacy merge logic in `AuthService.LoginAsync` (was merging legacy bare role codes with effective-access roles)
+- Legacy `/api/admin/groups/*` endpoints (5 routes + handlers) from `AdminEndpoints.cs`
+- Legacy group UI: `groups/[id]` page, `GroupMembershipPanel`, `GroupDetailCard`, `GroupListTable`, `GroupPermissionsPanel`, BFF proxy routes
+- Legacy `groups` namespace from `controlCenterServerApi`, `GroupSummary`/`GroupDetail`/`GroupMemberSummary` types, `mapGroupSummary`/`mapGroupDetail` mappers
+- Static `ProductToRolesMap` dictionary from `ProductRoleClaimExtensions`
+
+**Updated:**
+- `ProductRoleClaimExtensions`: `HasProductAccess` now checks `PRODUCT:` prefix; `HasProductRole` checks `PRODUCT:ROLE` exact match
+- Groups page: removed legacy fallback, requires tenant context
+- Tenant user detail: removed `GroupMembershipPanel`, kept only `AccessGroupMembershipPanel`
+
+**Retained:** `ScopedRoleAssignment` (used for system roles), `TenantGroup`/`GroupMembership` DB tables (for data migration)
 
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`

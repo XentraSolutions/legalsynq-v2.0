@@ -80,8 +80,6 @@ import {
   mapAuditExport,
   mapIntegrityCheckpoint,
   mapLegalHold,
-  mapGroupSummary,
-  mapGroupDetail,
   mapAccessGroupSummary,
   mapAccessGroupMember,
   mapGroupProductAccess,
@@ -124,8 +122,6 @@ import type {
   IntegrityCheckpoint,
   LegalHold,
   AuditIngestPayload,
-  GroupSummary,
-  GroupDetail,
   OrgSummary,
   AccessGroupSummary,
   AccessGroupMember,
@@ -694,86 +690,6 @@ export const controlCenterServerApi = {
         orgType:     String(raw.orgType ?? ''),
         isActive:    Boolean(raw.isActive ?? true),
       };
-    },
-  },
-
-  // ── Groups ────────────────────────────────────────────────────────────────
-
-  groups: {
-    /**
-     * GET /identity/api/admin/groups?tenantId=&page=&pageSize=
-     * Lists groups for a tenant. Cache: 60 s, tag cc:users.
-     */
-    list: async (params: {
-      tenantId?: string;
-      page?:     number;
-      pageSize?: number;
-    } = {}): Promise<PagedResponse<GroupSummary>> => {
-      const qs = toQs({
-        tenantId: params.tenantId,
-        page:     params.page     ?? 1,
-        pageSize: params.pageSize ?? 20,
-      });
-      const raw = await apiClient.get<unknown>(
-        `/identity/api/admin/groups${qs}`,
-        60,
-        [CACHE_TAGS.users],
-      );
-      return mapPagedResponse(raw, mapGroupSummary);
-    },
-
-    /**
-     * GET /identity/api/admin/groups/{id}
-     * Returns full GroupDetail including members, or null if not found.
-     */
-    getById: async (id: string): Promise<GroupDetail | null> => {
-      try {
-        const raw = await apiClient.get<unknown>(
-          `/identity/api/admin/groups/${encodeURIComponent(id)}`,
-          30,
-          [CACHE_TAGS.users],
-        );
-        return mapGroupDetail(raw);
-      } catch (err: unknown) {
-        if (isNotFound(err)) return null;
-        throw err;
-      }
-    },
-
-    /**
-     * POST /identity/api/admin/groups
-     * Creates a new tenant group. Revalidates cc:users cache.
-     */
-    create: async (payload: {
-      tenantId:     string;
-      name:         string;
-      description?: string;
-    }): Promise<void> => {
-      await apiClient.post<unknown>('/identity/api/admin/groups', payload);
-      revalidateTag(CACHE_TAGS.users);
-    },
-
-    /**
-     * POST /identity/api/admin/groups/{id}/members
-     * Adds a user to a group. Revalidates cc:users cache.
-     */
-    addMember: async (groupId: string, userId: string): Promise<void> => {
-      await apiClient.post<unknown>(
-        `/identity/api/admin/groups/${encodeURIComponent(groupId)}/members`,
-        { userId },
-      );
-      revalidateTag(CACHE_TAGS.users);
-    },
-
-    /**
-     * DELETE /identity/api/admin/groups/{id}/members/{membershipId}
-     * Removes a member from a group. Revalidates cc:users cache.
-     */
-    removeMember: async (groupId: string, membershipId: string): Promise<void> => {
-      await apiClient.del<unknown>(
-        `/identity/api/admin/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(membershipId)}`,
-      );
-      revalidateTag(CACHE_TAGS.users);
     },
   },
 

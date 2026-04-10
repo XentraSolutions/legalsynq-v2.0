@@ -19,7 +19,6 @@ export default async function GroupsPage({ searchParams }: GroupsPageProps) {
   const tenantId = searchParamsData.tenantId ?? tenantCtx?.tenantId;
 
   let groups: Awaited<ReturnType<typeof controlCenterServerApi.accessGroups.list>> = [];
-  let legacyGroups: Awaited<ReturnType<typeof controlCenterServerApi.groups.list>> | null = null;
   let fetchError: string | null = null;
 
   if (tenantId) {
@@ -29,15 +28,6 @@ export default async function GroupsPage({ searchParams }: GroupsPageProps) {
       fetchError = err instanceof Error ? err.message : 'Failed to load access groups.';
     }
   }
-
-  if (!tenantId) {
-    try {
-      legacyGroups = await controlCenterServerApi.groups.list({ pageSize: 100 });
-    } catch {
-      if (!fetchError) fetchError = 'Select a tenant context to view access groups.';
-    }
-  }
-
 
   return (
     <CCShell userEmail={session.email}>
@@ -75,11 +65,6 @@ export default async function GroupsPage({ searchParams }: GroupsPageProps) {
         {!tenantId && !tenantCtx && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
             <strong>No tenant context active.</strong> Set a tenant context using the tenant selector to manage access groups.
-            {legacyGroups && legacyGroups.items.length > 0 && (
-              <p className="text-xs text-amber-600 mt-1">
-                Showing {legacyGroups.totalCount} legacy group{legacyGroups.totalCount !== 1 ? 's' : ''} below.
-              </p>
-            )}
           </div>
         )}
 
@@ -101,36 +86,6 @@ export default async function GroupsPage({ searchParams }: GroupsPageProps) {
             <p className="text-xs text-gray-400">
               Create an access group to define inherited product access and role assignments for members.
             </p>
-          </div>
-        )}
-
-        {!tenantId && legacyGroups && legacyGroups.items.length > 0 && (
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden opacity-60">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-100">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Legacy Groups (read-only)</p>
-            </div>
-            <table className="min-w-full divide-y divide-gray-100">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Members</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {legacyGroups.items.map(g => (
-                  <tr key={g.id}>
-                    <td className="px-4 py-2 text-sm text-gray-700">{g.name}</td>
-                    <td className="px-4 py-2 text-sm text-gray-500">{g.memberCount}</td>
-                    <td className="px-4 py-2">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${g.isActive ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
-                        {g.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
       </div>

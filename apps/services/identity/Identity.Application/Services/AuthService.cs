@@ -17,7 +17,6 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuditEventClient _auditClient;
-    private readonly IProductRoleResolutionService _roleResolutionService;
     private readonly IEffectiveAccessService _effectiveAccessService;
     private readonly ILogger<AuthService> _logger;
 
@@ -27,7 +26,6 @@ public class AuthService : IAuthService
         IPasswordHasher passwordHasher,
         IJwtTokenService jwtTokenService,
         IAuditEventClient auditClient,
-        IProductRoleResolutionService roleResolutionService,
         IEffectiveAccessService effectiveAccessService,
         ILogger<AuthService> logger)
     {
@@ -36,7 +34,6 @@ public class AuthService : IAuthService
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
         _auditClient = auditClient;
-        _roleResolutionService = roleResolutionService;
         _effectiveAccessService = effectiveAccessService;
         _logger = logger;
     }
@@ -110,32 +107,12 @@ public class AuthService : IAuthService
         var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);
         var org = orgMembership?.Organization;
 
-        // LS-COR-AUT-003: compute effective access from the source-of-truth model.
+        // LS-COR-AUT-003/006: compute effective access from the single source-of-truth model.
+        // All product roles come exclusively from EffectiveAccessService (direct + group-inherited).
         var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, user.Id, ct);
 
-        // Merge: use effective-access engine as primary source; fall back to legacy resolver
-        // for any product roles not yet covered by the new model (backward compatibility).
-        var legacyContext = await _roleResolutionService.ResolveAsync(user.Id, tenant.Id, ct);
-        var legacyProductRoles = legacyContext.GetEffectiveProductRoles().ToList();
-
-        // Effective access product_roles take precedence; merge in legacy entries not present.
-        var mergedProductRoles = new List<string>(effectiveAccess.ProductRolesFlat);
-        var effectiveSet = new HashSet<string>(effectiveAccess.ProductRolesFlat, StringComparer.OrdinalIgnoreCase);
-        foreach (var lpr in legacyProductRoles)
-        {
-            if (!effectiveSet.Contains(lpr))
-                mergedProductRoles.Add(lpr);
-        }
-
-        if (legacyContext.DeniedReasons.Count > 0)
-        {
-            _logger.LogDebug(
-                "Legacy product role resolution for user={UserId}: {DeniedCount} denial(s) recorded.",
-                user.Id, legacyContext.DeniedReasons.Count);
-        }
-
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
-            userWithRoles, tenant, roleNames, org, mergedProductRoles,
+            userWithRoles, tenant, roleNames, org, effectiveAccess.ProductRolesFlat,
             sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
             productCodes: effectiveAccess.Products);
 
@@ -156,7 +133,7 @@ public class AuthService : IAuthService
             roleNames,
             org?.Id,
             orgTypeForResponse,
-            mergedProductRoles);
+            effectiveAccess.ProductRolesFlat);
 
         // Canonical audit: fire-and-observe — never throw, never gate login on audit success.
         var now = DateTimeOffset.UtcNow;

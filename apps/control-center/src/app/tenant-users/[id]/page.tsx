@@ -10,7 +10,6 @@ import { UserActivityPanel }             from '@/components/users/user-activity-
 import { EffectivePermissionsPanel }     from '@/components/users/effective-permissions-panel';
 import { RoleAssignmentPanel }            from '@/components/users/role-assignment-panel';
 import { OrgMembershipPanel }             from '@/components/users/org-membership-panel';
-import { GroupMembershipPanel }           from '@/components/users/group-membership-panel';
 import { AccessGroupMembershipPanel }    from '@/components/access-groups/access-group-membership-panel';
 import { startImpersonationAction }       from '@/app/actions/impersonation';
 import type { UserStatus }                from '@/types/control-center';
@@ -45,16 +44,13 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     fetchError = err instanceof Error ? err.message : 'Failed to load user.';
   }
 
-  const [assignableRolesResult, orgsResult, groupsResult, securityResult, permissionsResult, accessGroupsResult, userAccessGroupsResult] = await Promise.allSettled([
+  const [assignableRolesResult, orgsResult, securityResult, permissionsResult, accessGroupsResult, userAccessGroupsResult] = await Promise.allSettled([
     user
       ? controlCenterServerApi.users.getAssignableRoles(user.id)
       : Promise.resolve(null),
     user
       ? controlCenterServerApi.organizations.listByTenant(user.tenantId)
       : Promise.resolve([]),
-    user
-      ? controlCenterServerApi.groups.list({ tenantId: user.tenantId, pageSize: 200 })
-      : Promise.resolve({ items: [], total: 0, page: 1, pageSize: 200, totalPages: 0 }),
     user
       ? controlCenterServerApi.users.getSecurity(user.id)
       : Promise.resolve(null),
@@ -71,7 +67,6 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
 
   const assignableData    = assignableRolesResult.status  === 'fulfilled' ? assignableRolesResult.value   : null;
   const availableOrgs     = orgsResult.status            === 'fulfilled' ? orgsResult.value               : [];
-  const availableGroups   = groupsResult.status          === 'fulfilled' ? groupsResult.value.items       : [];
   const security          = securityResult.status        === 'fulfilled' ? securityResult.value           : null;
   const effectivePerms    = permissionsResult.status     === 'fulfilled' ? permissionsResult.value       : null;
   const permsError        = permissionsResult.status     === 'rejected'
@@ -221,12 +216,6 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
                 userId={user.id}
                 memberships={user.memberships ?? []}
                 availableOrgs={availableOrgs}
-              />
-
-              <GroupMembershipPanel
-                userId={user.id}
-                currentGroups={user.groups ?? []}
-                availableGroups={availableGroups}
               />
 
               <AccessGroupMembershipPanel
