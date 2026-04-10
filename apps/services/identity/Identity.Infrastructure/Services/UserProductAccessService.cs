@@ -58,6 +58,9 @@ public class UserProductAccessService : IUserProductAccessService
         {
             var beforeJson = JsonSerializer.Serialize(new { existing.AccessStatus, existing.GrantedAtUtc, existing.RevokedAtUtc });
             existing.Grant(actorUserId);
+
+            user.IncrementAccessVersion();
+
             await _db.SaveChangesAsync(ct);
 
             _audit.Publish(
@@ -74,6 +77,9 @@ public class UserProductAccessService : IUserProductAccessService
 
         var access = UserProductAccess.Create(tenantId, userId, code, createdByUserId: actorUserId);
         _db.UserProductAccessRecords.Add(access);
+
+        user.IncrementAccessVersion();
+
         await _db.SaveChangesAsync(ct);
 
         _audit.Publish(
@@ -98,6 +104,10 @@ public class UserProductAccessService : IUserProductAccessService
 
         var beforeJson = JsonSerializer.Serialize(new { existing.AccessStatus, existing.GrantedAtUtc });
         existing.Revoke(actorUserId);
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+        user?.IncrementAccessVersion();
+
         await _db.SaveChangesAsync(ct);
 
         _audit.Publish(

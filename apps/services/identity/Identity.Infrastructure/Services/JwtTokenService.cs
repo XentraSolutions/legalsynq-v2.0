@@ -20,7 +20,8 @@ public class JwtTokenService : IJwtTokenService
         IEnumerable<string> roles,
         Organization? organization = null,
         IEnumerable<string>? productRoles = null,
-        int? sessionTimeoutMinutes = null)
+        int? sessionTimeoutMinutes = null,
+        IEnumerable<string>? productCodes = null)
     {
         var section = _configuration.GetSection("Jwt");
 
@@ -43,6 +44,8 @@ public class JwtTokenService : IJwtTokenService
             // UIX-003-03: session invalidation — embed version at login time.
             // auth/me validates this against the DB value; mismatches reject the request.
             new("session_version", user.SessionVersion.ToString()),
+            // LS-COR-AUT-003: access freshness — embed version at login time.
+            new("access_version", user.AccessVersion.ToString()),
         };
 
         foreach (var role in roles)
@@ -63,6 +66,9 @@ public class JwtTokenService : IJwtTokenService
             if (organization.OrganizationTypeId.HasValue)
                 claims.Add(new Claim("org_type_id", organization.OrganizationTypeId.Value.ToString()));
         }
+
+        foreach (var pc in productCodes ?? [])
+            claims.Add(new Claim("product_codes", pc));
 
         foreach (var pr in productRoles ?? [])
             claims.Add(new Claim("product_roles", pr));

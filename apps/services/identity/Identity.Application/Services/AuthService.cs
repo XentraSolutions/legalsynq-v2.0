@@ -18,6 +18,7 @@ public class AuthService : IAuthService
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuditEventClient _auditClient;
     private readonly IProductRoleResolutionService _roleResolutionService;
+    private readonly IEffectiveAccessService _effectiveAccessService;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -27,6 +28,7 @@ public class AuthService : IAuthService
         IJwtTokenService jwtTokenService,
         IAuditEventClient auditClient,
         IProductRoleResolutionService roleResolutionService,
+        IEffectiveAccessService effectiveAccessService,
         ILogger<AuthService> logger)
     {
         _userRepository = userRepository;
@@ -35,6 +37,7 @@ public class AuthService : IAuthService
         _jwtTokenService = jwtTokenService;
         _auditClient = auditClient;
         _roleResolutionService = roleResolutionService;
+        _effectiveAccessService = effectiveAccessService;
         _logger = logger;
     }
 
@@ -107,20 +110,34 @@ public class AuthService : IAuthService
         var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);
         var org = orgMembership?.Organization;
 
-        // LS-COR-ROL-001: centralized product role resolution via ProductRoleResolutionService
-        var accessContext = await _roleResolutionService.ResolveAsync(user.Id, tenant.Id, ct);
-        var productRoles = accessContext.GetEffectiveProductRoles().ToList();
+        // LS-COR-AUT-003: compute effective access from the source-of-truth model.
+        var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, user.Id, ct);
 
-        if (accessContext.DeniedReasons.Count > 0)
+        // Merge: use effective-access engine as primary source; fall back to legacy resolver
+        // for any product roles not yet covered by the new model (backward compatibility).
+        var legacyContext = await _roleResolutionService.ResolveAsync(user.Id, tenant.Id, ct);
+        var legacyProductRoles = legacyContext.GetEffectiveProductRoles().ToList();
+
+        // Effective access product_roles take precedence; merge in legacy entries not present.
+        var mergedProductRoles = new List<string>(effectiveAccess.ProductRolesFlat);
+        var effectiveSet = new HashSet<string>(effectiveAccess.ProductRolesFlat, StringComparer.OrdinalIgnoreCase);
+        foreach (var lpr in legacyProductRoles)
+        {
+            if (!effectiveSet.Contains(lpr))
+                mergedProductRoles.Add(lpr);
+        }
+
+        if (legacyContext.DeniedReasons.Count > 0)
         {
             _logger.LogDebug(
-                "Product role resolution for user={UserId}: {DeniedCount} denial(s) recorded.",
-                user.Id, accessContext.DeniedReasons.Count);
+                "Legacy product role resolution for user={UserId}: {DeniedCount} denial(s) recorded.",
+                user.Id, legacyContext.DeniedReasons.Count);
         }
 
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
-            userWithRoles, tenant, roleNames, org, productRoles,
-            sessionTimeoutMinutes: tenant.SessionTimeoutMinutes);
+            userWithRoles, tenant, roleNames, org, mergedProductRoles,
+            sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
+            productCodes: effectiveAccess.Products);
 
         // Phase H: derive org_type code from OrganizationTypeId FK (authoritative) when available;
         // fall back to the stored OrgType string for compatibility.
@@ -139,7 +156,7 @@ public class AuthService : IAuthService
             roleNames,
             org?.Id,
             orgTypeForResponse,
-            productRoles);
+            mergedProductRoles);
 
         // Canonical audit: fire-and-observe — never throw, never gate login on audit success.
         var now = DateTimeOffset.UtcNow;
@@ -233,11 +250,14 @@ public class AuthService : IAuthService
         {
             var user = await _userRepository.GetByIdAsync(userGuid, ct);
 
+            if (user == null)
+                throw new UnauthorizedAccessException("User not found.");
+
             // UIX-003-03: reject locked accounts immediately — they cannot use existing sessions.
-            if (user?.IsLocked == true)
+            if (user.IsLocked)
                 throw new UnauthorizedAccessException("Account is locked.");
 
-            avatarDocumentId = user?.AvatarDocumentId;
+            avatarDocumentId = user.AvatarDocumentId;
 
             // UIX-003-03: validate session version. Tokens from before a force-logout
             // or lock will have an older session_version and must be rejected.
@@ -245,10 +265,19 @@ public class AuthService : IAuthService
             var sessionVersionClaim = principal.FindFirstValue("session_version");
             if (sessionVersionClaim is not null
                 && int.TryParse(sessionVersionClaim, out var tokenVersion)
-                && user is not null
                 && tokenVersion < user.SessionVersion)
             {
                 throw new UnauthorizedAccessException("Session has been invalidated.");
+            }
+
+            // LS-COR-AUT-003: validate access version. Tokens from before an access
+            // change will have a stale access_version and must be rejected.
+            var accessVersionClaim = principal.FindFirstValue("access_version");
+            if (accessVersionClaim is not null
+                && int.TryParse(accessVersionClaim, out var tokenAccessVersion)
+                && tokenAccessVersion < user.AccessVersion)
+            {
+                throw new UnauthorizedAccessException("Access has been updated. Please re-authenticate.");
             }
         }
 

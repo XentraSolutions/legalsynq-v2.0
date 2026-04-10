@@ -79,6 +79,7 @@ public static class DependencyInjection
         services.AddScoped<IUserProductAccessService, UserProductAccessService>();
         services.AddScoped<IUserRoleAssignmentService, UserRoleAssignmentService>();
         services.AddScoped<IAccessSourceQueryService, AccessSourceQueryService>();
+        services.AddScoped<IEffectiveAccessService, EffectiveAccessService>();
 
         return services;
     }

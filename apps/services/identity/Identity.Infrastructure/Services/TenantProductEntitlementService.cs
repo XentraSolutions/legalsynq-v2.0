@@ -57,6 +57,18 @@ public class TenantProductEntitlementService : ITenantProductEntitlementService
         {
             var beforeJson = JsonSerializer.Serialize(new { existing.Status, existing.EnabledAtUtc, existing.DisabledAtUtc });
             existing.Enable(actorUserId);
+
+            var reEnabledUserIds = await _db.UserProductAccessRecords
+                .Where(a => a.TenantId == tenantId && a.ProductCode == code && a.AccessStatus == AccessStatus.Granted)
+                .Select(a => a.UserId)
+                .Distinct()
+                .ToListAsync(ct);
+            var reEnabledUsers = await _db.Users
+                .Where(u => reEnabledUserIds.Contains(u.Id) && u.TenantId == tenantId)
+                .ToListAsync(ct);
+            foreach (var u in reEnabledUsers)
+                u.IncrementAccessVersion();
+
             await _db.SaveChangesAsync(ct);
 
             _audit.Publish(
@@ -97,6 +109,18 @@ public class TenantProductEntitlementService : ITenantProductEntitlementService
 
         var beforeJson = JsonSerializer.Serialize(new { existing.Status, existing.EnabledAtUtc });
         existing.Disable(actorUserId);
+
+        var affectedUserIds = await _db.UserProductAccessRecords
+            .Where(a => a.TenantId == tenantId && a.ProductCode == code && a.AccessStatus == AccessStatus.Granted)
+            .Select(a => a.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+        var affectedUsers = await _db.Users
+            .Where(u => affectedUserIds.Contains(u.Id) && u.TenantId == tenantId)
+            .ToListAsync(ct);
+        foreach (var u in affectedUsers)
+            u.IncrementAccessVersion();
+
         await _db.SaveChangesAsync(ct);
 
         _audit.Publish(

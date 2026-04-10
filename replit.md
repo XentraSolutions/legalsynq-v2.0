@@ -194,6 +194,7 @@ apps/
         Interfaces/IUserProductAccessService.cs
         Interfaces/IUserRoleAssignmentService.cs
         Interfaces/IAccessSourceQueryService.cs  ← combined snapshot query
+        Interfaces/IEffectiveAccessService.cs    ← LS-COR-AUT-003 effective access computation
       Identity.Infrastructure/
         Data/IdentityDbContext.cs         ← 17 DbSets (+3 for LS-COR-AUT-002)
         Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (18 configs)
@@ -205,13 +206,15 @@ apps/
                                             SeedTenantDomains (legalsynq.legalsynq.com)
                                             CorrectSynqLienRoleMappings (SELLER→PROVIDER)
                                             DropStaleApplicationsTable (identity_db cleanup)
-        Services/JwtTokenService.cs       ← emits org_id, org_type, product_roles JWT claims
+                                            AddAccessVersion (LS-COR-AUT-003: Users.AccessVersion + unique index fix)
+        Services/JwtTokenService.cs       ← emits org_id, org_type, product_roles, product_codes, access_version JWT claims
         Services/ProductProvisioningService.cs ← centralized product provisioning engine
         Services/CareConnectProvisioningHandler.cs ← CareConnect-specific provisioning hook
         Services/AuditPublisher.cs        ← IAuditPublisher impl (wraps IAuditEventClient)
-        Services/TenantProductEntitlementService.cs  ← LS-COR-AUT-002 service
-        Services/UserProductAccessService.cs         ← LS-COR-AUT-002 service
-        Services/UserRoleAssignmentService.cs        ← LS-COR-AUT-002 service
+        Services/EffectiveAccessService.cs       ← LS-COR-AUT-003: computes effective access from source-of-truth
+        Services/TenantProductEntitlementService.cs  ← LS-COR-AUT-002 service (+ AccessVersion bump)
+        Services/UserProductAccessService.cs         ← LS-COR-AUT-002 service (+ AccessVersion bump)
+        Services/UserRoleAssignmentService.cs        ← LS-COR-AUT-002 service (+ AccessVersion bump)
         Services/AccessSourceQueryService.cs         ← LS-COR-AUT-002 snapshot query
         DependencyInjection.cs
     fund/

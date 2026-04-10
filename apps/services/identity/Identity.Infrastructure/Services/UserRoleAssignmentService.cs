@@ -68,6 +68,9 @@ public class UserRoleAssignmentService : IUserRoleAssignmentService
 
         var assignment = UserRoleAssignment.Create(tenantId, userId, roleCode, code, organizationId, actorUserId);
         _db.UserRoleAssignments.Add(assignment);
+
+        user.IncrementAccessVersion();
+
         await _db.SaveChangesAsync(ct);
 
         _audit.Publish(
@@ -91,6 +94,10 @@ public class UserRoleAssignmentService : IUserRoleAssignmentService
 
         var beforeJson = JsonSerializer.Serialize(new { existing.AssignmentStatus, existing.AssignedAtUtc });
         existing.Remove(actorUserId);
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+        user?.IncrementAccessVersion();
+
         await _db.SaveChangesAsync(ct);
 
         _audit.Publish(
