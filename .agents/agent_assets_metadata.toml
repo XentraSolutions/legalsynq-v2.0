@@ -156,3 +156,9 @@ id = "BRimKA1N4Froggm56pgDp"
 uri = "file://analysis/LS-COR-PRD-001-report.md"
 type = "text"
 title = "LS-COR-PRD-001 Product Provisioning Engine Report"
+
+[[outputs]]
+id = "DFtiUUOWQ65AgdOwSlnke"
+uri = "file://LS-COR-AUT-004-report.md"
+type = "text"
+title = "LS-COR-AUT-004 — Groups + Inherited Access Report"
