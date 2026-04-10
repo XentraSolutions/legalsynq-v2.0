@@ -2,8 +2,16 @@ namespace Identity.Domain;
 
 /// <summary>
 /// Enriched role assignment with explicit scope context.
-/// Evolves UserRoleAssignment toward: per-org, per-product, per-relationship scoping.
-/// Existing UserRoleAssignment records are preserved and can be migrated incrementally.
+/// LS-COR-AUT-006A — Final Role Architecture (Intentional Dual-Boundary Model):
+///   • ScopedRoleAssignment: Authoritative store for system/admin roles (PlatformAdmin,
+///     TenantAdmin) via GLOBAL scope. Also supports fine-grained runtime authorization
+///     checks via ORGANIZATION, PRODUCT, RELATIONSHIP, TENANT scopes through
+///     ScopedAuthorizationService.
+///   • UserRoleAssignment / GroupRoleAssignment: Authoritative store for product-scoped
+///     roles used in JWT product_roles claims. EffectiveAccessService reads these exclusively
+///     and emits PRODUCT:Role format claims.
+/// System roles → role JWT claims (via ScopedRoleAssignment GLOBAL scope).
+/// Product roles → product_roles JWT claims (via UserRoleAssignment/GroupRoleAssignment).
 /// </summary>
 public class ScopedRoleAssignment
 {

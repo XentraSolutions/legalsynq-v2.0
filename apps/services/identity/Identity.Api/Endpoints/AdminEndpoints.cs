@@ -1019,7 +1019,7 @@ public static class AdminEndpoints
                                .Where(m => m.UserId == u.Id && m.IsPrimary && m.IsActive)
                                .Select(m => m.Organization.DisplayName ?? m.Organization.Name)
                                .FirstOrDefault(),
-                groupCount = db.GroupMemberships.Count(gm => gm.UserId == u.Id),
+                groupCount = db.AccessGroupMemberships.Count(am => am.UserId == u.Id && am.MembershipStatus == MembershipStatus.Active),
                 tenantId   = u.TenantId,
                 tenantCode = u.Tenant.Code,
                 createdAtUtc = u.CreatedAtUtc,
@@ -1064,11 +1064,12 @@ public static class AdminEndpoints
         var hasPendingInvite = await db.UserInvitations.AnyAsync(
             i => i.UserId == id && i.Status == UserInvitation.Statuses.Pending, ct);
 
-        var groupMemberships = await db.GroupMemberships
-            .Include(gm => gm.Group)
-            .Where(gm => gm.UserId == id)
-            .Select(gm => new { groupId = gm.GroupId, groupName = gm.Group.Name, joinedAtUtc = gm.JoinedAtUtc })
-            .ToListAsync(ct);
+        var groupMemberships = await (
+            from am in db.AccessGroupMemberships
+            join ag in db.AccessGroups on am.GroupId equals ag.Id
+            where am.UserId == id && am.MembershipStatus == MembershipStatus.Active
+            select new { groupId = am.GroupId, groupName = ag.Name, joinedAtUtc = am.AddedAtUtc }
+        ).ToListAsync(ct);
 
         var status = u.IsActive ? "Active" : (hasPendingInvite ? "Invited" : "Inactive");
 

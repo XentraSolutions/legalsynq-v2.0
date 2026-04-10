@@ -1,9 +1,12 @@
 namespace Identity.Domain;
 
 /// <summary>
-/// Records that a user belongs to a TenantGroup.
-/// Unique per (UserId, GroupId) — a user can only appear once per group.
+/// [DEPRECATED — LS-COR-AUT-006A] Legacy group membership entity.
+/// Replaced by <see cref="AccessGroupMembership"/> (LS-COR-AUT-004).
+/// Retained only for EF migration compatibility — no active runtime code should reference this entity.
+/// The GroupMemberships table can be dropped once all data has been migrated to AccessGroupMemberships.
 /// </summary>
+[Obsolete("Legacy entity — replaced by AccessGroupMembership. See LS-COR-AUT-006A.")]
 public class GroupMembership
 {
     public Guid Id { get; private set; }

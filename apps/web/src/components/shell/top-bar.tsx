@@ -120,7 +120,7 @@ function AppSwitcher() {
   //   session loaded, enabledProducts.length === 0 → PlatformAdmin / unconfigured; show all
   const visibleProducts: typeof ALL_PRODUCTS[number][] = (() => {
     if (isLoading || !session) return [];                   // not ready yet
-    const ep = session.enabledProducts;
+    const ep = session.enabledProducts ?? [];
     if (ep.length === 0) return [...ALL_PRODUCTS];          // fallback: show all
     const ids = new Set(ep.map(code => PRODUCT_CODE_TO_NAV_KEY[code]).filter(Boolean));
     return ALL_PRODUCTS.filter(p => ids.has(p.id));

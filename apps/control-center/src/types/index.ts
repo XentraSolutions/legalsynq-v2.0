@@ -1,5 +1,6 @@
 // ── Platform constants ────────────────────────────────────────────────────────
 // Mirror of BuildingBlocks.Authorization — keep in sync with backend
+// LS-COR-AUT-006A: ProductRole values use unified PRODUCT:Role claim format.
 
 export const SystemRole = {
   PlatformAdmin: 'PlatformAdmin',
@@ -9,14 +10,14 @@ export const SystemRole = {
 export type SystemRoleValue = typeof SystemRole[keyof typeof SystemRole];
 
 export const ProductRole = {
-  CareConnectReferrer:     'CARECONNECT_REFERRER',
-  CareConnectReceiver:     'CARECONNECT_RECEIVER',
-  SynqFundReferrer:        'SYNQFUND_REFERRER',
-  SynqFundFunder:          'SYNQFUND_FUNDER',
-  SynqFundApplicantPortal: 'SYNQFUND_APPLICANT_PORTAL',
-  SynqLienSeller:          'SYNQLIEN_SELLER',
-  SynqLienBuyer:           'SYNQLIEN_BUYER',
-  SynqLienHolder:          'SYNQLIEN_HOLDER',
+  CareConnectReferrer:     'SYNQ_CARECONNECT:CARECONNECT_REFERRER',
+  CareConnectReceiver:     'SYNQ_CARECONNECT:CARECONNECT_RECEIVER',
+  SynqFundReferrer:        'SYNQ_FUND:SYNQFUND_REFERRER',
+  SynqFundFunder:          'SYNQ_FUND:SYNQFUND_FUNDER',
+  SynqFundApplicantPortal: 'SYNQ_FUND:SYNQFUND_APPLICANT_PORTAL',
+  SynqLienSeller:          'SYNQ_LIENS:SYNQLIEN_SELLER',
+  SynqLienBuyer:           'SYNQ_LIENS:SYNQLIEN_BUYER',
+  SynqLienHolder:          'SYNQ_LIENS:SYNQLIEN_HOLDER',
 } as const;
 export type ProductRoleValue = typeof ProductRole[keyof typeof ProductRole];
 
@@ -59,11 +60,9 @@ export interface NavItem {
   href:   string;
   label:  string;
   icon?:  string;
-  /** Optional status badge displayed next to the nav label in expanded mode. */
   badge?: 'LIVE' | 'MOCKUP' | 'IN PROGRESS';
 }
 
-/** A labelled section of nav items — mirrors the web app NavSection. */
 export interface NavSection {
   heading?: string;
   items: NavItem[];

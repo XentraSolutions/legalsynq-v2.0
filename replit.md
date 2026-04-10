@@ -3306,6 +3306,28 @@ Removed all legacy role resolution and group management systems. JWT `product_ro
 
 **Retained:** `ScopedRoleAssignment` (used for system roles), `TenantGroup`/`GroupMembership` DB tables (for data migration)
 
+## LS-COR-AUT-006A — Residual Legacy Closure + Validation Hardening — COMPLETED 2026-04-10
+
+Final closure of the legacy authorization model. All frontend and backend consumers now use the unified `PRODUCT:Role` claim format.
+
+**Fixed:**
+- Frontend `ProductRole` constants in both `apps/web` and `apps/control-center` updated to `PRODUCT:Role` format (e.g., `SYNQ_CARECONNECT:CARECONNECT_REFERRER`)
+- Fund service `CanReferFund`/`CanFundApplications` policies use `RequireClaim("product_roles", "SYNQ_FUND:...")` instead of broken `RequireRole`
+- `AdminEndpoints.cs` ListUsers/GetUser queries replaced legacy `GroupMemberships` with `AccessGroupMemberships`
+- Pre-existing type gaps fixed: `ApiResponse`, `TenantBranding`, `NavGroup.icon`, `NavItem.badgeKey`, optional `enabledProducts` null-safety
+
+**Deprecated:**
+- `TenantGroup.cs` and `GroupMembership.cs` marked `[Obsolete]` with `#pragma warning` suppression in `IdentityDbContext`
+- DbSets retained for EF migration compatibility only — no runtime queries
+
+**Documented:**
+- `ScopedRoleAssignment.cs` XML doc describes the dual-boundary role model: SRA for system roles (GLOBAL scope), URA/GRA for product roles (JWT claims)
+
+**Tests:**
+- 20 xUnit tests in `BuildingBlocks.Tests` validating `ProductRoleClaimExtensions` (prefixed claims, bare code rejection, cross-product isolation, admin bypass, case-insensitive matching)
+
+**Report:** `analysis/LS-COR-AUT-006A-report.md`
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`
