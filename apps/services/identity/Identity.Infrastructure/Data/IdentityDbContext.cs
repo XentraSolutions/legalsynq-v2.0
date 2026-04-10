@@ -54,6 +54,12 @@ public class IdentityDbContext : DbContext
     public DbSet<UserProductAccess>             UserProductAccessRecords        => Set<UserProductAccess>();
     public DbSet<UserRoleAssignment>            UserRoleAssignments             => Set<UserRoleAssignment>();
 
+    // LS-COR-AUT-004: Groups + Inherited Access
+    public DbSet<AccessGroup>                   AccessGroups                    => Set<AccessGroup>();
+    public DbSet<AccessGroupMembership>         AccessGroupMemberships          => Set<AccessGroupMembership>();
+    public DbSet<GroupProductAccess>            GroupProductAccessRecords        => Set<GroupProductAccess>();
+    public DbSet<GroupRoleAssignment>           GroupRoleAssignments             => Set<GroupRoleAssignment>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(IdentityDbContext).Assembly);

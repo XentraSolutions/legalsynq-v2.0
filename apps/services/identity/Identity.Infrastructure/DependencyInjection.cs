@@ -81,6 +81,11 @@ public static class DependencyInjection
         services.AddScoped<IAccessSourceQueryService, AccessSourceQueryService>();
         services.AddScoped<IEffectiveAccessService, EffectiveAccessService>();
 
+        services.AddScoped<IGroupService, GroupService>();
+        services.AddScoped<IGroupMembershipService, GroupMembershipService>();
+        services.AddScoped<IGroupProductAccessService, GroupProductAccessService>();
+        services.AddScoped<IGroupRoleAssignmentService, GroupRoleAssignmentService>();
+
         return services;
     }
 }

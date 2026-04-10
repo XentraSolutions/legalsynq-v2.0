@@ -331,5 +331,6 @@ app.MapAuthEndpoints();
 app.MapTenantBrandingEndpoints();
 app.MapAdminEndpoints();
 app.MapAccessSourceEndpoints();
+app.MapGroupEndpoints();
 
 app.Run();

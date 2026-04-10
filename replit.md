@@ -187,17 +187,22 @@ apps/
                                             ProductRole, Capability, RoleCapability
                                             UserOrganizationMembership, ScopedRoleAssignment
                                             TenantProductEntitlement, UserProductAccess, UserRoleAssignment (LS-COR-AUT-002)
-                                            EntitlementStatus, AccessStatus, AssignmentStatus enums
+                                            AccessGroup, AccessGroupMembership, GroupProductAccess, GroupRoleAssignment (LS-COR-AUT-004)
+                                            EntitlementStatus, AccessStatus, AssignmentStatus, GroupStatus, GroupScopeType, MembershipStatus enums
       Identity.Application/
         Interfaces/IAuditPublisher.cs     ← audit event wrapper interface
         Interfaces/ITenantProductEntitlementService.cs
         Interfaces/IUserProductAccessService.cs
         Interfaces/IUserRoleAssignmentService.cs
         Interfaces/IAccessSourceQueryService.cs  ← combined snapshot query
-        Interfaces/IEffectiveAccessService.cs    ← LS-COR-AUT-003 effective access computation
+        Interfaces/IEffectiveAccessService.cs    ← LS-COR-AUT-003 effective access computation (+ source attribution)
+        Interfaces/IGroupService.cs              ← LS-COR-AUT-004 group CRUD
+        Interfaces/IGroupMembershipService.cs    ← LS-COR-AUT-004 membership management
+        Interfaces/IGroupProductAccessService.cs ← LS-COR-AUT-004 group product access
+        Interfaces/IGroupRoleAssignmentService.cs ← LS-COR-AUT-004 group role assignments
       Identity.Infrastructure/
-        Data/IdentityDbContext.cs         ← 17 DbSets (+3 for LS-COR-AUT-002)
-        Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (18 configs)
+        Data/IdentityDbContext.cs         ← 21 DbSets (+3 LS-COR-AUT-002 + 4 LS-COR-AUT-004)
+        Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (22 configs)
         Auth/CapabilityService.cs         ← ICapabilityService impl, 5-min IMemoryCache TTL
         Persistence/Migrations/           ← InitialIdentitySchema
                                             AddMultiOrgProductRoleModel (8 tables + seed)
@@ -207,15 +212,20 @@ apps/
                                             CorrectSynqLienRoleMappings (SELLER→PROVIDER)
                                             DropStaleApplicationsTable (identity_db cleanup)
                                             AddAccessVersion (LS-COR-AUT-003: Users.AccessVersion + unique index fix)
+                                            AddAccessGroups (LS-COR-AUT-004: 4 group tables + indexes)
         Services/JwtTokenService.cs       ← emits org_id, org_type, product_roles, product_codes, access_version JWT claims
         Services/ProductProvisioningService.cs ← centralized product provisioning engine
         Services/CareConnectProvisioningHandler.cs ← CareConnect-specific provisioning hook
         Services/AuditPublisher.cs        ← IAuditPublisher impl (wraps IAuditEventClient)
-        Services/EffectiveAccessService.cs       ← LS-COR-AUT-003: computes effective access from source-of-truth
+        Services/EffectiveAccessService.cs       ← LS-COR-AUT-003/004: computes effective access from direct + inherited (group) sources
         Services/TenantProductEntitlementService.cs  ← LS-COR-AUT-002 service (+ AccessVersion bump)
         Services/UserProductAccessService.cs         ← LS-COR-AUT-002 service (+ AccessVersion bump)
         Services/UserRoleAssignmentService.cs        ← LS-COR-AUT-002 service (+ AccessVersion bump)
         Services/AccessSourceQueryService.cs         ← LS-COR-AUT-002 snapshot query
+        Services/GroupService.cs                     ← LS-COR-AUT-004: group CRUD + archive w/ AccessVersion bump
+        Services/GroupMembershipService.cs            ← LS-COR-AUT-004: member add/remove w/ AccessVersion bump
+        Services/GroupProductAccessService.cs         ← LS-COR-AUT-004: group product grant/revoke w/ AccessVersion bump
+        Services/GroupRoleAssignmentService.cs        ← LS-COR-AUT-004: group role assign/remove w/ AccessVersion bump
         DependencyInjection.cs
     fund/
       Fund.Api/                           → ASP.NET Core Web API (port 5002)
