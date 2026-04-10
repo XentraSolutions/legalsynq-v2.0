@@ -162,3 +162,9 @@ id = "DFtiUUOWQ65AgdOwSlnke"
 uri = "file://LS-COR-AUT-004-report.md"
 type = "text"
 title = "LS-COR-AUT-004 — Groups + Inherited Access Report"
+
+[[outputs]]
+id = "J36Ifqawltp8GhfMbN4Z9"
+uri = "file://analysis/LS-COR-AUT-005-report.md"
+type = "text"
+title = "LS-COR-AUT-005 Report — Admin UI Access Management Layer"
