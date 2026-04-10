@@ -49,6 +49,11 @@ public class IdentityDbContext : DbContext
     // UIX-003-03: Security / admin-triggered password reset
     public DbSet<PasswordResetToken>            PasswordResetTokens            => Set<PasswordResetToken>();
 
+    // LS-COR-AUT-002: Access Source-of-Truth
+    public DbSet<TenantProductEntitlement>      TenantProductEntitlements       => Set<TenantProductEntitlement>();
+    public DbSet<UserProductAccess>             UserProductAccessRecords        => Set<UserProductAccess>();
+    public DbSet<UserRoleAssignment>            UserRoleAssignments             => Set<UserRoleAssignment>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(IdentityDbContext).Assembly);

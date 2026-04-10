@@ -74,6 +74,12 @@ public static class DependencyInjection
         services.AddScoped<IProductRoleMapper, CareConnectRoleMapper>();
         services.AddScoped<IProductRoleResolutionService, ProductRoleResolutionService>();
 
+        services.AddScoped<IAuditPublisher, AuditPublisher>();
+        services.AddScoped<ITenantProductEntitlementService, TenantProductEntitlementService>();
+        services.AddScoped<IUserProductAccessService, UserProductAccessService>();
+        services.AddScoped<IUserRoleAssignmentService, UserRoleAssignmentService>();
+        services.AddScoped<IAccessSourceQueryService, AccessSourceQueryService>();
+
         return services;
     }
 }

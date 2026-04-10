@@ -185,10 +185,18 @@ apps/
       Identity.Domain/                    → Tenant, User, Role, UserRole, Product, TenantProduct
                                             Organization, OrganizationDomain, OrganizationProduct
                                             ProductRole, Capability, RoleCapability
-                                            UserOrganizationMembership, UserRoleAssignment
+                                            UserOrganizationMembership, ScopedRoleAssignment
+                                            TenantProductEntitlement, UserProductAccess, UserRoleAssignment (LS-COR-AUT-002)
+                                            EntitlementStatus, AccessStatus, AssignmentStatus enums
+      Identity.Application/
+        Interfaces/IAuditPublisher.cs     ← audit event wrapper interface
+        Interfaces/ITenantProductEntitlementService.cs
+        Interfaces/IUserProductAccessService.cs
+        Interfaces/IUserRoleAssignmentService.cs
+        Interfaces/IAccessSourceQueryService.cs  ← combined snapshot query
       Identity.Infrastructure/
-        Data/IdentityDbContext.cs         ← 14 DbSets (existing + 8 new)
-        Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (15 configs)
+        Data/IdentityDbContext.cs         ← 17 DbSets (+3 for LS-COR-AUT-002)
+        Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (18 configs)
         Auth/CapabilityService.cs         ← ICapabilityService impl, 5-min IMemoryCache TTL
         Persistence/Migrations/           ← InitialIdentitySchema
                                             AddMultiOrgProductRoleModel (8 tables + seed)
@@ -200,6 +208,11 @@ apps/
         Services/JwtTokenService.cs       ← emits org_id, org_type, product_roles JWT claims
         Services/ProductProvisioningService.cs ← centralized product provisioning engine
         Services/CareConnectProvisioningHandler.cs ← CareConnect-specific provisioning hook
+        Services/AuditPublisher.cs        ← IAuditPublisher impl (wraps IAuditEventClient)
+        Services/TenantProductEntitlementService.cs  ← LS-COR-AUT-002 service
+        Services/UserProductAccessService.cs         ← LS-COR-AUT-002 service
+        Services/UserRoleAssignmentService.cs        ← LS-COR-AUT-002 service
+        Services/AccessSourceQueryService.cs         ← LS-COR-AUT-002 snapshot query
         DependencyInjection.cs
     fund/
       Fund.Api/                           → ASP.NET Core Web API (port 5002)
