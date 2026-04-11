@@ -1,4 +1,4 @@
-using System.Text;
+using System.Security.Cryptography;
 using Documents.Api.Background;
 using Documents.Api.Endpoints;
 using Documents.Api.Middleware;
@@ -35,7 +35,7 @@ builder.Services.AddHostedService<DocumentScanWorker>();
 
 // ── JWT authentication ────────────────────────────────────────────────────────
 var jwtSection  = builder.Configuration.GetSection("Jwt");
-var signingKey  = jwtSection["SigningKey"];
+var rsaPublicKeyPem = jwtSection["RsaPublicKey"];
 var jwksUri     = jwtSection["JwksUri"];
 var issuer      = jwtSection["Issuer"];
 var audience    = jwtSection["Audience"];
@@ -61,12 +61,14 @@ builder.Services
                 ClockSkew         = TimeSpan.Zero,
             };
         }
-        else if (!string.IsNullOrWhiteSpace(signingKey))
+        else if (!string.IsNullOrWhiteSpace(rsaPublicKeyPem))
         {
+            var rsaDocs = RSA.Create();
+            rsaDocs.ImportFromPem(rsaPublicKeyPem.Replace("\\n", "\n"));
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                IssuerSigningKey         = new RsaSecurityKey(rsaDocs),
                 ValidateIssuer           = issuer is not null,
                 ValidIssuer              = issuer,
                 ValidateAudience         = audience is not null,
@@ -77,7 +79,7 @@ builder.Services
         }
         else
         {
-            throw new InvalidOperationException("Either Jwt:SigningKey or Jwt:JwksUri must be configured.");
+            throw new InvalidOperationException("Either Jwt:RsaPublicKey or Jwt:JwksUri must be configured.");
         }
 
         options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents

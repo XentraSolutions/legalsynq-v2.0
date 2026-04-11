@@ -1,4 +1,4 @@
-using System.Text;
+using System.Security.Cryptography;
 using Contracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -13,8 +13,13 @@ builder.Logging
     .AddConsole();
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var signingKey = jwtSection["SigningKey"]
-    ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
+var publicKeyPem = jwtSection["RsaPublicKey"]
+    ?? throw new InvalidOperationException("Jwt:RsaPublicKey is not configured.");
+// Config providers (e.g. environment variables) may store newlines as literal \n.
+publicKeyPem = publicKeyPem.Replace("\\n", "\n");
+
+var rsaGateway = RSA.Create();
+rsaGateway.ImportFromPem(publicKeyPem);
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -28,7 +33,7 @@ builder.Services
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtSection["Issuer"],
             ValidAudience = jwtSection["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey = new RsaSecurityKey(rsaGateway),
             ClockSkew = TimeSpan.Zero
         };
     });

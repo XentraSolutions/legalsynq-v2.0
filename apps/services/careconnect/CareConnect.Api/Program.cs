@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using CareConnect.Api.Endpoints;
@@ -8,14 +9,17 @@ using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // JWT Authentication
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var signingKey = jwtSection["SigningKey"]
-    ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
+var ccPublicKeyPem = jwtSection["RsaPublicKey"]
+    ?? throw new InvalidOperationException("Jwt:RsaPublicKey is not configured.");
+ccPublicKeyPem = ccPublicKeyPem.Replace("\\n", "\n");
+
+var rsaCareConnect = RSA.Create();
+rsaCareConnect.ImportFromPem(ccPublicKeyPem);
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -29,7 +33,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey         = new RsaSecurityKey(rsaCareConnect),
             RoleClaimType            = ClaimTypes.Role
         };
     });

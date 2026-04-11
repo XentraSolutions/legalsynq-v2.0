@@ -27,8 +27,7 @@ public static class AuthEndpoints
         {
             try
             {
-                var ip = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
-                      ?? httpContext.Connection.RemoteIpAddress?.ToString();
+                var ip = httpContext.Connection.RemoteIpAddress?.ToString();
                 var response = await authService.LoginAsync(request, ip, ct);
                 return Results.Ok(response);
             }
@@ -41,7 +40,8 @@ public static class AuthEndpoints
                 return Results.Problem(ex.Message, statusCode: 400);
             }
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("auth");
 
         // ── GET /api/auth/me ─────────────────────────────────────────────────
         // Authenticated (Bearer JWT required).
@@ -100,8 +100,7 @@ public static class AuthEndpoints
                     Id        = userId,
                     Type      = ActorType.User,
                     Name      = name,
-                    IpAddress = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
-                             ?? httpContext.Connection.RemoteIpAddress?.ToString(),
+                    IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
                 },
                 Entity      = userId is not null ? new AuditEventEntityDto { Type = "User", Id = userId } : null,
                 Action      = "Logout",
@@ -134,8 +133,8 @@ public static class AuthEndpoints
         {
             if (string.IsNullOrWhiteSpace(body.Token))
                 return Results.BadRequest(new { error = "token is required." });
-            if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
-                return Results.BadRequest(new { error = "newPassword must be at least 8 characters." });
+            if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 12)
+                return Results.BadRequest(new { error = "newPassword must be at least 12 characters." });
 
             // Hash the raw token the same way InviteUser stored it.
             var tokenHash = Convert.ToHexString(
@@ -201,7 +200,8 @@ public static class AuthEndpoints
 
             return Results.Ok(new { message = "Invitation accepted. Your account is now active." });
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("auth");
 
         // ── POST /api/auth/change-password ───────────────────────────────────
         // Authenticated. Verifies the caller's current password then replaces it.
@@ -230,8 +230,8 @@ public static class AuthEndpoints
             if (string.IsNullOrWhiteSpace(body.CurrentPassword))
                 return Results.BadRequest(new { error = "currentPassword is required." });
 
-            if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
-                return Results.BadRequest(new { error = "newPassword must be at least 8 characters." });
+            if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 12)
+                return Results.BadRequest(new { error = "newPassword must be at least 12 characters." });
 
             if (body.CurrentPassword == body.NewPassword)
                 return Results.BadRequest(new { error = "New password must differ from the current password." });
@@ -267,8 +267,7 @@ public static class AuthEndpoints
                     Id        = user.Id.ToString(),
                     Type      = ActorType.User,
                     Name      = user.Email,
-                    IpAddress = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
-                             ?? httpContext.Connection.RemoteIpAddress?.ToString(),
+                    IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
                 },
                 Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
                 Action      = "PasswordChanged",
@@ -318,8 +317,7 @@ public static class AuthEndpoints
                 {
                     Id        = userIdStr,
                     Type      = ActorType.User,
-                    IpAddress = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
-                             ?? httpContext.Connection.RemoteIpAddress?.ToString(),
+                    IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
                 },
                 Entity         = new AuditEventEntityDto { Type = "User", Id = userIdStr! },
                 Action         = "AvatarSet",
@@ -364,8 +362,7 @@ public static class AuthEndpoints
                 {
                     Id        = userIdStr,
                     Type      = ActorType.User,
-                    IpAddress = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
-                             ?? httpContext.Connection.RemoteIpAddress?.ToString(),
+                    IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
                 },
                 Entity         = new AuditEventEntityDto { Type = "User", Id = userIdStr! },
                 Action         = "AvatarRemoved",
@@ -399,8 +396,8 @@ public static class AuthEndpoints
         {
             if (string.IsNullOrWhiteSpace(body.Token))
                 return Results.BadRequest(new { error = "token is required." });
-            if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
-                return Results.BadRequest(new { error = "newPassword must be at least 8 characters." });
+            if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 12)
+                return Results.BadRequest(new { error = "newPassword must be at least 12 characters." });
 
             var tokenHash = Convert.ToHexString(
                 System.Security.Cryptography.SHA256.HashData(
@@ -467,7 +464,8 @@ public static class AuthEndpoints
 
             return Results.Ok(new { message = "Password updated successfully." });
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("auth");
 
         // ── POST /api/auth/forgot-password ──────────────────────────────────
         // Anonymous. Self-service password reset request.
@@ -566,10 +564,10 @@ public static class AuthEndpoints
             return Results.Ok(new
             {
                 message = "If an account exists with that email, a password reset link has been generated.",
-                resetToken = rawToken,
             });
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("auth");
     }
 
     private record AcceptInviteRequest(string Token, string NewPassword);

@@ -1,8 +1,12 @@
-using System.Text;
+using System.Net;
+using System.Security.Cryptography;
+using System.Threading.RateLimiting;
 using Contracts;
+using Microsoft.AspNetCore.RateLimiting;
 using Identity.Api.Endpoints;
 using Identity.Infrastructure;
 using Identity.Infrastructure.Data;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -23,10 +27,15 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // Validation here is used only for the /auth/me endpoint (called by the Next.js BFF).
 // The gateway handles JWT validation for all other downstream service routes.
 var jwtSection   = builder.Configuration.GetSection("Jwt");
-var signingKey   = jwtSection["SigningKey"]
-    ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
+var publicKeyPem = jwtSection["RsaPublicKey"]
+    ?? throw new InvalidOperationException("Jwt:RsaPublicKey is not configured.");
+// Config providers (e.g. environment variables) may store newlines as literal \n.
+publicKeyPem = publicKeyPem.Replace("\\n", "\n");
 var issuer       = jwtSection["Issuer"]   ?? "legalsynq-identity";
 var audience     = jwtSection["Audience"] ?? "legalsynq-platform";
+
+var rsaValidator = RSA.Create();
+rsaValidator.ImportFromPem(publicKeyPem);
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -40,7 +49,7 @@ builder.Services
             ValidateAudience         = true,
             ValidAudience            = audience,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey         = new RsaSecurityKey(rsaValidator),
             ValidateLifetime         = true,
             ClockSkew                = TimeSpan.Zero,
             RoleClaimType            = System.Security.Claims.ClaimTypes.Role,
@@ -49,6 +58,23 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+
+// ── Auth-endpoint rate limiting ────────────────────────────────────────────
+// 20 requests / minute per IP on all anonymous auth routes (login, forgot-password,
+// accept-invite, password-reset/confirm). Reduces credential-stuffing and
+// token-enumeration risk. The limit is intentionally generous to avoid blocking
+// legitimate traffic; tighten per environment as needed.
+builder.Services.AddRateLimiter(opts =>
+{
+    opts.AddFixedWindowLimiter("auth", policy =>
+    {
+        policy.PermitLimit         = 20;
+        policy.Window              = TimeSpan.FromMinutes(1);
+        policy.QueueLimit          = 0;
+        policy.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+    });
+    opts.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
 
 var app = builder.Build();
 var env = app.Environment.EnvironmentName;
@@ -314,6 +340,24 @@ if (app.Environment.IsDevelopment())
 }
 
 // ── Middleware pipeline ───────────────────────────────────────────────────
+// ForwardedHeaders must run first so RemoteIpAddress reflects the real client IP
+// as set by the last trusted proxy (YARP gateway), not the spoofable leftmost value.
+var forwardedOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor,
+    // Only trust a single hop: the YARP gateway sits directly in front of this service.
+    ForwardLimit = 1,
+};
+// In production the gateway IP must be set so the middleware actually unwraps the header.
+// In development (loopback) the default KnownNetworks already covers 127.0.0.1/::1.
+var proxyIpRaw = app.Configuration["Gateway:ProxyIp"];
+if (!string.IsNullOrWhiteSpace(proxyIpRaw) && IPAddress.TryParse(proxyIpRaw, out var proxyIp))
+    forwardedOptions.KnownProxies.Add(proxyIp);
+
+app.UseForwardedHeaders(forwardedOptions);
+
+app.UseRateLimiter();
+
 // UseAuthentication + UseAuthorization must precede all endpoint maps
 app.UseAuthentication();
 app.UseAuthorization();

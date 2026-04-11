@@ -1,6 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
+using System.Security.Cryptography;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Microsoft.Extensions.Configuration;
@@ -8,11 +8,23 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace Identity.Infrastructure.Services;
 
-public class JwtTokenService : IJwtTokenService
+public sealed class JwtTokenService : IJwtTokenService, IDisposable
 {
     private readonly IConfiguration _configuration;
+    private readonly RsaSecurityKey _signingKey;
+    private readonly RSA _rsa;
 
-    public JwtTokenService(IConfiguration configuration) => _configuration = configuration;
+    public JwtTokenService(IConfiguration configuration)
+    {
+        _configuration = configuration;
+        var pem = configuration["Jwt:RsaPrivateKey"]
+            ?? throw new InvalidOperationException("Jwt:RsaPrivateKey is not configured.");
+        _rsa = RSA.Create();
+        _rsa.ImportFromPem(pem.Replace("\\n", "\n"));
+        _signingKey = new RsaSecurityKey(_rsa);
+    }
+
+    public void Dispose() => _rsa.Dispose();
 
     public (string Token, DateTime ExpiresAtUtc) GenerateToken(
         User user,
@@ -26,12 +38,9 @@ public class JwtTokenService : IJwtTokenService
 
         var issuer = section["Issuer"] ?? "legalsynq-identity";
         var audience = section["Audience"] ?? "legalsynq-platform";
-        var signingKey = section["SigningKey"]
-            ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
         var expiryMinutes = int.TryParse(section["ExpiryMinutes"], out var m) ? m : 60;
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var credentials = new SigningCredentials(_signingKey, SecurityAlgorithms.RsaSha256);
 
         var claims = new List<Claim>
         {

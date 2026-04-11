@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Identity.Application.Interfaces;
+using Microsoft.Extensions.Hosting;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
 using LegalSynq.AuditClient;
@@ -23,137 +24,141 @@ public static class AdminEndpoints
 {
     public static IEndpointRouteBuilder MapAdminEndpoints(this IEndpointRouteBuilder routes)
     {
+        // All admin routes require a valid, authenticated JWT.
+        // Defense-in-depth: enforced here at the service level independent of the gateway.
+        var adminGroup = routes.MapGroup("/api/admin").RequireAuthorization();
+
         // ── Tenants ──────────────────────────────────────────────────────────
-        routes.MapGet("/api/admin/tenants",           ListTenants);
-        routes.MapPost("/api/admin/tenants",          CreateTenant);
-        routes.MapGet("/api/admin/tenants/{id:guid}", GetTenant);
-        routes.MapPost("/api/admin/tenants/{id:guid}/entitlements/{productCode}", UpdateEntitlement);
-        routes.MapPatch("/api/admin/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings);
-        routes.MapPatch("/api/admin/tenants/{id:guid}/logo",             SetTenantLogo);
-        routes.MapDelete("/api/admin/tenants/{id:guid}/logo",            ClearTenantLogo);
-        routes.MapPost("/api/admin/tenants/{id:guid}/provisioning/retry", RetryProvisioning);
-        routes.MapPost("/api/admin/tenants/{id:guid}/verification/retry", RetryVerification);
+        adminGroup.MapGet("/tenants",           ListTenants);
+        adminGroup.MapPost("/tenants",          CreateTenant);
+        adminGroup.MapGet("/tenants/{id:guid}", GetTenant);
+        adminGroup.MapPost("/tenants/{id:guid}/entitlements/{productCode}", UpdateEntitlement);
+        adminGroup.MapPatch("/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings);
+        adminGroup.MapPatch("/tenants/{id:guid}/logo",             SetTenantLogo);
+        adminGroup.MapDelete("/tenants/{id:guid}/logo",            ClearTenantLogo);
+        adminGroup.MapPost("/tenants/{id:guid}/provisioning/retry", RetryProvisioning);
+        adminGroup.MapPost("/tenants/{id:guid}/verification/retry", RetryVerification);
 
         // ── Infrastructure DNS ──────────────────────────────────────────
-        routes.MapPost("/api/admin/dns/provision", ProvisionInfraSubdomain);
+        adminGroup.MapPost("/dns/provision", ProvisionInfraSubdomain);
 
         // ── Users ─────────────────────────────────────────────────────────
-        routes.MapGet("/api/admin/users",           ListUsers);
-        routes.MapGet("/api/admin/users/{id:guid}", GetUser);
+        adminGroup.MapGet("/users",           ListUsers);
+        adminGroup.MapGet("/users/{id:guid}", GetUser);
 
         // ── Roles ──────────────────────────────────────────────────────────
-        routes.MapGet("/api/admin/roles",           ListRoles);
-        routes.MapGet("/api/admin/roles/{id:guid}", GetRole);
+        adminGroup.MapGet("/roles",           ListRoles);
+        adminGroup.MapGet("/roles/{id:guid}", GetRole);
 
         // ── Audit Logs ────────────────────────────────────────────────────
-        routes.MapGet("/api/admin/audit",           ListAudit);
+        adminGroup.MapGet("/audit",           ListAudit);
 
         // ── Platform Settings (static seed — no DB table yet) ─────────────
-        routes.MapGet("/api/admin/settings",            ListSettings);
-        routes.MapPut("/api/admin/settings/{key}",      UpdateSetting);
+        adminGroup.MapGet("/settings",            ListSettings);
+        adminGroup.MapPut("/settings/{key}",      UpdateSetting);
 
         // ── Support Cases (not yet persisted — empty stubs) ───────────────
-        routes.MapGet("/api/admin/support",             ListSupport);
-        routes.MapGet("/api/admin/support/{id}",        GetSupport);
-        routes.MapPost("/api/admin/support",            CreateSupport);
-        routes.MapPost("/api/admin/support/{id}/notes", AddSupportNote);
-        routes.MapPatch("/api/admin/support/{id}/status", UpdateSupportStatus);
+        adminGroup.MapGet("/support",             ListSupport);
+        adminGroup.MapGet("/support/{id}",        GetSupport);
+        adminGroup.MapPost("/support",            CreateSupport);
+        adminGroup.MapPost("/support/{id}/notes", AddSupportNote);
+        adminGroup.MapPatch("/support/{id}/status", UpdateSupportStatus);
 
         // ── LSCC-010: Provider auto-provisioning — minimal org creation ──────
         // Internal service-to-service endpoint.  Token-gated at the gateway.
         // Creates a minimal PROVIDER Organization for a CareConnect provider.
         // Idempotent: returns the existing org if already provisioned.
-        routes.MapGet("/api/admin/organizations",           ListOrganizations);
-        routes.MapPost("/api/admin/organizations",          AdminEndpointsLscc010.CreateProviderOrganization);
-        routes.MapGet("/api/admin/organizations/{id:guid}", AdminEndpointsLscc010.GetOrganizationById);
-        routes.MapPut("/api/admin/organizations/{id:guid}", UpdateOrganization);
+        adminGroup.MapGet("/organizations",           ListOrganizations);
+        adminGroup.MapPost("/organizations",          AdminEndpointsLscc010.CreateProviderOrganization);
+        adminGroup.MapGet("/organizations/{id:guid}", AdminEndpointsLscc010.GetOrganizationById);
+        adminGroup.MapPut("/organizations/{id:guid}", UpdateOrganization);
 
         // ── Platform Foundation — Phase 1-6 ──────────────────────────────
-        routes.MapGet("/api/admin/organization-types",             ListOrganizationTypes);
-        routes.MapGet("/api/admin/organization-types/{id:guid}",   GetOrganizationType);
+        adminGroup.MapGet("/organization-types",             ListOrganizationTypes);
+        adminGroup.MapGet("/organization-types/{id:guid}",   GetOrganizationType);
 
-        routes.MapGet("/api/admin/relationship-types",             ListRelationshipTypes);
-        routes.MapGet("/api/admin/relationship-types/{id:guid}",   GetRelationshipType);
+        adminGroup.MapGet("/relationship-types",             ListRelationshipTypes);
+        adminGroup.MapGet("/relationship-types/{id:guid}",   GetRelationshipType);
 
-        routes.MapGet("/api/admin/organization-relationships",     ListOrganizationRelationships);
-        routes.MapGet("/api/admin/organization-relationships/{id:guid}", GetOrganizationRelationship);
-        routes.MapPost("/api/admin/organization-relationships",    CreateOrganizationRelationship);
-        routes.MapDelete("/api/admin/organization-relationships/{id:guid}", DeactivateOrganizationRelationship);
+        adminGroup.MapGet("/organization-relationships",     ListOrganizationRelationships);
+        adminGroup.MapGet("/organization-relationships/{id:guid}", GetOrganizationRelationship);
+        adminGroup.MapPost("/organization-relationships",    CreateOrganizationRelationship);
+        adminGroup.MapDelete("/organization-relationships/{id:guid}", DeactivateOrganizationRelationship);
 
-        routes.MapGet("/api/admin/product-org-type-rules",          ListProductOrgTypeRules);
+        adminGroup.MapGet("/product-org-type-rules",          ListProductOrgTypeRules);
         // Two URL variants served by the same handler — client uses the short form.
-        routes.MapGet("/api/admin/product-relationship-type-rules", ListProductRelationshipTypeRules);
-        routes.MapGet("/api/admin/product-rel-type-rules",          ListProductRelationshipTypeRules);
+        adminGroup.MapGet("/product-relationship-type-rules", ListProductRelationshipTypeRules);
+        adminGroup.MapGet("/product-rel-type-rules",          ListProductRelationshipTypeRules);
 
         // ── Legacy coverage (Phase G) ────────────────────────────────────────
-        routes.MapGet("/api/admin/legacy-coverage", GetLegacyCoverage);
+        adminGroup.MapGet("/legacy-coverage", GetLegacyCoverage);
 
         // ── Platform readiness summary (Phase 8) ─────────────────────────────
-        routes.MapGet("/api/admin/platform-readiness", GetPlatformReadiness);
+        adminGroup.MapGet("/platform-readiness", GetPlatformReadiness);
 
         // ── User lifecycle ────────────────────────────────────────────────────
         // Step 27 (Phase B): user deactivation — emits identity.user.deactivated.
-        routes.MapPatch("/api/admin/users/{id:guid}/deactivate",            DeactivateUser);
+        adminGroup.MapPatch("/users/{id:guid}/deactivate",            DeactivateUser);
 
         // UIX-002: activate user
-        routes.MapPost("/api/admin/users/{id:guid}/activate",               ActivateUser);
+        adminGroup.MapPost("/users/{id:guid}/activate",               ActivateUser);
 
         // UIX-002: invite user
-        routes.MapPost("/api/admin/users/invite",                           InviteUser);
+        adminGroup.MapPost("/users/invite",                           InviteUser);
 
         // UIX-002: resend invite
-        routes.MapPost("/api/admin/users/{id:guid}/resend-invite",          ResendInvite);
+        adminGroup.MapPost("/users/{id:guid}/resend-invite",          ResendInvite);
 
         // UIX-003-03: security / session admin actions
-        routes.MapPost("/api/admin/users/{id:guid}/lock",                   LockUser);
-        routes.MapPost("/api/admin/users/{id:guid}/unlock",                 UnlockUser);
-        routes.MapPost("/api/admin/users/{id:guid}/reset-password",         AdminResetPassword);
-        routes.MapPost("/api/admin/users/{id:guid}/set-password",           AdminSetPassword);
-        routes.MapPost("/api/admin/users/{id:guid}/force-logout",           ForceLogout);
-        routes.MapGet("/api/admin/users/{id:guid}/security",                GetUserSecurity);
+        adminGroup.MapPost("/users/{id:guid}/lock",                   LockUser);
+        adminGroup.MapPost("/users/{id:guid}/unlock",                 UnlockUser);
+        adminGroup.MapPost("/users/{id:guid}/reset-password",         AdminResetPassword);
+        adminGroup.MapPost("/users/{id:guid}/set-password",           AdminSetPassword);
+        adminGroup.MapPost("/users/{id:guid}/force-logout",           ForceLogout);
+        adminGroup.MapGet("/users/{id:guid}/security",                GetUserSecurity);
 
         // UIX-004: user activity audit trail (queries local AuditLogs by EntityId)
-        routes.MapGet("/api/admin/users/{id:guid}/activity",                GetUserActivity);
+        adminGroup.MapGet("/users/{id:guid}/activity",                GetUserActivity);
 
         // LSCC-01-003: Admin CareConnect provider provisioning
-        routes.MapGet("/api/admin/users/{id:guid}/careconnect-readiness",   GetCareConnectReadiness);
-        routes.MapPost("/api/admin/users/{id:guid}/provision-careconnect",  ProvisionForCareConnect);
+        adminGroup.MapGet("/users/{id:guid}/careconnect-readiness",   GetCareConnectReadiness);
+        adminGroup.MapPost("/users/{id:guid}/provision-careconnect",  ProvisionForCareConnect);
 
         // ── Role assignment ───────────────────────────────────────────────────
-        routes.MapPost("/api/admin/users/{id:guid}/roles",                  AssignRole);
-        routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}",  RevokeRole);
+        adminGroup.MapPost("/users/{id:guid}/roles",                  AssignRole);
+        adminGroup.MapDelete("/users/{id:guid}/roles/{roleId:guid}",  RevokeRole);
 
         // UIX-002-C: assignable roles with eligibility metadata
-        routes.MapGet("/api/admin/users/{id:guid}/assignable-roles",        GetAssignableRoles);
+        adminGroup.MapGet("/users/{id:guid}/assignable-roles",        GetAssignableRoles);
 
         // Phase I: scoped role summary for a user (non-global scope visibility)
-        routes.MapGet("/api/admin/users/{id:guid}/scoped-roles",            GetScopedRoles);
+        adminGroup.MapGet("/users/{id:guid}/scoped-roles",            GetScopedRoles);
 
         // ── Memberships ───────────────────────────────────────────────────────
         // UIX-002: assign user to organization, set primary, remove (scaffold)
-        routes.MapPost("/api/admin/users/{id:guid}/memberships",                                   AssignMembership);
-        routes.MapPost("/api/admin/users/{id:guid}/memberships/{membershipId:guid}/set-primary",   SetPrimaryMembership);
-        routes.MapDelete("/api/admin/users/{id:guid}/memberships/{membershipId:guid}",             RemoveMembership);
+        adminGroup.MapPost("/users/{id:guid}/memberships",                                   AssignMembership);
+        adminGroup.MapPost("/users/{id:guid}/memberships/{membershipId:guid}/set-primary",   SetPrimaryMembership);
+        adminGroup.MapDelete("/users/{id:guid}/memberships/{membershipId:guid}",             RemoveMembership);
 
         // ── Groups ────────────────────────────────────────────────────────────
         // UIX-002: tenant-scoped group management
-        routes.MapGet("/api/admin/groups",                              ListGroups);
-        routes.MapGet("/api/admin/groups/{id:guid}",                    GetGroup);
-        routes.MapPost("/api/admin/groups",                             CreateGroup);
-        routes.MapPost("/api/admin/groups/{id:guid}/members",           AddGroupMember);
-        routes.MapDelete("/api/admin/groups/{id:guid}/members/{userId:guid}", RemoveGroupMember);
+        adminGroup.MapGet("/groups",                              ListGroups);
+        adminGroup.MapGet("/groups/{id:guid}",                    GetGroup);
+        adminGroup.MapPost("/groups",                             CreateGroup);
+        adminGroup.MapPost("/groups/{id:guid}/members",           AddGroupMember);
+        adminGroup.MapDelete("/groups/{id:guid}/members/{userId:guid}", RemoveGroupMember);
 
         // ── Permissions catalog ───────────────────────────────────────────────
         // UIX-002: read-only capability/permission catalog
-        routes.MapGet("/api/admin/permissions",                         ListPermissions);
+        adminGroup.MapGet("/permissions",                         ListPermissions);
 
         // ── Role permission management (UIX-005) ──────────────────────────────
-        routes.MapGet("/api/admin/roles/{id:guid}/permissions",                              GetRolePermissions);
-        routes.MapPost("/api/admin/roles/{id:guid}/permissions",                             AssignRolePermission);
-        routes.MapDelete("/api/admin/roles/{id:guid}/permissions/{capabilityId:guid}",       RevokeRolePermission);
+        adminGroup.MapGet("/roles/{id:guid}/permissions",                              GetRolePermissions);
+        adminGroup.MapPost("/roles/{id:guid}/permissions",                             AssignRolePermission);
+        adminGroup.MapDelete("/roles/{id:guid}/permissions/{capabilityId:guid}",       RevokeRolePermission);
 
         // ── User effective permissions (UIX-005) ─────────────────────────────
-        routes.MapGet("/api/admin/users/{id:guid}/permissions",                              GetUserEffectivePermissions);
+        adminGroup.MapGet("/users/{id:guid}/permissions",                              GetUserEffectivePermissions);
 
         return routes;
     }
@@ -168,6 +173,9 @@ public static class AdminEndpoints
         int    pageSize = 20,
         string search   = "")
     {
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        page     = Math.Max(page, 1);
+
         var q = db.Tenants
             .Include(t => t.Users)
             .Include(t => t.Organizations)
@@ -709,24 +717,48 @@ public static class AdminEndpoints
         const string symbols = "!@#$%&*";
         var all = upper + lower + digits + symbols;
 
-        var rng = System.Security.Cryptography.RandomNumberGenerator.Create();
-        var bytes = new byte[16];
-        rng.GetBytes(bytes);
+        // Use rejection sampling to avoid modulo bias.
+        static char PickUnbiased(string charset, byte[] pool, ref int pos)
+        {
+            int limit = 256 - (256 % charset.Length);
+            byte b;
+            do
+            {
+                if (pos >= pool.Length)
+                {
+                    System.Security.Cryptography.RandomNumberGenerator.Fill(pool);
+                    pos = 0;
+                }
+                b = pool[pos++];
+            } while (b >= limit);
+            return charset[b % charset.Length];
+        }
+
+        var pool = new byte[64];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(pool);
+        int cursor = 0;
 
         var chars = new char[12];
-        chars[0]  = upper  [bytes[0]  % upper.Length];
-        chars[1]  = lower  [bytes[1]  % lower.Length];
-        chars[2]  = digits [bytes[2]  % digits.Length];
-        chars[3]  = symbols[bytes[3]  % symbols.Length];
+        // Guarantee at least one character from each required class.
+        chars[0] = PickUnbiased(upper,   pool, ref cursor);
+        chars[1] = PickUnbiased(lower,   pool, ref cursor);
+        chars[2] = PickUnbiased(digits,  pool, ref cursor);
+        chars[3] = PickUnbiased(symbols, pool, ref cursor);
         for (int i = 4; i < 12; i++)
-            chars[i] = all[bytes[i] % all.Length];
+            chars[i] = PickUnbiased(all, pool, ref cursor);
 
-        // Shuffle
-        rng.GetBytes(bytes);
+        // Fisher-Yates shuffle with unbiased index selection.
         for (int i = chars.Length - 1; i > 0; i--)
         {
-            int j = bytes[i] % (i + 1);
-            (chars[i], chars[j]) = (chars[j], chars[i]);
+            int limit = 256 - (256 % (i + 1));
+            byte b;
+            do
+            {
+                if (cursor >= pool.Length) { System.Security.Cryptography.RandomNumberGenerator.Fill(pool); cursor = 0; }
+                b = pool[cursor++];
+            } while (b >= limit);
+            int swapIdx = b % (i + 1);
+            (chars[i], chars[swapIdx]) = (chars[swapIdx], chars[i]);
         }
         return new string(chars);
     }
@@ -961,6 +993,9 @@ public static class AdminEndpoints
         string tenantId = "",
         string status   = "")
     {
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        page     = Math.Max(page, 1);
+
         var q = db.Users
             .Include(u => u.Tenant)
             .AsQueryable();
@@ -1380,12 +1415,13 @@ public static class AdminEndpoints
     /// Emits identity.user.password_reset_triggered audit event.
     /// </summary>
     private static async Task<IResult> AdminResetPassword(
-        Guid              id,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        IAuditEventClient auditClient,
-        ILoggerFactory loggerFactory,
-        CancellationToken ct)
+        Guid                id,
+        ClaimsPrincipal     caller,
+        IdentityDbContext   db,
+        IAuditEventClient   auditClient,
+        ILoggerFactory      loggerFactory,
+        IHostEnvironment    env,
+        CancellationToken   ct)
     {
         var logger = loggerFactory.CreateLogger(nameof(AdminEndpoints));
 
@@ -1416,13 +1452,20 @@ public static class AdminEndpoints
         db.PasswordResetTokens.Add(resetToken);
         await db.SaveChangesAsync(ct);
 
-        // In dev: log the raw token so it can be used without email infrastructure.
-        // In production this would trigger an email to the user.
-        logger.LogInformation(
-            "[UIX-003-03] Password reset triggered for user {UserId} ({Email}) in tenant {TenantId}. " +
-            "Reset token (dev only — never log in production): {RawToken}. " +
-            "Token expires at {ExpiresAt:O}.",
-            user.Id, user.Email, user.TenantId, rawToken, resetToken.ExpiresAtUtc);
+        // In dev: log the raw token for convenience without email infrastructure.
+        // In production the token must be delivered to the user via email (never logged).
+        if (env.IsDevelopment())
+        {
+            logger.LogDebug(
+                "[UIX-003-03] DEV password reset token for user {UserId} ({Email}): {RawToken} (expires {ExpiresAt:O}).",
+                user.Id, user.Email, rawToken, resetToken.ExpiresAtUtc);
+        }
+        else
+        {
+            logger.LogInformation(
+                "[UIX-003-03] Admin-triggered password reset for user {UserId} ({Email}) in tenant {TenantId}. Reset token ID: {TokenId}.",
+                user.Id, user.Email, user.TenantId, resetToken.Id);
+        }
 
         var now = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
@@ -1474,8 +1517,8 @@ public static class AdminEndpoints
         IAuditEventClient auditClient,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
-            return Results.BadRequest(new { error = "Password must be at least 8 characters." });
+        if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 12)
+            return Results.BadRequest(new { error = "Password must be at least 12 characters." });
 
         var user = await db.Users
             .Include(u => u.Tenant)
@@ -1833,6 +1876,9 @@ public static class AdminEndpoints
         int page     = 1,
         int pageSize = 20)
     {
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        page     = Math.Max(page, 1);
+
         var total = await db.Roles.CountAsync();
 
         // UIX-005: materialize roles first, then join capability counts
@@ -1959,6 +2005,9 @@ public static class AdminEndpoints
         string entityType = "",
         string actorType  = "")
     {
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        page     = Math.Max(page, 1);
+
         var q = db.AuditLogs.AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -2191,6 +2240,9 @@ public static class AdminEndpoints
         string sourceOrgId = "",
         bool   activeOnly = true)
     {
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        page     = Math.Max(page, 1);
+
         var q = db.OrganizationRelationships
             .Include(r => r.SourceOrganization)
             .Include(r => r.TargetOrganization)
@@ -3446,6 +3498,9 @@ public static class AdminEndpoints
         int    pageSize = 50,
         CancellationToken ct = default)
     {
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        page     = Math.Max(page, 1);
+
         var q = db.TenantGroups
             .Include(g => g.Members)
             .AsQueryable();

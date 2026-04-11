@@ -34,7 +34,7 @@ public static class DependencyInjection
         services.AddScoped<IUserRepository, UserRepository>();
 
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
-        services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddSingleton<IJwtTokenService, JwtTokenService>();
 
         services.AddAuditEventClient(configuration);
 

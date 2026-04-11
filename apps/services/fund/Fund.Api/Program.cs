@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using System.Text;
+using System.Security.Cryptography;
 using BuildingBlocks.Authorization;
 using Contracts;
 using Fund.Api.Endpoints;
@@ -20,8 +20,12 @@ builder.Logging
     .AddConsole();
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
-var signingKey = jwtSection["SigningKey"]
-    ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
+var publicKeyPem = jwtSection["RsaPublicKey"]
+    ?? throw new InvalidOperationException("Jwt:RsaPublicKey is not configured.");
+publicKeyPem = publicKeyPem.Replace("\\n", "\n");
+
+var rsaFund = RSA.Create();
+rsaFund.ImportFromPem(publicKeyPem);
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -36,7 +40,7 @@ builder.Services
             ValidateIssuerSigningKey = true,
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            IssuerSigningKey         = new RsaSecurityKey(rsaFund),
             RoleClaimType            = ClaimTypes.Role,
             ClockSkew                = TimeSpan.Zero
         };
