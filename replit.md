@@ -3397,6 +3397,22 @@ Final closure of the legacy authorization model. All frontend and backend consum
 
 **Report:** `analysis/LS-COR-AUT-009-report.md`
 
+## LS-COR-AUT-010 — Permission Governance + Enforcement Migration — COMPLETED 2026-04-11
+
+**Capability Entity Governance:** Added `Category` (max 100), `UpdatedAtUtc`, `CreatedBy`, `UpdatedBy` governance columns. Domain methods: `Update()`, `Deactivate()`, `Activate()`. Naming convention: `^[a-z][a-z0-9]*(?:\:[a-z][a-z0-9]*)*$` (`{domain}:{action}` lowercase colon-separated). Validated in `IsValidCode()` and `Create()`. Seed data enriched with Category values.
+
+**Permission CRUD API:** `POST /api/admin/permissions` (create with naming convention + duplicate validation, accepts `productCode` or `productId`), `PATCH /api/admin/permissions/{id}` (update name/description/category), `DELETE /api/admin/permissions/{id}` (soft deactivate). Admin-only. Audit events: `permission.created` (Info), `permission.updated` (Info), `permission.deactivated` (Warning) via inline `auditClient.IngestAsync()`.
+
+**Enforcement Migration (Fund):** Migrated `Fund.Api/Endpoints/ApplicationEndpoints.cs` from `RequireProductRole` → `RequirePermission`. Permission mapping: `application:create` (create/update/submit), `application:evaluate` (begin-review), `application:approve` (approve), `application:decline` (deny). Admin bypass preserved.
+
+**Admin UI CRUD:** Control Center permissions page upgraded from read-only to full CRUD. Components: `PermissionCreateDialog` (product selector, code validation, create form), `PermissionRowActions` (edit dialog, deactivate confirmation), updated `PermissionCatalogTable` (Category + Actions columns). Server actions in `permissions/actions.ts` with `requirePlatformAdmin()` guard. API client methods: `permissions.create()`, `permissions.update()`, `permissions.deactivate()`.
+
+**Type/Mapper Updates:** `PermissionCatalogItem` extended with `category`, `productCode`, `updatedAtUtc`. `mapPermissionCatalogItem` updated. API client CRUD methods added with `revalidateTag(CACHE_TAGS.roles)`.
+
+**Tests:** 39 new tests (107 total): naming convention (valid/invalid/null), `Capability.Create` (fields, normalization, exceptions, whitespace), `Update` (fields, validation), `Deactivate`/`Activate` (state transitions), `HasPermission` claim checks (match, non-match, empty, case-insensitive, multiple, cross-product blocking), admin bypass checks.
+
+**Report:** `analysis/LS-COR-AUT-010-report.md`
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`

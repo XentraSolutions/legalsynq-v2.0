@@ -151,8 +151,11 @@ public static class AdminEndpoints
         // ── Authorization debug (LS-COR-AUT-008) ───────────────────────────
         routes.MapGet("/api/admin/users/{id:guid}/access-debug",                             GetAccessDebug);
 
-        // ── Permission catalog by product code (LS-COR-AUT-009) ──────────────
+        // ── Permission catalog management (LS-COR-AUT-010) ────────────────────
         routes.MapGet("/api/admin/permissions/by-product/{productCode}",                     ListPermissionsByProduct);
+        routes.MapPost("/api/admin/permissions",                                             CreatePermission);
+        routes.MapPatch("/api/admin/permissions/{id:guid}",                                  UpdatePermission);
+        routes.MapDelete("/api/admin/permissions/{id:guid}",                                 DeactivatePermission);
 
         return routes;
     }
@@ -3448,9 +3451,13 @@ public static class AdminEndpoints
                 code        = c.Code,
                 name        = c.Name,
                 description = c.Description,
+                category    = c.Category,
                 productId   = c.ProductId,
+                productCode = c.Product.Code,
                 productName = c.Product.Name,
                 isActive    = c.IsActive,
+                createdAtUtc = c.CreatedAtUtc,
+                updatedAtUtc = c.UpdatedAtUtc,
             })
             .ToListAsync(ct);
 
@@ -3850,13 +3857,177 @@ public static class AdminEndpoints
                 code = c.Code,
                 name = c.Name,
                 description = c.Description,
+                category = c.Category,
                 productCode = c.Product.Code,
                 productName = c.Product.Name,
                 isActive = c.IsActive,
+                createdAtUtc = c.CreatedAtUtc,
+                updatedAtUtc = c.UpdatedAtUtc,
             })
             .ToListAsync(ct);
 
         return Results.Ok(new { items = capabilities, totalCount = capabilities.Count });
+    }
+
+    // ── LS-COR-AUT-010: Permission catalog CRUD ─────────────────────────────
+
+    private record CreatePermissionRequest(string Code, string Name, string? Description, string? Category, string? ProductCode = null, Guid? ProductId = null);
+
+    private static async Task<IResult> CreatePermission(
+        CreatePermissionRequest body,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        IAuditEventClient auditClient,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin") && !caller.IsInRole("TenantAdmin"))
+            return Results.Forbid();
+
+        Product? product = null;
+        if (!string.IsNullOrWhiteSpace(body.ProductCode))
+            product = await db.Products.FirstOrDefaultAsync(p => p.Code == body.ProductCode, ct);
+        else if (body.ProductId.HasValue)
+            product = await db.Products.FirstOrDefaultAsync(p => p.Id == body.ProductId.Value, ct);
+
+        if (product is null)
+            return Results.BadRequest(new { error = "Invalid product. Provide a valid productCode or productId." });
+
+        if (!Capability.IsValidCode(body.Code))
+            return Results.BadRequest(new { error = $"Permission code must follow naming convention '{{domain}}:{{action}}' (lowercase, colon-separated). Got: '{body.Code}'." });
+
+        var normalizedCode = body.Code.Trim().ToLowerInvariant();
+        var exists = await db.Capabilities.AnyAsync(c => c.Code == normalizedCode, ct);
+        if (exists)
+            return Results.Conflict(new { error = $"Permission code '{normalizedCode}' already exists." });
+
+        var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid? callerId = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
+
+        var capability = Capability.Create(product.Id, body.Code, body.Name, body.Description, body.Category, callerId);
+        db.Capabilities.Add(capability);
+        await db.SaveChangesAsync(ct);
+
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "permission.created",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = auditNow,
+            Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "Permission", Id = capability.Id.ToString() },
+            Action        = "PermissionCreated",
+            Description   = $"Permission '{normalizedCode}' created for product '{product.Code}'",
+            After         = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                id = capability.Id, code = normalizedCode, name = body.Name, productCode = product.Code, category = body.Category,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "permission.created", capability.Id.ToString()),
+        });
+
+        return Results.Created($"/api/admin/permissions/{capability.Id}", new
+        {
+            id = capability.Id, code = normalizedCode, name = capability.Name,
+            description = capability.Description, category = capability.Category,
+            productCode = product.Code, productName = product.Name,
+            isActive = capability.IsActive, createdAtUtc = capability.CreatedAtUtc,
+        });
+    }
+
+    private record UpdatePermissionRequest(string Name, string? Description, string? Category);
+
+    private static async Task<IResult> UpdatePermission(
+        Guid id,
+        UpdatePermissionRequest body,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        IAuditEventClient auditClient,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin") && !caller.IsInRole("TenantAdmin"))
+            return Results.Forbid();
+
+        var capability = await db.Capabilities.Include(c => c.Product).FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (capability is null)
+            return Results.NotFound(new { error = "Permission not found." });
+
+        var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid? callerId = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
+
+        var before = new { name = capability.Name, description = capability.Description, category = capability.Category };
+        capability.Update(body.Name, body.Description, body.Category, callerId);
+        await db.SaveChangesAsync(ct);
+
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "permission.updated",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = auditNow,
+            Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "Permission", Id = id.ToString() },
+            Action        = "PermissionUpdated",
+            Description   = $"Permission '{capability.Code}' updated",
+            Before        = System.Text.Json.JsonSerializer.Serialize(before),
+            After         = System.Text.Json.JsonSerializer.Serialize(new { name = body.Name, description = body.Description, category = body.Category }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "permission.updated", id.ToString()),
+        });
+
+        return Results.Ok(new
+        {
+            id = capability.Id, code = capability.Code, name = capability.Name,
+            description = capability.Description, category = capability.Category,
+            productCode = capability.Product.Code, productName = capability.Product.Name,
+            isActive = capability.IsActive, updatedAtUtc = capability.UpdatedAtUtc,
+        });
+    }
+
+    private static async Task<IResult> DeactivatePermission(
+        Guid id,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        IAuditEventClient auditClient,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin") && !caller.IsInRole("TenantAdmin"))
+            return Results.Forbid();
+
+        var capability = await db.Capabilities.Include(c => c.Product).FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (capability is null)
+            return Results.NotFound(new { error = "Permission not found." });
+
+        if (!capability.IsActive)
+            return Results.Ok(new { message = "Permission already deactivated." });
+
+        var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid? callerId = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
+
+        capability.Deactivate(callerId);
+        await db.SaveChangesAsync(ct);
+
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "permission.deactivated",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Severity      = SeverityLevel.Warning,
+            OccurredAtUtc = auditNow,
+            Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "Permission", Id = id.ToString() },
+            Action        = "PermissionDeactivated",
+            Description   = $"Permission '{capability.Code}' deactivated for product '{capability.Product.Code}'",
+            Metadata      = System.Text.Json.JsonSerializer.Serialize(new { code = capability.Code, productCode = capability.Product.Code }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "permission.deactivated", id.ToString()),
+        });
+
+        return Results.NoContent();
     }
 
     // ── UIX-003-01: Caller-based tenant boundary enforcement ─────────────────

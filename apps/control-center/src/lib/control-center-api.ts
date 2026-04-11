@@ -726,9 +726,43 @@ export const controlCenterServerApi = {
         300,
         [CACHE_TAGS.roles],
       );
-      // Backend returns { items: [...], totalCount: N }
       const paged = mapPagedResponse(raw, mapPermissionCatalogItem);
       return paged.items;
+    },
+
+    create: async (payload: {
+      code: string;
+      name: string;
+      description?: string;
+      category?: string;
+      productCode: string;
+    }): Promise<PermissionCatalogItem> => {
+      const raw = await apiClient.post<unknown>(
+        '/identity/api/admin/permissions',
+        payload,
+      );
+      revalidateTag(CACHE_TAGS.roles);
+      return mapPermissionCatalogItem(raw);
+    },
+
+    update: async (id: string, payload: {
+      name?: string;
+      description?: string;
+      category?: string;
+    }): Promise<PermissionCatalogItem> => {
+      const raw = await apiClient.patch<unknown>(
+        `/identity/api/admin/permissions/${encodeURIComponent(id)}`,
+        payload,
+      );
+      revalidateTag(CACHE_TAGS.roles);
+      return mapPermissionCatalogItem(raw);
+    },
+
+    deactivate: async (id: string): Promise<void> => {
+      await apiClient.del(
+        `/identity/api/admin/permissions/${encodeURIComponent(id)}`,
+      );
+      revalidateTag(CACHE_TAGS.roles);
     },
   },
 

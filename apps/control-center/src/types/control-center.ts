@@ -232,9 +232,12 @@ export interface PermissionCatalogItem {
   code:        string;
   name:        string;
   description?: string;
+  category?:   string;
   productId:   string;
   productName: string;
+  productCode: string;
   isActive:    boolean;
+  updatedAtUtc?: string;
 }
 
 // ── Roles & Permissions ───────────────────────────────────────────────────────

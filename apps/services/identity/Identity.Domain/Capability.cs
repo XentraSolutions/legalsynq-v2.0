@@ -1,14 +1,24 @@
+using System.Text.RegularExpressions;
+
 namespace Identity.Domain;
 
 public class Capability
 {
+    private static readonly Regex NamingConvention = new(
+        @"^[a-z][a-z0-9]*(?:\:[a-z][a-z0-9]*)*$",
+        RegexOptions.Compiled);
+
     public Guid Id { get; private set; }
     public Guid ProductId { get; private set; }
     public string Code { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
     public string? Description { get; private set; }
+    public string? Category { get; private set; }
     public bool IsActive { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
+    public DateTime? UpdatedAtUtc { get; private set; }
+    public Guid? CreatedBy { get; private set; }
+    public Guid? UpdatedBy { get; private set; }
 
     public Product Product { get; private set; } = null!;
     public ICollection<RoleCapability> RoleCapabilities { get; private set; } = [];
@@ -16,24 +26,62 @@ public class Capability
 
     private Capability() { }
 
+    public static bool IsValidCode(string code) =>
+        !string.IsNullOrWhiteSpace(code) && NamingConvention.IsMatch(code.Trim());
+
     public static Capability Create(
         Guid productId,
         string code,
         string name,
-        string? description = null)
+        string? description = null,
+        string? category = null,
+        Guid? createdBy = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var normalizedCode = code.Trim().ToLowerInvariant();
+        if (!NamingConvention.IsMatch(normalizedCode))
+            throw new ArgumentException(
+                $"Permission code '{normalizedCode}' does not follow the naming convention '{{domain}}:{{action}}' (lowercase, colon-separated).",
+                nameof(code));
 
         return new Capability
         {
             Id = Guid.NewGuid(),
             ProductId = productId,
-            Code = code.Trim().ToLowerInvariant(),
+            Code = normalizedCode,
             Name = name.Trim(),
             Description = description?.Trim(),
+            Category = category?.Trim(),
             IsActive = true,
-            CreatedAtUtc = DateTime.UtcNow
+            CreatedAtUtc = DateTime.UtcNow,
+            CreatedBy = createdBy
         };
+    }
+
+    public void Update(string name, string? description, string? category, Guid? updatedBy = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        Name = name.Trim();
+        Description = description?.Trim();
+        Category = category?.Trim();
+        UpdatedAtUtc = DateTime.UtcNow;
+        UpdatedBy = updatedBy;
+    }
+
+    public void Deactivate(Guid? updatedBy = null)
+    {
+        IsActive = false;
+        UpdatedAtUtc = DateTime.UtcNow;
+        UpdatedBy = updatedBy;
+    }
+
+    public void Activate(Guid? updatedBy = null)
+    {
+        IsActive = true;
+        UpdatedAtUtc = DateTime.UtcNow;
+        UpdatedBy = updatedBy;
     }
 }

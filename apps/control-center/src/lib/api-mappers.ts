@@ -483,9 +483,12 @@ export function mapPermissionCatalogItem(raw: unknown): PermissionCatalogItem {
     code:        str(r, 'code',        'code',        ''),
     name:        str(r, 'name',        'name',        ''),
     description: optStr(r, 'description', 'description'),
+    category:    optStr(r, 'category',    'category'),
     productId:   str(r, 'product_id',  'productId',   ''),
     productName: str(r, 'product_name','productName',  ''),
+    productCode: str(r, 'product_code','productCode',  ''),
     isActive:    bool(r, 'is_active',  'isActive',    true),
+    updatedAtUtc: optStr(r, 'updated_at_utc', 'updatedAtUtc'),
   };
 }
 
