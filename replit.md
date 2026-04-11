@@ -3328,6 +3328,34 @@ Final closure of the legacy authorization model. All frontend and backend consum
 
 **Report:** `analysis/LS-COR-AUT-006A-report.md`
 
+## LS-COR-AUT-007 — Enforcement Completion + Hardening — COMPLETED 2026-04-11
+
+**Fund Enforcement:** `ApplicationEndpoints` group-level `.RequireProductAccess(ProductCodes.SynqFund)` + role-specific filters: create/update/submit → `SYNQFUND_REFERRER`; begin-review/approve/deny → `SYNQFUND_FUNDER`.
+
+**CareConnect:** Confirmed all non-admin endpoints already enforced with `.RequireProductAccess(ProductCodes.SynqCareConnect)`. Admin endpoints correctly use `PlatformOrTenantAdmin` (admins bypass product checks via `IsTenantAdminOrAbove()`).
+
+**Legacy Table Removal:**
+- Deleted `TenantGroup.cs`, `GroupMembership.cs` entity files and EF configurations
+- Removed `[Obsolete]` DbSets from `IdentityDbContext`
+- Migration `20260411000001_DropLegacyGroupTables.cs` drops both tables
+- Snapshot fully cleaned of entity blocks, FK relationships, and navigation blocks
+
+**ScopedRoleAssignment GLOBAL-Only:**
+- `ScopeTypes` simplified to single `Global` constant with `IsValid()` validator
+- `Create()` rejects non-GLOBAL scopes with `ArgumentException`, forces Org/Product IDs to null
+- `AdminEndpoints.AssignRole` blocks non-GLOBAL at API layer
+- Diagnostic endpoint updated to use string literals for deprecated scope types
+
+**Security Fix — HasProductAccess:**
+- `ProductRoleClaimExtensions.HasProductAccess` now requires non-empty role segment (rejects `"SYNQ_FUND:"`)
+- Previously only checked `StartsWith(prefix)` — empty role segment bypassed access check
+
+**Effective Access UI:** `EffectivePermissionsPanel` enhanced with Direct (blue) vs Group (purple) source attribution badges, `SourceSummary` component, color-coded legend.
+
+**Tests:** 45 xUnit tests total (20 original + 8 ScopedRoleAssignment domain + 17 claim hardening including empty-role-segment security fix)
+
+**Report:** `analysis/LS-COR-AUT-007-report.md`
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`

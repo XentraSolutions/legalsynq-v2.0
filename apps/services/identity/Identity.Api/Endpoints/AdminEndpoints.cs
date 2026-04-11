@@ -2625,65 +2625,36 @@ public static class AdminEndpoints
             }
         }
 
-        // Phase I: validate scope context
+        // LS-COR-AUT-007: ScopedRoleAssignment restricted to GLOBAL scope only.
+        // Product-scoped roles use UserRoleAssignment/GroupRoleAssignment instead.
         var scopeType = body.ScopeType ?? ScopedRoleAssignment.ScopeTypes.Global;
         if (!ScopedRoleAssignment.ScopeTypes.IsValid(scopeType))
-            return Results.BadRequest(new { error = $"Invalid ScopeType '{scopeType}'. Valid values: {string.Join(", ", ScopedRoleAssignment.ScopeTypes.All)}." });
+            return Results.BadRequest(new
+            {
+                error = "SCOPE_TYPE_RESTRICTED",
+                message = $"ScopedRoleAssignment only supports GLOBAL scope. Received: '{scopeType}'. " +
+                          "Use product role assignment endpoints for product-scoped roles.",
+            });
 
-        if (scopeType == ScopedRoleAssignment.ScopeTypes.Organization && !body.OrganizationId.HasValue)
-            return Results.BadRequest(new { error = "OrganizationId is required when ScopeType is ORGANIZATION." });
-
-        if (scopeType == ScopedRoleAssignment.ScopeTypes.Product && !body.ProductId.HasValue)
-            return Results.BadRequest(new { error = "ProductId is required when ScopeType is PRODUCT." });
-
-        if (scopeType == ScopedRoleAssignment.ScopeTypes.Relationship && !body.OrganizationRelationshipId.HasValue)
-            return Results.BadRequest(new { error = "OrganizationRelationshipId is required when ScopeType is RELATIONSHIP." });
-
-        // Validate referenced entities for non-global scopes
-        if (body.OrganizationId.HasValue)
-        {
-            var orgExists = await db.Organizations.AnyAsync(o => o.Id == body.OrganizationId.Value);
-            if (!orgExists)
-                return Results.NotFound(new { error = $"Organization '{body.OrganizationId.Value}' not found." });
-        }
-        if (body.ProductId.HasValue)
-        {
-            var productExists = await db.Products.AnyAsync(p => p.Id == body.ProductId.Value);
-            if (!productExists)
-                return Results.NotFound(new { error = $"Product '{body.ProductId.Value}' not found." });
-        }
-        if (body.OrganizationRelationshipId.HasValue)
-        {
-            var relExists = await db.OrganizationRelationships.AnyAsync(r => r.Id == body.OrganizationRelationshipId.Value && r.IsActive);
-            if (!relExists)
-                return Results.NotFound(new { error = $"Active OrganizationRelationship '{body.OrganizationRelationshipId.Value}' not found." });
-        }
-
-        // Conflict check: same user + same role + same scope type + same scope context
+        // Conflict check: same user + same role + GLOBAL scope
         var alreadyAssigned = await db.ScopedRoleAssignments
             .AnyAsync(s =>
                 s.UserId     == id &&
                 s.RoleId     == body.RoleId &&
                 s.IsActive   &&
-                s.ScopeType  == scopeType &&
-                s.OrganizationId           == body.OrganizationId &&
-                s.ProductId                == body.ProductId &&
-                s.OrganizationRelationshipId == body.OrganizationRelationshipId);
+                s.ScopeType  == ScopedRoleAssignment.ScopeTypes.Global);
         if (alreadyAssigned)
             return Results.Conflict(new { error = "An identical scoped role assignment already exists for this user." });
 
         var now = DateTime.UtcNow;
 
-        // Phase G/I: single write — ScopedRoleAssignment only.
+        // LS-COR-AUT-007: GLOBAL scope only — no org/product/relationship context.
         var sra = ScopedRoleAssignment.Create(
-            userId:                    id,
-            roleId:                    body.RoleId,
-            scopeType:                 scopeType,
-            tenantId:                  user.TenantId,
-            organizationId:            body.OrganizationId,
-            organizationRelationshipId: body.OrganizationRelationshipId,
-            productId:                 body.ProductId,
-            assignedByUserId:          body.AssignedByUserId);
+            userId:           id,
+            roleId:           body.RoleId,
+            scopeType:        ScopedRoleAssignment.ScopeTypes.Global,
+            tenantId:         user.TenantId,
+            assignedByUserId: body.AssignedByUserId);
         db.ScopedRoleAssignments.Add(sra);
 
         await db.SaveChangesAsync();
@@ -3034,10 +3005,10 @@ public static class AdminEndpoints
             scopeTypeCounts.FirstOrDefault(g => g.ScopeType == t)?.Count ?? 0;
 
         var scopedGlobal       = ScopeCount(ScopedRoleAssignment.ScopeTypes.Global);
-        var scopedOrg          = ScopeCount(ScopedRoleAssignment.ScopeTypes.Organization);
-        var scopedProduct      = ScopeCount(ScopedRoleAssignment.ScopeTypes.Product);
-        var scopedRelationship = ScopeCount(ScopedRoleAssignment.ScopeTypes.Relationship);
-        var scopedTenant       = ScopeCount(ScopedRoleAssignment.ScopeTypes.Tenant);
+        var scopedOrg          = ScopeCount("ORGANIZATION");
+        var scopedProduct      = ScopeCount("PRODUCT");
+        var scopedRelationship = ScopeCount("RELATIONSHIP");
+        var scopedTenant       = ScopeCount("TENANT");
 
         return Results.Ok(new
         {

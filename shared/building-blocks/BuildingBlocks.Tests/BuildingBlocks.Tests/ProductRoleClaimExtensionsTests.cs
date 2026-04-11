@@ -168,4 +168,63 @@ public class ProductRoleClaimExtensionsTests
         var principal = CreatePrincipal(productRoles: ["synq_fund:synqfund_referrer"]);
         Assert.True(principal.HasProductRole("SYNQ_FUND", ["SYNQFUND_REFERRER"]));
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("NOCOLON")]
+    [InlineData(":MISSING_PRODUCT")]
+    [InlineData("MISSING_ROLE:")]
+    public void HasProductAccess_MalformedClaim_ReturnsFalse(string claimValue)
+    {
+        var principal = CreatePrincipal(productRoles: [claimValue]);
+        Assert.False(principal.HasProductAccess("SYNQ_CARECONNECT"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("NOCOLON")]
+    [InlineData(":MISSING_PRODUCT")]
+    [InlineData("MISSING_ROLE:")]
+    public void HasProductRole_MalformedClaim_ReturnsFalse(string claimValue)
+    {
+        var principal = CreatePrincipal(productRoles: [claimValue]);
+        Assert.False(principal.HasProductRole("SYNQ_CARECONNECT", ["CARECONNECT_REFERRER"]));
+    }
+
+    [Fact]
+    public void HasProductAccess_MultipleColonsClaim_UsesFirstColonAsSeparator()
+    {
+        var principal = CreatePrincipal(productRoles: ["SYNQ_CARECONNECT:ROLE:EXTRA"]);
+        Assert.True(principal.HasProductAccess("SYNQ_CARECONNECT"));
+    }
+
+    [Fact]
+    public void GetProductRoles_EmptyClaimsReturnsEmpty()
+    {
+        var principal = CreatePrincipal();
+        var result = principal.GetProductRoles();
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void HasProductRole_EmptyAllowedRoles_ReturnsFalse()
+    {
+        var principal = CreatePrincipal(productRoles: ["SYNQ_CARECONNECT:CARECONNECT_REFERRER"]);
+        Assert.False(principal.HasProductRole("SYNQ_CARECONNECT", []));
+    }
+
+    [Fact]
+    public void HasProductAccess_EmptyRoleSegment_ReturnsFalse()
+    {
+        var principal = CreatePrincipal(productRoles: ["SYNQ_FUND:"]);
+        Assert.False(principal.HasProductAccess("SYNQ_FUND"));
+    }
+
+    [Fact]
+    public void HasProductAccess_WhitespaceRoleSegment_ReturnsTrue()
+    {
+        var principal = CreatePrincipal(productRoles: ["SYNQ_FUND: "]);
+        Assert.True(principal.HasProductAccess("SYNQ_FUND"));
+    }
 }

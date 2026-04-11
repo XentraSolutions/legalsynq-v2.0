@@ -14,7 +14,12 @@ public static class ProductRoleClaimExtensions
 
         var prefix = productCode + ":";
         return principal.FindAll("product_roles")
-            .Any(c => c.Value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+            .Any(c =>
+            {
+                var val = c.Value;
+                return val.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    && val.Length > prefix.Length;
+            });
     }
 
     public static bool HasProductRole(this ClaimsPrincipal principal, string productCode, IReadOnlyList<string> requiredRoles)

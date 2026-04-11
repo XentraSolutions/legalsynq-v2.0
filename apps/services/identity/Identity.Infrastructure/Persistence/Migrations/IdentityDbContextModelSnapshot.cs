@@ -502,39 +502,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Identity.Domain.GroupMembership", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid?>("AddedByUserId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("GroupId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("JoinedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("GroupId", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("GroupMemberships", (string)null);
-                });
-
             modelBuilder.Entity("Identity.Domain.GroupProductAccess", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1943,46 +1910,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantDomains", (string)null);
                 });
 
-            modelBuilder.Entity("Identity.Domain.TenantGroup", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("CreatedByUserId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId");
-
-                    b.HasIndex("TenantId", "Name")
-                        .IsUnique();
-
-                    b.ToTable("TenantGroups", (string)null);
-                });
-
             modelBuilder.Entity("Identity.Domain.TenantProduct", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -2352,25 +2279,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Navigation("Product");
                 });
 
-            modelBuilder.Entity("Identity.Domain.GroupMembership", b =>
-                {
-                    b.HasOne("Identity.Domain.TenantGroup", "Group")
-                        .WithMany("Members")
-                        .HasForeignKey("GroupId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Identity.Domain.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Group");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("Identity.Domain.Organization", b =>
                 {
                     b.HasOne("Identity.Domain.OrganizationType", "OrganizationTypeRef")
@@ -2600,17 +2508,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("Identity.Domain.TenantGroup", b =>
-                {
-                    b.HasOne("Identity.Domain.Tenant", "Tenant")
-                        .WithMany()
-                        .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Tenant");
-                });
-
             modelBuilder.Entity("Identity.Domain.TenantProduct", b =>
                 {
                     b.HasOne("Identity.Domain.Product", "Product")
@@ -2737,11 +2634,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Navigation("TenantProducts");
 
                     b.Navigation("Users");
-                });
-
-            modelBuilder.Entity("Identity.Domain.TenantGroup", b =>
-                {
-                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("Identity.Domain.User", b =>

@@ -42,12 +42,7 @@ public class IdentityDbContext : DbContext
     public DbSet<ScopedRoleAssignment>          ScopedRoleAssignments          => Set<ScopedRoleAssignment>();
 
     // UIX-002: User Management
-    // [DEPRECATED — LS-COR-AUT-006A] Legacy group entities — retained for EF migration only.
-    // No active runtime code should reference these. Use AccessGroups/AccessGroupMemberships instead.
-    #pragma warning disable CS0618
-    public DbSet<TenantGroup>                   TenantGroups                   => Set<TenantGroup>();
-    public DbSet<GroupMembership>               GroupMemberships               => Set<GroupMembership>();
-    #pragma warning restore CS0618
+    // LS-COR-AUT-007: TenantGroups/GroupMemberships tables dropped — see migration.
     public DbSet<UserInvitation>                UserInvitations                => Set<UserInvitation>();
 
     // UIX-003-03: Security / admin-triggered password reset
