@@ -168,3 +168,9 @@ id = "J36Ifqawltp8GhfMbN4Z9"
 uri = "file://analysis/LS-COR-AUT-005-report.md"
 type = "text"
 title = "LS-COR-AUT-005 Report — Admin UI Access Management Layer"
+
+[[outputs]]
+id = "F9_4oWT95_NUQIzVYzLYD"
+uri = "file://analysis/core-rebuild/LS-COR-AUT-010A-report.md"
+type = "text"
+title = "LS-COR-AUT-010A — Permission Model Alignment Report"
