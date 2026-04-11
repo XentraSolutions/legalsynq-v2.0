@@ -151,6 +151,9 @@ public static class AdminEndpoints
         // ── Authorization debug (LS-COR-AUT-008) ───────────────────────────
         routes.MapGet("/api/admin/users/{id:guid}/access-debug",                             GetAccessDebug);
 
+        // ── Permission catalog by product code (LS-COR-AUT-009) ──────────────
+        routes.MapGet("/api/admin/permissions/by-product/{productCode}",                     ListPermissionsByProduct);
+
         return routes;
     }
 
@@ -3812,7 +3815,48 @@ public static class AdminEndpoints
 
             productRolesFlat = effectiveAccess.ProductRolesFlat,
             tenantRoles = effectiveAccess.TenantRoles,
+
+            permissions = effectiveAccess.Permissions,
+            permissionSources = effectiveAccess.PermissionSources.Select(p => new
+            {
+                permissionCode = p.PermissionCode,
+                productCode = p.ProductCode,
+                source = p.Source,
+                viaRoleCode = p.ViaRoleCode,
+                groupId = p.GroupId,
+                groupName = p.GroupName,
+            }),
         });
+    }
+
+    // ── LS-COR-AUT-009: Permission catalog by product code ──────────────────
+
+    private static async Task<IResult> ListPermissionsByProduct(
+        string productCode,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin") && !caller.IsInRole("TenantAdmin"))
+            return Results.Forbid();
+
+        var capabilities = await db.Capabilities
+            .Where(c => c.IsActive && c.Product.Code == productCode)
+            .Include(c => c.Product)
+            .OrderBy(c => c.Code)
+            .Select(c => new
+            {
+                id = c.Id,
+                code = c.Code,
+                name = c.Name,
+                description = c.Description,
+                productCode = c.Product.Code,
+                productName = c.Product.Name,
+                isActive = c.IsActive,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { items = capabilities, totalCount = capabilities.Count });
     }
 
     // ── UIX-003-01: Caller-based tenant boundary enforcement ─────────────────

@@ -58,4 +58,10 @@ public class ProductAccessDeniedException : ForbiddenException
             requiredRoles: requiredRoles,
             organizationId: organizationId,
             denialReason: "User does not have the required product role for this organization.");
+
+    public static ProductAccessDeniedException MissingPermission(string permissionCode) =>
+        new(
+            errorCode: "PERMISSION_DENIED",
+            message: $"Required permission '{permissionCode}' is not granted.",
+            denialReason: "User does not have the required permission.");
 }

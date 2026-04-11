@@ -21,4 +21,12 @@ public static class ProductAuthorizationExtensions
     public static RouteHandlerBuilder RequireOrgProductAccess(
         this RouteHandlerBuilder builder, string productCode) =>
         builder.AddEndpointFilter(new RequireOrgProductAccessFilter(productCode));
+
+    public static RouteHandlerBuilder RequirePermission(
+        this RouteHandlerBuilder builder, string permissionCode) =>
+        builder.AddEndpointFilter(new RequirePermissionFilter(permissionCode));
+
+    public static RouteGroupBuilder RequirePermission(
+        this RouteGroupBuilder builder, string permissionCode) =>
+        builder.AddEndpointFilter(new RequirePermissionFilter(permissionCode));
 }

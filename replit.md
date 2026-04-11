@@ -622,9 +622,10 @@ Declarative endpoint filters enforce product-level access control on all CareCon
 - `RequireProductAccessFilter` — coarse product check via `HasProductAccess(productCode)`
 - `RequireProductRoleFilter` — product-scoped role check via `HasProductRole(productCode, roles)`
 - `RequireOrgProductAccessFilter` — org-scoped check, stores `org_id` in `HttpContext.Items["ProductAuth:OrgId"]`
-- `ProductAuthorizationExtensions` — fluent `.RequireProductAccess()`, `.RequireProductRole()`, `.RequireOrgProductAccess()` on `RouteHandlerBuilder`/`RouteGroupBuilder`
+- `RequirePermissionFilter` — capability/permission check via `HasPermission(permissionCode)` (LS-COR-AUT-009)
+- `ProductAuthorizationExtensions` — fluent `.RequireProductAccess()`, `.RequireProductRole()`, `.RequireOrgProductAccess()`, `.RequirePermission()` on `RouteHandlerBuilder`/`RouteGroupBuilder`
 
-**Claim extensions** (`ProductRoleClaimExtensions`): `HasProductAccess(productCode)` checks if any `product_roles` claim starts with `{productCode}:`. `HasProductRole(productCode, roles)` checks for exact `{productCode}:{role}` match. `IsTenantAdminOrAbove()` bypasses all product checks. LS-COR-AUT-006: removed static `ProductToRolesMap` — product prefix is now parsed dynamically from `PRODUCT:Role` format claims.
+**Claim extensions** (`ProductRoleClaimExtensions`): `HasProductAccess(productCode)` checks if any `product_roles` claim starts with `{productCode}:`. `HasProductRole(productCode, roles)` checks for exact `{productCode}:{role}` match. `HasPermission(permissionCode)` checks `permissions` claim (case-insensitive). `GetPermissions()` returns all permission claims. `IsTenantAdminOrAbove()` bypasses all product/permission checks. LS-COR-AUT-006: removed static `ProductToRolesMap` — product prefix is now parsed dynamically from `PRODUCT:Role` format claims.
 
 **Bypass rules**: PlatformAdmin and TenantAdmin always bypass product filters. Product-level enforcement applies to Member role users.
 
@@ -3375,6 +3376,26 @@ Final closure of the legacy authorization model. All frontend and backend consum
 **Tests:** 57 xUnit tests total (45 prior + 12 new observability tests: cache key format, AuthzDecision fields, JWT claim format, empty-role-segment, access-debug source attribution).
 
 **Report:** `analysis/LS-COR-AUT-008-report.md`
+
+## LS-COR-AUT-009 — Permission / Capability Layer — COMPLETED 2026-04-11
+
+**Permission Resolution:** `EffectiveAccessService.ResolvePermissionsAsync()` resolves capabilities from UserRoleAssignment → RoleCapabilityAssignment (Direct) and GroupRoleAssignment → ProductRole → RoleCapability (Inherited). Format: `{PRODUCT_CODE}.{capability_code}` (e.g., `SYNQ_CARECONNECT.referral:create`). Cross-product consistency enforced (`RoleProductId == CapabilityProductId`).
+
+**JWT Claims:** `permissions` multi-value claim added alongside `product_roles`. Backward compatible — existing token consumers unaffected.
+
+**RequirePermissionFilter:** New `IEndpointFilter` checking `permissions` JWT claim with admin bypass. Extension: `.RequirePermission("PRODUCT.capability")`. Structured `PermissionDecision` logging (DENY=Warning, ALLOW=Information). Error code: `PERMISSION_DENIED`.
+
+**Claim Extensions:** `HasPermission(permissionCode)`, `GetPermissions()` on `ClaimsPrincipal` (case-insensitive, admin bypass).
+
+**API Endpoints:** `GET /api/admin/permissions/by-product/{productCode}` — filtered permission catalog (admin-only). General catalog already at `GET /api/admin/permissions` (UIX-002).
+
+**Access Debug:** `/access-debug` response extended with `permissions` (flat list) and `permissionSources` (with provenance: permissionCode, productCode, source, viaRoleCode, groupId, groupName).
+
+**Admin UI:** `AccessExplanationPanel` shows Permissions section grouped by product with capability code, via-role, and source badge. JWT Claims Preview shows separate `product_roles` and `permissions` sub-sections.
+
+**Tests:** 68 xUnit tests total (57 prior + 11 new permission tests: HasPermission match/case-insensitive/no-match/no-claims, admin bypass, cross-product isolation, partial code rejection, GetPermissions, multiple permissions).
+
+**Report:** `analysis/LS-COR-AUT-009-report.md`
 
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`

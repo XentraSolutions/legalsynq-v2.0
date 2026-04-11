@@ -371,17 +371,28 @@ export interface AccessDebugEntitlement {
   status:      string;
 }
 
+export interface AccessDebugPermissionEntry {
+  permissionCode: string;
+  productCode:    string;
+  source:         string;
+  viaRoleCode?:   string;
+  groupId?:       string;
+  groupName?:     string;
+}
+
 export interface AccessDebugResult {
-  userId:           string;
-  tenantId:         string;
-  accessVersion:    number;
-  products:         AccessDebugProductEntry[];
-  roles:            AccessDebugRoleEntry[];
-  systemRoles:      AccessDebugSystemRole[];
-  groups:           AccessDebugGroup[];
-  entitlements:     AccessDebugEntitlement[];
-  productRolesFlat: string[];
-  tenantRoles:      string[];
+  userId:            string;
+  tenantId:          string;
+  accessVersion:     number;
+  products:          AccessDebugProductEntry[];
+  roles:             AccessDebugRoleEntry[];
+  systemRoles:       AccessDebugSystemRole[];
+  groups:            AccessDebugGroup[];
+  entitlements:      AccessDebugEntitlement[];
+  productRolesFlat:  string[];
+  tenantRoles:       string[];
+  permissions:       string[];
+  permissionSources: AccessDebugPermissionEntry[];
 }
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────

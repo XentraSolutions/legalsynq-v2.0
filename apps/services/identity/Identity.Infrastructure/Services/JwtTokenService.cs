@@ -21,7 +21,8 @@ public class JwtTokenService : IJwtTokenService
         Organization? organization = null,
         IEnumerable<string>? productRoles = null,
         int? sessionTimeoutMinutes = null,
-        IEnumerable<string>? productCodes = null)
+        IEnumerable<string>? productCodes = null,
+        IEnumerable<string>? permissions = null)
     {
         var section = _configuration.GetSection("Jwt");
 
@@ -72,6 +73,9 @@ public class JwtTokenService : IJwtTokenService
 
         foreach (var pr in productRoles ?? [])
             claims.Add(new Claim("product_roles", pr));
+
+        foreach (var perm in permissions ?? [])
+            claims.Add(new Claim("permissions", perm));
 
         // Embed per-tenant idle session timeout so GetCurrentUserAsync needs no DB lookup.
         var effectiveTimeout = sessionTimeoutMinutes ?? 30;

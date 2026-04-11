@@ -190,6 +190,52 @@ export function AccessExplanationPanel({ data, fetchError }: AccessExplanationPa
           </div>
         )}
 
+        {/* Permissions (LS-COR-AUT-009) */}
+        {data.permissionSources && data.permissionSources.length > 0 && (
+          <div className="px-4 py-3">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Permissions
+              <span className="ml-1.5 text-[10px] font-normal text-gray-400">({data.permissions?.length ?? 0})</span>
+            </h4>
+            <div className="space-y-2">
+              {(() => {
+                const byProduct = data.permissionSources.reduce<Record<string, typeof data.permissionSources>>((acc, p) => {
+                  (acc[p.productCode] ??= []).push(p);
+                  return acc;
+                }, {});
+                return Object.entries(byProduct).map(([prodCode, perms]) => (
+                  <div key={prodCode} className="border border-gray-200 rounded-md">
+                    <div className="px-3 py-2 bg-gray-50 rounded-t-md">
+                      <span className="text-xs font-medium text-gray-700">{productLabel(prodCode)}</span>
+                      <span className="ml-1.5 text-[10px] text-gray-400 font-mono">{prodCode}</span>
+                    </div>
+                    <div className="px-3 pb-2">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="text-gray-400 text-left">
+                            <th className="pb-1 font-medium">Permission</th>
+                            <th className="pb-1 font-medium">Via Role</th>
+                            <th className="pb-1 font-medium">Source</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {perms.map((p, i) => (
+                            <tr key={i} className="text-gray-700">
+                              <td className="py-1.5 font-mono text-[11px]">{p.permissionCode.split('.').pop()}</td>
+                              <td className="py-1.5 text-[11px] text-gray-500">{p.viaRoleCode ?? '—'}</td>
+                              <td className="py-1.5">{sourceBadge(p.source, p.groupName ?? null)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
+
         {/* Groups */}
         {data.groups.length > 0 && (
           <div className="px-4 py-3">
@@ -220,14 +266,29 @@ export function AccessExplanationPanel({ data, fetchError }: AccessExplanationPa
         )}
 
         {/* JWT Claims Preview */}
-        {data.productRolesFlat.length > 0 && (
+        {(data.productRolesFlat.length > 0 || (data.permissions && data.permissions.length > 0)) && (
           <div className="px-4 py-3">
-            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">JWT Product Claims</h4>
-            <div className="bg-gray-50 rounded-md p-2 max-h-32 overflow-y-auto">
-              {data.productRolesFlat.map((claim, i) => (
-                <div key={i} className="text-[11px] font-mono text-gray-600 py-0.5">{claim}</div>
-              ))}
-            </div>
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">JWT Claims Preview</h4>
+            {data.productRolesFlat.length > 0 && (
+              <div className="mb-2">
+                <span className="text-[10px] font-medium text-gray-400 uppercase">product_roles</span>
+                <div className="bg-gray-50 rounded-md p-2 max-h-28 overflow-y-auto mt-0.5">
+                  {data.productRolesFlat.map((claim, i) => (
+                    <div key={i} className="text-[11px] font-mono text-gray-600 py-0.5">{claim}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {data.permissions && data.permissions.length > 0 && (
+              <div>
+                <span className="text-[10px] font-medium text-gray-400 uppercase">permissions</span>
+                <div className="bg-gray-50 rounded-md p-2 max-h-28 overflow-y-auto mt-0.5">
+                  {data.permissions.map((perm, i) => (
+                    <div key={i} className="text-[11px] font-mono text-gray-600 py-0.5">{perm}</div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

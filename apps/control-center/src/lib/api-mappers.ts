@@ -691,6 +691,18 @@ export function mapAccessDebugResult(raw: unknown): AccessDebugResult {
     }),
     productRolesFlat: asArr(r['productRolesFlat'] ?? r['product_roles_flat']).map((v) => String(v ?? '')),
     tenantRoles:      asArr(r['tenantRoles'] ?? r['tenant_roles']).map((v) => String(v ?? '')),
+    permissions:      asArr(r['permissions']).map((v) => String(v ?? '')),
+    permissionSources: asArr(r['permissionSources'] ?? r['permission_sources']).map((p) => {
+      const o = asObj(p);
+      return {
+        permissionCode: str(o, 'permissionCode', 'permission_code', ''),
+        productCode:    str(o, 'productCode', 'product_code', ''),
+        source:         str(o, 'source', 'source', ''),
+        viaRoleCode:    strOrNull(o, 'viaRoleCode', 'via_role_code') ?? undefined,
+        groupId:        strOrNull(o, 'groupId', 'group_id') ?? undefined,
+        groupName:      strOrNull(o, 'groupName', 'group_name') ?? undefined,
+      };
+    }),
   };
 }
 

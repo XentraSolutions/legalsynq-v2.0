@@ -85,7 +85,7 @@ public class EffectiveAccessService : IEffectiveAccessService
         if (activeEntitlements.Count == 0)
         {
             _logger.LogDebug("No active entitlements for tenant {TenantId}.", tenantId);
-            return new EffectiveAccessResult([], new(), [], [], [], []);
+            return new EffectiveAccessResult([], new(), [], [], [], [], [], []);
         }
 
         var entitlementSet = new HashSet<string>(activeEntitlements, StringComparer.OrdinalIgnoreCase);
@@ -192,13 +192,92 @@ public class EffectiveAccessService : IEffectiveAccessService
                 productRolesFlat.Add($"{product}:{role}");
         }
 
+        var (permissions, permissionSources) = await ResolvePermissionsAsync(
+            tenantId, userId, effectiveProductSet, directRoles, inheritedRoles, activeGroups, ct);
+
         _logger.LogDebug(
-            "Effective access for user {UserId} in tenant {TenantId}: {ProductCount} products ({DirectCount} direct, {InheritedCount} inherited), {RoleCount} product roles, {TenantRoleCount} tenant roles.",
+            "Effective access for user {UserId} in tenant {TenantId}: {ProductCount} products ({DirectCount} direct, {InheritedCount} inherited), {RoleCount} product roles, {TenantRoleCount} tenant roles, {PermissionCount} permissions.",
             userId, tenantId, effectiveProducts.Count,
             productSources.Count(s => s.Source == "Direct"),
             productSources.Count(s => s.Source == "Inherited"),
-            productRolesFlat.Count, tenantRoles.Count);
+            productRolesFlat.Count, tenantRoles.Count, permissions.Count);
 
-        return new EffectiveAccessResult(effectiveProducts, productRoles, productRolesFlat, tenantRoles, productSources, roleSources);
+        return new EffectiveAccessResult(effectiveProducts, productRoles, productRolesFlat, tenantRoles, productSources, roleSources, permissions, permissionSources);
+    }
+
+    private async Task<(List<string> Permissions, List<EffectivePermissionEntry> Sources)> ResolvePermissionsAsync(
+        Guid tenantId,
+        Guid userId,
+        HashSet<string> effectiveProductSet,
+        List<UserRoleAssignment> directRoles,
+        List<GroupRoleAssignment> inheritedRoles,
+        Dictionary<Guid, string> activeGroups,
+        CancellationToken ct)
+    {
+        var allRoleCodes = directRoles
+            .Where(r => r.ProductCode != null)
+            .Select(r => r.RoleCode)
+            .Concat(inheritedRoles.Where(r => r.ProductCode != null).Select(r => r.RoleCode))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (allRoleCodes.Count == 0)
+            return ([], []);
+
+        var productRoleCapabilities = await _db.ProductRoles
+            .Where(pr => allRoleCodes.Contains(pr.Code) && pr.IsActive)
+            .Join(_db.RoleCapabilities,
+                pr => pr.Id,
+                rc => rc.ProductRoleId,
+                (pr, rc) => new { pr.Code, pr.ProductId, pr.Product, rc.CapabilityId })
+            .Join(_db.Capabilities.Where(c => c.IsActive),
+                x => x.CapabilityId,
+                c => c.Id,
+                (x, c) => new
+                {
+                    RoleCode = x.Code,
+                    ProductCode = x.Product.Code,
+                    RoleProductId = x.ProductId,
+                    CapabilityProductId = c.ProductId,
+                    CapabilityCode = c.Code,
+                })
+            .Where(x => x.RoleProductId == x.CapabilityProductId)
+            .ToListAsync(ct);
+
+        var permissionSources = new List<EffectivePermissionEntry>();
+        var seenPermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var cap in productRoleCapabilities)
+        {
+            if (!effectiveProductSet.Contains(cap.ProductCode)) continue;
+
+            var permCode = $"{cap.ProductCode}.{cap.CapabilityCode}";
+
+            foreach (var dr in directRoles.Where(r =>
+                string.Equals(r.RoleCode, cap.RoleCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(r.ProductCode, cap.ProductCode, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (seenPermissions.Add(permCode + ":Direct"))
+                    permissionSources.Add(new EffectivePermissionEntry(permCode, cap.ProductCode, "Direct", cap.RoleCode));
+            }
+
+            foreach (var ir in inheritedRoles.Where(r =>
+                string.Equals(r.RoleCode, cap.RoleCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(r.ProductCode, cap.ProductCode, StringComparison.OrdinalIgnoreCase)))
+            {
+                activeGroups.TryGetValue(ir.GroupId, out var gn);
+                var sourceKey = $"{permCode}:Inherited:{ir.GroupId}";
+                if (seenPermissions.Add(sourceKey))
+                    permissionSources.Add(new EffectivePermissionEntry(permCode, cap.ProductCode, "Inherited", cap.RoleCode, ir.GroupId, gn));
+            }
+        }
+
+        var permissions = permissionSources
+            .Select(p => p.PermissionCode)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return (permissions, permissionSources);
     }
 }

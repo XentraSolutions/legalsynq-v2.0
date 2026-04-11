@@ -116,7 +116,8 @@ public class AuthService : IAuthService
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
             userWithRoles, tenant, roleNames, org, effectiveAccess.ProductRolesFlat,
             sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
-            productCodes: effectiveAccess.Products);
+            productCodes: effectiveAccess.Products,
+            permissions: effectiveAccess.Permissions);
 
         // Phase H: derive org_type code from OrganizationTypeId FK (authoritative) when available;
         // fall back to the stored OrgType string for compatibility.

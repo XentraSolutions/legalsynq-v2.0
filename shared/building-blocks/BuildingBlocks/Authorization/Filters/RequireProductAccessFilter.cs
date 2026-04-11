@@ -240,3 +240,73 @@ public sealed class RequireOrgProductAccessFilter : IEndpointFilter
         }
     }
 }
+
+public sealed class RequirePermissionFilter : IEndpointFilter
+{
+    private readonly string _permissionCode;
+
+    public RequirePermissionFilter(string permissionCode)
+    {
+        _permissionCode = permissionCode;
+    }
+
+    public async ValueTask<object?> InvokeAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next)
+    {
+        var httpContext = context.HttpContext;
+        var user = httpContext.User;
+
+        if (user.Identity?.IsAuthenticated != true)
+            return Results.Unauthorized();
+
+        var userId = user.FindFirst("sub")?.Value;
+        var tenantId = user.FindFirst("tenant_id")?.Value;
+        var accessVersion = user.FindFirst("access_version")?.Value;
+        var path = httpContext.Request.Path.Value;
+        var method = httpContext.Request.Method;
+
+        if (user.IsTenantAdminOrAbove())
+        {
+            LogPermissionDecision(httpContext, "ALLOW", userId, tenantId, path, method,
+                _permissionCode, "AdminBypass", accessVersion);
+            return await next(context);
+        }
+
+        if (!user.HasPermission(_permissionCode))
+        {
+            LogPermissionDecision(httpContext, "DENY", userId, tenantId, path, method,
+                _permissionCode, "MissingPermission", accessVersion);
+
+            return ProductAccessDeniedResult.Create(
+                ProductAccessDeniedException.MissingPermission(_permissionCode));
+        }
+
+        LogPermissionDecision(httpContext, "ALLOW", userId, tenantId, path, method,
+            _permissionCode, "PermissionClaim", accessVersion);
+
+        return await next(context);
+    }
+
+    private static void LogPermissionDecision(
+        HttpContext ctx, string result, string? userId, string? tenantId,
+        string? path, string method, string permission,
+        string source, string? accessVersion)
+    {
+        var logger = ctx.RequestServices.GetService(typeof(ILogger<RequirePermissionFilter>)) as ILogger;
+        if (logger == null) return;
+
+        if (result == "DENY")
+        {
+            logger.LogWarning(
+                "PermissionDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} permission={Permission} source={Source} accessVersion={AccessVersion}",
+                result, userId, tenantId, method, path, permission, source, accessVersion);
+        }
+        else
+        {
+            logger.LogInformation(
+                "PermissionDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} permission={Permission} source={Source} accessVersion={AccessVersion}",
+                result, userId, tenantId, method, path, permission, source, accessVersion);
+        }
+    }
+}
