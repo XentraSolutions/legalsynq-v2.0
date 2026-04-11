@@ -174,3 +174,9 @@ id = "F9_4oWT95_NUQIzVYzLYD"
 uri = "file://analysis/core-rebuild/LS-COR-AUT-010A-report.md"
 type = "text"
 title = "LS-COR-AUT-010A — Permission Model Alignment Report"
+
+[[outputs]]
+id = "j3lTyjGWlSRDwh3_-4vPU"
+uri = "file://analysis/LS-COR-AUT-010A-report.md"
+type = "text"
+title = "LS-COR-AUT-010A — Permission Model Alignment Report"
