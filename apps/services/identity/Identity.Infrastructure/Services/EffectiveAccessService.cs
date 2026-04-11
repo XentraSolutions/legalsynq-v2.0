@@ -224,51 +224,51 @@ public class EffectiveAccessService : IEffectiveAccessService
         if (allRoleCodes.Count == 0)
             return ([], []);
 
-        var productRoleCapabilities = await _db.ProductRoles
+        var rolePermissions = await _db.ProductRoles
             .Where(pr => allRoleCodes.Contains(pr.Code) && pr.IsActive)
-            .Join(_db.RoleCapabilities,
+            .Join(_db.RolePermissionMappings,
                 pr => pr.Id,
                 rc => rc.ProductRoleId,
-                (pr, rc) => new { pr.Code, pr.ProductId, pr.Product, rc.CapabilityId })
-            .Join(_db.Capabilities.Where(c => c.IsActive),
-                x => x.CapabilityId,
+                (pr, rc) => new { pr.Code, pr.ProductId, pr.Product, rc.PermissionId })
+            .Join(_db.Permissions.Where(c => c.IsActive),
+                x => x.PermissionId,
                 c => c.Id,
                 (x, c) => new
                 {
                     RoleCode = x.Code,
                     ProductCode = x.Product.Code,
                     RoleProductId = x.ProductId,
-                    CapabilityProductId = c.ProductId,
-                    CapabilityCode = c.Code,
+                    PermissionProductId = c.ProductId,
+                    PermissionCode = c.Code,
                 })
-            .Where(x => x.RoleProductId == x.CapabilityProductId)
+            .Where(x => x.RoleProductId == x.PermissionProductId)
             .ToListAsync(ct);
 
         var permissionSources = new List<EffectivePermissionEntry>();
         var seenPermissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var cap in productRoleCapabilities)
+        foreach (var perm in rolePermissions)
         {
-            if (!effectiveProductSet.Contains(cap.ProductCode)) continue;
+            if (!effectiveProductSet.Contains(perm.ProductCode)) continue;
 
-            var permCode = $"{cap.ProductCode}.{cap.CapabilityCode}";
+            var permCode = perm.PermissionCode;
 
             foreach (var dr in directRoles.Where(r =>
-                string.Equals(r.RoleCode, cap.RoleCode, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(r.ProductCode, cap.ProductCode, StringComparison.OrdinalIgnoreCase)))
+                string.Equals(r.RoleCode, perm.RoleCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(r.ProductCode, perm.ProductCode, StringComparison.OrdinalIgnoreCase)))
             {
                 if (seenPermissions.Add(permCode + ":Direct"))
-                    permissionSources.Add(new EffectivePermissionEntry(permCode, cap.ProductCode, "Direct", cap.RoleCode));
+                    permissionSources.Add(new EffectivePermissionEntry(permCode, perm.ProductCode, "Direct", perm.RoleCode));
             }
 
             foreach (var ir in inheritedRoles.Where(r =>
-                string.Equals(r.RoleCode, cap.RoleCode, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(r.ProductCode, cap.ProductCode, StringComparison.OrdinalIgnoreCase)))
+                string.Equals(r.RoleCode, perm.RoleCode, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(r.ProductCode, perm.ProductCode, StringComparison.OrdinalIgnoreCase)))
             {
                 activeGroups.TryGetValue(ir.GroupId, out var gn);
                 var sourceKey = $"{permCode}:Inherited:{ir.GroupId}";
                 if (seenPermissions.Add(sourceKey))
-                    permissionSources.Add(new EffectivePermissionEntry(permCode, cap.ProductCode, "Inherited", cap.RoleCode, ir.GroupId, gn));
+                    permissionSources.Add(new EffectivePermissionEntry(permCode, perm.ProductCode, "Inherited", perm.RoleCode, ir.GroupId, gn));
             }
         }
 

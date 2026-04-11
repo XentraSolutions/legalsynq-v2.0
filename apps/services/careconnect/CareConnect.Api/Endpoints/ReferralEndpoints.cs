@@ -171,7 +171,7 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
             request.ReferringOrganizationId = ctx.OrgId;
             var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/referrals/{referral.Id}", referral);
@@ -190,8 +190,8 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            var requiredCapability = ReferralWorkflowRules.RequiredCapabilityFor(request.Status);
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredCapability, ct);
+            var requiredPermission = ReferralWorkflowRules.RequiredPermissionFor(request.Status);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredPermission, ct);
 
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
             var bypassTenant = ctx.IsPlatformAdmin || isProviderOrg;
@@ -229,7 +229,7 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
 
             try
             {
@@ -259,7 +259,7 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
 
             try
             {

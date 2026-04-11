@@ -34,7 +34,7 @@ const MODULES: ModuleCard[] = [
   {
     href:        CCRoutes.roles,
     title:       'Roles & Permissions',
-    description: 'Inspect product roles and their capability assignments.',
+    description: 'Inspect product roles and their permission assignments.',
   },
   {
     href:        CCRoutes.products,

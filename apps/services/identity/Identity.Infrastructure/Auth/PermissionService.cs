@@ -5,36 +5,29 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace Identity.Infrastructure.Auth;
 
-/// <summary>
-/// Resolves capabilities from ProductRoles via RoleCapabilities.
-/// Results are cached by sorted product role code set with a 5-minute TTL.
-/// In a multi-instance deployment, swap IMemoryCache for IDistributedCache.
-/// </summary>
-public sealed class CapabilityService : ICapabilityService
+public sealed class PermissionService : IPermissionService
 {
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
 
     private readonly IdentityDbContext _db;
     private readonly IMemoryCache _cache;
 
-    public CapabilityService(IdentityDbContext db, IMemoryCache cache)
+    public PermissionService(IdentityDbContext db, IMemoryCache cache)
     {
         _db    = db;
         _cache = cache;
     }
 
-    /// <inheritdoc/>
-    public async Task<bool> HasCapabilityAsync(
+    public async Task<bool> HasPermissionAsync(
         IReadOnlyCollection<string> productRoleCodes,
-        string capabilityCode,
+        string permissionCode,
         CancellationToken ct = default)
     {
-        var caps = await GetCapabilitiesAsync(productRoleCodes, ct);
-        return caps.Contains(capabilityCode);
+        var perms = await GetPermissionsAsync(productRoleCodes, ct);
+        return perms.Contains(permissionCode);
     }
 
-    /// <inheritdoc/>
-    public async Task<IReadOnlySet<string>> GetCapabilitiesAsync(
+    public async Task<IReadOnlySet<string>> GetPermissionsAsync(
         IReadOnlyCollection<string> productRoleCodes,
         CancellationToken ct = default)
     {
@@ -46,24 +39,22 @@ public sealed class CapabilityService : ICapabilityService
         if (_cache.TryGetValue(cacheKey, out IReadOnlySet<string>? cached) && cached is not null)
             return cached;
 
-        // Single JOIN: ProductRoles → RoleCapabilities → Capabilities
-        // Indexes: IX_ProductRoles_Code, PK_RoleCapabilities, IX_RoleCapabilities_CapabilityId
-        var caps = await _db.RoleCapabilities
+        var perms = await _db.RolePermissionMappings
             .AsNoTracking()
             .Where(rc => productRoleCodes.Contains(rc.ProductRole.Code)
                       && rc.ProductRole.IsActive
-                      && rc.Capability.IsActive)
-            .Select(rc => rc.Capability.Code)
+                      && rc.Permission.IsActive)
+            .Select(rc => rc.Permission.Code)
             .Distinct()
             .ToListAsync(ct);
 
         IReadOnlySet<string> result =
-            new HashSet<string>(caps, StringComparer.OrdinalIgnoreCase);
+            new HashSet<string>(perms, StringComparer.OrdinalIgnoreCase);
 
         _cache.Set(cacheKey, result, CacheTtl);
         return result;
     }
 
     private static string BuildCacheKey(IReadOnlyCollection<string> codes)
-        => "caps:" + string.Join("|", codes.Order(StringComparer.OrdinalIgnoreCase));
+        => "perms:" + string.Join("|", codes.Order(StringComparer.OrdinalIgnoreCase));
 }

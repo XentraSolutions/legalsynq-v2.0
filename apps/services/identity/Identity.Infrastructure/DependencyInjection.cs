@@ -43,7 +43,7 @@ public static class DependencyInjection
 
         services.AddMemoryCache();
         services.AddHttpContextAccessor();
-        services.AddScoped<ICapabilityService, CapabilityService>();
+        services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<AuthorizationService>();
         services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 

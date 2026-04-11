@@ -20,7 +20,7 @@ public static class AvailabilityTemplateEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ScheduleManage, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ScheduleManage, ct);
             var templates = await service.GetByProviderAsync(tenantId, providerId, ct);
             return Results.Ok(templates);
         })
@@ -36,7 +36,7 @@ public static class AvailabilityTemplateEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ScheduleManage, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ScheduleManage, ct);
             var template = await service.CreateAsync(tenantId, providerId, ctx.UserId, request, ct);
             return Results.Created($"/api/availability-templates/{template.Id}", template);
         })
@@ -52,7 +52,7 @@ public static class AvailabilityTemplateEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ScheduleManage, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ScheduleManage, ct);
             var template = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(template);
         })

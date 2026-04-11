@@ -21,11 +21,11 @@ public class IdentityDbContext : DbContext
 
     // Product role model
     public DbSet<ProductRole> ProductRoles => Set<ProductRole>();
-    public DbSet<Capability> Capabilities => Set<Capability>();
-    public DbSet<RoleCapability> RoleCapabilities => Set<RoleCapability>();
+    public DbSet<Permission> Permissions => Set<Permission>();
+    public DbSet<RolePermissionMapping> RolePermissionMappings => Set<RolePermissionMapping>();
 
-    // UIX-005: Role ↔ Capability assignments (for tenant custom roles)
-    public DbSet<RoleCapabilityAssignment> RoleCapabilityAssignments => Set<RoleCapabilityAssignment>();
+    // Role ↔ Permission assignments (for tenant custom roles)
+    public DbSet<RolePermissionAssignment> RolePermissionAssignments => Set<RolePermissionAssignment>();
 
     // User organization membership
     public DbSet<UserOrganizationMembership> UserOrganizationMemberships => Set<UserOrganizationMembership>();

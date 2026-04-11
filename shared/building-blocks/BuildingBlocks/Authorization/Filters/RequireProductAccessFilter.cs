@@ -244,10 +244,12 @@ public sealed class RequireOrgProductAccessFilter : IEndpointFilter
 public sealed class RequirePermissionFilter : IEndpointFilter
 {
     private readonly string _permissionCode;
+    private readonly string[]? _fallbackRoles;
 
-    public RequirePermissionFilter(string permissionCode)
+    public RequirePermissionFilter(string permissionCode, string[]? fallbackRoles = null)
     {
         _permissionCode = permissionCode;
+        _fallbackRoles = fallbackRoles;
     }
 
     public async ValueTask<object?> InvokeAsync(
@@ -273,19 +275,43 @@ public sealed class RequirePermissionFilter : IEndpointFilter
             return await next(context);
         }
 
-        if (!user.HasPermission(_permissionCode))
+        if (user.HasPermission(_permissionCode))
         {
-            LogPermissionDecision(httpContext, "DENY", userId, tenantId, path, method,
-                _permissionCode, "MissingPermission", accessVersion);
-
-            return ProductAccessDeniedResult.Create(
-                ProductAccessDeniedException.MissingPermission(_permissionCode));
+            LogPermissionDecision(httpContext, "ALLOW", userId, tenantId, path, method,
+                _permissionCode, "PermissionClaim", accessVersion);
+            return await next(context);
         }
 
-        LogPermissionDecision(httpContext, "ALLOW", userId, tenantId, path, method,
-            _permissionCode, "PermissionClaim", accessVersion);
+        if (_fallbackRoles is { Length: > 0 } && IsRoleFallbackEnabled(httpContext))
+        {
+            var productCode = ExtractProductCode(_permissionCode);
+            if (productCode != null && user.HasProductRole(productCode, _fallbackRoles))
+            {
+                LogPermissionDecision(httpContext, "ALLOW", userId, tenantId, path, method,
+                    _permissionCode, "RoleFallback", accessVersion);
+                return await next(context);
+            }
+        }
 
-        return await next(context);
+        LogPermissionDecision(httpContext, "DENY", userId, tenantId, path, method,
+            _permissionCode, "MissingPermission", accessVersion);
+
+        return ProductAccessDeniedResult.Create(
+            ProductAccessDeniedException.MissingPermission(_permissionCode));
+    }
+
+    private static bool IsRoleFallbackEnabled(HttpContext ctx)
+    {
+        var config = ctx.RequestServices.GetService(typeof(Microsoft.Extensions.Configuration.IConfiguration))
+            as Microsoft.Extensions.Configuration.IConfiguration;
+        if (config == null) return false;
+        return string.Equals(config["Authorization:EnableRoleFallback"], "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ExtractProductCode(string permissionCode)
+    {
+        var dotIndex = permissionCode.IndexOf('.');
+        return dotIndex > 0 ? permissionCode[..dotIndex] : null;
     }
 
     private static void LogPermissionDecision(

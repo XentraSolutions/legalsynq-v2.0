@@ -21,7 +21,7 @@ public static class SlotEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ScheduleManage, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ScheduleManage, ct);
             var result = await service.GenerateSlotsAsync(tenantId, providerId, ctx.UserId, request, ct);
             return Results.Ok(result);
         })
@@ -36,7 +36,7 @@ public static class SlotEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.AppointmentCreate, ct);
             var result = await service.SearchSlotsAsync(tenantId, query, ct);
             return Results.Ok(result);
         })

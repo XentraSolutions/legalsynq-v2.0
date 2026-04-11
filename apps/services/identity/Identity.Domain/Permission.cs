@@ -2,10 +2,10 @@ using System.Text.RegularExpressions;
 
 namespace Identity.Domain;
 
-public class Capability
+public class Permission
 {
     private static readonly Regex NamingConvention = new(
-        @"^[a-z][a-z0-9]*(?:\:[a-z][a-z0-9]*)*$",
+        @"^[A-Z0-9_]+\.[a-z][a-z0-9_]*(?:\:[a-z][a-z0-9_]*)*$",
         RegexOptions.Compiled);
 
     public Guid Id { get; private set; }
@@ -21,15 +21,15 @@ public class Capability
     public Guid? UpdatedBy { get; private set; }
 
     public Product Product { get; private set; } = null!;
-    public ICollection<RoleCapability> RoleCapabilities { get; private set; } = [];
-    public ICollection<RoleCapabilityAssignment> RoleCapabilityAssignments { get; private set; } = [];
+    public ICollection<RolePermissionMapping> RolePermissionMappings { get; private set; } = [];
+    public ICollection<RolePermissionAssignment> RolePermissionAssignments { get; private set; } = [];
 
-    private Capability() { }
+    private Permission() { }
 
     public static bool IsValidCode(string code) =>
         !string.IsNullOrWhiteSpace(code) && NamingConvention.IsMatch(code.Trim());
 
-    public static Capability Create(
+    public static Permission Create(
         Guid productId,
         string code,
         string name,
@@ -40,13 +40,13 @@ public class Capability
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        var normalizedCode = code.Trim().ToLowerInvariant();
+        var normalizedCode = code.Trim();
         if (!NamingConvention.IsMatch(normalizedCode))
             throw new ArgumentException(
-                $"Permission code '{normalizedCode}' does not follow the naming convention '{{domain}}:{{action}}' (lowercase, colon-separated).",
+                $"Permission code '{normalizedCode}' does not follow the naming convention '{{PRODUCT}}.{{domain}}:{{action}}' (e.g. SYNQ_FUND.application:create).",
                 nameof(code));
 
-        return new Capability
+        return new Permission
         {
             Id = Guid.NewGuid(),
             ProductId = productId,

@@ -143,7 +143,7 @@ public static class AdminEndpoints
         // ── Role permission management (UIX-005) ──────────────────────────────
         routes.MapGet("/api/admin/roles/{id:guid}/permissions",                              GetRolePermissions);
         routes.MapPost("/api/admin/roles/{id:guid}/permissions",                             AssignRolePermission);
-        routes.MapDelete("/api/admin/roles/{id:guid}/permissions/{capabilityId:guid}",       RevokeRolePermission);
+        routes.MapDelete("/api/admin/roles/{id:guid}/permissions/{permissionId:guid}",        RevokeRolePermission);
 
         // ── User effective permissions (UIX-005) ─────────────────────────────
         routes.MapGet("/api/admin/users/{id:guid}/permissions",                              GetUserEffectivePermissions);
@@ -1856,7 +1856,7 @@ public static class AdminEndpoints
             .Select(g => new { roleId = g.Key, count = g.Count() })
             .ToListAsync();
 
-        var capCounts = await db.RoleCapabilityAssignments
+        var capCounts = await db.RolePermissionAssignments
             .Where(a => roleIds.Contains(a.RoleId))
             .GroupBy(a => a.RoleId)
             .Select(g => new { roleId = g.Key, count = g.Count() })
@@ -1891,7 +1891,7 @@ public static class AdminEndpoints
                     ? pr!.OrgTypeRules.Where(rule => rule.IsActive).Select(rule => rule.OrganizationType.Code).ToArray()
                     : null,
                 userCount       = userCountMap.GetValueOrDefault(r.Id, 0),
-                capabilityCount = capCountMap.GetValueOrDefault(r.Id, 0),
+                permissionCount = capCountMap.GetValueOrDefault(r.Id, 0),
                 permissions     = Array.Empty<string>(),
             };
         });
@@ -1916,23 +1916,22 @@ public static class AdminEndpoints
             .CountAsync(s => s.RoleId == id && s.IsActive
                           && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global);
 
-        // UIX-005: load actual capability assignments for this role
-        var caps = await db.RoleCapabilityAssignments
+        var permAssignments = await db.RolePermissionAssignments
             .Where(a => a.RoleId == id)
-            .Include(a => a.Capability)
+            .Include(a => a.Permission)
             .ThenInclude(c => c.Product)
-            .OrderBy(a => a.Capability.Product.Name)
-            .ThenBy(a => a.Capability.Code)
+            .OrderBy(a => a.Permission.Product.Name)
+            .ThenBy(a => a.Permission.Code)
             .ToListAsync();
 
-        var resolvedPermissions = caps.Select(a => new
+        var resolvedPermissions = permAssignments.Select(a => new
         {
-            id          = a.CapabilityId,
-            key         = a.Capability.Code,
-            description = a.Capability.Description ?? a.Capability.Name,
-            name        = a.Capability.Name,
-            productId   = a.Capability.ProductId,
-            productName = a.Capability.Product.Name,
+            id          = a.PermissionId,
+            key         = a.Permission.Code,
+            description = a.Permission.Description ?? a.Permission.Name,
+            name        = a.Permission.Name,
+            productId   = a.Permission.ProductId,
+            productName = a.Permission.Product.Name,
         }).ToList();
 
         return Results.Ok(new
@@ -1942,7 +1941,7 @@ public static class AdminEndpoints
             description         = r.Description ?? "",
             isSystemRole        = r.IsSystemRole,
             userCount,
-            capabilityCount     = caps.Count,
+            permissionCount     = permAssignments.Count,
             permissions         = resolvedPermissions.Select(p => p.key).ToArray(),
             resolvedPermissions,
             createdAtUtc        = r.CreatedAtUtc,
@@ -3424,7 +3423,7 @@ public static class AdminEndpoints
         string search    = "",
         CancellationToken ct = default)
     {
-        var q = db.Capabilities
+        var q = db.Permissions
             .Include(c => c.Product)
             .Where(c => c.IsActive)
             .AsQueryable();
@@ -3489,23 +3488,23 @@ public static class AdminEndpoints
         if (!role.IsSystemRole && IsCrossTenantAccess(caller, role.TenantId))
             return Results.Forbid();
 
-        var assignments = await db.RoleCapabilityAssignments
+        var assignments = await db.RolePermissionAssignments
             .Where(a => a.RoleId == id)
-            .Include(a => a.Capability)
+            .Include(a => a.Permission)
             .ThenInclude(c => c.Product)
-            .OrderBy(a => a.Capability.Product.Name)
-            .ThenBy(a => a.Capability.Code)
+            .OrderBy(a => a.Permission.Product.Name)
+            .ThenBy(a => a.Permission.Code)
             .ToListAsync(ct);
 
         var items = assignments.Select(a => new
         {
-            id               = a.CapabilityId,
-            code             = a.Capability.Code,
-            name             = a.Capability.Name,
-            description      = a.Capability.Description,
-            productId        = a.Capability.ProductId,
-            productName      = a.Capability.Product.Name,
-            isActive         = a.Capability.IsActive,
+            id               = a.PermissionId,
+            code             = a.Permission.Code,
+            name             = a.Permission.Name,
+            description      = a.Permission.Description,
+            productId        = a.Permission.ProductId,
+            productName      = a.Permission.Product.Name,
+            isActive         = a.Permission.IsActive,
             assignedAtUtc    = a.AssignedAtUtc,
             assignedByUserId = a.AssignedByUserId,
         }).ToList();
@@ -3513,7 +3512,7 @@ public static class AdminEndpoints
         return Results.Ok(new { items, totalCount = items.Count });
     }
 
-    private record AssignRolePermissionRequest(Guid CapabilityId);
+    private record AssignRolePermissionRequest(Guid PermissionId);
 
     /// <summary>
     /// POST /api/admin/roles/{id}/permissions
@@ -3544,26 +3543,25 @@ public static class AdminEndpoints
         if (IsCrossTenantAccess(caller, role.TenantId))
             return Results.Forbid();
 
-        var capability = await db.Capabilities.FirstOrDefaultAsync(c => c.Id == body.CapabilityId && c.IsActive, ct);
-        if (capability is null) return Results.NotFound(new { error = "Capability not found or inactive." });
+        var permission = await db.Permissions.FirstOrDefaultAsync(c => c.Id == body.PermissionId && c.IsActive, ct);
+        if (permission is null) return Results.NotFound(new { error = "Permission not found or inactive." });
 
-        // Idempotency: return OK if already assigned
-        var alreadyAssigned = await db.RoleCapabilityAssignments
-            .AnyAsync(a => a.RoleId == id && a.CapabilityId == body.CapabilityId, ct);
+        var alreadyAssigned = await db.RolePermissionAssignments
+            .AnyAsync(a => a.RoleId == id && a.PermissionId == body.PermissionId, ct);
 
         if (alreadyAssigned)
-            return Results.Ok(new { message = "Capability already assigned to role." });
+            return Results.Ok(new { message = "Permission already assigned to role." });
 
         var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
         Guid? callerId  = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
 
-        var assignment = RoleCapabilityAssignment.Create(id, body.CapabilityId, callerId);
-        db.RoleCapabilityAssignments.Add(assignment);
+        var assignment = RolePermissionAssignment.Create(id, body.PermissionId, callerId);
+        db.RolePermissionAssignments.Add(assignment);
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation(
-            "Role {RoleId} assigned capability {CapabilityId} by {ActorId}",
-            id, body.CapabilityId, callerId);
+            "Role {RoleId} assigned permission {PermissionId} by {ActorId}",
+            id, body.PermissionId, callerId);
 
         var assignAuditNow = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
@@ -3577,19 +3575,19 @@ public static class AdminEndpoints
             Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
             Entity        = new AuditEventEntityDto { Type = "Role", Id = id.ToString() },
             Action        = "PermissionAssigned",
-            Description   = $"Capability '{capability.Code}' assigned to role '{role.Name}'",
+            Description   = $"Permission '{permission.Code}' assigned to role '{role.Name}'",
             Metadata      = System.Text.Json.JsonSerializer.Serialize(new
             {
                 roleId       = id,
-                capabilityId = body.CapabilityId,
-                code         = capability.Code,
+                permissionId = body.PermissionId,
+                code         = permission.Code,
             }),
-            IdempotencyKey = IdempotencyKey.ForWithTimestamp(assignAuditNow, "identity-service", "role.permission.assigned", id.ToString(), body.CapabilityId.ToString()),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(assignAuditNow, "identity-service", "role.permission.assigned", id.ToString(), body.PermissionId.ToString()),
         });
 
         return Results.Created(
-            $"/api/admin/roles/{id}/permissions/{body.CapabilityId}",
-            new { roleId = id, capabilityId = body.CapabilityId });
+            $"/api/admin/roles/{id}/permissions/{body.PermissionId}",
+            new { roleId = id, permissionId = body.PermissionId });
     }
 
     /// <summary>
@@ -3600,7 +3598,7 @@ public static class AdminEndpoints
     /// </summary>
     private static async Task<IResult> RevokeRolePermission(
         Guid              id,
-        Guid              capabilityId,
+        Guid              permissionId,
         IdentityDbContext db,
         ClaimsPrincipal   caller,
         IAuditEventClient auditClient,
@@ -3609,30 +3607,28 @@ public static class AdminEndpoints
     {
         var logger = loggerFactory.CreateLogger("AdminEndpoints.RevokeRolePermission");
 
-        var assignment = await db.RoleCapabilityAssignments
-            .Include(a => a.Capability)
+        var assignment = await db.RolePermissionAssignments
+            .Include(a => a.Permission)
             .Include(a => a.Role)
-            .FirstOrDefaultAsync(a => a.RoleId == id && a.CapabilityId == capabilityId, ct);
+            .FirstOrDefaultAsync(a => a.RoleId == id && a.PermissionId == permissionId, ct);
 
         if (assignment is null)
             return Results.NotFound(new { error = "Permission assignment not found." });
 
-        // UIX-005-01: system roles may only be modified by PlatformAdmin
         if (assignment.Role.IsSystemRole && !caller.IsInRole("PlatformAdmin"))
             return Results.Json(new { error = "System roles cannot be modified. Contact the platform administrator." }, statusCode: 403);
 
-        // UIX-005-01: TenantAdmin may not revoke permissions from roles outside their tenant
         if (IsCrossTenantAccess(caller, assignment.Role.TenantId))
             return Results.Forbid();
 
-        db.RoleCapabilityAssignments.Remove(assignment);
+        db.RolePermissionAssignments.Remove(assignment);
         await db.SaveChangesAsync(ct);
 
         var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
 
         logger.LogInformation(
-            "Role {RoleId} revoked capability {CapabilityId} by {ActorId}",
-            id, capabilityId, callerIdRaw);
+            "Role {RoleId} revoked permission {PermissionId} by {ActorId}",
+            id, permissionId, callerIdRaw);
 
         var revokeAuditNow = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
@@ -3646,14 +3642,14 @@ public static class AdminEndpoints
             Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
             Entity        = new AuditEventEntityDto { Type = "Role", Id = id.ToString() },
             Action        = "PermissionRevoked",
-            Description   = $"Capability '{assignment.Capability.Code}' revoked from role '{assignment.Role.Name}'",
+            Description   = $"Permission '{assignment.Permission.Code}' revoked from role '{assignment.Role.Name}'",
             Metadata      = System.Text.Json.JsonSerializer.Serialize(new
             {
                 roleId       = id,
-                capabilityId,
-                code         = assignment.Capability.Code,
+                permissionId,
+                code         = assignment.Permission.Code,
             }),
-            IdempotencyKey = IdempotencyKey.ForWithTimestamp(revokeAuditNow, "identity-service", "role.permission.revoked", id.ToString(), capabilityId.ToString()),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(revokeAuditNow, "identity-service", "role.permission.revoked", id.ToString(), permissionId.ToString()),
         });
 
         return Results.NoContent();
@@ -3690,16 +3686,14 @@ public static class AdminEndpoints
 
         var roleIds = roleAssignments.Select(s => s.RoleId).ToList();
 
-        // Capability assignments for all those roles
-        var capAssignments = await db.RoleCapabilityAssignments
+        var permAssignments = await db.RolePermissionAssignments
             .Where(a => roleIds.Contains(a.RoleId))
-            .Include(a => a.Capability)
+            .Include(a => a.Permission)
             .ThenInclude(c => c.Product)
             .ToListAsync(ct);
 
-        // Build map: capabilityId → list of role names that grant it
-        var capToRoles = capAssignments
-            .GroupBy(a => a.CapabilityId)
+        var permToRoles = permAssignments
+            .GroupBy(a => a.PermissionId)
             .ToDictionary(
                 g => g.Key,
                 g => g.Select(a => roleAssignments
@@ -3707,15 +3701,14 @@ public static class AdminEndpoints
                       .Distinct()
                       .ToList());
 
-        // Distinct capabilities
-        var distinctCaps = capAssignments
-            .GroupBy(a => a.CapabilityId)
-            .Select(g => g.First().Capability)
+        var distinctPerms = permAssignments
+            .GroupBy(a => a.PermissionId)
+            .Select(g => g.First().Permission)
             .OrderBy(c => c.Product.Name)
             .ThenBy(c => c.Code)
             .ToList();
 
-        var items = distinctCaps.Select(c => new
+        var items = distinctPerms.Select(c => new
         {
             id          = c.Id,
             code        = c.Code,
@@ -3724,7 +3717,7 @@ public static class AdminEndpoints
             productId   = c.ProductId,
             productName = c.Product.Name,
             isActive    = c.IsActive,
-            sources     = capToRoles.GetValueOrDefault(c.Id, [])
+            sources     = permToRoles.GetValueOrDefault(c.Id, [])
                             .Select(roleName => new { type = "role", name = roleName })
                             .ToList(),
         }).ToList();
@@ -3847,7 +3840,7 @@ public static class AdminEndpoints
         if (!caller.IsInRole("PlatformAdmin") && !caller.IsInRole("TenantAdmin"))
             return Results.Forbid();
 
-        var capabilities = await db.Capabilities
+        var capabilities = await db.Permissions
             .Where(c => c.IsActive && c.Product.Code == productCode)
             .Include(c => c.Product)
             .OrderBy(c => c.Code)
@@ -3880,7 +3873,7 @@ public static class AdminEndpoints
         IAuditEventClient auditClient,
         CancellationToken ct = default)
     {
-        if (!caller.IsInRole("PlatformAdmin") && !caller.IsInRole("TenantAdmin"))
+        if (!caller.IsInRole("PlatformAdmin"))
             return Results.Forbid();
 
         Product? product = null;
@@ -3892,19 +3885,19 @@ public static class AdminEndpoints
         if (product is null)
             return Results.BadRequest(new { error = "Invalid product. Provide a valid productCode or productId." });
 
-        if (!Capability.IsValidCode(body.Code))
-            return Results.BadRequest(new { error = $"Permission code must follow naming convention '{{domain}}:{{action}}' (lowercase, colon-separated). Got: '{body.Code}'." });
+        if (!Permission.IsValidCode(body.Code))
+            return Results.BadRequest(new { error = $"Permission code must follow naming convention 'PRODUCT.domain:action' (e.g. SYNQ_FUND.application:create). Got: '{body.Code}'." });
 
-        var normalizedCode = body.Code.Trim().ToLowerInvariant();
-        var exists = await db.Capabilities.AnyAsync(c => c.Code == normalizedCode, ct);
+        var normalizedCode = body.Code.Trim();
+        var exists = await db.Permissions.AnyAsync(c => c.Code == normalizedCode, ct);
         if (exists)
             return Results.Conflict(new { error = $"Permission code '{normalizedCode}' already exists." });
 
         var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
         Guid? callerId = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
 
-        var capability = Capability.Create(product.Id, body.Code, body.Name, body.Description, body.Category, callerId);
-        db.Capabilities.Add(capability);
+        var permission = Permission.Create(product.Id, body.Code, body.Name, body.Description, body.Category, callerId);
+        db.Permissions.Add(permission);
         await db.SaveChangesAsync(ct);
 
         var auditNow = DateTimeOffset.UtcNow;
@@ -3917,22 +3910,22 @@ public static class AdminEndpoints
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = auditNow,
             Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
-            Entity        = new AuditEventEntityDto { Type = "Permission", Id = capability.Id.ToString() },
+            Entity        = new AuditEventEntityDto { Type = "Permission", Id = permission.Id.ToString() },
             Action        = "PermissionCreated",
             Description   = $"Permission '{normalizedCode}' created for product '{product.Code}'",
             After         = System.Text.Json.JsonSerializer.Serialize(new
             {
-                id = capability.Id, code = normalizedCode, name = body.Name, productCode = product.Code, category = body.Category,
+                id = permission.Id, code = normalizedCode, name = body.Name, productCode = product.Code, category = body.Category,
             }),
-            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "permission.created", capability.Id.ToString()),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "permission.created", permission.Id.ToString()),
         });
 
-        return Results.Created($"/api/admin/permissions/{capability.Id}", new
+        return Results.Created($"/api/admin/permissions/{permission.Id}", new
         {
-            id = capability.Id, code = normalizedCode, name = capability.Name,
-            description = capability.Description, category = capability.Category,
+            id = permission.Id, code = normalizedCode, name = permission.Name,
+            description = permission.Description, category = permission.Category,
             productCode = product.Code, productName = product.Name,
-            isActive = capability.IsActive, createdAtUtc = capability.CreatedAtUtc,
+            isActive = permission.IsActive, createdAtUtc = permission.CreatedAtUtc,
         });
     }
 
@@ -3946,18 +3939,18 @@ public static class AdminEndpoints
         IAuditEventClient auditClient,
         CancellationToken ct = default)
     {
-        if (!caller.IsInRole("PlatformAdmin") && !caller.IsInRole("TenantAdmin"))
+        if (!caller.IsInRole("PlatformAdmin"))
             return Results.Forbid();
 
-        var capability = await db.Capabilities.Include(c => c.Product).FirstOrDefaultAsync(c => c.Id == id, ct);
-        if (capability is null)
+        var perm = await db.Permissions.Include(c => c.Product).FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (perm is null)
             return Results.NotFound(new { error = "Permission not found." });
 
         var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
         Guid? callerId = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
 
-        var before = new { name = capability.Name, description = capability.Description, category = capability.Category };
-        capability.Update(body.Name, body.Description, body.Category, callerId);
+        var before = new { name = perm.Name, description = perm.Description, category = perm.Category };
+        perm.Update(body.Name, body.Description, body.Category, callerId);
         await db.SaveChangesAsync(ct);
 
         var auditNow = DateTimeOffset.UtcNow;
@@ -3972,7 +3965,7 @@ public static class AdminEndpoints
             Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
             Entity        = new AuditEventEntityDto { Type = "Permission", Id = id.ToString() },
             Action        = "PermissionUpdated",
-            Description   = $"Permission '{capability.Code}' updated",
+            Description   = $"Permission '{perm.Code}' updated",
             Before        = System.Text.Json.JsonSerializer.Serialize(before),
             After         = System.Text.Json.JsonSerializer.Serialize(new { name = body.Name, description = body.Description, category = body.Category }),
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "permission.updated", id.ToString()),
@@ -3980,10 +3973,10 @@ public static class AdminEndpoints
 
         return Results.Ok(new
         {
-            id = capability.Id, code = capability.Code, name = capability.Name,
-            description = capability.Description, category = capability.Category,
-            productCode = capability.Product.Code, productName = capability.Product.Name,
-            isActive = capability.IsActive, updatedAtUtc = capability.UpdatedAtUtc,
+            id = perm.Id, code = perm.Code, name = perm.Name,
+            description = perm.Description, category = perm.Category,
+            productCode = perm.Product.Code, productName = perm.Product.Name,
+            isActive = perm.IsActive, updatedAtUtc = perm.UpdatedAtUtc,
         });
     }
 
@@ -3994,20 +3987,20 @@ public static class AdminEndpoints
         IAuditEventClient auditClient,
         CancellationToken ct = default)
     {
-        if (!caller.IsInRole("PlatformAdmin") && !caller.IsInRole("TenantAdmin"))
+        if (!caller.IsInRole("PlatformAdmin"))
             return Results.Forbid();
 
-        var capability = await db.Capabilities.Include(c => c.Product).FirstOrDefaultAsync(c => c.Id == id, ct);
-        if (capability is null)
+        var perm = await db.Permissions.Include(c => c.Product).FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (perm is null)
             return Results.NotFound(new { error = "Permission not found." });
 
-        if (!capability.IsActive)
+        if (!perm.IsActive)
             return Results.Ok(new { message = "Permission already deactivated." });
 
         var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
         Guid? callerId = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
 
-        capability.Deactivate(callerId);
+        perm.Deactivate(callerId);
         await db.SaveChangesAsync(ct);
 
         var auditNow = DateTimeOffset.UtcNow;
@@ -4022,8 +4015,8 @@ public static class AdminEndpoints
             Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
             Entity        = new AuditEventEntityDto { Type = "Permission", Id = id.ToString() },
             Action        = "PermissionDeactivated",
-            Description   = $"Permission '{capability.Code}' deactivated for product '{capability.Product.Code}'",
-            Metadata      = System.Text.Json.JsonSerializer.Serialize(new { code = capability.Code, productCode = capability.Product.Code }),
+            Description   = $"Permission '{perm.Code}' deactivated for product '{perm.Product.Code}'",
+            Metadata      = System.Text.Json.JsonSerializer.Serialize(new { code = perm.Code, productCode = perm.Product.Code }),
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "permission.deactivated", id.ToString()),
         });
 

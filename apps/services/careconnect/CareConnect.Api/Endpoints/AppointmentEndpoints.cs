@@ -20,7 +20,7 @@ public static class AppointmentEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.AppointmentCreate, ct);
             var appointment = await service.CreateAppointmentAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/appointments/{appointment.Id}", appointment);
         })
@@ -40,7 +40,7 @@ public static class AppointmentEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            var isReceiver = await authSvc.IsAuthorizedAsync(ctx, CapabilityCodes.ReferralReadAddressed, ct);
+            var isReceiver = await authSvc.IsAuthorizedAsync(ctx, PermissionCodes.ReferralReadAddressed, ct);
             var (referringOrgId, receivingOrgId) =
                 CareConnectParticipantHelper.GetAppointmentOrgScope(ctx, isReceiver);
 
@@ -87,7 +87,7 @@ public static class AppointmentEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentUpdate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.AppointmentUpdate, ct);
             var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
             if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
             var appointment = await service.UpdateAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
@@ -106,7 +106,7 @@ public static class AppointmentEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentManage, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.AppointmentManage, ct);
             var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
             if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
             var appointment = await service.ConfirmAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
@@ -125,7 +125,7 @@ public static class AppointmentEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentManage, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.AppointmentManage, ct);
             var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
             if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
             var appointment = await service.CompleteAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
@@ -144,7 +144,7 @@ public static class AppointmentEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentManage, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.AppointmentManage, ct);
             var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
             if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
             var appointment = await service.CancelAppointmentAsync(tenantId, id, ctx.UserId, request, ct);
@@ -163,7 +163,7 @@ public static class AppointmentEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.AppointmentManage, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.AppointmentManage, ct);
             var existing = await service.GetAppointmentByIdAsync(tenantId, id, ct);
             if (!RequireAppointmentParticipant(ctx, existing)) return Results.NotFound();
             var appointment = await service.RescheduleAppointmentAsync(tenantId, id, ctx.UserId, request, ct);

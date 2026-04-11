@@ -23,10 +23,10 @@ public static class ProductAuthorizationExtensions
         builder.AddEndpointFilter(new RequireOrgProductAccessFilter(productCode));
 
     public static RouteHandlerBuilder RequirePermission(
-        this RouteHandlerBuilder builder, string permissionCode) =>
-        builder.AddEndpointFilter(new RequirePermissionFilter(permissionCode));
+        this RouteHandlerBuilder builder, string permissionCode, params string[] fallbackRoles) =>
+        builder.AddEndpointFilter(new RequirePermissionFilter(permissionCode, fallbackRoles.Length > 0 ? fallbackRoles : null));
 
     public static RouteGroupBuilder RequirePermission(
-        this RouteGroupBuilder builder, string permissionCode) =>
-        builder.AddEndpointFilter(new RequirePermissionFilter(permissionCode));
+        this RouteGroupBuilder builder, string permissionCode, params string[] fallbackRoles) =>
+        builder.AddEndpointFilter(new RequirePermissionFilter(permissionCode, fallbackRoles.Length > 0 ? fallbackRoles : null));
 }

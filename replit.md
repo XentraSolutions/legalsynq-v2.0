@@ -184,7 +184,7 @@ apps/
         Services/AuthService.cs
       Identity.Domain/                    → Tenant, User, Role, UserRole, Product, TenantProduct
                                             Organization, OrganizationDomain, OrganizationProduct
-                                            ProductRole, Capability, RoleCapability
+                                            ProductRole, Permission, RolePermissionMapping, RolePermissionAssignment (LS-COR-AUT-010A)
                                             UserOrganizationMembership, ScopedRoleAssignment
                                             TenantProductEntitlement, UserProductAccess, UserRoleAssignment (LS-COR-AUT-002)
                                             AccessGroup, AccessGroupMembership, GroupProductAccess, GroupRoleAssignment (LS-COR-AUT-004)
@@ -203,7 +203,7 @@ apps/
       Identity.Infrastructure/
         Data/IdentityDbContext.cs         ← 21 DbSets (+3 LS-COR-AUT-002 + 4 LS-COR-AUT-004)
         Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (22 configs)
-        Auth/CapabilityService.cs         ← ICapabilityService impl, 5-min IMemoryCache TTL
+        Auth/PermissionService.cs         ← IPermissionService impl, 5-min IMemoryCache TTL
         Persistence/Migrations/           ← InitialIdentitySchema
                                             AddMultiOrgProductRoleModel (8 tables + seed)
                                             SeedAdminOrgMembership
