@@ -11,6 +11,7 @@ import { EffectivePermissionsPanel }     from '@/components/users/effective-perm
 import { RoleAssignmentPanel }            from '@/components/users/role-assignment-panel';
 import { OrgMembershipPanel }             from '@/components/users/org-membership-panel';
 import { AccessGroupMembershipPanel }    from '@/components/access-groups/access-group-membership-panel';
+import { AccessExplanationPanel }        from '@/components/users/access-explanation-panel';
 import { startImpersonationAction }       from '@/app/actions/impersonation';
 import type { UserStatus }                from '@/types/control-center';
 
@@ -44,7 +45,7 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     fetchError = err instanceof Error ? err.message : 'Failed to load user.';
   }
 
-  const [assignableRolesResult, orgsResult, securityResult, permissionsResult, accessGroupsResult, userAccessGroupsResult] = await Promise.allSettled([
+  const [assignableRolesResult, orgsResult, securityResult, permissionsResult, accessGroupsResult, userAccessGroupsResult, accessDebugResult] = await Promise.allSettled([
     user
       ? controlCenterServerApi.users.getAssignableRoles(user.id)
       : Promise.resolve(null),
@@ -63,6 +64,9 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     user
       ? controlCenterServerApi.accessGroups.listUserGroups(user.tenantId, user.id)
       : Promise.resolve([]),
+    user
+      ? controlCenterServerApi.users.getAccessDebug(user.id)
+      : Promise.resolve(null),
   ]);
 
   const assignableData    = assignableRolesResult.status  === 'fulfilled' ? assignableRolesResult.value   : null;
@@ -74,6 +78,10 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     : null;
   const accessGroupsList  = accessGroupsResult.status    === 'fulfilled' ? accessGroupsResult.value      : [];
   const userAccessGroups  = userAccessGroupsResult.status === 'fulfilled' ? userAccessGroupsResult.value : [];
+  const accessDebug       = accessDebugResult.status      === 'fulfilled' ? accessDebugResult.value      : null;
+  const accessDebugError  = accessDebugResult.status      === 'rejected'
+    ? (accessDebugResult.reason instanceof Error ? accessDebugResult.reason.message : 'Failed to load access debug.')
+    : null;
 
   return (
     <CCShell userEmail={session.email}>
@@ -187,6 +195,12 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
             <EffectivePermissionsPanel
               result={effectivePerms}
               fetchError={permsError}
+            />
+
+            {/* ── Access Explanation (LS-COR-AUT-008) ──────────────────────── */}
+            <AccessExplanationPanel
+              data={accessDebug}
+              fetchError={accessDebugError}
             />
 
             {/* ── Access Control Management (UIX-003) ──────────────────────── */}

@@ -87,6 +87,7 @@ import {
   mapPermissionCatalogItem,
   mapRoleCapabilityItem,
   mapEffectivePermissionsResult,
+  mapAccessDebugResult,
   mapAssignableRole,
   unwrapApiResponse,
   unwrapApiResponseList,
@@ -130,6 +131,7 @@ import type {
   PermissionCatalogItem,
   RoleCapabilityItem,
   EffectivePermissionsResult,
+  AccessDebugResult,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -646,6 +648,15 @@ export const controlCenterServerApi = {
         [CACHE_TAGS.users],
       );
       return mapEffectivePermissionsResult(raw);
+    },
+
+    getAccessDebug: async (id: string): Promise<AccessDebugResult> => {
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/access-debug`,
+        15,
+        [CACHE_TAGS.users],
+      );
+      return mapAccessDebugResult(raw);
     },
   },
 

@@ -3356,6 +3356,26 @@ Final closure of the legacy authorization model. All frontend and backend consum
 
 **Report:** `analysis/LS-COR-AUT-007-report.md`
 
+## LS-COR-AUT-008 — Observability + Scale Hardening — COMPLETED 2026-04-11
+
+**Effective Access Caching:** `EffectiveAccessService` uses `IMemoryCache` with key `ea:{tenantId}:{userId}:{accessVersion}`, 5-min TTL. AccessVersion auto-invalidates on any role/product/group mutation. Stopwatch timing + cache hit/miss counters.
+
+**Batch AccessVersion:** `GroupRoleAssignmentService` and `GroupProductAccessService` use `ExecuteUpdateAsync` for single-SQL batch version increment instead of N entity loads.
+
+**Authorization Observability:** All 3 filters (`RequireProductAccessFilter`, `RequireProductRoleFilter`, `RequireOrgProductAccessFilter`) emit structured `AuthzDecision` logs (userId, tenantId, method, endpoint, product, requiredRoles, source, accessVersion). DENY=Warning, ALLOW=Information.
+
+**Debug Endpoint:** `GET /api/admin/users/{id}/access-debug` — returns full access breakdown: products (with Direct/Group source), roles (with source), systemRoles, groups, entitlements, productRolesFlat, tenantRoles, accessVersion.
+
+**Access Audit Viewer:** Quick-filter presets on `/audit-logs` page: Access Changes, Security Events, Role Assignments, Group Membership, Product Access.
+
+**Access Explanation UI:** `AccessExplanationPanel` component on user detail page. Expandable product sections, Direct/Group badges, system roles, entitlements, group memberships, JWT claims preview. Fetches from `/access-debug` endpoint.
+
+**Login Performance:** `AuthService.LoginAsync` instrumented with Stopwatch — logs `LoginPerf` with userId, tenantId, elapsedMs, accessVersion.
+
+**Tests:** 57 xUnit tests total (45 prior + 12 new observability tests: cache key format, AuthzDecision fields, JWT claim format, empty-role-segment, access-debug source attribution).
+
+**Report:** `analysis/LS-COR-AUT-008-report.md`
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`

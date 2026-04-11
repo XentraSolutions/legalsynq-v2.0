@@ -23,22 +23,54 @@ public sealed class RequireProductAccessFilter : IEndpointFilter
         if (user.Identity?.IsAuthenticated != true)
             return Results.Unauthorized();
 
+        var userId = user.FindFirst("sub")?.Value;
+        var tenantId = user.FindFirst("tenant_id")?.Value;
+        var accessVersion = user.FindFirst("access_version")?.Value;
+        var path = httpContext.Request.Path.Value;
+        var method = httpContext.Request.Method;
+
         if (user.IsTenantAdminOrAbove())
+        {
+            LogAuthzDecision(httpContext, "ALLOW", userId, tenantId, path, method,
+                _productCode, null, "AdminBypass", accessVersion);
             return await next(context);
+        }
 
         if (!user.HasProductAccess(_productCode))
         {
-            var logger = httpContext.RequestServices
-                .GetService(typeof(ILogger<RequireProductAccessFilter>)) as ILogger;
-            logger?.LogWarning(
-                "Product access denied: user={UserId} product={ProductCode} path={Path}",
-                user.FindFirst("sub")?.Value, _productCode, httpContext.Request.Path);
+            LogAuthzDecision(httpContext, "DENY", userId, tenantId, path, method,
+                _productCode, null, "NoProductAccess", accessVersion);
 
             return ProductAccessDeniedResult.Create(
                 ProductAccessDeniedException.NoProductAccess(_productCode));
         }
 
+        LogAuthzDecision(httpContext, "ALLOW", userId, tenantId, path, method,
+            _productCode, null, "ProductClaim", accessVersion);
+
         return await next(context);
+    }
+
+    private static void LogAuthzDecision(
+        HttpContext ctx, string result, string? userId, string? tenantId,
+        string? path, string method, string product, string? requiredRole,
+        string source, string? accessVersion)
+    {
+        var logger = ctx.RequestServices.GetService(typeof(ILogger<RequireProductAccessFilter>)) as ILogger;
+        if (logger == null) return;
+
+        if (result == "DENY")
+        {
+            logger.LogWarning(
+                "AuthzDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} product={Product} source={Source} accessVersion={AccessVersion}",
+                result, userId, tenantId, method, path, product, source, accessVersion);
+        }
+        else
+        {
+            logger.LogInformation(
+                "AuthzDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} product={Product} source={Source} accessVersion={AccessVersion}",
+                result, userId, tenantId, method, path, product, source, accessVersion);
+        }
     }
 }
 
@@ -63,16 +95,24 @@ public sealed class RequireProductRoleFilter : IEndpointFilter
         if (user.Identity?.IsAuthenticated != true)
             return Results.Unauthorized();
 
+        var userId = user.FindFirst("sub")?.Value;
+        var tenantId = user.FindFirst("tenant_id")?.Value;
+        var accessVersion = user.FindFirst("access_version")?.Value;
+        var path = httpContext.Request.Path.Value;
+        var method = httpContext.Request.Method;
+        var rolesStr = string.Join(",", _requiredRoles);
+
         if (user.IsTenantAdminOrAbove())
+        {
+            LogAuthzDecision(httpContext, "ALLOW", userId, tenantId, path, method,
+                _productCode, rolesStr, "AdminBypass", accessVersion);
             return await next(context);
+        }
 
         if (!user.HasProductAccess(_productCode))
         {
-            var logger = httpContext.RequestServices
-                .GetService(typeof(ILogger<RequireProductRoleFilter>)) as ILogger;
-            logger?.LogWarning(
-                "Product access denied: user={UserId} product={ProductCode} path={Path}",
-                user.FindFirst("sub")?.Value, _productCode, httpContext.Request.Path);
+            LogAuthzDecision(httpContext, "DENY", userId, tenantId, path, method,
+                _productCode, rolesStr, "NoProductAccess", accessVersion);
 
             return ProductAccessDeniedResult.Create(
                 ProductAccessDeniedException.NoProductAccess(_productCode));
@@ -80,18 +120,39 @@ public sealed class RequireProductRoleFilter : IEndpointFilter
 
         if (!user.HasProductRole(_productCode, _requiredRoles))
         {
-            var logger = httpContext.RequestServices
-                .GetService(typeof(ILogger<RequireProductRoleFilter>)) as ILogger;
-            logger?.LogWarning(
-                "Product role denied: user={UserId} product={ProductCode} required=[{Roles}] path={Path}",
-                user.FindFirst("sub")?.Value, _productCode,
-                string.Join(",", _requiredRoles), httpContext.Request.Path);
+            LogAuthzDecision(httpContext, "DENY", userId, tenantId, path, method,
+                _productCode, rolesStr, "InsufficientRole", accessVersion);
 
             return ProductAccessDeniedResult.Create(
                 ProductAccessDeniedException.InsufficientProductRole(_productCode, _requiredRoles));
         }
 
+        LogAuthzDecision(httpContext, "ALLOW", userId, tenantId, path, method,
+            _productCode, rolesStr, "RoleClaim", accessVersion);
+
         return await next(context);
+    }
+
+    private static void LogAuthzDecision(
+        HttpContext ctx, string result, string? userId, string? tenantId,
+        string? path, string method, string product, string? requiredRoles,
+        string source, string? accessVersion)
+    {
+        var logger = ctx.RequestServices.GetService(typeof(ILogger<RequireProductRoleFilter>)) as ILogger;
+        if (logger == null) return;
+
+        if (result == "DENY")
+        {
+            logger.LogWarning(
+                "AuthzDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} product={Product} requiredRoles=[{RequiredRoles}] source={Source} accessVersion={AccessVersion}",
+                result, userId, tenantId, method, path, product, requiredRoles, source, accessVersion);
+        }
+        else
+        {
+            logger.LogInformation(
+                "AuthzDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} product={Product} requiredRoles=[{RequiredRoles}] source={Source} accessVersion={AccessVersion}",
+                result, userId, tenantId, method, path, product, requiredRoles, source, accessVersion);
+        }
     }
 }
 
@@ -114,16 +175,23 @@ public sealed class RequireOrgProductAccessFilter : IEndpointFilter
         if (user.Identity?.IsAuthenticated != true)
             return Results.Unauthorized();
 
+        var userId = user.FindFirst("sub")?.Value;
+        var tenantId = user.FindFirst("tenant_id")?.Value;
+        var accessVersion = user.FindFirst("access_version")?.Value;
+        var path = httpContext.Request.Path.Value;
+        var method = httpContext.Request.Method;
+
         if (user.IsTenantAdminOrAbove())
+        {
+            LogAuthzDecision(httpContext, "ALLOW", userId, tenantId, path, method,
+                _productCode, "AdminBypass", accessVersion);
             return await next(context);
+        }
 
         if (!user.HasProductAccess(_productCode))
         {
-            var logger = httpContext.RequestServices
-                .GetService(typeof(ILogger<RequireOrgProductAccessFilter>)) as ILogger;
-            logger?.LogWarning(
-                "Product access denied: user={UserId} product={ProductCode} path={Path}",
-                user.FindFirst("sub")?.Value, _productCode, httpContext.Request.Path);
+            LogAuthzDecision(httpContext, "DENY", userId, tenantId, path, method,
+                _productCode, "NoProductAccess", accessVersion);
 
             return ProductAccessDeniedResult.Create(
                 ProductAccessDeniedException.NoProductAccess(_productCode));
@@ -132,6 +200,9 @@ public sealed class RequireOrgProductAccessFilter : IEndpointFilter
         var orgIdClaim = user.FindFirst("org_id")?.Value;
         if (!Guid.TryParse(orgIdClaim, out var userOrgId))
         {
+            LogAuthzDecision(httpContext, "DENY", userId, tenantId, path, method,
+                _productCode, "OrgContextMissing", accessVersion);
+
             return ProductAccessDeniedResult.Create(
                 "ORG_CONTEXT_MISSING",
                 "Organization context is required for this operation.",
@@ -141,6 +212,31 @@ public sealed class RequireOrgProductAccessFilter : IEndpointFilter
         httpContext.Items["ProductAuth:OrgId"] = userOrgId;
         httpContext.Items["ProductAuth:ProductCode"] = _productCode;
 
+        LogAuthzDecision(httpContext, "ALLOW", userId, tenantId, path, method,
+            _productCode, "OrgProductClaim", accessVersion);
+
         return await next(context);
+    }
+
+    private static void LogAuthzDecision(
+        HttpContext ctx, string result, string? userId, string? tenantId,
+        string? path, string method, string product,
+        string source, string? accessVersion)
+    {
+        var logger = ctx.RequestServices.GetService(typeof(ILogger<RequireOrgProductAccessFilter>)) as ILogger;
+        if (logger == null) return;
+
+        if (result == "DENY")
+        {
+            logger.LogWarning(
+                "AuthzDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} product={Product} source={Source} accessVersion={AccessVersion}",
+                result, userId, tenantId, method, path, product, source, accessVersion);
+        }
+        else
+        {
+            logger.LogInformation(
+                "AuthzDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} product={Product} source={Source} accessVersion={AccessVersion}",
+                result, userId, tenantId, method, path, product, source, accessVersion);
+        }
     }
 }

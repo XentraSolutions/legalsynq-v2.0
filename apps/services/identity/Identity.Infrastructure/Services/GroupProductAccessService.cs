@@ -118,15 +118,25 @@ public class GroupProductAccessService : IGroupProductAccessService
 
     private async Task IncrementMemberVersionsAsync(Guid tenantId, Guid groupId, CancellationToken ct)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         var memberUserIds = await _db.AccessGroupMemberships
             .Where(m => m.GroupId == groupId && m.TenantId == tenantId && m.MembershipStatus == MembershipStatus.Active)
             .Select(m => m.UserId)
             .Distinct()
             .ToListAsync(ct);
-        var users = await _db.Users
+
+        if (memberUserIds.Count == 0) return;
+
+        var updated = await _db.Users
             .Where(u => memberUserIds.Contains(u.Id) && u.TenantId == tenantId)
-            .ToListAsync(ct);
-        foreach (var u in users)
-            u.IncrementAccessVersion();
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(u => u.AccessVersion, u => u.AccessVersion + 1)
+                .SetProperty(u => u.UpdatedAtUtc, DateTime.UtcNow), ct);
+
+        sw.Stop();
+        _logger.LogInformation(
+            "Batch AccessVersion increment for group {GroupId}: {UpdatedCount}/{MemberCount} users in {ElapsedMs}ms.",
+            groupId, updated, memberUserIds.Count, sw.ElapsedMilliseconds);
     }
 }

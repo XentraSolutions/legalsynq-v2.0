@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace Identity.Infrastructure.Services;
@@ -9,16 +11,71 @@ namespace Identity.Infrastructure.Services;
 public class EffectiveAccessService : IEffectiveAccessService
 {
     private readonly IdentityDbContext _db;
+    private readonly IMemoryCache _cache;
     private readonly ILogger<EffectiveAccessService> _logger;
 
-    public EffectiveAccessService(IdentityDbContext db, ILogger<EffectiveAccessService> logger)
+    private static readonly TimeSpan DefaultCacheTtl = TimeSpan.FromMinutes(5);
+    private static long _cacheHits;
+    private static long _cacheMisses;
+
+    public EffectiveAccessService(
+        IdentityDbContext db,
+        IMemoryCache cache,
+        ILogger<EffectiveAccessService> logger)
     {
         _db = db;
+        _cache = cache;
         _logger = logger;
     }
 
+    public static string BuildCacheKey(Guid tenantId, Guid userId, int accessVersion) =>
+        $"ea:{tenantId}:{userId}:{accessVersion}";
+
+    public static (long Hits, long Misses) GetCacheStats() => (_cacheHits, _cacheMisses);
+
     public async Task<EffectiveAccessResult> GetEffectiveAccessAsync(
         Guid tenantId, Guid userId, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+
+        var accessVersion = await _db.Users
+            .Where(u => u.Id == userId && u.TenantId == tenantId)
+            .Select(u => u.AccessVersion)
+            .FirstOrDefaultAsync(ct);
+
+        var cacheKey = BuildCacheKey(tenantId, userId, accessVersion);
+
+        if (_cache.TryGetValue(cacheKey, out EffectiveAccessResult? cached) && cached != null)
+        {
+            Interlocked.Increment(ref _cacheHits);
+            sw.Stop();
+            _logger.LogDebug(
+                "EffectiveAccess cache HIT for user {UserId} tenant {TenantId} v{Version} in {ElapsedMs}ms.",
+                userId, tenantId, accessVersion, sw.ElapsedMilliseconds);
+            return cached;
+        }
+
+        Interlocked.Increment(ref _cacheMisses);
+
+        var result = await ComputeEffectiveAccessAsync(tenantId, userId, ct);
+
+        _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = DefaultCacheTtl,
+            Size = 1
+        });
+
+        sw.Stop();
+        _logger.LogInformation(
+            "EffectiveAccess cache MISS for user {UserId} tenant {TenantId} v{Version}: computed in {ElapsedMs}ms. Products={ProductCount}, Roles={RoleCount}.",
+            userId, tenantId, accessVersion, sw.ElapsedMilliseconds,
+            result.Products.Count, result.ProductRolesFlat.Count);
+
+        return result;
+    }
+
+    private async Task<EffectiveAccessResult> ComputeEffectiveAccessAsync(
+        Guid tenantId, Guid userId, CancellationToken ct)
     {
         var activeEntitlements = await _db.TenantProductEntitlements
             .Where(e => e.TenantId == tenantId && e.Status == EntitlementStatus.Active)

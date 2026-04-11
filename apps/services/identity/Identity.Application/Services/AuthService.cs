@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Json;
 using Identity.Application.DTOs;
@@ -40,6 +41,7 @@ public class AuthService : IAuthService
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request, string? ipAddress = null, CancellationToken ct = default)
     {
+        var sw = Stopwatch.StartNew();
         // Canonical audit helpers — used when a login failure must be emitted before re-throwing.
         // fire-and-observe: never awaited, never allowed to gate the primary auth response.
         var tenantCodeNorm  = request.TenantCode.ToUpperInvariant().Trim();
@@ -176,6 +178,11 @@ public class AuthService : IAuthService
         {
             _logger.LogWarning(ex, "Failed to persist LastLoginAtUtc for user {UserId}. Non-fatal.", userWithRoles.Id);
         }
+
+        sw.Stop();
+        _logger.LogInformation(
+            "LoginPerf userId={UserId} tenantId={TenantId} elapsedMs={ElapsedMs} accessVersion={AccessVersion}",
+            userWithRoles.Id, tenant.Id, sw.ElapsedMilliseconds, userWithRoles.AccessVersion);
 
         return new LoginResponse(token, expiresAtUtc, userResponse);
     }

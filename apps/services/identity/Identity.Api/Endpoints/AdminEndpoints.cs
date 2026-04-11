@@ -148,6 +148,9 @@ public static class AdminEndpoints
         // ── User effective permissions (UIX-005) ─────────────────────────────
         routes.MapGet("/api/admin/users/{id:guid}/permissions",                              GetUserEffectivePermissions);
 
+        // ── Authorization debug (LS-COR-AUT-008) ───────────────────────────
+        routes.MapGet("/api/admin/users/{id:guid}/access-debug",                             GetAccessDebug);
+
         return routes;
     }
 
@@ -3721,6 +3724,94 @@ public static class AdminEndpoints
             items,
             totalCount = items.Count,
             roleCount  = roleAssignments.Count,
+        });
+    }
+
+    // ── LS-COR-AUT-008: Authorization debug endpoint ──────────────────────────
+
+    private static async Task<IResult> GetAccessDebug(
+        Guid              id,
+        IdentityDbContext db,
+        IEffectiveAccessService effectiveAccessService,
+        ClaimsPrincipal   caller,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin") && !caller.IsInRole("TenantAdmin"))
+            return Results.Forbid();
+
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null) return Results.NotFound();
+
+        if (IsCrossTenantAccess(caller, user.TenantId))
+            return Results.Forbid();
+
+        var effectiveAccess = await effectiveAccessService.GetEffectiveAccessAsync(user.TenantId, user.Id, ct);
+
+        var groupMemberships = await db.AccessGroupMemberships
+            .Where(m => m.TenantId == user.TenantId && m.UserId == user.Id && m.MembershipStatus == MembershipStatus.Active)
+            .Join(db.AccessGroups,
+                m => m.GroupId,
+                g => g.Id,
+                (m, g) => new { g.Id, g.Name, g.Status, g.ScopeType, g.ProductCode })
+            .ToListAsync(ct);
+
+        var entitlements = await db.TenantProductEntitlements
+            .Where(e => e.TenantId == user.TenantId && e.Status == EntitlementStatus.Active)
+            .Select(e => new { e.ProductCode, e.Status })
+            .ToListAsync(ct);
+
+        var scopedRoles = await db.ScopedRoleAssignments
+            .Where(s => s.UserId == user.Id && s.IsActive)
+            .Include(s => s.Role)
+            .Select(s => new { s.Role.Name, s.ScopeType })
+            .ToListAsync(ct);
+
+        return Results.Ok(new
+        {
+            userId = user.Id,
+            tenantId = user.TenantId,
+            accessVersion = user.AccessVersion,
+
+            products = effectiveAccess.ProductSources.Select(p => new
+            {
+                productCode = p.ProductCode,
+                source = p.Source,
+                groupId = p.GroupId,
+                groupName = p.GroupName,
+            }),
+
+            roles = effectiveAccess.RoleSources.Select(r => new
+            {
+                roleCode = r.RoleCode,
+                productCode = r.ProductCode,
+                source = r.Source,
+                groupId = r.GroupId,
+                groupName = r.GroupName,
+            }),
+
+            systemRoles = scopedRoles.Select(r => new
+            {
+                roleName = r.Name,
+                scopeType = r.ScopeType,
+            }),
+
+            groups = groupMemberships.Select(g => new
+            {
+                groupId = g.Id,
+                groupName = g.Name,
+                status = g.Status.ToString(),
+                scopeType = g.ScopeType.ToString(),
+                productCode = g.ProductCode,
+            }),
+
+            entitlements = entitlements.Select(e => new
+            {
+                productCode = e.ProductCode,
+                status = e.Status.ToString(),
+            }),
+
+            productRolesFlat = effectiveAccess.ProductRolesFlat,
+            tenantRoles = effectiveAccess.TenantRoles,
         });
     }
 

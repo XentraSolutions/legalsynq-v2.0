@@ -336,6 +336,54 @@ export interface EffectivePermissionsResult {
   roleCount:  number;
 }
 
+// ── Access Debug (LS-COR-AUT-008) ─────────────────────────────────────────────
+
+export interface AccessDebugProductEntry {
+  productCode: string;
+  source:      string;
+  groupId:     string | null;
+  groupName:   string | null;
+}
+
+export interface AccessDebugRoleEntry {
+  roleCode:    string;
+  productCode: string | null;
+  source:      string;
+  groupId:     string | null;
+  groupName:   string | null;
+}
+
+export interface AccessDebugSystemRole {
+  roleName:  string;
+  scopeType: string;
+}
+
+export interface AccessDebugGroup {
+  groupId:     string;
+  groupName:   string;
+  status:      string;
+  scopeType:   string;
+  productCode: string | null;
+}
+
+export interface AccessDebugEntitlement {
+  productCode: string;
+  status:      string;
+}
+
+export interface AccessDebugResult {
+  userId:           string;
+  tenantId:         string;
+  accessVersion:    number;
+  products:         AccessDebugProductEntry[];
+  roles:            AccessDebugRoleEntry[];
+  systemRoles:      AccessDebugSystemRole[];
+  groups:           AccessDebugGroup[];
+  entitlements:     AccessDebugEntitlement[];
+  productRolesFlat: string[];
+  tenantRoles:      string[];
+}
+
 // ── Audit Logs ────────────────────────────────────────────────────────────────
 
 /** Who originated an audited action. */

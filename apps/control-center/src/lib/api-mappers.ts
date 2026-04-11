@@ -71,6 +71,7 @@ import type {
   EffectivePermission,
   PermissionSource,
   EffectivePermissionsResult,
+  AccessDebugResult,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -112,6 +113,16 @@ function str(
     console.warn(`[api-mappers] ${warnLabel}: expected string at "${snake}"/"${camel}", got ${got}. Using fallback "${fallback}".`);
   }
   return fallback;
+}
+
+function strOrNull(
+  raw:   Record<string, unknown>,
+  snake: string,
+  camel: string,
+): string | null {
+  const val = raw[snake] ?? raw[camel];
+  if (typeof val === 'string' && val.length > 0) return val;
+  return null;
 }
 
 /**
@@ -624,6 +635,62 @@ export function mapEffectivePermissionsResult(raw: unknown): EffectivePermission
     items:      asArr(r['items']).map(mapEffectivePermission),
     totalCount: num(r, 'total_count', 'totalCount', 0),
     roleCount:  num(r, 'role_count',  'roleCount',  0),
+  };
+}
+
+// ── Access Debug mapper (LS-COR-AUT-008) ─────────────────────────────────────
+
+export function mapAccessDebugResult(raw: unknown): AccessDebugResult {
+  const r = asObj(raw);
+  return {
+    userId:        str(r, 'userId', 'user_id', ''),
+    tenantId:      str(r, 'tenantId', 'tenant_id', ''),
+    accessVersion: num(r, 'accessVersion', 'access_version', 0),
+    products: asArr(r['products']).map((p) => {
+      const o = asObj(p);
+      return {
+        productCode: str(o, 'productCode', 'product_code', ''),
+        source:      str(o, 'source', 'source', ''),
+        groupId:     strOrNull(o, 'groupId', 'group_id'),
+        groupName:   strOrNull(o, 'groupName', 'group_name'),
+      };
+    }),
+    roles: asArr(r['roles']).map((p) => {
+      const o = asObj(p);
+      return {
+        roleCode:    str(o, 'roleCode', 'role_code', ''),
+        productCode: strOrNull(o, 'productCode', 'product_code'),
+        source:      str(o, 'source', 'source', ''),
+        groupId:     strOrNull(o, 'groupId', 'group_id'),
+        groupName:   strOrNull(o, 'groupName', 'group_name'),
+      };
+    }),
+    systemRoles: asArr(r['systemRoles'] ?? r['system_roles']).map((p) => {
+      const o = asObj(p);
+      return {
+        roleName:  str(o, 'roleName', 'role_name', ''),
+        scopeType: str(o, 'scopeType', 'scope_type', ''),
+      };
+    }),
+    groups: asArr(r['groups']).map((p) => {
+      const o = asObj(p);
+      return {
+        groupId:     str(o, 'groupId', 'group_id', ''),
+        groupName:   str(o, 'groupName', 'group_name', ''),
+        status:      str(o, 'status', 'status', ''),
+        scopeType:   str(o, 'scopeType', 'scope_type', ''),
+        productCode: strOrNull(o, 'productCode', 'product_code'),
+      };
+    }),
+    entitlements: asArr(r['entitlements']).map((p) => {
+      const o = asObj(p);
+      return {
+        productCode: str(o, 'productCode', 'product_code', ''),
+        status:      str(o, 'status', 'status', ''),
+      };
+    }),
+    productRolesFlat: asArr(r['productRolesFlat'] ?? r['product_roles_flat']).map((v) => String(v ?? '')),
+    tenantRoles:      asArr(r['tenantRoles'] ?? r['tenant_roles']).map((v) => String(v ?? '')),
   };
 }
 
