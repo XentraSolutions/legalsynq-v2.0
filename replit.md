@@ -3433,6 +3433,26 @@ Final closure of the legacy authorization model. All frontend and backend consum
 
 **Report:** `analysis/LS-COR-AUT-011-report.md`
 
+## LS-COR-AUT-011A — Policy Engine Hardening + Observability — COMPLETED 2026-04-11
+
+**PolicyEffect Enum:** `PolicyEffect.Allow` / `PolicyEffect.Deny` added to `Identity.Domain`. `Policy.Effect` property (default `Allow`). `Policy.Create()` accepts optional `effect` parameter. `Policy.Update()` accepts optional `PolicyEffect? effect` (null preserves existing).
+
+**Deny-Override Semantics:** `PolicyEvaluationService` evaluates all policies in deterministic order (Priority ASC → PolicyCode ASC → Id ASC). If any matched Deny-effect policy's rules pass, the result is an immediate deny override regardless of Allow policies. `PolicyEvaluationResult.DenyWithOverride()` factory sets `DenyOverrideApplied=true` and `DenyOverridePolicyCode`.
+
+**IMemoryCache Caching:** Cache key `policy:{tenantId}:{userId}:{permission}:{policyVersion}:{resourceHash}`. TTL configurable via `Authorization:PolicyCacheTtlSeconds` (default 60). Cache skipped when resource context is empty/incomplete. `PolicyVersion` in cache key auto-invalidates on policy changes.
+
+**PolicyVersionProvider:** `InMemoryPolicyVersionProvider` (Singleton) with `Interlocked`-based thread-safe `CurrentVersion` and `Increment()`. All Admin API CRUD handlers (create/update/deactivate policy, create/update/deactivate rule, create/deactivate permission-policy mapping) call `Increment()` after `SaveChangesAsync`.
+
+**IPolicyResourceContextAccessor:** Abstraction in BuildingBlocks for standardized resource context access. Implementation reads from `HttpContext.Items["PolicyResourceContext"]`.
+
+**Structured Logging:** `RequirePermissionFilter` emits structured `PolicyDecision` log entries with full shape (permission, user, tenant, elapsed, matched policies, rule results, deny override, cache hit, resource context present). DENY at `Warn` severity, ALLOW at `Debug`.
+
+**Admin API:** All policy responses include `effect` field. `SupportedFields` endpoint returns `effects` array. ABAC CRUD handlers in `AdminEndpoints` class.
+
+**Frontend:** `PolicySummary.effect` field. Effect badge (emerald=Allow, red=Deny) on policy list table and detail panel. `SupportedFieldsResponse.effects`. `mapSupportedFields` mapper updated.
+
+**Tests:** 153 total (PolicyDomain: PolicyEffect creation/update/preservation, PolicyVersionProvider: initial/increment/monotonic/thread-safety, PolicyEvaluationResult: Allow/Deny/AllowWithPolicies/DenyWithOverride factories, MatchedPolicy/RuleResult defaults).
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`

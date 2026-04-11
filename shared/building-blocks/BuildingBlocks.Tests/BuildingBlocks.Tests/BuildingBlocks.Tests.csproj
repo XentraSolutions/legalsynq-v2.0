@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\BuildingBlocks\BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\..\..\apps\services\identity\Identity.Domain\Identity.Domain.csproj" />
+    <ProjectReference Include="..\..\..\..\apps\services\identity\Identity.Infrastructure\Identity.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

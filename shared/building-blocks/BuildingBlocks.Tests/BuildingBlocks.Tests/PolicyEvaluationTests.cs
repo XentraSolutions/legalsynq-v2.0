@@ -1,4 +1,6 @@
 using Identity.Domain;
+using BuildingBlocks.Authorization;
+using Identity.Infrastructure.Services;
 
 namespace BuildingBlocks.Tests;
 
@@ -40,8 +42,25 @@ public class PolicyDomainTests
         Assert.Equal("SYNQ_FUND", policy.ProductCode);
         Assert.Equal("Limits approval amounts", policy.Description);
         Assert.Equal(10, policy.Priority);
+        Assert.Equal(PolicyEffect.Allow, policy.Effect);
         Assert.True(policy.IsActive);
         Assert.NotEqual(Guid.Empty, policy.Id);
+    }
+
+    [Fact]
+    public void PolicyCreate_WithDenyEffect_SetsDeny()
+    {
+        var policy = Policy.Create("SYNQ_FUND.block.region", "Block Region", "SYNQ_FUND", effect: PolicyEffect.Deny);
+
+        Assert.Equal(PolicyEffect.Deny, policy.Effect);
+    }
+
+    [Fact]
+    public void PolicyCreate_DefaultEffect_IsAllow()
+    {
+        var policy = Policy.Create("SYNQ_FUND.default.allow", "Default Allow", "SYNQ_FUND");
+
+        Assert.Equal(PolicyEffect.Allow, policy.Effect);
     }
 
     [Fact]
@@ -75,11 +94,22 @@ public class PolicyDomainTests
     {
         var policy = Policy.Create("SYNQ_FUND.approval.limit", "Original", "SYNQ_FUND", priority: 0);
 
-        policy.Update("Updated", "New desc", 5);
+        policy.Update("Updated", "New desc", 5, PolicyEffect.Deny);
 
         Assert.Equal("Updated", policy.Name);
         Assert.Equal("New desc", policy.Description);
         Assert.Equal(5, policy.Priority);
+        Assert.Equal(PolicyEffect.Deny, policy.Effect);
+    }
+
+    [Fact]
+    public void PolicyUpdate_NullEffect_PreservesExisting()
+    {
+        var policy = Policy.Create("SYNQ_FUND.approval.limit", "Original", "SYNQ_FUND", effect: PolicyEffect.Deny);
+
+        policy.Update("Updated", null, 1);
+
+        Assert.Equal(PolicyEffect.Deny, policy.Effect);
     }
 }
 
@@ -233,5 +263,144 @@ public class PermissionPolicyDomainTests
         pp.Deactivate();
 
         Assert.False(pp.IsActive);
+    }
+}
+
+public class PolicyVersionProviderTests
+{
+    [Fact]
+    public void InitialVersion_IsZero()
+    {
+        var provider = new InMemoryPolicyVersionProvider();
+        Assert.Equal(0, provider.CurrentVersion);
+    }
+
+    [Fact]
+    public void Increment_IncreasesVersion()
+    {
+        var provider = new InMemoryPolicyVersionProvider();
+        provider.Increment();
+        Assert.Equal(1, provider.CurrentVersion);
+    }
+
+    [Fact]
+    public void MultipleIncrements_AreMonotonic()
+    {
+        var provider = new InMemoryPolicyVersionProvider();
+        provider.Increment();
+        provider.Increment();
+        provider.Increment();
+        Assert.Equal(3, provider.CurrentVersion);
+    }
+
+    [Fact]
+    public void ConcurrentIncrements_AreThreadSafe()
+    {
+        var provider = new InMemoryPolicyVersionProvider();
+        const int iterations = 1000;
+
+        Parallel.For(0, iterations, _ => provider.Increment());
+
+        Assert.Equal(iterations, provider.CurrentVersion);
+    }
+}
+
+public class PolicyEvaluationResultTests
+{
+    [Fact]
+    public void Allow_CreatesAllowedResult()
+    {
+        var result = PolicyEvaluationResult.Allow("test reason");
+
+        Assert.True(result.Allowed);
+        Assert.Equal("test reason", result.Reason);
+        Assert.Empty(result.MatchedPolicies);
+        Assert.False(result.DenyOverrideApplied);
+        Assert.Null(result.DenyOverridePolicyCode);
+    }
+
+    [Fact]
+    public void Deny_CreatesDeniedResult()
+    {
+        var matched = new List<MatchedPolicy>
+        {
+            new() { PolicyCode = "SYNQ_FUND.block.region", Effect = "Deny", Passed = true }
+        };
+
+        var result = PolicyEvaluationResult.Deny("blocked", matched);
+
+        Assert.False(result.Allowed);
+        Assert.Equal("blocked", result.Reason);
+        Assert.Single(result.MatchedPolicies);
+        Assert.False(result.DenyOverrideApplied);
+    }
+
+    [Fact]
+    public void AllowWithPolicies_IncludesMatchedPolicies()
+    {
+        var matched = new List<MatchedPolicy>
+        {
+            new() { PolicyCode = "SYNQ_FUND.approval.limit", Effect = "Allow", Passed = true, Priority = 10, EvaluationOrder = 1 }
+        };
+
+        var result = PolicyEvaluationResult.AllowWithPolicies("all passed", matched);
+
+        Assert.True(result.Allowed);
+        Assert.Single(result.MatchedPolicies);
+        Assert.Equal("Allow", result.MatchedPolicies[0].Effect);
+        Assert.Equal(10, result.MatchedPolicies[0].Priority);
+        Assert.Equal(1, result.MatchedPolicies[0].EvaluationOrder);
+    }
+
+    [Fact]
+    public void DenyWithOverride_SetsDenyOverrideFields()
+    {
+        var matched = new List<MatchedPolicy>
+        {
+            new() { PolicyCode = "SYNQ_FUND.approval.limit", Effect = "Allow", Passed = true },
+            new() { PolicyCode = "SYNQ_FUND.block.region", Effect = "Deny", Passed = true },
+        };
+
+        var result = PolicyEvaluationResult.DenyWithOverride(
+            "Deny override by SYNQ_FUND.block.region",
+            "SYNQ_FUND.block.region",
+            matched);
+
+        Assert.False(result.Allowed);
+        Assert.True(result.DenyOverrideApplied);
+        Assert.Equal("SYNQ_FUND.block.region", result.DenyOverridePolicyCode);
+        Assert.Equal(2, result.MatchedPolicies.Count);
+    }
+
+    [Fact]
+    public void Result_DefaultCacheHit_IsFalse()
+    {
+        var result = PolicyEvaluationResult.Allow();
+        Assert.False(result.CacheHit);
+    }
+
+    [Fact]
+    public void Result_DefaultResourceContextPresent_IsFalse()
+    {
+        var result = PolicyEvaluationResult.Allow();
+        Assert.False(result.ResourceContextPresent);
+    }
+
+    [Fact]
+    public void MatchedPolicy_DefaultEffect_IsAllow()
+    {
+        var mp = new MatchedPolicy();
+        Assert.Equal("Allow", mp.Effect);
+    }
+
+    [Fact]
+    public void RuleResult_DefaultFields_AreEmpty()
+    {
+        var rr = new RuleResult();
+        Assert.Equal(string.Empty, rr.Field);
+        Assert.Equal(string.Empty, rr.Operator);
+        Assert.Equal(string.Empty, rr.ExpectedValue);
+        Assert.Null(rr.ActualValue);
+        Assert.False(rr.Passed);
     }
 }

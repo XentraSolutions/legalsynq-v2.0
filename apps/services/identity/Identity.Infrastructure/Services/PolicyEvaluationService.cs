@@ -62,9 +62,18 @@ public class PolicyEvaluationService : IPolicyEvaluationService
 
         if (IsCachingEnabled() && resourceContextPresent && _cache.TryGetValue(cacheKey, out PolicyEvaluationResult? cached) && cached != null)
         {
-            cached.CacheHit = true;
-            cached.EvaluationElapsedMs = sw.ElapsedMilliseconds;
-            return cached;
+            return new PolicyEvaluationResult
+            {
+                Allowed = cached.Allowed,
+                Reason = cached.Reason,
+                MatchedPolicies = cached.MatchedPolicies,
+                DenyOverrideApplied = cached.DenyOverrideApplied,
+                DenyOverridePolicyCode = cached.DenyOverridePolicyCode,
+                PolicyVersion = cached.PolicyVersion,
+                ResourceContextPresent = cached.ResourceContextPresent,
+                CacheHit = true,
+                EvaluationElapsedMs = sw.ElapsedMilliseconds,
+            };
         }
 
         var permissionPolicies = await _db.PermissionPolicies

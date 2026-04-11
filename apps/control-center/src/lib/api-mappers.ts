@@ -1516,5 +1516,6 @@ export function mapSupportedFields(raw: unknown): SupportedFieldsResponse {
     operators:      asArr(r['operators']).map(v => String(v)),
     conditionTypes: asArr(r['conditionTypes']).map(v => String(v)),
     logicalGroups:  asArr(r['logicalGroups']).map(v => String(v)),
+    effects:        asArr(r['effects']).map(v => String(v)),
   };
 }
