@@ -1454,6 +1454,7 @@ export function mapPolicySummary(raw: unknown): PolicySummary {
     productCode:     str(r, 'productCode', 'product_code', ''),
     isActive:        (r['isActive'] as boolean) ?? true,
     priority:        (r['priority'] as number) ?? 0,
+    effect:          str(r, 'effect', 'effect', 'Allow'),
     rulesCount:      (r['rulesCount'] as number) ?? 0,
     permissionCount: (r['permissionCount'] as number) ?? 0,
     createdAtUtc:    str(r, 'createdAtUtc', 'created_at_utc', ''),

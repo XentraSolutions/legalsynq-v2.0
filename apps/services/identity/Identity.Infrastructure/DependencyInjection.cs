@@ -85,6 +85,8 @@ public static class DependencyInjection
 
         services.AddScoped<IAttributeProvider, DefaultAttributeProvider>();
         services.AddScoped<IPolicyEvaluationService, PolicyEvaluationService>();
+        services.AddScoped<IPolicyResourceContextAccessor, HttpContextPolicyResourceContextAccessor>();
+        services.AddSingleton<IPolicyVersionProvider, InMemoryPolicyVersionProvider>();
 
         return services;
     }

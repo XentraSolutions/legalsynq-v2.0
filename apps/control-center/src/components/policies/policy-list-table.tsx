@@ -25,6 +25,7 @@ export function PolicyListTable({ policies }: PolicyListTableProps) {
             <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
             <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
             <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+            <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Effect</th>
             <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Rules</th>
             <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Permissions</th>
             <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -42,6 +43,15 @@ export function PolicyListTable({ policies }: PolicyListTableProps) {
                 </span>
               </td>
               <td className="px-4 py-2.5 text-center text-gray-600">{policy.priority}</td>
+              <td className="px-4 py-2.5 text-center">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                  policy.effect === 'Deny'
+                    ? 'bg-red-50 text-red-700 border border-red-100'
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                }`}>
+                  {policy.effect}
+                </span>
+              </td>
               <td className="px-4 py-2.5 text-center text-gray-600">{policy.rulesCount}</td>
               <td className="px-4 py-2.5 text-center text-gray-600">{policy.permissionCount}</td>
               <td className="px-4 py-2.5 text-center">

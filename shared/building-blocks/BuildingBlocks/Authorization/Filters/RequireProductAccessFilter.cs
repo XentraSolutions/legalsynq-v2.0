@@ -324,15 +324,57 @@ public sealed class RequirePermissionFilter : IEndpointFilter
         if (evaluationService == null)
             return null;
 
-        var resourceContext = httpContext.Items.TryGetValue("PolicyResourceContext", out var ctx)
-            ? ctx as Dictionary<string, object?>
-            : null;
+        var contextAccessor = httpContext.RequestServices.GetService(
+            typeof(Authorization.IPolicyResourceContextAccessor)) as Authorization.IPolicyResourceContextAccessor;
 
-        return await evaluationService.EvaluateAsync(
+        var resourceContext = contextAccessor?.GetResourceContext()
+            ?? (httpContext.Items.TryGetValue("PolicyResourceContext", out var ctx)
+                ? ctx as Dictionary<string, object?>
+                : null);
+
+        var result = await evaluationService.EvaluateAsync(
             user,
             permissionCode,
             resourceContext,
             httpContext);
+
+        if (result != null)
+        {
+            LogPolicyDecisionSummary(httpContext, user, permissionCode, result);
+        }
+
+        return result;
+    }
+
+    private static void LogPolicyDecisionSummary(
+        HttpContext httpContext, System.Security.Claims.ClaimsPrincipal user,
+        string permission, Authorization.PolicyEvaluationResult result)
+    {
+        var logger = httpContext.RequestServices.GetService(typeof(ILogger<RequirePermissionFilter>)) as ILogger;
+        if (logger == null) return;
+
+        var userId = user.FindFirst("sub")?.Value;
+        var tenantId = user.FindFirst("tenant_id")?.Value;
+        var accessVersion = user.FindFirst("access_version")?.Value;
+        var endpoint = httpContext.Request.Path.Value;
+
+        if (!result.Allowed)
+        {
+            logger.LogWarning(
+                "PolicyDecisionSummary: event=PolicyDecisionSummary userId={UserId} tenantId={TenantId} endpoint={Endpoint} permission={Permission} result=DENY reason={Reason} denyOverride={DenyOverride} denyPolicyCode={DenyPolicyCode} policiesEvaluated={PoliciesCount} elapsedMs={ElapsedMs} policyVersion={PolicyVersion} cacheHit={CacheHit} accessVersion={AccessVersion}",
+                userId, tenantId, endpoint, permission, result.Reason,
+                result.DenyOverrideApplied, result.DenyOverridePolicyCode,
+                result.MatchedPolicies.Count, result.EvaluationElapsedMs,
+                result.PolicyVersion, result.CacheHit, accessVersion);
+        }
+        else
+        {
+            logger.LogInformation(
+                "PolicyDecisionSummary: event=PolicyDecisionSummary userId={UserId} tenantId={TenantId} endpoint={Endpoint} permission={Permission} result=ALLOW reason={Reason} policiesEvaluated={PoliciesCount} elapsedMs={ElapsedMs} policyVersion={PolicyVersion} cacheHit={CacheHit} accessVersion={AccessVersion}",
+                userId, tenantId, endpoint, permission, result.Reason,
+                result.MatchedPolicies.Count, result.EvaluationElapsedMs,
+                result.PolicyVersion, result.CacheHit, accessVersion);
+        }
     }
 
     private static bool IsPolicyEvaluationEnabled(HttpContext ctx)

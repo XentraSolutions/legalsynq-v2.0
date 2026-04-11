@@ -29,6 +29,11 @@ public class PolicyConfiguration : IEntityTypeConfiguration<Policy>
 
         builder.Property(p => p.IsActive).IsRequired();
         builder.Property(p => p.Priority).IsRequired();
+        builder.Property(p => p.Effect)
+            .IsRequired()
+            .HasDefaultValue(Identity.Domain.PolicyEffect.Allow)
+            .HasConversion<string>()
+            .HasMaxLength(10);
         builder.Property(p => p.CreatedAtUtc).IsRequired();
         builder.Property(p => p.UpdatedAtUtc);
         builder.Property(p => p.CreatedBy);

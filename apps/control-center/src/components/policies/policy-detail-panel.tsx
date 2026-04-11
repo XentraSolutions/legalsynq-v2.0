@@ -27,6 +27,13 @@ export function PolicyDetailPanel({ policy }: PolicyDetailPanelProps) {
           }`}>
             {policy.isActive ? 'Active' : 'Inactive'}
           </span>
+          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+            policy.effect === 'Deny'
+              ? 'bg-red-50 text-red-700 border border-red-100'
+              : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+          }`}>
+            {policy.effect}
+          </span>
           <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
             {policy.productCode}
           </span>
@@ -78,6 +85,16 @@ export function PolicyDetailPanel({ policy }: PolicyDetailPanelProps) {
             <div>
               <span className="text-gray-500 block text-xs mb-0.5">Priority</span>
               <span className="text-gray-900">{policy.priority}</span>
+            </div>
+            <div>
+              <span className="text-gray-500 block text-xs mb-0.5">Effect</span>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                policy.effect === 'Deny'
+                  ? 'bg-red-50 text-red-700 border border-red-100'
+                  : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+              }`}>
+                {policy.effect}
+              </span>
             </div>
             <div>
               <span className="text-gray-500 block text-xs mb-0.5">Status</span>

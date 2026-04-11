@@ -931,6 +931,7 @@ export interface PolicySummary {
   productCode:     string;
   isActive:        boolean;
   priority:        number;
+  effect:          string;
   rulesCount:      number;
   permissionCount: number;
   createdAtUtc:    string;
@@ -976,6 +977,7 @@ export interface SupportedFieldsResponse {
   operators:      string[];
   conditionTypes: string[];
   logicalGroups:  string[];
+  effects:        string[];
 }
 
 // ── Shared ────────────────────────────────────────────────────────────────────
