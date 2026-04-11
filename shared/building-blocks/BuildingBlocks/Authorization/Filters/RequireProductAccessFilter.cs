@@ -277,8 +277,20 @@ public sealed class RequirePermissionFilter : IEndpointFilter
 
         if (user.HasPermission(_permissionCode))
         {
+            var policyResult = await EvaluatePoliciesIfEnabled(httpContext, user, _permissionCode);
+            if (policyResult != null && !policyResult.Allowed)
+            {
+                LogPermissionDecision(httpContext, "DENY", userId, tenantId, path, method,
+                    _permissionCode, $"PolicyDenied:{policyResult.Reason}", accessVersion);
+
+                return ProductAccessDeniedResult.Create(
+                    "POLICY_DENIED",
+                    $"Permission '{_permissionCode}' denied by policy: {policyResult.Reason}",
+                    ExtractProductCode(_permissionCode) ?? "");
+            }
+
             LogPermissionDecision(httpContext, "ALLOW", userId, tenantId, path, method,
-                _permissionCode, "PermissionClaim", accessVersion);
+                _permissionCode, policyResult != null ? "PermissionClaim+PolicyPass" : "PermissionClaim", accessVersion);
             return await next(context);
         }
 
@@ -298,6 +310,37 @@ public sealed class RequirePermissionFilter : IEndpointFilter
 
         return ProductAccessDeniedResult.Create(
             ProductAccessDeniedException.MissingPermission(_permissionCode));
+    }
+
+    private static async Task<Authorization.PolicyEvaluationResult?> EvaluatePoliciesIfEnabled(
+        HttpContext httpContext, System.Security.Claims.ClaimsPrincipal user, string permissionCode)
+    {
+        if (!IsPolicyEvaluationEnabled(httpContext))
+            return null;
+
+        var evaluationService = httpContext.RequestServices.GetService(
+            typeof(Authorization.IPolicyEvaluationService)) as Authorization.IPolicyEvaluationService;
+
+        if (evaluationService == null)
+            return null;
+
+        var resourceContext = httpContext.Items.TryGetValue("PolicyResourceContext", out var ctx)
+            ? ctx as Dictionary<string, object?>
+            : null;
+
+        return await evaluationService.EvaluateAsync(
+            user,
+            permissionCode,
+            resourceContext,
+            httpContext);
+    }
+
+    private static bool IsPolicyEvaluationEnabled(HttpContext ctx)
+    {
+        var config = ctx.RequestServices.GetService(typeof(Microsoft.Extensions.Configuration.IConfiguration))
+            as Microsoft.Extensions.Configuration.IConfiguration;
+        if (config == null) return false;
+        return string.Equals(config["Authorization:EnablePolicyEvaluation"], "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsRoleFallbackEnabled(HttpContext ctx)

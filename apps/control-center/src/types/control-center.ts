@@ -921,6 +921,63 @@ export interface ScopedRoleAssignment {
   createdAtUtc:   string;
 }
 
+// ── LS-COR-AUT-011: ABAC Policies ────────────────────────────────────────────
+
+export interface PolicySummary {
+  id:              string;
+  policyCode:      string;
+  name:            string;
+  description?:    string;
+  productCode:     string;
+  isActive:        boolean;
+  priority:        number;
+  rulesCount:      number;
+  permissionCount: number;
+  createdAtUtc:    string;
+  updatedAtUtc?:   string;
+}
+
+export interface PolicyRule {
+  id:            string;
+  conditionType: string;
+  field:         string;
+  op:            string;
+  value:         string;
+  logicalGroup:  string;
+  createdAtUtc:  string;
+}
+
+export interface PermissionPolicyMapping {
+  id:             string;
+  permissionCode: string;
+  isActive:       boolean;
+  createdAtUtc:   string;
+}
+
+export interface PolicyDetail extends PolicySummary {
+  createdBy?:          string;
+  updatedBy?:          string;
+  rules:               PolicyRule[];
+  permissionMappings:  PermissionPolicyMapping[];
+}
+
+export interface PermissionPolicySummary {
+  id:             string;
+  permissionCode: string;
+  policyId:       string;
+  policyCode:     string;
+  policyName:     string;
+  isActive:       boolean;
+  createdAtUtc:   string;
+}
+
+export interface SupportedFieldsResponse {
+  fields:         string[];
+  operators:      string[];
+  conditionTypes: string[];
+  logicalGroups:  string[];
+}
+
 // ── Shared ────────────────────────────────────────────────────────────────────
 
 export interface PagedResponse<T> {

@@ -3413,6 +3413,26 @@ Final closure of the legacy authorization model. All frontend and backend consum
 
 **Report:** `analysis/LS-COR-AUT-010-report.md`
 
+## LS-COR-AUT-011 — Advanced Authorization (ABAC + Context-Aware Policies) — COMPLETED 2026-04-11
+
+**Domain Entities:** `Policy` (code pattern `PRODUCT.domain.qualifier`, factory create + lifecycle), `PolicyRule` (11 supported fields, operator/field validation, AND/OR grouping), `PermissionPolicy` (junction linking permission codes to policies). Enums: `PolicyConditionType` (Attribute/Resource/Context), `RuleOperator` (10 operators including In/NotIn/Contains/StartsWith), `LogicalGroupType` (And/Or).
+
+**EF Configuration:** `Policies`, `PolicyRules`, `PermissionPolicies` tables with proper indexes. Unique index on PolicyCode. Unique composite index on (PermissionCode, PolicyId).
+
+**Policy Evaluation Engine:** `PolicyEvaluationService` — loads active policies linked to permission via PermissionPolicies, evaluates rules against merged user/resource/request attributes, returns `PolicyEvaluationResult` with full explainability (MatchedPolicy + RuleResult per rule). AND/OR logical grouping. Numeric comparison for amount/time fields. `DefaultAttributeProvider` extracts attributes from JWT claims, resource context dict, and HttpContext.
+
+**RequirePermissionFilter Enhancement:** When `Authorization:EnablePolicyEvaluation=true`, filter calls `IPolicyEvaluationService.EvaluateAsync()` after PBAC claim check passes. Resource context injectable via `httpContext.Items["PolicyResourceContext"]` as `Dictionary<string,object?>`. Backward compatible — if no policies linked, existing behavior preserved.
+
+**Admin API:** Full policy CRUD (list/create/update/deactivate), rule CRUD within policy, permission-policy mapping CRUD, supported-fields endpoint. Access debug extended with linked-policy info.
+
+**Control Center UI:** Policy list page with product filter chips, policy detail page with tabbed view (Rules/Permissions/Info), visual rule builder with field/operator dropdowns, permission linking UI. Navigation entry under IDENTITY section. All operations via Next.js API route handlers proxying to server API.
+
+**Tests:** 47 new tests (153 total in BuildingBlocks.Tests): policy code validation, domain creation/update/deactivation, rule field validation, operator constraints, PermissionPolicy lifecycle.
+
+**Config:** `Authorization:EnablePolicyEvaluation=true` to activate. `Authorization:EnableRoleFallback=true` for PBAC fallback.
+
+**Report:** `analysis/LS-COR-AUT-011-report.md`
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`

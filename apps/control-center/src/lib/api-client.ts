@@ -360,6 +360,8 @@ export const CACHE_TAGS = {
   notifProviders:       'notif:providers',
   notifBilling:         'notif:billing',
   notifContacts:        'notif:contacts',
+  // LS-COR-AUT-011 — ABAC Policies
+  policies:             'cc:policies',
 } as const;
 
 export type CacheTag = typeof CACHE_TAGS[keyof typeof CACHE_TAGS];

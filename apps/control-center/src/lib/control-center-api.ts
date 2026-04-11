@@ -89,6 +89,10 @@ import {
   mapEffectivePermissionsResult,
   mapAccessDebugResult,
   mapAssignableRole,
+  mapPolicySummary,
+  mapPolicyDetail,
+  mapPermissionPolicySummary,
+  mapSupportedFields,
   unwrapApiResponse,
   unwrapApiResponseList,
 }                                       from '@/lib/api-mappers';
@@ -132,6 +136,10 @@ import type {
   RoleCapabilityItem,
   EffectivePermissionsResult,
   AccessDebugResult,
+  PolicySummary,
+  PolicyDetail,
+  PermissionPolicySummary,
+  SupportedFieldsResponse,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -763,6 +771,135 @@ export const controlCenterServerApi = {
         `/identity/api/admin/permissions/${encodeURIComponent(id)}`,
       );
       revalidateTag(CACHE_TAGS.roles);
+    },
+  },
+
+  // ── Policies (LS-COR-AUT-011) ──────────────────────────────────────────────
+
+  policies: {
+    list: async (opts?: { productCode?: string; search?: string }): Promise<PolicySummary[]> => {
+      const qs = new URLSearchParams();
+      if (opts?.productCode) qs.set('productCode', opts.productCode);
+      if (opts?.search) qs.set('search', opts.search);
+      const suffix = qs.toString() ? `?${qs}` : '';
+
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/policies${suffix}`,
+        300,
+        [CACHE_TAGS.policies],
+      );
+      const paged = mapPagedResponse(raw, mapPolicySummary);
+      return paged.items;
+    },
+
+    getById: async (id: string): Promise<PolicyDetail | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/identity/api/admin/policies/${encodeURIComponent(id)}`,
+          300,
+          [CACHE_TAGS.policies],
+        );
+        return mapPolicyDetail(raw);
+      } catch { return null; }
+    },
+
+    create: async (payload: {
+      policyCode: string;
+      name: string;
+      productCode: string;
+      description?: string;
+      priority?: number;
+    }): Promise<PolicySummary> => {
+      const raw = await apiClient.post<unknown>(
+        '/identity/api/admin/policies',
+        payload,
+      );
+      revalidateTag(CACHE_TAGS.policies);
+      return mapPolicySummary(raw);
+    },
+
+    update: async (id: string, payload: {
+      name: string;
+      description?: string;
+      priority: number;
+    }): Promise<PolicySummary> => {
+      const raw = await apiClient.patch<unknown>(
+        `/identity/api/admin/policies/${encodeURIComponent(id)}`,
+        payload,
+      );
+      revalidateTag(CACHE_TAGS.policies);
+      return mapPolicySummary(raw);
+    },
+
+    deactivate: async (id: string): Promise<void> => {
+      await apiClient.del(
+        `/identity/api/admin/policies/${encodeURIComponent(id)}`,
+      );
+      revalidateTag(CACHE_TAGS.policies);
+    },
+
+    createRule: async (policyId: string, payload: {
+      conditionType: string;
+      field: string;
+      operator: string;
+      value: string;
+      logicalGroup?: string;
+    }): Promise<unknown> => {
+      const raw = await apiClient.post<unknown>(
+        `/identity/api/admin/policies/${encodeURIComponent(policyId)}/rules`,
+        { ...payload, logicalGroup: payload.logicalGroup ?? 'And' },
+      );
+      revalidateTag(CACHE_TAGS.policies);
+      return raw;
+    },
+
+    deleteRule: async (policyId: string, ruleId: string): Promise<void> => {
+      await apiClient.del(
+        `/identity/api/admin/policies/${encodeURIComponent(policyId)}/rules/${encodeURIComponent(ruleId)}`,
+      );
+      revalidateTag(CACHE_TAGS.policies);
+    },
+
+    getSupportedFields: async (): Promise<SupportedFieldsResponse> => {
+      const raw = await apiClient.get<unknown>(
+        '/identity/api/admin/policies/supported-fields',
+        600,
+        [CACHE_TAGS.policies],
+      );
+      return mapSupportedFields(raw);
+    },
+  },
+
+  permissionPolicies: {
+    list: async (opts?: { permissionCode?: string; policyId?: string }): Promise<PermissionPolicySummary[]> => {
+      const qs = new URLSearchParams();
+      if (opts?.permissionCode) qs.set('permissionCode', opts.permissionCode);
+      if (opts?.policyId) qs.set('policyId', opts.policyId);
+      const suffix = qs.toString() ? `?${qs}` : '';
+
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/permission-policies${suffix}`,
+        300,
+        [CACHE_TAGS.policies],
+      );
+      const paged = mapPagedResponse(raw, mapPermissionPolicySummary);
+      return paged.items;
+    },
+
+    create: async (payload: { permissionCode: string; policyId: string }): Promise<unknown> => {
+      const raw = await apiClient.post<unknown>(
+        '/identity/api/admin/permission-policies',
+        { permissionCode: payload.permissionCode, policyId: payload.policyId },
+      );
+      revalidateTag(CACHE_TAGS.policies);
+      return raw;
+    },
+
+    deactivate: async (id: string): Promise<void> => {
+      await apiClient.del(
+        `/identity/api/admin/permission-policies/${encodeURIComponent(id)}`,
+      );
+      revalidateTag(CACHE_TAGS.policies);
     },
   },
 

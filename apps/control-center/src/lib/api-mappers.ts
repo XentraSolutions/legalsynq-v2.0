@@ -72,6 +72,12 @@ import type {
   PermissionSource,
   EffectivePermissionsResult,
   AccessDebugResult,
+  PolicySummary,
+  PolicyDetail,
+  PolicyRule,
+  PermissionPolicyMapping,
+  PermissionPolicySummary,
+  SupportedFieldsResponse,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -1433,5 +1439,81 @@ export function mapLegalHold(raw: unknown): LegalHold {
     isActive:         (r['isActive'] as boolean) ?? true,
     releasedAtUtc:    r['releasedAtUtc']    as string | undefined,
     releasedByUserId: r['releasedByUserId'] as string | undefined,
+  };
+}
+
+// ── LS-COR-AUT-011: ABAC Policy mappers ────────────────────────────────────
+
+export function mapPolicySummary(raw: unknown): PolicySummary {
+  const r = asObj(raw);
+  return {
+    id:              str(r, 'id', 'id', ''),
+    policyCode:      str(r, 'policyCode', 'policy_code', ''),
+    name:            str(r, 'name', 'name', ''),
+    description:     r['description'] as string | undefined,
+    productCode:     str(r, 'productCode', 'product_code', ''),
+    isActive:        (r['isActive'] as boolean) ?? true,
+    priority:        (r['priority'] as number) ?? 0,
+    rulesCount:      (r['rulesCount'] as number) ?? 0,
+    permissionCount: (r['permissionCount'] as number) ?? 0,
+    createdAtUtc:    str(r, 'createdAtUtc', 'created_at_utc', ''),
+    updatedAtUtc:    r['updatedAtUtc'] as string | undefined,
+  };
+}
+
+export function mapPolicyRule(raw: unknown): PolicyRule {
+  const r = asObj(raw);
+  return {
+    id:            str(r, 'id', 'id', ''),
+    conditionType: str(r, 'conditionType', 'condition_type', ''),
+    field:         str(r, 'field', 'field', ''),
+    op:            str(r, 'op', 'operator', ''),
+    value:         str(r, 'value', 'value', ''),
+    logicalGroup:  str(r, 'logicalGroup', 'logical_group', 'And'),
+    createdAtUtc:  str(r, 'createdAtUtc', 'created_at_utc', ''),
+  };
+}
+
+export function mapPermissionPolicyMapping(raw: unknown): PermissionPolicyMapping {
+  const r = asObj(raw);
+  return {
+    id:             str(r, 'id', 'id', ''),
+    permissionCode: str(r, 'permissionCode', 'permission_code', ''),
+    isActive:       (r['isActive'] as boolean) ?? true,
+    createdAtUtc:   str(r, 'createdAtUtc', 'created_at_utc', ''),
+  };
+}
+
+export function mapPolicyDetail(raw: unknown): PolicyDetail {
+  const r = asObj(raw);
+  return {
+    ...mapPolicySummary(raw),
+    createdBy:          r['createdBy'] as string | undefined,
+    updatedBy:          r['updatedBy'] as string | undefined,
+    rules:              asArr(r['rules']).map(mapPolicyRule),
+    permissionMappings: asArr(r['permissionMappings']).map(mapPermissionPolicyMapping),
+  };
+}
+
+export function mapPermissionPolicySummary(raw: unknown): PermissionPolicySummary {
+  const r = asObj(raw);
+  return {
+    id:             str(r, 'id', 'id', ''),
+    permissionCode: str(r, 'permissionCode', 'permission_code', ''),
+    policyId:       str(r, 'policyId', 'policy_id', ''),
+    policyCode:     str(r, 'policyCode', 'policy_code', ''),
+    policyName:     str(r, 'policyName', 'policy_name', ''),
+    isActive:       (r['isActive'] as boolean) ?? true,
+    createdAtUtc:   str(r, 'createdAtUtc', 'created_at_utc', ''),
+  };
+}
+
+export function mapSupportedFields(raw: unknown): SupportedFieldsResponse {
+  const r = asObj(raw);
+  return {
+    fields:         asArr(r['fields']).map(v => String(v)),
+    operators:      asArr(r['operators']).map(v => String(v)),
+    conditionTypes: asArr(r['conditionTypes']).map(v => String(v)),
+    logicalGroups:  asArr(r['logicalGroups']).map(v => String(v)),
   };
 }

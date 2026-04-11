@@ -59,6 +59,11 @@ public class IdentityDbContext : DbContext
     public DbSet<GroupProductAccess>            GroupProductAccessRecords        => Set<GroupProductAccess>();
     public DbSet<GroupRoleAssignment>           GroupRoleAssignments             => Set<GroupRoleAssignment>();
 
+    // LS-COR-AUT-011: ABAC Policies
+    public DbSet<Policy>                        Policies                        => Set<Policy>();
+    public DbSet<PolicyRule>                    PolicyRules                      => Set<PolicyRule>();
+    public DbSet<PermissionPolicy>             PermissionPolicies               => Set<PermissionPolicy>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(IdentityDbContext).Assembly);

@@ -157,6 +157,27 @@ public static class AdminEndpoints
         routes.MapPatch("/api/admin/permissions/{id:guid}",                                  UpdatePermission);
         routes.MapDelete("/api/admin/permissions/{id:guid}",                                 DeactivatePermission);
 
+        // ── LS-COR-AUT-011: ABAC Policy Management ─────────────────────────
+        routes.MapGet("/api/admin/policies",                                                 ListPolicies);
+        routes.MapGet("/api/admin/policies/{id:guid}",                                       GetPolicy);
+        routes.MapPost("/api/admin/policies",                                                CreatePolicy);
+        routes.MapPatch("/api/admin/policies/{id:guid}",                                     UpdatePolicy);
+        routes.MapDelete("/api/admin/policies/{id:guid}",                                    DeactivatePolicy);
+
+        // Policy rules
+        routes.MapGet("/api/admin/policies/{policyId:guid}/rules",                           ListPolicyRules);
+        routes.MapPost("/api/admin/policies/{policyId:guid}/rules",                          CreatePolicyRule);
+        routes.MapPatch("/api/admin/policies/{policyId:guid}/rules/{ruleId:guid}",           UpdatePolicyRule);
+        routes.MapDelete("/api/admin/policies/{policyId:guid}/rules/{ruleId:guid}",          DeletePolicyRule);
+
+        // Permission ↔ Policy mappings
+        routes.MapGet("/api/admin/permission-policies",                                      ListPermissionPolicies);
+        routes.MapPost("/api/admin/permission-policies",                                     CreatePermissionPolicy);
+        routes.MapDelete("/api/admin/permission-policies/{id:guid}",                         DeactivatePermissionPolicy);
+
+        // Policy evaluation debug
+        routes.MapGet("/api/admin/policies/supported-fields",                                GetSupportedFields);
+
         return routes;
     }
 
@@ -3826,7 +3847,55 @@ public static class AdminEndpoints
                 groupId = p.GroupId,
                 groupName = p.GroupName,
             }),
+
+            policies = await GetPolicyDebugForPermissions(db, effectiveAccess.Permissions, ct),
         });
+    }
+
+    private static async Task<object[]> GetPolicyDebugForPermissions(
+        IdentityDbContext db,
+        IReadOnlyList<string> permissions,
+        CancellationToken ct)
+    {
+        if (permissions.Count == 0) return [];
+
+        var permissionPolicies = await db.PermissionPolicies
+            .Where(pp => permissions.Contains(pp.PermissionCode) && pp.IsActive)
+            .ToListAsync(ct);
+
+        if (permissionPolicies.Count == 0) return [];
+
+        var policyIds = permissionPolicies.Select(pp => pp.PolicyId).Distinct().ToList();
+        var policies = await db.Policies
+            .Where(p => policyIds.Contains(p.Id) && p.IsActive)
+            .Include(p => p.Rules)
+            .ToListAsync(ct);
+
+        return permissionPolicies
+            .GroupBy(pp => pp.PermissionCode)
+            .Select(g => (object)new
+            {
+                permission = g.Key,
+                linkedPolicies = g.Select(pp =>
+                {
+                    var policy = policies.FirstOrDefault(p => p.Id == pp.PolicyId);
+                    return policy == null ? null : new
+                    {
+                        policyCode = policy.PolicyCode,
+                        policyName = policy.Name,
+                        priority = policy.Priority,
+                        rulesCount = policy.Rules.Count,
+                        rules = policy.Rules.Select(r => new
+                        {
+                            field = r.Field,
+                            op = r.Operator.ToString(),
+                            value = r.Value,
+                            conditionType = r.ConditionType.ToString(),
+                            logicalGroup = r.LogicalGroup.ToString(),
+                        }),
+                    };
+                }).Where(x => x != null),
+            }).ToArray();
     }
 
     // ── LS-COR-AUT-009: Permission catalog by product code ──────────────────
@@ -4274,4 +4343,559 @@ public static partial class AdminEndpointsLscc010
         Guid   Id,
         string Name,
         bool   IsNew);
+
+    // =========================================================================
+    // LS-COR-AUT-011: ABAC POLICY MANAGEMENT
+    // =========================================================================
+
+    private static async Task<IResult> ListPolicies(
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        string productCode = "",
+        string search = "",
+        bool activeOnly = true,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var q = db.Policies
+            .Include(p => p.Rules)
+            .Include(p => p.PermissionPolicies)
+            .AsQueryable();
+
+        if (activeOnly)
+            q = q.Where(p => p.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(productCode))
+            q = q.Where(p => p.ProductCode == productCode);
+
+        if (!string.IsNullOrWhiteSpace(search))
+            q = q.Where(p => p.PolicyCode.Contains(search) || p.Name.Contains(search));
+
+        var policies = await q
+            .OrderBy(p => p.Priority).ThenBy(p => p.PolicyCode)
+            .Select(p => new
+            {
+                id = p.Id,
+                policyCode = p.PolicyCode,
+                name = p.Name,
+                description = p.Description,
+                productCode = p.ProductCode,
+                isActive = p.IsActive,
+                priority = p.Priority,
+                rulesCount = p.Rules.Count,
+                permissionCount = p.PermissionPolicies.Count(pp => pp.IsActive),
+                createdAtUtc = p.CreatedAtUtc,
+                updatedAtUtc = p.UpdatedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { items = policies, totalCount = policies.Count });
+    }
+
+    private static async Task<IResult> GetPolicy(
+        Guid id,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var policy = await db.Policies
+            .Include(p => p.Rules)
+            .Include(p => p.PermissionPolicies)
+            .FirstOrDefaultAsync(p => p.Id == id, ct);
+
+        if (policy is null) return Results.NotFound();
+
+        return Results.Ok(new
+        {
+            id = policy.Id,
+            policyCode = policy.PolicyCode,
+            name = policy.Name,
+            description = policy.Description,
+            productCode = policy.ProductCode,
+            isActive = policy.IsActive,
+            priority = policy.Priority,
+            createdAtUtc = policy.CreatedAtUtc,
+            updatedAtUtc = policy.UpdatedAtUtc,
+            createdBy = policy.CreatedBy,
+            updatedBy = policy.UpdatedBy,
+            rules = policy.Rules.Select(r => new
+            {
+                id = r.Id,
+                conditionType = r.ConditionType.ToString(),
+                field = r.Field,
+                op = r.Operator.ToString(),
+                value = r.Value,
+                logicalGroup = r.LogicalGroup.ToString(),
+                createdAtUtc = r.CreatedAtUtc,
+            }),
+            permissionMappings = policy.PermissionPolicies.Select(pp => new
+            {
+                id = pp.Id,
+                permissionCode = pp.PermissionCode,
+                isActive = pp.IsActive,
+                createdAtUtc = pp.CreatedAtUtc,
+            }),
+        });
+    }
+
+    private record CreatePolicyRequest(
+        string PolicyCode,
+        string Name,
+        string ProductCode,
+        string? Description = null,
+        int Priority = 0);
+
+    private static async Task<IResult> CreatePolicy(
+        CreatePolicyRequest body,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        IAuditEventClient auditClient,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        if (!Identity.Domain.Policy.IsValidPolicyCode(body.PolicyCode))
+            return Results.BadRequest(new { error = $"Policy code must follow naming convention 'PRODUCT.domain.qualifier' (e.g. SYNQ_FUND.approval.limit). Got: '{body.PolicyCode}'." });
+
+        var exists = await db.Policies.AnyAsync(p => p.PolicyCode == body.PolicyCode.Trim(), ct);
+        if (exists)
+            return Results.Conflict(new { error = $"Policy code '{body.PolicyCode}' already exists." });
+
+        var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid? callerId = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
+
+        var policy = Identity.Domain.Policy.Create(
+            body.PolicyCode, body.Name, body.ProductCode,
+            body.Description, body.Priority, callerId);
+
+        db.Policies.Add(policy);
+        await db.SaveChangesAsync(ct);
+
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "policy.created",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = auditNow,
+            Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "Policy", Id = policy.Id.ToString() },
+            Action        = "PolicyCreated",
+            Description   = $"Policy '{policy.PolicyCode}' created for product '{body.ProductCode}'",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "policy.created", policy.Id.ToString()),
+        });
+
+        return Results.Created($"/api/admin/policies/{policy.Id}", new
+        {
+            id = policy.Id, policyCode = policy.PolicyCode, name = policy.Name,
+            description = policy.Description, productCode = policy.ProductCode,
+            isActive = policy.IsActive, priority = policy.Priority,
+            createdAtUtc = policy.CreatedAtUtc,
+        });
+    }
+
+    private record UpdatePolicyRequest(string Name, string? Description, int Priority);
+
+    private static async Task<IResult> UpdatePolicy(
+        Guid id,
+        UpdatePolicyRequest body,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        IAuditEventClient auditClient,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var policy = await db.Policies.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (policy is null)
+            return Results.NotFound(new { error = "Policy not found." });
+
+        var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid? callerId = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
+
+        policy.Update(body.Name, body.Description, body.Priority, callerId);
+        await db.SaveChangesAsync(ct);
+
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "policy.updated",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = auditNow,
+            Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "Policy", Id = id.ToString() },
+            Action        = "PolicyUpdated",
+            Description   = $"Policy '{policy.PolicyCode}' updated",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "policy.updated", id.ToString()),
+        });
+
+        return Results.Ok(new
+        {
+            id = policy.Id, policyCode = policy.PolicyCode, name = policy.Name,
+            description = policy.Description, productCode = policy.ProductCode,
+            isActive = policy.IsActive, priority = policy.Priority,
+            updatedAtUtc = policy.UpdatedAtUtc,
+        });
+    }
+
+    private static async Task<IResult> DeactivatePolicy(
+        Guid id,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        IAuditEventClient auditClient,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var policy = await db.Policies.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (policy is null)
+            return Results.NotFound(new { error = "Policy not found." });
+
+        if (!policy.IsActive)
+            return Results.Ok(new { message = "Policy already deactivated." });
+
+        var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid? callerId = Guid.TryParse(callerIdRaw, out var cid) ? cid : null;
+
+        policy.Deactivate(callerId);
+        await db.SaveChangesAsync(ct);
+
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "policy.deactivated",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Severity      = SeverityLevel.Warning,
+            OccurredAtUtc = auditNow,
+            Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "Policy", Id = id.ToString() },
+            Action        = "PolicyDeactivated",
+            Description   = $"Policy '{policy.PolicyCode}' deactivated",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "policy.deactivated", id.ToString()),
+        });
+
+        return Results.NoContent();
+    }
+
+    // ── Policy Rules ────────────────────────────────────────────────────────────
+
+    private static async Task<IResult> ListPolicyRules(
+        Guid policyId,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var policy = await db.Policies.Include(p => p.Rules).FirstOrDefaultAsync(p => p.Id == policyId, ct);
+        if (policy is null) return Results.NotFound();
+
+        return Results.Ok(new
+        {
+            policyId = policy.Id,
+            policyCode = policy.PolicyCode,
+            rules = policy.Rules.Select(r => new
+            {
+                id = r.Id,
+                conditionType = r.ConditionType.ToString(),
+                field = r.Field,
+                op = r.Operator.ToString(),
+                value = r.Value,
+                logicalGroup = r.LogicalGroup.ToString(),
+                createdAtUtc = r.CreatedAtUtc,
+            }),
+        });
+    }
+
+    private record CreatePolicyRuleRequest(
+        string ConditionType,
+        string Field,
+        string Operator,
+        string Value,
+        string LogicalGroup = "And");
+
+    private static async Task<IResult> CreatePolicyRule(
+        Guid policyId,
+        CreatePolicyRuleRequest body,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var policy = await db.Policies.FirstOrDefaultAsync(p => p.Id == policyId, ct);
+        if (policy is null)
+            return Results.NotFound(new { error = "Policy not found." });
+
+        if (!Enum.TryParse<Identity.Domain.PolicyConditionType>(body.ConditionType, true, out var conditionType))
+            return Results.BadRequest(new { error = $"Invalid ConditionType: '{body.ConditionType}'. Valid: {string.Join(", ", Enum.GetNames<Identity.Domain.PolicyConditionType>())}" });
+
+        if (!Enum.TryParse<Identity.Domain.RuleOperator>(body.Operator, true, out var op))
+            return Results.BadRequest(new { error = $"Invalid Operator: '{body.Operator}'. Valid: {string.Join(", ", Enum.GetNames<Identity.Domain.RuleOperator>())}" });
+
+        if (!Enum.TryParse<Identity.Domain.LogicalGroupType>(body.LogicalGroup, true, out var logicalGroup))
+            return Results.BadRequest(new { error = $"Invalid LogicalGroup: '{body.LogicalGroup}'. Valid: And, Or" });
+
+        if (!Identity.Domain.PolicyRule.IsFieldSupported(body.Field))
+            return Results.BadRequest(new { error = $"Field '{body.Field}' is not supported. Supported: {string.Join(", ", Identity.Domain.PolicyRule.GetSupportedFields())}" });
+
+        try
+        {
+            var rule = Identity.Domain.PolicyRule.Create(policyId, conditionType, body.Field, op, body.Value, logicalGroup);
+            db.PolicyRules.Add(rule);
+            await db.SaveChangesAsync(ct);
+
+            return Results.Created($"/api/admin/policies/{policyId}/rules/{rule.Id}", new
+            {
+                id = rule.Id,
+                policyId = rule.PolicyId,
+                conditionType = rule.ConditionType.ToString(),
+                field = rule.Field,
+                op = rule.Operator.ToString(),
+                value = rule.Value,
+                logicalGroup = rule.LogicalGroup.ToString(),
+                createdAtUtc = rule.CreatedAtUtc,
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private record UpdatePolicyRuleRequest(
+        string ConditionType,
+        string Field,
+        string Operator,
+        string Value,
+        string LogicalGroup);
+
+    private static async Task<IResult> UpdatePolicyRule(
+        Guid policyId,
+        Guid ruleId,
+        UpdatePolicyRuleRequest body,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var rule = await db.PolicyRules.FirstOrDefaultAsync(r => r.Id == ruleId && r.PolicyId == policyId, ct);
+        if (rule is null)
+            return Results.NotFound(new { error = "Rule not found." });
+
+        if (!Enum.TryParse<Identity.Domain.PolicyConditionType>(body.ConditionType, true, out var conditionType))
+            return Results.BadRequest(new { error = $"Invalid ConditionType: '{body.ConditionType}'." });
+
+        if (!Enum.TryParse<Identity.Domain.RuleOperator>(body.Operator, true, out var op))
+            return Results.BadRequest(new { error = $"Invalid Operator: '{body.Operator}'." });
+
+        if (!Enum.TryParse<Identity.Domain.LogicalGroupType>(body.LogicalGroup, true, out var logicalGroup))
+            return Results.BadRequest(new { error = $"Invalid LogicalGroup: '{body.LogicalGroup}'." });
+
+        try
+        {
+            rule.Update(conditionType, body.Field, op, body.Value, logicalGroup);
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(new
+            {
+                id = rule.Id,
+                policyId = rule.PolicyId,
+                conditionType = rule.ConditionType.ToString(),
+                field = rule.Field,
+                op = rule.Operator.ToString(),
+                value = rule.Value,
+                logicalGroup = rule.LogicalGroup.ToString(),
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private static async Task<IResult> DeletePolicyRule(
+        Guid policyId,
+        Guid ruleId,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var rule = await db.PolicyRules.FirstOrDefaultAsync(r => r.Id == ruleId && r.PolicyId == policyId, ct);
+        if (rule is null)
+            return Results.NotFound(new { error = "Rule not found." });
+
+        db.PolicyRules.Remove(rule);
+        await db.SaveChangesAsync(ct);
+
+        return Results.NoContent();
+    }
+
+    // ── Permission ↔ Policy Mappings ────────────────────────────────────────────
+
+    private static async Task<IResult> ListPermissionPolicies(
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        string? permissionCode = null,
+        Guid? policyId = null,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var q = db.PermissionPolicies
+            .Include(pp => pp.Policy)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(permissionCode))
+            q = q.Where(pp => pp.PermissionCode == permissionCode);
+
+        if (policyId.HasValue)
+            q = q.Where(pp => pp.PolicyId == policyId.Value);
+
+        var items = await q
+            .Select(pp => new
+            {
+                id = pp.Id,
+                permissionCode = pp.PermissionCode,
+                policyId = pp.PolicyId,
+                policyCode = pp.Policy.PolicyCode,
+                policyName = pp.Policy.Name,
+                isActive = pp.IsActive,
+                createdAtUtc = pp.CreatedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { items, totalCount = items.Count });
+    }
+
+    private record CreatePermissionPolicyRequest(string PermissionCode, Guid PolicyId);
+
+    private static async Task<IResult> CreatePermissionPolicy(
+        CreatePermissionPolicyRequest body,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        IAuditEventClient auditClient,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var policy = await db.Policies.FirstOrDefaultAsync(p => p.Id == body.PolicyId, ct);
+        if (policy is null)
+            return Results.BadRequest(new { error = "Policy not found." });
+
+        var permExists = await db.Permissions.AnyAsync(p => p.Code == body.PermissionCode && p.IsActive, ct);
+        if (!permExists)
+            return Results.BadRequest(new { error = $"Permission '{body.PermissionCode}' not found or inactive." });
+
+        var existing = await db.PermissionPolicies
+            .FirstOrDefaultAsync(pp => pp.PermissionCode == body.PermissionCode && pp.PolicyId == body.PolicyId, ct);
+
+        if (existing != null)
+        {
+            if (existing.IsActive)
+                return Results.Conflict(new { error = "This permission-policy mapping already exists." });
+
+            existing.Activate();
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { id = existing.Id, permissionCode = existing.PermissionCode, policyId = existing.PolicyId, isActive = true, message = "Reactivated existing mapping." });
+        }
+
+        var mapping = Identity.Domain.PermissionPolicy.Create(body.PermissionCode, body.PolicyId);
+        db.PermissionPolicies.Add(mapping);
+        await db.SaveChangesAsync(ct);
+
+        var callerIdRaw = caller.FindFirstValue(ClaimTypes.NameIdentifier);
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "permission_policy.created",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = auditNow,
+            Actor         = new AuditEventActorDto { Id = callerIdRaw ?? "system", Type = ActorType.User },
+            Entity        = new AuditEventEntityDto { Type = "PermissionPolicy", Id = mapping.Id.ToString() },
+            Action        = "PermissionPolicyCreated",
+            Description   = $"Permission '{body.PermissionCode}' linked to policy '{policy.PolicyCode}'",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "identity-service", "permission_policy.created", mapping.Id.ToString()),
+        });
+
+        return Results.Created($"/api/admin/permission-policies/{mapping.Id}", new
+        {
+            id = mapping.Id,
+            permissionCode = mapping.PermissionCode,
+            policyId = mapping.PolicyId,
+            policyCode = policy.PolicyCode,
+            isActive = mapping.IsActive,
+            createdAtUtc = mapping.CreatedAtUtc,
+        });
+    }
+
+    private static async Task<IResult> DeactivatePermissionPolicy(
+        Guid id,
+        IdentityDbContext db,
+        ClaimsPrincipal caller,
+        CancellationToken ct = default)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var mapping = await db.PermissionPolicies.FirstOrDefaultAsync(pp => pp.Id == id, ct);
+        if (mapping is null)
+            return Results.NotFound(new { error = "Permission-policy mapping not found." });
+
+        if (!mapping.IsActive)
+            return Results.Ok(new { message = "Mapping already deactivated." });
+
+        mapping.Deactivate();
+        await db.SaveChangesAsync(ct);
+
+        return Results.NoContent();
+    }
+
+    // ── Supported fields for condition builder ──────────────────────────────────
+
+    private static IResult GetSupportedFields(ClaimsPrincipal caller)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        var fields = Identity.Domain.PolicyRule.GetSupportedFields();
+        var operators = Enum.GetNames<Identity.Domain.RuleOperator>();
+        var conditionTypes = Enum.GetNames<Identity.Domain.PolicyConditionType>();
+        var logicalGroups = Enum.GetNames<Identity.Domain.LogicalGroupType>();
+
+        return Results.Ok(new
+        {
+            fields = fields.ToList(),
+            operators,
+            conditionTypes,
+            logicalGroups,
+        });
+    }
 }
