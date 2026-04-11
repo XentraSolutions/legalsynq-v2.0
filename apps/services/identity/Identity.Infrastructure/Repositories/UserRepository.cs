@@ -16,6 +16,7 @@ public class UserRepository : IUserRepository
 
     public Task<User?> GetByIdWithRolesAsync(Guid id, CancellationToken ct = default) =>
         _db.Users
+            .AsNoTracking()
             // Phase G: ScopedRoleAssignments is the sole authoritative role source.
             .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive))
                 .ThenInclude(s => s.Role)
@@ -27,8 +28,32 @@ public class UserRepository : IUserRepository
     public Task<User?> GetByTenantAndEmailAsync(Guid tenantId, string email, CancellationToken ct = default) =>
         _db.Users.FirstOrDefaultAsync(u => u.TenantId == tenantId && u.Email == email, ct);
 
+    /// <summary>
+    /// Single tracked query used by the login path — loads the user and their active
+    /// ScopedRoleAssignments so RecordLogin() can be saved without a second DB hit.
+    /// </summary>
+    public Task<User?> GetByTenantAndEmailWithRolesAsync(Guid tenantId, string email, CancellationToken ct = default) =>
+        _db.Users
+            .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive))
+                .ThenInclude(s => s.Role)
+            .FirstOrDefaultAsync(u => u.TenantId == tenantId && u.Email == email, ct);
+
+    /// <summary>
+    /// Lightweight login path — returns the user's primary org with only its
+    /// OrganizationTypeRef. Does NOT load products, roles, or OrgTypeRules.
+    /// </summary>
+    public async Task<Organization?> GetPrimaryOrganizationForLoginAsync(Guid userId, CancellationToken ct = default) =>
+        (await _db.UserOrganizationMemberships
+            .AsNoTracking()
+            .Include(m => m.Organization)
+                .ThenInclude(o => o.OrganizationTypeRef)
+            .Where(m => m.UserId == userId && m.IsActive)
+            .OrderBy(m => m.JoinedAtUtc)
+            .FirstOrDefaultAsync(ct))?.Organization;
+
     public Task<List<User>> GetAllWithRolesAsync(CancellationToken ct = default) =>
         _db.Users
+            .AsNoTracking()
             // Phase G: ScopedRoleAssignments is the sole authoritative role source.
             .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive))
                 .ThenInclude(s => s.Role)
@@ -38,6 +63,7 @@ public class UserRepository : IUserRepository
 
     public Task<List<User>> GetByTenantWithRolesAsync(Guid tenantId, CancellationToken ct = default) =>
         _db.Users
+            .AsNoTracking()
             .Where(u => u.TenantId == tenantId)
             .Include(u => u.ScopedRoleAssignments.Where(s => s.IsActive))
                 .ThenInclude(s => s.Role)
@@ -80,6 +106,7 @@ public class UserRepository : IUserRepository
     public Task<UserOrganizationMembership?> GetPrimaryOrgMembershipAsync(
         Guid userId, CancellationToken ct = default) =>
         _db.UserOrganizationMemberships
+            .AsNoTracking()
             // Chain 1: products → roles → Phase 3 org-type eligibility rules
             .Include(m => m.Organization)
                 .ThenInclude(o => o.OrganizationProducts)
@@ -97,6 +124,7 @@ public class UserRepository : IUserRepository
     public Task<List<UserOrganizationMembership>> GetActiveMembershipsWithProductsAsync(
         Guid userId, Guid tenantId, CancellationToken ct = default) =>
         _db.UserOrganizationMemberships
+            .AsNoTracking()
             .Include(m => m.Organization)
                 .ThenInclude(o => o.OrganizationProducts.Where(op => op.IsEnabled))
                     .ThenInclude(op => op.Product)
@@ -119,4 +147,31 @@ public class UserRepository : IUserRepository
     /// </summary>
     public Task SaveChangesAsync(CancellationToken ct = default) =>
         _db.SaveChangesAsync(ct);
+
+    // ── Invitation and reset-token access ─────────────────────────────────────
+
+    public Task<UserInvitation?> GetInvitationWithUserByTokenHashAsync(
+        string tokenHash, CancellationToken ct = default) =>
+        _db.UserInvitations
+            .Include(i => i.User)
+            .FirstOrDefaultAsync(i => i.TokenHash == tokenHash, ct);
+
+    public Task<PasswordResetToken?> GetPasswordResetTokenWithUserByHashAsync(
+        string tokenHash, CancellationToken ct = default) =>
+        _db.PasswordResetTokens
+            .Include(t => t.User)
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
+
+    public Task<List<PasswordResetToken>> GetPendingPasswordResetTokensAsync(
+        Guid userId, CancellationToken ct = default) =>
+        _db.PasswordResetTokens
+            .Where(t => t.UserId == userId && t.Status == PasswordResetToken.Statuses.Pending)
+            .ToListAsync(ct);
+
+    public async Task AddPasswordResetTokenAsync(
+        PasswordResetToken resetToken, CancellationToken ct = default)
+    {
+        _db.PasswordResetTokens.Add(resetToken);
+        await _db.SaveChangesAsync(ct);
+    }
 }

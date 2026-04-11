@@ -146,14 +146,18 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
 
         if (!exists) return slug;
 
-        for (var i = 2; i <= 99; i++)
-        {
-            var candidate = SlugGenerator.AppendSuffix(slug, i);
-            var taken = await _db.Tenants.AnyAsync(
-                t => t.Subdomain == candidate && t.Id != tenantId, ct);
-            if (!taken) return candidate;
-        }
+        // Build all candidate slugs and resolve uniqueness in a single query.
+        var candidates = Enumerable.Range(2, 98)
+            .Select(i => SlugGenerator.AppendSuffix(slug, i))
+            .ToList();
 
-        return $"{slug}-{Guid.NewGuid().ToString("N")[..6]}";
+        var takenSet = (await _db.Tenants
+            .Where(t => candidates.Contains(t.Subdomain!) && t.Id != tenantId)
+            .Select(t => t.Subdomain!)
+            .ToListAsync(ct))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var free = candidates.FirstOrDefault(c => !takenSet.Contains(c));
+        return free ?? $"{slug}-{Guid.NewGuid().ToString("N")[..6]}";
     }
 }

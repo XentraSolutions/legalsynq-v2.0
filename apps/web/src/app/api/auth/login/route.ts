@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
   const tenantCode = subdomainTenant || explicitTenantCode?.trim() || null;
 
   const rawHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
-  console.log(`[login] host=${rawHost}, subdomainTenant=${subdomainTenant}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, email=${email}`);
+  const maskedEmail = email.replace(/(?<=.{2}).+(?=@)/, '***');
+  console.log(`[login] host=${rawHost}, subdomainTenant=${subdomainTenant}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, email=${maskedEmail}`);
 
   if (!tenantCode) {
     return NextResponse.json(

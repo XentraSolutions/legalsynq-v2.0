@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Identity.Application;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
@@ -874,22 +875,10 @@ public static class AdminEndpoints
         return Results.NoContent();
     }
 
-    // Maps the frontend ProductCode (TypeScript) → the DB product Code column.
-    // Keeps the two representations decoupled without touching the DB schema.
-    private static readonly Dictionary<string, string> FrontendToDbProductCode = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["SynqFund"]    = "SYNQ_FUND",
-        ["SynqLien"]    = "SYNQ_LIENS",
-        ["CareConnect"] = "SYNQ_CARECONNECT",
-    };
-
-    // Maps the DB product Code column → the frontend ProductCode (TypeScript).
-    private static readonly Dictionary<string, string> DbToFrontendProductCode = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["SYNQ_FUND"]        = "SynqFund",
-        ["SYNQ_LIENS"]       = "SynqLien",
-        ["SYNQ_CARECONNECT"] = "CareConnect",
-    };
+    // Maps the frontend ProductCode → DB code and vice versa.
+    // Canonical source: Identity.Application.ProductCodeMap.
+    private static IReadOnlyDictionary<string, string> FrontendToDbProductCode => ProductCodeMap.FrontendToDb;
+    private static IReadOnlyDictionary<string, string> DbToFrontendProductCode => ProductCodeMap.DbToFrontend;
 
     private static async Task<IResult> UpdateEntitlement(
         Guid   id,

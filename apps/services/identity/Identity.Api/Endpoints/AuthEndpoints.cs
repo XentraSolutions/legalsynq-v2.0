@@ -3,11 +3,9 @@ using Identity.Application;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
 using Identity.Domain;
-using Identity.Infrastructure.Data;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
-using Microsoft.EntityFrameworkCore;
 
 namespace Identity.Api.Endpoints;
 
@@ -126,80 +124,24 @@ public static class AuthEndpoints
         //   5. Mark the invitation accepted.
         //   6. Emit identity.user.invite_accepted audit event.
         app.MapPost("/api/auth/accept-invite", async (
-            AcceptInviteRequest   body,
-            IdentityDbContext     db,
-            IPasswordHasher       passwordHasher,
-            IAuditEventClient     auditClient,
-            CancellationToken     ct) =>
+            AcceptInviteRequest body,
+            IAuthService        authService,
+            CancellationToken   ct) =>
         {
             if (string.IsNullOrWhiteSpace(body.Token))
                 return Results.BadRequest(new { error = "token is required." });
             if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
                 return Results.BadRequest(new { error = "newPassword must be at least 8 characters." });
 
-            // Hash the raw token the same way InviteUser stored it.
-            var tokenHash = Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(
-                    System.Text.Encoding.UTF8.GetBytes(body.Token)));
-
-            var invitation = await db.UserInvitations
-                .Include(i => i.User)
-                .FirstOrDefaultAsync(i => i.TokenHash == tokenHash, ct);
-
-            if (invitation is null)
-                return Results.BadRequest(new { error = "Invalid or expired invitation token." });
-
-            if (invitation.Status != Identity.Domain.UserInvitation.Statuses.Pending)
-                return Results.BadRequest(new
-                {
-                    error = invitation.Status == Identity.Domain.UserInvitation.Statuses.Accepted
-                        ? "This invitation has already been accepted."
-                        : "This invitation is no longer valid.",
-                });
-
-            if (invitation.IsExpired())
-                return Results.BadRequest(new { error = "This invitation has expired. Please request a new one." });
-
-            var user = invitation.User;
-            if (user is null)
-                return Results.Problem("User record not found for this invitation.", statusCode: 500);
-
-            // Set the new password and activate the account.
-            var passwordHash = passwordHasher.Hash(body.NewPassword);
-            user.SetPassword(passwordHash);
-            user.Activate();
-
-            // Mark the invitation accepted.
-            invitation.Accept();
-
-            await db.SaveChangesAsync(ct);
-
-            // Emit audit event (fire-and-observe).
-            var now = DateTimeOffset.UtcNow;
-            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            try
             {
-                EventType     = "identity.user.invite_accepted",
-                EventCategory = EventCategory.Administrative,
-                SourceSystem  = "identity-service",
-                SourceService = "auth-api",
-                Visibility    = VisibilityScope.Tenant,
-                Severity      = SeverityLevel.Info,
-                OccurredAtUtc = now,
-                Scope = new AuditEventScopeDto
-                {
-                    ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
-                },
-                Actor       = new AuditEventActorDto { Type = ActorType.User, Id = user.Id.ToString() },
-                Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
-                Action      = "InviteAccepted",
-                Description = $"User '{user.Email}' accepted invitation and activated account in tenant {user.TenantId}.",
-                IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.For(
-                    "identity-service", "identity.user.invite_accepted", invitation.Id.ToString()),
-                Tags = ["user-management", "invite", "activation"],
-            });
-
-            return Results.Ok(new { message = "Invitation accepted. Your account is now active." });
+                await authService.AcceptInviteAsync(body.Token, body.NewPassword, ct);
+                return Results.Ok(new { message = "Invitation accepted. Your account is now active." });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
         })
         .AllowAnonymous();
 
@@ -216,10 +158,8 @@ public static class AuthEndpoints
         app.MapPost("/api/auth/change-password", async (
             ChangePasswordRequest body,
             HttpContext           httpContext,
-            IdentityDbContext     db,
-            IPasswordHasher       passwordHasher,
-            IAuditEventClient     auditClient,
-            CancellationToken     ct) =>
+            IAuthService         authService,
+            CancellationToken    ct) =>
         {
             var userIdStr = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
                          ?? httpContext.User.FindFirstValue("sub");
@@ -236,49 +176,18 @@ public static class AuthEndpoints
             if (body.CurrentPassword == body.NewPassword)
                 return Results.BadRequest(new { error = "New password must differ from the current password." });
 
-            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
-            if (user is null)
-                return Results.Problem("User record not found.", statusCode: 404);
-
-            if (!passwordHasher.Verify(body.CurrentPassword, user.PasswordHash))
-                return Results.Problem("Current password is incorrect.", statusCode: 400);
-
-            var newHash = passwordHasher.Hash(body.NewPassword);
-            user.SetPassword(newHash);
-            await db.SaveChangesAsync(ct);
-
-            var now = DateTimeOffset.UtcNow;
-            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString();
+            try
             {
-                EventType     = "identity.user.password_changed",
-                EventCategory = EventCategory.Security,
-                SourceSystem  = "identity-service",
-                SourceService = "auth-api",
-                Visibility    = VisibilityScope.Tenant,
-                Severity      = SeverityLevel.Info,
-                OccurredAtUtc = now,
-                Scope = new AuditEventScopeDto
-                {
-                    ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
-                },
-                Actor       = new AuditEventActorDto
-                {
-                    Id        = user.Id.ToString(),
-                    Type      = ActorType.User,
-                    Name      = user.Email,
-                    IpAddress = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
-                             ?? httpContext.Connection.RemoteIpAddress?.ToString(),
-                },
-                Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
-                Action      = "PasswordChanged",
-                Description = $"User '{user.Email}' changed their password.",
-                IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
-                    now, "identity-service", "identity.user.password_changed", user.Id.ToString()),
-                Tags = ["auth", "password", "security"],
-            });
-
-            return Results.Ok(new { message = "Password changed successfully." });
+                await authService.ChangePasswordAsync(userId, body.CurrentPassword, body.NewPassword, ipAddress, ct);
+                return Results.Ok(new { message = "Password changed successfully." });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ex.Message.Contains("not found")
+                    ? Results.Problem(ex.Message, statusCode: 404)
+                    : Results.Problem(ex.Message, statusCode: 400);
+            }
         })
         .RequireAuthorization();
 
@@ -392,9 +301,7 @@ public static class AuthEndpoints
         //   6. Emit identity.user.password_reset_completed audit event.
         app.MapPost("/api/auth/password-reset/confirm", async (
             PasswordResetConfirmRequest body,
-            IdentityDbContext           db,
-            IPasswordHasher             passwordHasher,
-            IAuditEventClient           auditClient,
+            IAuthService                authService,
             CancellationToken           ct) =>
         {
             if (string.IsNullOrWhiteSpace(body.Token))
@@ -402,70 +309,15 @@ public static class AuthEndpoints
             if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
                 return Results.BadRequest(new { error = "newPassword must be at least 8 characters." });
 
-            var tokenHash = Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(
-                    System.Text.Encoding.UTF8.GetBytes(body.Token)));
-
-            var resetToken = await db.PasswordResetTokens
-                .Include(t => t.User)
-                .FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
-
-            if (resetToken is null)
-                return Results.BadRequest(new { error = "Invalid or expired reset token." });
-
-            if (resetToken.Status != PasswordResetToken.Statuses.Pending)
-                return Results.BadRequest(new
-                {
-                    error = resetToken.Status == PasswordResetToken.Statuses.Used
-                        ? "This reset link has already been used."
-                        : "This reset link is no longer valid.",
-                });
-
-            if (resetToken.IsExpired())
-                return Results.BadRequest(new { error = "This reset link has expired. Please ask an admin to send a new one." });
-
-            var user = resetToken.User;
-            if (user is null)
-                return Results.Problem("User record not found for this reset token.", statusCode: 500);
-
-            // SetPassword hashes the new password and increments SessionVersion,
-            // which invalidates all existing JWTs for this user.
-            var passwordHash = passwordHasher.Hash(body.NewPassword);
-            user.SetPassword(passwordHash);
-            resetToken.MarkUsed();
-
-            await db.SaveChangesAsync(ct);
-
-            var now = DateTimeOffset.UtcNow;
-            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            try
             {
-                EventType     = "identity.user.password_reset_completed",
-                EventCategory = EventCategory.Security,
-                SourceSystem  = "identity-service",
-                SourceService = "auth-api",
-                Visibility    = VisibilityScope.Tenant,
-                Severity      = SeverityLevel.Info,
-                OccurredAtUtc = now,
-                Scope = new AuditEventScopeDto
-                {
-                    ScopeType = ScopeType.Tenant,
-                    TenantId  = user.TenantId.ToString(),
-                },
-                Actor = new AuditEventActorDto
-                {
-                    Id   = user.Id.ToString(),
-                    Type = ActorType.User,
-                    Name = user.Email,
-                },
-                Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
-                Action      = "PasswordResetCompleted",
-                Description = $"Password reset completed for user '{user.Email}' in tenant {user.TenantId}.",
-                IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
-                    now, "identity-service", "identity.user.password_reset_completed", user.Id.ToString()),
-                Tags = ["auth", "security", "password-reset"],
-            });
-
-            return Results.Ok(new { message = "Password updated successfully." });
+                await authService.ConfirmPasswordResetAsync(body.Token, body.NewPassword, ct);
+                return Results.Ok(new { message = "Password updated successfully." });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
         })
         .AllowAnonymous();
 
@@ -475,94 +327,18 @@ public static class AuthEndpoints
         // reset token, and returns the raw token in the response.
         // Future: the raw token will be emailed instead of returned in the response.
         app.MapPost("/api/auth/forgot-password", async (
-            ForgotPasswordRequest      body,
-            IdentityDbContext          db,
-            IAuditEventClient          auditClient,
-            ILoggerFactory             loggerFactory,
-            CancellationToken          ct) =>
+            ForgotPasswordRequest body,
+            IAuthService          authService,
+            CancellationToken     ct) =>
         {
-            var logger = loggerFactory.CreateLogger(nameof(AuthEndpoints));
-
             if (string.IsNullOrWhiteSpace(body.TenantCode))
                 return Results.BadRequest(new { error = "tenantCode is required." });
             if (string.IsNullOrWhiteSpace(body.Email))
                 return Results.BadRequest(new { error = "email is required." });
 
-            logger.LogInformation("[forgot-password] Received request: tenantCode={TenantCode}, email={Email}",
-                body.TenantCode, body.Email);
+            var rawToken = await authService.ForgotPasswordAsync(body.TenantCode, body.Email, ct);
 
-            var tenant = await db.Tenants
-                .FirstOrDefaultAsync(t => t.Code == body.TenantCode && t.IsActive, ct);
-
-            if (tenant is null)
-            {
-                logger.LogWarning("[forgot-password] Tenant not found for code={TenantCode}", body.TenantCode);
-                var allTenants = await db.Tenants.Select(t => new { t.Code, t.IsActive }).ToListAsync(ct);
-                logger.LogInformation("[forgot-password] Available tenants: {Tenants}",
-                    string.Join(", ", allTenants.Select(t => $"{t.Code}(active={t.IsActive})")));
-                return Results.Ok(new { message = "If an account exists with that email, a password reset link has been generated." });
-            }
-
-            logger.LogInformation("[forgot-password] Tenant found: {TenantId} ({TenantCode})", tenant.Id, tenant.Code);
-
-            var user = await db.Users
-                .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Email == body.Email && u.IsActive, ct);
-
-            if (user is null)
-            {
-                logger.LogWarning("[forgot-password] User not found: email={Email}, tenantId={TenantId}", body.Email, tenant.Id);
-                return Results.Ok(new { message = "If an account exists with that email, a password reset link has been generated." });
-            }
-
-            logger.LogInformation("[forgot-password] User found: {UserId} ({Email})", user.Id, user.Email);
-
-            var existingTokens = await db.PasswordResetTokens
-                .Where(t => t.UserId == user.Id && t.Status == PasswordResetToken.Statuses.Pending)
-                .ToListAsync(ct);
-            foreach (var old in existingTokens) old.Revoke();
-
-            var rawToken  = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
-            var tokenHash = Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(
-                    System.Text.Encoding.UTF8.GetBytes(rawToken)));
-
-            var resetToken = PasswordResetToken.Create(user.Id, tenant.Id, tokenHash);
-            db.PasswordResetTokens.Add(resetToken);
-            await db.SaveChangesAsync(ct);
-
-            logger.LogInformation(
-                "Password reset requested for user {UserId} ({Email}) in tenant {TenantCode}.",
-                user.Id, user.Email, tenant.Code);
-
-            var now = DateTimeOffset.UtcNow;
-            _ = auditClient.IngestAsync(new IngestAuditEventRequest
-            {
-                EventType     = "identity.user.password_reset_requested",
-                EventCategory = EventCategory.Security,
-                SourceSystem  = "identity-service",
-                SourceService = "auth-api",
-                Visibility    = VisibilityScope.Tenant,
-                Severity      = SeverityLevel.Info,
-                OccurredAtUtc = now,
-                Scope = new AuditEventScopeDto
-                {
-                    ScopeType = ScopeType.Tenant,
-                    TenantId  = tenant.Id.ToString(),
-                },
-                Actor = new AuditEventActorDto
-                {
-                    Id   = user.Id.ToString(),
-                    Type = ActorType.User,
-                    Name = user.Email,
-                },
-                Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
-                Action      = "PasswordResetRequested",
-                Description = $"Self-service password reset requested for user '{user.Email}' in tenant {tenant.Code}.",
-                IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
-                    now, "identity-service", "identity.user.password_reset_requested", user.Id.ToString()),
-                Tags = ["auth", "security", "password-reset"],
-            });
-
+            // Always return a generic message to avoid user enumeration.
             return Results.Ok(new
             {
                 message = "If an account exists with that email, a password reset link has been generated.",

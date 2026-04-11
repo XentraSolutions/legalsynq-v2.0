@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
@@ -67,32 +69,27 @@ public class AuthService : IAuthService
         }
 
         var normalizedEmail = emailNorm;
-        var user = await _userRepository.GetByTenantAndEmailAsync(tenant.Id, normalizedEmail, ct);
-        if (user is null || !user.IsActive)
+        // Single tracked query — loads user + active ScopedRoleAssignments in one round-trip.
+        // Tracked so RecordLogin() can be persisted at the end of this method.
+        var userWithRoles = await _userRepository.GetByTenantAndEmailWithRolesAsync(tenant.Id, normalizedEmail, ct);
+        if (userWithRoles is null || !userWithRoles.IsActive)
         {
             EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: null, reason: "UserNotFound", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
 
         // UIX-003-03: reject locked accounts (checked after IsActive so lock state is independent).
-        if (user.IsLocked)
+        if (userWithRoles.IsLocked)
         {
-            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "AccountLocked", ipAddress: ipAddress);
-            EmitLockedLoginBlocked(user, tenant, ipAddress);
+            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: userWithRoles.Id.ToString(), reason: "AccountLocked", ipAddress: ipAddress);
+            EmitLockedLoginBlocked(userWithRoles, tenant, ipAddress);
             throw new UnauthorizedAccessException();
         }
 
-        var valid = _passwordHasher.Verify(request.Password, user.PasswordHash);
+        var valid = _passwordHasher.Verify(request.Password, userWithRoles.PasswordHash);
         if (!valid)
         {
-            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "InvalidCredentials", ipAddress: ipAddress);
-            throw new UnauthorizedAccessException();
-        }
-
-        var userWithRoles = await _userRepository.GetByIdWithRolesAsync(user.Id, ct);
-        if (userWithRoles is null)
-        {
-            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "RoleLookupFailed", ipAddress: ipAddress);
+            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: userWithRoles.Id.ToString(), reason: "InvalidCredentials", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
 
@@ -103,19 +100,22 @@ public class AuthService : IAuthService
             .Select(s => s.Role.Name)
             .ToList();
 
-        // Load org membership for JWT context (primary org)
-        var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);
-        var org = orgMembership?.Organization;
+        // Lightweight org fetch: only needs scalar fields + OrganizationTypeRef for JWT claims.
+        // Full product/role graph is loaded by ProductRoleResolutionService separately.
+        var org = await _userRepository.GetPrimaryOrganizationForLoginAsync(userWithRoles.Id, ct);
 
-        // LS-COR-ROL-001: centralized product role resolution via ProductRoleResolutionService
-        var accessContext = await _roleResolutionService.ResolveAsync(user.Id, tenant.Id, ct);
+        // LS-COR-ROL-001: pass pre-loaded scoped assignments to avoid a second DB round-trip.
+        var activeScopedAssignments = userWithRoles.ScopedRoleAssignments
+            .Where(s => s.IsActive)
+            .ToList();
+        var accessContext = await _roleResolutionService.ResolveAsync(userWithRoles.Id, tenant.Id, activeScopedAssignments, ct);
         var productRoles = accessContext.GetEffectiveProductRoles().ToList();
 
         if (accessContext.DeniedReasons.Count > 0)
         {
             _logger.LogDebug(
                 "Product role resolution for user={UserId}: {DeniedCount} denial(s) recorded.",
-                user.Id, accessContext.DeniedReasons.Count);
+                userWithRoles.Id, accessContext.DeniedReasons.Count);
         }
 
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
@@ -260,7 +260,7 @@ public class AuthService : IAuthService
         {
             var dbCodes = await _tenantRepository.GetEnabledProductCodesAsync(tenantGuid, ct);
             enabledProducts = dbCodes
-                .Select(code => DbToFrontendProductCode.TryGetValue(code, out var fc) ? fc : code)
+                .Select(code => ProductCodeMap.DbToFrontend.TryGetValue(code, out var fc) ? fc : code)
                 .ToList();
         }
 
@@ -281,20 +281,230 @@ public class AuthService : IAuthService
     }
 
     // Maps the DB product Code column → the frontend ProductCode (TypeScript).
-    // Keep in sync with AdminEndpoints.DbToFrontendProductCode.
-    private static readonly Dictionary<string, string> DbToFrontendProductCode
-        = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["SYNQ_FUND"]        = "SynqFund",
-        ["SYNQ_LIENS"]       = "SynqLien",
-        ["SYNQ_CARECONNECT"] = "CareConnect",
-        ["SYNQ_AI"]          = "SynqAI",
-        ["SYNQ_INSIGHTS"]    = "SynqInsights",
-        ["SYNQ_BILL"]        = "SynqBill",
-        ["SYNQ_RX"]          = "SynqRx",
-        ["SYNQ_PAYOUT"]      = "SynqPayout",
-    };
+    // Canonical source: Identity.Application.ProductCodeMap.DbToFrontend.
+    // This private alias is kept so call sites in this class remain unchanged.
+    private static IReadOnlyDictionary<string, string> DbToFrontendProductCode => ProductCodeMap.DbToFrontend;
+    // ── Accept-invite, change-password, reset-confirm, forgot-password ────────────
 
+    public async Task AcceptInviteAsync(string token, string newPassword, CancellationToken ct = default)
+    {
+        var tokenHash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+
+        var invitation = await _userRepository.GetInvitationWithUserByTokenHashAsync(tokenHash, ct);
+
+        if (invitation is null)
+            throw new InvalidOperationException("Invalid or expired invitation token.");
+
+        if (invitation.Status != UserInvitation.Statuses.Pending)
+            throw new InvalidOperationException(
+                invitation.Status == UserInvitation.Statuses.Accepted
+                    ? "This invitation has already been accepted."
+                    : "This invitation is no longer valid.");
+
+        if (invitation.IsExpired())
+            throw new InvalidOperationException("This invitation has expired. Please request a new one.");
+
+        var user = invitation.User
+            ?? throw new InvalidOperationException("User record not found for this invitation.");
+
+        user.SetPassword(_passwordHasher.Hash(newPassword));
+        user.Activate();
+        invitation.Accept();
+
+        await _userRepository.SaveChangesAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.invite_accepted",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "auth-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = user.TenantId.ToString(),
+            },
+            Actor       = new AuditEventActorDto { Type = ActorType.User, Id = user.Id.ToString() },
+            Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "InviteAccepted",
+            Description = $"User '{user.Email}' accepted invitation and activated account in tenant {user.TenantId}.",
+            IdempotencyKey = IdempotencyKey.For(
+                "identity-service", "identity.user.invite_accepted", invitation.Id.ToString()),
+            Tags = ["user-management", "invite", "activation"],
+        });
+    }
+
+    public async Task ChangePasswordAsync(
+        Guid userId, string currentPassword, string newPassword, string? ipAddress,
+        CancellationToken ct = default)
+    {
+        var user = await _userRepository.GetByIdAsync(userId, ct)
+            ?? throw new InvalidOperationException("User record not found.");
+
+        if (!_passwordHasher.Verify(currentPassword, user.PasswordHash))
+            throw new InvalidOperationException("Current password is incorrect.");
+
+        user.SetPassword(_passwordHasher.Hash(newPassword));
+        await _userRepository.SaveChangesAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.password_changed",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "auth-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = user.TenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id        = user.Id.ToString(),
+                Type      = ActorType.User,
+                Name      = user.Email,
+                IpAddress = ipAddress,
+            },
+            Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "PasswordChanged",
+            Description = $"User '{user.Email}' changed their password.",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                now, "identity-service", "identity.user.password_changed", user.Id.ToString()),
+            Tags = ["auth", "password", "security"],
+        });
+    }
+
+    public async Task ConfirmPasswordResetAsync(string token, string newPassword, CancellationToken ct = default)
+    {
+        var tokenHash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+
+        var resetToken = await _userRepository.GetPasswordResetTokenWithUserByHashAsync(tokenHash, ct);
+
+        if (resetToken is null)
+            throw new InvalidOperationException("Invalid or expired reset token.");
+
+        if (resetToken.Status != PasswordResetToken.Statuses.Pending)
+            throw new InvalidOperationException(
+                resetToken.Status == PasswordResetToken.Statuses.Used
+                    ? "This reset link has already been used."
+                    : "This reset link is no longer valid.");
+
+        if (resetToken.IsExpired())
+            throw new InvalidOperationException("This reset link has expired. Please ask an admin to send a new one.");
+
+        var user = resetToken.User
+            ?? throw new InvalidOperationException("User record not found for this reset token.");
+
+        // SetPassword increments SessionVersion, invalidating all existing JWTs for this user.
+        user.SetPassword(_passwordHasher.Hash(newPassword));
+        resetToken.MarkUsed();
+
+        await _userRepository.SaveChangesAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.password_reset_completed",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "auth-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = user.TenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = user.Id.ToString(),
+                Type = ActorType.User,
+                Name = user.Email,
+            },
+            Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "PasswordResetCompleted",
+            Description = $"Password reset completed for user '{user.Email}' in tenant {user.TenantId}.",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                now, "identity-service", "identity.user.password_reset_completed", user.Id.ToString()),
+            Tags = ["auth", "security", "password-reset"],
+        });
+    }
+
+    public async Task<string?> ForgotPasswordAsync(string tenantCode, string email, CancellationToken ct = default)
+    {
+        var tenantCodeNorm = tenantCode.ToUpperInvariant().Trim();
+        var emailNorm      = email.ToLowerInvariant().Trim();
+
+        var tenant = await _tenantRepository.GetByCodeAsync(tenantCodeNorm, ct);
+        if (tenant is null || !tenant.IsActive)
+        {
+            _logger.LogWarning("[forgot-password] Tenant not found for code={TenantCode}", tenantCodeNorm);
+            return null;
+        }
+
+        var user = await _userRepository.GetByTenantAndEmailAsync(tenant.Id, emailNorm, ct);
+        if (user is null || !user.IsActive)
+        {
+            _logger.LogWarning("[forgot-password] User not found: email={Email}, tenantId={TenantId}", emailNorm, tenant.Id);
+            return null;
+        }
+
+        // Revoke any existing pending reset tokens before issuing a new one.
+        var existing = await _userRepository.GetPendingPasswordResetTokensAsync(user.Id, ct);
+        foreach (var old in existing) old.Revoke();
+
+        var rawToken  = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawToken)));
+
+        var resetToken = PasswordResetToken.Create(user.Id, tenant.Id, tokenHash);
+        await _userRepository.AddPasswordResetTokenAsync(resetToken, ct);
+
+        _logger.LogInformation(
+            "Password reset requested for user {UserId} ({Email}) in tenant {TenantCode}.",
+            user.Id, user.Email, tenant.Code);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.password_reset_requested",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "auth-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = tenant.Id.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = user.Id.ToString(),
+                Type = ActorType.User,
+                Name = user.Email,
+            },
+            Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "PasswordResetRequested",
+            Description = $"Self-service password reset requested for user '{user.Email}' in tenant {tenant.Code}.",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                now, "identity-service", "identity.user.password_reset_requested", user.Id.ToString()),
+            Tags = ["auth", "security", "password-reset"],
+        });
+
+        return rawToken;
+    }
     // ── Canonical audit helpers ────────────────────────────────────────────────
 
     /// <summary>

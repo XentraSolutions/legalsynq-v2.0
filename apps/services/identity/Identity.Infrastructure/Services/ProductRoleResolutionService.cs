@@ -30,6 +30,21 @@ public class ProductRoleResolutionService : IProductRoleResolutionService
         Guid tenantId,
         CancellationToken ct = default)
     {
+        // Load scoped assignments here when the call site hasn't pre-loaded them.
+        var userWithRoles = await _userRepository.GetByIdWithRolesAsync(userId, ct);
+        var scopedAssignments = (userWithRoles?.ScopedRoleAssignments ?? [])
+            .Where(s => s.IsActive)
+            .ToList();
+
+        return await ResolveAsync(userId, tenantId, scopedAssignments, ct);
+    }
+
+    public async Task<EffectiveAccessContext> ResolveAsync(
+        Guid userId,
+        Guid tenantId,
+        IReadOnlyList<ScopedRoleAssignment> preloadedScopedAssignments,
+        CancellationToken ct = default)
+    {
         var deniedReasons = new List<string>();
         var productAccess = new List<ProductAccessEntry>();
 
@@ -68,10 +83,8 @@ public class ProductRoleResolutionService : IProductRoleResolutionService
             };
         }
 
-        var userWithRoles = await _userRepository.GetByIdWithRolesAsync(userId, ct);
-        var scopedAssignments = userWithRoles?.ScopedRoleAssignments
-            .Where(s => s.IsActive)
-            .ToList() ?? [];
+        // Use the pre-loaded scoped assignments passed in by the caller.
+        var scopedAssignments = preloadedScopedAssignments;
 
         var systemRoles = scopedAssignments
             .Where(s => s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
@@ -191,7 +204,7 @@ public class ProductRoleResolutionService : IProductRoleResolutionService
         string orgType,
         string productCode,
         List<ProductRole> availableProductRoles,
-        List<ScopedRoleAssignment> scopedAssignments)
+        IReadOnlyList<ScopedRoleAssignment> scopedAssignments)
     {
         var roles = new List<string>();
 

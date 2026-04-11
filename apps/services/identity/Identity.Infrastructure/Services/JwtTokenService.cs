@@ -10,9 +10,23 @@ namespace Identity.Infrastructure.Services;
 
 public class JwtTokenService : IJwtTokenService
 {
-    private readonly IConfiguration _configuration;
+    private readonly string _issuer;
+    private readonly string _audience;
+    private readonly int _expiryMinutes;
+    private readonly SigningCredentials _credentials;
 
-    public JwtTokenService(IConfiguration configuration) => _configuration = configuration;
+    public JwtTokenService(IConfiguration configuration)
+    {
+        var section    = configuration.GetSection("Jwt");
+        _issuer        = section["Issuer"]   ?? "legalsynq-identity";
+        _audience      = section["Audience"] ?? "legalsynq-platform";
+        _expiryMinutes = int.TryParse(section["ExpiryMinutes"], out var m) ? m : 60;
+
+        var signingKey = section["SigningKey"]
+            ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
+        _credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+    }
 
     public (string Token, DateTime ExpiresAtUtc) GenerateToken(
         User user,
@@ -22,17 +36,6 @@ public class JwtTokenService : IJwtTokenService
         IEnumerable<string>? productRoles = null,
         int? sessionTimeoutMinutes = null)
     {
-        var section = _configuration.GetSection("Jwt");
-
-        var issuer = section["Issuer"] ?? "legalsynq-identity";
-        var audience = section["Audience"] ?? "legalsynq-platform";
-        var signingKey = section["SigningKey"]
-            ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
-        var expiryMinutes = int.TryParse(section["ExpiryMinutes"], out var m) ? m : 60;
-
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
@@ -71,15 +74,15 @@ public class JwtTokenService : IJwtTokenService
         var effectiveTimeout = sessionTimeoutMinutes ?? 30;
         claims.Add(new Claim("session_timeout_minutes", effectiveTimeout.ToString()));
 
-        var expiresAtUtc = DateTime.UtcNow.AddMinutes(expiryMinutes);
+        var expiresAtUtc = DateTime.UtcNow.AddMinutes(_expiryMinutes);
 
         var token = new JwtSecurityToken(
-            issuer: issuer,
-            audience: audience,
+            issuer: _issuer,
+            audience: _audience,
             claims: claims,
             notBefore: DateTime.UtcNow,
             expires: expiresAtUtc,
-            signingCredentials: credentials);
+            signingCredentials: _credentials);
 
         return (new JwtSecurityTokenHandler().WriteToken(token), expiresAtUtc);
     }
