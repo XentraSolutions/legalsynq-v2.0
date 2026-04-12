@@ -9,9 +9,8 @@ using Identity.Domain;
 using Identity.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Identity.Infrastructure.Services;
 
@@ -20,26 +19,32 @@ public class PolicyEvaluationService : IPolicyEvaluationService
     private readonly IdentityDbContext _db;
     private readonly IAttributeProvider _attributeProvider;
     private readonly ILogger<PolicyEvaluationService> _logger;
-    private readonly IMemoryCache _cache;
+    private readonly IPolicyEvaluationCache _cache;
     private readonly IPolicyVersionProvider _versionProvider;
-    private readonly IConfiguration _configuration;
+    private readonly PolicyCachingOptions _cachingOptions;
+    private readonly PolicyLoggingOptions _loggingOptions;
+    private readonly PolicyMetrics _metrics;
 
-    private static readonly TimeSpan DefaultCacheTtl = TimeSpan.FromSeconds(60);
+    private static readonly ThreadLocal<Random> SamplingRng = new(() => new Random());
 
     public PolicyEvaluationService(
         IdentityDbContext db,
         IAttributeProvider attributeProvider,
         ILogger<PolicyEvaluationService> logger,
-        IMemoryCache cache,
+        IPolicyEvaluationCache cache,
         IPolicyVersionProvider versionProvider,
-        IConfiguration configuration)
+        IOptions<PolicyCachingOptions> cachingOptions,
+        IOptions<PolicyLoggingOptions> loggingOptions,
+        PolicyMetrics metrics)
     {
         _db = db;
         _attributeProvider = attributeProvider;
         _logger = logger;
         _cache = cache;
         _versionProvider = versionProvider;
-        _configuration = configuration;
+        _cachingOptions = cachingOptions.Value;
+        _loggingOptions = loggingOptions.Value;
+        _metrics = metrics;
     }
 
     public async Task<PolicyEvaluationResult> EvaluateAsync(
@@ -55,25 +60,59 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         var tenantId = user.FindFirst("tenant_id")?.Value ?? "";
         var accessVersion = user.FindFirst("access_version")?.Value ?? "";
         var endpoint = httpContext?.Request.Path.Value ?? "";
-        var policyVersion = _versionProvider.CurrentVersion;
         var resourceContextPresent = resourceContext != null && resourceContext.Count > 0;
+
+        var versionSw = Stopwatch.StartNew();
+        var policyVersion = _versionProvider.CurrentVersion;
+        versionSw.Stop();
+        _metrics.RecordVersionRead(versionSw.ElapsedMilliseconds);
 
         var cacheKey = BuildCacheKey(tenantId, userId, permissionCode, policyVersion, resourceContext);
 
-        if (IsCachingEnabled() && resourceContextPresent && _cache.TryGetValue(cacheKey, out PolicyEvaluationResult? cached) && cached != null)
+        if (_cachingOptions.Enabled && resourceContextPresent)
         {
-            return new PolicyEvaluationResult
+            var cacheSw = Stopwatch.StartNew();
+            var cached = await _cache.GetAsync(cacheKey, ct);
+            cacheSw.Stop();
+
+            if (cached != null)
             {
-                Allowed = cached.Allowed,
-                Reason = cached.Reason,
-                MatchedPolicies = cached.MatchedPolicies,
-                DenyOverrideApplied = cached.DenyOverrideApplied,
-                DenyOverridePolicyCode = cached.DenyOverridePolicyCode,
-                PolicyVersion = cached.PolicyVersion,
-                ResourceContextPresent = cached.ResourceContextPresent,
-                CacheHit = true,
-                EvaluationElapsedMs = sw.ElapsedMilliseconds,
-            };
+                _metrics.RecordCacheHit(cacheSw.ElapsedMilliseconds);
+                sw.Stop();
+                _metrics.RecordEvaluation(sw.ElapsedMilliseconds);
+
+                return new PolicyEvaluationResult
+                {
+                    Allowed = cached.Allowed,
+                    Reason = cached.Reason,
+                    MatchedPolicies = cached.MatchedPolicies.Select(mp => new MatchedPolicy
+                    {
+                        PolicyCode = mp.PolicyCode,
+                        PolicyName = mp.PolicyName,
+                        Effect = mp.Effect,
+                        Priority = mp.Priority,
+                        EvaluationOrder = mp.EvaluationOrder,
+                        Passed = mp.Passed,
+                        Reason = mp.Reason,
+                        RuleResults = mp.RuleResults.Select(rr => new RuleResult
+                        {
+                            Field = rr.Field,
+                            Operator = rr.Operator,
+                            ExpectedValue = rr.ExpectedValue,
+                            ActualValue = rr.ActualValue,
+                            Passed = rr.Passed,
+                        }).ToList(),
+                    }).ToList(),
+                    DenyOverrideApplied = cached.DenyOverrideApplied,
+                    DenyOverridePolicyCode = cached.DenyOverridePolicyCode,
+                    PolicyVersion = cached.PolicyVersion,
+                    ResourceContextPresent = cached.ResourceContextPresent,
+                    CacheHit = true,
+                    EvaluationElapsedMs = sw.ElapsedMilliseconds,
+                };
+            }
+
+            _metrics.RecordCacheMiss(cacheSw.ElapsedMilliseconds);
         }
 
         var permissionPolicies = await _db.PermissionPolicies
@@ -87,6 +126,8 @@ public class PolicyEvaluationService : IPolicyEvaluationService
             noPoliciesResult.EvaluationElapsedMs = sw.ElapsedMilliseconds;
             noPoliciesResult.PolicyVersion = policyVersion;
             noPoliciesResult.ResourceContextPresent = resourceContextPresent;
+            sw.Stop();
+            _metrics.RecordEvaluation(sw.ElapsedMilliseconds);
             return noPoliciesResult;
         }
 
@@ -104,6 +145,8 @@ public class PolicyEvaluationService : IPolicyEvaluationService
             noActiveResult.EvaluationElapsedMs = sw.ElapsedMilliseconds;
             noActiveResult.PolicyVersion = policyVersion;
             noActiveResult.ResourceContextPresent = resourceContextPresent;
+            sw.Stop();
+            _metrics.RecordEvaluation(sw.ElapsedMilliseconds);
             return noActiveResult;
         }
 
@@ -170,10 +213,12 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         result.PolicyVersion = policyVersion;
         result.ResourceContextPresent = resourceContextPresent;
 
-        if (IsCachingEnabled() && resourceContextPresent)
+        _metrics.RecordEvaluation(sw.ElapsedMilliseconds);
+
+        if (_cachingOptions.Enabled && resourceContextPresent)
         {
-            var ttl = GetCacheTtl();
-            _cache.Set(cacheKey, result, ttl);
+            var ttl = TimeSpan.FromSeconds(_cachingOptions.TtlSeconds > 0 ? _cachingOptions.TtlSeconds : 60);
+            await _cache.SetAsync(cacheKey, result, ttl, ct);
         }
 
         return result;
@@ -184,12 +229,19 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         Policy policy, MatchedPolicy mp, bool resourceContextPresent,
         string accessVersion, long elapsedMs)
     {
+        if (!_loggingOptions.Enabled)
+            return;
+
         var effect = policy.Effect == PolicyEffect.Deny && mp.Passed ? "Deny" : mp.Passed ? "Allow" : "Deny";
         var resultStr = mp.Passed && policy.Effect != PolicyEffect.Deny ? "ALLOW" : "DENY";
 
+        if (resultStr == "ALLOW" && _loggingOptions.SampleRate < 1.0 && SamplingRng.Value!.NextDouble() > _loggingOptions.SampleRate)
+            return;
+
         if (resultStr == "DENY")
         {
-            _logger.LogWarning(
+            var level = ParseLogLevel(_loggingOptions.DenyLevel, LogLevel.Warning);
+            _logger.Log(level,
                 "PolicyDecision: event=PolicyDecision userId={UserId} tenantId={TenantId} endpoint={Endpoint} permission={Permission} policyCode={PolicyCode} policyId={PolicyId} effect={Effect} result={Result} resourceContextPresent={ResourceContextPresent} accessVersion={AccessVersion} evaluationElapsedMs={ElapsedMs} ruleResults={RuleResults}",
                 userId, tenantId, endpoint, permission, policy.PolicyCode, policy.Id,
                 effect, resultStr, resourceContextPresent, accessVersion, elapsedMs,
@@ -197,11 +249,37 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         }
         else
         {
-            _logger.LogInformation(
-                "PolicyDecision: event=PolicyDecision userId={UserId} tenantId={TenantId} endpoint={Endpoint} permission={Permission} policyCode={PolicyCode} policyId={PolicyId} effect={Effect} result={Result} resourceContextPresent={ResourceContextPresent} accessVersion={AccessVersion} evaluationElapsedMs={ElapsedMs}",
-                userId, tenantId, endpoint, permission, policy.PolicyCode, policy.Id,
-                effect, resultStr, resourceContextPresent, accessVersion, elapsedMs);
+            var level = ParseLogLevel(_loggingOptions.AllowLevel, LogLevel.Debug);
+            if (_loggingOptions.LogRuleResultsOnAllow)
+            {
+                _logger.Log(level,
+                    "PolicyDecision: event=PolicyDecision userId={UserId} tenantId={TenantId} endpoint={Endpoint} permission={Permission} policyCode={PolicyCode} policyId={PolicyId} effect={Effect} result={Result} resourceContextPresent={ResourceContextPresent} accessVersion={AccessVersion} evaluationElapsedMs={ElapsedMs} ruleResults={RuleResults}",
+                    userId, tenantId, endpoint, permission, policy.PolicyCode, policy.Id,
+                    effect, resultStr, resourceContextPresent, accessVersion, elapsedMs,
+                    SerializeRuleResults(mp.RuleResults));
+            }
+            else
+            {
+                _logger.Log(level,
+                    "PolicyDecision: event=PolicyDecision userId={UserId} tenantId={TenantId} endpoint={Endpoint} permission={Permission} policyCode={PolicyCode} policyId={PolicyId} effect={Effect} result={Result} resourceContextPresent={ResourceContextPresent} accessVersion={AccessVersion} evaluationElapsedMs={ElapsedMs}",
+                    userId, tenantId, endpoint, permission, policy.PolicyCode, policy.Id,
+                    effect, resultStr, resourceContextPresent, accessVersion, elapsedMs);
+            }
         }
+    }
+
+    private static LogLevel ParseLogLevel(string level, LogLevel fallback)
+    {
+        return level?.ToLowerInvariant() switch
+        {
+            "trace" => LogLevel.Trace,
+            "debug" => LogLevel.Debug,
+            "information" or "info" => LogLevel.Information,
+            "warning" or "warn" => LogLevel.Warning,
+            "error" => LogLevel.Error,
+            "critical" => LogLevel.Critical,
+            _ => fallback,
+        };
     }
 
     private static string SerializeRuleResults(List<RuleResult> ruleResults)
@@ -363,7 +441,7 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         return merged;
     }
 
-    internal static string BuildCacheKey(
+    public static string BuildCacheKey(
         string tenantId, string userId, string permission, long policyVersion,
         Dictionary<string, object?>? resourceContext)
     {
@@ -381,7 +459,7 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         return sb.ToString();
     }
 
-    private static string ComputeResourceHash(Dictionary<string, object?>? resourceContext)
+    public static string ComputeResourceHash(Dictionary<string, object?>? resourceContext)
     {
         if (resourceContext == null || resourceContext.Count == 0)
             return "empty";
@@ -390,27 +468,13 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         var sb = new StringBuilder();
         foreach (var kvp in sorted)
         {
-            sb.Append(kvp.Key);
+            sb.Append(kvp.Key.ToLowerInvariant());
             sb.Append('=');
-            sb.Append(kvp.Value?.ToString() ?? "null");
+            sb.Append(kvp.Value?.ToString()?.ToLowerInvariant() ?? "null");
             sb.Append(';');
         }
 
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()));
         return Convert.ToHexString(bytes)[..16];
-    }
-
-    private bool IsCachingEnabled()
-    {
-        var val = _configuration["Authorization:PolicyCaching:Enabled"];
-        return string.Equals(val, "true", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private TimeSpan GetCacheTtl()
-    {
-        var val = _configuration["Authorization:PolicyCaching:TtlSeconds"];
-        if (int.TryParse(val, out var seconds) && seconds > 0)
-            return TimeSpan.FromSeconds(seconds);
-        return DefaultCacheTtl;
     }
 }

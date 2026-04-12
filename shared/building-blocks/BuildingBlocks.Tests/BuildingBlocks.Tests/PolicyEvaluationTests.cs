@@ -404,3 +404,312 @@ public class PolicyEvaluationResultTests
         Assert.False(rr.Passed);
     }
 }
+
+public class PolicyCachingOptionsTests
+{
+    [Fact]
+    public void Defaults_AreCorrect()
+    {
+        var opts = new PolicyCachingOptions();
+        Assert.False(opts.Enabled);
+        Assert.Equal("InMemory", opts.Provider);
+        Assert.Equal(60, opts.TtlSeconds);
+    }
+
+    [Fact]
+    public void CanSetRedisProvider()
+    {
+        var opts = new PolicyCachingOptions { Provider = "Redis", Enabled = true, TtlSeconds = 120 };
+        Assert.Equal("Redis", opts.Provider);
+        Assert.True(opts.Enabled);
+        Assert.Equal(120, opts.TtlSeconds);
+    }
+}
+
+public class PolicyVersioningOptionsTests
+{
+    [Fact]
+    public void Defaults_AreCorrect()
+    {
+        var opts = new PolicyVersioningOptions();
+        Assert.Equal("InMemory", opts.Provider);
+        Assert.Equal("Global", opts.Scope);
+    }
+
+    [Fact]
+    public void CanSetRedisProvider()
+    {
+        var opts = new PolicyVersioningOptions { Provider = "Redis", Scope = "Tenant" };
+        Assert.Equal("Redis", opts.Provider);
+        Assert.Equal("Tenant", opts.Scope);
+    }
+}
+
+public class PolicyLoggingOptionsTests
+{
+    [Fact]
+    public void Defaults_AreCorrect()
+    {
+        var opts = new PolicyLoggingOptions();
+        Assert.True(opts.Enabled);
+        Assert.Equal("Debug", opts.AllowLevel);
+        Assert.Equal("Warning", opts.DenyLevel);
+        Assert.False(opts.LogRuleResultsOnAllow);
+        Assert.Equal(1.0, opts.SampleRate);
+    }
+
+    [Fact]
+    public void CanConfigureSampling()
+    {
+        var opts = new PolicyLoggingOptions { SampleRate = 0.1, LogRuleResultsOnAllow = true };
+        Assert.Equal(0.1, opts.SampleRate);
+        Assert.True(opts.LogRuleResultsOnAllow);
+    }
+}
+
+public class PolicyMetricsTests
+{
+    [Fact]
+    public void Initial_AllZeros()
+    {
+        var m = new PolicyMetrics();
+        Assert.Equal(0, m.EvaluationCount);
+        Assert.Equal(0, m.CacheHits);
+        Assert.Equal(0, m.CacheMisses);
+        Assert.Equal(0, m.CacheErrors);
+        Assert.Equal(0, m.VersionReadCount);
+        Assert.Equal(0.0, m.AverageEvaluationMs);
+        Assert.Equal(0.0, m.CacheHitRate);
+    }
+
+    [Fact]
+    public void RecordEvaluation_IncrementsCount()
+    {
+        var m = new PolicyMetrics();
+        m.RecordEvaluation(5);
+        m.RecordEvaluation(15);
+        Assert.Equal(2, m.EvaluationCount);
+        Assert.Equal(20, m.TotalEvaluationMs);
+        Assert.Equal(10.0, m.AverageEvaluationMs);
+    }
+
+    [Fact]
+    public void CacheHitRate_Computed()
+    {
+        var m = new PolicyMetrics();
+        m.RecordCacheHit(1);
+        m.RecordCacheHit(1);
+        m.RecordCacheMiss(1);
+        Assert.True(m.CacheHitRate > 66.0 && m.CacheHitRate < 67.0);
+    }
+
+    [Fact]
+    public void RecordCacheError_IncrementsErrors()
+    {
+        var m = new PolicyMetrics();
+        m.RecordCacheError();
+        m.RecordCacheError();
+        Assert.Equal(2, m.CacheErrors);
+    }
+
+    [Fact]
+    public void RecordVersionRead_TracksLatency()
+    {
+        var m = new PolicyMetrics();
+        m.RecordVersionRead(2);
+        m.RecordVersionRead(4);
+        Assert.Equal(2, m.VersionReadCount);
+        Assert.Equal(6, m.TotalVersionReadMs);
+    }
+
+    [Fact]
+    public void GetSnapshot_ReturnsCurrentState()
+    {
+        var m = new PolicyMetrics();
+        m.RecordEvaluation(10);
+        m.RecordCacheHit(1);
+        m.RecordCacheMiss(2);
+        m.RecordCacheError();
+        m.RecordVersionRead(3);
+
+        var snap = m.GetSnapshot();
+        Assert.Equal(1, snap.EvaluationCount);
+        Assert.Equal(1, snap.CacheHits);
+        Assert.Equal(1, snap.CacheMisses);
+        Assert.Equal(1, snap.CacheErrors);
+        Assert.Equal(50.0, snap.CacheHitRate);
+        Assert.Equal(1, snap.VersionReadCount);
+    }
+
+    [Fact]
+    public void ConcurrentRecords_AreThreadSafe()
+    {
+        var m = new PolicyMetrics();
+        Parallel.For(0, 1000, i =>
+        {
+            m.RecordEvaluation(1);
+            if (i % 2 == 0) m.RecordCacheHit(1);
+            else m.RecordCacheMiss(1);
+        });
+
+        Assert.Equal(1000, m.EvaluationCount);
+        Assert.Equal(1000, m.CacheHits + m.CacheMisses);
+    }
+}
+
+public class InMemoryPolicyEvaluationCacheTests
+{
+    [Fact]
+    public async Task GetAsync_ReturnsNullForMissing()
+    {
+        var memCache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions());
+        var cache = new InMemoryPolicyEvaluationCache(memCache);
+
+        var result = await cache.GetAsync("nonexistent");
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task SetAsync_GetAsync_Roundtrip()
+    {
+        var memCache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions());
+        var cache = new InMemoryPolicyEvaluationCache(memCache);
+
+        var expected = PolicyEvaluationResult.Allow("cached");
+        expected.PolicyVersion = 42;
+
+        await cache.SetAsync("key1", expected, TimeSpan.FromMinutes(5));
+        var actual = await cache.GetAsync("key1");
+
+        Assert.NotNull(actual);
+        Assert.True(actual!.Allowed);
+        Assert.Equal("cached", actual.Reason);
+        Assert.Equal(42, actual.PolicyVersion);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_DeletesEntry()
+    {
+        var memCache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions());
+        var cache = new InMemoryPolicyEvaluationCache(memCache);
+
+        await cache.SetAsync("key2", PolicyEvaluationResult.Allow(), TimeSpan.FromMinutes(5));
+        await cache.RemoveAsync("key2");
+
+        var result = await cache.GetAsync("key2");
+        Assert.Null(result);
+    }
+}
+
+public class ResourceHashingTests
+{
+    [Fact]
+    public void EmptyContext_ReturnsEmpty()
+    {
+        var hash = PolicyEvaluationService.ComputeResourceHash(null);
+        Assert.Equal("empty", hash);
+    }
+
+    [Fact]
+    public void EmptyDictionary_ReturnsEmpty()
+    {
+        var hash = PolicyEvaluationService.ComputeResourceHash(new Dictionary<string, object?>());
+        Assert.Equal("empty", hash);
+    }
+
+    [Fact]
+    public void SameValues_DifferentOrder_SameHash()
+    {
+        var ctx1 = new Dictionary<string, object?> { ["region"] = "US", ["amount"] = "5000" };
+        var ctx2 = new Dictionary<string, object?> { ["amount"] = "5000", ["region"] = "US" };
+
+        var hash1 = PolicyEvaluationService.ComputeResourceHash(ctx1);
+        var hash2 = PolicyEvaluationService.ComputeResourceHash(ctx2);
+
+        Assert.Equal(hash1, hash2);
+    }
+
+    [Fact]
+    public void DifferentValues_DifferentHash()
+    {
+        var ctx1 = new Dictionary<string, object?> { ["region"] = "US" };
+        var ctx2 = new Dictionary<string, object?> { ["region"] = "EU" };
+
+        var hash1 = PolicyEvaluationService.ComputeResourceHash(ctx1);
+        var hash2 = PolicyEvaluationService.ComputeResourceHash(ctx2);
+
+        Assert.NotEqual(hash1, hash2);
+    }
+
+    [Fact]
+    public void CaseInsensitive_SameHash()
+    {
+        var ctx1 = new Dictionary<string, object?> { ["Region"] = "US" };
+        var ctx2 = new Dictionary<string, object?> { ["region"] = "us" };
+
+        var hash1 = PolicyEvaluationService.ComputeResourceHash(ctx1);
+        var hash2 = PolicyEvaluationService.ComputeResourceHash(ctx2);
+
+        Assert.Equal(hash1, hash2);
+    }
+
+    [Fact]
+    public void Hash_IsFixedLength()
+    {
+        var ctx = new Dictionary<string, object?> { ["amount"] = "50000", ["region"] = "US-EAST-1", ["orgId"] = Guid.NewGuid().ToString() };
+        var hash = PolicyEvaluationService.ComputeResourceHash(ctx);
+
+        Assert.Equal(16, hash.Length);
+    }
+
+    [Fact]
+    public void NullValue_HandledGracefully()
+    {
+        var ctx = new Dictionary<string, object?> { ["region"] = null };
+        var hash = PolicyEvaluationService.ComputeResourceHash(ctx);
+        Assert.NotEqual("empty", hash);
+        Assert.Equal(16, hash.Length);
+    }
+}
+
+public class CacheKeyTests
+{
+    [Fact]
+    public void BuildCacheKey_IncludesAllSegments()
+    {
+        var key = PolicyEvaluationService.BuildCacheKey("t1", "u1", "perm", 5, null);
+        Assert.Equal("policy:t1:u1:perm:5:empty", key);
+    }
+
+    [Fact]
+    public void BuildCacheKey_WithResourceContext_IncludesHash()
+    {
+        var ctx = new Dictionary<string, object?> { ["amount"] = "100" };
+        var key = PolicyEvaluationService.BuildCacheKey("t1", "u1", "perm", 5, ctx);
+
+        Assert.StartsWith("policy:t1:u1:perm:5:", key);
+        Assert.NotEqual("policy:t1:u1:perm:5:empty", key);
+    }
+
+    [Fact]
+    public void BuildCacheKey_VersionChange_DifferentKey()
+    {
+        var ctx = new Dictionary<string, object?> { ["amount"] = "100" };
+        var key1 = PolicyEvaluationService.BuildCacheKey("t1", "u1", "perm", 5, ctx);
+        var key2 = PolicyEvaluationService.BuildCacheKey("t1", "u1", "perm", 6, ctx);
+
+        Assert.NotEqual(key1, key2);
+    }
+
+    [Fact]
+    public void BuildCacheKey_DifferentTenants_DifferentKeys()
+    {
+        var key1 = PolicyEvaluationService.BuildCacheKey("tenant-a", "u1", "perm", 1, null);
+        var key2 = PolicyEvaluationService.BuildCacheKey("tenant-b", "u1", "perm", 1, null);
+
+        Assert.NotEqual(key1, key2);
+    }
+}

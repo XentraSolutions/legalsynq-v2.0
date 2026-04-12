@@ -3453,6 +3453,32 @@ Final closure of the legacy authorization model. All frontend and backend consum
 
 **Tests:** 153 total (PolicyDomain: PolicyEffect creation/update/preservation, PolicyVersionProvider: initial/increment/monotonic/thread-safety, PolicyEvaluationResult: Allow/Deny/AllowWithPolicies/DenyWithOverride factories, MatchedPolicy/RuleResult defaults).
 
+## LS-COR-AUT-011B — Distributed Policy Engine + Multi-Instance Scaling — COMPLETED 2026-04-11
+
+**Distributed Version Provider:** `RedisPolicyVersionProvider` uses Redis `INCR`/`GET` on key `legalsynq:policy:version` for global monotonic versioning across all instances. Falls back to in-memory `Interlocked` counter on Redis failure. Registered as Singleton; provider selected via `Authorization:PolicyVersioning:Provider` (InMemory|Redis).
+
+**Distributed Cache:** `IPolicyEvaluationCache` abstraction replaces direct `IMemoryCache` usage. `RedisPolicyEvaluationCache` serializes `PolicyEvaluationResult` as JSON to Redis STRING with TTL. `InMemoryPolicyEvaluationCache` wraps `IMemoryCache` behind the same interface. Provider selected via `Authorization:PolicyCaching:Provider` (InMemory|Redis). All Redis operations fail-open with warnings.
+
+**Immutable Cache Values:** Cache hits return a defensive copy (new `PolicyEvaluationResult` instance). Redis cache inherently creates new instances via JSON deserialization. No shared mutable state across requests.
+
+**Cross-Node Invalidation:** All Admin API CRUD handlers call `IPolicyVersionProvider.Increment()` after mutations. With Redis, `INCR` is globally visible — all nodes see the new version immediately. Cache keys include version → stale entries become unreachable without explicit eviction.
+
+**Logging Controls:** `PolicyLoggingOptions` — configurable `AllowLevel`/`DenyLevel` (Trace→Critical), `SampleRate` (0.0–1.0), `LogRuleResultsOnAllow` toggle, master `Enabled` switch. Thread-safe sampling via `ThreadLocal<Random>`.
+
+**Performance Metrics:** `PolicyMetrics` singleton — `Interlocked`-based counters for evaluation count/latency, cache hits/misses/errors/latency, version read count/latency. `GetSnapshot()` returns `PolicyMetricsSnapshot` for admin endpoints.
+
+**Resource Hashing:** `ComputeResourceHash` — deterministic, order-independent (sorted keys), case-insensitive (normalized to lowercase), SHA-256 truncated to 16 hex chars. Null values handled as literal "null". Empty context returns "empty".
+
+**Fallback Behavior:** Redis failures → fail-open (compute from DB). Malformed cache → ignore. Version read failure → local fallback counter. All operations continue without authorization denial on infrastructure failure.
+
+**Package:** `StackExchange.Redis 2.7.33` added to `Identity.Infrastructure`.
+
+**Config:** `Authorization:PolicyCaching:Provider`, `Authorization:PolicyVersioning:Provider`, `Authorization:PolicyLogging:*`, `Authorization:Redis:Url`.
+
+**Tests:** 195 total (27 new: config options defaults, Redis config, metrics thread-safety, InMemory cache roundtrip, resource hashing order-independence/case-insensitivity/null-handling, cache key segment verification/version isolation/tenant isolation).
+
+**Report:** `analysis/LS-COR-AUT-011B-report.md`
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`
