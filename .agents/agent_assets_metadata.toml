@@ -180,3 +180,9 @@ id = "j3lTyjGWlSRDwh3_-4vPU"
 uri = "file://analysis/LS-COR-AUT-010A-report.md"
 type = "text"
 title = "LS-COR-AUT-010A — Permission Model Alignment Report"
+
+[[outputs]]
+id = "iB0AZjCHNVvW_UwwSzydC"
+uri = "file://analysis/LS-COR-AUT-011A-report.md"
+type = "text"
+title = "LS-COR-AUT-011A — Policy Engine Hardening Report"
