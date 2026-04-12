@@ -2,38 +2,45 @@
 
 import { use } from 'react';
 import Link from 'next/link';
-import { MOCK_CONTACT_DETAILS, MOCK_CONTACTS, MOCK_CASES, MOCK_LIENS, MOCK_DOCUMENTS, formatDate } from '@/lib/lien-mock-data';
+import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { formatDate } from '@/lib/lien-mock-data';
 import { CONTACT_TYPE_LABELS } from '@/types/lien';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 
 export default function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const contact = MOCK_CONTACT_DETAILS[id] ?? MOCK_CONTACTS.find((c) => c.id === id);
-  if (!contact) return <div className="p-10 text-center text-gray-400">Contact not found.</div>;
-  const d = { ...MOCK_CONTACTS.find((c) => c.id === id), ...contact } as typeof contact & { title?: string; address?: string; zipCode?: string; notes?: string; website?: string; fax?: string };
+  const contacts = useLienStore((s) => s.contacts);
+  const contactDetails = useLienStore((s) => s.contactDetails);
+  const cases = useLienStore((s) => s.cases);
+  const addToast = useLienStore((s) => s.addToast);
+  const role = useLienStore((s) => s.currentRole);
 
-  const relatedCases = MOCK_CASES.filter((c) => c.lawFirm === d.organization || c.medicalFacility === d.organization || c.assignedTo === d.name).slice(0, 5);
+  const summary = contacts.find((c) => c.id === id);
+  const detail = contactDetails[id];
+  const contact = detail ? { ...summary, ...detail } : summary;
+  if (!contact) return <div className="p-10 text-center text-gray-400">Contact not found.</div>;
+  const d = contact as any;
+  const canEdit = canPerformAction(role, 'edit');
+
+  const relatedCases = cases.filter((c) => c.lawFirm === d.organization || c.medicalFacility === d.organization || c.assignedTo === d.name).slice(0, 5);
 
   return (
     <div className="space-y-5">
-      <DetailHeader
-        title={d.name}
-        subtitle={d.organization}
+      <DetailHeader title={d.name} subtitle={d.organization}
         badge={<span className="inline-flex items-center rounded-full border px-2.5 py-1 text-sm font-medium bg-gray-50 text-gray-600 border-gray-200">{CONTACT_TYPE_LABELS[d.contactType] ?? d.contactType}</span>}
-        backHref="/lien/contacts"
-        backLabel="Back to Contacts"
+        backHref="/lien/contacts" backLabel="Back to Contacts"
         meta={[
           ...(d.title ? [{ label: 'Title', value: d.title }] : []),
           { label: 'Active Cases', value: String(d.activeCases) },
           { label: 'Member Since', value: formatDate(d.createdAtUtc) },
         ]}
-        actions={
+        actions={canEdit ? (
           <div className="flex gap-2">
-            <button className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">Edit</button>
+            <button onClick={() => addToast({ type: 'info', title: 'Edit', description: 'Edit mode simulated' })} className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">Edit</button>
             <a href={`mailto:${d.email}`} className="text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90">Send Email</a>
           </div>
-        }
+        ) : undefined}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

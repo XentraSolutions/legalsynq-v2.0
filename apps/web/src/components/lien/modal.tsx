@@ -28,15 +28,15 @@ export function Modal({ open, onClose, title, subtitle, children, footer, size =
   if (!open) return null;
 
   return (
-    <div ref={overlayRef} className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}>
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
+    <div ref={overlayRef} className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title" onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}>
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" aria-hidden="true" />
       <div className={`relative bg-white rounded-xl shadow-xl w-full ${SIZE_MAP[size]} max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+            <h2 id="modal-title" className="text-base font-semibold text-gray-900">{title}</h2>
             {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+          <button onClick={onClose} aria-label="Close dialog" className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
             <i className="ri-close-line text-xl" />
           </button>
         </div>

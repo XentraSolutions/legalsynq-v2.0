@@ -93,6 +93,15 @@ function genId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function guardMutation(get: () => LienStore, action: 'create' | 'edit' | 'delete' | 'approve'): boolean {
+  const role = get().currentRole;
+  if (!canPerformAction(role, action)) {
+    get().addToast({ type: 'error', title: 'Permission Denied', description: `${role} role cannot perform this action` });
+    return false;
+  }
+  return true;
+}
+
 export const useLienStore = create<LienStore>((set, get) => ({
   currentRole: 'Admin',
   setCurrentRole: (role) => set({ currentRole: role }),
@@ -108,11 +117,13 @@ export const useLienStore = create<LienStore>((set, get) => ({
   cases: [...MOCK_CASES],
   caseDetails: { ...MOCK_CASE_DETAILS },
   addCase: (c) => {
+    if (!guardMutation(get, 'create')) return;
     set((s) => ({ cases: [c, ...s.cases] }));
     get().addActivity({ type: 'case_create', description: `Case ${c.caseNumber} created for ${c.clientName}`, actor: 'Current User', timestamp: new Date().toISOString(), icon: 'ri-folder-add-line', color: 'text-blue-600' });
     get().addToast({ type: 'success', title: 'Case Created', description: `${c.caseNumber} has been created` });
   },
   updateCase: (id, updates) => {
+    if (!guardMutation(get, 'edit')) return;
     set((s) => ({
       cases: s.cases.map((c) => c.id === id ? { ...c, ...updates, updatedAtUtc: new Date().toISOString() } : c),
       caseDetails: s.caseDetails[id] ? { ...s.caseDetails, [id]: { ...s.caseDetails[id], ...updates, updatedAtUtc: new Date().toISOString() } } : s.caseDetails,
@@ -123,17 +134,32 @@ export const useLienStore = create<LienStore>((set, get) => ({
   liens: [...MOCK_LIENS],
   lienDetails: { ...MOCK_LIEN_DETAILS },
   addLien: (l) => {
-    set((s) => ({ liens: [l, ...s.liens] }));
+    if (!guardMutation(get, 'create')) return;
+    set((s) => {
+      const newLiens = [l, ...s.liens];
+      if (l.caseRef) {
+        const updatedCases = s.cases.map((c) => {
+          if (c.caseNumber === l.caseRef) {
+            return { ...c, lienCount: c.lienCount + 1, totalLienAmount: c.totalLienAmount + l.originalAmount, updatedAtUtc: new Date().toISOString() };
+          }
+          return c;
+        });
+        return { liens: newLiens, cases: updatedCases };
+      }
+      return { liens: newLiens };
+    });
     get().addActivity({ type: 'lien_create', description: `Lien ${l.lienNumber} created`, actor: 'Current User', timestamp: new Date().toISOString(), icon: 'ri-stack-line', color: 'text-indigo-600' });
     get().addToast({ type: 'success', title: 'Lien Created', description: `${l.lienNumber} has been created` });
   },
   updateLien: (id, updates) => {
+    if (!guardMutation(get, 'edit')) return;
     set((s) => ({
       liens: s.liens.map((l) => l.id === id ? { ...l, ...updates, updatedAtUtc: new Date().toISOString() } : l),
       lienDetails: s.lienDetails[id] ? { ...s.lienDetails, [id]: { ...s.lienDetails[id], ...updates, updatedAtUtc: new Date().toISOString() } } : s.lienDetails,
     }));
   },
   addOffer: (lienId, offer) => {
+    if (!guardMutation(get, 'create')) return;
     set((s) => {
       const existing = s.lienDetails[lienId];
       if (existing) {
@@ -148,6 +174,7 @@ export const useLienStore = create<LienStore>((set, get) => ({
     get().addActivity({ type: 'lien_offer', description: `Offer of $${offer.offerAmount.toLocaleString()} submitted on ${lienId}`, actor: offer.buyerOrgName || 'Buyer', timestamp: new Date().toISOString(), icon: 'ri-money-dollar-circle-line', color: 'text-green-600' });
   },
   updateOffer: (lienId, offerId, updates) => {
+    if (!guardMutation(get, 'approve')) return;
     set((s) => {
       const detail = s.lienDetails[lienId];
       if (!detail?.offers) return {};
@@ -167,10 +194,12 @@ export const useLienStore = create<LienStore>((set, get) => ({
   billsOfSale: [...MOCK_BILLS_OF_SALE],
   bosDetails: { ...MOCK_BOS_DETAILS },
   addBos: (b) => {
+    if (!guardMutation(get, 'create')) return;
     set((s) => ({ billsOfSale: [b, ...s.billsOfSale] }));
     get().addToast({ type: 'success', title: 'Bill of Sale Created', description: `${b.bosNumber} has been created` });
   },
   updateBos: (id, updates) => {
+    if (!guardMutation(get, 'edit')) return;
     set((s) => ({
       billsOfSale: s.billsOfSale.map((b) => b.id === id ? { ...b, ...updates } : b),
       bosDetails: s.bosDetails[id] ? { ...s.bosDetails, [id]: { ...s.bosDetails[id], ...updates } } : s.bosDetails,
@@ -180,10 +209,12 @@ export const useLienStore = create<LienStore>((set, get) => ({
   servicing: [...MOCK_SERVICING],
   servicingDetails: { ...MOCK_SERVICING_DETAILS },
   addServicingTask: (s) => {
+    if (!guardMutation(get, 'create')) return;
     set((st) => ({ servicing: [s, ...st.servicing] }));
     get().addToast({ type: 'success', title: 'Task Created', description: `${s.taskNumber} assigned to ${s.assignedTo}` });
   },
   updateServicing: (id, updates) => {
+    if (!guardMutation(get, 'edit')) return;
     set((s) => ({
       servicing: s.servicing.map((sv) => sv.id === id ? { ...sv, ...updates, updatedAtUtc: new Date().toISOString() } : sv),
       servicingDetails: s.servicingDetails[id]
@@ -195,10 +226,12 @@ export const useLienStore = create<LienStore>((set, get) => ({
   contacts: [...MOCK_CONTACTS],
   contactDetails: { ...MOCK_CONTACT_DETAILS },
   addContact: (c) => {
+    if (!guardMutation(get, 'create')) return;
     set((s) => ({ contacts: [c, ...s.contacts] }));
     get().addToast({ type: 'success', title: 'Contact Added', description: `${c.name} has been added` });
   },
   updateContact: (id, updates) => {
+    if (!guardMutation(get, 'edit')) return;
     set((s) => ({
       contacts: s.contacts.map((c) => c.id === id ? { ...c, ...updates } : c),
       contactDetails: s.contactDetails[id] ? { ...s.contactDetails, [id]: { ...s.contactDetails[id], ...updates } } : s.contactDetails,
@@ -208,10 +241,12 @@ export const useLienStore = create<LienStore>((set, get) => ({
   documents: [...MOCK_DOCUMENTS],
   documentDetails: { ...MOCK_DOCUMENT_DETAILS },
   addDocument: (d) => {
+    if (!guardMutation(get, 'create')) return;
     set((s) => ({ documents: [d, ...s.documents] }));
     get().addToast({ type: 'success', title: 'Document Uploaded', description: `${d.fileName} uploaded successfully` });
   },
   updateDocument: (id, updates) => {
+    if (!guardMutation(get, 'edit')) return;
     set((s) => ({
       documents: s.documents.map((d) => d.id === id ? { ...d, ...updates } : d),
       documentDetails: s.documentDetails[id] ? { ...s.documentDetails, [id]: { ...s.documentDetails[id], ...updates } } : s.documentDetails,
@@ -221,10 +256,12 @@ export const useLienStore = create<LienStore>((set, get) => ({
   users: [...MOCK_USERS],
   userDetails: { ...MOCK_USER_DETAILS },
   addUser: (u) => {
+    if (!guardMutation(get, 'create')) return;
     set((s) => ({ users: [u, ...s.users] }));
     get().addToast({ type: 'success', title: 'User Invited', description: `Invitation sent to ${u.email}` });
   },
   updateUser: (id, updates) => {
+    if (!guardMutation(get, 'edit')) return;
     set((s) => ({
       users: s.users.map((u) => u.id === id ? { ...u, ...updates } : u),
       userDetails: s.userDetails[id] ? { ...s.userDetails, [id]: { ...s.userDetails[id], ...updates } } : s.userDetails,

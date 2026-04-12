@@ -105,6 +105,8 @@ apps/web/
       fund-api.ts                ← typed wrappers: fundServerApi (server) + fundApi (client)
       lien-api.ts                ← typed wrappers: lienServerApi (server) + lienApi (client); my-liens/marketplace/portfolio/offer/purchase/submit-offer
       lien-mock-data.ts          ← V2 prototype mock data: cases, liens, BOS, servicing, contacts, documents, users + formatCurrency/formatDate/timeAgo helpers
+    stores/
+      lien-store.ts              ← Zustand store: full CRUD for all 7 entities, role simulation, toast state, activity log, case notes, canPerformAction() helper
     app/api/
       careconnect/[...path]/route.ts ← BFF catch-all proxy for CareConnect client calls
       fund/[...path]/route.ts        ← BFF catch-all proxy for Fund client calls
@@ -135,22 +137,23 @@ apps/web/
           appointments/[id]/page.tsx                ← appointment detail; back-links to referral; Phase-2 status actions placeholder
         fund/applications/page.tsx
         lien/marketplace/page.tsx
-        lien/dashboard/page.tsx                   ← V2 prototype: operational dashboard with KPI cards, task queue, quick actions
-        lien/cases/page.tsx                       ← V2 prototype: case workbench with search/filter
-        lien/cases/[id]/page.tsx                  ← V2 prototype: case detail (client info, financials, related liens/docs)
-        lien/liens/page.tsx                       ← V2 prototype: lien management with status/type filters
-        lien/liens/[id]/page.tsx                  ← V2 prototype: lien detail (amounts, parties, offers, timeline)
-        lien/bill-of-sales/page.tsx               ← V2 prototype: BOS workbench with KPI summary
-        lien/bill-of-sales/[id]/page.tsx          ← V2 prototype: BOS detail (transaction, parties, terms)
-        lien/servicing/page.tsx                   ← V2 prototype: servicing queue with priority/status
-        lien/servicing/[id]/page.tsx              ← V2 prototype: servicing task detail
-        lien/contacts/page.tsx                    ← V2 prototype: contact directory with type filters
-        lien/contacts/[id]/page.tsx               ← V2 prototype: contact detail + related cases
+        lien/layout.tsx                           ← LienProviders wrapper (ToastContainer + RoleSwitcher)
+        lien/dashboard/page.tsx                   ← V2 UX: store-wired dashboard, KPI cards, task queue, activity feed, donut charts, Create Case modal
+        lien/cases/page.tsx                       ← V2 UX: store-backed list, Create Case modal, ActionMenu (advance/reassign), SideDrawer preview, ConfirmDialog
+        lien/cases/[id]/page.tsx                  ← V2 UX: StatusProgress workflow, Add Lien/Doc/Task, NotesPanel, advance status with confirm
+        lien/liens/page.tsx                       ← V2 UX: store-backed list, Create Lien modal, ActionMenu (list/withdraw), SideDrawer, multi-filter
+        lien/liens/[id]/page.tsx                  ← V2 UX: lien lifecycle StatusProgress, Submit/Accept/Reject Offer workflow, FormModal, ConfirmDialog
+        lien/bill-of-sales/page.tsx               ← V2 UX: store-backed KPI cards, ActionMenu (submit/execute/cancel), ConfirmDialog
+        lien/bill-of-sales/[id]/page.tsx          ← V2 UX: BOS workflow StatusProgress, submit/execute/cancel with confirm
+        lien/servicing/page.tsx                   ← V2 UX: AssignTaskForm, ActionMenu (start/complete/escalate/reassign), ConfirmDialog
+        lien/servicing/[id]/page.tsx              ← V2 UX: task progress StatusProgress, start/complete/escalate/reassign actions
+        lien/contacts/page.tsx                    ← V2 UX: AddContactForm, SideDrawer preview, ActionMenu with email
+        lien/contacts/[id]/page.tsx               ← V2 UX: store-backed detail, related cases from store, edit/email actions
         lien/batch-entry/page.tsx                 ← V2 prototype: 4-step bulk import wizard
-        lien/document-handling/page.tsx            ← V2 prototype: document ops with category/status filters
-        lien/document-handling/[id]/page.tsx       ← V2 prototype: document detail with preview placeholder
-        lien/user-management/page.tsx              ← V2 prototype: user admin with role/status filters
-        lien/user-management/[id]/page.tsx         ← V2 prototype: user detail with permissions grid
+        lien/document-handling/page.tsx            ← V2 UX: UploadDocumentForm, ActionMenu (complete/archive/download), ConfirmDialog
+        lien/document-handling/[id]/page.tsx       ← V2 UX: store-backed detail, complete review/archive/share actions
+        lien/user-management/page.tsx              ← V2 UX: AddUserForm, ActionMenu (activate/deactivate/unlock), admin-only, ConfirmDialog
+        lien/user-management/[id]/page.tsx         ← V2 UX: store-backed detail, activate/deactivate/unlock actions
       (admin)/                  ← route group: requireAdmin() guard + AppShell
         layout.tsx
         admin/users/page.tsx
