@@ -104,6 +104,7 @@ apps/web/
       careconnect-api.ts         ← typed wrappers: careConnectServerApi (server) + careConnectApi (client)
       fund-api.ts                ← typed wrappers: fundServerApi (server) + fundApi (client)
       lien-api.ts                ← typed wrappers: lienServerApi (server) + lienApi (client); my-liens/marketplace/portfolio/offer/purchase/submit-offer
+      lien-mock-data.ts          ← V2 prototype mock data: cases, liens, BOS, servicing, contacts, documents, users + formatCurrency/formatDate/timeAgo helpers
     app/api/
       careconnect/[...path]/route.ts ← BFF catch-all proxy for CareConnect client calls
       fund/[...path]/route.ts        ← BFF catch-all proxy for Fund client calls
@@ -134,6 +135,22 @@ apps/web/
           appointments/[id]/page.tsx                ← appointment detail; back-links to referral; Phase-2 status actions placeholder
         fund/applications/page.tsx
         lien/marketplace/page.tsx
+        lien/dashboard/page.tsx                   ← V2 prototype: operational dashboard with KPI cards, task queue, quick actions
+        lien/cases/page.tsx                       ← V2 prototype: case workbench with search/filter
+        lien/cases/[id]/page.tsx                  ← V2 prototype: case detail (client info, financials, related liens/docs)
+        lien/liens/page.tsx                       ← V2 prototype: lien management with status/type filters
+        lien/liens/[id]/page.tsx                  ← V2 prototype: lien detail (amounts, parties, offers, timeline)
+        lien/bill-of-sales/page.tsx               ← V2 prototype: BOS workbench with KPI summary
+        lien/bill-of-sales/[id]/page.tsx          ← V2 prototype: BOS detail (transaction, parties, terms)
+        lien/servicing/page.tsx                   ← V2 prototype: servicing queue with priority/status
+        lien/servicing/[id]/page.tsx              ← V2 prototype: servicing task detail
+        lien/contacts/page.tsx                    ← V2 prototype: contact directory with type filters
+        lien/contacts/[id]/page.tsx               ← V2 prototype: contact detail + related cases
+        lien/batch-entry/page.tsx                 ← V2 prototype: 4-step bulk import wizard
+        lien/document-handling/page.tsx            ← V2 prototype: document ops with category/status filters
+        lien/document-handling/[id]/page.tsx       ← V2 prototype: document detail with preview placeholder
+        lien/user-management/page.tsx              ← V2 prototype: user admin with role/status filters
+        lien/user-management/[id]/page.tsx         ← V2 prototype: user detail with permissions grid
       (admin)/                  ← route group: requireAdmin() guard + AppShell
         layout.tsx
         admin/users/page.tsx
