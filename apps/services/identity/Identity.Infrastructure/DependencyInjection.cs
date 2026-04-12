@@ -131,7 +131,7 @@ public static class DependencyInjection
                 try
                 {
                     var redis = sp.GetRequiredService<IConnectionMultiplexer>();
-                    return new RedisPolicyVersionProvider(redis, sp.GetRequiredService<ILogger<RedisPolicyVersionProvider>>());
+                    return new RedisPolicyVersionProvider(redis, sp.GetRequiredService<ILogger<RedisPolicyVersionProvider>>(), sp.GetRequiredService<PolicyMetrics>());
                 }
                 catch
                 {

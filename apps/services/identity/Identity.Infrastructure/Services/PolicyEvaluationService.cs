@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Claims;
@@ -23,9 +24,13 @@ public class PolicyEvaluationService : IPolicyEvaluationService
     private readonly IPolicyVersionProvider _versionProvider;
     private readonly PolicyCachingOptions _cachingOptions;
     private readonly PolicyLoggingOptions _loggingOptions;
+    private readonly PolicyVersioningOptions _versioningOptions;
     private readonly PolicyMetrics _metrics;
 
     private static readonly ThreadLocal<Random> SamplingRng = new(() => new Random());
+
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _keyLocks = new();
+    private static readonly ConcurrentDictionary<string, (PolicyEvaluationResult Result, DateTime ExpiresAt)> _inflightResults = new();
 
     public PolicyEvaluationService(
         IdentityDbContext db,
@@ -35,6 +40,7 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         IPolicyVersionProvider versionProvider,
         IOptions<PolicyCachingOptions> cachingOptions,
         IOptions<PolicyLoggingOptions> loggingOptions,
+        IOptions<PolicyVersioningOptions> versioningOptions,
         PolicyMetrics metrics)
     {
         _db = db;
@@ -44,6 +50,7 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         _versionProvider = versionProvider;
         _cachingOptions = cachingOptions.Value;
         _loggingOptions = loggingOptions.Value;
+        _versioningOptions = versioningOptions.Value;
         _metrics = metrics;
     }
 
@@ -62,14 +69,29 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         var endpoint = httpContext?.Request.Path.Value ?? "";
         var resourceContextPresent = resourceContext != null && resourceContext.Count > 0;
 
+        var useTenantScope = string.Equals(_versioningOptions.Scope, "Tenant", StringComparison.OrdinalIgnoreCase);
+
         var versionSw = Stopwatch.StartNew();
-        var policyVersion = _versionProvider.CurrentVersion;
+        long policyVersion;
+        if (useTenantScope)
+        {
+            var globalVersion = _versionProvider.CurrentVersion;
+            var tenantVersion = _versionProvider.GetVersion(tenantId);
+            policyVersion = Math.Max(globalVersion, tenantVersion);
+        }
+        else
+        {
+            policyVersion = _versionProvider.CurrentVersion;
+        }
         versionSw.Stop();
         _metrics.RecordVersionRead(versionSw.ElapsedMilliseconds);
 
-        var cacheKey = BuildCacheKey(tenantId, userId, permissionCode, policyVersion, resourceContext);
+        var cacheKey = BuildCacheKey(_cachingOptions.KeyPrefix, tenantId, userId, permissionCode, policyVersion, resourceContext);
 
-        if (_cachingOptions.Enabled && resourceContextPresent)
+        var cachingEnabled = _cachingOptions.Enabled && resourceContextPresent;
+        var cacheWriteAllowed = cachingEnabled && !_versionProvider.IsFrozen;
+
+        if (cachingEnabled)
         {
             var cacheSw = Stopwatch.StartNew();
             var cached = await _cache.GetAsync(cacheKey, ct);
@@ -115,6 +137,106 @@ public class PolicyEvaluationService : IPolicyEvaluationService
             _metrics.RecordCacheMiss(cacheSw.ElapsedMilliseconds);
         }
 
+        if (cachingEnabled)
+        {
+            return await EvaluateWithStampedeProtection(
+                cacheKey, user, permissionCode, resourceContext, httpContext,
+                userId, tenantId, accessVersion, endpoint, resourceContextPresent,
+                policyVersion, cacheWriteAllowed, sw, ct);
+        }
+
+        return await EvaluateCore(
+            user, permissionCode, resourceContext, httpContext,
+            userId, tenantId, accessVersion, endpoint, resourceContextPresent,
+            policyVersion, cacheKey, cacheWriteAllowed, sw, ct);
+    }
+
+    private async Task<PolicyEvaluationResult> EvaluateWithStampedeProtection(
+        string cacheKey, ClaimsPrincipal user, string permissionCode,
+        Dictionary<string, object?>? resourceContext, HttpContext? httpContext,
+        string userId, string tenantId, string accessVersion, string endpoint,
+        bool resourceContextPresent, long policyVersion, bool cacheWriteAllowed,
+        Stopwatch sw, CancellationToken ct)
+    {
+        var keyLock = _keyLocks.GetOrAdd(cacheKey, _ => new SemaphoreSlim(1, 1));
+
+        if (!await keyLock.WaitAsync(TimeSpan.FromSeconds(5), ct))
+        {
+            return await EvaluateCore(
+                user, permissionCode, resourceContext, httpContext,
+                userId, tenantId, accessVersion, endpoint, resourceContextPresent,
+                policyVersion, cacheKey, cacheWriteAllowed, sw, ct);
+        }
+
+        try
+        {
+            if (_inflightResults.TryGetValue(cacheKey, out var inflight) && inflight.ExpiresAt > DateTime.UtcNow)
+            {
+                _metrics.RecordStampedeCoalesced();
+                sw.Stop();
+                _metrics.RecordEvaluation(sw.ElapsedMilliseconds);
+
+                return new PolicyEvaluationResult
+                {
+                    Allowed = inflight.Result.Allowed,
+                    Reason = inflight.Result.Reason,
+                    MatchedPolicies = inflight.Result.MatchedPolicies.Select(mp => new MatchedPolicy
+                    {
+                        PolicyCode = mp.PolicyCode,
+                        PolicyName = mp.PolicyName,
+                        Effect = mp.Effect,
+                        Priority = mp.Priority,
+                        EvaluationOrder = mp.EvaluationOrder,
+                        Passed = mp.Passed,
+                        Reason = mp.Reason,
+                        RuleResults = mp.RuleResults.Select(rr => new RuleResult
+                        {
+                            Field = rr.Field,
+                            Operator = rr.Operator,
+                            ExpectedValue = rr.ExpectedValue,
+                            ActualValue = rr.ActualValue,
+                            Passed = rr.Passed,
+                        }).ToList(),
+                    }).ToList(),
+                    DenyOverrideApplied = inflight.Result.DenyOverrideApplied,
+                    DenyOverridePolicyCode = inflight.Result.DenyOverridePolicyCode,
+                    PolicyVersion = inflight.Result.PolicyVersion,
+                    ResourceContextPresent = inflight.Result.ResourceContextPresent,
+                    CacheHit = true,
+                    EvaluationElapsedMs = sw.ElapsedMilliseconds,
+                };
+            }
+
+            var result = await EvaluateCore(
+                user, permissionCode, resourceContext, httpContext,
+                userId, tenantId, accessVersion, endpoint, resourceContextPresent,
+                policyVersion, cacheKey, cacheWriteAllowed, sw, ct);
+
+            var ttlSeconds = _cachingOptions.TtlSeconds > 0 ? _cachingOptions.TtlSeconds : 60;
+            _inflightResults[cacheKey] = (result, DateTime.UtcNow.AddSeconds(Math.Min(ttlSeconds, 5)));
+
+            _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(t =>
+            {
+                _inflightResults.TryRemove(cacheKey, out var _removed);
+                if (_keyLocks.TryGetValue(cacheKey, out var lk) && lk.CurrentCount > 0)
+                    _keyLocks.TryRemove(cacheKey, out var _removedLock);
+            });
+
+            return result;
+        }
+        finally
+        {
+            keyLock.Release();
+        }
+    }
+
+    private async Task<PolicyEvaluationResult> EvaluateCore(
+        ClaimsPrincipal user, string permissionCode,
+        Dictionary<string, object?>? resourceContext, HttpContext? httpContext,
+        string userId, string tenantId, string accessVersion, string endpoint,
+        bool resourceContextPresent, long policyVersion, string cacheKey,
+        bool cacheWriteAllowed, Stopwatch sw, CancellationToken ct)
+    {
         var permissionPolicies = await _db.PermissionPolicies
             .Where(pp => pp.PermissionCode == permissionCode && pp.IsActive)
             .Select(pp => pp.PolicyId)
@@ -215,7 +337,7 @@ public class PolicyEvaluationService : IPolicyEvaluationService
 
         _metrics.RecordEvaluation(sw.ElapsedMilliseconds);
 
-        if (_cachingOptions.Enabled && resourceContextPresent)
+        if (cacheWriteAllowed)
         {
             var ttl = TimeSpan.FromSeconds(_cachingOptions.TtlSeconds > 0 ? _cachingOptions.TtlSeconds : 60);
             await _cache.SetAsync(cacheKey, result, ttl, ct);
@@ -442,11 +564,13 @@ public class PolicyEvaluationService : IPolicyEvaluationService
     }
 
     public static string BuildCacheKey(
-        string tenantId, string userId, string permission, long policyVersion,
+        string keyPrefix, string tenantId, string userId, string permission, long policyVersion,
         Dictionary<string, object?>? resourceContext)
     {
+        var prefix = string.IsNullOrWhiteSpace(keyPrefix) ? "policy" : keyPrefix;
         var sb = new StringBuilder(128);
-        sb.Append("policy:");
+        sb.Append(prefix);
+        sb.Append(':');
         sb.Append(tenantId);
         sb.Append(':');
         sb.Append(userId);
@@ -470,11 +594,60 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         {
             sb.Append(kvp.Key.ToLowerInvariant());
             sb.Append('=');
-            sb.Append(kvp.Value?.ToString()?.ToLowerInvariant() ?? "null");
+            sb.Append(SerializeValue(kvp.Value));
             sb.Append(';');
         }
 
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString()));
-        return Convert.ToHexString(bytes)[..16];
+        return "v1:" + Convert.ToHexString(bytes)[..16];
+    }
+
+    private static string CanonicalizeJsonObject(JsonElement element)
+    {
+        var properties = element.EnumerateObject()
+            .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(p => $"{p.Name.ToLowerInvariant()}:{SerializeValue(p.Value)}")
+            .ToList();
+        return $"{{{string.Join(",", properties)}}}";
+    }
+
+    private static string CanonicalizeJsonArray(JsonElement element)
+    {
+        var items = element.EnumerateArray()
+            .Select(e => SerializeValue(e))
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return $"[{string.Join(",", items)}]";
+    }
+
+    private static string SerializeValue(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.Array => CanonicalizeJsonArray(element),
+            JsonValueKind.Object => CanonicalizeJsonObject(element),
+            _ => element.ToString().ToLowerInvariant(),
+        };
+    }
+
+    private static string SerializeValue(object? value)
+    {
+        if (value == null) return "null";
+
+        if (value is JsonElement jsonElement)
+        {
+            return SerializeValue(jsonElement);
+        }
+
+        if (value is System.Collections.IEnumerable enumerable and not string)
+        {
+            var items = new List<string>();
+            foreach (var item in enumerable)
+                items.Add(item?.ToString()?.ToLowerInvariant() ?? "null");
+            items.Sort(StringComparer.OrdinalIgnoreCase);
+            return $"[{string.Join(",", items)}]";
+        }
+
+        return value.ToString()?.ToLowerInvariant() ?? "null";
     }
 }

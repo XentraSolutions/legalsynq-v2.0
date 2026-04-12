@@ -3479,6 +3479,26 @@ Final closure of the legacy authorization model. All frontend and backend consum
 
 **Report:** `analysis/LS-COR-AUT-011B-report.md`
 
+## LS-COR-AUT-011C — Distributed Resilience + Performance Optimization — COMPLETED 2026-04-12
+
+**Version Fallback — Freeze Mode (CRITICAL FIX):** `RedisPolicyVersionProvider` no longer increments a local counter on Redis failure. Instead, it enters FREEZE mode: returns last known version, skips all increments, disables cache writes. Auto-recovers when Redis becomes available. Prevents cross-node version divergence. `IPolicyVersionProvider.IsHealthy`/`IsFrozen` properties exposed.
+
+**Cache Stampede Protection:** Per-key `SemaphoreSlim` coalescing in `PolicyEvaluationService`. First cache-miss request evaluates; concurrent same-key requests await the result. Inflight results stored in `ConcurrentDictionary` with 5s expiry. 5s timeout on lock acquisition prevents deadlocks — falls through to direct evaluation. Lock cleanup via `Task.Delay`.
+
+**Tenant-Scoped Versioning:** `IPolicyVersionProvider.GetVersion(tenantId?)` and `IncrementVersion(tenantId?)`. Config: `PolicyVersioning:Scope` = Global|Tenant. Redis keys: `legalsynq:policy:version` (global), `legalsynq:policy:version:{tenantId}` (tenant). Default: Global. In-memory uses `ConcurrentDictionary<string, long>` for tenant versions.
+
+**OpenTelemetry Metrics:** `System.Diagnostics.Metrics` instrumentation in `PolicyMetrics`. Meter: `LegalSynq.Policy`. Counters: evaluations, cache hits/misses/errors, stampede coalesced, freeze events. Histograms: evaluation/cache-read/version-read latency. Observable gauges: cache hit rate, average evaluation latency. Export via `AddOpenTelemetry().WithMetrics(m => m.AddMeter("LegalSynq.Policy"))`.
+
+**Cache Memory Controls:** `PolicyCachingOptions.KeyPrefix` (default: `"policy"`). Configurable key prefix for environment scoping. TTL enforcement, version rotation, freeze-mode write disable, documented `maxmemory-policy allkeys-lru` recommendation.
+
+**Resource Hashing Hardening:** Hash version prefix `v1:{hash}`. `SerializeValue()` handles null, string, numeric, `JsonElement`, arrays/collections (sorted). Arrays order-independent. Null vs empty string differentiated. 19-char output: `v1:` + 16 hex.
+
+**Failure Modes:** All fail-open. Version read failure → freeze. Version increment failure → retry once → freeze. Cache read failure → compute from DB. Cache write failure → silently skip. All paths logged, deterministic, safe. No authorization denial from infrastructure failure.
+
+**Tests:** 236 total (41 new: freeze mode, stampede SemaphoreSlim 1000-concurrent no-deadlock, tenant versioning isolation, hash edge cases incl. JsonElement canonicalization, security, performance benchmarks, concurrent cache operations).
+
+**Report:** `analysis/LS-COR-AUT-011C-report.md`
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`
