@@ -79,6 +79,7 @@ public static class DependencyInjection
         services.AddScoped<IUserRoleAssignmentService, UserRoleAssignmentService>();
         services.AddScoped<IAccessSourceQueryService, AccessSourceQueryService>();
         services.AddScoped<IEffectiveAccessService, EffectiveAccessService>();
+        services.AddScoped<IAuthorizationSimulationService, AuthorizationSimulationService>();
 
         services.AddScoped<IGroupService, GroupService>();
         services.AddScoped<IGroupMembershipService, GroupMembershipService>();

@@ -110,4 +110,7 @@ export const Routes = {
 
   /** /permissions — Platform permission catalog */
   permissions: '/permissions',
+
+  /** /authorization-simulator — Authorization simulation console */
+  authorizationSimulator: '/authorization-simulator',
 } as const;

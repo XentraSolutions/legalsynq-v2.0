@@ -178,6 +178,9 @@ public static class AdminEndpoints
         // Policy evaluation debug
         routes.MapGet("/api/admin/policies/supported-fields",                                GetSupportedFields);
 
+        // ── LS-COR-AUT-011D: Authorization Simulation ───────────────────────
+        routes.MapPost("/api/admin/authorization/simulate",                                  SimulateAuthorization);
+
         return routes;
     }
 
@@ -4933,4 +4936,154 @@ public static partial class AdminEndpointsLscc010
         Guid   Id,
         string Name,
         bool   IsNew);
+
+    // =========================================================================
+    // LS-COR-AUT-011D: AUTHORIZATION SIMULATION
+    // =========================================================================
+
+    private static async Task<IResult> SimulateAuthorization(
+        SimulateAuthorizationRequest body,
+        ClaimsPrincipal caller,
+        IAuthorizationSimulationService simulationService,
+        IdentityDbContext db,
+        IAuditEventClient auditClient,
+        CancellationToken ct)
+    {
+        var isPlatformAdmin = caller.IsInRole("PlatformAdmin");
+        var isTenantAdmin = caller.IsInRole("TenantAdmin");
+        if (!isPlatformAdmin && !isTenantAdmin)
+            return Results.Forbid();
+
+        if (string.IsNullOrWhiteSpace(body.PermissionCode))
+            return Results.BadRequest(new { error = "permissionCode is required." });
+
+        if (body.TenantId == Guid.Empty)
+            return Results.BadRequest(new { error = "tenantId is required." });
+
+        if (body.UserId == Guid.Empty)
+            return Results.BadRequest(new { error = "userId is required." });
+
+        var permParts = body.PermissionCode.Trim().Split('.');
+        if (permParts.Length < 2)
+            return Results.BadRequest(new { error = "permissionCode must contain at least one dot separator (e.g. PRODUCT.resource:action)." });
+
+        var tenantExists = await db.Tenants.AnyAsync(t => t.Id == body.TenantId, ct);
+        if (!tenantExists)
+            return Results.NotFound(new { error = "Tenant not found." });
+
+        if (IsCrossTenantAccess(caller, body.TenantId))
+            return Results.Forbid();
+
+        var targetUser = await db.Users
+            .Where(u => u.Id == body.UserId && u.TenantId == body.TenantId)
+            .Select(u => new { u.Id })
+            .FirstOrDefaultAsync(ct);
+        if (targetUser == null)
+            return Results.NotFound(new { error = "User not found in the specified tenant." });
+
+        if (body.DraftPolicy != null)
+        {
+            if (string.IsNullOrWhiteSpace(body.DraftPolicy.PolicyCode))
+                return Results.BadRequest(new { error = "draftPolicy.policyCode is required." });
+            if (string.IsNullOrWhiteSpace(body.DraftPolicy.Name))
+                return Results.BadRequest(new { error = "draftPolicy.name is required." });
+            if (body.DraftPolicy.Rules != null)
+            {
+                foreach (var rule in body.DraftPolicy.Rules)
+                {
+                    if (string.IsNullOrWhiteSpace(rule.Field))
+                        return Results.BadRequest(new { error = "Each draft rule must have a 'field'." });
+                    if (string.IsNullOrWhiteSpace(rule.Value))
+                        return Results.BadRequest(new { error = $"Draft rule for field '{rule.Field}' must have a 'value'." });
+                    if (!string.IsNullOrWhiteSpace(rule.Operator) && !Enum.TryParse<Identity.Domain.Enums.RuleOperator>(rule.Operator, true, out _))
+                        return Results.BadRequest(new { error = $"Draft rule for field '{rule.Field}' has invalid operator '{rule.Operator}'. Valid operators: Equals, NotEquals, Contains, StartsWith, EndsWith, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual, In, NotIn." });
+                    if (!string.IsNullOrWhiteSpace(rule.LogicalGroup) && !rule.LogicalGroup.Equals("And", StringComparison.OrdinalIgnoreCase) && !rule.LogicalGroup.Equals("Or", StringComparison.OrdinalIgnoreCase))
+                        return Results.BadRequest(new { error = $"Draft rule for field '{rule.Field}' has invalid logicalGroup '{rule.LogicalGroup}'. Valid values: And, Or." });
+                }
+            }
+        }
+
+        var mode = body.DraftPolicy != null ? SimulationMode.Draft : SimulationMode.Live;
+
+        var request = new SimulationRequest
+        {
+            TenantId = body.TenantId,
+            UserId = body.UserId,
+            PermissionCode = body.PermissionCode.Trim(),
+            ResourceContext = body.ResourceContext,
+            RequestContext = body.RequestContext,
+            Mode = mode,
+            DraftPolicy = body.DraftPolicy != null ? new DraftPolicyInput
+            {
+                PolicyCode = body.DraftPolicy.PolicyCode,
+                Name = body.DraftPolicy.Name,
+                Description = body.DraftPolicy.Description,
+                Priority = body.DraftPolicy.Priority,
+                Effect = body.DraftPolicy.Effect ?? "Allow",
+                Rules = body.DraftPolicy.Rules?.Select(r => new DraftRuleInput
+                {
+                    Field = r.Field,
+                    Operator = r.Operator ?? "Equals",
+                    Value = r.Value,
+                    LogicalGroup = r.LogicalGroup ?? "And",
+                }).ToList() ?? [],
+            } : null,
+            ExcludePolicyIds = body.ExcludePolicyIds,
+        };
+
+        var result = await simulationService.SimulateAsync(request, ct);
+
+        var callerIdStr = caller.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? caller.FindFirstValue("sub") ?? "unknown";
+
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "authorization.simulation.executed",
+            EventCategory = LegalSynq.AuditClient.Enums.EventCategory.Administrative,
+            Visibility    = LegalSynq.AuditClient.Enums.VisibilityScope.Platform,
+            Severity      = LegalSynq.AuditClient.Enums.SeverityLevel.Info,
+            SourceSystem  = "Identity",
+            SourceService = "AdminEndpoints",
+            Action        = "SimulateAuthorization",
+            Description   = $"Admin {callerIdStr} simulated authorization for user {body.UserId} permission '{body.PermissionCode}' in tenant {body.TenantId}. Mode={mode}, Result={result.Allowed}",
+            Outcome       = result.Allowed ? "allow" : "deny",
+            Scope         = new LegalSynq.AuditClient.DTOs.AuditEventScopeDto { TenantId = body.TenantId.ToString() },
+            Actor         = new LegalSynq.AuditClient.DTOs.AuditEventActorDto { UserId = callerIdStr },
+            Entity        = new LegalSynq.AuditClient.DTOs.AuditEventEntityDto { EntityType = "AuthorizationSimulation", EntityId = body.UserId.ToString() },
+            Metadata      = JsonSerializer.Serialize(new { permissionCode = body.PermissionCode, mode = mode.ToString(), allowed = result.Allowed }),
+            IdempotencyKey = $"sim:{callerIdStr}:{body.UserId}:{body.PermissionCode}:{DateTime.UtcNow:yyyyMMddHHmmss}",
+            Tags          = ["simulation", "authorization", mode.ToString().ToLowerInvariant()],
+        });
+
+        return Results.Ok(result);
+    }
+
+    private record SimulateAuthorizationRequest
+    {
+        public Guid TenantId { get; init; }
+        public Guid UserId { get; init; }
+        public string PermissionCode { get; init; } = string.Empty;
+        public Dictionary<string, object?>? ResourceContext { get; init; }
+        public Dictionary<string, string>? RequestContext { get; init; }
+        public SimulateAuthDraftPolicyInput? DraftPolicy { get; init; }
+        public List<Guid>? ExcludePolicyIds { get; init; }
+    }
+
+    private record SimulateAuthDraftPolicyInput
+    {
+        public string PolicyCode { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public string? Description { get; init; }
+        public int Priority { get; init; }
+        public string? Effect { get; init; }
+        public List<SimulateAuthDraftRuleInput>? Rules { get; init; }
+    }
+
+    private record SimulateAuthDraftRuleInput
+    {
+        public string Field { get; init; } = string.Empty;
+        public string? Operator { get; init; }
+        public string Value { get; init; } = string.Empty;
+        public string? LogicalGroup { get; init; }
+    }
 }

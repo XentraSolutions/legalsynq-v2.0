@@ -3499,6 +3499,24 @@ Final closure of the legacy authorization model. All frontend and backend consum
 
 **Report:** `analysis/LS-COR-AUT-011C-report.md`
 
+## LS-COR-AUT-011D — Policy Simulation + Decision Testing — COMPLETED 2026-04-12
+
+**Authorization Simulation Service:** `AuthorizationSimulationService` in `Identity.Infrastructure` — safe what-if testing against live or draft policies without mutating production state. Reuses `PolicyEvaluationService.EvaluatePolicy()`, `EvaluateOperator()`, `MergeAttributes()` (now `public static`). Resolves target user's effective access via `IEffectiveAccessService`. Admin bypass detection mirrors runtime behavior.
+
+**Simulation Modes:** `Live` evaluates current active policies. `Draft` appends an in-memory policy definition alongside live policies. `ExcludePolicyIds` isolates specific policy effects by removing them from evaluation. No database writes in any mode.
+
+**API Endpoint:** `POST /api/admin/authorization/simulate` in `AdminEndpoints`. Tenant-scoped: TenantAdmin restricted to own tenant, PlatformAdmin unrestricted. Validates permissionCode format, user/tenant existence, draft policy rules. Returns full explainability output: allow/deny decision, permission sources (direct/inherited), policy evaluation breakdown with per-rule results, draft policy highlighting, deny-override identification.
+
+**Audit:** `authorization.simulation.executed` event — category `Administrative`, visibility `Platform`, severity `Info`. Tags: `["simulation", "authorization", "live"/"draft"]`. Fire-and-forget. Distinct from runtime `user.authorization.*` events.
+
+**Control Center UI:** `/authorization-simulator` route. `simulator-form.tsx` client component with tenant/user/permission inputs, resource/request context JSON editors, collapsible draft policy builder (visual rule builder with field/operator/value/logicalGroup). Result panel: allow/deny banner, user identity + roles, permission source attribution, policy evaluation breakdown with rule results table, draft policy DRAFT badges, copy JSON + raw JSON toggle.
+
+**Static Method Visibility:** `EvaluatePolicy`, `EvaluateRule`, `EvaluateOperator`, `MergeAttributes` changed from `private static` → `public static` in `PolicyEvaluationService` to enable direct reuse by simulation service and test verification.
+
+**Tests:** 256 total (20 new: 13 SimulationTests, 3 SimulationSecurityTests, 4 SimulationRegressionTests). Covers operator evaluation, attribute merging, policy immutability, deny override, explainability output, public method accessibility.
+
+**Report:** `analysis/LS-COR-AUT-011D-report.md`
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`

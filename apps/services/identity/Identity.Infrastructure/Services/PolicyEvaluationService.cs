@@ -423,7 +423,7 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         }
     }
 
-    private static MatchedPolicy EvaluatePolicy(Policy policy, Dictionary<string, object?> attributes, int evaluationOrder)
+    public static MatchedPolicy EvaluatePolicy(Policy policy, Dictionary<string, object?> attributes, int evaluationOrder)
     {
         var effectStr = policy.Effect.ToString();
 
@@ -483,7 +483,7 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         };
     }
 
-    private static RuleResult EvaluateRule(PolicyRule rule, Dictionary<string, object?> attributes)
+    public static RuleResult EvaluateRule(PolicyRule rule, Dictionary<string, object?> attributes)
     {
         attributes.TryGetValue(rule.Field, out var rawValue);
         var actualValue = rawValue?.ToString();
@@ -500,7 +500,7 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         };
     }
 
-    private static bool EvaluateOperator(RuleOperator op, string? actualValue, string expectedValue, object? rawValue)
+    public static bool EvaluateOperator(RuleOperator op, string? actualValue, string expectedValue, object? rawValue)
     {
         if (actualValue == null && op != RuleOperator.NotEquals && op != RuleOperator.NotIn)
             return false;
@@ -550,7 +550,7 @@ public class PolicyEvaluationService : IPolicyEvaluationService
         }
     }
 
-    private static Dictionary<string, object?> MergeAttributes(params Dictionary<string, object?>[] sources)
+    public static Dictionary<string, object?> MergeAttributes(params Dictionary<string, object?>[] sources)
     {
         var merged = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         foreach (var source in sources)

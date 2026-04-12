@@ -1288,3 +1288,327 @@ public class PerformanceTests
         Assert.Equal(0, errors);
     }
 }
+
+public class SimulationTests
+{
+    [Fact]
+    public void EvaluatePolicy_ReturnsCorrectResult_ForAllowPolicy()
+    {
+        var policy = Policy.Create("SYNQ_FUND.approval.limit", "Approval Limit", "SYNQ_FUND", priority: 10, effect: PolicyEffect.Allow);
+        var rule = PolicyRule.Create(policy.Id, PolicyConditionType.Attribute, "amount", RuleOperator.LessThan, "50000");
+        typeof(Policy).GetProperty("Rules")!.SetValue(policy, new List<PolicyRule> { rule });
+
+        var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "amount", "42000" }
+        };
+
+        var result = PolicyEvaluationService.EvaluatePolicy(policy, attributes, 0);
+
+        Assert.True(result.Passed);
+        Assert.Equal("Allow", result.Effect);
+        Assert.Equal("SYNQ_FUND.approval.limit", result.PolicyCode);
+        Assert.Single(result.RuleResults);
+        Assert.True(result.RuleResults[0].Passed);
+    }
+
+    [Fact]
+    public void EvaluatePolicy_ReturnsCorrectResult_ForDenyPolicy()
+    {
+        var policy = Policy.Create("SYNQ_FUND.approval.deny", "Deny High Amount", "SYNQ_FUND", priority: 5, effect: PolicyEffect.Deny);
+        var rule = PolicyRule.Create(policy.Id, PolicyConditionType.Attribute, "amount", RuleOperator.GreaterThanOrEqual, "100000");
+        typeof(Policy).GetProperty("Rules")!.SetValue(policy, new List<PolicyRule> { rule });
+
+        var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "amount", "150000" }
+        };
+
+        var result = PolicyEvaluationService.EvaluatePolicy(policy, attributes, 0);
+
+        Assert.True(result.Passed);
+        Assert.Equal("Deny", result.Effect);
+    }
+
+    [Fact]
+    public void EvaluatePolicy_FailedAllow_ReturnsNotPassed()
+    {
+        var policy = Policy.Create("SYNQ_FUND.approval.limit", "Approval Limit", "SYNQ_FUND", priority: 10, effect: PolicyEffect.Allow);
+        var rule = PolicyRule.Create(policy.Id, PolicyConditionType.Attribute, "amount", RuleOperator.LessThan, "50000");
+        typeof(Policy).GetProperty("Rules")!.SetValue(policy, new List<PolicyRule> { rule });
+
+        var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "amount", "75000" }
+        };
+
+        var result = PolicyEvaluationService.EvaluatePolicy(policy, attributes, 0);
+
+        Assert.False(result.Passed);
+        Assert.Single(result.RuleResults);
+        Assert.False(result.RuleResults[0].Passed);
+    }
+
+    [Fact]
+    public void EvaluateOperator_AllOperators_WorkCorrectly()
+    {
+        Assert.True(PolicyEvaluationService.EvaluateOperator(RuleOperator.Equals, "CA", "CA", "CA"));
+        Assert.False(PolicyEvaluationService.EvaluateOperator(RuleOperator.Equals, "CA", "NV", "CA"));
+
+        Assert.True(PolicyEvaluationService.EvaluateOperator(RuleOperator.NotEquals, "CA", "NV", "CA"));
+        Assert.False(PolicyEvaluationService.EvaluateOperator(RuleOperator.NotEquals, "CA", "CA", "CA"));
+
+        Assert.True(PolicyEvaluationService.EvaluateOperator(RuleOperator.GreaterThan, "100", "50", 100));
+        Assert.False(PolicyEvaluationService.EvaluateOperator(RuleOperator.GreaterThan, "50", "100", 50));
+
+        Assert.True(PolicyEvaluationService.EvaluateOperator(RuleOperator.LessThan, "50", "100", 50));
+        Assert.False(PolicyEvaluationService.EvaluateOperator(RuleOperator.LessThan, "100", "50", 100));
+
+        Assert.True(PolicyEvaluationService.EvaluateOperator(RuleOperator.Contains, "hello world", "world", "hello world"));
+        Assert.True(PolicyEvaluationService.EvaluateOperator(RuleOperator.StartsWith, "hello world", "hello", "hello world"));
+    }
+
+    [Fact]
+    public void EvaluateOperator_NullActualValue_ReturnsFalse()
+    {
+        Assert.False(PolicyEvaluationService.EvaluateOperator(RuleOperator.Equals, null, "test", null));
+        Assert.False(PolicyEvaluationService.EvaluateOperator(RuleOperator.LessThan, null, "100", null));
+
+        Assert.True(PolicyEvaluationService.EvaluateOperator(RuleOperator.NotEquals, null, "test", null));
+    }
+
+    [Fact]
+    public void MergeAttributes_CombinesSources()
+    {
+        var a = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "amount", "42000" },
+            { "region", "CA" }
+        };
+        var b = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "status", "active" },
+            { "region", "NV" }
+        };
+
+        var merged = PolicyEvaluationService.MergeAttributes(a, b);
+
+        Assert.Equal("42000", merged["amount"]?.ToString());
+        Assert.Equal("CA", merged["region"]?.ToString());
+        Assert.Equal("active", merged["status"]?.ToString());
+    }
+
+    [Fact]
+    public void MergeAttributes_FirstSourceWins()
+    {
+        var a = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { { "key", "first" } };
+        var b = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { { "key", "second" } };
+
+        var merged = PolicyEvaluationService.MergeAttributes(a, b);
+        Assert.Equal("first", merged["key"]?.ToString());
+    }
+
+    [Fact]
+    public void EvaluatePolicy_NoRules_DefaultMatch()
+    {
+        var policy = Policy.Create("SYNQ_FUND.approval.open", "Open Policy", "SYNQ_FUND");
+        typeof(Policy).GetProperty("Rules")!.SetValue(policy, new List<PolicyRule>());
+
+        var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        var result = PolicyEvaluationService.EvaluatePolicy(policy, attributes, 0);
+
+        Assert.True(result.Passed);
+        Assert.Contains("No rules defined", result.Reason);
+    }
+
+    [Fact]
+    public void Simulation_DoesNotMutateInputAttributes()
+    {
+        var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "amount", "42000" }
+        };
+
+        var policy = Policy.Create("SYNQ_FUND.approval.limit", "Limit", "SYNQ_FUND");
+        var rule = PolicyRule.Create(policy.Id, PolicyConditionType.Attribute, "amount", RuleOperator.LessThan, "50000");
+        typeof(Policy).GetProperty("Rules")!.SetValue(policy, new List<PolicyRule> { rule });
+
+        var originalCount = attributes.Count;
+        PolicyEvaluationService.EvaluatePolicy(policy, attributes, 0);
+
+        Assert.Equal(originalCount, attributes.Count);
+    }
+
+    [Fact]
+    public void EvaluatePolicy_MultipleRules_AndLogic()
+    {
+        var policy = Policy.Create("SYNQ_FUND.approval.multi", "Multi Rule", "SYNQ_FUND");
+        var rule1 = PolicyRule.Create(policy.Id, PolicyConditionType.Attribute, "amount", RuleOperator.LessThan, "50000");
+        var rule2 = PolicyRule.Create(policy.Id, PolicyConditionType.Attribute, "region", RuleOperator.Equals, "CA");
+        typeof(Policy).GetProperty("Rules")!.SetValue(policy, new List<PolicyRule> { rule1, rule2 });
+
+        var pass = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "amount", "42000" },
+            { "region", "CA" }
+        };
+        var result1 = PolicyEvaluationService.EvaluatePolicy(policy, pass, 0);
+        Assert.True(result1.Passed);
+
+        var fail = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "amount", "42000" },
+            { "region", "NV" }
+        };
+        var result2 = PolicyEvaluationService.EvaluatePolicy(policy, fail, 0);
+        Assert.False(result2.Passed);
+    }
+
+    [Fact]
+    public void Simulation_RuleResults_ContainActualValues()
+    {
+        var policy = Policy.Create("SYNQ_FUND.approval.limit", "Limit", "SYNQ_FUND");
+        var rule = PolicyRule.Create(policy.Id, PolicyConditionType.Attribute, "amount", RuleOperator.LessThan, "50000");
+        typeof(Policy).GetProperty("Rules")!.SetValue(policy, new List<PolicyRule> { rule });
+
+        var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "amount", "42000" }
+        };
+
+        var result = PolicyEvaluationService.EvaluatePolicy(policy, attributes, 0);
+
+        Assert.Single(result.RuleResults);
+        Assert.Equal("amount", result.RuleResults[0].Field);
+        Assert.Equal("LessThan", result.RuleResults[0].Operator);
+        Assert.Equal("50000", result.RuleResults[0].ExpectedValue);
+        Assert.Equal("42000", result.RuleResults[0].ActualValue);
+        Assert.True(result.RuleResults[0].Passed);
+    }
+
+    [Fact]
+    public void Simulation_MissingField_RuleFailsGracefully()
+    {
+        var policy = Policy.Create("SYNQ_FUND.approval.limit", "Limit", "SYNQ_FUND");
+        var rule = PolicyRule.Create(policy.Id, PolicyConditionType.Attribute, "amount", RuleOperator.LessThan, "50000");
+        typeof(Policy).GetProperty("Rules")!.SetValue(policy, new List<PolicyRule> { rule });
+
+        var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        var result = PolicyEvaluationService.EvaluatePolicy(policy, attributes, 0);
+
+        Assert.False(result.Passed);
+        Assert.Single(result.RuleResults);
+        Assert.Null(result.RuleResults[0].ActualValue);
+        Assert.False(result.RuleResults[0].Passed);
+    }
+
+    [Fact]
+    public void PublicStaticMethods_AreAccessible_ForSimulationService()
+    {
+        var evalMethod = typeof(PolicyEvaluationService).GetMethod("EvaluatePolicy", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+        Assert.NotNull(evalMethod);
+
+        var opMethod = typeof(PolicyEvaluationService).GetMethod("EvaluateOperator", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+        Assert.NotNull(opMethod);
+
+        var mergeMethod = typeof(PolicyEvaluationService).GetMethod("MergeAttributes", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+        Assert.NotNull(mergeMethod);
+    }
+}
+
+public class SimulationSecurityTests
+{
+    [Fact]
+    public void EvaluatePolicy_DoesNotModifyPolicyObject()
+    {
+        var policy = Policy.Create("SYNQ_FUND.approval.limit", "Limit", "SYNQ_FUND", priority: 10);
+        var rule = PolicyRule.Create(policy.Id, PolicyConditionType.Attribute, "amount", RuleOperator.LessThan, "50000");
+        typeof(Policy).GetProperty("Rules")!.SetValue(policy, new List<PolicyRule> { rule });
+
+        var originalCode = policy.PolicyCode;
+        var originalName = policy.Name;
+        var originalPriority = policy.Priority;
+
+        var attrs = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { { "amount", "42000" } };
+        PolicyEvaluationService.EvaluatePolicy(policy, attrs, 0);
+
+        Assert.Equal(originalCode, policy.PolicyCode);
+        Assert.Equal(originalName, policy.Name);
+        Assert.Equal(originalPriority, policy.Priority);
+    }
+
+    [Fact]
+    public void EvaluatePolicy_DenyOverride_CorrectlyIdentified()
+    {
+        var denyPolicy = Policy.Create("SYNQ_FUND.approval.deny", "Deny", "SYNQ_FUND", effect: PolicyEffect.Deny);
+        var rule = PolicyRule.Create(denyPolicy.Id, PolicyConditionType.Attribute, "amount", RuleOperator.GreaterThanOrEqual, "100000");
+        typeof(Policy).GetProperty("Rules")!.SetValue(denyPolicy, new List<PolicyRule> { rule });
+
+        var attrs = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { { "amount", "150000" } };
+        var result = PolicyEvaluationService.EvaluatePolicy(denyPolicy, attrs, 0);
+
+        Assert.True(result.Passed);
+        Assert.Equal("Deny", result.Effect);
+    }
+
+    [Fact]
+    public void EvaluatePolicy_DenyNotMatched_RulesNotSatisfied()
+    {
+        var denyPolicy = Policy.Create("SYNQ_FUND.approval.deny", "Deny", "SYNQ_FUND", effect: PolicyEffect.Deny);
+        var rule = PolicyRule.Create(denyPolicy.Id, PolicyConditionType.Attribute, "amount", RuleOperator.GreaterThanOrEqual, "100000");
+        typeof(Policy).GetProperty("Rules")!.SetValue(denyPolicy, new List<PolicyRule> { rule });
+
+        var attrs = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase) { { "amount", "42000" } };
+        var result = PolicyEvaluationService.EvaluatePolicy(denyPolicy, attrs, 0);
+
+        Assert.False(result.Passed);
+    }
+}
+
+public class SimulationRegressionTests
+{
+    [Fact]
+    public void ExistingPolicyCreation_StillWorks()
+    {
+        var policy = Policy.Create("SYNQ_FUND.approval.limit", "Approval Limit", "SYNQ_FUND",
+            description: "Test desc", priority: 10, effect: PolicyEffect.Allow);
+
+        Assert.Equal("SYNQ_FUND.approval.limit", policy.PolicyCode);
+        Assert.Equal("Approval Limit", policy.Name);
+        Assert.Equal("SYNQ_FUND", policy.ProductCode);
+        Assert.True(policy.IsActive);
+        Assert.Equal(10, policy.Priority);
+    }
+
+    [Fact]
+    public void ExistingPolicyRule_ValidationStillWorks()
+    {
+        Assert.True(PolicyRule.IsFieldSupported("amount"));
+        Assert.True(PolicyRule.IsFieldSupported("region"));
+        Assert.False(PolicyRule.IsFieldSupported("unknown_field"));
+    }
+
+    [Fact]
+    public void ExistingPolicyEvaluationResult_FactoryMethods_StillWork()
+    {
+        var allow = PolicyEvaluationResult.Allow("test");
+        Assert.True(allow.Allowed);
+
+        var deny = PolicyEvaluationResult.Deny("denied");
+        Assert.False(deny.Allowed);
+
+        var denyOverride = PolicyEvaluationResult.DenyWithOverride("deny override", "POLICY_CODE", []);
+        Assert.False(denyOverride.Allowed);
+        Assert.True(denyOverride.DenyOverrideApplied);
+        Assert.Equal("POLICY_CODE", denyOverride.DenyOverridePolicyCode);
+    }
+
+    [Fact]
+    public void ExistingCacheKey_Generation_StillWorks()
+    {
+        var key = PolicyEvaluationService.BuildCacheKey("policy", "t1", "u1", "perm.code", 42, null);
+        Assert.StartsWith("policy:", key);
+        Assert.Contains("t1", key);
+        Assert.Contains("u1", key);
+    }
+}

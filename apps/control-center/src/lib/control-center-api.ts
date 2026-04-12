@@ -1908,6 +1908,35 @@ export const controlCenterServerApi = {
     },
   },
 
+  simulation: {
+    simulate: async (payload: {
+      tenantId: string;
+      userId: string;
+      permissionCode: string;
+      resourceContext?: Record<string, unknown>;
+      requestContext?: Record<string, string>;
+      draftPolicy?: {
+        policyCode: string;
+        name: string;
+        description?: string;
+        priority: number;
+        effect: string;
+        rules: Array<{
+          field: string;
+          operator: string;
+          value: string;
+          logicalGroup: string;
+        }>;
+      };
+      excludePolicyIds?: string[];
+    }): Promise<unknown> => {
+      return apiClient.post<unknown>(
+        '/identity/api/admin/authorization/simulate',
+        payload,
+      );
+    },
+  },
+
 };
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
