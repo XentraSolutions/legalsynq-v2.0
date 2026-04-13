@@ -728,12 +728,18 @@ function UserExplorerRow({ user, isExpanded, isLoading, accessData, groups, onTo
                   </div>
                 )}
 
-                <div className="pt-2 border-t border-gray-200">
+                <div className="pt-2 border-t border-gray-200 flex items-center gap-4">
                   <Link
                     href={`/tenant/authorization/users/${user.id}`}
                     className="text-xs text-primary hover:text-primary/80 font-medium inline-flex items-center gap-1"
                   >
                     <i className="ri-external-link-line" /> View full user detail
+                  </Link>
+                  <Link
+                    href={`/tenant/authorization/simulator?userId=${user.id}`}
+                    className="text-xs text-amber-600 hover:text-amber-700 font-medium inline-flex items-center gap-1"
+                  >
+                    <i className="ri-test-tube-line" /> Simulate Access
                   </Link>
                 </div>
               </div>

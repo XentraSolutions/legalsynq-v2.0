@@ -170,7 +170,8 @@ apps/web/
           groups/[groupId]/GroupDetailClient.tsx   ← client detail: edit/archive, member picker, product/role assign/revoke, effective access
           access/page.tsx                         ← LS-TENANT-004: Access & Explainability (overview, user explorer, permissions, search)
           access/AccessExplainabilityClient.tsx     ← client: 4-tab access dashboard (overview widgets, user explorer w/ lazy access-debug, permission drilldown, global search)
-          simulator/page.tsx                      ← placeholder (LS-TENANT-005)
+          simulator/page.tsx                      ← LS-TENANT-005: Authorization Simulator (server prefetch users + permissions)
+          simulator/SimulatorClient.tsx             ← client: split-panel simulator (user/perm select, context editors, policy result UI)
       (admin)/                  ← route group: requireAdmin() guard + AppShell
         layout.tsx
         admin/users/page.tsx

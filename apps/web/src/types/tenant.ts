@@ -197,3 +197,86 @@ export interface AssignableRolesResponse {
   userOrgType: string;
   tenantEnabledProducts: number;
 }
+
+export interface SimulationRequest {
+  tenantId: string;
+  userId: string;
+  permissionCode: string;
+  resourceContext?: Record<string, unknown>;
+  requestContext?: Record<string, string>;
+  draftPolicy?: DraftPolicyInput;
+  excludePolicyIds?: string[];
+}
+
+export interface DraftPolicyInput {
+  policyCode: string;
+  name: string;
+  description?: string;
+  priority: number;
+  effect: 'Allow' | 'Deny';
+  rules: DraftRuleInput[];
+}
+
+export interface DraftRuleInput {
+  field: string;
+  operator: string;
+  value: string;
+  logicalGroup?: string;
+}
+
+export interface SimulationResult {
+  allowed: boolean;
+  permissionPresent: boolean;
+  roleFallbackUsed: boolean;
+  permissionCode: string;
+  policyDecision: PolicyDecisionResult;
+  reason: string;
+  mode: 'Live' | 'Draft' | string;
+  user: UserIdentitySummary;
+  permissionSources: SimPermissionSourceEntry[];
+  evaluationElapsedMs: number;
+}
+
+export interface PolicyDecisionResult {
+  evaluated: boolean;
+  policyVersion: number;
+  denyOverrideApplied: boolean;
+  denyOverridePolicyCode?: string;
+  matchedPolicies: SimulatedMatchedPolicy[];
+}
+
+export interface SimulatedMatchedPolicy {
+  policyCode: string;
+  policyName?: string;
+  effect: string;
+  priority: number;
+  evaluationOrder: number;
+  result: string;
+  isDraft: boolean;
+  ruleResults: SimulatedRuleResult[];
+}
+
+export interface SimulatedRuleResult {
+  field: string;
+  operator: string;
+  expected: string;
+  actual?: string;
+  passed: boolean;
+}
+
+export interface UserIdentitySummary {
+  userId: string;
+  tenantId: string;
+  email: string;
+  displayName: string;
+  roles: string[];
+  permissions: string[];
+}
+
+export interface SimPermissionSourceEntry {
+  permissionCode: string;
+  source: string;
+  viaRole?: string;
+  groupId?: string;
+  groupName?: string;
+}

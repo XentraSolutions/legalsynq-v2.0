@@ -11,6 +11,8 @@ import type {
   GroupRoleAssignment,
   PermissionItem,
   AdminUsersResponse,
+  SimulationRequest,
+  SimulationResult,
 } from '@/types/tenant';
 
 export { ServerApiError, ApiError };
@@ -103,4 +105,7 @@ export const tenantClientApi = {
 
   getUserAccessDebug: (userId: string) =>
     apiClient.get<AccessDebugResponse>(`/identity/api/admin/users/${userId}/access-debug`),
+
+  simulateAuthorization: (body: SimulationRequest) =>
+    apiClient.post<SimulationResult>('/identity/api/admin/authorization/simulate', body),
 };
