@@ -77,9 +77,9 @@ public class EffectiveAccessService : IEffectiveAccessService
     private async Task<EffectiveAccessResult> ComputeEffectiveAccessAsync(
         Guid tenantId, Guid userId, CancellationToken ct)
     {
-        var activeEntitlements = await _db.TenantProductEntitlements
-            .Where(e => e.TenantId == tenantId && e.Status == EntitlementStatus.Active)
-            .Select(e => e.ProductCode)
+        var activeEntitlements = await _db.TenantProducts
+            .Where(tp => tp.TenantId == tenantId && tp.IsEnabled)
+            .Select(tp => tp.Product.Code)
             .ToListAsync(ct);
 
         if (activeEntitlements.Count == 0)
@@ -89,6 +89,12 @@ public class EffectiveAccessService : IEffectiveAccessService
         }
 
         var entitlementSet = new HashSet<string>(activeEntitlements, StringComparer.OrdinalIgnoreCase);
+
+        var isTenantAdmin = await _db.ScopedRoleAssignments
+            .AnyAsync(s => s.UserId == userId
+                && s.IsActive
+                && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
+                && s.Role.Name == "TenantAdmin", ct);
 
         var directProducts = await _db.UserProductAccessRecords
             .Where(a => a.TenantId == tenantId && a.UserId == userId && a.AccessStatus == AccessStatus.Granted)
@@ -117,6 +123,15 @@ public class EffectiveAccessService : IEffectiveAccessService
 
         var productSources = new List<EffectiveProductEntry>();
         var effectiveProductSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (isTenantAdmin)
+        {
+            foreach (var code in activeEntitlements)
+            {
+                if (effectiveProductSet.Add(code))
+                    productSources.Add(new EffectiveProductEntry(code, "TenantAdmin"));
+            }
+        }
 
         foreach (var code in directProducts)
         {
@@ -176,6 +191,27 @@ public class EffectiveAccessService : IEffectiveAccessService
             roleList.Add(roleCode);
         }
 
+        var tenantAdminRoleCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (isTenantAdmin)
+        {
+            var entitledProductRoles = await _db.ProductRoles
+                .Where(pr => pr.IsActive && pr.Product.IsActive
+                    && activeEntitlements.Contains(pr.Product.Code))
+                .Select(pr => new { pr.Code, ProductCode = pr.Product.Code })
+                .ToListAsync(ct);
+
+            foreach (var pr in entitledProductRoles)
+            {
+                AddRole(pr.Code, pr.ProductCode, "TenantAdmin", null, null);
+                tenantAdminRoleCodes.Add(pr.Code);
+            }
+
+            _logger.LogDebug(
+                "TenantAdmin auto-grant for user {UserId} in tenant {TenantId}: {ProductCount} products, {RoleCount} product roles.",
+                userId, tenantId, activeEntitlements.Count, entitledProductRoles.Count);
+        }
+
         foreach (var r in directRoles)
             AddRole(r.RoleCode, r.ProductCode, "Direct", null, null);
 
@@ -193,7 +229,7 @@ public class EffectiveAccessService : IEffectiveAccessService
         }
 
         var (permissions, permissionSources) = await ResolvePermissionsAsync(
-            tenantId, userId, effectiveProductSet, directRoles, inheritedRoles, activeGroups, ct);
+            tenantId, userId, effectiveProductSet, directRoles, inheritedRoles, activeGroups, tenantAdminRoleCodes, ct);
 
         _logger.LogDebug(
             "Effective access for user {UserId} in tenant {TenantId}: {ProductCount} products ({DirectCount} direct, {InheritedCount} inherited), {RoleCount} product roles, {TenantRoleCount} tenant roles, {PermissionCount} permissions.",
@@ -212,12 +248,14 @@ public class EffectiveAccessService : IEffectiveAccessService
         List<UserRoleAssignment> directRoles,
         List<GroupRoleAssignment> inheritedRoles,
         Dictionary<Guid, string> activeGroups,
+        HashSet<string> tenantAdminRoleCodes,
         CancellationToken ct)
     {
         var allRoleCodes = directRoles
             .Where(r => r.ProductCode != null)
             .Select(r => r.RoleCode)
             .Concat(inheritedRoles.Where(r => r.ProductCode != null).Select(r => r.RoleCode))
+            .Concat(tenantAdminRoleCodes)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -269,6 +307,12 @@ public class EffectiveAccessService : IEffectiveAccessService
                 var sourceKey = $"{permCode}:Inherited:{ir.GroupId}";
                 if (seenPermissions.Add(sourceKey))
                     permissionSources.Add(new EffectivePermissionEntry(permCode, perm.ProductCode, "Inherited", perm.RoleCode, ir.GroupId, gn));
+            }
+
+            if (tenantAdminRoleCodes.Contains(perm.RoleCode))
+            {
+                if (seenPermissions.Add(permCode + ":TenantAdmin"))
+                    permissionSources.Add(new EffectivePermissionEntry(permCode, perm.ProductCode, "TenantAdmin", perm.RoleCode));
             }
         }
 

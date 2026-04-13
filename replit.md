@@ -3588,6 +3588,24 @@ Final closure of the legacy authorization model. All frontend and backend consum
 - Funder: `70000000-0000-0000-0000-000000000004`
 - LienOwner: `70000000-0000-0000-0000-000000000005`
 
+## TenantAdmin Product Role Auto-Grant — 2026-04-13
+
+### Summary
+When a TenantAdmin logs in, they automatically receive the full scope of all product roles for every product enabled on their tenant — no explicit `UserRoleAssignment` records needed.
+
+### Root Cause
+`EffectiveAccessService.ComputeEffectiveAccessAsync` was querying `TenantProductEntitlements` (a newer, unpopulated table) instead of `TenantProducts` (the authoritative source for tenant product enablement). This caused zero active entitlements, so the auto-grant logic never fired.
+
+### Changes
+- **`Identity.Infrastructure/Services/EffectiveAccessService.cs`** — (1) Changed entitlement query from `TenantProductEntitlements` to `TenantProducts.Where(tp => tp.IsEnabled).Select(tp => tp.Product.Code)` (TenantProducts is the authoritative source). (2) Added `isTenantAdmin` check via `ScopedRoleAssignments` (GLOBAL scope, Role.Name == "TenantAdmin"). (3) If TenantAdmin: auto-adds all entitled products to effective products, queries active `ProductRoles` filtered by entitled product codes at DB level. (4) Permission resolution (`ResolvePermissionsAsync`) now includes TenantAdmin auto-granted role codes, with "TenantAdmin" source attribution. (5) Debug logging for auto-grant counts.
+
+### Verified
+- MANER-LAW TenantAdmin (`maner@xentrasolutions.com`) now receives 3 products, 8 product roles, and 29 permissions on login
+- Product roles: `SYNQ_CARECONNECT:CARECONNECT_RECEIVER`, `SYNQ_CARECONNECT:CARECONNECT_REFERRER`, `SYNQ_FUND:SYNQFUND_APPLICANT_PORTAL`, `SYNQ_FUND:SYNQFUND_FUNDER`, `SYNQ_FUND:SYNQFUND_REFERRER`, `SYNQ_LIENS:SYNQLIEN_BUYER`, `SYNQ_LIENS:SYNQLIEN_HOLDER`, `SYNQ_LIENS:SYNQLIEN_SELLER`
+- BFF login response includes all auto-granted product roles in session envelope
+- PlatformAdmin (non-TenantAdmin) is unaffected — no regression
+- Cache works correctly (HIT on second request)
+
 ## Liens Service JWT Auth Integration — 2026-04-13
 
 ### Summary
