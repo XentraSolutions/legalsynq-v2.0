@@ -252,8 +252,10 @@ app.MapDocumentEndpoints();
 app.MapAccessEndpoints();
 app.MapPublicLogoEndpoints();
 
-// ── Local file serving (dev only) ─────────────────────────────────────────────
-if (app.Environment.IsDevelopment())
+// ── Local file serving ────────────────────────────────────────────────────────
+// Required whenever the storage provider is "local" (both dev and production on
+// Replit) because GenerateSignedUrlAsync returns /internal/files?token=… and the
+// Documents content endpoint issues a 302 redirect to that URL.
 {
     app.MapGet("/internal/files", async (string token, string disposition, HttpContext ctx) =>
     {
