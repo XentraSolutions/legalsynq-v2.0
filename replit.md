@@ -41,6 +41,7 @@ apps/web/
       api-client.ts             ← apiClient + ApiError (correlationId-aware)
       session.ts                ← getServerSession() — calls /auth/me (server-side)
       auth-guards.ts            ← requireAuthenticated/Org/ProductRole/Admin (server components)
+      tenant-auth-guard.ts      ← requireTenantAdmin() — redirects non-admins to /tenant/access-denied
       nav.ts                    ← buildNavGroups(session) — role-driven nav derivation
     providers/
       session-provider.tsx      ← SessionProvider — fetches BFF /api/auth/me client-side on mount
@@ -154,6 +155,14 @@ apps/web/
         lien/document-handling/[id]/page.tsx       ← V2 UX: store-backed detail, complete review/archive/share actions
         lien/user-management/page.tsx              ← V2 UX: AddUserForm, ActionMenu (activate/deactivate/unlock), admin-only, ConfirmDialog
         lien/user-management/[id]/page.tsx         ← V2 UX: store-backed detail, activate/deactivate/unlock actions
+      tenant/
+        access-denied/page.tsx                    ← access denied page for non-admin users
+        authorization/
+          layout.tsx                              ← requireTenantAdmin() guard + header + AuthorizationNav tabs
+          users/page.tsx                          ← placeholder (LS-TENANT-002)
+          groups/page.tsx                         ← placeholder (LS-TENANT-003)
+          access/page.tsx                         ← placeholder (LS-TENANT-004)
+          simulator/page.tsx                      ← placeholder (LS-TENANT-005)
       (admin)/                  ← route group: requireAdmin() guard + AppShell
         layout.tsx
         admin/users/page.tsx

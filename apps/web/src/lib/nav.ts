@@ -161,15 +161,29 @@ export const GLOBAL_BOTTOM_NAV: NavSection = {
 export function buildNavGroups(session: PlatformSession): NavSection[] {
   if (!session.isPlatformAdmin && !session.isTenantAdmin) return [];
 
-  const items: NavSection['items'] = [
+  const sections: NavSection[] = [];
+
+  sections.push({
+    heading: 'AUTHORIZATION',
+    items: [
+      { href: '/tenant/authorization/users',     label: 'Users',     icon: 'ri-user-line'            },
+      { href: '/tenant/authorization/groups',     label: 'Groups',    icon: 'ri-group-line'           },
+      { href: '/tenant/authorization/access',     label: 'Access',    icon: 'ri-shield-keyhole-line'  },
+      { href: '/tenant/authorization/simulator',  label: 'Simulator', icon: 'ri-test-tube-line'       },
+    ],
+  });
+
+  const adminItems: NavSection['items'] = [
     { href: '/admin/users',          label: 'Users',          icon: 'ri-user-3-line'     },
     { href: '/admin/organizations',   label: 'Organizations',   icon: 'ri-building-line'   },
     { href: '/admin/products',        label: 'Products',        icon: 'ri-grid-line'       },
   ];
 
   if (session.isPlatformAdmin) {
-    items.push({ href: '/admin/tenants', label: 'All Tenants', icon: 'ri-building-4-line' });
+    adminItems.push({ href: '/admin/tenants', label: 'All Tenants', icon: 'ri-building-4-line' });
   }
 
-  return [{ heading: 'ADMINISTRATION', items }];
+  sections.push({ heading: 'ADMINISTRATION', items: adminItems });
+
+  return sections;
 }
