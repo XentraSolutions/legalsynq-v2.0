@@ -210,3 +210,9 @@ id = "D4sgXTv9QxjC2TFIhg-YB"
 uri = "file://analysis/LS-CORE-AUTH-001-report.md"
 type = "text"
 title = "LS-CORE-AUTH-001 — TenantAdmin Auto-Grant Report"
+
+[[outputs]]
+id = "TXLMD8E-hVAV14R0CCwUD"
+uri = "file://analysis/LS-SESSION-2026-04-13-report.md"
+type = "text"
+title = "Session Report — April 13, 2026"
