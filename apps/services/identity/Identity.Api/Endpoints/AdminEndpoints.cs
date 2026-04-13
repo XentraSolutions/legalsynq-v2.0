@@ -181,7 +181,7 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/policies/supported-fields",                                GetSupportedFields);
 
         // ── LS-COR-AUT-011D: Authorization Simulation ───────────────────────
-        routes.MapPost("/api/admin/authorization/simulate",                                  SimulateAuthorization);
+        routes.MapPost("/api/admin/authorization/simulate",                                  AdminEndpointsLscc010.SimulateAuthorization);
 
         return routes;
     }
@@ -5046,7 +5046,7 @@ public static partial class AdminEndpointsLscc010
     // LS-COR-AUT-011D: AUTHORIZATION SIMULATION
     // =========================================================================
 
-    private static async Task<IResult> SimulateAuthorization(
+    internal static async Task<IResult> SimulateAuthorization(
         SimulateAuthorizationRequest body,
         ClaimsPrincipal caller,
         IAuthorizationSimulationService simulationService,
@@ -5076,8 +5076,12 @@ public static partial class AdminEndpointsLscc010
         if (!tenantExists)
             return Results.NotFound(new { error = "Tenant not found." });
 
-        if (IsCrossTenantAccess(caller, body.TenantId))
-            return Results.Forbid();
+        if (!isPlatformAdmin)
+        {
+            var rawTid = caller.FindFirstValue("tenant_id");
+            if (rawTid is null || !Guid.TryParse(rawTid, out var callerTid) || callerTid != body.TenantId)
+                return Results.Forbid();
+        }
 
         var targetUser = await db.Users
             .Where(u => u.Id == body.UserId && u.TenantId == body.TenantId)
@@ -5100,8 +5104,8 @@ public static partial class AdminEndpointsLscc010
                         return Results.BadRequest(new { error = "Each draft rule must have a 'field'." });
                     if (string.IsNullOrWhiteSpace(rule.Value))
                         return Results.BadRequest(new { error = $"Draft rule for field '{rule.Field}' must have a 'value'." });
-                    if (!string.IsNullOrWhiteSpace(rule.Operator) && !Enum.TryParse<Identity.Domain.Enums.RuleOperator>(rule.Operator, true, out _))
-                        return Results.BadRequest(new { error = $"Draft rule for field '{rule.Field}' has invalid operator '{rule.Operator}'. Valid operators: Equals, NotEquals, Contains, StartsWith, EndsWith, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual, In, NotIn." });
+                    if (!string.IsNullOrWhiteSpace(rule.Operator) && !Enum.TryParse<Identity.Domain.RuleOperator>(rule.Operator, ignoreCase: true, out _))
+                        return Results.BadRequest(new { error = $"Draft rule for field '{rule.Field}' has invalid operator '{rule.Operator}'. Valid operators: {string.Join(", ", Enum.GetNames<Identity.Domain.RuleOperator>())}." });
                     if (!string.IsNullOrWhiteSpace(rule.LogicalGroup) && !rule.LogicalGroup.Equals("And", StringComparison.OrdinalIgnoreCase) && !rule.LogicalGroup.Equals("Or", StringComparison.OrdinalIgnoreCase))
                         return Results.BadRequest(new { error = $"Draft rule for field '{rule.Field}' has invalid logicalGroup '{rule.LogicalGroup}'. Valid values: And, Or." });
                 }
@@ -5153,8 +5157,8 @@ public static partial class AdminEndpointsLscc010
             Description   = $"Admin {callerIdStr} simulated authorization for user {body.UserId} permission '{body.PermissionCode}' in tenant {body.TenantId}. Mode={mode}, Result={result.Allowed}",
             Outcome       = result.Allowed ? "allow" : "deny",
             Scope         = new LegalSynq.AuditClient.DTOs.AuditEventScopeDto { TenantId = body.TenantId.ToString() },
-            Actor         = new LegalSynq.AuditClient.DTOs.AuditEventActorDto { UserId = callerIdStr },
-            Entity        = new LegalSynq.AuditClient.DTOs.AuditEventEntityDto { EntityType = "AuthorizationSimulation", EntityId = body.UserId.ToString() },
+            Actor         = new LegalSynq.AuditClient.DTOs.AuditEventActorDto { Id = callerIdStr, Type = LegalSynq.AuditClient.Enums.ActorType.User },
+            Entity        = new LegalSynq.AuditClient.DTOs.AuditEventEntityDto { Type = "AuthorizationSimulation", Id = body.UserId.ToString() },
             Metadata      = JsonSerializer.Serialize(new { permissionCode = body.PermissionCode, mode = mode.ToString(), allowed = result.Allowed }),
             IdempotencyKey = $"sim:{callerIdStr}:{body.UserId}:{body.PermissionCode}:{DateTime.UtcNow:yyyyMMddHHmmss}",
             Tags          = ["simulation", "authorization", mode.ToString().ToLowerInvariant()],
@@ -5163,7 +5167,7 @@ public static partial class AdminEndpointsLscc010
         return Results.Ok(result);
     }
 
-    private record SimulateAuthorizationRequest
+    internal record SimulateAuthorizationRequest
     {
         public Guid TenantId { get; init; }
         public Guid UserId { get; init; }
@@ -5174,7 +5178,7 @@ public static partial class AdminEndpointsLscc010
         public List<Guid>? ExcludePolicyIds { get; init; }
     }
 
-    private record SimulateAuthDraftPolicyInput
+    internal record SimulateAuthDraftPolicyInput
     {
         public string PolicyCode { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
@@ -5184,7 +5188,7 @@ public static partial class AdminEndpointsLscc010
         public List<SimulateAuthDraftRuleInput>? Rules { get; init; }
     }
 
-    private record SimulateAuthDraftRuleInput
+    internal record SimulateAuthDraftRuleInput
     {
         public string Field { get; init; } = string.Empty;
         public string? Operator { get; init; }

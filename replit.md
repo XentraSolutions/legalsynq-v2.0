@@ -866,6 +866,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 **Framework**: .NET 8 Minimal APIs + EF Core 8 + Npgsql (PostgreSQL)  
 **Architecture**: 4-project layered monorepo (Domain → Application → Infrastructure → Api)  
 **Status**: Fully implemented, builds cleanly (0 errors, 0 warnings)
+**EF Core alignment**: `Microsoft.EntityFrameworkCore.Design` downgraded from `9.0.0` → `8.0.4` to eliminate NU1605 package downgrade error (Design 9.0 pulled EF 9.0 transitive dep, conflicting with EF 8.0.4 direct ref).
 
 ### Project Layout
 
