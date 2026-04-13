@@ -7,13 +7,13 @@ import { MarketplaceFilters } from '@/components/lien/marketplace-filters';
 import { MarketplaceCard } from '@/components/lien/marketplace-card';
 
 interface MarketplacePageProps {
-  searchParams: {
+  searchParams: Promise<{
     lienType?:     string;
     jurisdiction?: string;
     minAmount?:    string;
     maxAmount?:    string;
     page?:         string;
-  };
+  }>;
 }
 
 /**
@@ -24,7 +24,8 @@ interface MarketplacePageProps {
  * Filters are handled by MarketplaceFilters (client component) which
  * updates the URL; this page re-renders server-side on each navigation.
  */
-export default async function MarketplacePage({ searchParams: sp }: MarketplacePageProps) {
+export default async function MarketplacePage({ searchParams }: MarketplacePageProps) {
+  const sp = await searchParams;
   await requireProductRole(ProductRole.SynqLienBuyer);
 
   let liens = null;

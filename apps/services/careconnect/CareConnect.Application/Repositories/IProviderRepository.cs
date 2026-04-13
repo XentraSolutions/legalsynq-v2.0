@@ -21,6 +21,7 @@ public interface IProviderRepository
     /// LSCC-002-01: Returns all active providers in the tenant that have no OrganizationId set.
     /// Used for backfill identification and admin reporting.
     /// </summary>
-    // LSCC-002-01: Provider backfill tooling — identify unlinked providers
     Task<List<Provider>> GetUnlinkedAsync(Guid tenantId, CancellationToken ct = default);
+
+    Task<Provider?> GetByOrganizationIdAsync(Guid organizationId, CancellationToken ct = default);
 }

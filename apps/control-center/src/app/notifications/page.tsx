@@ -4,7 +4,7 @@ import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type {
   NotifListResponse,
   NotifStats,
-  NotifProviderHealth,
+  NotifProviderConfig,
 } from '@/lib/notifications-api';
 import { NotificationStatusBadge } from '@/components/notifications/status-badge';
 import { ChannelBadge }            from '@/components/notifications/channel-badge';
@@ -23,7 +23,7 @@ export default async function NotificationsOverviewPage() {
 
   let recent:         NotifListResponse | null = null;
   let stats:          NotifStats | null        = null;
-  let providerHealth: NotifProviderHealth[]    = [];
+  let providerHealth: NotifProviderConfig[]    = [];
   let fetchError:     string | null            = null;
 
   try {
@@ -32,7 +32,7 @@ export default async function NotificationsOverviewPage() {
       providerHealth,
     ] = await Promise.all([
       notifClient.get<NotifListResponse>('/notifications?limit=8', 10, [NOTIF_CACHE_TAGS.notifications]),
-      notifClient.get<NotifProviderHealth[]>('/providers/configs', 15, [NOTIF_CACHE_TAGS.providers]).catch(() => []),
+      notifClient.get<NotifProviderConfig[]>('/providers/configs', 15, [NOTIF_CACHE_TAGS.providers]).catch(() => []),
     ]);
 
     stats = await notifClient
@@ -63,6 +63,8 @@ export default async function NotificationsOverviewPage() {
   const quickNav = [
     { href: '/notifications/log',                icon: 'ri-mail-send-line',       title: 'Delivery Log',    desc: 'Browse and filter all outbound notifications.' },
     { href: '/notifications/templates',          icon: 'ri-file-text-line',       title: 'Templates',       desc: 'Manage message templates and version history.'  },
+    { href: '/notifications/templates/global',   icon: 'ri-layout-masonry-line',  title: 'Global Templates', desc: 'Product-aware global templates with WYSIWYG editor.' },
+    { href: '/notifications/branding',           icon: 'ri-palette-line',         title: 'Tenant Branding',  desc: 'Manage per-tenant, per-product brand configuration.' },
     { href: '/notifications/providers',          icon: 'ri-plug-line',            title: 'Providers',       desc: 'Configure email/SMS provider integrations.'     },
     { href: '/notifications/billing',            icon: 'ri-bar-chart-2-line',     title: 'Usage & Billing', desc: 'View usage events and rate-limit policies.'      },
     { href: '/notifications/contacts/suppressions', icon: 'ri-user-forbid-line', title: 'Suppressions',    desc: 'Manage contact suppression lists.'               },
@@ -140,11 +142,11 @@ export default async function NotificationsOverviewPage() {
               <a href="/notifications/providers" className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">Manage →</a>
             </div>
             <div className="divide-y divide-gray-100">
-              {providerHealth.slice(0, 6).map((p: NotifProviderHealth) => (
+              {providerHealth.slice(0, 6).map((p: NotifProviderConfig) => (
                 <div key={p.id} className="flex items-center justify-between px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <ChannelBadge channel={p.channel} />
-                    <span className="text-sm text-gray-700">{p.displayName ?? p.provider}</span>
+                    <span className="text-sm text-gray-700">{p.displayName ?? p.providerType}</span>
                   </div>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${healthStatusCfg[p.status] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
                     {p.status}

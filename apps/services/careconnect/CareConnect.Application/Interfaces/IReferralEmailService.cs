@@ -65,6 +65,18 @@ public interface IReferralEmailService
         Provider provider,
         CancellationToken ct = default);
 
+    Task SendRejectionNotificationsAsync(
+        Referral referral,
+        Provider provider,
+        Guid? actingUserId,
+        CancellationToken ct = default);
+
+    Task SendCancellationNotificationsAsync(
+        Referral referral,
+        Provider provider,
+        Guid? actingUserId,
+        CancellationToken ct = default);
+
     /// <summary>
     /// LSCC-005-02: Re-attempts an email send for an existing failed notification record.
     /// Called exclusively by <c>ReferralEmailRetryWorker</c> — not for manual operator resend.

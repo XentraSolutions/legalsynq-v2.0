@@ -9,7 +9,11 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+<<<<<<< snyk-fix-2b58d4b648ae06f5a8e5de5507a72f25
     "next": "15.2.8",
+=======
+    "next": "15.2.9",
+>>>>>>> main
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "remixicon": "^4.9.1"

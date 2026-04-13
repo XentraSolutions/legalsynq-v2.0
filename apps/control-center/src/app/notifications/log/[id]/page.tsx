@@ -7,10 +7,11 @@ import type { NotifDetail, NotifEvent, NotifIssue } from '@/lib/notifications-ap
 import { ApiError }                       from '@/lib/api-client';
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default async function NotificationDetailPage({ params }: Props) {
+export default async function NotificationDetailPage(props: Props) {
+  const params = await props.params;
   const session = await requirePlatformAdmin();
 
   let notification: NotifDetail | null = null;

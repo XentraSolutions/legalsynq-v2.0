@@ -70,23 +70,7 @@ export function TopBar() {
 
       {/* ── Logo ────────────────────────────────────────────────────────── */}
       <Link href="/dashboard" className="flex items-center shrink-0">
-        {session && branding.logoDocumentId ? (
-          <img
-            src={`/api/branding/logo/${branding.logoDocumentId}`}
-            alt={branding.displayName}
-            className="h-7 w-auto object-contain max-w-[160px]"
-          />
-        ) : (
-          <Image
-            src="/legalsynq-logo-white.png"
-            alt="LegalSynq"
-            width={130}
-            height={32}
-            priority
-            unoptimized
-            className="h-7 w-auto"
-          />
-        )}
+        <TenantLogo branding={branding} hasSession={!!session} />
       </Link>
 
       {/* ── Spacer ──────────────────────────────────────────────────────── */}
@@ -120,7 +104,7 @@ function AppSwitcher() {
   //   session loaded, enabledProducts.length === 0 → PlatformAdmin / unconfigured; show all
   const visibleProducts: typeof ALL_PRODUCTS[number][] = (() => {
     if (isLoading || !session) return [];                   // not ready yet
-    const ep = session.enabledProducts;
+    const ep = session.enabledProducts ?? [];
     if (ep.length === 0) return [...ALL_PRODUCTS];          // fallback: show all
     const ids = new Set(ep.map(code => PRODUCT_CODE_TO_NAV_KEY[code]).filter(Boolean));
     return ALL_PRODUCTS.filter(p => ids.has(p.id));
@@ -320,6 +304,66 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
         </div>
       )}
     </div>
+  );
+}
+
+function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useTenantBranding>; hasSession: boolean }) {
+  const sources: string[] = [];
+  if (branding.logoWhiteDocumentId && hasSession)
+    sources.push(`/api/branding/logo/${branding.logoWhiteDocumentId}`);
+  if (branding.logoDocumentId && hasSession)
+    sources.push(`/api/branding/logo/${branding.logoDocumentId}`);
+  if (branding.logoUrl)
+    sources.push(branding.logoUrl);
+  sources.push('/api/branding/logo/public');
+
+  const [srcIndex, setSrcIndex] = useState(0);
+  const [exhausted, setExhausted] = useState(false);
+
+  const sourcesKey = sources.join('|');
+  useEffect(() => {
+    setSrcIndex(0);
+    setExhausted(false);
+  }, [sourcesKey]);
+
+  function handleError() {
+    const next = srcIndex + 1;
+    if (next < sources.length) {
+      setSrcIndex(next);
+    } else {
+      setExhausted(true);
+    }
+  }
+
+  if (exhausted) {
+    return (
+      <Image
+        src="/legalsynq-logo-white.png"
+        alt="LegalSynq"
+        width={130}
+        height={32}
+        priority
+        unoptimized
+        className="h-8 w-auto"
+      />
+    );
+  }
+
+  const isWhiteSrc = srcIndex === 0 && !!branding.logoWhiteDocumentId && hasSession;
+
+  return (
+    <img
+      src={sources[srcIndex]}
+      alt={branding.displayName || 'Tenant logo'}
+      className="w-auto object-contain max-w-[180px]"
+      style={{
+        height: 32,
+        ...(!isWhiteSrc
+          ? { filter: 'brightness(0) invert(1)', opacity: 0.9 }
+          : {}),
+      }}
+      onError={handleError}
+    />
   );
 }
 

@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using BuildingBlocks.Exceptions;
 using CareConnect.Application.Authorization;
@@ -24,9 +25,8 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            // LSCC-001: Org-participant scoping — referrers see outbound, receivers see addressed.
-            // Admins and PlatformAdmin bypass capability checks and see all referrals.
-            var isReceiver = await authSvc.IsAuthorizedAsync(ctx, CapabilityCodes.ReferralReadAddressed, ct);
+            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var isAdmin = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin);
 
             var query = new GetReferralsQuery
             {
@@ -39,18 +39,31 @@ public static class ReferralEndpoints
                 CreatedTo          = p.CreatedTo,
                 Page               = p.Page ?? 1,
                 PageSize           = p.PageSize ?? 20,
-                ReferringOrgId     = (!isReceiver && !ctx.IsPlatformAdmin
-                                       && !ctx.Roles.Contains(Roles.TenantAdmin))
-                                     ? ctx.OrgId : null,
-                ReceivingOrgId     = (isReceiver && !ctx.IsPlatformAdmin
-                                       && !ctx.Roles.Contains(Roles.TenantAdmin))
-                                     ? ctx.OrgId : null,
             };
+
+            if (ctx.IsPlatformAdmin)
+            {
+                // PlatformAdmin: all referrals in the tenant, no org scoping
+            }
+            else if (isProviderOrg)
+            {
+                query.CrossTenantReceiver = true;
+                query.ReceivingOrgId      = ctx.OrgId;
+            }
+            else if (isAdmin)
+            {
+                // TenantAdmin on a referrer org: all referrals in the tenant
+            }
+            else
+            {
+                query.ReferringOrgId = ctx.OrgId;
+            }
 
             var result = await service.SearchAsync(tenantId, query, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         // LSCC-01-002-02: Returns the explicit readiness result for the current caller
         // as a provider in the CareConnect receiver path.
@@ -97,7 +110,8 @@ public static class ReferralEndpoints
 
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         // LSCC-002: Row-level access control — caller must be an admin or a participant
         // (ReferringOrganizationId or ReceivingOrganizationId matches their org).
@@ -109,12 +123,12 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            // LSCC-01-005-01 (DEF-002): pass isPlatformAdmin so the service can bypass tenant scoping.
-            var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
+            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var globalLookup = ctx.IsPlatformAdmin || isProviderOrg;
+            var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
 
-            if (!CareConnectParticipantHelper.IsAdmin(ctx))
+            if (!ctx.IsPlatformAdmin)
             {
-                // Re-construct the domain participant view from the response DTO org IDs.
                 var isParticipant =
                     (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
                     (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId);
@@ -123,9 +137,17 @@ public static class ReferralEndpoints
                     return Results.NotFound();
             }
 
+            if (isProviderOrg && ctx.OrgId.HasValue && referral.ReceivingOrganizationId == ctx.OrgId
+                && referral.Status == "New")
+            {
+                try { await service.MarkAsOpenedAsync(id, ct); }
+                catch { }
+            }
+
             return Results.Ok(referral);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapGet("/{id:guid}/history", async (
             Guid id,
@@ -134,11 +156,12 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            // LSCC-01-005-01 (DEF-002)
-            var history = await service.GetHistoryAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
+            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var history = await service.GetHistoryAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin || isProviderOrg);
             return Results.Ok(history);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapPost("/", async (
             [FromBody] CreateReferralRequest request,
@@ -148,11 +171,14 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
+            request.ReferringOrganizationId = ctx.OrgId;
             var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/referrals/{referral.Id}", referral);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapPut("/{id:guid}", async (
             Guid id,
@@ -164,14 +190,17 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            // Determine the required capability based on the target status.
-            var requiredCapability = ReferralWorkflowRules.RequiredCapabilityFor(request.Status);
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredCapability, ct);
+            var requiredPermission = ReferralWorkflowRules.RequiredPermissionFor(request.Status);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredPermission, ct);
 
-            var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
+            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var bypassTenant = ctx.IsPlatformAdmin || isProviderOrg;
+            var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct, bypassTenantScope: bypassTenant);
             return Results.Ok(referral);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         // ── LSCC-005-01: Hardening endpoints (authenticated) ────────────────────
 
@@ -183,11 +212,12 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            // LSCC-01-005-01 (DEF-002)
-            var notifs = await service.GetNotificationsAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin);
+            var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
+            var notifs = await service.GetNotificationsAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin || isProviderOrg);
             return Results.Ok(notifs);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         // POST /api/referrals/{id}/resend-email — resend provider notification email
         // Only available while referral is in New status.
@@ -199,7 +229,7 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
 
             try
             {
@@ -216,7 +246,9 @@ public static class ReferralEndpoints
                 return Results.Conflict(new { error = ex.Message });
             }
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         // POST /api/referrals/{id}/revoke-token — invalidate all previously issued view tokens
         group.MapPost("/{id:guid}/revoke-token", async (
@@ -227,7 +259,7 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
 
             try
             {
@@ -239,7 +271,9 @@ public static class ReferralEndpoints
                 return Results.NotFound();
             }
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         // GET /api/referrals/{id}/audit — operational audit timeline (LSCC-005-02)
         // Returns status-history + notification events merged and sorted chronologically.
@@ -261,7 +295,8 @@ public static class ReferralEndpoints
                 return Results.NotFound();
             }
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         // ── LSCC-005: Public token-based endpoints (no auth required) ──────────
 

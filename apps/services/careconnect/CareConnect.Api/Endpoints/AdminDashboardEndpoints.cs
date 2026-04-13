@@ -61,7 +61,7 @@ public static class AdminDashboardEndpoints
         var referralToday   = await db.Referrals.CountAsync(r => r.CreatedAtUtc >= today, ct);
         var referralWeek    = await db.Referrals.CountAsync(r => r.CreatedAtUtc >= week,  ct);
         var openReferrals   = await db.Referrals.CountAsync(
-            r => r.Status == "New" || r.Status == "Accepted" || r.Status == "InProgress", ct);
+            r => r.Status == "New" || r.Status == "NewOpened" || r.Status == "Accepted" || r.Status == "InProgress", ct);
 
         var blockedToday    = await db.BlockedProviderAccessLogs.CountAsync(l => l.AttemptedAtUtc >= today, ct);
         var blockedWeek     = await db.BlockedProviderAccessLogs.CountAsync(l => l.AttemptedAtUtc >= week,  ct);

@@ -31,7 +31,7 @@ namespace CareConnect.Tests.Application;
 public class ProviderAccessReadinessTests
 {
     private static ProviderAccessReadinessService BuildSut()
-        => new(new CareConnectCapabilityService());
+        => new(new CareConnectPermissionService());
 
     // ── Fully provisioned receiver ─────────────────────────────────────────────
 

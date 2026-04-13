@@ -21,7 +21,7 @@ export const CC_NAV: NavSection[] = [
   {
     heading: 'PLATFORM',
     items: [
-      { href: '/platform-readiness', label: 'Platform Readiness', icon: 'ri-checkbox-circle-line' },
+      { href: '/platform-readiness', label: 'Platform Readiness', icon: 'ri-checkbox-circle-line', badge: 'LIVE' },
       { href: '/legacy-coverage',    label: 'Legacy Coverage',    icon: 'ri-history-fill'         },
     ],
   },
@@ -30,8 +30,10 @@ export const CC_NAV: NavSection[] = [
     heading: 'IDENTITY',
     items: [
       { href: '/tenant-users', label: 'Users',            icon: 'ri-group-line'           },
-      { href: '/groups',       label: 'Groups',           icon: 'ri-team-line'            },
+      { href: '/groups',       label: 'Groups',           icon: 'ri-team-line',   badge: 'LIVE' },
       { href: '/permissions',  label: 'Permissions',      icon: 'ri-key-2-line'           },
+      { href: '/policies',     label: 'Policies',         icon: 'ri-git-branch-line',  badge: 'LIVE' },
+      { href: '/authorization-simulator', label: 'Simulator', icon: 'ri-test-tube-line', badge: 'LIVE' },
       { href: '/roles',        label: 'Roles',            icon: 'ri-shield-keyhole-line'  },
       { href: '/scoped-roles', label: 'Scoped Roles',     icon: 'ri-focus-3-line', badge: 'MOCKUP' },
       { href: '/org-types',    label: 'Org Types',        icon: 'ri-building-4-line'      },
@@ -91,6 +93,13 @@ export const CC_NAV: NavSection[] = [
       { href: '/synqaudit/exports',          label: 'Exports',        icon: 'ri-download-cloud-line', badge: 'LIVE' },
       { href: '/synqaudit/integrity',        label: 'Integrity',      icon: 'ri-fingerprint-line',    badge: 'LIVE' },
       { href: '/synqaudit/legal-holds',      label: 'Legal Holds',    icon: 'ri-scales-3-line',       badge: 'LIVE' },
+    ],
+  },
+
+  {
+    heading: 'TRACEABILITY',
+    items: [
+      { href: '/artifacts', label: 'Artifacts', icon: 'ri-git-merge-line', badge: 'LIVE' },
     ],
   },
 

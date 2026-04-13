@@ -19,7 +19,7 @@ interface SearchParams {
 }
 
 interface PageProps {
-  searchParams: SearchParams;
+  searchParams: Promise<SearchParams>;
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────

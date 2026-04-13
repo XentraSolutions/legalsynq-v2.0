@@ -20,10 +20,10 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ActivationForm } from './activation-form';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 interface PageProps {
-  searchParams: { referralId?: string; token?: string };
+  searchParams: Promise<{ referralId?: string; token?: string }>;
 }
 
 interface PublicSummary {
@@ -38,8 +38,9 @@ interface PublicSummary {
 }
 
 export default async function ActivatePage({ searchParams }: PageProps) {
-  const referralId = searchParams.referralId?.trim() ?? '';
-  const token      = searchParams.token?.trim() ?? '';
+  const sp = await searchParams;
+  const referralId = sp.referralId?.trim() ?? '';
+  const token      = sp.token?.trim() ?? '';
 
   if (!referralId || !token) {
     redirect('/referrals/accept/invalid?reason=missing-token');

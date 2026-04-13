@@ -113,11 +113,19 @@ export const careConnectApi = {
     getById: (id: string) =>
       apiClient.get<AppointmentDetail>(`/careconnect/api/appointments/${id}`),
 
+    /** POST /api/appointments/{id}/confirm */
+    confirm: (id: string, body: { notes?: string } = {}) =>
+      apiClient.post<AppointmentDetail>(`/careconnect/api/appointments/${id}/confirm`, body),
+
+    /** POST /api/appointments/{id}/complete */
+    complete: (id: string, body: { notes?: string } = {}) =>
+      apiClient.post<AppointmentDetail>(`/careconnect/api/appointments/${id}/complete`, body),
+
     /** POST /api/appointments/{id}/cancel */
     cancel: (id: string, body: { notes?: string } = {}) =>
       apiClient.post<AppointmentDetail>(`/careconnect/api/appointments/${id}/cancel`, body),
 
-    /** PUT /api/appointments/{id} — update status (Confirm, NoShow, etc.) */
+    /** PUT /api/appointments/{id} — update status (NoShow, etc.) */
     update: (id: string, body: { status: string; notes?: string }) =>
       apiClient.put<AppointmentDetail>(`/careconnect/api/appointments/${id}`, body),
 

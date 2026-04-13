@@ -78,11 +78,8 @@ public static class AppointmentWorkflowRules
             return;
 
         if (!IsValidTransition(fromStatus, toStatus))
-            throw new ValidationException(
-                "One or more validation errors occurred.",
-                new Dictionary<string, string[]>
-                {
-                    ["status"] = new[] { $"Cannot transition appointment from '{fromStatus}' to '{toStatus}'." }
-                });
+            throw new ConflictException(
+                $"Cannot transition appointment from '{fromStatus}' to '{toStatus}'.",
+                "INVALID_STATE_TRANSITION");
     }
 }

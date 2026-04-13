@@ -24,12 +24,13 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
-    name:           '',
-    code:           '',
-    orgType:        'LAW_FIRM',
-    adminEmail:     '',
-    adminFirstName: '',
-    adminLastName:  '',
+    name:               '',
+    code:               '',
+    orgType:            'LAW_FIRM',
+    adminEmail:         '',
+    adminFirstName:     '',
+    adminLastName:      '',
+    preferredSubdomain: '',
   });
 
   useEffect(() => {
@@ -51,12 +52,24 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
       .slice(0, 8);
   }
 
+  function deriveSubdomain(name: string) {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/[\s_]+/g, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 63);
+  }
+
   function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
     const name = e.target.value;
     setForm(f => ({
       ...f,
       name,
       code: f.code === deriveCode(f.name) ? deriveCode(name) : f.code,
+      preferredSubdomain: f.preferredSubdomain === deriveSubdomain(f.name) ? deriveSubdomain(name) : f.preferredSubdomain,
     }));
   }
 
@@ -180,6 +193,23 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
                   Determines what the tenant can do on the platform.
                 </p>
               </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Subdomain
+                </label>
+                <input
+                  type="text"
+                  maxLength={63}
+                  value={form.preferredSubdomain}
+                  onChange={e => setForm(f => ({ ...f, preferredSubdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))}
+                  placeholder="e.g. acme-law"
+                  className={`${inputClass} font-mono`}
+                />
+                <p className="mt-1 text-[11px] text-gray-400">
+                  Optional. Auto-generated from name if left blank. Lowercase letters, numbers, and hyphens only.
+                </p>
+              </div>
             </fieldset>
 
             {/* Divider */}
@@ -289,6 +319,31 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
                 </p>
               </div>
             </div>
+
+            {/* Provisioning status */}
+            {result.provisioningStatus && (
+              <div className={`flex items-start gap-3 rounded-md px-4 py-3 border ${
+                result.provisioningStatus === 'Active'
+                  ? 'bg-blue-50 border-blue-200'
+                  : 'bg-amber-50 border-amber-200'
+              }`}>
+                <div className="text-xs">
+                  <p className={`font-semibold ${result.provisioningStatus === 'Active' ? 'text-blue-800' : 'text-amber-800'}`}>
+                    Subdomain: {result.provisioningStatus === 'Active' ? 'Provisioned' : result.provisioningStatus}
+                  </p>
+                  {result.hostname && (
+                    <p className="mt-0.5 text-blue-700">
+                      <span className="font-mono bg-blue-100 px-1 rounded">{result.hostname}</span>
+                    </p>
+                  )}
+                  {result.provisioningStatus !== 'Active' && (
+                    <p className="mt-0.5 text-amber-700">
+                      DNS provisioning will be retried from the tenant detail page.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Temp password notice */}
             <div className="space-y-2">

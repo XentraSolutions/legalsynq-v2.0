@@ -4,66 +4,63 @@ using Xunit;
 
 namespace CareConnect.Tests.Authorization;
 
-public class CareConnectCapabilityServiceTests
+public class CareConnectPermissionServiceTests
 {
-    private readonly CareConnectCapabilityService _sut = new();
+    private readonly CareConnectPermissionService _sut = new();
 
     [Theory]
-    [InlineData(ProductRoleCodes.CareConnectReferrer, CapabilityCodes.ReferralCreate,    true)]
-    [InlineData(ProductRoleCodes.CareConnectReferrer, CapabilityCodes.ReferralReadOwn,   true)]
-    [InlineData(ProductRoleCodes.CareConnectReferrer, CapabilityCodes.ReferralCancel,    true)]
-    [InlineData(ProductRoleCodes.CareConnectReferrer, CapabilityCodes.ProviderSearch,    true)]
-    [InlineData(ProductRoleCodes.CareConnectReferrer, CapabilityCodes.ProviderMap,       true)]
-    [InlineData(ProductRoleCodes.CareConnectReferrer, CapabilityCodes.DashboardRead,     true)]
-    // Referrer must NOT have receiver capabilities
-    [InlineData(ProductRoleCodes.CareConnectReferrer, CapabilityCodes.ReferralAccept,    false)]
-    [InlineData(ProductRoleCodes.CareConnectReferrer, CapabilityCodes.ReferralDecline,   false)]
-    [InlineData(ProductRoleCodes.CareConnectReferrer, CapabilityCodes.ScheduleManage,    false)]
-    [InlineData(ProductRoleCodes.CareConnectReferrer, CapabilityCodes.ProviderManage,    false)]
-    // Receiver capabilities
-    [InlineData(ProductRoleCodes.CareConnectReceiver, CapabilityCodes.ReferralAccept,    true)]
-    [InlineData(ProductRoleCodes.CareConnectReceiver, CapabilityCodes.ReferralDecline,   true)]
-    [InlineData(ProductRoleCodes.CareConnectReceiver, CapabilityCodes.ReferralReadAddressed, true)]
-    [InlineData(ProductRoleCodes.CareConnectReceiver, CapabilityCodes.ScheduleManage,    true)]
-    [InlineData(ProductRoleCodes.CareConnectReceiver, CapabilityCodes.AppointmentManage, true)]
-    // Receiver must NOT have referrer-only capabilities
-    [InlineData(ProductRoleCodes.CareConnectReceiver, CapabilityCodes.ReferralCreate,    false)]
-    [InlineData(ProductRoleCodes.CareConnectReceiver, CapabilityCodes.ProviderManage,    false)]
-    public async Task HasCapabilityAsync_MatchesExpectedMapping(string roleCode, string capability, bool expected)
+    [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ReferralCreate,    true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ReferralReadOwn,   true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ReferralCancel,    true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ProviderSearch,    true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ProviderMap,       true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.DashboardRead,     true)]
+    [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ReferralAccept,    false)]
+    [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ReferralDecline,   false)]
+    [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ScheduleManage,    false)]
+    [InlineData(ProductRoleCodes.CareConnectReferrer, PermissionCodes.ProviderManage,    false)]
+    [InlineData(ProductRoleCodes.CareConnectReceiver, PermissionCodes.ReferralAccept,    true)]
+    [InlineData(ProductRoleCodes.CareConnectReceiver, PermissionCodes.ReferralDecline,   true)]
+    [InlineData(ProductRoleCodes.CareConnectReceiver, PermissionCodes.ReferralReadAddressed, true)]
+    [InlineData(ProductRoleCodes.CareConnectReceiver, PermissionCodes.ScheduleManage,    true)]
+    [InlineData(ProductRoleCodes.CareConnectReceiver, PermissionCodes.AppointmentManage, true)]
+    [InlineData(ProductRoleCodes.CareConnectReceiver, PermissionCodes.ReferralCreate,    false)]
+    [InlineData(ProductRoleCodes.CareConnectReceiver, PermissionCodes.ProviderManage,    false)]
+    public async Task HasPermissionAsync_MatchesExpectedMapping(string roleCode, string permission, bool expected)
     {
-        var result = await _sut.HasCapabilityAsync(new[] { roleCode }, capability);
+        var result = await _sut.HasPermissionAsync(new[] { roleCode }, permission);
         Assert.Equal(expected, result);
     }
 
     [Fact]
-    public async Task HasCapabilityAsync_EmptyRoles_ReturnsFalse()
+    public async Task HasPermissionAsync_EmptyRoles_ReturnsFalse()
     {
-        var result = await _sut.HasCapabilityAsync(Array.Empty<string>(), CapabilityCodes.ReferralCreate);
+        var result = await _sut.HasPermissionAsync(Array.Empty<string>(), PermissionCodes.ReferralCreate);
         Assert.False(result);
     }
 
     [Fact]
-    public async Task HasCapabilityAsync_MultipleRoles_UnionOfCapabilities()
+    public async Task HasPermissionAsync_MultipleRoles_UnionOfPermissions()
     {
         var roles = new[] { ProductRoleCodes.CareConnectReferrer, ProductRoleCodes.CareConnectReceiver };
-        Assert.True(await _sut.HasCapabilityAsync(roles, CapabilityCodes.ReferralCreate));
-        Assert.True(await _sut.HasCapabilityAsync(roles, CapabilityCodes.ReferralAccept));
+        Assert.True(await _sut.HasPermissionAsync(roles, PermissionCodes.ReferralCreate));
+        Assert.True(await _sut.HasPermissionAsync(roles, PermissionCodes.ReferralAccept));
     }
 
     [Fact]
-    public async Task HasCapabilityAsync_UnknownRole_ReturnsFalse()
+    public async Task HasPermissionAsync_UnknownRole_ReturnsFalse()
     {
-        var result = await _sut.HasCapabilityAsync(new[] { "UNKNOWN_ROLE" }, CapabilityCodes.ReferralCreate);
+        var result = await _sut.HasPermissionAsync(new[] { "UNKNOWN_ROLE" }, PermissionCodes.ReferralCreate);
         Assert.False(result);
     }
 
     [Fact]
-    public async Task GetCapabilitiesAsync_Referrer_ReturnsExpectedSet()
+    public async Task GetPermissionsAsync_Referrer_ReturnsExpectedSet()
     {
-        var caps = await _sut.GetCapabilitiesAsync(new[] { ProductRoleCodes.CareConnectReferrer });
-        Assert.Contains(CapabilityCodes.ReferralCreate, caps);
-        Assert.Contains(CapabilityCodes.ProviderSearch, caps);
-        Assert.DoesNotContain(CapabilityCodes.ReferralAccept, caps);
-        Assert.DoesNotContain(CapabilityCodes.ScheduleManage, caps);
+        var perms = await _sut.GetPermissionsAsync(new[] { ProductRoleCodes.CareConnectReferrer });
+        Assert.Contains(PermissionCodes.ReferralCreate, perms);
+        Assert.Contains(PermissionCodes.ProviderSearch, perms);
+        Assert.DoesNotContain(PermissionCodes.ReferralAccept, perms);
+        Assert.DoesNotContain(PermissionCodes.ScheduleManage, perms);
     }
 }

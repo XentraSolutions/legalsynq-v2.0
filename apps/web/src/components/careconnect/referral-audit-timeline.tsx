@@ -55,8 +55,8 @@ export function ReferralAuditTimeline({ referralId }: ReferralAuditTimelineProps
     setLoading(true);
     setError('');
     try {
-      const data = await careConnectApi.referrals.getAuditTimeline(referralId);
-      setEvents(data);
+      const response = await careConnectApi.referrals.getAuditTimeline(referralId);
+      setEvents(response.data);
     } catch {
       setError('Failed to load audit timeline.');
       setEvents([]);

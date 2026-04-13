@@ -118,13 +118,14 @@ function FunnelRow({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 interface PageProps {
-  searchParams?: { days?: string; startDate?: string; endDate?: string };
+  searchParams?: Promise<{ days?: string; startDate?: string; endDate?: string }>;
 }
 
 export default async function ActivationAnalyticsPage({ searchParams }: PageProps) {
   await requireAdmin();
 
-  const daysParam = searchParams?.days ?? '30';
+  const resolvedParams = await searchParams;
+  const daysParam = resolvedParams?.days ?? '30';
   const days      = parseInt(daysParam, 10) || 30;
 
   let metrics: ActivationFunnelMetrics | null = null;

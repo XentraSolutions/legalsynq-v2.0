@@ -7,6 +7,13 @@ import { useSession } from '@/hooks/use-session';
 /**
  * Login form — calls the Next.js BFF route POST /api/auth/login.
  *
+ * Tenant resolution:
+ *   - Production: tenant is resolved from the subdomain (Host header).
+ *     The tenant code field is hidden. If the subdomain doesn't map to a
+ *     tenant, the BFF returns an error and we show a clear message.
+ *   - Development/Replit: NEXT_PUBLIC_ENV=development enables the manual
+ *     tenant code input, pre-populated from NEXT_PUBLIC_TENANT_CODE.
+ *
  * isDev is deferred to after mount so the server render and the initial
  * client render always agree (both see isDev = false), eliminating the
  * hydration mismatch caused by NEXT_PUBLIC_ENV being available in the
@@ -22,7 +29,13 @@ export function LoginForm() {
 
   const [mounted,    setMounted]    = useState(false);
   useEffect(() => { setMounted(true); }, []);
-  const isDev = mounted && process.env.NEXT_PUBLIC_ENV === 'development';
+
+  const hasSubdomain = mounted && (() => {
+    const host = window.location.hostname;
+    const parts = host.split('.');
+    return parts.length >= 3 && !host.startsWith('localhost');
+  })();
+  const showTenantField = mounted && !hasSubdomain && process.env.NEXT_PUBLIC_ENV === 'development';
 
   const [email,      setEmail]      = useState('');
   const [password,   setPassword]   = useState('');
@@ -37,7 +50,7 @@ export function LoginForm() {
     setLoading(true);
     try {
       const body: Record<string, string> = { email, password };
-      if (tenantCode) body.tenantCode = tenantCode;
+      if (showTenantField && tenantCode) body.tenantCode = tenantCode;
 
       const res = await fetch('/api/auth/login', {
         method:  'POST',
@@ -47,13 +60,17 @@ export function LoginForm() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setError(err.message ?? 'Invalid credentials. Please try again.');
+        const msg = err.message ?? 'Invalid credentials. Please try again.';
+        if (msg.includes('Tenant could not be resolved')) {
+          setError('This login page is not associated with an active organization. Please check the URL or contact your administrator.');
+        } else {
+          setError(msg);
+        }
         return;
       }
 
       await refresh();
 
-      // Honor returnTo for deep-link flows (e.g. referral view); guard against open redirects
       const rawReturnTo = searchParams.get('returnTo') ?? '';
       const safeDest    = rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//')
         ? rawReturnTo
@@ -69,8 +86,8 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
 
-      {/* Dev-only tenant code */}
-      {isDev && (
+      {/* Dev-only tenant code — hidden when a subdomain is detected (tenant resolved from Host) */}
+      {showTenantField && (
         <Field label="Tenant Code" hint="dev only">
           <input
             type="text"
@@ -118,6 +135,15 @@ export function LoginForm() {
           </button>
         </div>
       </Field>
+
+      <div className="flex justify-end -mt-1">
+        <a
+          href="/forgot-password"
+          className="text-[13px] text-gray-500 hover:text-gray-700 underline underline-offset-2 transition-colors"
+        >
+          Forgot password?
+        </a>
+      </div>
 
       {/* Error banner */}
       {error && (

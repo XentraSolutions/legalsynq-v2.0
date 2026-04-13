@@ -109,7 +109,7 @@ export const CONTROL_CENTER_ORIGIN: string =
   process.env.NEXT_PUBLIC_CONTROL_CENTER_ORIGIN ??
   (process.env.REPLIT_DEV_DOMAIN
     ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : 'http://localhost:5004');
+    : 'http://127.0.0.1:5004');
 
 // ── Gateway / API base ────────────────────────────────────────────────────────
 
@@ -137,7 +137,7 @@ export const CONTROL_CENTER_ORIGIN: string =
 export const CONTROL_CENTER_API_BASE: string =
   process.env.CONTROL_CENTER_API_BASE ??
   process.env.GATEWAY_URL             ??
-  'http://localhost:5010';
+  'http://127.0.0.1:5010';
 
 // ── URL path prefix ───────────────────────────────────────────────────────────
 

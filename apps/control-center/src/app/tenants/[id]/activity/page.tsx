@@ -3,7 +3,7 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { Routes }                 from '@/lib/routes';
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
   searchParams: Promise<{
     actorId?:  string;
     category?: string;
@@ -35,7 +35,7 @@ export default async function TenantActivityPage({ params, searchParams }: Props
   const searchParamsData = await searchParams;
   await requirePlatformAdmin();
 
-  const { id }   = params;
+  const { id }   = await params;
   const actorId  = searchParamsData.actorId  ?? '';
   const category = searchParamsData.category ?? '';
   const dateFrom = searchParamsData.dateFrom ?? '';

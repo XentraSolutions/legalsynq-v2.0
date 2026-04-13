@@ -89,18 +89,14 @@ public class AppointmentService : IAppointmentService
             ?? throw new NotFoundException($"Appointment slot '{request.AppointmentSlotId}' was not found.");
 
         if (slot.Status != SlotStatus.Open)
-            throw new ValidationException("One or more validation errors occurred.",
-                new Dictionary<string, string[]>
-                {
-                    ["appointmentSlotId"] = new[] { "Slot is not available for booking." }
-                });
+            throw new ConflictException(
+                "Slot is not available for booking.",
+                "SLOT_CONFLICT");
 
         if (slot.ReservedCount >= slot.Capacity)
-            throw new ValidationException("One or more validation errors occurred.",
-                new Dictionary<string, string[]>
-                {
-                    ["appointmentSlotId"] = new[] { "Slot has no remaining capacity." }
-                });
+            throw new ConflictException(
+                "Slot has no remaining capacity.",
+                "SLOT_CONFLICT");
 
         slot.Reserve(userId);
 
@@ -182,11 +178,15 @@ public class AppointmentService : IAppointmentService
         var page = Math.Max(1, query.Page ?? 1);
         var pageSize = Math.Min(100, Math.Max(1, query.PageSize ?? 20));
 
+        var statusFilter = query.Status;
+        if (string.Equals(statusFilter, "Pending", StringComparison.OrdinalIgnoreCase))
+            statusFilter = "Scheduled";
+
         var (items, total) = await _appointments.SearchAsync(
             tenantId,
             query.ReferralId,
             query.ProviderId,
-            query.Status,
+            statusFilter,
             query.From,
             query.To,
             page,
@@ -260,6 +260,67 @@ public class AppointmentService : IAppointmentService
         return ToAppointmentResponse(loaded!);
     }
 
+    public async Task<AppointmentResponse> ConfirmAppointmentAsync(
+        Guid tenantId,
+        Guid id,
+        Guid? userId,
+        ConfirmAppointmentRequest request,
+        CancellationToken ct = default)
+    {
+        var appointment = await _appointments.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Appointment '{id}' was not found.");
+
+        AppointmentWorkflowRules.ValidateTransition(appointment.Status, AppointmentStatus.Confirmed);
+
+        var oldStatus = appointment.Status;
+        appointment.UpdateStatus(AppointmentStatus.Confirmed, userId);
+
+        var history = AppointmentStatusHistory.Create(
+            appointment.Id,
+            tenantId,
+            oldStatus,
+            AppointmentStatus.Confirmed,
+            userId,
+            request.Notes);
+
+        await _appointments.SaveStatusUpdateAsync(appointment, history, ct);
+
+        try { await _notifications.CreateAppointmentConfirmedAsync(tenantId, appointment.Id, userId, ct); }
+        catch { }
+
+        var loaded = await _appointments.GetByIdAsync(tenantId, appointment.Id, ct);
+        return ToAppointmentResponse(loaded!);
+    }
+
+    public async Task<AppointmentResponse> CompleteAppointmentAsync(
+        Guid tenantId,
+        Guid id,
+        Guid? userId,
+        CompleteAppointmentRequest request,
+        CancellationToken ct = default)
+    {
+        var appointment = await _appointments.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Appointment '{id}' was not found.");
+
+        AppointmentWorkflowRules.ValidateTransition(appointment.Status, AppointmentStatus.Completed);
+
+        var oldStatus = appointment.Status;
+        appointment.UpdateStatus(AppointmentStatus.Completed, userId);
+
+        var history = AppointmentStatusHistory.Create(
+            appointment.Id,
+            tenantId,
+            oldStatus,
+            AppointmentStatus.Completed,
+            userId,
+            request.Notes);
+
+        await _appointments.SaveStatusUpdateAsync(appointment, history, ct);
+
+        var loaded = await _appointments.GetByIdAsync(tenantId, appointment.Id, ct);
+        return ToAppointmentResponse(loaded!);
+    }
+
     public async Task<AppointmentResponse> CancelAppointmentAsync(
         Guid tenantId,
         Guid id,
@@ -271,12 +332,9 @@ public class AppointmentService : IAppointmentService
             ?? throw new NotFoundException($"Appointment '{id}' was not found.");
 
         if (AppointmentWorkflowRules.IsTerminal(appointment.Status))
-            throw new ValidationException(
-                "One or more validation errors occurred.",
-                new Dictionary<string, string[]>
-                {
-                    ["status"] = new[] { $"Cannot cancel an appointment with terminal status '{appointment.Status}'." }
-                });
+            throw new ConflictException(
+                $"Cannot cancel an appointment with terminal status '{appointment.Status}'.",
+                "INVALID_STATE_TRANSITION");
 
         AppointmentWorkflowRules.ValidateTransition(appointment.Status, AppointmentStatus.Cancelled);
 
@@ -358,12 +416,9 @@ public class AppointmentService : IAppointmentService
             ?? throw new NotFoundException($"Appointment '{id}' was not found.");
 
         if (!AppointmentWorkflowRules.IsReschedulable(appointment.Status))
-            throw new ValidationException(
-                "One or more validation errors occurred.",
-                new Dictionary<string, string[]>
-                {
-                    ["status"] = new[] { $"Cannot reschedule an appointment with status '{appointment.Status}'." }
-                });
+            throw new ConflictException(
+                $"Cannot reschedule an appointment with status '{appointment.Status}'.",
+                "INVALID_STATE_TRANSITION");
 
         if (appointment.AppointmentSlotId == request.NewAppointmentSlotId)
             throw new ValidationException(
@@ -377,20 +432,14 @@ public class AppointmentService : IAppointmentService
             ?? throw new NotFoundException($"Appointment slot '{request.NewAppointmentSlotId}' was not found.");
 
         if (newSlot.Status != SlotStatus.Open)
-            throw new ValidationException(
-                "One or more validation errors occurred.",
-                new Dictionary<string, string[]>
-                {
-                    ["newAppointmentSlotId"] = new[] { "The target slot is not available for booking." }
-                });
+            throw new ConflictException(
+                "The target slot is not available for booking.",
+                "SLOT_CONFLICT");
 
         if (newSlot.ReservedCount >= newSlot.Capacity)
-            throw new ValidationException(
-                "One or more validation errors occurred.",
-                new Dictionary<string, string[]>
-                {
-                    ["newAppointmentSlotId"] = new[] { "The target slot has no remaining capacity." }
-                });
+            throw new ConflictException(
+                "The target slot has no remaining capacity.",
+                "SLOT_CONFLICT");
 
         AppointmentSlot? oldSlot = null;
         if (appointment.AppointmentSlotId.HasValue)
@@ -400,9 +449,20 @@ public class AppointmentService : IAppointmentService
         }
 
         newSlot.Reserve(userId);
-        appointment.Reschedule(newSlot, request.Notes, userId);
 
-        await _appointments.SaveRescheduleAsync(appointment, oldSlot, newSlot, ct);
+        var oldStatus = appointment.Status;
+        appointment.Reschedule(newSlot, request.Notes, userId);
+        appointment.UpdateStatus(AppointmentStatus.Rescheduled, userId);
+
+        var history = AppointmentStatusHistory.Create(
+            appointment.Id,
+            tenantId,
+            oldStatus,
+            AppointmentStatus.Rescheduled,
+            userId,
+            request.Notes);
+
+        await _appointments.SaveRescheduleAsync(appointment, oldSlot, newSlot, history, ct);
 
         // Notification hook: new AppointmentScheduled + AppointmentReminder for the new slot time.
         try { await _notifications.CreateAppointmentScheduledAsync(tenantId, appointment.Id, newSlot.StartAtUtc, userId, ct); }

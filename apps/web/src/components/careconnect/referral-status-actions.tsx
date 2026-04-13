@@ -83,10 +83,10 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
     }
   }
 
-  const canAccept         = isReceiver && ['New', 'Received', 'Contacted'].includes(currentStatus);
+  const canAccept         = isReceiver && ['New', 'NewOpened', 'Received', 'Contacted'].includes(currentStatus);
   // LSCC-01-001-01: receiver can mark In Progress once referral is Accepted
   const canMarkInProgress = isReceiver && currentStatus === 'Accepted';
-  const canDecline        = isReceiver && ['New', 'Received', 'Contacted', 'Accepted'].includes(currentStatus);
+  const canDecline        = isReceiver && ['New', 'NewOpened', 'Received', 'Contacted', 'Accepted'].includes(currentStatus);
   const canCancel         = (isReferrer || isReceiver) && !['Completed', 'Cancelled', 'Declined'].includes(currentStatus);
 
   if (!canAccept && !canMarkInProgress && !canDecline && !canCancel) return null;

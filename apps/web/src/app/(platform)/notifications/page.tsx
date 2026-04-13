@@ -131,13 +131,36 @@ export default async function NotificationsPage() {
             Email delivery overview for your organisation.
           </p>
         </div>
-        <Link
-          href="/notifications/log"
-          className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors"
-        >
-          <i className="ri-list-check-line text-base" />
-          Delivery Log
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/notifications/activity"
+            className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors"
+          >
+            <i className="ri-pulse-line text-base" />
+            Activity
+          </Link>
+          <Link
+            href="/notifications/templates"
+            className="inline-flex items-center gap-1.5 rounded-md bg-white border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            <i className="ri-file-text-line text-base" />
+            Templates
+          </Link>
+          <Link
+            href="/notifications/branding"
+            className="inline-flex items-center gap-1.5 rounded-md bg-white border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            <i className="ri-palette-line text-base" />
+            Branding
+          </Link>
+          <Link
+            href="/notifications/log"
+            className="inline-flex items-center gap-1.5 rounded-md bg-white border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            <i className="ri-list-check-line text-base" />
+            Delivery Log
+          </Link>
+        </div>
       </div>
 
       {/* ── Stats ───────────────────────────────────────────────────────────── */}

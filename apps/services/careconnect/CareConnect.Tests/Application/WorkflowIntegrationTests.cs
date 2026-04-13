@@ -84,10 +84,10 @@ public class WorkflowIntegrationTests
     }
 
     [Fact]
-    public void ReferralWorkflowRules_Accept_RequiresCorrectCapabilityCode()
+    public void ReferralWorkflowRules_Accept_RequiresCorrectPermissionCode()
     {
-        var cap = ReferralWorkflowRules.RequiredCapabilityFor(Referral.ValidStatuses.Accepted);
-        Assert.Equal(BuildingBlocks.Authorization.CapabilityCodes.ReferralAccept, cap);
+        var perm = ReferralWorkflowRules.RequiredPermissionFor(Referral.ValidStatuses.Accepted);
+        Assert.Equal(BuildingBlocks.Authorization.PermissionCodes.ReferralAccept, perm);
     }
 
     [Fact]
@@ -124,10 +124,10 @@ public class WorkflowIntegrationTests
     }
 
     [Fact]
-    public void ReferralWorkflowRules_Decline_RequiresCorrectCapabilityCode()
+    public void ReferralWorkflowRules_Decline_RequiresCorrectPermissionCode()
     {
-        var cap = ReferralWorkflowRules.RequiredCapabilityFor(Referral.ValidStatuses.Declined);
-        Assert.Equal(BuildingBlocks.Authorization.CapabilityCodes.ReferralDecline, cap);
+        var perm = ReferralWorkflowRules.RequiredPermissionFor(Referral.ValidStatuses.Declined);
+        Assert.Equal(BuildingBlocks.Authorization.PermissionCodes.ReferralDecline, perm);
     }
 
     // ── 4. Booking flow — POST /api/appointments ──────────────────────────────
@@ -236,9 +236,9 @@ public class WorkflowIntegrationTests
     }
 
     [Fact]
-    public void ReferralWorkflowRules_Cancel_RequiresCorrectCapabilityCode()
+    public void ReferralWorkflowRules_Cancel_RequiresCorrectPermissionCode()
     {
-        var cap = ReferralWorkflowRules.RequiredCapabilityFor(Referral.ValidStatuses.Cancelled);
-        Assert.Equal(BuildingBlocks.Authorization.CapabilityCodes.ReferralCancel, cap);
+        var perm = ReferralWorkflowRules.RequiredPermissionFor(Referral.ValidStatuses.Cancelled);
+        Assert.Equal(BuildingBlocks.Authorization.PermissionCodes.ReferralCancel, perm);
     }
 }

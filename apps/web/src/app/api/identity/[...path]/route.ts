@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 /**
  * Catch-all BFF proxy for Identity API calls made by Client Components.
@@ -38,6 +38,17 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
     'Content-Type': 'application/json',
   };
   if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
+
+  const joinedPath = pathSegments.join('/');
+  const isBrandingRoute = joinedPath === 'api/tenants/current/branding'
+    || joinedPath === 'tenants/current/branding';
+  if (isBrandingRoute) {
+    const tenantCode = request.headers.get('X-Tenant-Code');
+    if (tenantCode) reqHeaders['X-Tenant-Code'] = tenantCode;
+
+    const forwardedHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+    if (forwardedHost) reqHeaders['X-Forwarded-Host'] = forwardedHost;
+  }
 
   let body: string | undefined;
   if (!['GET', 'HEAD'].includes(request.method)) {

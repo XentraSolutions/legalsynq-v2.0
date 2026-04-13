@@ -8,6 +8,7 @@ public class Referral : AuditableEntity
     {
         // ── Canonical statuses (source of truth) ─────────────────────────
         public const string New        = "New";
+        public const string NewOpened  = "NewOpened";
         public const string Accepted   = "Accepted";
         public const string InProgress = "InProgress";
         public const string Completed  = "Completed";
@@ -15,7 +16,7 @@ public class Referral : AuditableEntity
         public const string Cancelled  = "Cancelled";
 
         public static readonly IReadOnlyList<string> All =
-            new[] { New, Accepted, InProgress, Completed, Declined, Cancelled };
+            new[] { New, NewOpened, Accepted, InProgress, Completed, Declined, Cancelled };
 
         // ── Legacy compat aliases (read-only, accepted on ingest, never produced) ─
         // LSCC-01-001-01: Scheduled demoted from canonical to legacy.
@@ -163,7 +164,19 @@ public class Referral : AuditableEntity
     }
 
     /// <summary>
-    /// Transitions this referral from New → Accepted.
+    /// Transitions this referral from New → NewOpened when a receiver first views it.
+    /// No-op if the referral is already past the New state.
+    /// </summary>
+    public bool MarkAsOpened()
+    {
+        if (Status != ValidStatuses.New) return false;
+        Status       = ValidStatuses.NewOpened;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
+    }
+
+    /// <summary>
+    /// Transitions this referral from New/NewOpened → Accepted.
     /// Used by both authenticated provider users and the public token-based accept flow.
     /// </summary>
     public void Accept(Guid? updatedByUserId)

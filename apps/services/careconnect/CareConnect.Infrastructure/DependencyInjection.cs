@@ -91,13 +91,11 @@ public static class DependencyInjection
         // registration for integration tests that do not need real Identity calls.
         services.AddScoped<IOrganizationRelationshipResolver, HttpOrganizationRelationshipResolver>();
 
-        // Capability-based authorization: static product-role → capability map for CareConnect.
-        // AuthorizationService is registered as Scoped (it depends on ICurrentRequestContext).
-        services.AddSingleton<ICapabilityService, CareConnectCapabilityService>();
+        services.AddSingleton<IPermissionService, CareConnectPermissionService>();
         services.AddScoped<AuthorizationService>();
 
         // LSCC-01-002-02: Centralized, read-only provider access-readiness verification.
-        // Singleton — depends only on ICapabilityService (also singleton); no request-scoped deps.
+        // Singleton — depends only on IPermissionService (also singleton); no request-scoped deps.
         services.AddSingleton<IProviderAccessReadinessService, ProviderAccessReadinessService>();
 
         // LSCC-01-004: Blocked-access logging — best-effort, never blocks the user flow.

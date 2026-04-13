@@ -22,6 +22,7 @@ export interface NotifFetchOptions {
   body?:              unknown;
   revalidateSeconds?: number;
   tags?:              string[];
+  extraHeaders?:      Record<string, string>;
 }
 
 export async function notifFetch<T>(
@@ -44,6 +45,7 @@ export async function notifFetch<T>(
     'Accept':        'application/json',
     'X-Request-Id':  requestId,
     'Authorization': `Bearer ${token}`,
+    ...options.extraHeaders,
   };
 
   const isRead = method === 'GET' || method === 'HEAD';
@@ -91,7 +93,13 @@ export async function notifFetch<T>(
       const errBody = await res.json() as Record<string, unknown>;
       if (typeof errBody.message === 'string') message = errBody.message;
       else if (typeof errBody.title === 'string') message = errBody.title;
-      else if (typeof errBody.error === 'string') message = errBody.error;
+      else if (typeof errBody.error === 'object' && errBody.error !== null) {
+        const nested = errBody.error as Record<string, unknown>;
+        if (typeof nested.message === 'string') message = nested.message;
+        if (Array.isArray(nested.details) && nested.details.length > 0) {
+          message += ': ' + nested.details.join('; ');
+        }
+      } else if (typeof errBody.error === 'string') message = errBody.error;
     } catch { /* non-JSON error body — use status text */ }
     const apiErr = new ApiError(res.status, message);
     logError('notif.api.request.error', apiErr, { requestId, method, endpoint: path, durationMs, status: res.status });
@@ -105,11 +113,13 @@ export async function notifFetch<T>(
 }
 
 export const NOTIF_CACHE_TAGS = {
-  notifications: 'notif:notifications',
-  templates:     'notif:templates',
-  providers:     'notif:providers',
-  billing:       'notif:billing',
-  contacts:      'notif:contacts',
+  notifications:    'notif:notifications',
+  templates:        'notif:templates',
+  globalTemplates:  'notif:global-templates',
+  branding:         'notif:branding',
+  providers:        'notif:providers',
+  billing:          'notif:billing',
+  contacts:         'notif:contacts',
 } as const;
 
 export const notifClient = {
@@ -348,4 +358,83 @@ export interface NotifContactPolicy {
   config:    Record<string, unknown>;
   status:    string;
   createdAt: string;
+}
+
+// ── NOTIF-008: Global Template + Branding types ──────────────────────────────
+
+export type ProductType = 'careconnect' | 'synqlien' | 'synqfund' | 'synqrx' | 'synqpayout';
+export const PRODUCT_TYPES: ProductType[] = ['careconnect', 'synqlien', 'synqfund', 'synqrx', 'synqpayout'];
+
+export type TemplateScope = 'global' | 'tenant';
+export type EditorType    = 'wysiwyg' | 'html' | 'text';
+
+export const EDITOR_TYPES: EditorType[] = ['wysiwyg', 'html', 'text'];
+
+export interface GlobalTemplate {
+  id:               string;
+  tenantId:         string | null;
+  channel:          NotifChannel;
+  templateKey:      string;
+  name:             string;
+  description:      string | null;
+  status:           'active' | 'inactive' | 'archived';
+  currentVersionId: string | null;
+  productType:      ProductType | null;
+  templateScope:    TemplateScope;
+  editorType:       EditorType;
+  category:         string | null;
+  isBrandable:      boolean;
+  createdAt:        string;
+  updatedAt:        string;
+}
+
+export interface GlobalTemplateVersion {
+  id:               string;
+  templateId:       string;
+  versionNumber:    number;
+  subjectTemplate:  string | null;
+  bodyTemplate:     string | null;
+  textTemplate:     string | null;
+  editorJson:       string | null;
+  designTokensJson: string | null;
+  layoutType:       string | null;
+  variables:        string[] | null;
+  status:           'draft' | 'published' | 'retired';
+  publishedAt:      string | null;
+  createdAt:        string;
+}
+
+export interface TenantBranding {
+  id:              string;
+  tenantId:        string;
+  productType:     ProductType;
+  brandName:       string;
+  logoUrl:         string | null;
+  primaryColor:    string | null;
+  secondaryColor:  string | null;
+  accentColor:     string | null;
+  textColor:       string | null;
+  backgroundColor: string | null;
+  buttonRadius:    string | null;
+  fontFamily:      string | null;
+  emailHeaderHtml: string | null;
+  emailFooterHtml: string | null;
+  supportEmail:    string | null;
+  supportPhone:    string | null;
+  websiteUrl:      string | null;
+  createdAt:       string;
+  updatedAt:       string;
+}
+
+export interface BrandedPreviewResult {
+  templateId: string;
+  versionId:  string;
+  subject:    string;
+  body:       string;
+  text:       string;
+  branding: {
+    source:       string;
+    name:         string;
+    primaryColor: string;
+  };
 }

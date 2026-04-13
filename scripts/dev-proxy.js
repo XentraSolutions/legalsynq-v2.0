@@ -2,7 +2,11 @@
 const http = require('http');
 
 const NEXT_PORT = parseInt(process.env.NEXT_INTERNAL_PORT || '3050', 10);
+const CC_PORT = parseInt(process.env.CC_INTERNAL_PORT || '5004', 10);
 const LISTEN_PORT = parseInt(process.env.PROXY_PORT || '5000', 10);
+const CC_HOSTNAMES = (process.env.CC_HOSTNAMES || 'controlcenter.demo.legalsynq.com,controlcenter-dev.legalsynq.com')
+  .split(',')
+  .map(h => h.trim().toLowerCase());
 let ready = false;
 let readyTimestamp = 0;
 const COLD_COMPILE_GUARD_MS = 30000;
@@ -37,13 +41,24 @@ function shouldIntercept500(req) {
   return (Date.now() - readyTimestamp) < COLD_COMPILE_GUARD_MS;
 }
 
+function resolveTargetPort(req) {
+  const host = (req.headers.host || '').split(':')[0].toLowerCase();
+  return CC_HOSTNAMES.includes(host) ? CC_PORT : NEXT_PORT;
+}
+
 function proxyRequest(req, res) {
+  const targetPort = resolveTargetPort(req);
+  const originalHost = req.headers.host || '';
   const opts = {
     hostname: '127.0.0.1',
-    port: NEXT_PORT,
+    port: targetPort,
     path: req.url,
     method: req.method,
-    headers: { ...req.headers, host: req.headers.host },
+    headers: {
+      ...req.headers,
+      'x-forwarded-host': originalHost,
+      host: `127.0.0.1:${targetPort}`,
+    },
   };
   const intercept = shouldIntercept500(req);
   const proxy = http.request(opts, (upstream) => {
@@ -103,12 +118,17 @@ const server = http.createServer((req, res) => {
 
 server.on('upgrade', (req, socket, head) => {
   if (!ready) { socket.destroy(); return; }
+  const targetPort = resolveTargetPort(req);
   const opts = {
     hostname: '127.0.0.1',
-    port: NEXT_PORT,
+    port: targetPort,
     path: req.url,
     method: req.method,
-    headers: req.headers,
+    headers: {
+      ...req.headers,
+      'x-forwarded-host': req.headers.host || '',
+      host: `127.0.0.1:${targetPort}`,
+    },
   };
   const proxy = http.request(opts);
   proxy.on('upgrade', (proxyRes, proxySocket, proxyHead) => {

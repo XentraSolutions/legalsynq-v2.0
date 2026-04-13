@@ -16,9 +16,11 @@
  * TODO: add security headers (CSP, HSTS)
  */
 
+import { revalidateTag } from 'next/cache';
 import { requirePlatformAdmin } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
-import type { ProductCode, ProductEntitlementSummary } from '@/types/control-center';
+import { CACHE_TAGS } from '@/lib/api-client';
+import type { ProductCode, ProductEntitlementSummary, OrgSummary } from '@/types/control-center';
 
 export interface UpdateEntitlementResult {
   success:      boolean;
@@ -77,6 +79,29 @@ export async function updateTenantSessionSettings(
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Failed to update session settings.',
+    };
+  }
+}
+
+export interface UpdateOrganizationResult {
+  success:       boolean;
+  organization?: OrgSummary;
+  error?:        string;
+}
+
+export async function updateOrganizationType(
+  orgId:   string,
+  orgType: string,
+): Promise<UpdateOrganizationResult> {
+  await requirePlatformAdmin();
+  try {
+    const organization = await controlCenterServerApi.organizations.update(orgId, { orgType });
+    revalidateTag(CACHE_TAGS.tenants);
+    return { success: true, organization };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to update organization type.',
     };
   }
 }

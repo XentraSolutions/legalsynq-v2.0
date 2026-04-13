@@ -39,6 +39,7 @@ public static class TenantBrandingEndpoints
                     DisplayName:    "LegalSynq",
                     LogoUrl:        null,
                     LogoDocumentId: null,
+                    LogoWhiteDocumentId: null,
                     PrimaryColor:   null,
                     FaviconUrl:     null));
             }
@@ -49,6 +50,7 @@ public static class TenantBrandingEndpoints
                 DisplayName:    tenant.Name,
                 LogoUrl:        null,
                 LogoDocumentId: tenant.LogoDocumentId?.ToString(),
+                LogoWhiteDocumentId: tenant.LogoWhiteDocumentId?.ToString(),
                 PrimaryColor:   null,       // Phase 2: from TenantBranding table
                 FaviconUrl:     null));     // Phase 2: from TenantBranding table
         })

@@ -63,6 +63,10 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .IsRequired()
             .HasDefaultValue(0);
 
+        builder.Property(u => u.AccessVersion)
+            .IsRequired()
+            .HasDefaultValue(0);
+
         builder.HasIndex(u => new { u.TenantId, u.Email })
             .IsUnique();
 

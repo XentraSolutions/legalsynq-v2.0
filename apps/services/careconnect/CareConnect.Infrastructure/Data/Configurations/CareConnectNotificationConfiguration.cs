@@ -31,8 +31,13 @@ public class CareConnectNotificationConfiguration : IEntityTypeConfiguration<Car
         builder.Property(n => n.CreatedByUserId);
         builder.Property(n => n.UpdatedByUserId);
 
+        builder.Property(n => n.DedupeKey).HasMaxLength(500);
+
         builder.HasIndex(n => new { n.TenantId, n.Status, n.ScheduledForUtc });
         builder.HasIndex(n => new { n.TenantId, n.RelatedEntityType, n.RelatedEntityId });
         builder.HasIndex(n => new { n.TenantId, n.NotificationType });
+        builder.HasIndex(n => n.DedupeKey)
+            .IsUnique()
+            .HasDatabaseName("IX_CareConnectNotifications_DedupeKey");
     }
 }

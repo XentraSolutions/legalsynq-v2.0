@@ -26,9 +26,17 @@ const PUBLIC_PATHS = [
   '/portal/login',
   '/_next',
   '/favicon.ico',
+  '/.well-known',
   // Auth API endpoints must be reachable before a session cookie exists
   '/api/auth/login',
   '/api/auth/logout',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/forgot-password',
+  '/reset-password',
+  // Public branding / logo routes — no session required (used by login page)
+  '/api/branding',
+  '/api/identity/api/tenants/current/branding',
   // LSCC-005: Public referral token routes — no session required
   '/referrals/view',
   '/referrals/accept',

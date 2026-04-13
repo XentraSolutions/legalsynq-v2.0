@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReferralSummary } from '@/types/careconnect';
+import { formatTimestamp } from '@/lib/format-date';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 import { ReferralQuickActions } from './referral-quick-actions';
 
@@ -13,21 +14,9 @@ interface ReferralListTableProps {
   currentQs?: string;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day:   'numeric',
-    year:  'numeric',
-  });
-}
-
-/** Display label for status — "New" maps to "Pending" in the UI for clarity */
-function statusLabel(status: string): string {
-  return status === 'New' ? 'Pending' : status;
-}
-
 function rowHighlight(status: string): string {
   if (status === 'New')        return 'bg-blue-50/40 hover:bg-blue-50 border-l-4 border-l-blue-400';
+  if (status === 'NewOpened')  return 'bg-sky-50/40 hover:bg-sky-50 border-l-4 border-l-sky-400';
   if (status === 'Accepted')   return 'hover:bg-gray-50 border-l-4 border-l-teal-400';
   if (status === 'InProgress') return 'bg-amber-50/30 hover:bg-amber-50/60 border-l-4 border-l-amber-400';
   return 'hover:bg-gray-50 border-l-4 border-l-transparent';
@@ -98,13 +87,13 @@ export function ReferralListTable({
                 <td className="px-4 py-3">
                   <StatusBadge status={r.status} />
                   {r.status === 'New' && (
-                    <p className="text-[10px] text-blue-500 font-medium mt-0.5 leading-none">Pending</p>
+                    <p className="text-[10px] text-blue-500 font-medium mt-0.5 leading-none">Unopened</p>
                   )}
                 </td>
 
                 {/* Created */}
-                <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap hidden lg:table-cell">
-                  {formatDate(r.createdAtUtc)}
+                <td className="px-4 py-3 whitespace-nowrap hidden lg:table-cell">
+                  {(() => { const ts = formatTimestamp(r.createdAtUtc); return (<><p className="text-xs text-gray-500">{ts.date}</p><p className="text-[11px] text-gray-400">{ts.time}</p></>); })()}
                 </td>
 
                 {/* Quick actions */}

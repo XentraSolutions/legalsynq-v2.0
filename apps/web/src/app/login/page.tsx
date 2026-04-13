@@ -1,8 +1,9 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import Image from 'next/image';
 import { LoginForm } from './login-form';
+import { useTenantBranding } from '@/providers/tenant-branding-provider';
 
 const HIGHLIGHTS = [
   {
@@ -22,6 +23,49 @@ const HIGHLIGHTS = [
     text: 'Secure, auditable, and operationally efficient',
   },
 ];
+
+function TenantLogo() {
+  const branding = useTenantBranding();
+
+  const sources: string[] = [];
+  if (branding.logoDocumentId)
+    sources.push(`/api/branding/logo/${branding.logoDocumentId}`);
+  if (branding.logoUrl)
+    sources.push(branding.logoUrl);
+  if (branding.tenantCode)
+    sources.push(`/api/branding/logo/public?tenantCode=${branding.tenantCode}`);
+
+  const [srcIndex, setSrcIndex] = useState(0);
+  const [exhausted, setExhausted] = useState(false);
+
+  const sourcesKey = sources.join('|');
+  useEffect(() => {
+    setSrcIndex(0);
+    setExhausted(false);
+  }, [sourcesKey]);
+
+  if (sources.length === 0 || exhausted) return null;
+
+  function handleError() {
+    const next = srcIndex + 1;
+    if (next < sources.length) {
+      setSrcIndex(next);
+    } else {
+      setExhausted(true);
+    }
+  }
+
+  return (
+    <div className="mb-6">
+      <img
+        src={sources[srcIndex]}
+        alt={branding.displayName || 'Organization logo'}
+        className="max-h-16 max-w-[220px] object-contain"
+        onError={handleError}
+      />
+    </div>
+  );
+}
 
 export default function LoginPage() {
   return (
@@ -124,6 +168,8 @@ export default function LoginPage() {
         </div>
 
         <div className="w-full max-w-sm">
+          <TenantLogo />
+
           {/* Heading */}
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Welcome back</h1>

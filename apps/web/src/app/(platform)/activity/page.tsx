@@ -14,7 +14,7 @@ interface SearchParams {
 }
 
 interface PageProps {
-  searchParams: SearchParams;
+  searchParams: Promise<SearchParams>;
 }
 
 // ── Wire types matching the actual audit service JSON shape ────────────────────

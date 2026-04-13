@@ -1,4 +1,24 @@
+using System.Text.RegularExpressions;
+
 namespace Identity.Domain;
+
+public enum ProvisioningStatus
+{
+    Pending,
+    InProgress,
+    Provisioned,
+    Verifying,
+    Active,
+    Failed
+}
+
+public enum ProvisioningFailureStage
+{
+    None,
+    DnsProvisioning,
+    DnsVerification,
+    HttpVerification
+}
 
 public class Tenant
 {
@@ -9,18 +29,24 @@ public class Tenant
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
-    /// <summary>
-    /// Per-tenant idle session timeout in minutes.
-    /// Null means "use the platform default" (30 minutes).
-    /// Set via the Control Center tenant settings panel.
-    /// </summary>
     public int? SessionTimeoutMinutes { get; private set; }
 
-    /// <summary>
-    /// Document ID of the tenant's logo image, stored in the Documents service.
-    /// Null means no custom logo — the platform default (LegalSynq) is displayed.
-    /// </summary>
     public Guid? LogoDocumentId { get; private set; }
+    public Guid? LogoWhiteDocumentId { get; private set; }
+
+    public string? Subdomain { get; private set; }
+    public ProvisioningStatus ProvisioningStatus { get; private set; }
+    public DateTime? LastProvisioningAttemptUtc { get; private set; }
+    public string? ProvisioningFailureReason { get; private set; }
+    public ProvisioningFailureStage ProvisioningFailureStage { get; private set; }
+
+    public int VerificationAttemptCount { get; private set; }
+    public DateTime? LastVerificationAttemptUtc { get; private set; }
+    public DateTime? NextVerificationRetryAtUtc { get; private set; }
+    public bool IsVerificationRetryExhausted { get; private set; }
+
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? PreferredSubdomain { get; private set; }
 
     public ICollection<User> Users { get; private set; } = [];
     public ICollection<Role> Roles { get; private set; } = [];
@@ -30,7 +56,7 @@ public class Tenant
 
     private Tenant() { }
 
-    public static Tenant Create(string name, string code)
+    public static Tenant Create(string name, string code, string? preferredSubdomain = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
@@ -42,6 +68,14 @@ public class Tenant
             Name = name.Trim(),
             Code = code.ToUpperInvariant().Trim(),
             IsActive = true,
+            Subdomain = null,
+            PreferredSubdomain = string.IsNullOrWhiteSpace(preferredSubdomain)
+                ? null
+                : SlugGenerator.Normalize(preferredSubdomain),
+            ProvisioningStatus = ProvisioningStatus.Pending,
+            ProvisioningFailureStage = ProvisioningFailureStage.None,
+            VerificationAttemptCount = 0,
+            IsVerificationRetryExhausted = false,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
@@ -65,5 +99,175 @@ public class Tenant
     {
         LogoDocumentId = null;
         UpdatedAtUtc   = DateTime.UtcNow;
+    }
+
+    public void SetLogoWhite(Guid documentId)
+    {
+        LogoWhiteDocumentId = documentId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ClearLogoWhite()
+    {
+        LogoWhiteDocumentId = null;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkProvisioningInProgress()
+    {
+        ProvisioningStatus = ProvisioningStatus.InProgress;
+        LastProvisioningAttemptUtc = DateTime.UtcNow;
+        ProvisioningFailureReason = null;
+        ProvisioningFailureStage = ProvisioningFailureStage.None;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkProvisioningProvisioned()
+    {
+        ProvisioningStatus = ProvisioningStatus.Provisioned;
+        ProvisioningFailureReason = null;
+        ProvisioningFailureStage = ProvisioningFailureStage.None;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkProvisioningVerifying()
+    {
+        ProvisioningStatus = ProvisioningStatus.Verifying;
+        ProvisioningFailureReason = null;
+        ProvisioningFailureStage = ProvisioningFailureStage.None;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkProvisioningActive()
+    {
+        ProvisioningStatus = ProvisioningStatus.Active;
+        ProvisioningFailureReason = null;
+        ProvisioningFailureStage = ProvisioningFailureStage.None;
+        NextVerificationRetryAtUtc = null;
+        IsVerificationRetryExhausted = false;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkProvisioningFailed(string reason, ProvisioningFailureStage stage = ProvisioningFailureStage.None)
+    {
+        ProvisioningStatus = ProvisioningStatus.Failed;
+        ProvisioningFailureReason = reason;
+        ProvisioningFailureStage = stage;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void RecordVerificationAttempt(string? failureReason, ProvisioningFailureStage failureStage)
+    {
+        VerificationAttemptCount++;
+        LastVerificationAttemptUtc = DateTime.UtcNow;
+        ProvisioningFailureReason = failureReason;
+        ProvisioningFailureStage = failureStage;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ScheduleVerificationRetry(DateTime nextRetryUtc)
+    {
+        ProvisioningStatus = ProvisioningStatus.Verifying;
+        NextVerificationRetryAtUtc = nextRetryUtc;
+        IsVerificationRetryExhausted = false;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MarkVerificationRetryExhausted(string reason, ProvisioningFailureStage stage)
+    {
+        ProvisioningStatus = ProvisioningStatus.Failed;
+        ProvisioningFailureReason = reason;
+        ProvisioningFailureStage = stage;
+        NextVerificationRetryAtUtc = null;
+        IsVerificationRetryExhausted = true;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ResetVerificationRetryState()
+    {
+        VerificationAttemptCount = 0;
+        LastVerificationAttemptUtc = null;
+        NextVerificationRetryAtUtc = null;
+        IsVerificationRetryExhausted = false;
+        ProvisioningFailureReason = null;
+        ProvisioningFailureStage = ProvisioningFailureStage.None;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetSubdomain(string slug)
+    {
+        Subdomain = slug;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+}
+
+public static class SlugGenerator
+{
+    private static readonly HashSet<string> ReservedSlugs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "www", "api", "admin", "app", "mail", "email", "ftp", "ssh",
+        "portal", "login", "auth", "dashboard", "help", "support",
+        "docs", "status", "blog", "cdn", "static", "assets",
+        "staging", "dev", "test", "demo", "sandbox",
+        "legalsynq", "legal-synq", "platform"
+    };
+
+    private static readonly Regex ValidSlugPattern = new(
+        @"^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?$",
+        RegexOptions.Compiled);
+
+    public static string Generate(string tenantName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantName);
+        var slug = Normalize(tenantName);
+        if (string.IsNullOrEmpty(slug))
+            slug = "tenant";
+        return slug;
+    }
+
+    public static string Normalize(string input)
+    {
+        var slug = input
+            .Trim()
+            .ToLowerInvariant()
+            .Replace(' ', '-')
+            .Replace('_', '-');
+
+        slug = Regex.Replace(slug, @"[^a-z0-9\-]", "");
+        slug = Regex.Replace(slug, @"-{2,}", "-");
+        slug = slug.Trim('-');
+
+        if (slug.Length > 63)
+            slug = slug[..63].TrimEnd('-');
+
+        return slug;
+    }
+
+    public static (bool IsValid, string? Error) Validate(string slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug))
+            return (false, "Subdomain is required.");
+
+        if (slug.Length < 2)
+            return (false, "Subdomain must be at least 2 characters.");
+
+        if (slug.Length > 63)
+            return (false, "Subdomain must be at most 63 characters.");
+
+        if (!ValidSlugPattern.IsMatch(slug))
+            return (false, "Subdomain must contain only lowercase letters, numbers, and hyphens. Cannot start or end with a hyphen.");
+
+        if (ReservedSlugs.Contains(slug))
+            return (false, $"'{slug}' is a reserved name and cannot be used as a subdomain.");
+
+        return (true, null);
+    }
+
+    public static string AppendSuffix(string slug, int attempt)
+    {
+        var suffix = $"-{attempt}";
+        var maxBase = 63 - suffix.Length;
+        var baseSlug = slug.Length > maxBase ? slug[..maxBase].TrimEnd('-') : slug;
+        return baseSlug + suffix;
     }
 }

@@ -2,8 +2,12 @@
 
 import { revalidateTag }        from 'next/cache';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
-import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
-import type { NotifChannel, NotifBillingRate, NotifBillingPlan } from '@/lib/notifications-api';
+import { notifClient, notifFetch, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
+import type {
+  NotifChannel, NotifBillingRate, NotifBillingPlan,
+  ProductType, EditorType, GlobalTemplate, GlobalTemplateVersion,
+  TenantBranding, BrandedPreviewResult,
+} from '@/lib/notifications-api';
 
 // ── Shared result type ────────────────────────────────────────────────────────
 
@@ -484,5 +488,182 @@ export async function updateContactPolicy(
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Failed to update contact policy.' };
+  }
+}
+
+// ── Global template mutations ────────────────────────────────────────────────
+
+export interface GlobalTemplateCreateInput {
+  templateKey:  string;
+  channel:      NotifChannel;
+  name:         string;
+  productType:  ProductType;
+  editorType:   EditorType;
+  description?: string | null;
+  category?:    string | null;
+  isBrandable?: boolean;
+}
+
+export async function createGlobalTemplate(
+  input: GlobalTemplateCreateInput,
+): Promise<ActionResult<{ id: string }>> {
+  await requirePlatformAdmin();
+  try {
+    const res = await notifClient.post<{ data: GlobalTemplate }>(
+      '/templates/global',
+      input,
+    );
+    revalidateTag(NOTIF_CACHE_TAGS.globalTemplates);
+    return { success: true, data: { id: res.data.id } };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to create global template.' };
+  }
+}
+
+export interface GlobalTemplateUpdateInput {
+  name?:        string;
+  description?: string | null;
+  category?:    string | null;
+  isBrandable?: boolean;
+  status?:      'active' | 'inactive' | 'archived';
+}
+
+export async function updateGlobalTemplate(
+  id:    string,
+  input: GlobalTemplateUpdateInput,
+): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  try {
+    await notifClient.patch(`/templates/global/${id}`, input);
+    revalidateTag(NOTIF_CACHE_TAGS.globalTemplates);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to update global template.' };
+  }
+}
+
+// ── Global template version mutations ────────────────────────────────────────
+
+export interface GlobalVersionCreateInput {
+  subjectTemplate?:  string | null;
+  bodyTemplate:      string;
+  textTemplate?:     string | null;
+  editorJson?:       string | null;
+  designTokensJson?: string | null;
+  layoutType?:       string | null;
+}
+
+export async function createGlobalTemplateVersion(
+  templateId: string,
+  input:      GlobalVersionCreateInput,
+): Promise<ActionResult<{ id: string }>> {
+  await requirePlatformAdmin();
+  try {
+    const res = await notifClient.post<{ data: GlobalTemplateVersion }>(
+      `/templates/global/${templateId}/versions`,
+      input,
+    );
+    revalidateTag(NOTIF_CACHE_TAGS.globalTemplates);
+    return { success: true, data: { id: res.data.id } };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to create template version.' };
+  }
+}
+
+export async function publishGlobalTemplateVersion(
+  templateId: string,
+  versionId:  string,
+): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  try {
+    await notifClient.post(`/templates/global/${templateId}/versions/${versionId}/publish`, {});
+    revalidateTag(NOTIF_CACHE_TAGS.globalTemplates);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Publish failed.' };
+  }
+}
+
+// ── Branded preview ──────────────────────────────────────────────────────────
+
+export interface BrandedPreviewInput {
+  tenantId:      string;
+  productType:   ProductType;
+  templateData?: Record<string, string>;
+}
+
+export async function previewGlobalTemplateVersion(
+  templateId: string,
+  versionId:  string,
+  input:      BrandedPreviewInput,
+): Promise<ActionResult<BrandedPreviewResult>> {
+  await requirePlatformAdmin();
+  try {
+    const res = await notifClient.post<{ data: BrandedPreviewResult }>(
+      `/templates/global/${templateId}/versions/${versionId}/preview`,
+      input,
+    );
+    return { success: true, data: res.data };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Preview failed.' };
+  }
+}
+
+// ── Tenant branding mutations ────────────────────────────────────────────────
+
+export interface BrandingCreateInput {
+  tenantId:         string;
+  productType:      ProductType;
+  brandName:        string;
+  logoUrl?:         string | null;
+  primaryColor?:    string | null;
+  secondaryColor?:  string | null;
+  accentColor?:     string | null;
+  textColor?:       string | null;
+  backgroundColor?: string | null;
+  buttonRadius?:    string | null;
+  fontFamily?:      string | null;
+  emailHeaderHtml?: string | null;
+  emailFooterHtml?: string | null;
+  supportEmail?:    string | null;
+  supportPhone?:    string | null;
+  websiteUrl?:      string | null;
+}
+
+export async function createBranding(
+  input: BrandingCreateInput,
+): Promise<ActionResult<{ id: string }>> {
+  await requirePlatformAdmin();
+  try {
+    const { tenantId, ...body } = input;
+    const res = await notifFetch<{ data: TenantBranding }>(
+      '/branding',
+      { method: 'POST', body, extraHeaders: { 'x-tenant-id': tenantId } },
+    );
+    revalidateTag(NOTIF_CACHE_TAGS.branding);
+    return { success: true, data: { id: res.data.id } };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to create branding.' };
+  }
+}
+
+export type BrandingUpdateInput = Partial<Omit<BrandingCreateInput, 'tenantId' | 'productType'>>;
+
+export async function updateBranding(
+  id:    string,
+  input: BrandingUpdateInput,
+  tenantId: string,
+): Promise<ActionResult> {
+  await requirePlatformAdmin();
+  try {
+    await notifFetch(`/branding/${id}`, {
+      method: 'PATCH',
+      body: input,
+      extraHeaders: { 'x-tenant-id': tenantId },
+    });
+    revalidateTag(NOTIF_CACHE_TAGS.branding);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to update branding.' };
   }
 }

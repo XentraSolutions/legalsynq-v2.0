@@ -1,4 +1,5 @@
-import type { NavSection, PlatformSession } from '@/types';
+import type { NavSection, PlatformSession, ProductRoleValue } from '@/types';
+import { ProductRole } from '@/types';
 
 // ── Per-product sidebar navigation (sections) ─────────────────────────────────
 
@@ -7,9 +8,8 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     {
       items: [
         { href: '/careconnect/dashboard',    label: 'Dashboard',    icon: 'ri-dashboard-line' },
-        { href: '/careconnect/providers',    label: 'Providers',    icon: 'ri-hospital-line' },
-        { href: '/careconnect/referrals',    label: 'Referrals',    icon: 'ri-file-list-3-line' },
-        { href: '/careconnect/appointments', label: 'Appointments', icon: 'ri-calendar-2-line' },
+        { href: '/careconnect/providers',    label: 'Providers',    icon: 'ri-hospital-line', requiredRoles: [ProductRole.CareConnectReferrer] },
+        { href: '/careconnect/referrals',    label: 'Referrals',    icon: 'ri-file-list-3-line', badgeKey: 'newReferrals' },
       ],
     },
   ],
@@ -106,6 +106,18 @@ export function resolveEnabledNavKeys(enabledProducts: string[]): Set<string> {
   return keys;
 }
 
+export function filterNavByRoles(sections: NavSection[], userRoles: ProductRoleValue[]): NavSection[] {
+  return sections
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        if (!item.requiredRoles || item.requiredRoles.length === 0) return true;
+        return item.requiredRoles.some(role => userRoles.includes(role));
+      }),
+    }))
+    .filter(section => section.items.length > 0);
+}
+
 // ── Infer product from pathname ───────────────────────────────────────────────
 
 export function inferProductFromPath(pathname: string): string | null {
@@ -149,15 +161,29 @@ export const GLOBAL_BOTTOM_NAV: NavSection = {
 export function buildNavGroups(session: PlatformSession): NavSection[] {
   if (!session.isPlatformAdmin && !session.isTenantAdmin) return [];
 
-  const items: NavSection['items'] = [
+  const sections: NavSection[] = [];
+
+  sections.push({
+    heading: 'AUTHORIZATION',
+    items: [
+      { href: '/tenant/authorization/users',     label: 'Users',     icon: 'ri-user-line'            },
+      { href: '/tenant/authorization/groups',     label: 'Groups',    icon: 'ri-group-line'           },
+      { href: '/tenant/authorization/access',     label: 'Access',    icon: 'ri-shield-keyhole-line'  },
+      { href: '/tenant/authorization/simulator',  label: 'Simulator', icon: 'ri-test-tube-line'       },
+    ],
+  });
+
+  const adminItems: NavSection['items'] = [
     { href: '/admin/users',          label: 'Users',          icon: 'ri-user-3-line'     },
     { href: '/admin/organizations',   label: 'Organizations',   icon: 'ri-building-line'   },
     { href: '/admin/products',        label: 'Products',        icon: 'ri-grid-line'       },
   ];
 
   if (session.isPlatformAdmin) {
-    items.push({ href: '/admin/tenants', label: 'All Tenants', icon: 'ri-building-4-line' });
+    adminItems.push({ href: '/admin/tenants', label: 'All Tenants', icon: 'ri-building-4-line' });
   }
 
-  return [{ heading: 'ADMINISTRATION', items }];
+  sections.push({ heading: 'ADMINISTRATION', items: adminItems });
+
+  return sections;
 }

@@ -7,7 +7,7 @@ import { RoleDetailCard }          from '@/components/roles/role-detail-card';
 import { RolePermissionPanel }     from '@/components/roles/role-permission-panel';
 
 interface RoleDetailPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -25,7 +25,7 @@ interface RoleDetailPageProps {
 export default async function RoleDetailPage({ params }: RoleDetailPageProps) {
   const session       = await requireAdmin();
   const isTenantAdmin = session.isTenantAdmin;
-  const { id }  = params;
+  const { id }  = await params;
 
   let role = null;
   let fetchError: string | null = null;

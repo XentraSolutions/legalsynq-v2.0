@@ -82,6 +82,21 @@ public class ReferralService : IReferralService
         return ToResponse(referral, latestNotif);
     }
 
+    public async Task MarkAsOpenedAsync(Guid id, CancellationToken ct = default)
+    {
+        var referral = await _referrals.GetByIdGlobalAsync(id, ct);
+        if (referral is null) return;
+
+        if (referral.MarkAsOpened())
+        {
+            var history = ReferralStatusHistory.Create(
+                referral.Id, referral.TenantId,
+                Referral.ValidStatuses.New, Referral.ValidStatuses.NewOpened,
+                null, "Referral opened by receiver.");
+            await _referrals.UpdateAsync(referral, history, ct);
+        }
+    }
+
     public async Task<ReferralResponse> CreateAsync(Guid tenantId, Guid? userId, CreateReferralRequest request, CancellationToken ct = default)
     {
         ValidateCreate(request);
@@ -91,6 +106,8 @@ public class ReferralService : IReferralService
         // of whether their TenantId matches the referrer's tenant.
         var provider = await _providers.GetByIdCrossAsync(request.ProviderId, ct)
             ?? throw new NotFoundException($"Provider '{request.ProviderId}' was not found.");
+
+        request.ReceivingOrganizationId = provider.OrganizationId;
 
         // Phase C: resolve the Identity OrganizationRelationship when both org IDs are provided.
         // The null resolver (default) always returns null — no runtime side-effects.
@@ -200,10 +217,15 @@ public class ReferralService : IReferralService
         return ToResponse(loaded!);
     }
 
-    public async Task<ReferralResponse> UpdateAsync(Guid tenantId, Guid id, Guid? userId, UpdateReferralRequest request, CancellationToken ct = default)
+    public async Task<ReferralResponse> UpdateAsync(Guid tenantId, Guid id, Guid? userId, UpdateReferralRequest request, CancellationToken ct = default, bool bypassTenantScope = false)
     {
-        var referral = await _referrals.GetByIdAsync(tenantId, id, ct)
-            ?? throw new NotFoundException($"Referral '{id}' was not found.");
+        var referral = bypassTenantScope
+            ? await _referrals.GetByIdGlobalAsync(id, ct)
+            : await _referrals.GetByIdAsync(tenantId, id, ct);
+        if (referral is null)
+            throw new NotFoundException($"Referral '{id}' was not found.");
+
+        var effectiveTenantId = referral.TenantId;
 
         ValidateUpdate(request);
 
@@ -215,7 +237,7 @@ public class ReferralService : IReferralService
 
             history = ReferralStatusHistory.Create(
                 referral.Id,
-                tenantId,
+                effectiveTenantId,
                 referral.Status,
                 request.Status,
                 userId,
@@ -227,11 +249,48 @@ public class ReferralService : IReferralService
         referral.Update(request.RequestedService, request.Urgency, request.Status, request.Notes, userId);
         await _referrals.UpdateAsync(referral, history, ct);
 
-        // Fire notification hook after successful save — non-blocking on failure.
         if (statusChanged)
         {
-            try { await _notifications.CreateReferralStatusChangedAsync(tenantId, referral.Id, userId, ct); }
+            try { await _notifications.CreateReferralStatusChangedAsync(effectiveTenantId, referral.Id, userId, ct); }
             catch { /* Notification failure must not break the referral update. */ }
+
+            var scopeFactory = _scopeFactory;
+            var logger       = _logger;
+            var newStatus    = request.Status;
+            var referralId   = referral.Id;
+            var providerId   = referral.ProviderId;
+            var actingUserId = userId;
+
+            _ = Task.Run(async () =>
+            {
+                using var scope   = scopeFactory.CreateScope();
+                var       emailSvc  = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
+                var       provRepo  = scope.ServiceProvider.GetRequiredService<IProviderRepository>();
+                try
+                {
+                    var provider = await provRepo.GetByIdCrossAsync(providerId, CancellationToken.None);
+                    if (provider is null) return;
+
+                    switch (newStatus)
+                    {
+                        case Referral.ValidStatuses.Accepted:
+                            await emailSvc.SendAcceptanceConfirmationsAsync(referral, provider, CancellationToken.None);
+                            break;
+                        case Referral.ValidStatuses.Declined:
+                            await emailSvc.SendRejectionNotificationsAsync(referral, provider, actingUserId, CancellationToken.None);
+                            break;
+                        case Referral.ValidStatuses.Cancelled:
+                            await emailSvc.SendCancellationNotificationsAsync(referral, provider, actingUserId, CancellationToken.None);
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "Background referral status notification failed for referral {ReferralId} (status={Status}).",
+                        referralId, newStatus);
+                }
+            });
         }
 
         // Canonical audit: careconnect.referral.updated — fire-and-observe.
@@ -245,7 +304,7 @@ public class ReferralService : IReferralService
             Visibility    = AuditVisibility.Tenant,
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = auditNow,
-            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = effectiveTenantId.ToString() },
             Actor = new AuditEventActorDto
             {
                 Id   = userId?.ToString(),
@@ -267,7 +326,9 @@ public class ReferralService : IReferralService
             Tags = ["referral", "clinical", "status-change"],
         });
 
-        var loaded = await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
+        var loaded = bypassTenantScope
+            ? await _referrals.GetByIdGlobalAsync(referral.Id, ct)
+            : await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
         return ToResponse(loaded!);
     }
 
@@ -387,7 +448,7 @@ public class ReferralService : IReferralService
         }
 
         // LSCC-005-01: Duplicate/replay hardening — status check prevents double-acceptance
-        if (referral.Status != Referral.ValidStatuses.New)
+        if (referral.Status != Referral.ValidStatuses.New && referral.Status != Referral.ValidStatuses.NewOpened)
         {
             _logger.LogInformation(
                 "Replay acceptance attempt for referral {ReferralId}: already in status {Status}.",
@@ -501,7 +562,7 @@ public class ReferralService : IReferralService
         // Use the referral's actual TenantId for notification sub-queries.
         var effectiveTenantId = referral.TenantId;
 
-        if (referral.Status != Referral.ValidStatuses.New)
+        if (referral.Status != Referral.ValidStatuses.New && referral.Status != Referral.ValidStatuses.NewOpened)
             throw new InvalidOperationException(
                 $"Cannot resend provider notification: referral is already '{referral.Status}'. " +
                 $"The provider has already actioned this referral.");

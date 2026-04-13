@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Json;
 using Identity.Application.DTOs;
@@ -17,6 +18,7 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuditEventClient _auditClient;
+    private readonly IEffectiveAccessService _effectiveAccessService;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -25,6 +27,7 @@ public class AuthService : IAuthService
         IPasswordHasher passwordHasher,
         IJwtTokenService jwtTokenService,
         IAuditEventClient auditClient,
+        IEffectiveAccessService effectiveAccessService,
         ILogger<AuthService> logger)
     {
         _userRepository = userRepository;
@@ -32,11 +35,13 @@ public class AuthService : IAuthService
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
         _auditClient = auditClient;
+        _effectiveAccessService = effectiveAccessService;
         _logger = logger;
     }
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request, string? ipAddress = null, CancellationToken ct = default)
     {
+        var sw = Stopwatch.StartNew();
         // Canonical audit helpers — used when a login failure must be emitted before re-throwing.
         // fire-and-observe: never awaited, never allowed to gate the primary auth response.
         var tenantCodeNorm  = request.TenantCode.ToUpperInvariant().Trim();
@@ -47,6 +52,20 @@ public class AuthService : IAuthService
         {
             EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotFound", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
+        }
+
+        if (tenant.ProvisioningStatus == ProvisioningStatus.Verifying)
+        {
+            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantVerificationRetrying", ipAddress: ipAddress);
+            throw new InvalidOperationException(
+                $"Tenant '{tenantCodeNorm}' is currently verifying DNS configuration. " +
+                "This process typically completes within a few minutes. Please try again shortly.");
+        }
+
+        if (tenant.ProvisioningStatus != ProvisioningStatus.Active)
+        {
+            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotProvisioned", ipAddress: ipAddress);
+            throw new InvalidOperationException($"Tenant '{tenantCodeNorm}' is not fully provisioned (status: {tenant.ProvisioningStatus}). Please wait for setup to complete.");
         }
 
         var normalizedEmail = emailNorm;
@@ -86,60 +105,19 @@ public class AuthService : IAuthService
             .Select(s => s.Role.Name)
             .ToList();
 
-        // Load org membership and compute product roles
+        // Load org membership for JWT context (primary org)
         var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);
         var org = orgMembership?.Organization;
 
-        List<string> productRoles = [];
-        if (org is not null)
-        {
-            // Phase I: warn when the OrgType string fallback path will be taken during
-            // product-role eligibility checks.  After migration 200005 this should never
-            // fire; if it does, the admin should re-run the backfill migration.
-            if (!org.OrganizationTypeId.HasValue)
-                _logger.LogWarning(
-                    "Organization {OrgId} has no OrganizationTypeId set; " +
-                    "product-role eligibility will use the OrgType string fallback. " +
-                    "Run migration 200005 (PhaseI_BackfillOrganizationTypeId) to resolve.",
-                    org.Id);
-
-            // Phase F: resolve product roles exclusively via ProductOrganizationTypeRule (DB-backed).
-            // EligibleOrgType legacy fallback removed — see migration 20260330200003.
-            int dbRuleCount       = 0;
-            int unrestrictedCount = 0;
-
-            var eligibleCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var op in org.OrganizationProducts.Where(op => op.IsEnabled))
-            {
-                foreach (var pr in op.Product.ProductRoles.Where(pr => pr.IsActive))
-                {
-                    var (eligible, path) = IsEligibleWithPath(pr, org);
-                    if (!eligible) continue;
-
-                    if (eligibleCodes.Add(pr.Code))
-                    {
-                        switch (path)
-                        {
-                            case EligibilityPath.DbRule:       dbRuleCount++;       break;
-                            case EligibilityPath.Unrestricted: unrestrictedCount++; break;
-                        }
-                    }
-                }
-            }
-
-            productRoles = eligibleCodes.OrderBy(c => c).ToList();
-
-            // Log eligibility resolution summary — once per login, structured, non-noisy.
-            _logger.LogDebug(
-                "Product role eligibility resolved for user={UserId} org={OrgId}: " +
-                "{TotalRoles} role(s) — DB-rule={DbRule}, unrestricted={Unrestricted}.",
-                user.Id, org.Id, productRoles.Count, dbRuleCount, unrestrictedCount);
-        }
+        // LS-COR-AUT-003/006: compute effective access from the single source-of-truth model.
+        // All product roles come exclusively from EffectiveAccessService (direct + group-inherited).
+        var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, user.Id, ct);
 
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
-            userWithRoles, tenant, roleNames, org, productRoles,
-            sessionTimeoutMinutes: tenant.SessionTimeoutMinutes);
+            userWithRoles, tenant, roleNames, org, effectiveAccess.ProductRolesFlat,
+            sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
+            productCodes: effectiveAccess.Products,
+            permissions: effectiveAccess.Permissions);
 
         // Phase H: derive org_type code from OrganizationTypeId FK (authoritative) when available;
         // fall back to the stored OrgType string for compatibility.
@@ -158,7 +136,7 @@ public class AuthService : IAuthService
             roleNames,
             org?.Id,
             orgTypeForResponse,
-            productRoles);
+            effectiveAccess.ProductRolesFlat);
 
         // Canonical audit: fire-and-observe — never throw, never gate login on audit success.
         var now = DateTimeOffset.UtcNow;
@@ -201,6 +179,11 @@ public class AuthService : IAuthService
         {
             _logger.LogWarning(ex, "Failed to persist LastLoginAtUtc for user {UserId}. Non-fatal.", userWithRoles.Id);
         }
+
+        sw.Stop();
+        _logger.LogInformation(
+            "LoginPerf userId={UserId} tenantId={TenantId} elapsedMs={ElapsedMs} accessVersion={AccessVersion}",
+            userWithRoles.Id, tenant.Id, sw.ElapsedMilliseconds, userWithRoles.AccessVersion);
 
         return new LoginResponse(token, expiresAtUtc, userResponse);
     }
@@ -252,11 +235,14 @@ public class AuthService : IAuthService
         {
             var user = await _userRepository.GetByIdAsync(userGuid, ct);
 
+            if (user == null)
+                throw new UnauthorizedAccessException("User not found.");
+
             // UIX-003-03: reject locked accounts immediately — they cannot use existing sessions.
-            if (user?.IsLocked == true)
+            if (user.IsLocked)
                 throw new UnauthorizedAccessException("Account is locked.");
 
-            avatarDocumentId = user?.AvatarDocumentId;
+            avatarDocumentId = user.AvatarDocumentId;
 
             // UIX-003-03: validate session version. Tokens from before a force-logout
             // or lock will have an older session_version and must be rejected.
@@ -264,10 +250,19 @@ public class AuthService : IAuthService
             var sessionVersionClaim = principal.FindFirstValue("session_version");
             if (sessionVersionClaim is not null
                 && int.TryParse(sessionVersionClaim, out var tokenVersion)
-                && user is not null
                 && tokenVersion < user.SessionVersion)
             {
                 throw new UnauthorizedAccessException("Session has been invalidated.");
+            }
+
+            // LS-COR-AUT-003: validate access version. Tokens from before an access
+            // change will have a stale access_version and must be rejected.
+            var accessVersionClaim = principal.FindFirstValue("access_version");
+            if (accessVersionClaim is not null
+                && int.TryParse(accessVersionClaim, out var tokenAccessVersion)
+                && tokenAccessVersion < user.AccessVersion)
+            {
+                throw new UnauthorizedAccessException("Access has been updated. Please re-authenticate.");
             }
         }
 
@@ -404,39 +399,4 @@ public class AuthService : IAuthService
         });
     }
 
-    // ── Eligibility helpers ────────────────────────────────────────────────────
-
-    private enum EligibilityPath { DbRule, Unrestricted }
-
-    /// <summary>
-    /// Returns whether the given product role is eligible for the organization,
-    /// and which eligibility path was used (for observability/logging).
-    ///
-    /// Phase F: EligibleOrgType column removed (migration 20260330200003).
-    /// Eligibility is now exclusively controlled by ProductOrganizationTypeRules.
-    ///
-    /// Resolution order:
-    ///   1. DB-backed rule table (OrgTypeRules nav property).
-    ///      - If org.OrganizationTypeId is set: match by ID (authoritative, no string drift).
-    ///      - Else: match by OrgType code string (transitional fallback within Phase 3).
-    ///   2. No OrgTypeRules configured → allow (unrestricted).
-    /// </summary>
-    private static (bool Eligible, EligibilityPath Path) IsEligibleWithPath(ProductRole pr, Organization org)
-    {
-        // Path 1: DB-backed rule table (Phase 3+)
-        if (pr.OrgTypeRules is { Count: > 0 })
-        {
-            var matched = pr.OrgTypeRules.Any(r =>
-            {
-                if (!r.IsActive || r.OrganizationType is null) return false;
-                if (org.OrganizationTypeId.HasValue)
-                    return r.OrganizationTypeId == org.OrganizationTypeId.Value;
-                return r.OrganizationType.Code == org.OrgType;
-            });
-            return (matched, EligibilityPath.DbRule);
-        }
-
-        // Path 2: no OrgTypeRules → unrestricted access
-        return (true, EligibilityPath.Unrestricted);
-    }
 }

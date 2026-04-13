@@ -39,6 +39,7 @@ export async function POST(
   request: NextRequest,
   { params }: Ctx,
 ): Promise<NextResponse> {
+  const { id } = await params;
   try { await requireAdmin(); }
   catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
 

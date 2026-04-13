@@ -4,9 +4,10 @@ import { TenantDetailCard }               from '@/components/tenants/tenant-deta
 import { ProductEntitlementsPanel }       from '@/components/tenants/product-entitlements-panel';
 import { TenantSessionSettingsPanel }     from '@/components/tenants/tenant-session-settings-panel';
 import { TenantLogoUpload }              from '@/components/tenants/TenantLogoUpload';
+import { TenantOrganizationsPanel }      from '@/components/tenants/tenant-organizations-panel';
 
 interface TenantDetailPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -19,7 +20,7 @@ interface TenantDetailPageProps {
  */
 export default async function TenantDetailPage({ params }: TenantDetailPageProps) {
   await requirePlatformAdmin();
-  const { id } = params;
+  const { id } = await params;
 
   let tenant     = null;
   let fetchError: string | null = null;
@@ -40,6 +41,13 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
 
   if (!tenant) return null;
 
+  let organizations: Awaited<ReturnType<typeof controlCenterServerApi.organizations.listByTenant>> = [];
+  try {
+    organizations = await controlCenterServerApi.organizations.listByTenant(id);
+  } catch {
+    // non-fatal
+  }
+
   return (
     <div className="space-y-5">
       <TenantDetailCard tenant={tenant} />
@@ -47,7 +55,10 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
       <TenantLogoUpload
         tenantId={tenant.id}
         logoDocumentId={tenant.logoDocumentId}
+        logoWhiteDocumentId={tenant.logoWhiteDocumentId}
       />
+
+      <TenantOrganizationsPanel organizations={organizations} />
 
       <TenantSessionSettingsPanel
         tenantId={tenant.id}

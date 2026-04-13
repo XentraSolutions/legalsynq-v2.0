@@ -11,23 +11,24 @@ Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router 
 - **Frontend entry point:** `cd apps/web && node /home/runner/workspace/node_modules/.bin/next dev -p 3000`
 
 ## Frontend (apps/web)
-- **Framework:** Next.js 15.2.3 App Router + TypeScript + Tailwind CSS (React 18.3.1)
+- **Framework:** Next.js 15.2.9 App Router + TypeScript + Tailwind CSS (React 18.3.1)
 - **Port:** 5000 (dev)
-- **Dev proxy:** `scripts/dev-proxy.js` — lightweight HTTP proxy on port 5000 that (1) gates browser requests until Next.js (on internal port 3050) returns HTTP 200 for `/login`, and (2) intercepts 5xx responses for page requests during a 30-second post-warmup window and serves an auto-refreshing loading page. Page detection uses URL pattern matching (excludes `/_next/`, `/api/`, file extensions) rather than browser headers (which Replit's proxy strips). Non-page requests (API calls, assets) get proper 503/502 during warmup. After the 30s cold-compile guard window, real 500s pass through for debugging. Auto re-gates if Next.js becomes unreachable (3+ consecutive connection errors). WebSocket upgrade passthrough for HMR. The `postinstall` patch (`patches/next-cold-compile-guard.js`) has been removed — it was ineffective because Next.js dev mode webpack-compiles its own server code into `.next/server/vendor-chunks/next.js`, bypassing the dist file entirely.
+- **Dev proxy:** `scripts/dev-proxy.js` — lightweight HTTP proxy on port 5000 that (1) gates browser requests until Next.js (on internal port 3050) returns HTTP 200 for `/login`, and (2) intercepts 5xx responses for page requests during a 30-second post-warmup window and serves an auto-refreshing loading page. Page detection uses URL pattern matching (excludes `/_next/`, `/api/`, file extensions) rather than browser headers (which Replit's proxy strips). Non-page requests (API calls, assets) get proper 503/502 during warmup. After the 30s cold-compile guard window, real 500s pass through for debugging. Auto re-gates if Next.js becomes unreachable (3+ consecutive connection errors). WebSocket upgrade passthrough for HMR. **Host header handling:** The proxy sets `Host: 127.0.0.1:PORT` when forwarding to Next.js (required because Next.js 15 production mode rejects requests with non-localhost Host headers for static assets — returns 400 Bad Request). The original host is preserved in `X-Forwarded-Host` so application code can still resolve subdomains/tenants. All BFF route handlers already read `x-forwarded-host` before `host`.
 - **Error boundary:** `global-error.tsx` at app root catches any rendering errors gracefully
 - **Session:** HttpOnly cookie (`platform_session`) set by BFF login route; validated via BFF `/api/auth/me` — frontend never decodes raw JWT
-- **BFF Routes:** `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` — Next.js API routes that proxy to Identity service with Bearer auth
-- **API:** All requests proxy through gateway via Next.js rewrites `/api/*` → `http://localhost:5000/*`
-- **Environment:** `apps/web/.env.local` (gitignored) — `NEXT_PUBLIC_ENV=development`, `NEXT_PUBLIC_TENANT_CODE=LEGALSYNQ`, `GATEWAY_URL=http://localhost:5000`
+- **BFF Routes:** `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`, `POST /api/auth/forgot-password`, `POST /api/auth/reset-password` — Next.js API routes that proxy to Identity service with Bearer auth
+- **API:** All requests proxy through gateway via Next.js rewrites `/api/*` → `http://127.0.0.1:5000/*`
+- **Environment:** `apps/web/.env.local` (gitignored) — `NEXT_PUBLIC_ENV=development`, `NEXT_PUBLIC_TENANT_CODE=LEGALSYNQ`, `GATEWAY_URL=http://127.0.0.1:5000`
+- **IPv6 note:** All server-side `localhost` fallbacks use `127.0.0.1` because Node.js resolves `localhost` to `::1` (IPv6) first, but .NET services bind to `0.0.0.0` (IPv4 only). Using `127.0.0.1` avoids connection failures.
 - **node_modules:** Installed at monorepo root (`/home/runner/workspace/node_modules`) — `apps/web` inherits via Node.js module resolution traversal
 
 ## Control Center (apps/control-center)
-- **Framework:** Next.js 15.2.3 App Router + TypeScript + Tailwind CSS v4 (React 18.3.1)
+- **Framework:** Next.js 15.2.9 App Router + TypeScript + Tailwind CSS v4 (React 18.3.1)
 - **Port:** 5004 (dev) — started by `scripts/run-dev.sh`
 - **Purpose:** Internal platform administration portal for LegalSynq operators. Tenant management, cross-tenant user management, RBAC, audit logs, monitoring, notifications, CareConnect integrity, SynqAudit investigation.
 - **Auth:** Requires `PlatformAdmin` system role. Cookie-based session (`platform_session`) validated via Identity service `/auth/me`.
-- **API:** BFF pattern — `/api/auth/login` and `/api/auth/logout` are local route handlers; all other `/api/*` requests rewrite to the gateway (`CONTROL_CENTER_API_BASE` or `GATEWAY_URL`, default `http://localhost:5010`).
-- **Environment:** `apps/control-center/.env.local` — `CONTROL_CENTER_API_BASE=http://localhost:5010`
+- **API:** BFF pattern — `/api/auth/login`, `/api/auth/logout`, and `/api/identity/admin/users/[id]/set-password` are local route handlers; unmatched `/api/*` requests fall through to a `fallback` rewrite to the gateway (`CONTROL_CENTER_API_BASE` or `GATEWAY_URL`, default `http://127.0.0.1:5010`). The rewrite uses the `fallback` strategy (not a plain array) so filesystem route handlers (including dynamic `[id]` segments) are always checked first.
+- **Environment:** `apps/control-center/.env.local` — `CONTROL_CENTER_API_BASE=http://127.0.0.1:5010`
 - **node_modules:** Uses root monorepo `node_modules` (no local `node_modules`). Must NOT have its own `node_modules` — a local copy causes duplicate React, which triggers the `useReducer` null error on every render.
 - **Key files:** `src/lib/env.ts` (centralised env access), `src/lib/session.ts` (server session), `src/lib/auth-guards.ts` (requirePlatformAdmin), `src/lib/control-center-api.ts` (API client with stubbed data), `src/middleware.ts` (route protection)
 
@@ -40,6 +41,8 @@ apps/web/
       api-client.ts             ← apiClient + ApiError (correlationId-aware)
       session.ts                ← getServerSession() — calls /auth/me (server-side)
       auth-guards.ts            ← requireAuthenticated/Org/ProductRole/Admin (server components)
+      tenant-auth-guard.ts      ← requireTenantAdmin() — redirects non-admins to /tenant/access-denied
+      tenant-api.ts             ← BFF layer for tenant authorization APIs (server + client methods)
       nav.ts                    ← buildNavGroups(session) — role-driven nav derivation
     providers/
       session-provider.tsx      ← SessionProvider — fetches BFF /api/auth/me client-side on mount
@@ -47,6 +50,7 @@ apps/web/
     hooks/
       use-session.ts            ← useSession() / useRequiredSession()
       use-tenant-branding.ts    ← re-exports useTenantBranding()
+      use-nav-badges.ts         ← useNavBadges() — polls new referral count for Provider/CareConnectReceiver users (30s interval)
     contexts/
       settings-context.tsx        ← SettingsProvider + useSettings() — resolves AppSettings (appearance, careConnect)
       product-context.tsx         ← ProductProvider + useProduct() — infers activeProductId from pathname
@@ -102,6 +106,9 @@ apps/web/
       careconnect-api.ts         ← typed wrappers: careConnectServerApi (server) + careConnectApi (client)
       fund-api.ts                ← typed wrappers: fundServerApi (server) + fundApi (client)
       lien-api.ts                ← typed wrappers: lienServerApi (server) + lienApi (client); my-liens/marketplace/portfolio/offer/purchase/submit-offer
+      lien-mock-data.ts          ← V2 prototype mock data: cases, liens, BOS, servicing, contacts, documents, users + formatCurrency/formatDate/timeAgo helpers
+    stores/
+      lien-store.ts              ← Zustand store: full CRUD for all 7 entities, role simulation, toast state, activity log, case notes, canPerformAction() helper
     app/api/
       careconnect/[...path]/route.ts ← BFF catch-all proxy for CareConnect client calls
       fund/[...path]/route.ts        ← BFF catch-all proxy for Fund client calls
@@ -132,12 +139,49 @@ apps/web/
           appointments/[id]/page.tsx                ← appointment detail; back-links to referral; Phase-2 status actions placeholder
         fund/applications/page.tsx
         lien/marketplace/page.tsx
+        lien/layout.tsx                           ← LienProviders wrapper (ToastContainer + RoleSwitcher)
+        lien/dashboard/page.tsx                   ← V2 UX: store-wired dashboard, KPI cards, task queue, activity feed, donut charts, Create Case modal
+        lien/cases/page.tsx                       ← V2 UX: store-backed list, Create Case modal, ActionMenu (advance/reassign), SideDrawer preview, ConfirmDialog
+        lien/cases/[id]/page.tsx                  ← V2 UX: StatusProgress workflow, Add Lien/Doc/Task, NotesPanel, advance status with confirm
+        lien/liens/page.tsx                       ← V2 UX: store-backed list, Create Lien modal, ActionMenu (list/withdraw), SideDrawer, multi-filter
+        lien/liens/[id]/page.tsx                  ← V2 UX: lien lifecycle StatusProgress, Submit/Accept/Reject Offer workflow, FormModal, ConfirmDialog
+        lien/bill-of-sales/page.tsx               ← V2 UX: store-backed KPI cards, ActionMenu (submit/execute/cancel), ConfirmDialog
+        lien/bill-of-sales/[id]/page.tsx          ← V2 UX: BOS workflow StatusProgress, submit/execute/cancel with confirm
+        lien/servicing/page.tsx                   ← V2 UX: AssignTaskForm, ActionMenu (start/complete/escalate/reassign), ConfirmDialog
+        lien/servicing/[id]/page.tsx              ← V2 UX: task progress StatusProgress, start/complete/escalate/reassign actions
+        lien/contacts/page.tsx                    ← V2 UX: AddContactForm, SideDrawer preview, ActionMenu with email
+        lien/contacts/[id]/page.tsx               ← V2 UX: store-backed detail, related cases from store, edit/email actions
+        lien/batch-entry/page.tsx                 ← V2 prototype: 4-step bulk import wizard
+        lien/document-handling/page.tsx            ← V2 UX: UploadDocumentForm, ActionMenu (complete/archive/download), ConfirmDialog
+        lien/document-handling/[id]/page.tsx       ← V2 UX: store-backed detail, complete review/archive/share actions
+        lien/user-management/page.tsx              ← V2 UX: AddUserForm, ActionMenu (activate/deactivate/unlock), admin-only, ConfirmDialog
+        lien/user-management/[id]/page.tsx         ← V2 UX: store-backed detail, activate/deactivate/unlock actions
+      tenant/
+        access-denied/page.tsx                    ← access denied page for non-admin users
+        authorization/
+          layout.tsx                              ← requireTenantAdmin() guard + header + AuthorizationNav tabs
+          users/page.tsx                          ← LS-TENANT-002: user list with search/filter/pagination
+          users/AuthUserTable.tsx                 ← client table: search, status filter, row click → detail
+          users/[userId]/page.tsx                 ← LS-TENANT-002: user detail (identity, products, roles, groups, effective access)
+          users/[userId]/UserDetailClient.tsx     ← client detail: assign/revoke products/roles/groups, access-debug, simulator link
+          groups/page.tsx                         ← LS-TENANT-003: group list with search/filter/pagination/create
+          groups/GroupTable.tsx                    ← client table: search, status filter, create modal, row click → detail
+          groups/[groupId]/page.tsx               ← LS-TENANT-003: group detail (summary, members, products, roles, access preview)
+          groups/[groupId]/GroupDetailClient.tsx   ← client detail: edit/archive, member picker, product/role assign/revoke, effective access
+          access/page.tsx                         ← LS-TENANT-004: Access & Explainability (overview, user explorer, permissions, search)
+          access/AccessExplainabilityClient.tsx     ← client: 4-tab access dashboard (overview widgets, user explorer w/ lazy access-debug, permission drilldown, global search)
+          simulator/page.tsx                      ← LS-TENANT-005: Authorization Simulator (server prefetch users + permissions)
+          simulator/SimulatorClient.tsx             ← client: split-panel simulator (user/perm select, context editors, policy result UI)
       (admin)/                  ← route group: requireAdmin() guard + AppShell
         layout.tsx
         admin/users/page.tsx
       portal/                   ← injured party portal (separate session shape — Phase 2)
         login/page.tsx
         my-application/page.tsx
+    forgot-password/page.tsx    ← forgot password page (email input → reset link)
+    forgot-password/forgot-password-form.tsx ← forgot password form component
+    reset-password/page.tsx     ← set new password page (token from URL)
+    reset-password/reset-password-form.tsx   ← reset password form component
     middleware.ts               ← global cookie gate (platform_session / portal_session)
 ```
 
@@ -178,12 +222,26 @@ apps/
         Services/AuthService.cs
       Identity.Domain/                    → Tenant, User, Role, UserRole, Product, TenantProduct
                                             Organization, OrganizationDomain, OrganizationProduct
-                                            ProductRole, Capability, RoleCapability
-                                            UserOrganizationMembership, UserRoleAssignment
+                                            ProductRole, Permission, RolePermissionMapping, RolePermissionAssignment (LS-COR-AUT-010A)
+                                            UserOrganizationMembership, ScopedRoleAssignment
+                                            TenantProductEntitlement, UserProductAccess, UserRoleAssignment (LS-COR-AUT-002)
+                                            AccessGroup, AccessGroupMembership, GroupProductAccess, GroupRoleAssignment (LS-COR-AUT-004)
+                                            EntitlementStatus, AccessStatus, AssignmentStatus, GroupStatus, GroupScopeType, MembershipStatus enums
+      Identity.Application/
+        Interfaces/IAuditPublisher.cs     ← audit event wrapper interface
+        Interfaces/ITenantProductEntitlementService.cs
+        Interfaces/IUserProductAccessService.cs
+        Interfaces/IUserRoleAssignmentService.cs
+        Interfaces/IAccessSourceQueryService.cs  ← combined snapshot query
+        Interfaces/IEffectiveAccessService.cs    ← LS-COR-AUT-003 effective access computation (+ source attribution)
+        Interfaces/IGroupService.cs              ← LS-COR-AUT-004 group CRUD
+        Interfaces/IGroupMembershipService.cs    ← LS-COR-AUT-004 membership management
+        Interfaces/IGroupProductAccessService.cs ← LS-COR-AUT-004 group product access
+        Interfaces/IGroupRoleAssignmentService.cs ← LS-COR-AUT-004 group role assignments
       Identity.Infrastructure/
-        Data/IdentityDbContext.cs         ← 14 DbSets (existing + 8 new)
-        Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (15 configs)
-        Auth/CapabilityService.cs         ← ICapabilityService impl, 5-min IMemoryCache TTL
+        Data/IdentityDbContext.cs         ← 21 DbSets (+3 LS-COR-AUT-002 + 4 LS-COR-AUT-004)
+        Data/Configurations/              ← IEntityTypeConfiguration<T> per entity (22 configs)
+        Auth/PermissionService.cs         ← IPermissionService impl, 5-min IMemoryCache TTL
         Persistence/Migrations/           ← InitialIdentitySchema
                                             AddMultiOrgProductRoleModel (8 tables + seed)
                                             SeedAdminOrgMembership
@@ -191,7 +249,21 @@ apps/
                                             SeedTenantDomains (legalsynq.legalsynq.com)
                                             CorrectSynqLienRoleMappings (SELLER→PROVIDER)
                                             DropStaleApplicationsTable (identity_db cleanup)
-        Services/JwtTokenService.cs       ← emits org_id, org_type, product_roles JWT claims
+                                            AddAccessVersion (LS-COR-AUT-003: Users.AccessVersion + unique index fix)
+                                            AddAccessGroups (LS-COR-AUT-004: 4 group tables + indexes)
+        Services/JwtTokenService.cs       ← emits org_id, org_type, product_roles, product_codes, access_version JWT claims
+        Services/ProductProvisioningService.cs ← centralized product provisioning engine
+        Services/CareConnectProvisioningHandler.cs ← CareConnect-specific provisioning hook
+        Services/AuditPublisher.cs        ← IAuditPublisher impl (wraps IAuditEventClient)
+        Services/EffectiveAccessService.cs       ← LS-COR-AUT-003/004: computes effective access from direct + inherited (group) sources
+        Services/TenantProductEntitlementService.cs  ← LS-COR-AUT-002 service (+ AccessVersion bump)
+        Services/UserProductAccessService.cs         ← LS-COR-AUT-002 service (+ AccessVersion bump)
+        Services/UserRoleAssignmentService.cs        ← LS-COR-AUT-002 service (+ AccessVersion bump)
+        Services/AccessSourceQueryService.cs         ← LS-COR-AUT-002 snapshot query
+        Services/GroupService.cs                     ← LS-COR-AUT-004: group CRUD + archive w/ AccessVersion bump
+        Services/GroupMembershipService.cs            ← LS-COR-AUT-004: member add/remove w/ AccessVersion bump
+        Services/GroupProductAccessService.cs         ← LS-COR-AUT-004: group product grant/revoke w/ AccessVersion bump
+        Services/GroupRoleAssignmentService.cs        ← LS-COR-AUT-004: group role assign/remove w/ AccessVersion bump
         DependencyInjection.cs
     fund/
       Fund.Api/                           → ASP.NET Core Web API (port 5002)
@@ -214,6 +286,22 @@ apps/
         Data/Migrations/                  ← InitialFundSchema
         Repositories/ApplicationRepository.cs
         DependencyInjection.cs
+    liens/
+      Liens.Api/                          → ASP.NET Core Web API (port 5009)
+        Endpoints/
+          LienEndpoints.cs               ← placeholder for future SynqLiens routes
+        Middleware/ExceptionHandlingMiddleware.cs
+        appsettings.json                  ← port 5009 + ConnectionStrings:LiensDb (placeholder)
+        appsettings.Development.json      ← dev JWT signing key + debug logging
+      Liens.Application/
+        Interfaces/                       ← future service interfaces
+        Services/                         ← future application services
+      Liens.Domain/
+        Entities/                         ← future domain entities
+      Liens.Infrastructure/
+        DependencyInjection.cs            ← AddLiensServices() extension
+        Persistence/                      ← future DbContext + migrations
+        Repositories/                     ← future repository implementations
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/
@@ -253,6 +341,50 @@ apps/
         Data/Migrations/                  ← InitialCareConnectSchema
         Repositories/ProviderRepository.cs, ReferralRepository.cs, CategoryRepository.cs
         DependencyInjection.cs
+    notifications/
+      Notifications.Api/                     → ASP.NET Core Web API (port 5006)
+        Program.cs                           ← Minimal API; no auth (multi-tenant via X-Tenant-Id header)
+        Middleware/
+          TenantMiddleware.cs                ← extracts X-Tenant-Id header → HttpContext.Items
+          InternalTokenMiddleware.cs          ← validates X-Internal-Service-Token for /internal routes
+          RawBodyMiddleware.cs               ← captures raw body for /v1/webhooks signature verification
+        Endpoints/
+          NotificationEndpoints.cs           ← POST/GET /v1/notifications
+          TemplateEndpoints.cs               ← CRUD /v1/templates + /v1/templates/global
+          ProviderEndpoints.cs               ← CRUD /v1/providers/configs + channel-settings
+          WebhookEndpoints.cs                ← POST /v1/webhooks/sendgrid, /v1/webhooks/twilio
+          BillingEndpoints.cs                ← GET /v1/billing/plan, /plans, /rates, /rate-limits
+          ContactEndpoints.cs                ← CRUD /v1/contacts/suppressions + health
+          BrandingEndpoints.cs               ← CRUD /v1/branding + resolved
+          InternalEndpoints.cs               ← POST /internal/send-email
+          HealthEndpoints.cs                 ← GET /health, /info
+        appsettings.json
+      Notifications.Application/
+        DTOs/                                ← NotificationDtos, TemplateDtos, ProviderDtos, BillingDtos, ContactDtos, InternalDtos
+        Interfaces/                          ← 15+ repository + 10+ service interfaces
+      Notifications.Domain/                  → 18 entities + comprehensive Enums.cs
+      Notifications.Infrastructure/
+        Data/NotificationsDbContext.cs        ← 18 DbSets, all entity configurations
+        Data/Configurations/                 ← 18 IEntityTypeConfiguration per entity
+        Repositories/                        ← All repository implementations
+        Providers/Adapters/
+          SendGridAdapter.cs                 ← HTTP-based SendGrid v3 mail/send
+          TwilioAdapter.cs                   ← HTTP-based Twilio Messages API
+          SmtpAdapter.cs                     ← MailKit-based SMTP adapter
+        Webhooks/
+          Verifiers/SendGridVerifier.cs      ← ECDSA P-256+SHA256 verification
+          Verifiers/TwilioVerifier.cs        ← HMAC-SHA1 verification
+          Normalizers/SendGridNormalizer.cs   ← Raw event → normalized event type
+          Normalizers/TwilioNormalizer.cs     ← Form params → normalized event type
+        Services/                            ← NotificationService, TemplateService, DeliveryStatusService,
+                                                ContactEnforcementService, UsageEvaluationService,
+                                                UsageMeteringService, ProviderRoutingService,
+                                                WebhookIngestionService, BrandingResolutionService, etc.
+        Workers/
+          NotificationWorker.cs              ← BackgroundService (queue processing placeholder)
+          ProviderHealthWorker.cs            ← BackgroundService (platform provider health checks, 2min interval)
+          StatusSyncWorker.cs                ← BackgroundService (delivery status sync, 5min interval)
+        DependencyInjection.cs               ← AddInfrastructure() extension method
 shared/
   contracts/
     Contracts/                            → HealthResponse, InfoResponse, ServiceResponse<T>
@@ -290,6 +422,14 @@ shared/
 | `ConnectionStrings__IdentityDb` | Identity.Api | MySQL, identity_db |
 | `ConnectionStrings__FundDb` | Fund.Api | MySQL, fund_db |
 | `ConnectionStrings__CareConnectDb` | CareConnect.Api | MySQL, careconnect_db |
+| `SENDGRID_API_KEY` | Notifications service | SendGrid API key for transactional email |
+| `SENDGRID_DEFAULT_FROM_EMAIL` | Notifications service | Verified sender email address |
+| `Route53__HostedZoneId` | Identity.Api | AWS Route53 hosted zone ID for tenant subdomains |
+| `Route53__BaseDomain` | Identity.Api | Base domain for subdomains (default: legalsynq.com) |
+| `Route53__RecordValue` | Identity.Api | CNAME target for tenant subdomains |
+| `Route53__AccessKeyId` | Identity.Api | AWS access key (optional; falls back to instance role) |
+| `Route53__SecretAccessKey` | Identity.Api | AWS secret key (optional; falls back to instance role) |
+| `ConnectionStrings__AuditEventDb` | Audit Service | MySQL connection string for audit_db (NOT YET PROVISIONED — service runs InMemory until this is set) |
 
 ## JWT
 
@@ -319,12 +459,63 @@ shared/
 
 | Entity | Table | PK | Key constraints |
 |---|---|---|---|
-| Tenant | Tenants | Id (Guid) | Code unique |
+| Tenant | Tenants | Id (Guid) | Code unique; Subdomain unique (filtered, nullable) |
 | User | Users | Id (Guid) | (TenantId, Email) unique |
 | Role | Roles | Id (Guid) | (TenantId, Name) unique |
 | UserRole | UserRoles | (UserId, RoleId) | FK→Users Cascade, FK→Roles Cascade |
 | Product | Products | Id (Guid) | Code unique |
 | TenantProduct | TenantProducts | (TenantId, ProductId) | FK→Tenants Cascade |
+
+### Product Role Resolution Engine (LS-COR-ROL-001)
+- **Engine:** `IProductRoleResolutionService` → `ProductRoleResolutionService` (Identity.Infrastructure)
+- **Flow:** `ResolveAsync(userId, tenantId)` → load tenant-enabled products → load all active org memberships with product/role graph → for each org+product: eligibility gate → dispatch to product-specific mapper or default mapper → return `EffectiveAccessContext`
+- **EffectiveAccessContext:** `ProductAccess` (per-org, per-product entries with grant/deny, effective roles, access source tracing), `DeniedReasons`, helper methods (`GetEffectiveProductRoles()`, `HasProductAccess()`, `GetRolesForProduct()`, `GetAccessForOrganization()`)
+- **Mapper interface:** `IProductRoleMapper` — `ProductCode` property + `ResolveRoles(ProductRoleMapperContext)`. Registered via DI; engine dispatches by product code.
+- **CareConnectRoleMapper:** 3-tier resolution: (1) ScopedRoleAssignment (PRODUCT scope), (2) ProductOrganizationTypeRule DB rules, (3) OrgType fallback (PROVIDER→CARECONNECT_RECEIVER, LAW_FIRM→CARECONNECT_REFERRER, INTERNAL→CARECONNECT_ADMIN)
+- **Default mapper:** Handles any product without a registered IProductRoleMapper — uses scoped assignments + DB OrgType rules
+- **AuthService integration:** `LoginAsync` calls `_roleResolutionService.ResolveAsync()` → `accessContext.GetEffectiveProductRoles()` — replaces previous inline loop
+- **Repository:** `UserRepository.GetActiveMembershipsWithProductsAsync()` — eager loads Organization → OrganizationProducts → Product → ProductRoles → OrgTypeRules
+- **DI:** `IProductRoleMapper → CareConnectRoleMapper` (scoped), `IProductRoleResolutionService → ProductRoleResolutionService` (scoped)
+- **Report:** `analysis/LS-COR-ROL-001-report.md`
+
+### Product Provisioning Engine (LS-COR-PRD-001)
+- **Engine:** `IProductProvisioningService` → `ProductProvisioningService` (Identity.Infrastructure)
+- **Flow:** `ProvisionAsync(tenantId, productCode, enabled)` → TenantProduct creation → OrganizationProduct cascading (eligibility-filtered) → product-specific handler execution
+- **Eligibility:** `ProductEligibilityConfig` (Identity.Domain) — centralized OrgType → Product mapping. LAW_FIRM→[CC,FUND,LIENS], PROVIDER→[CC], FUNDER→[FUND], LIEN_OWNER→[LIENS], INTERNAL→[ALL]
+- **Handler abstraction:** `IProductProvisioningHandler` — resolved by ProductCode, executed after org products are created
+- **CareConnect handler:** `CareConnectProvisioningHandler` — calls CareConnect `/internal/provision-provider` to create/link/activate Provider records for PROVIDER orgs
+- **Internal endpoint:** CareConnect `POST /internal/provision-provider` (AllowAnonymous) — idempotent provider creation/activation by OrganizationId
+- **Integration points:** `UpdateEntitlement`, `ProvisionForCareConnect`, and `CreateTenant` all delegate to the engine
+- **CreateTenant extension:** Accepts optional `products` array in request body for onboarding-time provisioning
+
+### Tenant Provisioning & Verification (LSCC-01-006 + LSCC-01-006-01)
+- **Lifecycle:** `Pending → InProgress → Provisioned → Verifying → Active` (with `Failed` branch at each stage)
+- **Fields:** `Subdomain` (varchar 63, unique filtered), `ProvisioningStatus` (enum: Pending/InProgress/Provisioned/Verifying/Active/Failed), `ProvisioningFailureStage` (enum: None/DnsProvisioning/DnsVerification/HttpVerification), `LastProvisioningAttemptUtc`, `ProvisioningFailureReason`
+- **TenantDomain:** Added `VerifiedAtUtc` (nullable datetime) and `MarkVerified()` method
+- **Slug:** `SlugGenerator` (static class in Tenant.cs) — `Generate()`, `Normalize()`, `Validate()`, `AppendSuffix()`. Reserved: www, api, app, admin, mail, ftp, login, status. Rules: 3-63 chars, lowercase a-z0-9 + hyphens, no leading/trailing hyphens.
+- **`PreferredSubdomain`:** `[NotMapped]` property on Tenant — set during `Create()`, consumed by provisioning service. Subdomain is NOT persisted until provisioning resolves uniqueness (prevents unique-index conflicts).
+- **Verification Service:** `ITenantVerificationService` (Scoped) — two-phase: DNS resolution + HTTP check against `/.well-known/tenant-verify`
+- **Verification Config:** `TenantVerification` section in appsettings.json — `Enabled`, `DevBypass` (true in dev), `DnsTimeoutSeconds`, `HttpTimeoutSeconds`, `VerificationEndpointPath`
+- **Web Endpoint:** `GET /.well-known/tenant-verify` returns `tenant-verify-ok` (anonymous, used by verification service)
+- **Retry Provisioning:** `POST /api/admin/tenants/{id}/provisioning/retry` — re-runs full flow
+- **Retry Verification:** `POST /api/admin/tenants/{id}/verification/retry` — re-runs verification only via `IVerificationRetryService` with smart backoff
+- **Login Hardening:** `AuthService.LoginAsync` rejects tenants with `ProvisioningStatus == Verifying` (DNS verifying message) or `!= Active` (not provisioned); BFF returns 503 with user-friendly messages
+- **DI:** `ITenantProvisioningService` (Scoped), `ITenantVerificationService` (Scoped), `IVerificationRetryService` (Scoped), `IDnsService` (Singleton)
+- **Secrets:** `Route53__HostedZoneId`, `Route53__BaseDomain`, `Route53__RecordValue`
+- **Login:** `extractTenantCodeFromHost()` in BFF route resolves tenant from Host header in production; explicit `tenantCode` only accepted when `NEXT_PUBLIC_ENV=development`
+- **Migration:** `20260407100001_AddVerificationRetryFields` — adds `VerificationAttemptCount`, `LastVerificationAttemptUtc`, `NextVerificationRetryAtUtc`, `IsVerificationRetryExhausted`, `ProvisioningFailureStage` to Tenants; `VerifiedAtUtc` to TenantDomains
+
+### Smart Verification Retry (LSCC-01-006-02)
+- **Purpose:** DNS propagation can take time after subdomain creation. Instead of immediately marking as Failed, the system auto-retries verification with exponential backoff.
+- **Retry Options:** `VerificationRetry` config section — `MaxAttempts` (5), `InitialDelaySeconds` (30), `MaxDelaySeconds` (300), `BackoffMultiplier` (2.0), `MaxRetryWindowMinutes` (30)
+- **Domain Fields:** `VerificationAttemptCount` (int), `LastVerificationAttemptUtc` (nullable), `NextVerificationRetryAtUtc` (nullable), `IsVerificationRetryExhausted` (bool)
+- **Domain Methods:** `RecordVerificationAttempt()`, `ScheduleVerificationRetry()`, `MarkVerificationRetryExhausted()`, `ResetVerificationRetryState()`
+- **Service:** `IVerificationRetryService` / `VerificationRetryService` — `ExecuteRetryAsync()` (single retry attempt with backoff scheduling), `ProcessPendingRetriesAsync()` (batch process all tenants with due retries)
+- **Integration:** `TenantProvisioningService` delegates first verification attempt through retry service. `AdminEndpoints.RetryVerification` resets retry state and delegates to retry service.
+- **API Response:** `GET /tenants/{id}` now includes `verificationAttemptCount`, `lastVerificationAttemptUtc`, `nextVerificationRetryAtUtc`, `isVerificationRetryExhausted`
+- **Control Center UI:** Tenant detail card shows retry attempt count, last verification time, next retry time (amber), "Auto-retrying" pulse badge, "Retries exhausted" badge. Tenant list table pulses the "Verifying…" badge.
+- **Login Gating:** `AuthService` returns specific "verifying DNS configuration" message for `Verifying` status; BFF routes (web + control-center) detect this and return 503 with "typically completes within a few minutes" message
+- **Audit Events:** Retry success/failure emitted with attempt number, stage, exhaustion state
 
 ## Exception Handling (Fund.Api)
 
@@ -477,6 +668,25 @@ dotnet tool run dotnet-ef migrations add <Name> \
 - **EF migrations via RDS:** EF tools hang due to RDS latency. Write migrations manually (`.cs` + `.Designer.cs` + Snapshot update) and rely on `db.Database.Migrate()` on startup.
 - **double? geo columns:** Entity `double?` fields mapped to `decimal(10,7)` — migrations must use `AddColumn<double>`, snapshot must use `b.Property<double?>()`
 
+## CareConnect Product Authorization Enforcement (LS-COR-AUT-001)
+
+Declarative endpoint filters enforce product-level access control on all CareConnect routes using JWT `product_roles` claims. Applied as `IEndpointFilter` in the minimal API pipeline, running after authentication but before endpoint handlers.
+
+**Shared building blocks** (`BuildingBlocks/Authorization/Filters/`):
+- `RequireProductAccessFilter` — coarse product check via `HasProductAccess(productCode)`
+- `RequireProductRoleFilter` — product-scoped role check via `HasProductRole(productCode, roles)`
+- `RequireOrgProductAccessFilter` — org-scoped check, stores `org_id` in `HttpContext.Items["ProductAuth:OrgId"]`
+- `RequirePermissionFilter` — capability/permission check via `HasPermission(permissionCode)` (LS-COR-AUT-009)
+- `ProductAuthorizationExtensions` — fluent `.RequireProductAccess()`, `.RequireProductRole()`, `.RequireOrgProductAccess()`, `.RequirePermission()` on `RouteHandlerBuilder`/`RouteGroupBuilder`
+
+**Claim extensions** (`ProductRoleClaimExtensions`): `HasProductAccess(productCode)` checks if any `product_roles` claim starts with `{productCode}:`. `HasProductRole(productCode, roles)` checks for exact `{productCode}:{role}` match. `HasPermission(permissionCode)` checks `permissions` claim (case-insensitive). `GetPermissions()` returns all permission claims. `IsTenantAdminOrAbove()` bypasses all product/permission checks. LS-COR-AUT-006: removed static `ProductToRolesMap` — product prefix is now parsed dynamically from `PRODUCT:Role` format claims.
+
+**Bypass rules**: PlatformAdmin and TenantAdmin always bypass product filters. Product-level enforcement applies to Member role users.
+
+**Structured 403 response**: `{"error":{"code":"PRODUCT_ACCESS_DENIED","message":"...","productCode":"SYNQ_CARECONNECT","requiredRoles":null,"organizationId":null}}`. Handled by `ExceptionHandlingMiddleware` catching `ProductAccessDeniedException`.
+
+**Coverage**: All authenticated CareConnect endpoints have `.RequireProductAccess(ProductCodes.SynqCareConnect)`. Write endpoints additionally have `RequireOrgProductAccess` or `RequireProductRole`. Excluded: `InternalProvisionEndpoints` (service-to-service), `CareConnectIntegrityEndpoints` (anonymous), 5 public referral routes (token-gated). Admin endpoints (`PlatformOrTenantAdmin`) implicitly covered by bypass.
+
 ## CareConnect Capability-Based Authorization
 
 Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass capability checks; all other users are evaluated against a static role→capability map.
@@ -494,7 +704,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 | `CARECONNECT_RECEIVER` | `referral:read:addressed`, `referral:accept`, `referral:decline`, `appointment:create`, `appointment:update`, `appointment:manage`, `appointment:read:own`, `schedule:manage`, `provider:search`, `provider:map`, `dashboard:read` |
 
 **Status models (canonical):**
-- Referral: `New → Accepted → Scheduled → Completed/Cancelled`; `New → Declined`. Legacy: `Received`/`Contacted` normalize to `Accepted` via `Referral.ValidStatuses.Legacy.Normalize()`.
+- Referral: `New (Unopened) → NewOpened → Accepted → Scheduled → Completed/Cancelled`; `New → Declined`; `NewOpened → Declined/Cancelled`. Auto-transition: when a receiving provider org views referral detail, `New` auto-transitions to `NewOpened` (inline await in GET endpoint). Nav badge counts only `New` (unopened). Queue toolbar exposes separate "Unopened" / "Opened" filters. Legacy: `Received`/`Contacted` normalize to `Accepted` via `Referral.ValidStatuses.Legacy.Normalize()`.
 - Appointment: `Pending → Confirmed → Completed/Cancelled`; `Rescheduled` as real status. `Scheduled` retained as backward-compat alias.
 
 **Org-scoped referral list:** `GET /api/referrals` applies `ReferringOrgId`/`ReceivingOrgId` filters from JWT `org_id` claim based on user's product roles. Admins see all.
@@ -586,6 +796,20 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - **Tests:** 35 new tests in `ReferralRetryTests.cs` covering policy eligibility, delay schedule, derived-state derivation, domain methods, retry/resend distinction, constants. **292 tests pass** (5 pre-existing `ProviderAvailabilityServiceTests` failures unchanged).
 - **Report:** `/analysis/LSCC-005-02.md`
 
+**CCX-002 — CareConnect Referral Notifications & Delivery Wiring (complete):**
+- **Scope:** Wired all four referral lifecycle events (submitted, accepted, rejected, cancelled) to notification creation and email delivery.
+- **New notification types:** `ReferralRejectedProvider`, `ReferralRejectedReferrer`, `ReferralCancelledProvider`, `ReferralCancelledReferrer` added to `NotificationType.cs`.
+- **Idempotency:** `DedupeKey` field added to `CareConnectNotification` model (varchar 500, nullable, unique index). Format: `referral:{referralId}:{event}:{recipientRole}`. All referral notification creation paths check `ExistsByDedupeKeyAsync` before creating. Applied to new AND existing paths (created, accepted, rejected, cancelled).
+- **Rejection notifications:** `SendRejectionNotificationsAsync` on `IReferralEmailService` — notifies provider and referrer when status → Declined.
+- **Cancellation notifications:** `SendCancellationNotificationsAsync` on `IReferralEmailService` — notifies provider and referrer when status → Cancelled.
+- **Wiring:** `ReferralService.UpdateAsync` dispatches email notifications via fire-and-observe `Task.Run` for Accepted/Declined/Cancelled status transitions. Uses `GetByIdCrossAsync` for cross-tenant provider lookup.
+- **Retry support:** All 4 new notification types added to `RetryNotificationAsync` switch cases in `ReferralEmailService`.
+- **Email templates:** 4 new HTML templates (BuildProviderRejectionHtml, BuildReferrerRejectionHtml, BuildProviderCancellationHtml, BuildReferrerCancellationHtml).
+- **Migration:** `20260404000000_AddNotificationDedupeKey` — adds `DedupeKey` column + unique index.
+- **No frontend changes:** Backend-only feature, fire-and-observe pattern.
+- **No appointment notifications added.**
+- **Report:** `/analysis/CCX-002-report.md`
+
 ## CareConnect Provider Geo / Map-Ready Discovery
 
 - **Radius search:** `latitude` + `longitude` + `radiusMiles` (max 100 mi). Bounding-box filter in `ProviderGeoHelper.BoundingBox`.
@@ -596,7 +820,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - **Display fields (both endpoints):** `DisplayLabel = OrganizationName ?? Name`; `MarkerSubtitle = "City, State[ · PrimaryCategory]"`; `PrimaryCategory` = first category alphabetically.
 - **`BuildBaseQuery`:** Shared LINQ filter builder in `ProviderRepository` used by both `SearchAsync` and `GetMarkersAsync` to avoid duplication.
 
-## Docs Service (apps/services/documents-nodejs) — Test Coverage
+## Docs Service (_archived/documents-nodejs) — ARCHIVED (replaced by documents)
 
 **258 tests across 14 suites, all passing.**
 
@@ -636,12 +860,13 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 
 ---
 
-## .NET Documents Service (apps/services/documents-dotnet)
+## .NET Documents Service (apps/services/documents)
 
 **Port**: 5006  
 **Framework**: .NET 8 Minimal APIs + EF Core 8 + Npgsql (PostgreSQL)  
 **Architecture**: 4-project layered monorepo (Domain → Application → Infrastructure → Api)  
 **Status**: Fully implemented, builds cleanly (0 errors, 0 warnings)
+**EF Core alignment**: `Microsoft.EntityFrameworkCore.Design` downgraded from `9.0.0` → `8.0.4` to eliminate NU1605 package downgrade error (Design 9.0 pulled EF 9.0 transitive dep, conflicting with EF 8.0.4 direct ref).
 
 ### Project Layout
 
@@ -675,22 +900,23 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 
 ### Build Command
 ```bash
-dotnet build apps/services/documents-dotnet/Documents.Api/Documents.Api.csproj
+dotnet build apps/services/documents/Documents.Api/Documents.Api.csproj
 ```
 
 ### Database Setup
-```bash
-# Apply EF Core migrations
-dotnet ef migrations add InitialCreate \
-  --project apps/services/documents-dotnet/Documents.Infrastructure \
-  --startup-project apps/services/documents-dotnet/Documents.Api
-dotnet ef database update \
-  --startup-project apps/services/documents-dotnet/Documents.Api
-```
-Or run `apps/services/documents-dotnet/Documents.Infrastructure/Database/schema.sql` directly against PostgreSQL.
+At startup, `Program.cs` handles schema automatically:
+- **Fresh database**: `EnsureCreated()` creates all tables from the EF model
+- **Existing database**: Runs idempotent `ALTER TABLE` patches for any missing columns/constraints:
+  - `ALTER TABLE document_audits ADD COLUMN IF NOT EXISTS actor_email VARCHAR(500);`
+  - `ALTER TABLE document_audits ALTER COLUMN actor_id DROP NOT NULL;` (scan worker audits have no actor)
+- **No EF Core migrations**: The migration snapshot is a placeholder; schema is managed via `EnsureCreated` + startup patches
+- **Dev vs Prod Postgres**: Dev uses `helium:5432` (Replit built-in); Prod uses `DATABASE_URL` (Replit deployment Postgres). Document IDs are NOT portable between environments.
+- **Storage**: Dev uses `/tmp/docs-local`; Prod uses `/home/runner/data/docs-local` (via `appsettings.Production.json`). Note: Replit deployment filesystem is ephemeral for Autoscale deployments — uploaded files may be lost on redeploy. Reserved VM deployments should persist `/home/runner` data.
+
+Reference schema: `apps/services/documents/Documents.Infrastructure/Database/schema.sql`
 
 ### Analysis Documents (7 + 6 phases)
-Architecture phases in `apps/services/documents-nodejs/analysis/`:
+Architecture phases in `_archived/documents-nodejs/analysis/`:
 - `dotnet_phase1_discovery_and_mapping.md` — TS→.NET translation decisions
 - `dotnet_phase2_scaffolding.md` — project structure and dependency graph
 - `dotnet_phase3_domain_and_contracts.md` — entities, enums, interfaces, invariants
@@ -699,7 +925,7 @@ Architecture phases in `apps/services/documents-nodejs/analysis/`:
 - `dotnet_phase6_security_and_tenancy.md` — threat model, three-layer isolation, HIPAA notes
 - `dotnet_phase7_parity_review.md` — 13/13 endpoint parity, A- grade, gaps, next steps
 
-ClamAV phases in `apps/services/documents-dotnet/analysis/`:
+ClamAV phases in `apps/services/documents/analysis/`:
 - `dotnet_clamav_phase1_design.md` — async scan architecture, quarantine model, ADRs
 - `dotnet_clamav_phase2_provider.md` — ClamAV TCP implementation, provider selection
 - `dotnet_clamav_phase3_worker.md` — BackgroundService, Channel queue, scan lifecycle
@@ -707,7 +933,7 @@ ClamAV phases in `apps/services/documents-dotnet/analysis/`:
 - `dotnet_clamav_phase5_review.md` — audit events, config reference, parity gaps, production notes
 - `dotnet_clamav_final_summary.md` — complete summary, security posture, schema changes
 
-Enterprise hardening phases in `apps/services/documents-dotnet/analysis/`:
+Enterprise hardening phases in `apps/services/documents/analysis/`:
 - `dotnet_enterprise_phase1_durable_queue.md` — Redis Streams durable queue, IScanJobQueue lease/ack redesign
 - `dotnet_enterprise_phase2_retries_and_scaling.md` — exponential backoff retry, WorkerCount concurrency, duplicate prevention
 - `dotnet_enterprise_phase3_backpressure.md` — QueueSaturationException (503), fail-fast upload, Retry-After header
@@ -715,7 +941,7 @@ Enterprise hardening phases in `apps/services/documents-dotnet/analysis/`:
 - `dotnet_enterprise_phase5_clamav_hardening.md` — ClamAV PING/PONG health, timeout isolation, fail-closed review
 - `dotnet_enterprise_final_summary.md` — complete architecture, production deployment guidance, remaining risks
 
-Phase 4 Final Hardening in `apps/services/documents-dotnet/analysis/`:
+Phase 4 Final Hardening in `apps/services/documents/analysis/`:
 - `dotnet_phase4_final_hardening.md` — Redis circuit breaker, durable Redis Streams publisher, correlation propagation, production runbook, alert rules
 
 ### Phase 4 Final Hardening Summary (COMPLETE — 0 errors, 0 regressions)
@@ -760,6 +986,7 @@ Analysis report: `analysis/step1_platform-foundation-upgrade.md`
 ```
 
 ### CareConnect Migrations
+EF Core migrations run at startup in **all environments** (not dev-only). The `__EFMigrationsHistory` table tracks which have been applied. If migration fails, the service crashes immediately (fail-fast) to prevent serving traffic on an incompatible schema.
 ```
 20260330110001_AlignCareConnectToPlatformIdentity.cs   — Provider.OrganizationId, Facility.OrganizationId,
                                                           Referral.OrganizationRelationshipId, Appointment.OrganizationRelationshipId
@@ -1474,6 +1701,10 @@ The legacy `AuditEvents` table is tracked in the EF model snapshot (so the ORM k
 | `IngestSourceRegistrations` | bigint AI | — | 2 indexes; (SourceSystem, SourceService) UNIQUE |
 
 ### Production deployment
+- **Build:** `scripts/build-prod.sh` — cleans `.next` directories before building (prevents stale dev cache from causing hydration/hook errors), builds both Next.js apps and all .NET services (including Liens) in Release mode. Post-build cleanup removes `.git` (~3.3GB), pnpm store (~2.1GB), NuGet cache (~232MB), Replit agent state (~638MB), `_archived`, `.NET obj/Debug` dirs, test artifacts, analysis/exports/downloads to keep the deployment image under 8GB.
+- **Run:** `scripts/run-prod.sh` — starts web (port 3050 internal → 5000 proxy), control center (port 5004), gateway (port 5010), all .NET services (including notifications on port 5008, liens on port 5009), artifacts server (port 5020). Includes fallback build block for all services including Liens.
+- **CareConnect internal provisioning:** Identity service calls CareConnect on port 5003 (fallback in `DependencyInjection.cs`; override via `CareConnect:InternalUrl` config)
+- **Documents `appsettings.Production.json`:** Sets `BasePath` to `/home/runner/data/docs-local` (persists on Reserved VM, not Autoscale)
 ```bash
 # Idempotent SQL (safe to run multiple times):
 dotnet ef migrations script --idempotent -o migration.sql
@@ -1993,7 +2224,7 @@ Added nullable `long? RecordCount` to track the number of records written. EF co
 | Product Access Rules | LIVE | `app/product-rules/page.tsx` |
 | Audit Logs | IN PROGRESS | `app/audit-logs/page.tsx` |
 | Support Tools | IN PROGRESS | `app/support/page.tsx` |
-| System Health | IN PROGRESS | `app/monitoring/page.tsx` |
+| System Health | LIVE | `app/monitoring/page.tsx` — BFF at `app/api/monitoring/summary/route.ts` probes 6 services (Gateway, Identity, Notifications, Audit, SynqFund, CareConnect) via `/health` endpoints; grouped into Platform Services + Products; auth-protected via cookie forwarding |
 | Platform Settings | IN PROGRESS | `app/settings/page.tsx` |
 
 ### Verification
@@ -2439,16 +2670,15 @@ Admin-only dashboard showing provider activation funnel metrics derived entirely
 - 19/19 LSCC-011 tests pass
 - Total suite: 360 pass (pre-existing 5 ProviderAvailability failures unchanged)
 
-## Step 38 — Notifications Service Merge (2026-03-31)
+## Step 38 — Notifications Service (ARCHIVED Node.js → replaced by .NET 8)
 
-Merged the standalone TypeScript/Node.js notifications backend into the main platform
-monorepo at `apps/services/notifications/`.
+Original Node.js notifications service was at `apps/services/notifications-nodejs/` — now archived to `_archived/notifications-nodejs/`. Replaced by `apps/services/notifications/` (.NET 8, 4-layer architecture: Api/Application/Domain/Infrastructure). The .NET version runs on the same port (5008) with identical gateway routing.
 
-### Service Overview
+### Service Overview (.NET)
 - **Port**: 5008
-- **Stack**: Express + Sequelize (mysql2) + custom JSON logger
-- **DB**: Sequelize `sync({ alter: true })` in dev — no separate migration step
-- **Auth**: Tenant context via `x-tenant-id` header; Gateway JWT gate for protected routes
+- **Stack**: ASP.NET Core 8 Minimal API + EF Core (Pomelo MySQL) + 3 BackgroundService workers
+- **DB**: EF Core with MySQL (notifications_db); env vars `NOTIF_DB_*`
+- **Auth**: Tenant context via `X-Tenant-Id` header; internal routes gated by `X-Internal-Service-Token`
 
 ### Route Groups (all prefixed `/v1/`)
 | Prefix | Description |
@@ -2481,23 +2711,23 @@ monorepo at `apps/services/notifications/`.
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_DEFAULT_FROM_NUMBER`
 - `PROVIDER_SECRET_ENCRYPTION_KEY` — AES-256 key for BYOP credential encryption
 
-### New Files
-- `apps/services/notifications/` — entire service directory (100+ files)
-- `apps/services/notifications/package.json` — `@legalsynq/notifications-service`
-- `apps/services/notifications/tsconfig.json`
-- `apps/services/notifications/src/` — all source (controllers, services, models, repositories, integrations, workers)
+### .NET Service Files
+- `apps/services/notifications/Notifications.Api/` — Program.cs, middleware (Tenant, InternalToken, RawBody), 9 endpoint groups
+- `apps/services/notifications/Notifications.Application/` — DTOs, repository + service interfaces
+- `apps/services/notifications/Notifications.Domain/` — 18 entities, Enums.cs
+- `apps/services/notifications/Notifications.Infrastructure/` — DbContext, 18 entity configs, repositories, SendGrid/Twilio/SMTP adapters, webhook verifiers, 15 service implementations, 3 BackgroundService workers, DependencyInjection.cs
 
-### Modified Files
-- `apps/gateway/Gateway.Api/appsettings.json` — added `notifications-health` route (anon), `notifications-protected` route, and `notifications-cluster` (`:5008`)
-- `scripts/run-dev.sh` — added notifications server (port 5008) + provider-health worker
+### Archived Node.js Files
+- `_archived/notifications-nodejs/` — original Node.js service (kept for reference)
+- `_archived/documents-nodejs/` — original Node.js documents service (replaced by documents)
 
 ### Gateway Routing
-- `GET /notifications/v1/health` — anonymous
+- `GET /notifications/health` — anonymous (health endpoint is at `/health`, not `/v1/health`)
 - `* /notifications/**` — JWT-protected, strips `/notifications` prefix before forwarding to `:5008`
 
 ### TypeScript
 - `tsc --noEmit` passes with 0 errors
-- `GET http://localhost:5008/v1/health` → `{"status":"ok","service":"notifications",...}`
+- `GET http://localhost:5008/health` → `{"status":"healthy","service":"notifications",...}`
 
 ## UIX-001 — Control Center Admin API (22 endpoints)
 - Full design documented in `analysis/UIX-001-01.md`
@@ -2554,17 +2784,22 @@ monorepo at `apps/services/notifications/`.
   - `DELETE /api/admin/tenants/{id}/logo` — clear logo with `identity.tenant.logo_cleared` audit event
 
 #### CC Frontend
-- `apps/control-center/src/app/api/tenants/[id]/logo/route.ts` — `POST` (upload to Docs + persist) / `DELETE`
-- `apps/control-center/src/app/api/tenants/[id]/logo/content/[docId]/route.ts` — image proxy (X-Admin-Target-Tenant)
+- `apps/control-center/src/app/api/tenants/[id]/logo/route.ts` — `POST` (upload to Docs via gateway + persist) / `DELETE`. Routes Documents upload through `GATEWAY_URL/documents/documents` (not direct localhost:5006) for production compatibility.
+- `apps/control-center/src/app/api/tenants/[id]/logo/content/[docId]/route.ts` — image proxy via gateway public logo endpoint (`/documents/public/logo/{docId}`). Anonymous, no auth needed.
 - `apps/control-center/src/components/tenants/TenantLogoUpload.tsx` — logo upload/replace/remove panel
 - `apps/control-center/src/app/tenants/[id]/page.tsx` — logo panel added to tenant detail (above session settings)
 - `apps/control-center/src/types/control-center.ts` — `TenantDetail` extended with `logoDocumentId?`
 - `apps/control-center/src/lib/api-mappers.ts` — `mapTenantDetail` maps `logoDocumentId`
 
 #### Web Portal
+- `apps/web/src/app/api/branding/logo/public/route.ts` — public logo proxy for tenant login pages. Routes through gateway for both branding lookup and logo retrieval. Supports `?tenantCode=` query param and hostname-based subdomain extraction.
+- `apps/web/src/middleware.ts` — `/api/branding` added to `PUBLIC_PATHS` so login page can fetch tenant logo without auth
 - `apps/web/src/app/api/branding/logo/[docId]/route.ts` — logo image proxy (requires session)
 - `apps/web/src/types/index.ts` — `TenantBranding` extended with `logoDocumentId?`
 - `apps/web/src/components/shell/top-bar.tsx` — shows tenant logo (`/api/branding/logo/{docId}`) when authenticated + logo set; falls back to LegalSynq logo
+
+#### Gateway
+- `documents-public-logo` route added: `GET /documents/public/logo/{id}` → Documents service `/public/logo/{id}` (Anonymous, Order 53)
 
 ### Document Type IDs
 - Profile avatar: `20000000-0000-0000-0000-000000000001`
@@ -2822,3 +3057,553 @@ Full report: `analysis/CC-E2E-VALIDATION-REPORT.md`
 - BFF proxy path: `/api/careconnect/api/...` (double-api, by design — gateway routing)
 - TenantAdmin bypasses ALL capability checks in `CareConnectAuthHelper.RequireAsync` (by design, line 26)
 - PlatformAdmin sees cross-tenant referral list but is limited to their own tenant for single-record lookups
+
+---
+
+## Organization Type Management — Admin Update Endpoint (2026-04-03)
+
+Added `PUT /api/admin/organizations/{id}` to the Identity service and wired it through the Control Center for managing organization types.
+
+### Problem
+MANERLAW's organization had `OrgType = "PROVIDER"` in the Identity DB when it should be `"LAW_FIRM"`. No admin endpoint existed to update an organization's type — the admin organizations page was a blank placeholder.
+
+### Changes
+
+**Identity Service (`AdminEndpoints.cs`):**
+- `PUT /api/admin/organizations/{id}` — updates org name, display name, and/or org type
+- Accepts `UpdateOrganizationRequest(Name?, DisplayName?, OrgType?)` — partial update semantics (omitted fields preserve existing values)
+- Validates OrgType against `OrgType.IsValid()`, resolves `OrganizationTypeId` via `OrgTypeMapper`
+- Calls `Organization.Update()` which keeps `OrgType` string and `OrganizationTypeId` FK in sync
+- PlatformAdmin role check enforced in-handler (not just gateway)
+
+**Control Center:**
+- `control-center-api.ts` — `organizations.update(orgId, body)` method added (PUT via `apiClient.put`)
+- `tenants/[id]/actions.ts` — `updateOrganizationType(orgId, orgType)` server action with `revalidateTag(CACHE_TAGS.tenants)` cache invalidation
+- `TenantOrganizationsPanel` component — client component on tenant detail page listing organizations with inline org-type editing (dropdown + save/cancel)
+- Tenant detail page (`tenants/[id]/page.tsx`) — fetches organizations via `controlCenterServerApi.organizations.listByTenant(id)` and renders the panel
+
+### Cross-Tenant Referral Visibility
+- Referrals are created under the **law firm's tenant** with `ReferringOrganizationId` (auto-set from caller's org) and `ReceivingOrganizationId` (auto-resolved from `Provider.OrganizationId`).
+- **Provider orgs** (OrgType=PROVIDER) use cross-tenant receiver mode: referral search queries by `ReceivingOrganizationId` instead of `TenantId`, so providers see referrals addressed to them regardless of which tenant created them.
+- **GetById** uses global lookup for provider orgs but enforces participant check (caller's org must match ReferringOrganizationId or ReceivingOrganizationId) for all users except PlatformAdmin.
+- **Law firm orgs** use standard tenant-scoped queries. TenantAdmin on law firm sees all referrals in their tenant; regular users see only their org's outbound referrals.
+- Key files: `ReferralEndpoints.cs`, `ReferralRepository.cs`, `GetReferralsQuery.cs` (CrossTenantReceiver flag), `ReferralService.cs` (auto-populates ReceivingOrganizationId).
+
+## NOTIF-UI-009 — Tenant Notification Activity + Delivery Visibility
+
+### Pages (apps/web — tenant portal)
+| Path | Purpose |
+|------|---------|
+| `/notifications/activity` | Activity list — summary cards, delivery breakdown, filterable paginated table |
+| `/notifications/activity/[notificationId]` | Activity detail — metadata, status, failure/block reasons, template usage, content preview, event timeline, issues |
+
+### API Client Extensions
+- `get(tenantId, id)` — single notification detail
+- `events(tenantId, notificationId)` — delivery event timeline
+- `issues(tenantId, notificationId)` — related delivery issues
+
+### Shared Types Added
+- `NotifDetail`, `NotifEvent`, `NotifIssue` in `notifications-shared.ts`
+
+### Key Rules
+- Tenant-scoped via `requireOrg()` + `x-tenant-id`
+- Events/issues endpoints gracefully degrade if unavailable
+- HTML content rendered in sandboxed iframes (CSP `script-src 'none'`)
+- Template source (global vs override) displayed when backend provides it
+- Metadata JSON fallback for template key, subject, body when direct fields unavailable
+
+## NOTIF-UI-010 — Delivery Controls (Retry / Resend / Suppression Awareness)
+
+### Capabilities
+- Retry/resend failed notifications with confirmation dialogs on the activity detail page
+- Suppression awareness panel for blocked/suppressed notifications
+- Contact health card with on-demand health + suppression data loading
+- Eligibility gating: only failed notifications can be retried/resent; blocked/suppressed/delivered cannot
+- Post-action feedback with success/error banners and link to new notification
+
+### Architecture
+- **Server/Client split:** Detail page remains server component for data fetching; `DeliveryActionsClient` is client component for interactive actions
+- **Server actions:** `retryNotification`, `resendNotification`, `fetchContactHealth`, `fetchContactSuppressions` in `activity/actions.ts`
+- **Eligibility logic:** Derived client-side from notification status + failure category (conservative defaults)
+- **Confirmation required:** Both retry and resend require explicit user confirmation via dialog
+
+### API Client Methods Added
+- `retry(tenantId, notificationId)` — POST, triggers retry
+- `resend(tenantId, notificationId)` — POST, creates new notification attempt
+- `contactHealth(tenantId, channel, contactValue)` — GET, contact health status
+- `contactSuppressions(tenantId, channel, contactValue)` — GET, active suppressions
+
+### Shared Types Added
+- `RetryResult`, `ContactHealth`, `ContactSuppression`, `ActionEligibility` in `notifications-shared.ts`
+
+### Key Rules
+- Single-notification actions only — no bulk retry/resend
+- Backend denial (409/422) mapped to clear user-facing messages
+- Contact health loaded lazily (user clicks "Check Health")
+- No suppression mutation (read-only suppression data)
+- `router.refresh()` after successful action refreshes server-rendered data
+
+## NOTIF-UI-008 — Tenant Template Override
+
+### Capabilities
+- Create tenant-scoped template overrides for any global template (same `templateKey + channel + productType`)
+- Edit override draft content (HTML subject/body/text)
+- Preview override with real backend rendering
+- Publish override with confirmation — makes tenant override active
+- Clear global vs override distinction at every level
+
+### Pages Enhanced (apps/web — tenant portal)
+| Path | Changes |
+|------|---------|
+| `/notifications/templates/[productType]` | Override status badges per template (Using Global / Override Draft / Override Active) |
+| `/notifications/templates/[productType]/[templateId]` | Tabbed Global/Override view; override create/edit/publish/preview flows |
+
+### Server Actions
+- `createTenantOverride(globalTemplateId, productType)` — creates override template + initial version pre-populated from global
+- `createOverrideVersion(overrideTemplateId, body)` — saves new version draft
+- `publishOverrideVersion(overrideTemplateId, versionId)` — publishes override
+- `previewOverrideVersion(overrideTemplateId, versionId, templateData)` — renders preview
+
+### API Client Extensions
+- `tenantTemplatesList`, `tenantTemplateGet`, `tenantTemplateCreate`, `tenantTemplateUpdate`
+- `tenantTemplateVersions`, `tenantTemplateCreateVersion`, `tenantTemplatePublishVersion`, `tenantTemplatePreviewVersion`
+
+### Shared Types Added
+- `TenantTemplate`, `TenantTemplateListResponse`, `TenantTemplateVersion`, `OverrideStatus`, `TemplatePreviewResult`
+
+### Backend Model
+- Tenant overrides use the same `Template` model with `tenantId` set (not null)
+- Backend route: `/v1/templates` (standard CRUD with `x-tenant-id` context)
+- Resolution: tenant template > global template (by `templateKey + channel`)
+- Immutable version lifecycle: draft → published → retired
+
+## NOTIF-UI-007 — Tenant Template Visibility (Read-Only)
+
+### Pages (apps/web — tenant portal)
+| Path | Purpose |
+|------|---------|
+| `/notifications/templates` | Product selection entry — cards for each product type |
+| `/notifications/templates/[productType]` | Product-scoped template list (table) |
+| `/notifications/templates/[productType]/[templateId]` | Template detail + versions + branded preview |
+
+### Components
+| Component | File | Purpose |
+|-----------|------|---------|
+| `TemplateDetailClient` | `src/app/(platform)/notifications/templates/[productType]/[templateId]/template-detail-client.tsx` | Global version viewer, override editor, preview panel |
+
+### Server Actions
+- `previewTemplateVersion` — POST branded preview via backend (tenantId from session)
+
+### API Client Extensions
+- `globalTemplatesList(tenantId, { productType })` — product-scoped template list
+- `globalTemplateGet(tenantId, id)` — single template detail
+- `globalTemplateVersions(tenantId, templateId)` — version list
+- `globalTemplatePreview(tenantId, templateId, versionId, body)` — branded preview
+
+### Shared Types Added
+- `GlobalTemplate`, `GlobalTemplateVersion`, `GlobalTemplateListResponse`, `BrandedPreviewResult` in `notifications-shared.ts`
+
+### Key Rules
+- Product-first access enforced: templates never shown without product selection
+- tenantId derived from session, never from user input
+
+## NOTIF-UI-006 — Tenant Branding Self-Service (Tenant Portal)
+
+### Pages
+| Path | Purpose |
+|------|---------|
+| `/notifications/branding` | Tenant branding list + create/edit/detail (apps/web tenant portal) |
+
+### Components (apps/web)
+| Component | File | Purpose |
+|-----------|------|---------|
+| `TenantBrandingForm` | `src/components/notifications/tenant-branding-form.tsx` | Shared create+edit form with live preview |
+| `BrandingPreviewCard` | `src/components/notifications/branding-preview-card.tsx` | Visual brand preview (header, body, footer) |
+| `BrandingEmptyState` | `src/components/notifications/branding-empty-state.tsx` | Empty state with CTA |
+| `ProductTypeBadge` | `src/components/notifications/product-type-badge.tsx` | Colour-coded product type badge |
+| `ColorSwatchField` | `src/components/notifications/color-swatch-field.tsx` | Colour picker + hex text input |
+
+### Server Actions (apps/web)
+- `createBranding` — creates branding for the authenticated tenant (tenantId from session)
+- `updateBranding` — updates existing branding record
+
+### API Client
+- Extended `notifications-server-api.ts` with `brandingList`, `brandingGet`, `brandingCreate`, `brandingUpdate`
+- `notifRequest()` supports POST/PATCH via `method` + `body` options
+- All requests inject `x-tenant-id` from `session.tenantId` — never from user input
+
+## NOTIF-UI-005 — Control Center Global Templates + Branding Admin UI
+
+### Pages
+| Path | Purpose |
+|------|---------|
+| `/notifications/templates/global` | Global templates list with product type/channel filters |
+| `/notifications/templates/global/[id]` | Template detail + versions + metadata edit |
+| `/notifications/branding` | Tenant branding list with product filter, create/edit forms |
+
+### Components
+| Component | File | Purpose |
+|-----------|------|---------|
+| `WysiwygEmailEditor` | `src/components/notifications/wysiwyg-email-editor.tsx` | Block-based email editor (heading/paragraph/button/divider/image blocks, brand token insertion, variable insertion) |
+| `BrandedPreviewModal` | `src/components/notifications/branded-preview-modal.tsx` | Preview rendered template with tenant branding context |
+| `GlobalTemplateCreateForm` | `src/components/notifications/global-template-create-form.tsx` | Create global template modal |
+| `GlobalTemplateEditForm` | `src/components/notifications/global-template-edit-form.tsx` | Edit template metadata modal |
+| `GlobalTemplateVersionForm` | `src/components/notifications/global-template-version-form.tsx` | Version create with WYSIWYG or HTML editor |
+| `GlobalPublishVersionButton` | `src/components/notifications/global-publish-version-button.tsx` | Publish version with confirmation |
+| `BrandingCreateForm` | `src/components/notifications/branding-create-form.tsx` | Create tenant branding |
+| `BrandingEditForm` | `src/components/notifications/branding-edit-form.tsx` | Edit tenant branding |
+
+### Cache Tags
+- `notif:global-templates` — invalidated on template/version create/update/publish
+- `notif:branding` — invalidated on branding create/update
+
+### Server Actions (in `actions.ts`)
+`createGlobalTemplate`, `updateGlobalTemplate`, `createGlobalTemplateVersion`, `publishGlobalTemplateVersion`, `previewGlobalTemplateVersion`, `createBranding`, `updateBranding`
+
+### API Response Shape
+Backend wraps all responses in `{ data: ... }`. `BrandedPreviewResult` has flat `subject`/`body`/`text` + nested `branding: { source, name, primaryColor }`.
+
+## NOTIF-008 — Global Product Templates + Tenant Branding Backend
+
+### New Route Groups (all prefixed `/v1/`)
+| Prefix | Description |
+|--------|-------------|
+| `/v1/templates/global` | Global template CRUD + versioning + branded preview |
+| `/v1/branding` | Tenant branding CRUD |
+
+### New Models
+- **TenantBranding** — per-tenant, per-product branding (colors, logo, support info, email header/footer)
+  - Unique: `(tenant_id, product_type)`
+
+### Template Model Extensions
+- `productType` (nullable) — which product owns the template (careconnect, synqlien, etc.)
+- `templateScope` — `global` or `tenant`
+- `editorType` — `wysiwyg`, `html`, or `text`
+- `category` (nullable) — optional grouping
+- `isBrandable` — whether branding tokens are injected at render time
+
+### TemplateVersion Extensions
+- `editorJson` — WYSIWYG editor source of truth (JSON)
+- `designTokensJson` — design token overrides
+- `layoutType` — layout classification
+
+### Branding Token System
+- Reserved tokens: `{{brand.name}}`, `{{brand.logoUrl}}`, `{{brand.primaryColor}}`, etc.
+- Injected at render time by `BrandingResolutionService`
+- Fallback: product defaults → platform defaults (code-backed, replaceable)
+- Caller template data cannot override branding tokens
+
+### Product Types
+`careconnect`, `synqlien`, `synqfund`, `synqrx`, `synqpayout`
+
+### Valid OrgType Values
+`LAW_FIRM`, `PROVIDER`, `FUNDER`, `LIEN_OWNER`, `INTERNAL`
+
+## Artifacts API Server (artifacts/api-server)
+- **Framework:** Express + Sequelize + PostgreSQL (TypeScript)
+- **Port:** 5020 (dev) — started by `scripts/run-dev.sh`
+- **Purpose:** Feedback traceability and artifact management service for Xenia v2.0
+
+### XNA_Core-08-011 — Reverse Traceability & Artifact-Centric Feedback View
+- Reverse lookup from artifact → feedback_action_links → feedback_action_items → feedback_records
+- Admin-only API: `GET /api/admin/artifacts/:artifactType/:artifactId/feedback-links`
+- Supported artifact types: FEATURE, DEFECT, REQUIREMENT, MITIGATION
+- JWT-based admin RBAC middleware (requires PlatformAdmin or TenantAdmin)
+- Deterministic ordering: status priority (OPEN → IN_PROGRESS → RESOLVED → DISMISSED), then date descending, then ID ascending
+- CC UI: `/artifacts` pages with LinkedFeedbackPanel component
+- CC nav: "TRACEABILITY → Artifacts" section in sidebar
+- Database tables: `feedback_records`, `feedback_action_items`, `feedback_action_links`, `artifacts`
+
+## LS-COR-AUT-005 — Admin UI Access Management Layer — COMPLETED 2026-04-10
+
+Control Center UI for managing LS-COR-AUT-004 tenant-scoped Access Groups.
+
+**Types (`types/control-center.ts`):**
+- `AccessGroupSummary`, `AccessGroupMember`, `GroupProductAccess`, `GroupRoleAssignment`
+
+**API client (`lib/control-center-api.ts`):**
+- `controlCenterServerApi.accessGroups` namespace — full CRUD: list, getById, create, update, archive, addMember, removeMember, listMembers, grantProduct, revokeProduct, listProducts, assignRole, removeRole, listRoles, listUserGroups
+- Gateway paths: `/identity/api/tenants/{tenantId}/groups/...`
+
+**BFF routes (`app/api/access-groups/[tenantId]/...`):**
+- POST create, PATCH update, DELETE archive groups
+- POST add / DELETE remove members
+- PUT grant / DELETE revoke products
+- POST assign / DELETE remove roles
+- All routes: `requireAdmin()` auth, `ServerApiError` status passthrough
+
+**Pages:**
+- `/groups` — tenant-context-aware Access Groups list (requires tenant context); `CreateAccessGroupButton` modal (Tenant/Product scope)
+- `/access-groups/[tenantId]/[groupId]` — detail page with `AccessGroupInfoCard`, `AccessGroupMembersPanel`, `GroupProductAccessPanel`, `GroupRoleAssignmentPanel`, `AccessGroupActions`
+
+**User detail integration:**
+- `AccessGroupMembershipPanel` component on `/tenant-users/[id]` page — shows user's access group memberships with add/remove
+
+**Route builder:** `Routes.accessGroupDetail(tenantId, groupId)` → `/access-groups/{tenantId}/{groupId}`
+
+**Nav:** Groups entry marked `badge: 'LIVE'` in sidebar
+
+## LS-COR-AUT-006 — Legacy Cleanup + Model Unification — COMPLETED 2026-04-10
+
+Removed all legacy role resolution and group management systems. JWT `product_roles` claims now use exclusively `PRODUCT:Role` format (e.g., `SYNQ_CARECONNECT:CARECONNECT_RECEIVER`) from `EffectiveAccessService`.
+
+**Removed:**
+- `ProductRoleResolutionService`, `CareConnectRoleMapper`, `IProductRoleMapper`, `IProductRoleResolutionService`, `EffectiveAccessContext` DTO
+- Legacy merge logic in `AuthService.LoginAsync` (was merging legacy bare role codes with effective-access roles)
+- Legacy `/api/admin/groups/*` endpoints (5 routes + handlers) from `AdminEndpoints.cs`
+- Legacy group UI: `groups/[id]` page, `GroupMembershipPanel`, `GroupDetailCard`, `GroupListTable`, `GroupPermissionsPanel`, BFF proxy routes
+- Legacy `groups` namespace from `controlCenterServerApi`, `GroupSummary`/`GroupDetail`/`GroupMemberSummary` types, `mapGroupSummary`/`mapGroupDetail` mappers
+- Static `ProductToRolesMap` dictionary from `ProductRoleClaimExtensions`
+
+**Updated:**
+- `ProductRoleClaimExtensions`: `HasProductAccess` now checks `PRODUCT:` prefix; `HasProductRole` checks `PRODUCT:ROLE` exact match
+- Groups page: removed legacy fallback, requires tenant context
+- Tenant user detail: removed `GroupMembershipPanel`, kept only `AccessGroupMembershipPanel`
+
+**Retained:** `ScopedRoleAssignment` (used for system roles), `TenantGroup`/`GroupMembership` DB tables (for data migration)
+
+## LS-COR-AUT-006A — Residual Legacy Closure + Validation Hardening — COMPLETED 2026-04-10
+
+Final closure of the legacy authorization model. All frontend and backend consumers now use the unified `PRODUCT:Role` claim format.
+
+**Fixed:**
+- Frontend `ProductRole` constants in both `apps/web` and `apps/control-center` updated to `PRODUCT:Role` format (e.g., `SYNQ_CARECONNECT:CARECONNECT_REFERRER`)
+- Fund service `CanReferFund`/`CanFundApplications` policies use `RequireClaim("product_roles", "SYNQ_FUND:...")` instead of broken `RequireRole`
+- `AdminEndpoints.cs` ListUsers/GetUser queries replaced legacy `GroupMemberships` with `AccessGroupMemberships`
+- Pre-existing type gaps fixed: `ApiResponse`, `TenantBranding`, `NavGroup.icon`, `NavItem.badgeKey`, optional `enabledProducts` null-safety
+
+**Deprecated:**
+- `TenantGroup.cs` and `GroupMembership.cs` marked `[Obsolete]` with `#pragma warning` suppression in `IdentityDbContext`
+- DbSets retained for EF migration compatibility only — no runtime queries
+
+**Documented:**
+- `ScopedRoleAssignment.cs` XML doc describes the dual-boundary role model: SRA for system roles (GLOBAL scope), URA/GRA for product roles (JWT claims)
+
+**Tests:**
+- 20 xUnit tests in `BuildingBlocks.Tests` validating `ProductRoleClaimExtensions` (prefixed claims, bare code rejection, cross-product isolation, admin bypass, case-insensitive matching)
+
+**Report:** `analysis/LS-COR-AUT-006A-report.md`
+
+## LS-COR-AUT-007 — Enforcement Completion + Hardening — COMPLETED 2026-04-11
+
+**Fund Enforcement:** `ApplicationEndpoints` group-level `.RequireProductAccess(ProductCodes.SynqFund)` + role-specific filters: create/update/submit → `SYNQFUND_REFERRER`; begin-review/approve/deny → `SYNQFUND_FUNDER`.
+
+**CareConnect:** Confirmed all non-admin endpoints already enforced with `.RequireProductAccess(ProductCodes.SynqCareConnect)`. Admin endpoints correctly use `PlatformOrTenantAdmin` (admins bypass product checks via `IsTenantAdminOrAbove()`).
+
+**Legacy Table Removal:**
+- Deleted `TenantGroup.cs`, `GroupMembership.cs` entity files and EF configurations
+- Removed `[Obsolete]` DbSets from `IdentityDbContext`
+- Migration `20260411000001_DropLegacyGroupTables.cs` drops both tables
+- Snapshot fully cleaned of entity blocks, FK relationships, and navigation blocks
+
+**ScopedRoleAssignment GLOBAL-Only:**
+- `ScopeTypes` simplified to single `Global` constant with `IsValid()` validator
+- `Create()` rejects non-GLOBAL scopes with `ArgumentException`, forces Org/Product IDs to null
+- `AdminEndpoints.AssignRole` blocks non-GLOBAL at API layer
+- Diagnostic endpoint updated to use string literals for deprecated scope types
+
+**Security Fix — HasProductAccess:**
+- `ProductRoleClaimExtensions.HasProductAccess` now requires non-empty role segment (rejects `"SYNQ_FUND:"`)
+- Previously only checked `StartsWith(prefix)` — empty role segment bypassed access check
+
+**Effective Access UI:** `EffectivePermissionsPanel` enhanced with Direct (blue) vs Group (purple) source attribution badges, `SourceSummary` component, color-coded legend.
+
+**Tests:** 45 xUnit tests total (20 original + 8 ScopedRoleAssignment domain + 17 claim hardening including empty-role-segment security fix)
+
+**Report:** `analysis/LS-COR-AUT-007-report.md`
+
+## LS-COR-AUT-008 — Observability + Scale Hardening — COMPLETED 2026-04-11
+
+**Effective Access Caching:** `EffectiveAccessService` uses `IMemoryCache` with key `ea:{tenantId}:{userId}:{accessVersion}`, 5-min TTL. AccessVersion auto-invalidates on any role/product/group mutation. Stopwatch timing + cache hit/miss counters.
+
+**Batch AccessVersion:** `GroupRoleAssignmentService` and `GroupProductAccessService` use `ExecuteUpdateAsync` for single-SQL batch version increment instead of N entity loads.
+
+**Authorization Observability:** All 3 filters (`RequireProductAccessFilter`, `RequireProductRoleFilter`, `RequireOrgProductAccessFilter`) emit structured `AuthzDecision` logs (userId, tenantId, method, endpoint, product, requiredRoles, source, accessVersion). DENY=Warning, ALLOW=Information.
+
+**Debug Endpoint:** `GET /api/admin/users/{id}/access-debug` — returns full access breakdown: products (with Direct/Group source), roles (with source), systemRoles, groups, entitlements, productRolesFlat, tenantRoles, accessVersion.
+
+**Access Audit Viewer:** Quick-filter presets on `/audit-logs` page: Access Changes, Security Events, Role Assignments, Group Membership, Product Access.
+
+**Access Explanation UI:** `AccessExplanationPanel` component on user detail page. Expandable product sections, Direct/Group badges, system roles, entitlements, group memberships, JWT claims preview. Fetches from `/access-debug` endpoint.
+
+**Login Performance:** `AuthService.LoginAsync` instrumented with Stopwatch — logs `LoginPerf` with userId, tenantId, elapsedMs, accessVersion.
+
+**Tests:** 57 xUnit tests total (45 prior + 12 new observability tests: cache key format, AuthzDecision fields, JWT claim format, empty-role-segment, access-debug source attribution).
+
+**Report:** `analysis/LS-COR-AUT-008-report.md`
+
+## LS-COR-AUT-009 — Permission / Capability Layer — COMPLETED 2026-04-11
+
+**Permission Resolution:** `EffectiveAccessService.ResolvePermissionsAsync()` resolves capabilities from UserRoleAssignment → RoleCapabilityAssignment (Direct) and GroupRoleAssignment → ProductRole → RoleCapability (Inherited). Format: `{PRODUCT_CODE}.{capability_code}` (e.g., `SYNQ_CARECONNECT.referral:create`). Cross-product consistency enforced (`RoleProductId == CapabilityProductId`).
+
+**JWT Claims:** `permissions` multi-value claim added alongside `product_roles`. Backward compatible — existing token consumers unaffected.
+
+**RequirePermissionFilter:** New `IEndpointFilter` checking `permissions` JWT claim with admin bypass. Extension: `.RequirePermission("PRODUCT.capability")`. Structured `PermissionDecision` logging (DENY=Warning, ALLOW=Information). Error code: `PERMISSION_DENIED`.
+
+**Claim Extensions:** `HasPermission(permissionCode)`, `GetPermissions()` on `ClaimsPrincipal` (case-insensitive, admin bypass).
+
+**API Endpoints:** `GET /api/admin/permissions/by-product/{productCode}` — filtered permission catalog (admin-only). General catalog already at `GET /api/admin/permissions` (UIX-002).
+
+**Access Debug:** `/access-debug` response extended with `permissions` (flat list) and `permissionSources` (with provenance: permissionCode, productCode, source, viaRoleCode, groupId, groupName).
+
+**Admin UI:** `AccessExplanationPanel` shows Permissions section grouped by product with capability code, via-role, and source badge. JWT Claims Preview shows separate `product_roles` and `permissions` sub-sections.
+
+**Tests:** 68 xUnit tests total (57 prior + 11 new permission tests: HasPermission match/case-insensitive/no-match/no-claims, admin bypass, cross-product isolation, partial code rejection, GetPermissions, multiple permissions).
+
+**Report:** `analysis/LS-COR-AUT-009-report.md`
+
+## LS-COR-AUT-010 — Permission Governance + Enforcement Migration — COMPLETED 2026-04-11
+
+**Capability Entity Governance:** Added `Category` (max 100), `UpdatedAtUtc`, `CreatedBy`, `UpdatedBy` governance columns. Domain methods: `Update()`, `Deactivate()`, `Activate()`. Naming convention: `^[a-z][a-z0-9]*(?:\:[a-z][a-z0-9]*)*$` (`{domain}:{action}` lowercase colon-separated). Validated in `IsValidCode()` and `Create()`. Seed data enriched with Category values.
+
+**Permission CRUD API:** `POST /api/admin/permissions` (create with naming convention + duplicate validation, accepts `productCode` or `productId`), `PATCH /api/admin/permissions/{id}` (update name/description/category), `DELETE /api/admin/permissions/{id}` (soft deactivate). Admin-only. Audit events: `permission.created` (Info), `permission.updated` (Info), `permission.deactivated` (Warning) via inline `auditClient.IngestAsync()`.
+
+**Enforcement Migration (Fund):** Migrated `Fund.Api/Endpoints/ApplicationEndpoints.cs` from `RequireProductRole` → `RequirePermission`. Permission mapping: `application:create` (create/update/submit), `application:evaluate` (begin-review), `application:approve` (approve), `application:decline` (deny). Admin bypass preserved.
+
+**Admin UI CRUD:** Control Center permissions page upgraded from read-only to full CRUD. Components: `PermissionCreateDialog` (product selector, code validation, create form), `PermissionRowActions` (edit dialog, deactivate confirmation), updated `PermissionCatalogTable` (Category + Actions columns). Server actions in `permissions/actions.ts` with `requirePlatformAdmin()` guard. API client methods: `permissions.create()`, `permissions.update()`, `permissions.deactivate()`.
+
+**Type/Mapper Updates:** `PermissionCatalogItem` extended with `category`, `productCode`, `updatedAtUtc`. `mapPermissionCatalogItem` updated. API client CRUD methods added with `revalidateTag(CACHE_TAGS.roles)`.
+
+**Tests:** 39 new tests (107 total): naming convention (valid/invalid/null), `Capability.Create` (fields, normalization, exceptions, whitespace), `Update` (fields, validation), `Deactivate`/`Activate` (state transitions), `HasPermission` claim checks (match, non-match, empty, case-insensitive, multiple, cross-product blocking), admin bypass checks.
+
+**Report:** `analysis/LS-COR-AUT-010-report.md`
+
+## LS-COR-AUT-011 — Advanced Authorization (ABAC + Context-Aware Policies) — COMPLETED 2026-04-11
+
+**Domain Entities:** `Policy` (code pattern `PRODUCT.domain.qualifier`, factory create + lifecycle), `PolicyRule` (11 supported fields, operator/field validation, AND/OR grouping), `PermissionPolicy` (junction linking permission codes to policies). Enums: `PolicyConditionType` (Attribute/Resource/Context), `RuleOperator` (10 operators including In/NotIn/Contains/StartsWith), `LogicalGroupType` (And/Or).
+
+**EF Configuration:** `Policies`, `PolicyRules`, `PermissionPolicies` tables with proper indexes. Unique index on PolicyCode. Unique composite index on (PermissionCode, PolicyId).
+
+**Policy Evaluation Engine:** `PolicyEvaluationService` — loads active policies linked to permission via PermissionPolicies, evaluates rules against merged user/resource/request attributes, returns `PolicyEvaluationResult` with full explainability (MatchedPolicy + RuleResult per rule). AND/OR logical grouping. Numeric comparison for amount/time fields. `DefaultAttributeProvider` extracts attributes from JWT claims, resource context dict, and HttpContext.
+
+**RequirePermissionFilter Enhancement:** When `Authorization:EnablePolicyEvaluation=true`, filter calls `IPolicyEvaluationService.EvaluateAsync()` after PBAC claim check passes. Resource context injectable via `httpContext.Items["PolicyResourceContext"]` as `Dictionary<string,object?>`. Backward compatible — if no policies linked, existing behavior preserved.
+
+**Admin API:** Full policy CRUD (list/create/update/deactivate), rule CRUD within policy, permission-policy mapping CRUD, supported-fields endpoint. Access debug extended with linked-policy info.
+
+**Control Center UI:** Policy list page with product filter chips, policy detail page with tabbed view (Rules/Permissions/Info), visual rule builder with field/operator dropdowns, permission linking UI. Navigation entry under IDENTITY section. All operations via Next.js API route handlers proxying to server API.
+
+**Tests:** 47 new tests (153 total in BuildingBlocks.Tests): policy code validation, domain creation/update/deactivation, rule field validation, operator constraints, PermissionPolicy lifecycle.
+
+**Config:** `Authorization:EnablePolicyEvaluation=true` to activate. `Authorization:EnableRoleFallback=true` for PBAC fallback.
+
+**Report:** `analysis/LS-COR-AUT-011-report.md`
+
+## LS-COR-AUT-011A — Policy Engine Hardening + Observability — COMPLETED 2026-04-11
+
+**PolicyEffect Enum:** `PolicyEffect.Allow` / `PolicyEffect.Deny` added to `Identity.Domain`. `Policy.Effect` property (default `Allow`). `Policy.Create()` accepts optional `effect` parameter. `Policy.Update()` accepts optional `PolicyEffect? effect` (null preserves existing).
+
+**Deny-Override Semantics:** `PolicyEvaluationService` evaluates all policies in deterministic order (Priority ASC → PolicyCode ASC → Id ASC). If any matched Deny-effect policy's rules pass, the result is an immediate deny override regardless of Allow policies. `PolicyEvaluationResult.DenyWithOverride()` factory sets `DenyOverrideApplied=true` and `DenyOverridePolicyCode`.
+
+**IMemoryCache Caching:** Cache key `policy:{tenantId}:{userId}:{permission}:{policyVersion}:{resourceHash}`. TTL configurable via `Authorization:PolicyCacheTtlSeconds` (default 60). Cache skipped when resource context is empty/incomplete. `PolicyVersion` in cache key auto-invalidates on policy changes.
+
+**PolicyVersionProvider:** `InMemoryPolicyVersionProvider` (Singleton) with `Interlocked`-based thread-safe `CurrentVersion` and `Increment()`. All Admin API CRUD handlers (create/update/deactivate policy, create/update/deactivate rule, create/deactivate permission-policy mapping) call `Increment()` after `SaveChangesAsync`.
+
+**IPolicyResourceContextAccessor:** Abstraction in BuildingBlocks for standardized resource context access. Implementation reads from `HttpContext.Items["PolicyResourceContext"]`.
+
+**Structured Logging:** `RequirePermissionFilter` emits structured `PolicyDecision` log entries with full shape (permission, user, tenant, elapsed, matched policies, rule results, deny override, cache hit, resource context present). DENY at `Warn` severity, ALLOW at `Debug`.
+
+**Admin API:** All policy responses include `effect` field. `SupportedFields` endpoint returns `effects` array. ABAC CRUD handlers in `AdminEndpoints` class.
+
+**Frontend:** `PolicySummary.effect` field. Effect badge (emerald=Allow, red=Deny) on policy list table and detail panel. `SupportedFieldsResponse.effects`. `mapSupportedFields` mapper updated.
+
+**Tests:** 153 total (PolicyDomain: PolicyEffect creation/update/preservation, PolicyVersionProvider: initial/increment/monotonic/thread-safety, PolicyEvaluationResult: Allow/Deny/AllowWithPolicies/DenyWithOverride factories, MatchedPolicy/RuleResult defaults).
+
+## LS-COR-AUT-011B — Distributed Policy Engine + Multi-Instance Scaling — COMPLETED 2026-04-11
+
+**Distributed Version Provider:** `RedisPolicyVersionProvider` uses Redis `INCR`/`GET` on key `legalsynq:policy:version` for global monotonic versioning across all instances. Falls back to in-memory `Interlocked` counter on Redis failure. Registered as Singleton; provider selected via `Authorization:PolicyVersioning:Provider` (InMemory|Redis).
+
+**Distributed Cache:** `IPolicyEvaluationCache` abstraction replaces direct `IMemoryCache` usage. `RedisPolicyEvaluationCache` serializes `PolicyEvaluationResult` as JSON to Redis STRING with TTL. `InMemoryPolicyEvaluationCache` wraps `IMemoryCache` behind the same interface. Provider selected via `Authorization:PolicyCaching:Provider` (InMemory|Redis). All Redis operations fail-open with warnings.
+
+**Immutable Cache Values:** Cache hits return a defensive copy (new `PolicyEvaluationResult` instance). Redis cache inherently creates new instances via JSON deserialization. No shared mutable state across requests.
+
+**Cross-Node Invalidation:** All Admin API CRUD handlers call `IPolicyVersionProvider.Increment()` after mutations. With Redis, `INCR` is globally visible — all nodes see the new version immediately. Cache keys include version → stale entries become unreachable without explicit eviction.
+
+**Logging Controls:** `PolicyLoggingOptions` — configurable `AllowLevel`/`DenyLevel` (Trace→Critical), `SampleRate` (0.0–1.0), `LogRuleResultsOnAllow` toggle, master `Enabled` switch. Thread-safe sampling via `ThreadLocal<Random>`.
+
+**Performance Metrics:** `PolicyMetrics` singleton — `Interlocked`-based counters for evaluation count/latency, cache hits/misses/errors/latency, version read count/latency. `GetSnapshot()` returns `PolicyMetricsSnapshot` for admin endpoints.
+
+**Resource Hashing:** `ComputeResourceHash` — deterministic, order-independent (sorted keys), case-insensitive (normalized to lowercase), SHA-256 truncated to 16 hex chars. Null values handled as literal "null". Empty context returns "empty".
+
+**Fallback Behavior:** Redis failures → fail-open (compute from DB). Malformed cache → ignore. Version read failure → local fallback counter. All operations continue without authorization denial on infrastructure failure.
+
+**Package:** `StackExchange.Redis 2.7.33` added to `Identity.Infrastructure`.
+
+**Config:** `Authorization:PolicyCaching:Provider`, `Authorization:PolicyVersioning:Provider`, `Authorization:PolicyLogging:*`, `Authorization:Redis:Url`.
+
+**Tests:** 195 total (27 new: config options defaults, Redis config, metrics thread-safety, InMemory cache roundtrip, resource hashing order-independence/case-insensitivity/null-handling, cache key segment verification/version isolation/tenant isolation).
+
+**Report:** `analysis/LS-COR-AUT-011B-report.md`
+
+## LS-COR-AUT-011C — Distributed Resilience + Performance Optimization — COMPLETED 2026-04-12
+
+**Version Fallback — Freeze Mode (CRITICAL FIX):** `RedisPolicyVersionProvider` no longer increments a local counter on Redis failure. Instead, it enters FREEZE mode: returns last known version, skips all increments, disables cache writes. Auto-recovers when Redis becomes available. Prevents cross-node version divergence. `IPolicyVersionProvider.IsHealthy`/`IsFrozen` properties exposed.
+
+**Cache Stampede Protection:** Per-key `SemaphoreSlim` coalescing in `PolicyEvaluationService`. First cache-miss request evaluates; concurrent same-key requests await the result. Inflight results stored in `ConcurrentDictionary` with 5s expiry. 5s timeout on lock acquisition prevents deadlocks — falls through to direct evaluation. Lock cleanup via `Task.Delay`.
+
+**Tenant-Scoped Versioning:** `IPolicyVersionProvider.GetVersion(tenantId?)` and `IncrementVersion(tenantId?)`. Config: `PolicyVersioning:Scope` = Global|Tenant. Redis keys: `legalsynq:policy:version` (global), `legalsynq:policy:version:{tenantId}` (tenant). Default: Global. In-memory uses `ConcurrentDictionary<string, long>` for tenant versions.
+
+**OpenTelemetry Metrics:** `System.Diagnostics.Metrics` instrumentation in `PolicyMetrics`. Meter: `LegalSynq.Policy`. Counters: evaluations, cache hits/misses/errors, stampede coalesced, freeze events. Histograms: evaluation/cache-read/version-read latency. Observable gauges: cache hit rate, average evaluation latency. Export via `AddOpenTelemetry().WithMetrics(m => m.AddMeter("LegalSynq.Policy"))`.
+
+**Cache Memory Controls:** `PolicyCachingOptions.KeyPrefix` (default: `"policy"`). Configurable key prefix for environment scoping. TTL enforcement, version rotation, freeze-mode write disable, documented `maxmemory-policy allkeys-lru` recommendation.
+
+**Resource Hashing Hardening:** Hash version prefix `v1:{hash}`. `SerializeValue()` handles null, string, numeric, `JsonElement`, arrays/collections (sorted). Arrays order-independent. Null vs empty string differentiated. 19-char output: `v1:` + 16 hex.
+
+**Failure Modes:** All fail-open. Version read failure → freeze. Version increment failure → retry once → freeze. Cache read failure → compute from DB. Cache write failure → silently skip. All paths logged, deterministic, safe. No authorization denial from infrastructure failure.
+
+**Tests:** 236 total (41 new: freeze mode, stampede SemaphoreSlim 1000-concurrent no-deadlock, tenant versioning isolation, hash edge cases incl. JsonElement canonicalization, security, performance benchmarks, concurrent cache operations).
+
+**Report:** `analysis/LS-COR-AUT-011C-report.md`
+
+## LS-COR-AUT-011D — Policy Simulation + Decision Testing — COMPLETED 2026-04-12
+
+**Authorization Simulation Service:** `AuthorizationSimulationService` in `Identity.Infrastructure` — safe what-if testing against live or draft policies without mutating production state. Reuses `PolicyEvaluationService.EvaluatePolicy()`, `EvaluateOperator()`, `MergeAttributes()` (now `public static`). Resolves target user's effective access via `IEffectiveAccessService`. Admin bypass detection mirrors runtime behavior.
+
+**Simulation Modes:** `Live` evaluates current active policies. `Draft` appends an in-memory policy definition alongside live policies. `ExcludePolicyIds` isolates specific policy effects by removing them from evaluation. No database writes in any mode.
+
+**API Endpoint:** `POST /api/admin/authorization/simulate` in `AdminEndpoints`. Tenant-scoped: TenantAdmin restricted to own tenant, PlatformAdmin unrestricted. Validates permissionCode format, user/tenant existence, draft policy rules. Returns full explainability output: allow/deny decision, permission sources (direct/inherited), policy evaluation breakdown with per-rule results, draft policy highlighting, deny-override identification.
+
+**Audit:** `authorization.simulation.executed` event — category `Administrative`, visibility `Platform`, severity `Info`. Tags: `["simulation", "authorization", "live"/"draft"]`. Fire-and-forget. Distinct from runtime `user.authorization.*` events.
+
+**Control Center UI:** `/authorization-simulator` route. `simulator-form.tsx` client component with tenant/user/permission inputs, resource/request context JSON editors, collapsible draft policy builder (visual rule builder with field/operator/value/logicalGroup). Result panel: allow/deny banner, user identity + roles, permission source attribution, policy evaluation breakdown with rule results table, draft policy DRAFT badges, copy JSON + raw JSON toggle.
+
+**Static Method Visibility:** `EvaluatePolicy`, `EvaluateRule`, `EvaluateOperator`, `MergeAttributes` changed from `private static` → `public static` in `PolicyEvaluationService` to enable direct reuse by simulation service and test verification.
+
+**Tests:** 256 total (20 new: 13 SimulationTests, 3 SimulationSecurityTests, 4 SimulationRegressionTests). Covers operator evaluation, attribute merging, policy immutability, deny override, explainability output, public method accessibility.
+
+**Report:** `analysis/LS-COR-AUT-011D-report.md`
+
+## Login Page Logo Fix — 2026-04-13
+
+### Fix: Preserve `tenant_code` cookie on logout
+- `apps/web/src/app/api/auth/logout/route.ts` — no longer clears the `tenant_code` cookie on logout. The cookie is non-sensitive (stores only the tenant code, e.g. "MANER") and keeping it lets the login page `TenantBrandingProvider` resolve the correct tenant branding for returning users, without requiring subdomain DNS resolution.
+- `PublicLogoEndpoints` DocumentTypeId filter intentionally preserved — CC logo uploads already use the correct type (`20000000-0000-0000-0000-000000000002`), and removing the filter would create a broken-access-control risk.
+
+### Root cause
+- Logout cleared `tenant_code` cookie → `TenantBrandingProvider` had no header/cookie for tenant resolution → Identity branding endpoint returned default branding with null `logoDocumentId` → no logo sources in the cascade → no logo rendered on login page
+
+### OrganizationType Seed IDs
+- Internal: `70000000-0000-0000-0000-000000000001`
+- LawFirm: `70000000-0000-0000-0000-000000000002`
+- Provider: `70000000-0000-0000-0000-000000000003`
+- Funder: `70000000-0000-0000-0000-000000000004`
+- LienOwner: `70000000-0000-0000-0000-000000000005`
+
+## Liens Service JWT Auth Integration — 2026-04-13
+
+### Summary
+Integrated Liens microservice with the v2 JWT auth/identity pattern used by Fund, CareConnect, and other services.
+
+### Changes
+- **`Liens.Api/Program.cs`** — JWT Bearer auth fully wired: issuer/audience/signing-key validation, `MapInboundClaims=false`, shared authorization policies (`AuthenticatedUser`, `AdminOnly`, `PlatformOrTenantAdmin`), `/context` diagnostic endpoint (auth-required), `/health` and `/info` (anonymous)
+- **`Liens.Infrastructure/DependencyInjection.cs`** — Registered `ICurrentRequestContext` → `CurrentRequestContext` (scoped) + `IHttpContextAccessor`, matching Fund/CareConnect pattern
+- **`Liens.Api/appsettings.json`** — Added `Jwt` section with placeholder signing key (overridden per environment)
+- **`Liens.Api/appsettings.Development.json`** — Dev JWT config: issuer `legalsynq-identity`, audience `legalsynq-platform`, shared dev signing key
+- **`Liens.Api/Properties/launchSettings.json`** — Created with `ASPNETCORE_ENVIRONMENT=Development` on port 5009
+- **`Liens.Api.csproj` / `Liens.Infrastructure.csproj`** — Added `BuildingBlocks` and `Microsoft.AspNetCore.Authentication.JwtBearer` references
+- **`Gateway.Api/appsettings.json`** — `liens-protected` route: removed `AuthorizationPolicy: "Anonymous"`, now inherits global `RequireAuthorization()` (auth-required for all non-health/info Liens routes)
+
+### Verified
+- `dotnet build` succeeds for Liens.Api and Gateway.Api (0 warnings, 0 errors)
+- `/health` → 200 (anonymous), `/info` → 200 (anonymous), `/context` → 401 (unauthenticated)
+- `/context` with valid JWT → 200, returns full identity claims (userId, tenantId, tenantCode, email, orgId, orgType, roles, productRoles)
+- Gateway paths: `/liens/health` anonymous OK, `/liens/context` requires auth, all verified end-to-end

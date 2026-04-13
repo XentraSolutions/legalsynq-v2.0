@@ -23,6 +23,9 @@ public interface INotificationRepository
         Guid referralId,
         CancellationToken ct = default);
 
+    Task<bool> ExistsByDedupeKeyAsync(string dedupeKey, CancellationToken ct = default);
+    Task<bool> TryAddWithDedupeAsync(CareConnectNotification notification, CancellationToken ct = default);
+
     // LSCC-005-02: retry worker query
     /// <summary>
     /// Returns failed notifications that are due for automatic retry:

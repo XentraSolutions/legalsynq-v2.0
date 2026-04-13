@@ -12,6 +12,7 @@ packages/
 # Secrets & environment
 appsettings.*.json
 !appsettings.Development.json
+!appsettings.Production.json
 *.env
 .env*
 

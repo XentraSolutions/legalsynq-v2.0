@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
@@ -39,7 +40,8 @@ public static class NotificationEndpoints
             var result = await service.SearchAsync(tenantId, query, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapGet("/api/notifications/{id:guid}", async (
             Guid id,
@@ -51,6 +53,7 @@ public static class NotificationEndpoints
             var result = await service.GetByIdAsync(tenantId, id, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
     }
 }

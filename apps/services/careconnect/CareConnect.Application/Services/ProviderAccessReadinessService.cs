@@ -20,17 +20,17 @@ namespace CareConnect.Application.Services;
 /// </summary>
 public sealed class ProviderAccessReadinessService : IProviderAccessReadinessService
 {
-    private readonly ICapabilityService _caps;
+    private readonly IPermissionService _perms;
 
-    public ProviderAccessReadinessService(ICapabilityService caps)
-        => _caps = caps;
+    public ProviderAccessReadinessService(IPermissionService perms)
+        => _perms = perms;
 
     public async Task<ProviderAccessReadinessResult> GetReadinessAsync(
         IReadOnlyCollection<string> productRoles,
         CancellationToken ct = default)
     {
-        var hasReadAccess   = await _caps.HasCapabilityAsync(productRoles, CapabilityCodes.ReferralReadAddressed, ct);
-        var hasAcceptAccess = await _caps.HasCapabilityAsync(productRoles, CapabilityCodes.ReferralAccept, ct);
+        var hasReadAccess   = await _perms.HasPermissionAsync(productRoles, PermissionCodes.ReferralReadAddressed, ct);
+        var hasAcceptAccess = await _perms.HasPermissionAsync(productRoles, PermissionCodes.ReferralAccept, ct);
 
         var hasReceiverRole = productRoles.Contains(
             ProductRoleCodes.CareConnectReceiver,

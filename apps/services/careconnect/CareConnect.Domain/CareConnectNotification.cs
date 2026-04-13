@@ -36,6 +36,8 @@ public class CareConnectNotification : AuditableEntity
     /// </summary>
     public string TriggerSource { get; private set; } = NotificationSource.Initial;
 
+    public string? DedupeKey { get; private set; }
+
     private CareConnectNotification() { }
 
     /// <summary>
@@ -90,7 +92,8 @@ public class CareConnectNotification : AuditableEntity
         string? message,
         DateTime? scheduledForUtc,
         Guid?   createdByUserId,
-        string  triggerSource = NotificationSource.Initial)
+        string  triggerSource = NotificationSource.Initial,
+        string? dedupeKey = null)
     {
         return new CareConnectNotification
         {
@@ -109,6 +112,7 @@ public class CareConnectNotification : AuditableEntity
             LastAttemptAtUtc  = null,
             NextRetryAfterUtc = null,
             TriggerSource     = triggerSource,
+            DedupeKey         = dedupeKey,
             CreatedByUserId   = createdByUserId,
             UpdatedByUserId   = createdByUserId,
             CreatedAtUtc      = DateTime.UtcNow,

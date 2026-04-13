@@ -10,7 +10,8 @@ interface ReferralQueueToolbarProps {
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: '',           label: 'All'         },
-  { value: 'New',        label: 'Pending'     },
+  { value: 'New',        label: 'Unopened'    },
+  { value: 'NewOpened',  label: 'Opened'      },
   { value: 'Accepted',   label: 'Accepted'    },
   { value: 'InProgress', label: 'In Progress' },
   { value: 'Declined',   label: 'Declined'    },
