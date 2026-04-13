@@ -39,9 +39,16 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
   };
   if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
 
-  const tenantCode = request.headers.get('X-Tenant-Code');
-  const isBrandingRoute = pathSegments.join('/').startsWith('tenants/current/branding');
-  if (tenantCode && isBrandingRoute) reqHeaders['X-Tenant-Code'] = tenantCode;
+  const joinedPath = pathSegments.join('/');
+  const isBrandingRoute = joinedPath === 'api/tenants/current/branding'
+    || joinedPath === 'tenants/current/branding';
+  if (isBrandingRoute) {
+    const tenantCode = request.headers.get('X-Tenant-Code');
+    if (tenantCode) reqHeaders['X-Tenant-Code'] = tenantCode;
+
+    const forwardedHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+    if (forwardedHost) reqHeaders['X-Forwarded-Host'] = forwardedHost;
+  }
 
   let body: string | undefined;
   if (!['GET', 'HEAD'].includes(request.method)) {

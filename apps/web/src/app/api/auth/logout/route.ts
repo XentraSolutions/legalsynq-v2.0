@@ -29,9 +29,17 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json({ ok: true }, { status: 200 });
 
-  // Delete the cookie by setting maxAge to 0 and matching original attributes
+  // Delete the cookies by setting maxAge to 0 and matching original attributes
   response.cookies.set('platform_session', '', {
     httpOnly: true,
+    secure:   IS_PROD,
+    sameSite: IS_PROD ? 'strict' : 'lax',
+    path:     '/',
+    maxAge:   0,
+  });
+
+  response.cookies.set('tenant_code', '', {
+    httpOnly: false,
     secure:   IS_PROD,
     sameSite: IS_PROD ? 'strict' : 'lax',
     path:     '/',

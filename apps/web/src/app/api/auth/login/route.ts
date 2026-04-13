@@ -122,6 +122,15 @@ export async function POST(request: NextRequest) {
     // domain: intentionally omitted — scopes to exact request origin only
   });
 
+  const resolvedTenantCode = user.tenantCode ?? tenantCode;
+  response.cookies.set('tenant_code', resolvedTenantCode, {
+    httpOnly: false,
+    secure:   IS_PROD,
+    sameSite: IS_PROD ? 'strict' : 'lax',
+    path:     '/',
+    maxAge:   maxAgeSeconds,
+  });
+
   return response;
 }
 

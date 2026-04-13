@@ -32,12 +32,14 @@ function TenantLogo() {
   useEffect(() => {
     if (branding.logoDocumentId) {
       setStatus('loading');
-      setSrc(`/api/branding/logo/public?_t=${Date.now()}`);
+      const params = new URLSearchParams({ _t: String(Date.now()) });
+      if (branding.tenantCode) params.set('tenantCode', branding.tenantCode);
+      setSrc(`/api/branding/logo/public?${params}`);
     } else {
       setSrc(null);
       setStatus('error');
     }
-  }, [branding.logoDocumentId]);
+  }, [branding.logoDocumentId, branding.tenantCode]);
 
   if (status === 'error' || !src) return null;
 
