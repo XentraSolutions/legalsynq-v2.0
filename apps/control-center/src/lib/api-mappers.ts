@@ -295,6 +295,7 @@ export function mapTenantDetail(raw: unknown): TenantDetail {
                          : undefined,
     sessionTimeoutMinutes: rawTimeout != null ? Number(rawTimeout) : undefined,
     logoDocumentId: (r['logoDocumentId'] ?? r['logo_document_id']) as string | undefined,
+    logoWhiteDocumentId: (r['logoWhiteDocumentId'] ?? r['logo_white_document_id']) as string | undefined,
     productEntitlements: asArr(
       r['product_entitlements'] ?? r['productEntitlements'],
     ).map(mapEntitlement),
