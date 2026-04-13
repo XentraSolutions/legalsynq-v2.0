@@ -26,31 +26,42 @@ const HIGHLIGHTS = [
 
 function TenantLogo() {
   const branding = useTenantBranding();
-  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
-  const [src, setSrc] = useState<string | null>(null);
 
+  const sources: string[] = [];
+  if (branding.logoDocumentId)
+    sources.push(`/api/branding/logo/${branding.logoDocumentId}`);
+  if (branding.logoUrl)
+    sources.push(branding.logoUrl);
+  if (branding.tenantCode)
+    sources.push(`/api/branding/logo/public?tenantCode=${branding.tenantCode}`);
+
+  const [srcIndex, setSrcIndex] = useState(0);
+  const [exhausted, setExhausted] = useState(false);
+
+  const sourcesKey = sources.join('|');
   useEffect(() => {
-    if (branding.logoDocumentId) {
-      setStatus('loading');
-      const params = new URLSearchParams({ _t: String(Date.now()) });
-      if (branding.tenantCode) params.set('tenantCode', branding.tenantCode);
-      setSrc(`/api/branding/logo/public?${params}`);
-    } else {
-      setSrc(null);
-      setStatus('error');
-    }
-  }, [branding.logoDocumentId, branding.tenantCode]);
+    setSrcIndex(0);
+    setExhausted(false);
+  }, [sourcesKey]);
 
-  if (status === 'error' || !src) return null;
+  if (sources.length === 0 || exhausted) return null;
+
+  function handleError() {
+    const next = srcIndex + 1;
+    if (next < sources.length) {
+      setSrcIndex(next);
+    } else {
+      setExhausted(true);
+    }
+  }
 
   return (
-    <div className="mb-6" style={status === 'loading' ? { height: 0, overflow: 'hidden' } : undefined}>
+    <div className="mb-6">
       <img
-        src={src}
+        src={sources[srcIndex]}
         alt={branding.displayName || 'Organization logo'}
         className="max-h-16 max-w-[220px] object-contain"
-        onLoad={() => setStatus('loaded')}
-        onError={() => setStatus('error')}
+        onError={handleError}
       />
     </div>
   );

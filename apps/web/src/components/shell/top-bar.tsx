@@ -350,7 +350,6 @@ function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useT
   }
 
   const isWhiteSrc = srcIndex === 0 && !!branding.logoWhiteDocumentId && hasSession;
-  const isColorFallback = !isWhiteSrc && srcIndex > 0;
 
   return (
     <img
@@ -359,7 +358,7 @@ function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useT
       className="w-auto object-contain max-w-[180px]"
       style={{
         height: 32,
-        ...(isColorFallback && !branding.logoWhiteDocumentId
+        ...(!isWhiteSrc
           ? { filter: 'brightness(0) invert(1)', opacity: 0.9 }
           : {}),
       }}
