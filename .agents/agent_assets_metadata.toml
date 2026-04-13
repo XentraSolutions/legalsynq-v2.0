@@ -192,3 +192,9 @@ id = "rCN9DlcAHElCqmC159aDO"
 uri = "file://downloads/legalsynq-source.tar.gz"
 type = "unspecified"
 title = "LegalSynq Source Code (tar.gz)"
+
+[[outputs]]
+id = "gx4xlWV71X2YTIY94eXMK"
+uri = "file://analysis/LS-LIENS-01-001-report.md"
+type = "text"
+title = "LS-LIENS-01-001 Scaffolding Report"

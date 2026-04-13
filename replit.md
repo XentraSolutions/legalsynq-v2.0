@@ -286,6 +286,22 @@ apps/
         Data/Migrations/                  ← InitialFundSchema
         Repositories/ApplicationRepository.cs
         DependencyInjection.cs
+    liens/
+      Liens.Api/                          → ASP.NET Core Web API (port 5009)
+        Endpoints/
+          LienEndpoints.cs               ← placeholder for future SynqLiens routes
+        Middleware/ExceptionHandlingMiddleware.cs
+        appsettings.json                  ← port 5009 + ConnectionStrings:LiensDb (placeholder)
+        appsettings.Development.json      ← dev JWT signing key + debug logging
+      Liens.Application/
+        Interfaces/                       ← future service interfaces
+        Services/                         ← future application services
+      Liens.Domain/
+        Entities/                         ← future domain entities
+      Liens.Infrastructure/
+        DependencyInjection.cs            ← AddLiensServices() extension
+        Persistence/                      ← future DbContext + migrations
+        Repositories/                     ← future repository implementations
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/
