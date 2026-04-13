@@ -63,8 +63,9 @@ async function serverRequest<T>(
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export const serverApi = {
-  get:   <T>(path: string)                 => serverRequest<T>(path),
-  post:  <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'POST', body }),
-  put:   <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'PUT',  body }),
-  patch: <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'PATCH', body }),
+  get:    <T>(path: string)                 => serverRequest<T>(path),
+  post:   <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'POST', body }),
+  put:    <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'PUT',  body }),
+  patch:  <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'PATCH', body }),
+  delete: <T>(path: string)                 => serverRequest<T>(path, { method: 'DELETE' }),
 };

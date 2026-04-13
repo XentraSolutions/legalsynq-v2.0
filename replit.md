@@ -42,6 +42,7 @@ apps/web/
       session.ts                ← getServerSession() — calls /auth/me (server-side)
       auth-guards.ts            ← requireAuthenticated/Org/ProductRole/Admin (server components)
       tenant-auth-guard.ts      ← requireTenantAdmin() — redirects non-admins to /tenant/access-denied
+      tenant-api.ts             ← BFF layer for tenant authorization APIs (server + client methods)
       nav.ts                    ← buildNavGroups(session) — role-driven nav derivation
     providers/
       session-provider.tsx      ← SessionProvider — fetches BFF /api/auth/me client-side on mount
@@ -159,7 +160,10 @@ apps/web/
         access-denied/page.tsx                    ← access denied page for non-admin users
         authorization/
           layout.tsx                              ← requireTenantAdmin() guard + header + AuthorizationNav tabs
-          users/page.tsx                          ← placeholder (LS-TENANT-002)
+          users/page.tsx                          ← LS-TENANT-002: user list with search/filter/pagination
+          users/AuthUserTable.tsx                 ← client table: search, status filter, row click → detail
+          users/[userId]/page.tsx                 ← LS-TENANT-002: user detail (identity, products, roles, groups, effective access)
+          users/[userId]/UserDetailClient.tsx     ← client detail: assign/revoke products/roles/groups, access-debug, simulator link
           groups/page.tsx                         ← placeholder (LS-TENANT-003)
           access/page.tsx                         ← placeholder (LS-TENANT-004)
           simulator/page.tsx                      ← placeholder (LS-TENANT-005)

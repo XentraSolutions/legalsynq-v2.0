@@ -1,23 +1,37 @@
-export default function AuthorizationUsersPage() {
+import { requireTenantAdmin } from '@/lib/tenant-auth-guard';
+import { tenantServerApi, ServerApiError } from '@/lib/tenant-api';
+import { AuthUserTable } from './AuthUserTable';
+import type { TenantUser } from '@/types/tenant';
+
+export default async function AuthorizationUsersPage() {
+  const session = await requireTenantAdmin();
+
+  let users: TenantUser[] = [];
+  let fetchError: string | null = null;
+
+  try {
+    users = await tenantServerApi.getUsers();
+  } catch (err) {
+    fetchError =
+      err instanceof ServerApiError
+        ? `Failed to load users (${err.status}).`
+        : 'Failed to load users. Is the identity service running?';
+  }
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-8">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-          <i className="ri-user-line text-xl text-blue-600" />
+    <div className="space-y-4">
+      {fetchError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="flex items-center gap-2">
+            <i className="ri-error-warning-line text-base" />
+            {fetchError}
+          </div>
         </div>
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Users Management</h2>
-          <p className="text-sm text-gray-500">Coming in LS-TENANT-002</p>
-        </div>
-      </div>
-      <p className="text-sm text-gray-600 leading-relaxed">
-        Manage tenant user accounts, assign roles, and configure individual access permissions.
-        This module will provide full CRUD operations for user lifecycle management within your tenant.
-      </p>
-      <div className="mt-6 flex items-center gap-2 text-xs text-gray-400">
-        <i className="ri-time-line" />
-        <span>Scheduled for next release</span>
-      </div>
+      )}
+
+      {!fetchError && (
+        <AuthUserTable users={users} />
+      )}
     </div>
   );
 }
