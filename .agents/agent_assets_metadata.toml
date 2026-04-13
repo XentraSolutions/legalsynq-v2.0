@@ -204,3 +204,9 @@ id = "C_fA2oy8SmS74K1Mu12lj"
 uri = "file://analysis/LS-LIENS-01-001-01-report.md"
 type = "text"
 title = "LS-LIENS-01-001-01 Hardening Iteration Report"
+
+[[outputs]]
+id = "D4sgXTv9QxjC2TFIhg-YB"
+uri = "file://analysis/LS-CORE-AUTH-001-report.md"
+type = "text"
+title = "LS-CORE-AUTH-001 — TenantAdmin Auto-Grant Report"
