@@ -148,6 +148,7 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
           pageSize={result.pageSize}
           isReferrer={isReferrer}
           isReceiver={isReceiver}
+          orgId={session.orgId}
           currentQs={currentQs}
         />
       )}

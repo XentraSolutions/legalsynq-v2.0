@@ -29,13 +29,13 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
   const { id } = await params;
   const session = await requireOrg();
 
-  const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
-  const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
+  const hasReferrerRole = session.productRoles.includes(ProductRole.CareConnectReferrer);
+  const hasReceiverRole = session.productRoles.includes(ProductRole.CareConnectReceiver);
 
   // LSCC-01-002-02: Enforce the admin-controlled access model.
   // Only users with a CareConnect role may enter the referral flow.
   // Referral details are NOT rendered in the blocked state.
-  if (!isReferrer && !isReceiver) {
+  if (!hasReferrerRole && !hasReceiverRole) {
     const readiness = checkCareConnectReceiverAccess(session);
     return <ReferralAccessBlocked reason={readiness.reason} />;
   }
@@ -79,16 +79,20 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
         </div>
       )}
 
-      {referral && (
-        <>
+      {referral && (() => {
+        const isReferrerOfReferral = hasReferrerRole && !!session.orgId
+          && referral.referringOrganizationId === session.orgId;
+        const isReceiverOfReferral = hasReceiverRole && !!session.orgId
+          && referral.receivingOrganizationId === session.orgId;
+        return <>
           {/* 1. Header — identity + prominent status */}
           <ReferralPageHeader referral={referral} />
 
           {/* 2. Primary action area */}
           <ReferralStatusActions
             referral={referral}
-            isReceiver={isReceiver}
-            isReferrer={isReferrer}
+            isReceiver={isReceiverOfReferral}
+            isReferrer={isReferrerOfReferral}
           />
 
           {/* LSCC-01-001-01: Book appointment prompt removed.
@@ -99,10 +103,10 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
           <ReferralDetailPanel referral={referral} hideHeader />
 
           {/* 4. Delivery / access controls — referrers only */}
-          {isReferrer && <ReferralDeliveryCard referral={referral} />}
+          {isReferrerOfReferral && <ReferralDeliveryCard referral={referral} />}
 
           {/* 5. Audit timeline — referrers only */}
-          {isReferrer && <ReferralAuditTimeline referralId={referral.id} />}
+          {isReferrerOfReferral && <ReferralAuditTimeline referralId={referral.id} />}
 
           {/* 5b. Activity / status history — all roles */}
           <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">
@@ -111,8 +115,8 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
             </h3>
             <ReferralTimeline referralId={referral.id} />
           </div>
-        </>
-      )}
+        </>;
+      })()}
     </div>
   );
 }

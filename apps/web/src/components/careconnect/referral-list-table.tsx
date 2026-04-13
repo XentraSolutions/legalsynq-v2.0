@@ -11,6 +11,7 @@ interface ReferralListTableProps {
   pageSize:   number;
   isReferrer: boolean;
   isReceiver: boolean;
+  orgId?:     string;
   currentQs?: string;
 }
 
@@ -29,6 +30,7 @@ export function ReferralListTable({
   pageSize,
   isReferrer,
   isReceiver,
+  orgId,
   currentQs = '',
 }: ReferralListTableProps) {
   if (referrals.length === 0) {
@@ -100,8 +102,8 @@ export function ReferralListTable({
                 <td className="px-4 py-3">
                   <ReferralQuickActions
                     referral={r}
-                    isReferrer={isReferrer}
-                    isReceiver={isReceiver}
+                    isReferrer={isReferrer && !!orgId && r.referringOrganizationId === orgId}
+                    isReceiver={isReceiver && !!orgId && r.receivingOrganizationId === orgId}
                     contextQs={currentQs}
                   />
                 </td>

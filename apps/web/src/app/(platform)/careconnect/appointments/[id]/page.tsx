@@ -16,10 +16,10 @@ export default async function AppointmentDetailPage({ params }: AppointmentDetai
   const { id } = await params;
   const session = await requireOrg();
 
-  const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
-  const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
+  const hasReferrerRole = session.productRoles.includes(ProductRole.CareConnectReferrer);
+  const hasReceiverRole = session.productRoles.includes(ProductRole.CareConnectReceiver);
 
-  if (!isReferrer && !isReceiver) {
+  if (!hasReferrerRole && !hasReceiverRole) {
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-700">
         You do not have a CareConnect role.
@@ -75,18 +75,22 @@ export default async function AppointmentDetailPage({ params }: AppointmentDetai
       {appointment && <AppointmentDetailPanel appointment={appointment} />}
 
       {/* Confirm / NoShow / Reschedule actions */}
-      {appointment && (
-        <AppointmentActions
-          appointment={appointment}
-          isReceiver={isReceiver}
-          isReferrer={isReferrer}
-        />
-      )}
-
-      {/* Cancel — separate panel below other actions */}
-      {appointment && (isReferrer || isReceiver) && (
-        <AppointmentCancelButton appointment={appointment} />
-      )}
+      {appointment && (() => {
+        const isReferrerOfAppt = hasReferrerRole && !!session.orgId
+          && appointment.referringOrganizationId === session.orgId;
+        const isReceiverOfAppt = hasReceiverRole && !!session.orgId
+          && appointment.receivingOrganizationId === session.orgId;
+        return <>
+          <AppointmentActions
+            appointment={appointment}
+            isReceiver={isReceiverOfAppt}
+            isReferrer={isReferrerOfAppt}
+          />
+          {(isReferrerOfAppt || isReceiverOfAppt) && (
+            <AppointmentCancelButton appointment={appointment} />
+          )}
+        </>;
+      })()}
     </div>
   );
 }

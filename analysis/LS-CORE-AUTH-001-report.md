@@ -262,9 +262,38 @@ The `AddRole` helper uses a `seenRoleKeys` set to deduplicate. TenantAdmin auto-
 
 ---
 
-## 9. Recommendations for Follow-Up
+## 9. Side-Effect Fix — CareConnect Org-Relationship Action Gating
+
+### Problem
+The auto-grant gives a Law Firm TenantAdmin both `CARECONNECT_REFERRER` and `CARECONNECT_RECEIVER` roles. The CareConnect UI pages used role-based checks (`isReceiver = session.productRoles.includes(...)`) to decide whether to show action buttons (Accept Referral, Confirm Appointment, etc.). A TenantAdmin with both roles would incorrectly see receiver actions on referrals they sent, and referrer actions on referrals they received.
+
+### Fix Pattern
+Changed from pure role-based gating to **role + org-relationship gating**:
+- Renamed role checks to `hasReferrerRole` / `hasReceiverRole` (still used for page-level access control)
+- Computed per-record flags: `isReferrerOfReferral = hasReferrerRole && session.orgId === referral.referringOrganizationId`
+- Passed per-record flags (not role flags) to action components
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `apps/web/src/app/(platform)/careconnect/referrals/[id]/page.tsx` | Detail page: org-relationship check for Accept/Decline/Cancel actions |
+| `apps/web/src/app/(platform)/careconnect/appointments/[id]/page.tsx` | Detail page: org-relationship check for Confirm/Complete/NoShow/Reschedule/Cancel actions |
+| `apps/web/src/app/(platform)/careconnect/referrals/page.tsx` | List page: passes `orgId` to table component |
+| `apps/web/src/components/careconnect/referral-list-table.tsx` | Accepts `orgId`, computes per-row org-relationship flags for quick actions |
+
+### Pages Reviewed but Not Changed
+- **Referral list page** (`referrals/page.tsx`): Uses `isReferrer`/`isReceiver` for heading/tab display only — OK for TenantAdmin to see both views
+- **Appointment list page** (`appointments/page.tsx`): Uses roles for heading only, no inline action buttons
+- **Dashboard** (`dashboard/page.tsx`): Uses roles for layout sections, not action gating
+- **Providers pages**: Uses `isReferrer` for access control (correct — only referrers browse providers)
+
+---
+
+## 10. Recommendations for Follow-Up
 
 1. **Populate or deprecate `TenantProductEntitlements`** — The table exists but has no data. Either create a migration to sync it from `TenantProducts`, or drop it to prevent future confusion.
 2. **Harden TenantAdmin detection** — Consider matching by a canonical role code/ID + `IsSystemRole` flag rather than display name string, to prevent edge cases if role naming conventions change.
 3. **PlatformAdmin product access** — Currently PlatformAdmins receive no auto-granted product roles. If PlatformAdmins need cross-tenant product access for support/debugging, a similar auto-grant mechanism could be added (scoped to the tenant they authenticate against).
 4. **Regression tests** — Add automated tests for: (a) TenantAdmin gets full product roles + permissions, (b) non-TenantAdmin unaffected, (c) disabled product not granted, (d) cache invalidation on product toggle.
+5. **Extract shared helper** — Consider creating a `getOrgRelationshipFlags(orgId, record)` utility to centralize the org-match logic and prevent drift across CareConnect pages.
