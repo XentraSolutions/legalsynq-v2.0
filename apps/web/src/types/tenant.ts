@@ -143,6 +143,41 @@ export interface AccessDebugResponse {
   }[];
 }
 
+export interface PermissionItem {
+  id: string;
+  code: string;
+  name: string;
+  description?: string;
+  category?: string;
+  productId?: string;
+  productCode: string;
+  productName: string;
+  isActive: boolean;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface AdminUserItem {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+  status: string;
+  primaryOrg?: string;
+  groupCount: number;
+  tenantId: string;
+  tenantCode: string;
+  createdAtUtc: string;
+}
+
+export interface AdminUsersResponse {
+  items: AdminUserItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface AssignableRoleItem {
   id: string;
   name: string;

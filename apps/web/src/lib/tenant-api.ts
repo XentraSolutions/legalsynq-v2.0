@@ -9,6 +9,8 @@ import type {
   GroupMember,
   GroupProductAccess,
   GroupRoleAssignment,
+  PermissionItem,
+  AdminUsersResponse,
 } from '@/types/tenant';
 
 export { ServerApiError, ApiError };
@@ -46,6 +48,17 @@ export const tenantServerApi = {
 
   getProducts: () =>
     serverApi.get<{ code: string; name: string; isActive: boolean }[]>('/identity/api/admin/products'),
+
+  getAdminUsers: (page = 1, pageSize = 200) =>
+    serverApi.get<AdminUsersResponse>(`/identity/api/admin/users?page=${page}&pageSize=${pageSize}`),
+
+  getPermissions: () =>
+    serverApi.get<{ items: PermissionItem[]; totalCount: number }>('/identity/api/admin/permissions'),
+
+  getRolePermissions: (roleId: string) =>
+    serverApi.get<{ roleId: string; roleName: string; permissions: { id: string; code: string; name: string; productCode: string }[] }>(
+      `/identity/api/admin/roles/${roleId}/permissions`
+    ),
 };
 
 export const tenantClientApi = {
@@ -87,4 +100,7 @@ export const tenantClientApi = {
 
   removeGroupRole: (tenantId: string, groupId: string, assignmentId: string) =>
     apiClient.delete<void>(`/identity/api/tenants/${tenantId}/groups/${groupId}/roles/${assignmentId}`),
+
+  getUserAccessDebug: (userId: string) =>
+    apiClient.get<AccessDebugResponse>(`/identity/api/admin/users/${userId}/access-debug`),
 };
