@@ -308,19 +308,33 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
 }
 
 function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useTenantBranding>; hasSession: boolean }) {
-  const [imgError, setImgError] = useState(false);
+  const [docLogoError, setDocLogoError] = useState(false);
+  const [publicLogoError, setPublicLogoError] = useState(false);
 
-  const logoSrc = branding.logoDocumentId && hasSession
+  const docLogoSrc = branding.logoDocumentId && hasSession
     ? `/api/branding/logo/${branding.logoDocumentId}`
     : branding.logoUrl || null;
 
-  if (logoSrc && !imgError) {
+  if (docLogoSrc && !docLogoError) {
     return (
       <img
-        src={logoSrc}
+        src={docLogoSrc}
         alt={branding.displayName || 'Tenant logo'}
-        className="h-7 w-auto object-contain max-w-[160px]"
-        onError={() => setImgError(true)}
+        className="w-auto object-contain max-w-[180px]"
+        style={{ height: 32 }}
+        onError={() => setDocLogoError(true)}
+      />
+    );
+  }
+
+  if (!publicLogoError) {
+    return (
+      <img
+        src="/api/branding/logo/public"
+        alt={branding.displayName || 'Tenant logo'}
+        className="w-auto object-contain max-w-[180px]"
+        style={{ height: 32 }}
+        onError={() => setPublicLogoError(true)}
       />
     );
   }
@@ -333,7 +347,7 @@ function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useT
       height={32}
       priority
       unoptimized
-      className="h-7 w-auto"
+      className="h-8 w-auto"
     />
   );
 }
