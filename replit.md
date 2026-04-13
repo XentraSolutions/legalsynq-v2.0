@@ -3661,6 +3661,28 @@ Created the core `Lien` domain entity as the central business object of the Synq
 - Full Liens service stack: 0 warnings, 0 errors
 - Report: `analysis/LS-LIENS-03-002-report.md`
 
+## LienOffer Domain Entity — 2026-04-13
+
+### Summary
+Created the `LienOffer` domain entity to model marketplace buyer offers against liens. Supports the full offer lifecycle: create, update pending, accept, reject, withdraw, expire.
+
+### Entity Created
+- **LienOffer** (`Liens.Domain/Entities/LienOffer.cs`) — 15 properties, 6 domain methods. Buyer→Seller marketplace negotiation with clock-based expiration guard.
+
+### Supporting Types Added
+- **`OfferStatus`** (new) — Pending, Accepted, Rejected, Withdrawn, Expired. Includes `Terminal` subset and `AllowedTransitions` matrix.
+
+### Key Design Decisions
+- `BuyerOrgId` + `SellerOrgId` (snapshot) for party identification
+- `Notes` (buyer) + `ResponseNotes` (seller) separation
+- `ExpiresAtUtc` with domain-enforced expiration via `EnsurePendingAndNotExpired()` guard
+- `IsExpired` computed property covers both explicit and clock-based expiry
+- `Expire()` accepts optional `Guid?` for system vs user-triggered expiration
+
+### Build
+- Full Liens service stack: 0 warnings, 0 errors
+- Report: `analysis/LS-LIENS-03-003-report.md`
+
 ## Liens Service JWT Auth Integration — 2026-04-13
 
 ### Summary
