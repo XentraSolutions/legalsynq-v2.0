@@ -216,3 +216,9 @@ id = "TXLMD8E-hVAV14R0CCwUD"
 uri = "file://analysis/LS-SESSION-2026-04-13-report.md"
 type = "text"
 title = "Session Report — April 13, 2026"
+
+[[outputs]]
+id = "0wcwcrsXJI5poJYeo0CyH"
+uri = "file://analysis/LS-LIENS-02-002-report.md"
+type = "text"
+title = "LS-LIENS-02-002 — Liens Product Capability Model Report"
