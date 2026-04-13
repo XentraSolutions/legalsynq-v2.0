@@ -19,5 +19,6 @@ public interface ICurrentRequestContext
     Guid? OrgTypeId { get; }
     IReadOnlyCollection<string> Roles { get; }
     IReadOnlyCollection<string> ProductRoles { get; }
+    IReadOnlyCollection<string> Permissions { get; }
     bool IsPlatformAdmin { get; }
 }

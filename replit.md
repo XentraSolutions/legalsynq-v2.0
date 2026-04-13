@@ -289,7 +289,7 @@ apps/
     liens/
       Liens.Api/                          → ASP.NET Core Web API (port 5009)
         Endpoints/
-          LienEndpoints.cs               ← placeholder for future SynqLiens routes
+          LienEndpoints.cs               ← permission-guarded stub endpoints (RequireProductAccess + RequirePermission filters)
         Middleware/ExceptionHandlingMiddleware.cs
         appsettings.json                  ← port 5009 + ConnectionStrings:LiensDb (placeholder)
         appsettings.Development.json      ← dev JWT signing key + debug logging
@@ -297,9 +297,10 @@ apps/
         Interfaces/                       ← future service interfaces
         Services/                         ← future application services
       Liens.Domain/
-        Entities/                         ← future domain entities
+        Entities/                         ← Lien, LienOffer, Case, Contact, Facility, LookupValue
+        LiensPermissions.cs              ← static permission code constants (SYNQ_LIENS.lien:create/offer/read:own/browse/purchase/read:held/service/settle)
       Liens.Infrastructure/
-        DependencyInjection.cs            ← AddLiensServices() extension
+        DependencyInjection.cs            ← AddLiensServices() extension (ICurrentRequestContext registration)
         Persistence/                      ← future DbContext + migrations
         Repositories/                     ← future repository implementations
     careconnect/
@@ -482,6 +483,9 @@ shared/
 - **Engine:** `IProductProvisioningService` → `ProductProvisioningService` (Identity.Infrastructure)
 - **Flow:** `ProvisionAsync(tenantId, productCode, enabled)` → TenantProduct creation → OrganizationProduct cascading (eligibility-filtered) → product-specific handler execution
 - **Eligibility:** `ProductEligibilityConfig` (Identity.Domain) — centralized OrgType → Product mapping. LAW_FIRM→[CC,FUND,LIENS], PROVIDER→[CC], FUNDER→[FUND], LIEN_OWNER→[LIENS], INTERNAL→[ALL]
+- **Permission code format:** `PRODUCT_CODE.domain:action` (e.g., `SYNQ_LIENS.lien:create`). Validated by regex in `Permission.cs`. Migration `20260414000001_UpdatePermissionCodesToNamespaced` updated all old-format codes to the namespaced format.
+- **ICurrentRequestContext.Permissions:** Exposes JWT `permissions` claims. Added alongside existing `ProductRoles` for fine-grained permission checks in downstream services.
+- **LiensPermissions (Liens.Domain):** Static constants for all 8 SYNQ_LIENS permission codes. Used with `RequirePermission` endpoint filter in Liens.Api.
 - **Handler abstraction:** `IProductProvisioningHandler` — resolved by ProductCode, executed after org products are created
 - **CareConnect handler:** `CareConnectProvisioningHandler` — calls CareConnect `/internal/provision-provider` to create/link/activate Provider records for PROVIDER orgs
 - **Internal endpoint:** CareConnect `POST /internal/provision-provider` (AllowAnonymous) — idempotent provider creation/activation by OrganizationId

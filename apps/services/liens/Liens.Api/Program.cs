@@ -89,6 +89,7 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
         orgTypeId     = ctx.OrgTypeId,
         roles         = ctx.Roles,
         productRoles  = ctx.ProductRoles,
+        permissions   = ctx.Permissions,
         isPlatformAdmin = ctx.IsPlatformAdmin,
     });
 })

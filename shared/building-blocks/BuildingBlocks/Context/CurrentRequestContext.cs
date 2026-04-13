@@ -46,6 +46,10 @@ public class CurrentRequestContext : ICurrentRequestContext
         User?.FindAll("product_roles").Select(c => c.Value).ToList().AsReadOnly()
         ?? (IReadOnlyCollection<string>)Array.Empty<string>();
 
+    public IReadOnlyCollection<string> Permissions =>
+        User?.FindAll("permissions").Select(c => c.Value).ToList().AsReadOnly()
+        ?? (IReadOnlyCollection<string>)Array.Empty<string>();
+
     public bool IsPlatformAdmin =>
         Roles.Contains(Authorization.Roles.PlatformAdmin, StringComparer.OrdinalIgnoreCase);
 }
