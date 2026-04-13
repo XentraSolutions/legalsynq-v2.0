@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { tenantClientApi } from '@/lib/tenant-api';
+import { tenantClientApi } from '@/lib/tenant-client-api';
 import type {
   AdminUserItem,
   TenantGroup,

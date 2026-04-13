@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { tenantClientApi } from '@/lib/tenant-api';
+import { tenantClientApi } from '@/lib/tenant-client-api';
 import type {
   AdminUserItem,
   PermissionItem,

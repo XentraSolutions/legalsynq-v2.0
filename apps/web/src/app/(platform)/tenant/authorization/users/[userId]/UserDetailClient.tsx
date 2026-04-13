@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { tenantClientApi, ApiError } from '@/lib/tenant-api';
+import { tenantClientApi, ApiError } from '@/lib/tenant-client-api';
 import type { TenantUserDetail, AccessDebugResponse, TenantGroup, AssignableRolesResponse } from '@/types/tenant';
 
 interface Props {

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { tenantClientApi, ApiError } from '@/lib/tenant-api';
+import { tenantClientApi, ApiError } from '@/lib/tenant-client-api';
 import type { TenantGroup, TenantUser } from '@/types/tenant';
 
 type StatusFilter = 'All' | 'Active' | 'Archived';
