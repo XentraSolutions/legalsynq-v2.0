@@ -1,9 +1,13 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
   #nullable disable
 
-  namespace PlatformAuditEventService.Data;
+  namespace PlatformAuditEventService.Data.Migrations;
 
+  [DbContext(typeof(AuditEventDbContext))]
+  [Migration("20260413230000_AddTablePrefixes")]
   public partial class AddTablePrefixes : Migration
   {
       protected override void Up(MigrationBuilder migrationBuilder)
