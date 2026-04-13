@@ -8,7 +8,7 @@ public class NotificationEventConfiguration : IEntityTypeConfiguration<Notificat
 {
     public void Configure(EntityTypeBuilder<NotificationEvent> builder)
     {
-        builder.ToTable("notification_events");
+        builder.ToTable("ntf_notification_events");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -34,7 +34,7 @@ public class RecipientContactHealthConfiguration : IEntityTypeConfiguration<Reci
 {
     public void Configure(EntityTypeBuilder<RecipientContactHealth> builder)
     {
-        builder.ToTable("recipient_contact_health");
+        builder.ToTable("ntf_recipient_contact_health");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -61,7 +61,7 @@ public class DeliveryIssueConfiguration : IEntityTypeConfiguration<DeliveryIssue
 {
     public void Configure(EntityTypeBuilder<DeliveryIssue> builder)
     {
-        builder.ToTable("delivery_issues");
+        builder.ToTable("ntf_delivery_issues");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -85,7 +85,7 @@ public class ContactSuppressionConfiguration : IEntityTypeConfiguration<ContactS
 {
     public void Configure(EntityTypeBuilder<ContactSuppression> builder)
     {
-        builder.ToTable("contact_suppressions");
+        builder.ToTable("ntf_contact_suppressions");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");

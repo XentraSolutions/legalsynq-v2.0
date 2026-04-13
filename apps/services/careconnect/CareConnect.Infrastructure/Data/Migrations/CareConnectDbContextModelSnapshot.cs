@@ -63,7 +63,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("UserId", "AttemptedAtUtc")
                         .HasDatabaseName("IX_BlockedProviderAccessLogs_UserId_AttemptedAtUtc");
 
-                    b.ToTable("BlockedProviderAccessLogs", (string)null);
+                    b.ToTable("cc_BlockedProviderAccessLogs", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ActivationRequest", b =>
@@ -147,7 +147,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("Status", "CreatedAtUtc")
                         .HasDatabaseName("IX_ActivationRequests_Status_CreatedAt");
 
-                    b.ToTable("ActivationRequests", (string)null);
+                    b.ToTable("cc_ActivationRequests", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.Appointment", b =>
@@ -246,7 +246,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId", "ProviderId", "ScheduledStartAtUtc")
                         .HasDatabaseName("IX_Appointments_TenantId_ProviderId_Start");
 
-                    b.ToTable("Appointments", (string)null);
+                    b.ToTable("cc_Appointments", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.AppointmentAttachment", b =>
@@ -311,7 +311,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "AppointmentId", "CreatedAtUtc");
 
-                    b.ToTable("AppointmentAttachments", (string)null);
+                    b.ToTable("cc_AppointmentAttachments", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.AppointmentNote", b =>
@@ -359,7 +359,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "AppointmentId", "CreatedAtUtc");
 
-                    b.ToTable("AppointmentNotes", (string)null);
+                    b.ToTable("cc_AppointmentNotes", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.AppointmentSlot", b =>
@@ -433,7 +433,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId", "ProviderId", "ProviderAvailabilityTemplateId", "StartAtUtc")
                         .IsUnique();
 
-                    b.ToTable("AppointmentSlots", (string)null);
+                    b.ToTable("cc_AppointmentSlots", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.AppointmentStatusHistory", b =>
@@ -476,7 +476,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "ChangedAtUtc");
 
-                    b.ToTable("AppointmentStatusHistories", (string)null);
+                    b.ToTable("cc_AppointmentStatusHistories", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.CareConnectNotification", b =>
@@ -569,7 +569,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Status", "ScheduledForUtc");
 
-                    b.ToTable("CareConnectNotifications", (string)null);
+                    b.ToTable("cc_CareConnectNotifications", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.Category", b =>
@@ -603,7 +603,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("Categories", (string)null);
+                    b.ToTable("cc_Categories", (string)null);
 
                     b.HasData(
                         new
@@ -711,7 +711,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Name");
 
-                    b.ToTable("Facilities", (string)null);
+                    b.ToTable("cc_Facilities", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.Party", b =>
@@ -785,7 +785,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId", "LastName", "FirstName")
                         .HasDatabaseName("IX_Parties_TenantId_Name");
 
-                    b.ToTable("Parties", (string)null);
+                    b.ToTable("cc_Parties", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.PartyContact", b =>
@@ -825,7 +825,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_PartyContacts_PartyId_Type_Value");
 
-                    b.ToTable("PartyContacts", (string)null);
+                    b.ToTable("cc_PartyContacts", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.Provider", b =>
@@ -924,7 +924,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Latitude", "Longitude");
 
-                    b.ToTable("Providers", (string)null);
+                    b.ToTable("cc_Providers", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ProviderAvailabilityException", b =>
@@ -984,7 +984,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "StartAtUtc", "EndAtUtc");
 
-                    b.ToTable("ProviderAvailabilityExceptions", (string)null);
+                    b.ToTable("cc_ProviderAvailabilityExceptions", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ProviderAvailabilityTemplate", b =>
@@ -1055,7 +1055,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "ProviderId", "DayOfWeek");
 
-                    b.ToTable("ProviderAvailabilityTemplates", (string)null);
+                    b.ToTable("cc_ProviderAvailabilityTemplates", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ProviderCategory", b =>
@@ -1070,7 +1070,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("CategoryId");
 
-                    b.ToTable("ProviderCategories", (string)null);
+                    b.ToTable("cc_ProviderCategories", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ProviderFacility", b =>
@@ -1088,7 +1088,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("FacilityId");
 
-                    b.ToTable("ProviderFacilities", (string)null);
+                    b.ToTable("cc_ProviderFacilities", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ProviderServiceOffering", b =>
@@ -1118,7 +1118,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("ProviderId", "ServiceOfferingId", "FacilityId")
                         .IsUnique();
 
-                    b.ToTable("ProviderServiceOfferings", (string)null);
+                    b.ToTable("cc_ProviderServiceOfferings", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.Referral", b =>
@@ -1244,7 +1244,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("IX_Referrals_TenantId_Status");
 
-                    b.ToTable("Referrals", (string)null);
+                    b.ToTable("cc_Referrals", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ReferralAttachment", b =>
@@ -1309,7 +1309,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "ReferralId", "CreatedAtUtc");
 
-                    b.ToTable("ReferralAttachments", (string)null);
+                    b.ToTable("cc_ReferralAttachments", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ReferralNote", b =>
@@ -1370,7 +1370,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId", "ReferralId", "CreatedAtUtc")
                         .HasDatabaseName("IX_ReferralNotes_TenantId_ReferralId_CreatedAtUtc");
 
-                    b.ToTable("ReferralNotes", (string)null);
+                    b.ToTable("cc_ReferralNotes", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ReferralStatusHistory", b =>
@@ -1413,7 +1413,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "ReferralId");
 
-                    b.ToTable("ReferralStatusHistories", (string)null);
+                    b.ToTable("cc_ReferralStatusHistories", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ServiceOffering", b =>
@@ -1462,7 +1462,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId", "Code")
                         .IsUnique();
 
-                    b.ToTable("ServiceOfferings", (string)null);
+                    b.ToTable("cc_ServiceOfferings", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ActivationRequest", b =>

@@ -8,7 +8,7 @@ public class AccessGroupMembershipConfiguration : IEntityTypeConfiguration<Acces
 {
     public void Configure(EntityTypeBuilder<AccessGroupMembership> builder)
     {
-        builder.ToTable("AccessGroupMemberships");
+        builder.ToTable("idt_AccessGroupMemberships");
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.TenantId).IsRequired();

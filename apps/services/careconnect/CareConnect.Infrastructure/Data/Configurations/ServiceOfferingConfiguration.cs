@@ -8,7 +8,7 @@ public class ServiceOfferingConfiguration : IEntityTypeConfiguration<ServiceOffe
 {
     public void Configure(EntityTypeBuilder<ServiceOffering> builder)
     {
-        builder.ToTable("ServiceOfferings");
+        builder.ToTable("cc_ServiceOfferings");
 
         builder.HasKey(s => s.Id);
 

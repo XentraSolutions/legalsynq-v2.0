@@ -8,7 +8,7 @@ public class PolicyConfiguration : IEntityTypeConfiguration<Policy>
 {
     public void Configure(EntityTypeBuilder<Policy> builder)
     {
-        builder.ToTable("Policies");
+        builder.ToTable("idt_Policies");
 
         builder.HasKey(p => p.Id);
 

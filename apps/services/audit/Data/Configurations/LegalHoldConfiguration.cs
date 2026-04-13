@@ -24,7 +24,7 @@ public sealed class LegalHoldConfiguration : IEntityTypeConfiguration<LegalHold>
 {
     public void Configure(EntityTypeBuilder<LegalHold> builder)
     {
-        builder.ToTable("LegalHolds");
+        builder.ToTable("aud_LegalHolds");
 
         builder.HasKey(h => h.Id);
 

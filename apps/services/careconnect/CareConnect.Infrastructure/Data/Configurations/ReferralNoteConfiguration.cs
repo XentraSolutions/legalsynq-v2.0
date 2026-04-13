@@ -8,7 +8,7 @@ public class ReferralNoteConfiguration : IEntityTypeConfiguration<ReferralNote>
 {
     public void Configure(EntityTypeBuilder<ReferralNote> builder)
     {
-        builder.ToTable("ReferralNotes");
+        builder.ToTable("cc_ReferralNotes");
 
         builder.HasKey(n => n.Id);
 

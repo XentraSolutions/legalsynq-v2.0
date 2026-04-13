@@ -114,7 +114,7 @@ namespace Fund.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Status");
 
-                    b.ToTable("Applications", (string)null);
+                    b.ToTable("fund_Applications", (string)null);
                 });
 #pragma warning restore 612, 618
         }

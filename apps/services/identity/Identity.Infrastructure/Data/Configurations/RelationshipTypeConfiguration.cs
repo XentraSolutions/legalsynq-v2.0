@@ -9,7 +9,7 @@ public class RelationshipTypeConfiguration : IEntityTypeConfiguration<Relationsh
 {
     public void Configure(EntityTypeBuilder<RelationshipType> builder)
     {
-        builder.ToTable("RelationshipTypes");
+        builder.ToTable("idt_RelationshipTypes");
 
         builder.HasKey(rt => rt.Id);
 

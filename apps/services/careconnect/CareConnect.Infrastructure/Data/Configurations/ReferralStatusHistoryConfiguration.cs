@@ -8,7 +8,7 @@ public class ReferralStatusHistoryConfiguration : IEntityTypeConfiguration<Refer
 {
     public void Configure(EntityTypeBuilder<ReferralStatusHistory> builder)
     {
-        builder.ToTable("ReferralStatusHistories");
+        builder.ToTable("cc_ReferralStatusHistories");
 
         builder.HasKey(h => h.Id);
 

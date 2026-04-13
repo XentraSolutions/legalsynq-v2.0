@@ -9,7 +9,7 @@ public class ActivationRequestConfiguration : IEntityTypeConfiguration<Activatio
 {
     public void Configure(EntityTypeBuilder<ActivationRequest> builder)
     {
-        builder.ToTable("ActivationRequests");
+        builder.ToTable("cc_ActivationRequests");
 
         builder.HasKey(a => a.Id);
 

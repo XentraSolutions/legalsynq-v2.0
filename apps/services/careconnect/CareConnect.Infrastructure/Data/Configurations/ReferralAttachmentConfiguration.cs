@@ -8,7 +8,7 @@ public class ReferralAttachmentConfiguration : IEntityTypeConfiguration<Referral
 {
     public void Configure(EntityTypeBuilder<ReferralAttachment> builder)
     {
-        builder.ToTable("ReferralAttachments");
+        builder.ToTable("cc_ReferralAttachments");
 
         builder.HasKey(a => a.Id);
 

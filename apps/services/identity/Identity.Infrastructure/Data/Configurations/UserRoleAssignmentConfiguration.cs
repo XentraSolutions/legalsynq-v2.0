@@ -8,7 +8,7 @@ public class UserRoleAssignmentConfiguration : IEntityTypeConfiguration<UserRole
 {
     public void Configure(EntityTypeBuilder<UserRoleAssignment> builder)
     {
-        builder.ToTable("UserRoleAssignments");
+        builder.ToTable("idt_UserRoleAssignments");
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.TenantId).IsRequired();

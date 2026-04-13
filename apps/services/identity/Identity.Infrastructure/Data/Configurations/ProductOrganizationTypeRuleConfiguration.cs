@@ -9,7 +9,7 @@ public class ProductOrganizationTypeRuleConfiguration : IEntityTypeConfiguration
 {
     public void Configure(EntityTypeBuilder<ProductOrganizationTypeRule> builder)
     {
-        builder.ToTable("ProductOrganizationTypeRules");
+        builder.ToTable("idt_ProductOrganizationTypeRules");
 
         builder.HasKey(r => r.Id);
 

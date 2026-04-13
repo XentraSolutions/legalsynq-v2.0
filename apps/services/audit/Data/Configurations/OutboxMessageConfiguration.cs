@@ -27,7 +27,7 @@ public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outbox
 {
     public void Configure(EntityTypeBuilder<OutboxMessage> builder)
     {
-        builder.ToTable("OutboxMessages");
+        builder.ToTable("aud_OutboxMessages");
 
         builder.HasKey(m => m.Id);
 

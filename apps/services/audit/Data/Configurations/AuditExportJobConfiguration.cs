@@ -24,7 +24,7 @@ public sealed class AuditExportJobConfiguration : IEntityTypeConfiguration<Audit
     public void Configure(EntityTypeBuilder<AuditExportJob> entity)
     {
         // ── Table ────────────────────────────────────────────────────────────
-        entity.ToTable("AuditExportJobs");
+        entity.ToTable("aud_AuditExportJobs");
 
         // ── Primary key ──────────────────────────────────────────────────────
         entity.HasKey(e => e.Id);

@@ -8,7 +8,7 @@ public class ProductRoleConfiguration : IEntityTypeConfiguration<ProductRole>
 {
     public void Configure(EntityTypeBuilder<ProductRole> builder)
     {
-        builder.ToTable("ProductRoles");
+        builder.ToTable("idt_ProductRoles");
 
         builder.HasKey(pr => pr.Id);
 

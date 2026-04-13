@@ -8,7 +8,7 @@ public class PartyConfiguration : IEntityTypeConfiguration<Party>
 {
     public void Configure(EntityTypeBuilder<Party> builder)
     {
-        builder.ToTable("Parties");
+        builder.ToTable("cc_Parties");
 
         builder.HasKey(p => p.Id);
 

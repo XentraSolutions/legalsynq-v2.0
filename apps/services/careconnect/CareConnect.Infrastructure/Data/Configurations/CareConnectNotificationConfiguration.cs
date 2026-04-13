@@ -8,7 +8,7 @@ public class CareConnectNotificationConfiguration : IEntityTypeConfiguration<Car
 {
     public void Configure(EntityTypeBuilder<CareConnectNotification> builder)
     {
-        builder.ToTable("CareConnectNotifications");
+        builder.ToTable("cc_CareConnectNotifications");
 
         builder.HasKey(n => n.Id);
 

@@ -8,7 +8,7 @@ public class TenantProviderConfigConfiguration : IEntityTypeConfiguration<Tenant
 {
     public void Configure(EntityTypeBuilder<TenantProviderConfig> builder)
     {
-        builder.ToTable("tenant_provider_configs");
+        builder.ToTable("ntf_tenant_provider_configs");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -36,7 +36,7 @@ public class TenantChannelProviderSettingConfiguration : IEntityTypeConfiguratio
 {
     public void Configure(EntityTypeBuilder<TenantChannelProviderSetting> builder)
     {
-        builder.ToTable("tenant_channel_provider_settings");
+        builder.ToTable("ntf_tenant_channel_provider_settings");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -59,7 +59,7 @@ public class ProviderHealthConfiguration : IEntityTypeConfiguration<ProviderHeal
 {
     public void Configure(EntityTypeBuilder<ProviderHealth> builder)
     {
-        builder.ToTable("provider_health");
+        builder.ToTable("ntf_provider_health");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.ProviderType).HasColumnName("provider_type").HasMaxLength(50);
@@ -82,7 +82,7 @@ public class ProviderWebhookLogConfiguration : IEntityTypeConfiguration<Provider
 {
     public void Configure(EntityTypeBuilder<ProviderWebhookLog> builder)
     {
-        builder.ToTable("provider_webhook_logs");
+        builder.ToTable("ntf_provider_webhook_logs");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.Provider).HasColumnName("provider").HasMaxLength(50);

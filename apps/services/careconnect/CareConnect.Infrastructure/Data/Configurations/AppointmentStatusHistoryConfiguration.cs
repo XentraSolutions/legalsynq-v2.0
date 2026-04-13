@@ -8,7 +8,7 @@ public class AppointmentStatusHistoryConfiguration : IEntityTypeConfiguration<Ap
 {
     public void Configure(EntityTypeBuilder<AppointmentStatusHistory> builder)
     {
-        builder.ToTable("AppointmentStatusHistories");
+        builder.ToTable("cc_AppointmentStatusHistories");
 
         builder.HasKey(h => h.Id);
 

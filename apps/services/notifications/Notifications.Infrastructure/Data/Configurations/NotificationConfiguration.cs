@@ -8,7 +8,7 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
 {
     public void Configure(EntityTypeBuilder<Notification> builder)
     {
-        builder.ToTable("notifications");
+        builder.ToTable("ntf_notifications");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -47,7 +47,7 @@ public class NotificationAttemptConfiguration : IEntityTypeConfiguration<Notific
 {
     public void Configure(EntityTypeBuilder<NotificationAttempt> builder)
     {
-        builder.ToTable("notification_attempts");
+        builder.ToTable("ntf_notification_attempts");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");

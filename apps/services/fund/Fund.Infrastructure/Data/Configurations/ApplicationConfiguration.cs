@@ -7,7 +7,7 @@ public class ApplicationConfiguration : IEntityTypeConfiguration<Domain.Applicat
 {
     public void Configure(EntityTypeBuilder<Domain.Application> builder)
     {
-        builder.ToTable("Applications");
+        builder.ToTable("fund_Applications");
 
         builder.HasKey(a => a.Id);
 

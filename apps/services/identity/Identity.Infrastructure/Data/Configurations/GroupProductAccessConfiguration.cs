@@ -8,7 +8,7 @@ public class GroupProductAccessConfiguration : IEntityTypeConfiguration<GroupPro
 {
     public void Configure(EntityTypeBuilder<GroupProductAccess> builder)
     {
-        builder.ToTable("GroupProductAccess");
+        builder.ToTable("idt_GroupProductAccess");
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.TenantId).IsRequired();

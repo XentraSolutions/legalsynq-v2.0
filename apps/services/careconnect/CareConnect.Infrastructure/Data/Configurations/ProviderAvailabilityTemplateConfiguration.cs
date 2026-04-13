@@ -8,7 +8,7 @@ public class ProviderAvailabilityTemplateConfiguration : IEntityTypeConfiguratio
 {
     public void Configure(EntityTypeBuilder<ProviderAvailabilityTemplate> builder)
     {
-        builder.ToTable("ProviderAvailabilityTemplates");
+        builder.ToTable("cc_ProviderAvailabilityTemplates");
 
         builder.HasKey(t => t.Id);
 

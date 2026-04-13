@@ -8,7 +8,7 @@ public class ProviderFacilityConfiguration : IEntityTypeConfiguration<ProviderFa
 {
     public void Configure(EntityTypeBuilder<ProviderFacility> builder)
     {
-        builder.ToTable("ProviderFacilities");
+        builder.ToTable("cc_ProviderFacilities");
 
         builder.HasKey(pf => new { pf.ProviderId, pf.FacilityId });
 

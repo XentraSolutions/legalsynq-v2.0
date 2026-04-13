@@ -8,7 +8,7 @@ public class AppointmentAttachmentConfiguration : IEntityTypeConfiguration<Appoi
 {
     public void Configure(EntityTypeBuilder<AppointmentAttachment> builder)
     {
-        builder.ToTable("AppointmentAttachments");
+        builder.ToTable("cc_AppointmentAttachments");
 
         builder.HasKey(a => a.Id);
 

@@ -27,7 +27,7 @@ public sealed class AuditEventRecordConfiguration : IEntityTypeConfiguration<Aud
     public void Configure(EntityTypeBuilder<AuditEventRecord> entity)
     {
         // ── Table ────────────────────────────────────────────────────────────
-        entity.ToTable("AuditEventRecords");
+        entity.ToTable("aud_AuditEventRecords");
 
         // ── Primary key ──────────────────────────────────────────────────────
         entity.HasKey(e => e.Id);

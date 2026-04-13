@@ -3661,6 +3661,34 @@ Created the core `Lien` domain entity as the central business object of the Synq
 - Full Liens service stack: 0 warnings, 0 errors
 - Report: `analysis/LS-LIENS-03-002-report.md`
 
+## Database Table Prefix Convention — 2026-04-13
+
+### Convention
+Each microservice uses a table name prefix for organizational clarity:
+
+| Service | Prefix | DB Engine | Example Table |
+|---------|--------|-----------|---------------|
+| Identity | `idt_` | MySQL | `idt_Tenants`, `idt_Users`, `idt_Organizations` |
+| Fund | `fund_` | MySQL | `fund_Applications` |
+| CareConnect | `cc_` | MySQL | `cc_Referrals`, `cc_Providers`, `cc_Appointments` |
+| Notifications | `ntf_` | MySQL | `ntf_notifications`, `ntf_templates` |
+| Audit | `aud_` | MySQL/SQLite | `aud_AuditEventRecords`, `aud_LegalHolds` |
+| Documents | `docs_` | PostgreSQL | `docs_documents`, `docs_document_versions` |
+| Liens | `liens_` | TBD | Convention set for future entity configurations |
+
+### Implementation
+- Each service's EF Core entity configurations use `builder.ToTable("prefix_TableName")`
+- Documents service includes auto-migration SQL to rename old unprefixed tables on startup
+- The `document_types`, `artifacts`, `feedback_*` tables are managed by Node.js services (not EF Core) and remain unprefixed
+
+### Files Changed
+- Identity: 33 configuration files in `Identity.Infrastructure/Data/Configurations/`
+- Fund: 1 configuration file
+- CareConnect: 23 configuration files
+- Notifications: 18 ToTable calls across 5 configuration files
+- Audit: 7 configuration files
+- Documents: `DocsDbContext.cs` + `schema.sql` + `Program.cs` (auto-rename migration)
+
 ## LienOffer Domain Entity — 2026-04-13
 
 ### Summary

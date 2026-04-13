@@ -21,7 +21,7 @@ public sealed class DocsDbContext : DbContext
         // ── Document ─────────────────────────────────────────────────────────
         mb.Entity<Document>(e =>
         {
-            e.ToTable("documents");
+            e.ToTable("docs_documents");
             e.HasKey(d => d.Id);
             e.Property(d => d.Id).HasColumnName("id");
             e.Property(d => d.TenantId).HasColumnName("tenant_id");
@@ -73,7 +73,7 @@ public sealed class DocsDbContext : DbContext
         // ── DocumentVersion ──────────────────────────────────────────────────
         mb.Entity<DocumentVersion>(e =>
         {
-            e.ToTable("document_versions");
+            e.ToTable("docs_document_versions");
             e.HasKey(v => v.Id);
             e.Property(v => v.Id).HasColumnName("id");
             e.Property(v => v.DocumentId).HasColumnName("document_id");
@@ -114,7 +114,7 @@ public sealed class DocsDbContext : DbContext
         // ── DocumentAudit ────────────────────────────────────────────────────
         mb.Entity<DocumentAudit>(e =>
         {
-            e.ToTable("document_audits");
+            e.ToTable("docs_document_audits");
             e.HasKey(a => a.Id);
             e.Property(a => a.Id).HasColumnName("id");
             e.Property(a => a.TenantId).HasColumnName("tenant_id");

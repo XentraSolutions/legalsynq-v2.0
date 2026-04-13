@@ -8,7 +8,7 @@ public class RolePermissionMappingConfiguration : IEntityTypeConfiguration<RoleP
 {
     public void Configure(EntityTypeBuilder<RolePermissionMapping> builder)
     {
-        builder.ToTable("RoleCapabilities");
+        builder.ToTable("idt_RoleCapabilities");
 
         builder.HasKey(rc => new { rc.ProductRoleId, rc.PermissionId });
 

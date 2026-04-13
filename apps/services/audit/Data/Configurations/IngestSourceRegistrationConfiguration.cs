@@ -24,7 +24,7 @@ public sealed class IngestSourceRegistrationConfiguration : IEntityTypeConfigura
     public void Configure(EntityTypeBuilder<IngestSourceRegistration> entity)
     {
         // ── Table ────────────────────────────────────────────────────────────
-        entity.ToTable("IngestSourceRegistrations");
+        entity.ToTable("aud_IngestSourceRegistrations");
 
         // ── Primary key ──────────────────────────────────────────────────────
         entity.HasKey(e => e.Id);

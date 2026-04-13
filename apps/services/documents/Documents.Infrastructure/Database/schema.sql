@@ -6,8 +6,8 @@
 -- ── Extension ─────────────────────────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- ── documents ─────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS documents (
+-- ── docs_documents ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS docs_documents (
     id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id         UUID        NOT NULL,
     product_id        VARCHAR(100) NOT NULL,
@@ -42,15 +42,15 @@ CREATE TABLE IF NOT EXISTS documents (
     updated_by        UUID         NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_documents_tenant      ON documents (tenant_id);
-CREATE INDEX IF NOT EXISTS idx_documents_product     ON documents (tenant_id, product_id) WHERE NOT is_deleted;
-CREATE INDEX IF NOT EXISTS idx_documents_reference   ON documents (tenant_id, reference_id) WHERE NOT is_deleted;
-CREATE INDEX IF NOT EXISTS idx_documents_status      ON documents (tenant_id, status) WHERE NOT is_deleted;
+CREATE INDEX IF NOT EXISTS idx_documents_tenant      ON docs_documents (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_documents_product     ON docs_documents (tenant_id, product_id) WHERE NOT is_deleted;
+CREATE INDEX IF NOT EXISTS idx_documents_reference   ON docs_documents (tenant_id, reference_id) WHERE NOT is_deleted;
+CREATE INDEX IF NOT EXISTS idx_documents_status      ON docs_documents (tenant_id, status) WHERE NOT is_deleted;
 
--- ── document_versions ─────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS document_versions (
+-- ── docs_document_versions ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS docs_document_versions (
     id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id       UUID        NOT NULL REFERENCES documents(id),
+    document_id       UUID        NOT NULL REFERENCES docs_documents(id),
     tenant_id         UUID        NOT NULL,
     version_number    INT         NOT NULL,
     mime_type         VARCHAR(200) NOT NULL,
@@ -73,13 +73,13 @@ CREATE TABLE IF NOT EXISTS document_versions (
     CONSTRAINT uq_version_number UNIQUE (document_id, version_number)
 );
 
-CREATE INDEX IF NOT EXISTS idx_versions_document ON document_versions (document_id, tenant_id);
+CREATE INDEX IF NOT EXISTS idx_versions_document ON docs_document_versions (document_id, tenant_id);
 
--- ── document_audits ───────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS document_audits (
+-- ── docs_document_audits ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS docs_document_audits (
     id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id      UUID        NOT NULL,
-    document_id    UUID        REFERENCES documents(id) ON DELETE SET NULL,
+    document_id    UUID        REFERENCES docs_documents(id) ON DELETE SET NULL,
     event          VARCHAR(100) NOT NULL,
     actor_id       UUID,
     actor_email    VARCHAR(500),
@@ -91,5 +91,5 @@ CREATE TABLE IF NOT EXISTS document_audits (
     occurred_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_audits_document ON document_audits (document_id, tenant_id);
-CREATE INDEX IF NOT EXISTS idx_audits_tenant   ON document_audits (tenant_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audits_document ON docs_document_audits (document_id, tenant_id);
+CREATE INDEX IF NOT EXISTS idx_audits_tenant   ON docs_document_audits (tenant_id, occurred_at DESC);

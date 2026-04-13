@@ -8,7 +8,7 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
 {
     public void Configure(EntityTypeBuilder<Organization> builder)
     {
-        builder.ToTable("Organizations");
+        builder.ToTable("idt_Organizations");
 
         builder.HasKey(o => o.Id);
 

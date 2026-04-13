@@ -10,7 +10,7 @@ public class BlockedProviderAccessLogConfiguration
 {
     public void Configure(EntityTypeBuilder<BlockedProviderAccessLog> builder)
     {
-        builder.ToTable("BlockedProviderAccessLogs");
+        builder.ToTable("cc_BlockedProviderAccessLogs");
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id)

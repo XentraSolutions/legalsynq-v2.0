@@ -8,7 +8,7 @@ public class GroupRoleAssignmentConfiguration : IEntityTypeConfiguration<GroupRo
 {
     public void Configure(EntityTypeBuilder<GroupRoleAssignment> builder)
     {
-        builder.ToTable("GroupRoleAssignments");
+        builder.ToTable("idt_GroupRoleAssignments");
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.TenantId).IsRequired();

@@ -8,7 +8,7 @@ public class TenantProductConfiguration : IEntityTypeConfiguration<TenantProduct
 {
     public void Configure(EntityTypeBuilder<TenantProduct> builder)
     {
-        builder.ToTable("TenantProducts");
+        builder.ToTable("idt_TenantProducts");
 
         builder.HasKey(tp => new { tp.TenantId, tp.ProductId });
 

@@ -8,7 +8,7 @@ public class PermissionPolicyConfiguration : IEntityTypeConfiguration<Permission
 {
     public void Configure(EntityTypeBuilder<PermissionPolicy> builder)
     {
-        builder.ToTable("PermissionPolicies");
+        builder.ToTable("idt_PermissionPolicies");
 
         builder.HasKey(pp => pp.Id);
 

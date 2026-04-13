@@ -9,7 +9,7 @@ public class OrganizationTypeConfiguration : IEntityTypeConfiguration<Organizati
 {
     public void Configure(EntityTypeBuilder<OrganizationType> builder)
     {
-        builder.ToTable("OrganizationTypes");
+        builder.ToTable("idt_OrganizationTypes");
 
         builder.HasKey(ot => ot.Id);
 

@@ -17,7 +17,7 @@ internal sealed class LegacyAuditEventConfiguration : IEntityTypeConfiguration<A
 {
     public void Configure(EntityTypeBuilder<AuditEvent> entity)
     {
-        entity.ToTable("AuditEvents");
+        entity.ToTable("aud_AuditEvents");
         entity.HasKey(e => e.Id);
 
         entity.Property(e => e.Id)

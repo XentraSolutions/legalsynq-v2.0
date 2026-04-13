@@ -8,7 +8,7 @@ public class TenantDomainConfiguration : IEntityTypeConfiguration<TenantDomain>
 {
     public void Configure(EntityTypeBuilder<TenantDomain> builder)
     {
-        builder.ToTable("TenantDomains");
+        builder.ToTable("idt_TenantDomains");
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.TenantId).IsRequired();

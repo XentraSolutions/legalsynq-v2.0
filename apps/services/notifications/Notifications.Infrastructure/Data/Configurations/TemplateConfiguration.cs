@@ -8,7 +8,7 @@ public class TemplateConfiguration : IEntityTypeConfiguration<Template>
 {
     public void Configure(EntityTypeBuilder<Template> builder)
     {
-        builder.ToTable("templates");
+        builder.ToTable("ntf_templates");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -31,7 +31,7 @@ public class TemplateVersionConfiguration : IEntityTypeConfiguration<TemplateVer
 {
     public void Configure(EntityTypeBuilder<TemplateVersion> builder)
     {
-        builder.ToTable("template_versions");
+        builder.ToTable("ntf_template_versions");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TemplateId).HasColumnName("template_id");

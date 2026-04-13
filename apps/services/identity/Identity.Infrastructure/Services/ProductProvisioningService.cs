@@ -84,7 +84,7 @@ public class ProductProvisioningService : IProductProvisioningService
         if (!enabled && existing.IsEnabled)
         {
             await _db.Database.ExecuteSqlRawAsync(
-                "UPDATE TenantProducts SET IsEnabled = 0 WHERE TenantId = {0} AND ProductId = {1}",
+                "UPDATE idt_TenantProducts SET IsEnabled = 0 WHERE TenantId = {0} AND ProductId = {1}",
                 tenant.Id, product.Id);
             return false;
         }
@@ -92,7 +92,7 @@ public class ProductProvisioningService : IProductProvisioningService
         if (enabled && !existing.IsEnabled)
         {
             await _db.Database.ExecuteSqlRawAsync(
-                "UPDATE TenantProducts SET IsEnabled = 1, EnabledAtUtc = {0} WHERE TenantId = {1} AND ProductId = {2}",
+                "UPDATE idt_TenantProducts SET IsEnabled = 1, EnabledAtUtc = {0} WHERE TenantId = {1} AND ProductId = {2}",
                 DateTime.UtcNow, tenant.Id, product.Id);
             return true;
         }

@@ -8,7 +8,7 @@ public class FacilityConfiguration : IEntityTypeConfiguration<Facility>
 {
     public void Configure(EntityTypeBuilder<Facility> builder)
     {
-        builder.ToTable("Facilities");
+        builder.ToTable("cc_Facilities");
 
         builder.HasKey(f => f.Id);
 

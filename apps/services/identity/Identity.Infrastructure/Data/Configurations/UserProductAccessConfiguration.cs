@@ -8,7 +8,7 @@ public class UserProductAccessConfiguration : IEntityTypeConfiguration<UserProdu
 {
     public void Configure(EntityTypeBuilder<UserProductAccess> builder)
     {
-        builder.ToTable("UserProductAccess");
+        builder.ToTable("idt_UserProductAccess");
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.TenantId).IsRequired();

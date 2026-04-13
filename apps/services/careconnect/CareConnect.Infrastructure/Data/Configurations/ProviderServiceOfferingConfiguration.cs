@@ -8,7 +8,7 @@ public class ProviderServiceOfferingConfiguration : IEntityTypeConfiguration<Pro
 {
     public void Configure(EntityTypeBuilder<ProviderServiceOffering> builder)
     {
-        builder.ToTable("ProviderServiceOfferings");
+        builder.ToTable("cc_ProviderServiceOfferings");
 
         builder.HasKey(p => p.Id);
 

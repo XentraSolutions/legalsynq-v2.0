@@ -8,7 +8,7 @@ public class RolePermissionAssignmentConfiguration : IEntityTypeConfiguration<Ro
 {
     public void Configure(EntityTypeBuilder<RolePermissionAssignment> builder)
     {
-        builder.ToTable("RoleCapabilityAssignments");
+        builder.ToTable("idt_RoleCapabilityAssignments");
 
         builder.HasKey(a => new { a.RoleId, a.PermissionId });
 

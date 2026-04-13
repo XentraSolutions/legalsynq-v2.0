@@ -8,7 +8,7 @@ public class ProviderCategoryConfiguration : IEntityTypeConfiguration<ProviderCa
 {
     public void Configure(EntityTypeBuilder<ProviderCategory> builder)
     {
-        builder.ToTable("ProviderCategories");
+        builder.ToTable("cc_ProviderCategories");
 
         builder.HasKey(pc => new { pc.ProviderId, pc.CategoryId });
 

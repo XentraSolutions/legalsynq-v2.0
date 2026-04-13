@@ -8,7 +8,7 @@ public class TenantProductEntitlementConfiguration : IEntityTypeConfiguration<Te
 {
     public void Configure(EntityTypeBuilder<TenantProductEntitlement> builder)
     {
-        builder.ToTable("TenantProductEntitlements");
+        builder.ToTable("idt_TenantProductEntitlements");
         builder.HasKey(e => e.Id);
 
         builder.Property(e => e.TenantId).IsRequired();

@@ -9,7 +9,7 @@ public class ProductRelationshipTypeRuleConfiguration : IEntityTypeConfiguration
 {
     public void Configure(EntityTypeBuilder<ProductRelationshipTypeRule> builder)
     {
-        builder.ToTable("ProductRelationshipTypeRules");
+        builder.ToTable("idt_ProductRelationshipTypeRules");
 
         builder.HasKey(r => r.Id);
 

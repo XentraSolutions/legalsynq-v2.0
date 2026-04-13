@@ -206,8 +206,26 @@ try
     {
         app.Logger.LogInformation("Database already exists — applying schema patches");
         db.Database.ExecuteSqlRaw(@"
-            ALTER TABLE document_audits ADD COLUMN IF NOT EXISTS actor_email VARCHAR(500);
-            ALTER TABLE document_audits ALTER COLUMN actor_id DROP NOT NULL;
+            DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'document_audits')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'docs_document_audits') THEN
+                    ALTER TABLE document_audits RENAME TO docs_document_audits;
+                END IF;
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'document_versions')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'docs_document_versions') THEN
+                    ALTER TABLE document_versions RENAME TO docs_document_versions;
+                END IF;
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'documents')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'docs_documents') THEN
+                    ALTER TABLE documents RENAME TO docs_documents;
+                END IF;
+            END $$;
+            DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'docs_document_audits') THEN
+                    ALTER TABLE docs_document_audits ADD COLUMN IF NOT EXISTS actor_email VARCHAR(500);
+                    ALTER TABLE docs_document_audits ALTER COLUMN actor_id DROP NOT NULL;
+                END IF;
+            END $$;
         ");
         app.Logger.LogInformation("Schema patches applied successfully");
     }

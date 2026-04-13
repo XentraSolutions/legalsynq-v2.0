@@ -8,7 +8,7 @@ public class ProviderAvailabilityExceptionConfiguration : IEntityTypeConfigurati
 {
     public void Configure(EntityTypeBuilder<ProviderAvailabilityException> builder)
     {
-        builder.ToTable("ProviderAvailabilityExceptions");
+        builder.ToTable("cc_ProviderAvailabilityExceptions");
 
         builder.HasKey(e => e.Id);
 

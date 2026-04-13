@@ -215,7 +215,7 @@ namespace PlatformAuditEventService.Data.Migrations
                     b.HasIndex("TenantId", "EventCategory", "OccurredAtUtc")
                         .HasDatabaseName("IX_AuditEventRecords_TenantId_Category_OccurredAt");
 
-                    b.ToTable("AuditEventRecords", (string)null);
+                    b.ToTable("aud_AuditEventRecords", (string)null);
                 });
 
             modelBuilder.Entity("PlatformAuditEventService.Entities.AuditExportJob", b =>
@@ -287,7 +287,7 @@ namespace PlatformAuditEventService.Data.Migrations
                     b.HasIndex("RequestedBy", "Status", "CreatedAtUtc")
                         .HasDatabaseName("IX_AuditExportJobs_RequestedBy_Status_CreatedAt");
 
-                    b.ToTable("AuditExportJobs", (string)null);
+                    b.ToTable("aud_AuditExportJobs", (string)null);
                 });
 
             modelBuilder.Entity("PlatformAuditEventService.Entities.IngestSourceRegistration", b =>
@@ -325,7 +325,7 @@ namespace PlatformAuditEventService.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("UX_IngestSourceRegistrations_SourceSystem_SourceService");
 
-                    b.ToTable("IngestSourceRegistrations", (string)null);
+                    b.ToTable("aud_IngestSourceRegistrations", (string)null);
                 });
 
             modelBuilder.Entity("PlatformAuditEventService.Entities.IntegrityCheckpoint", b =>
@@ -370,7 +370,7 @@ namespace PlatformAuditEventService.Data.Migrations
                     b.HasIndex("FromRecordedAtUtc", "ToRecordedAtUtc")
                         .HasDatabaseName("IX_IntegrityCheckpoints_Window");
 
-                    b.ToTable("IntegrityCheckpoints", (string)null);
+                    b.ToTable("aud_IntegrityCheckpoints", (string)null);
                 });
 
             modelBuilder.Entity("PlatformAuditEventService.Entities.LegalHold", b =>
@@ -424,7 +424,7 @@ namespace PlatformAuditEventService.Data.Migrations
                     b.HasIndex("ReleasedAtUtc")
                         .HasDatabaseName("IX_LegalHolds_ReleasedAtUtc");
 
-                    b.ToTable("LegalHolds", (string)null);
+                    b.ToTable("aud_LegalHolds", (string)null);
                 });
 
             modelBuilder.Entity("PlatformAuditEventService.Entities.OutboxMessage", b =>
@@ -484,7 +484,7 @@ namespace PlatformAuditEventService.Data.Migrations
                     b.HasIndex("ProcessedAtUtc", "IsPermanentlyFailed")
                         .HasDatabaseName("IX_OutboxMessages_Relay_Poll");
 
-                    b.ToTable("OutboxMessages", (string)null);
+                    b.ToTable("aud_OutboxMessages", (string)null);
                 });
 
             modelBuilder.Entity("PlatformAuditEventService.Models.AuditEvent", b =>
@@ -594,7 +594,7 @@ namespace PlatformAuditEventService.Data.Migrations
                     b.HasIndex("Category", "Severity", "Outcome")
                         .HasDatabaseName("IX_AuditEvents_Category_Severity_Outcome");
 
-                    b.ToTable("AuditEvents", (string)null);
+                    b.ToTable("aud_AuditEvents", (string)null);
                 });
 #pragma warning restore 612, 618
         }

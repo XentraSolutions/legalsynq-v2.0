@@ -8,7 +8,7 @@ public class AppointmentSlotConfiguration : IEntityTypeConfiguration<Appointment
 {
     public void Configure(EntityTypeBuilder<AppointmentSlot> builder)
     {
-        builder.ToTable("AppointmentSlots");
+        builder.ToTable("cc_AppointmentSlots");
 
         builder.HasKey(s => s.Id);
 

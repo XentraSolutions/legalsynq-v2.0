@@ -8,7 +8,7 @@ public class ScopedRoleAssignmentConfiguration : IEntityTypeConfiguration<Scoped
 {
     public void Configure(EntityTypeBuilder<ScopedRoleAssignment> builder)
     {
-        builder.ToTable("ScopedRoleAssignments");
+        builder.ToTable("idt_ScopedRoleAssignments");
 
         builder.HasKey(a => a.Id);
 

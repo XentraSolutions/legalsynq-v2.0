@@ -22,7 +22,7 @@ public sealed class IntegrityCheckpointConfiguration : IEntityTypeConfiguration<
     public void Configure(EntityTypeBuilder<IntegrityCheckpoint> entity)
     {
         // ── Table ────────────────────────────────────────────────────────────
-        entity.ToTable("IntegrityCheckpoints");
+        entity.ToTable("aud_IntegrityCheckpoints");
 
         // ── Primary key ──────────────────────────────────────────────────────
         entity.HasKey(e => e.Id);

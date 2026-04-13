@@ -72,7 +72,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_AccessGroups_TenantId_Name");
 
-                    b.ToTable("AccessGroups", (string)null);
+                    b.ToTable("idt_AccessGroups", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.AccessGroupMembership", b =>
@@ -119,7 +119,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_AccessGroupMemberships_TenantId_GroupId_UserId");
 
-                    b.ToTable("AccessGroupMemberships", (string)null);
+                    b.ToTable("idt_AccessGroupMemberships", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.AuditLog", b =>
@@ -168,7 +168,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EntityType");
 
-                    b.ToTable("AuditLogs", (string)null);
+                    b.ToTable("idt_AuditLogs", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.Capability", b =>
@@ -207,7 +207,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("Capabilities", (string)null);
+                    b.ToTable("idt_Capabilities", (string)null);
 
                     b.HasData(
                         new
@@ -548,7 +548,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_GroupProductAccess_TenantId_GroupId_ProductCode");
 
-                    b.ToTable("GroupProductAccess", (string)null);
+                    b.ToTable("idt_GroupProductAccess", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.GroupRoleAssignment", b =>
@@ -603,7 +603,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "GroupId", "RoleCode")
                         .HasDatabaseName("IX_GroupRoleAssignments_TenantId_GroupId_RoleCode");
 
-                    b.ToTable("GroupRoleAssignments", (string)null);
+                    b.ToTable("idt_GroupRoleAssignments", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.Organization", b =>
@@ -656,7 +656,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "OrgType");
 
-                    b.ToTable("Organizations", (string)null);
+                    b.ToTable("idt_Organizations", (string)null);
 
                     b.HasData(
                         new
@@ -708,7 +708,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OrganizationId");
 
-                    b.ToTable("OrganizationDomains", (string)null);
+                    b.ToTable("idt_OrganizationDomains", (string)null);
 
                     b.HasData(
                         new
@@ -744,7 +744,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("OrganizationProducts", (string)null);
+                    b.ToTable("idt_OrganizationProducts", (string)null);
 
                     b.HasData(
                         new
@@ -837,7 +837,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "SourceOrganizationId", "TargetOrganizationId", "RelationshipTypeId")
                         .IsUnique();
 
-                    b.ToTable("OrganizationRelationships", (string)null);
+                    b.ToTable("idt_OrganizationRelationships", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.OrganizationType", b =>
@@ -874,7 +874,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("OrganizationTypes", (string)null);
+                    b.ToTable("idt_OrganizationTypes", (string)null);
 
                     b.HasData(
                         new
@@ -973,7 +973,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("PasswordResetTokens", (string)null);
+                    b.ToTable("idt_PasswordResetTokens", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.Product", b =>
@@ -1007,7 +1007,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("Products", (string)null);
+                    b.ToTable("idt_Products", (string)null);
 
                     b.HasData(
                         new
@@ -1087,7 +1087,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProductRoleId", "OrganizationTypeId")
                         .IsUnique();
 
-                    b.ToTable("ProductOrganizationTypeRules", (string)null);
+                    b.ToTable("idt_ProductOrganizationTypeRules", (string)null);
 
                     b.HasData(
                         new
@@ -1180,7 +1180,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProductId", "RelationshipTypeId")
                         .IsUnique();
 
-                    b.ToTable("ProductRelationshipTypeRules", (string)null);
+                    b.ToTable("idt_ProductRelationshipTypeRules", (string)null);
 
                     b.HasData(
                         new
@@ -1253,7 +1253,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("ProductRoles", (string)null);
+                    b.ToTable("idt_ProductRoles", (string)null);
 
                     b.HasData(
                         new
@@ -1375,7 +1375,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("RelationshipTypes", (string)null);
+                    b.ToTable("idt_RelationshipTypes", (string)null);
 
                     b.HasData(
                         new
@@ -1478,7 +1478,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Name")
                         .IsUnique();
 
-                    b.ToTable("Roles", (string)null);
+                    b.ToTable("idt_Roles", (string)null);
 
                     b.HasData(
                         new
@@ -1525,7 +1525,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CapabilityId");
 
-                    b.ToTable("RoleCapabilities", (string)null);
+                    b.ToTable("idt_RoleCapabilities", (string)null);
 
                     b.HasData(
                         new
@@ -1710,7 +1710,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("RoleId");
 
-                    b.ToTable("RoleCapabilityAssignments", (string)null);
+                    b.ToTable("idt_RoleCapabilityAssignments", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.ScopedRoleAssignment", b =>
@@ -1765,7 +1765,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId", "RoleId", "ScopeType", "OrganizationId", "ProductId")
                         .HasDatabaseName("IX_ScopedRoleAssignments_User_Role_Scope");
 
-                    b.ToTable("ScopedRoleAssignments", (string)null);
+                    b.ToTable("idt_ScopedRoleAssignments", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.Tenant", b =>
@@ -1852,7 +1852,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasFilter("`Subdomain` IS NOT NULL");
 
-                    b.ToTable("Tenants", (string)null);
+                    b.ToTable("idt_Tenants", (string)null);
 
                     b.HasData(
                         new
@@ -1910,7 +1910,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "IsPrimary")
                         .HasDatabaseName("IX_TenantDomains_TenantId_IsPrimary");
 
-                    b.ToTable("TenantDomains", (string)null);
+                    b.ToTable("idt_TenantDomains", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.TenantProduct", b =>
@@ -1931,7 +1931,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("TenantProducts", (string)null);
+                    b.ToTable("idt_TenantProducts", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.TenantProductEntitlement", b =>
@@ -1977,7 +1977,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_TenantProductEntitlements_TenantId_ProductCode");
 
-                    b.ToTable("TenantProductEntitlements", (string)null);
+                    b.ToTable("idt_TenantProductEntitlements", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.User", b =>
@@ -2050,7 +2050,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Email")
                         .IsUnique();
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("idt_Users", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.UserInvitation", b =>
@@ -2104,7 +2104,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UserId", "Status");
 
-                    b.ToTable("UserInvitations", (string)null);
+                    b.ToTable("idt_UserInvitations", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.UserOrganizationMembership", b =>
@@ -2147,7 +2147,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId", "OrganizationId")
                         .IsUnique();
 
-                    b.ToTable("UserOrganizationMemberships", (string)null);
+                    b.ToTable("idt_UserOrganizationMemberships", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.UserProductAccess", b =>
@@ -2206,7 +2206,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_UserProductAccess_TenantId_UserId_ProductCode");
 
-                    b.ToTable("UserProductAccess", (string)null);
+                    b.ToTable("idt_UserProductAccess", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.UserRoleAssignment", b =>
@@ -2268,7 +2268,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "UserId", "RoleCode")
                         .HasDatabaseName("IX_UserRoleAssignments_TenantId_UserId_RoleCode");
 
-                    b.ToTable("UserRoleAssignments", (string)null);
+                    b.ToTable("idt_UserRoleAssignments", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.Capability", b =>

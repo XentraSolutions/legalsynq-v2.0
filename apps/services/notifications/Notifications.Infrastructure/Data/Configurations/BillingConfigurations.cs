@@ -8,7 +8,7 @@ public class TenantBillingPlanConfiguration : IEntityTypeConfiguration<TenantBil
 {
     public void Configure(EntityTypeBuilder<TenantBillingPlan> builder)
     {
-        builder.ToTable("tenant_billing_plans");
+        builder.ToTable("ntf_tenant_billing_plans");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -28,7 +28,7 @@ public class TenantBillingRateConfiguration : IEntityTypeConfiguration<TenantBil
 {
     public void Configure(EntityTypeBuilder<TenantBillingRate> builder)
     {
-        builder.ToTable("tenant_billing_rates");
+        builder.ToTable("ntf_tenant_billing_rates");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.BillingPlanId).HasColumnName("billing_plan_id");
@@ -47,7 +47,7 @@ public class TenantRateLimitPolicyConfiguration : IEntityTypeConfiguration<Tenan
 {
     public void Configure(EntityTypeBuilder<TenantRateLimitPolicy> builder)
     {
-        builder.ToTable("tenant_rate_limit_policies");
+        builder.ToTable("ntf_tenant_rate_limit_policies");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -66,7 +66,7 @@ public class TenantContactPolicyConfiguration : IEntityTypeConfiguration<TenantC
 {
     public void Configure(EntityTypeBuilder<TenantContactPolicy> builder)
     {
-        builder.ToTable("tenant_contact_policies");
+        builder.ToTable("ntf_tenant_contact_policies");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -87,7 +87,7 @@ public class TenantBrandingConfiguration : IEntityTypeConfiguration<TenantBrandi
 {
     public void Configure(EntityTypeBuilder<TenantBranding> builder)
     {
-        builder.ToTable("tenant_brandings");
+        builder.ToTable("ntf_tenant_brandings");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
@@ -119,7 +119,7 @@ public class UsageMeterEventConfiguration : IEntityTypeConfiguration<UsageMeterE
 {
     public void Configure(EntityTypeBuilder<UsageMeterEvent> builder)
     {
-        builder.ToTable("usage_meter_events");
+        builder.ToTable("ntf_usage_meter_events");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id");
         builder.Property(e => e.TenantId).HasColumnName("tenant_id");
