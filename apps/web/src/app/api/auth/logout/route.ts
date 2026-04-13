@@ -38,13 +38,10 @@ export async function POST(request: NextRequest) {
     maxAge:   0,
   });
 
-  response.cookies.set('tenant_code', '', {
-    httpOnly: false,
-    secure:   IS_PROD,
-    sameSite: IS_PROD ? 'strict' : 'lax',
-    path:     '/',
-    maxAge:   0,
-  });
+  // NOTE: tenant_code cookie is intentionally NOT cleared on logout.
+  // It is non-sensitive (stores only the tenant code, e.g. "MANER") and
+  // keeping it allows the login page to display the correct tenant branding
+  // for returning users without requiring subdomain DNS resolution.
 
   return response;
 }

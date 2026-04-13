@@ -3572,6 +3572,15 @@ Final closure of the legacy authorization model. All frontend and backend consum
 
 **Report:** `analysis/LS-COR-AUT-011D-report.md`
 
+## Login Page Logo Fix — 2026-04-13
+
+### Fix: Preserve `tenant_code` cookie on logout
+- `apps/web/src/app/api/auth/logout/route.ts` — no longer clears the `tenant_code` cookie on logout. The cookie is non-sensitive (stores only the tenant code, e.g. "MANER") and keeping it lets the login page `TenantBrandingProvider` resolve the correct tenant branding for returning users, without requiring subdomain DNS resolution.
+- `PublicLogoEndpoints` DocumentTypeId filter intentionally preserved — CC logo uploads already use the correct type (`20000000-0000-0000-0000-000000000002`), and removing the filter would create a broken-access-control risk.
+
+### Root cause
+- Logout cleared `tenant_code` cookie → `TenantBrandingProvider` had no header/cookie for tenant resolution → Identity branding endpoint returned default branding with null `logoDocumentId` → no logo sources in the cascade → no logo rendered on login page
+
 ### OrganizationType Seed IDs
 - Internal: `70000000-0000-0000-0000-000000000001`
 - LawFirm: `70000000-0000-0000-0000-000000000002`
