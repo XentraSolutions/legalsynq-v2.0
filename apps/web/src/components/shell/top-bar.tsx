@@ -308,33 +308,39 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
 }
 
 function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useTenantBranding>; hasSession: boolean }) {
-  const [docLogoError, setDocLogoError] = useState(false);
-  const [publicLogoError, setPublicLogoError] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+  const [fallbackError, setFallbackError] = useState(false);
 
-  const docLogoSrc = branding.logoDocumentId && hasSession
+  const whiteLogoSrc = branding.logoWhiteDocumentId && hasSession
+    ? `/api/branding/logo/${branding.logoWhiteDocumentId}`
+    : null;
+
+  const colorLogoSrc = branding.logoDocumentId && hasSession
     ? `/api/branding/logo/${branding.logoDocumentId}`
     : branding.logoUrl || null;
 
-  if (docLogoSrc && !docLogoError) {
+  const primarySrc = whiteLogoSrc || colorLogoSrc;
+
+  if (primarySrc && !logoError) {
     return (
       <img
-        src={docLogoSrc}
+        src={primarySrc}
         alt={branding.displayName || 'Tenant logo'}
         className="w-auto object-contain max-w-[180px]"
         style={{ height: 32 }}
-        onError={() => setDocLogoError(true)}
+        onError={() => setLogoError(true)}
       />
     );
   }
 
-  if (!publicLogoError) {
+  if (!fallbackError) {
     return (
       <img
         src="/api/branding/logo/public"
         alt={branding.displayName || 'Tenant logo'}
         className="w-auto object-contain max-w-[180px]"
         style={{ height: 32 }}
-        onError={() => setPublicLogoError(true)}
+        onError={() => setFallbackError(true)}
       />
     );
   }

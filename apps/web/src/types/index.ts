@@ -109,6 +109,7 @@ export interface TenantBranding {
   primaryColor?: string;
   logoUrl?: string;
   logoDocumentId?: string;
+  logoWhiteDocumentId?: string;
   faviconUrl?: string;
 }
 

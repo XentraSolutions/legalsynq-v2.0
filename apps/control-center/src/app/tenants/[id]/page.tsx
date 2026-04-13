@@ -55,6 +55,7 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
       <TenantLogoUpload
         tenantId={tenant.id}
         logoDocumentId={tenant.logoDocumentId}
+        logoWhiteDocumentId={tenant.logoWhiteDocumentId}
       />
 
       <TenantOrganizationsPanel organizations={organizations} />

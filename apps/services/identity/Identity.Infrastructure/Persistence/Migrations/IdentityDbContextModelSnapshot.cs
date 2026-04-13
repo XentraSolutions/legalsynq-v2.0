@@ -1799,6 +1799,9 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("LogoDocumentId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("LogoWhiteDocumentId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)

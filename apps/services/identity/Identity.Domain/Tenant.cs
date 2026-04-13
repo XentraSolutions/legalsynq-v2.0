@@ -32,6 +32,7 @@ public class Tenant
     public int? SessionTimeoutMinutes { get; private set; }
 
     public Guid? LogoDocumentId { get; private set; }
+    public Guid? LogoWhiteDocumentId { get; private set; }
 
     public string? Subdomain { get; private set; }
     public ProvisioningStatus ProvisioningStatus { get; private set; }
@@ -98,6 +99,18 @@ public class Tenant
     {
         LogoDocumentId = null;
         UpdatedAtUtc   = DateTime.UtcNow;
+    }
+
+    public void SetLogoWhite(Guid documentId)
+    {
+        LogoWhiteDocumentId = documentId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ClearLogoWhite()
+    {
+        LogoWhiteDocumentId = null;
+        UpdatedAtUtc = DateTime.UtcNow;
     }
 
     public void MarkProvisioningInProgress()

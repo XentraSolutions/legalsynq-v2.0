@@ -31,6 +31,8 @@ public static class AdminEndpoints
         routes.MapPatch("/api/admin/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings);
         routes.MapPatch("/api/admin/tenants/{id:guid}/logo",             SetTenantLogo);
         routes.MapDelete("/api/admin/tenants/{id:guid}/logo",            ClearTenantLogo);
+        routes.MapPatch("/api/admin/tenants/{id:guid}/logo-white",       SetTenantLogoWhite);
+        routes.MapDelete("/api/admin/tenants/{id:guid}/logo-white",      ClearTenantLogoWhite);
         routes.MapPost("/api/admin/tenants/{id:guid}/provisioning/retry", RetryProvisioning);
         routes.MapPost("/api/admin/tenants/{id:guid}/verification/retry", RetryVerification);
 
@@ -291,6 +293,7 @@ public static class AdminEndpoints
             updatedAtUtc          = t.UpdatedAtUtc,
             sessionTimeoutMinutes = t.SessionTimeoutMinutes,
             logoDocumentId        = t.LogoDocumentId,
+            logoWhiteDocumentId   = t.LogoWhiteDocumentId,
             productEntitlements   = entitlements,
             subdomain                       = t.Subdomain,
             provisioningStatus              = t.ProvisioningStatus.ToString(),
@@ -894,6 +897,108 @@ public static class AdminEndpoints
             Action      = "LogoCleared",
             Description = $"Admin cleared logo for tenant {id}.",
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.tenant.logo_cleared", id.ToString()),
+            Tags = ["tenant", "logo", "branding"],
+        });
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> SetTenantLogoWhite(
+        Guid                id,
+        SetLogoRequest      body,
+        ClaimsPrincipal     caller,
+        IdentityDbContext   db,
+        IAuditEventClient   auditClient,
+        CancellationToken   ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.DocumentId))
+            return Results.BadRequest(new { error = "documentId is required." });
+
+        if (!Guid.TryParse(body.DocumentId, out var documentId))
+            return Results.BadRequest(new { error = "documentId must be a valid UUID." });
+
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (tenant is null) return Results.NotFound();
+
+        tenant.SetLogoWhite(documentId);
+        await db.SaveChangesAsync(ct);
+
+        var callerId     = caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub");
+        var callerEmail  = caller.FindFirstValue(ClaimTypes.Email) ?? caller.FindFirstValue("email");
+        var now          = DateTimeOffset.UtcNow;
+
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.tenant.logo_white_set",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = id.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = callerId,
+                Type = ActorType.User,
+                Name = callerEmail,
+            },
+            Entity      = new AuditEventEntityDto { Type = "Tenant", Id = id.ToString() },
+            Action      = "LogoWhiteSet",
+            Description = $"Admin set white/reversed logo for tenant {id} (document {documentId}).",
+            Metadata    = JsonSerializer.Serialize(new { tenantId = id, documentId }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.tenant.logo_white_set", id.ToString()),
+            Tags = ["tenant", "logo", "branding"],
+        });
+
+        return Results.Ok(new { logoWhiteDocumentId = documentId });
+    }
+
+    private static async Task<IResult> ClearTenantLogoWhite(
+        Guid                id,
+        ClaimsPrincipal     caller,
+        IdentityDbContext   db,
+        IAuditEventClient   auditClient,
+        CancellationToken   ct)
+    {
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (tenant is null) return Results.NotFound();
+
+        tenant.ClearLogoWhite();
+        await db.SaveChangesAsync(ct);
+
+        var callerId     = caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub");
+        var callerEmail  = caller.FindFirstValue(ClaimTypes.Email) ?? caller.FindFirstValue("email");
+        var now          = DateTimeOffset.UtcNow;
+
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.tenant.logo_white_cleared",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = id.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = callerId,
+                Type = ActorType.User,
+                Name = callerEmail,
+            },
+            Entity      = new AuditEventEntityDto { Type = "Tenant", Id = id.ToString() },
+            Action      = "LogoWhiteCleared",
+            Description = $"Admin cleared white/reversed logo for tenant {id}.",
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.tenant.logo_white_cleared", id.ToString()),
             Tags = ["tenant", "logo", "branding"],
         });
 

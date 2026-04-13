@@ -35,6 +35,7 @@ export interface TenantDetail extends TenantSummary {
   linkedOrgCount?:            number;
   sessionTimeoutMinutes?:     number;
   logoDocumentId?:            string;
+  logoWhiteDocumentId?:       string;
   productEntitlements:        ProductEntitlementSummary[];
   lastProvisioningAttemptUtc?: string;
   provisioningFailureReason?: string;
