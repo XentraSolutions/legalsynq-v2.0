@@ -145,14 +145,14 @@ public class Lien : AuditableEntity
         if (!LienStatus.All.Contains(newStatus))
             throw new ArgumentException($"Invalid lien status: '{newStatus}'.");
 
-        if (LienStatus.Terminal.Contains(Status) && newStatus != LienStatus.Active)
-            throw new InvalidOperationException($"Cannot transition from terminal status '{Status}' to '{newStatus}'.");
+        if (!LienStatus.AllowedTransitions.TryGetValue(Status, out var allowed) || !allowed.Contains(newStatus))
+            throw new InvalidOperationException($"Cannot transition from '{Status}' to '{newStatus}'.");
 
         Status          = newStatus;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
 
-        if (newStatus == LienStatus.Settled || newStatus == LienStatus.Cancelled)
+        if (LienStatus.Terminal.Contains(newStatus))
             ClosedAtUtc = DateTime.UtcNow;
     }
 
@@ -177,6 +177,7 @@ public class Lien : AuditableEntity
             throw new InvalidOperationException($"Only offered or under-review liens can be withdrawn. Current status: '{Status}'.");
 
         Status          = LienStatus.Withdrawn;
+        ClosedAtUtc     = DateTime.UtcNow;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
     }
@@ -236,6 +237,14 @@ public class Lien : AuditableEntity
     {
         if (originalAmount < 0)
             throw new ArgumentOutOfRangeException(nameof(originalAmount), "Original amount cannot be negative.");
+        if (currentBalance.HasValue && currentBalance.Value < 0)
+            throw new ArgumentOutOfRangeException(nameof(currentBalance), "Current balance cannot be negative.");
+        if (offerPrice.HasValue && offerPrice.Value < 0)
+            throw new ArgumentOutOfRangeException(nameof(offerPrice), "Offer price cannot be negative.");
+        if (purchasePrice.HasValue && purchasePrice.Value < 0)
+            throw new ArgumentOutOfRangeException(nameof(purchasePrice), "Purchase price cannot be negative.");
+        if (payoffAmount.HasValue && payoffAmount.Value < 0)
+            throw new ArgumentOutOfRangeException(nameof(payoffAmount), "Payoff amount cannot be negative.");
 
         OriginalAmount = originalAmount;
         if (currentBalance.HasValue) CurrentBalance = currentBalance.Value;

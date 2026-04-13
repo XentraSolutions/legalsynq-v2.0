@@ -3638,6 +3638,29 @@ Defined foundational domain entities for the Liens microservice following v2 pat
 - Full Liens service stack: 0 warnings, 0 errors
 - Report: `analysis/LS-LIENS-03-001-report.md`
 
+## Core Lien Domain Entity — 2026-04-13
+
+### Summary
+Created the core `Lien` domain entity as the central business object of the SynqLiens product. Models a medical/legal lien through its full lifecycle — from draft creation through marketplace listing, sale, servicing, and settlement.
+
+### Entity Created
+- **Lien** (`Liens.Domain/Entities/Lien.cs`) — 28 properties, 10 domain methods. Full marketplace lifecycle with multi-party ownership (Seller → Buyer → Holder).
+
+### Supporting Types Added/Modified
+- **`LienParticipantRole`** (new) — Seller, Buyer, Holder constants
+- **`LienStatus`** (expanded) — 9 statuses: Draft, Offered, UnderReview, Sold, Active, Settled, Withdrawn, Cancelled, Disputed. Includes `Open`, `Terminal` subsets and explicit `AllowedTransitions` matrix.
+
+### Key Design Decisions
+- Financial fields: `OriginalAmount`, `CurrentBalance`, `OfferPrice`, `PurchasePrice`, `PayoffAmount` (plain decimal, matching Fund/CareConnect v2 pattern)
+- Multi-party: `SellingOrgId`, `BuyingOrgId`, `HoldingOrgId` as Guid FKs (no navigation properties)
+- Subject party: Inline `SubjectFirstName`/`SubjectLastName` snapshot + `SubjectPartyId` FK-ready
+- Transition matrix enforced in domain: `TransitionStatus()` validates against `AllowedTransitions` dictionary
+- All domain methods set `ClosedAtUtc` on terminal transitions consistently
+
+### Build
+- Full Liens service stack: 0 warnings, 0 errors
+- Report: `analysis/LS-LIENS-03-002-report.md`
+
 ## Liens Service JWT Auth Integration — 2026-04-13
 
 ### Summary
