@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect } from 'react';
 import Image from 'next/image';
 import { LoginForm } from './login-form';
+import { useTenantBranding } from '@/providers/tenant-branding-provider';
 
 const HIGHLIGHTS = [
   {
@@ -24,15 +25,27 @@ const HIGHLIGHTS = [
 ];
 
 function TenantLogo() {
+  const branding = useTenantBranding();
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [src, setSrc] = useState<string | null>(null);
 
-  if (status === 'error') return null;
+  useEffect(() => {
+    if (branding.logoDocumentId) {
+      setStatus('loading');
+      setSrc(`/api/branding/logo/public?_t=${Date.now()}`);
+    } else {
+      setSrc(null);
+      setStatus('error');
+    }
+  }, [branding.logoDocumentId]);
+
+  if (status === 'error' || !src) return null;
 
   return (
     <div className="mb-6" style={status === 'loading' ? { height: 0, overflow: 'hidden' } : undefined}>
       <img
-        src="/api/branding/logo/public"
-        alt="Organization logo"
+        src={src}
+        alt={branding.displayName || 'Organization logo'}
         className="max-h-16 max-w-[220px] object-contain"
         onLoad={() => setStatus('loaded')}
         onError={() => setStatus('error')}

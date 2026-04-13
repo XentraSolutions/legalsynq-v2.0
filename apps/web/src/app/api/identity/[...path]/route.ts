@@ -39,6 +39,10 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
   };
   if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
 
+  const tenantCode = request.headers.get('X-Tenant-Code');
+  const isBrandingRoute = pathSegments.join('/').startsWith('tenants/current/branding');
+  if (tenantCode && isBrandingRoute) reqHeaders['X-Tenant-Code'] = tenantCode;
+
   let body: string | undefined;
   if (!['GET', 'HEAD'].includes(request.method)) {
     try { body = await request.text(); } catch { /* empty body */ }

@@ -308,52 +308,62 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
 }
 
 function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useTenantBranding>; hasSession: boolean }) {
-  const [logoError, setLogoError] = useState(false);
-  const [fallbackError, setFallbackError] = useState(false);
+  const sources: string[] = [];
+  if (branding.logoWhiteDocumentId && hasSession)
+    sources.push(`/api/branding/logo/${branding.logoWhiteDocumentId}`);
+  if (branding.logoDocumentId && hasSession)
+    sources.push(`/api/branding/logo/${branding.logoDocumentId}`);
+  if (branding.logoUrl)
+    sources.push(branding.logoUrl);
+  sources.push('/api/branding/logo/public');
 
-  const whiteLogoSrc = branding.logoWhiteDocumentId && hasSession
-    ? `/api/branding/logo/${branding.logoWhiteDocumentId}`
-    : null;
+  const [srcIndex, setSrcIndex] = useState(0);
+  const [exhausted, setExhausted] = useState(false);
 
-  const colorLogoSrc = branding.logoDocumentId && hasSession
-    ? `/api/branding/logo/${branding.logoDocumentId}`
-    : branding.logoUrl || null;
+  const sourcesKey = sources.join('|');
+  useEffect(() => {
+    setSrcIndex(0);
+    setExhausted(false);
+  }, [sourcesKey]);
 
-  const primarySrc = whiteLogoSrc || colorLogoSrc;
+  function handleError() {
+    const next = srcIndex + 1;
+    if (next < sources.length) {
+      setSrcIndex(next);
+    } else {
+      setExhausted(true);
+    }
+  }
 
-  if (primarySrc && !logoError) {
+  if (exhausted) {
     return (
-      <img
-        src={primarySrc}
-        alt={branding.displayName || 'Tenant logo'}
-        className="w-auto object-contain max-w-[180px]"
-        style={{ height: 32 }}
-        onError={() => setLogoError(true)}
+      <Image
+        src="/legalsynq-logo-white.png"
+        alt="LegalSynq"
+        width={130}
+        height={32}
+        priority
+        unoptimized
+        className="h-8 w-auto"
       />
     );
   }
 
-  if (!fallbackError) {
-    return (
-      <img
-        src="/api/branding/logo/public"
-        alt={branding.displayName || 'Tenant logo'}
-        className="w-auto object-contain max-w-[180px]"
-        style={{ height: 32 }}
-        onError={() => setFallbackError(true)}
-      />
-    );
-  }
+  const isWhiteSrc = srcIndex === 0 && !!branding.logoWhiteDocumentId && hasSession;
+  const isColorFallback = !isWhiteSrc && srcIndex > 0;
 
   return (
-    <Image
-      src="/legalsynq-logo-white.png"
-      alt="LegalSynq"
-      width={130}
-      height={32}
-      priority
-      unoptimized
-      className="h-8 w-auto"
+    <img
+      src={sources[srcIndex]}
+      alt={branding.displayName || 'Tenant logo'}
+      className="w-auto object-contain max-w-[180px]"
+      style={{
+        height: 32,
+        ...(isColorFallback && !branding.logoWhiteDocumentId
+          ? { filter: 'brightness(0) invert(1)', opacity: 0.9 }
+          : {}),
+      }}
+      onError={handleError}
     />
   );
 }
