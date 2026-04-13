@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
@@ -11,7 +12,8 @@ public static class ProviderEndpoints
 {
     public static void MapProviderEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/providers");
+        var group = app.MapGroup("/api/providers")
+            .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapGet("/", async (
             [AsParameters] ProviderSearchParams p,
@@ -21,7 +23,7 @@ public static class ProviderEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderSearch, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ProviderSearch, ct);
 
             var query = new GetProvidersQuery
             {
@@ -56,7 +58,7 @@ public static class ProviderEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderMap, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ProviderMap, ct);
 
             var query = new GetProvidersQuery
             {
@@ -90,7 +92,7 @@ public static class ProviderEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderSearch, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ProviderSearch, ct);
             var provider = await service.GetByIdAsync(tenantId, id, ct);
             return Results.Ok(provider);
         })
@@ -104,11 +106,13 @@ public static class ProviderEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderManage, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ProviderManage, ct);
             var provider = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/providers/{provider.Id}", provider);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductRole(ProductCodes.SynqCareConnect,
+            ProductRoleCodes.CareConnectReceiver, "CARECONNECT_ADMIN");
 
         group.MapPut("/{id:guid}", async (
             Guid id,
@@ -119,11 +123,13 @@ public static class ProviderEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderManage, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ProviderManage, ct);
             var provider = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(provider);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductRole(ProductCodes.SynqCareConnect,
+            ProductRoleCodes.CareConnectReceiver, "CARECONNECT_ADMIN");
 
         // ── Availability endpoint ──────────────────────────────────────────
         group.MapGet("/{providerId:guid}/availability", async (
@@ -135,7 +141,7 @@ public static class ProviderEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ProviderSearch, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ProviderSearch, ct);
             var result = await service.GetAvailabilityAsync(tenantId, providerId, p.From, p.To, p.ServiceOfferingId, p.FacilityId, ct);
             return Results.Ok(result);
         })

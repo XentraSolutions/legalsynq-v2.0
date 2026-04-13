@@ -35,6 +35,7 @@ export interface TenantDetail extends TenantSummary {
   linkedOrgCount?:            number;
   sessionTimeoutMinutes?:     number;
   logoDocumentId?:            string;
+  logoWhiteDocumentId?:       string;
   productEntitlements:        ProductEntitlementSummary[];
   lastProvisioningAttemptUtc?: string;
   provisioningFailureReason?: string;
@@ -172,30 +173,57 @@ export interface UserRoleSummary {
   assignmentId: string;
 }
 
-// ── Groups ────────────────────────────────────────────────────────────────────
+// ── Access Groups (LS-COR-AUT-004 / LS-COR-AUT-005) ─────────────────────────
 
-export interface GroupSummary {
+export type AccessGroupStatus = 'Active' | 'Archived';
+export type AccessGroupScopeType = 'Tenant' | 'Product' | 'Organization';
+export type AccessGroupMembershipStatus = 'Active' | 'Removed';
+export type GroupProductAccessStatus = 'Granted' | 'Revoked';
+export type GroupRoleAssignmentStatus = 'Active' | 'Removed';
+
+export interface AccessGroupSummary {
+  id:              string;
+  tenantId:        string;
+  name:            string;
+  description?:    string;
+  status:          AccessGroupStatus;
+  scopeType:       AccessGroupScopeType;
+  productCode?:    string;
+  organizationId?: string;
+  createdAtUtc:    string;
+  updatedAtUtc:    string;
+}
+
+export interface AccessGroupMember {
+  id:               string;
+  tenantId:         string;
+  groupId:          string;
+  userId:           string;
+  membershipStatus: AccessGroupMembershipStatus;
+  addedAtUtc:       string;
+  removedAtUtc?:    string;
+}
+
+export interface GroupProductAccess {
   id:           string;
   tenantId:     string;
-  name:         string;
-  description?: string;
-  memberCount:  number;
-  isActive:     boolean;
-  createdAtUtc: string;
+  groupId:      string;
+  productCode:  string;
+  accessStatus: GroupProductAccessStatus;
+  grantedAtUtc: string;
+  revokedAtUtc?: string;
 }
 
-export interface GroupMemberSummary {
-  membershipId: string;
-  userId:       string;
-  firstName:    string;
-  lastName:     string;
-  email:        string;
-  joinedAtUtc:  string;
-}
-
-export interface GroupDetail extends GroupSummary {
-  updatedAtUtc: string;
-  members:      GroupMemberSummary[];
+export interface GroupRoleAssignment {
+  id:               string;
+  tenantId:         string;
+  groupId:          string;
+  roleCode:         string;
+  productCode?:     string;
+  organizationId?:  string;
+  assignmentStatus: GroupRoleAssignmentStatus;
+  assignedAtUtc:    string;
+  removedAtUtc?:    string;
 }
 
 // ── Permissions catalog ────────────────────────────────────────────────────────
@@ -205,9 +233,12 @@ export interface PermissionCatalogItem {
   code:        string;
   name:        string;
   description?: string;
+  category?:   string;
   productId:   string;
   productName: string;
+  productCode: string;
   isActive:    boolean;
+  updatedAtUtc?: string;
 }
 
 // ── Roles & Permissions ───────────────────────────────────────────────────────
@@ -307,6 +338,65 @@ export interface EffectivePermissionsResult {
   items:      EffectivePermission[];
   totalCount: number;
   roleCount:  number;
+}
+
+// ── Access Debug (LS-COR-AUT-008) ─────────────────────────────────────────────
+
+export interface AccessDebugProductEntry {
+  productCode: string;
+  source:      string;
+  groupId:     string | null;
+  groupName:   string | null;
+}
+
+export interface AccessDebugRoleEntry {
+  roleCode:    string;
+  productCode: string | null;
+  source:      string;
+  groupId:     string | null;
+  groupName:   string | null;
+}
+
+export interface AccessDebugSystemRole {
+  roleName:  string;
+  scopeType: string;
+}
+
+export interface AccessDebugGroup {
+  groupId:     string;
+  groupName:   string;
+  status:      string;
+  scopeType:   string;
+  productCode: string | null;
+}
+
+export interface AccessDebugEntitlement {
+  productCode: string;
+  status:      string;
+}
+
+export interface AccessDebugPermissionEntry {
+  permissionCode: string;
+  productCode:    string;
+  source:         string;
+  viaRoleCode?:   string;
+  groupId?:       string;
+  groupName?:     string;
+}
+
+export interface AccessDebugResult {
+  userId:            string;
+  tenantId:          string;
+  accessVersion:     number;
+  products:          AccessDebugProductEntry[];
+  roles:             AccessDebugRoleEntry[];
+  systemRoles:       AccessDebugSystemRole[];
+  groups:            AccessDebugGroup[];
+  entitlements:      AccessDebugEntitlement[];
+  productRolesFlat:  string[];
+  tenantRoles:       string[];
+  permissions:       string[];
+  permissionSources: AccessDebugPermissionEntry[];
 }
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────
@@ -830,6 +920,65 @@ export interface ScopedRoleAssignment {
   scopeEntityId?: string;
   isActive:       boolean;
   createdAtUtc:   string;
+}
+
+// ── LS-COR-AUT-011: ABAC Policies ────────────────────────────────────────────
+
+export interface PolicySummary {
+  id:              string;
+  policyCode:      string;
+  name:            string;
+  description?:    string;
+  productCode:     string;
+  isActive:        boolean;
+  priority:        number;
+  effect:          string;
+  rulesCount:      number;
+  permissionCount: number;
+  createdAtUtc:    string;
+  updatedAtUtc?:   string;
+}
+
+export interface PolicyRule {
+  id:            string;
+  conditionType: string;
+  field:         string;
+  op:            string;
+  value:         string;
+  logicalGroup:  string;
+  createdAtUtc:  string;
+}
+
+export interface PermissionPolicyMapping {
+  id:             string;
+  permissionCode: string;
+  isActive:       boolean;
+  createdAtUtc:   string;
+}
+
+export interface PolicyDetail extends PolicySummary {
+  createdBy?:          string;
+  updatedBy?:          string;
+  rules:               PolicyRule[];
+  permissionMappings:  PermissionPolicyMapping[];
+}
+
+export interface PermissionPolicySummary {
+  id:             string;
+  permissionCode: string;
+  policyId:       string;
+  policyCode:     string;
+  policyName:     string;
+  isActive:       boolean;
+  createdAtUtc:   string;
+}
+
+export interface SupportedFieldsResponse {
+  fields:         string[];
+  operators:      string[];
+  conditionTypes: string[];
+  logicalGroups:  string[];
+  effects:        string[];
 }
 
 // ── Shared ────────────────────────────────────────────────────────────────────

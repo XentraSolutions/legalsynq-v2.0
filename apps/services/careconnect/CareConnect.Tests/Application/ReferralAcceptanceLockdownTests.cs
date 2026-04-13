@@ -47,18 +47,17 @@ public class ReferralAcceptanceLockdownTests
     // ── Workflow rules — capability enforcement ────────────────────────────────
 
     [Fact]
-    public void WorkflowRules_AcceptedTransition_RequiresReferralAcceptCapability()
+    public void WorkflowRules_AcceptedTransition_RequiresReferralAcceptPermission()
     {
-        var required = ReferralWorkflowRules.RequiredCapabilityFor(Referral.ValidStatuses.Accepted);
-        Assert.Equal(CapabilityCodes.ReferralAccept, required);
+        var required = ReferralWorkflowRules.RequiredPermissionFor(Referral.ValidStatuses.Accepted);
+        Assert.Equal(PermissionCodes.ReferralAccept, required);
     }
 
     [Fact]
-    public void WorkflowRules_ReferralAcceptCapability_IsNotGenericUpdateStatus()
+    public void WorkflowRules_ReferralAcceptPermission_IsNotGenericUpdateStatus()
     {
-        // Acceptance must use its own dedicated capability, not the generic update
-        var required = ReferralWorkflowRules.RequiredCapabilityFor(Referral.ValidStatuses.Accepted);
-        Assert.NotEqual(CapabilityCodes.ReferralUpdateStatus, required);
+        var required = ReferralWorkflowRules.RequiredPermissionFor(Referral.ValidStatuses.Accepted);
+        Assert.NotEqual(PermissionCodes.ReferralUpdateStatus, required);
     }
 
     // ── Duplicate acceptance blocked by state machine ──────────────────────────
@@ -120,10 +119,9 @@ public class ReferralAcceptanceLockdownTests
     }
 
     [Fact]
-    public void WorkflowRules_AcceptCapabilityCode_HasExpectedValue()
+    public void WorkflowRules_AcceptPermissionCode_HasExpectedValue()
     {
-        // Documents the expected capability code string so regressions are caught
-        Assert.Equal("referral:accept", CapabilityCodes.ReferralAccept);
+        Assert.Equal("SYNQ_CARECONNECT.referral:accept", PermissionCodes.ReferralAccept);
     }
 
     // ── Login returnTo URL pattern ─────────────────────────────────────────────
@@ -153,13 +151,9 @@ public class ReferralAcceptanceLockdownTests
     // ── Notification continuity check ──────────────────────────────────────────
 
     [Fact]
-    public void WorkflowRules_AcceptCapability_AlignsWith_AuthenticatedPutEndpoint()
+    public void WorkflowRules_AcceptPermission_AlignsWith_AuthenticatedPutEndpoint()
     {
-        // The PUT /api/referrals/{id} endpoint uses RequiredCapabilityFor(request.Status).
-        // When the status is "Accepted", the capability gate is ReferralAccept.
-        // This is the same path that triggers law firm + client notifications.
-        // Verifies that the notification-firing path is the authenticated one.
-        var capabilityForAccept = ReferralWorkflowRules.RequiredCapabilityFor("Accepted");
-        Assert.Equal(CapabilityCodes.ReferralAccept, capabilityForAccept);
+        var permissionForAccept = ReferralWorkflowRules.RequiredPermissionFor("Accepted");
+        Assert.Equal(PermissionCodes.ReferralAccept, permissionForAccept);
     }
 }

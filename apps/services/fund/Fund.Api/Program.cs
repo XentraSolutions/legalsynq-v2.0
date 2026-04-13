@@ -53,12 +53,16 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
         policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
 
-    // SynqFund product-role gates
+    // SynqFund product-role gates — LS-COR-AUT-006A: check product_roles claims
+    // in unified PRODUCT:Role format. Endpoints should prefer RequireProductAccess/
+    // RequireProductRole filters for consistency; these policies exist as fallback.
     options.AddPolicy(Policies.CanReferFund, policy =>
-        policy.RequireRole(ProductRoleCodes.SynqFundReferrer));
+        policy.RequireClaim("product_roles",
+            $"{ProductCodes.SynqFund}:{ProductRoleCodes.SynqFundReferrer}"));
 
     options.AddPolicy(Policies.CanFundApplications, policy =>
-        policy.RequireRole(ProductRoleCodes.SynqFundFunder));
+        policy.RequireClaim("product_roles",
+            $"{ProductCodes.SynqFund}:{ProductRoleCodes.SynqFundFunder}"));
 });
 
 builder.Services.AddInfrastructure(builder.Configuration);

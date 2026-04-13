@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5000';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 const IS_PROD     = process.env.NODE_ENV === 'production';
 
 /**
@@ -120,6 +120,15 @@ export async function POST(request: NextRequest) {
     path:     '/',
     maxAge:   maxAgeSeconds,
     // domain: intentionally omitted — scopes to exact request origin only
+  });
+
+  const resolvedTenantCode = user.tenantCode ?? tenantCode;
+  response.cookies.set('tenant_code', resolvedTenantCode, {
+    httpOnly: false,
+    secure:   IS_PROD,
+    sameSite: IS_PROD ? 'strict' : 'lax',
+    path:     '/',
+    maxAge:   maxAgeSeconds,
   });
 
   return response;

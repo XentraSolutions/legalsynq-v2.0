@@ -22,7 +22,7 @@ import { redirect } from 'next/navigation';
  *     → /referrals/accept/invalid  (error page)
  */
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 interface Props {
   searchParams: Promise<{ token?: string }>;

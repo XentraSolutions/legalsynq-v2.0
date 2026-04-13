@@ -309,6 +309,28 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
           </div>
         </form>
 
+        {/* Quick-filter presets for access changes */}
+        {(MODE === 'canonical' || MODE === 'hybrid') && !hasFilters && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Quick filters:</span>
+            <a href="/audit-logs?category=access" className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-colors">
+              Access Changes
+            </a>
+            <a href="/audit-logs?category=security" className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors">
+              Security Events
+            </a>
+            <a href="/audit-logs?eventType=role.assigned" className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
+              Role Assignments
+            </a>
+            <a href="/audit-logs?eventType=group.membership" className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
+              Group Membership
+            </a>
+            <a href="/audit-logs?eventType=product.access" className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
+              Product Access
+            </a>
+          </div>
+        )}
+
         {/* Active filter chips */}
         {hasFilters && !fetchError && (
           <div className="flex items-center flex-wrap gap-2 text-sm text-gray-500">

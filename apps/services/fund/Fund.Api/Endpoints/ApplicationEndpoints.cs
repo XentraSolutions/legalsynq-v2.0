@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using BuildingBlocks.Exceptions;
 using Fund.Application.DTOs;
@@ -8,17 +9,12 @@ namespace Fund.Api.Endpoints;
 
 public static class ApplicationEndpoints
 {
-    // Local policy names (defined in Program.cs)
-    private const string SynqFundAny      = "SynqFundAny";
-    private const string SynqFundReferrer = "SynqFundReferrer";
-    private const string SynqFundFunder   = "SynqFundFunder";
-
     public static void MapApplicationEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/applications");
+        var group = app.MapGroup("/api/applications")
+            .RequireProductAccess(ProductCodes.SynqFund);
 
         // ── GET /api/applications ─────────────────────────────────────────────
-        // Both referrers and funders; service scopes by tenantId.
         group.MapGet("/", async (
             ICurrentRequestContext ctx,
             IApplicationService svc,
@@ -28,7 +24,6 @@ public static class ApplicationEndpoints
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var results  = await svc.GetAllAsync(tenantId, ct);
 
-            // Optional status filter (frontend passes ?status=Draft etc.)
             if (!string.IsNullOrWhiteSpace(status))
                 results = results.Where(a => a.Status == status).ToList();
 
@@ -49,7 +44,7 @@ public static class ApplicationEndpoints
         }).RequireAuthorization(Policies.AuthenticatedUser);
 
         // ── POST /api/applications ────────────────────────────────────────────
-        // SYNQFUND_REFERRER creates draft applications.
+        // LS-COR-AUT-010: Migrated from RequireProductRole → RequirePermission (PBAC primary).
         group.MapPost("/", async (
             CreateApplicationRequest request,
             ICurrentRequestContext ctx,
@@ -60,7 +55,9 @@ public static class ApplicationEndpoints
             var userId   = ctx.UserId   ?? throw new InvalidOperationException("sub claim is missing.");
             var result   = await svc.CreateAsync(tenantId, userId, request, ct);
             return Results.Created($"/api/applications/{result.Id}", result);
-        }).RequireAuthorization(Policies.AuthenticatedUser);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequirePermission("SYNQ_FUND.application:create");
 
         // ── PUT /api/applications/{id} ────────────────────────────────────────
         group.MapPut("/{id:guid}", async (
@@ -74,10 +71,12 @@ public static class ApplicationEndpoints
             var userId   = ctx.UserId   ?? throw new InvalidOperationException("sub claim is missing.");
             var result   = await svc.UpdateAsync(tenantId, id, userId, request, ct);
             return Results.Ok(result);
-        }).RequireAuthorization(Policies.AuthenticatedUser);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequirePermission("SYNQ_FUND.application:create");
 
         // ── POST /api/applications/{id}/submit ────────────────────────────────
-        // Draft → Submitted.  Performed by SYNQFUND_REFERRER.
+        // Draft → Submitted.
         group.MapPost("/{id:guid}/submit", async (
             Guid id,
             SubmitApplicationRequest request,
@@ -89,10 +88,12 @@ public static class ApplicationEndpoints
             var userId   = ctx.UserId   ?? throw new InvalidOperationException("sub claim is missing.");
             var result   = await svc.SubmitAsync(tenantId, id, userId, request, ct);
             return Results.Ok(result);
-        }).RequireAuthorization(Policies.AuthenticatedUser);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequirePermission("SYNQ_FUND.application:create");
 
         // ── POST /api/applications/{id}/begin-review ──────────────────────────
-        // Submitted → InReview.  Performed by SYNQFUND_FUNDER.
+        // Submitted → InReview.
         group.MapPost("/{id:guid}/begin-review", async (
             Guid id,
             ICurrentRequestContext ctx,
@@ -103,10 +104,12 @@ public static class ApplicationEndpoints
             var userId   = ctx.UserId   ?? throw new InvalidOperationException("sub claim is missing.");
             var result   = await svc.BeginReviewAsync(tenantId, id, userId, ct);
             return Results.Ok(result);
-        }).RequireAuthorization(Policies.AuthenticatedUser);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequirePermission("SYNQ_FUND.application:evaluate");
 
         // ── POST /api/applications/{id}/approve ───────────────────────────────
-        // InReview → Approved.  Performed by SYNQFUND_FUNDER.
+        // InReview → Approved.
         group.MapPost("/{id:guid}/approve", async (
             Guid id,
             ApproveApplicationRequest request,
@@ -118,10 +121,12 @@ public static class ApplicationEndpoints
             var userId   = ctx.UserId   ?? throw new InvalidOperationException("sub claim is missing.");
             var result   = await svc.ApproveAsync(tenantId, id, userId, request, ct);
             return Results.Ok(result);
-        }).RequireAuthorization(Policies.AuthenticatedUser);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequirePermission("SYNQ_FUND.application:approve");
 
         // ── POST /api/applications/{id}/deny ─────────────────────────────────
-        // InReview → Rejected.  Performed by SYNQFUND_FUNDER.
+        // InReview → Rejected.
         group.MapPost("/{id:guid}/deny", async (
             Guid id,
             DenyApplicationRequest request,
@@ -133,6 +138,8 @@ public static class ApplicationEndpoints
             var userId   = ctx.UserId   ?? throw new InvalidOperationException("sub claim is missing.");
             var result   = await svc.DenyAsync(tenantId, id, userId, request, ct);
             return Results.Ok(result);
-        }).RequireAuthorization(Policies.AuthenticatedUser);
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequirePermission("SYNQ_FUND.application:decline");
     }
 }

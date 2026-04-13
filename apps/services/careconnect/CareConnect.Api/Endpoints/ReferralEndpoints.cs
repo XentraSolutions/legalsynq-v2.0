@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using BuildingBlocks.Exceptions;
 using CareConnect.Application.Authorization;
@@ -61,7 +62,8 @@ public static class ReferralEndpoints
             var result = await service.SearchAsync(tenantId, query, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         // LSCC-01-002-02: Returns the explicit readiness result for the current caller
         // as a provider in the CareConnect receiver path.
@@ -108,7 +110,8 @@ public static class ReferralEndpoints
 
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         // LSCC-002: Row-level access control — caller must be an admin or a participant
         // (ReferringOrganizationId or ReceivingOrganizationId matches their org).
@@ -143,7 +146,8 @@ public static class ReferralEndpoints
 
             return Results.Ok(referral);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapGet("/{id:guid}/history", async (
             Guid id,
@@ -156,7 +160,8 @@ public static class ReferralEndpoints
             var history = await service.GetHistoryAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin || isProviderOrg);
             return Results.Ok(history);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapPost("/", async (
             [FromBody] CreateReferralRequest request,
@@ -166,12 +171,14 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
             request.ReferringOrganizationId = ctx.OrgId;
             var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
             return Results.Created($"/api/referrals/{referral.Id}", referral);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         group.MapPut("/{id:guid}", async (
             Guid id,
@@ -183,15 +190,17 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
-            var requiredCapability = ReferralWorkflowRules.RequiredCapabilityFor(request.Status);
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredCapability, ct);
+            var requiredPermission = ReferralWorkflowRules.RequiredPermissionFor(request.Status);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, requiredPermission, ct);
 
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
             var bypassTenant = ctx.IsPlatformAdmin || isProviderOrg;
             var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct, bypassTenantScope: bypassTenant);
             return Results.Ok(referral);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         // ── LSCC-005-01: Hardening endpoints (authenticated) ────────────────────
 
@@ -207,7 +216,8 @@ public static class ReferralEndpoints
             var notifs = await service.GetNotificationsAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin || isProviderOrg);
             return Results.Ok(notifs);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         // POST /api/referrals/{id}/resend-email — resend provider notification email
         // Only available while referral is in New status.
@@ -219,7 +229,7 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
 
             try
             {
@@ -236,7 +246,9 @@ public static class ReferralEndpoints
                 return Results.Conflict(new { error = ex.Message });
             }
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         // POST /api/referrals/{id}/revoke-token — invalidate all previously issued view tokens
         group.MapPost("/{id:guid}/revoke-token", async (
@@ -247,7 +259,7 @@ public static class ReferralEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, CapabilityCodes.ReferralCreate, ct);
+            await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
 
             try
             {
@@ -259,7 +271,9 @@ public static class ReferralEndpoints
                 return Results.NotFound();
             }
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
 
         // GET /api/referrals/{id}/audit — operational audit timeline (LSCC-005-02)
         // Returns status-history + notification events merged and sorted chronologically.
@@ -281,7 +295,8 @@ public static class ReferralEndpoints
                 return Results.NotFound();
             }
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         // ── LSCC-005: Public token-based endpoints (no auth required) ──────────
 

@@ -27,7 +27,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ActivationLanding } from './activation-landing';
 
-const GATEWAY_URL  = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const GATEWAY_URL  = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 const INVALID_ID   = 'invalid';
 
 interface PageProps {

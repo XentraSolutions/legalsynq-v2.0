@@ -13,7 +13,7 @@ export default async function DashboardPage() {
   // Filter product tiles to only those enabled for this tenant.
   // resolveEnabledNavKeys falls back to ALL products when the list is empty
   // (e.g. PlatformAdmin sessions, or tenants with no entitlements configured yet).
-  const enabledKeys    = resolveEnabledNavKeys(session.enabledProducts);
+  const enabledKeys    = resolveEnabledNavKeys(session.enabledProducts ?? []);
   const productEntries = Object.entries(PRODUCT_META).filter(([id]) => enabledKeys.has(id));
 
   return (

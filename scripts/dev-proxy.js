@@ -48,12 +48,17 @@ function resolveTargetPort(req) {
 
 function proxyRequest(req, res) {
   const targetPort = resolveTargetPort(req);
+  const originalHost = req.headers.host || '';
   const opts = {
     hostname: '127.0.0.1',
     port: targetPort,
     path: req.url,
     method: req.method,
-    headers: { ...req.headers, host: req.headers.host },
+    headers: {
+      ...req.headers,
+      'x-forwarded-host': originalHost,
+      host: `127.0.0.1:${targetPort}`,
+    },
   };
   const intercept = shouldIntercept500(req);
   const proxy = http.request(opts, (upstream) => {
@@ -113,12 +118,17 @@ const server = http.createServer((req, res) => {
 
 server.on('upgrade', (req, socket, head) => {
   if (!ready) { socket.destroy(); return; }
+  const targetPort = resolveTargetPort(req);
   const opts = {
     hostname: '127.0.0.1',
-    port: resolveTargetPort(req),
+    port: targetPort,
     path: req.url,
     method: req.method,
-    headers: req.headers,
+    headers: {
+      ...req.headers,
+      'x-forwarded-host': req.headers.host || '',
+      host: `127.0.0.1:${targetPort}`,
+    },
   };
   const proxy = http.request(opts);
   proxy.on('upgrade', (proxyRes, proxySocket, proxyHead) => {

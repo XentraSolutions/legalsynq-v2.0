@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5000';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 const IS_PROD     = process.env.NODE_ENV === 'production';
 
 /**
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json({ ok: true }, { status: 200 });
 
-  // Delete the cookie by setting maxAge to 0 and matching original attributes
+  // Delete the cookies by setting maxAge to 0 and matching original attributes
   response.cookies.set('platform_session', '', {
     httpOnly: true,
     secure:   IS_PROD,
@@ -37,6 +37,11 @@ export async function POST(request: NextRequest) {
     path:     '/',
     maxAge:   0,
   });
+
+  // NOTE: tenant_code cookie is intentionally NOT cleared on logout.
+  // It is non-sensitive (stores only the tenant code, e.g. "MANER") and
+  // keeping it allows the login page to display the correct tenant branding
+  // for returning users without requiring subdomain DNS resolution.
 
   return response;
 }

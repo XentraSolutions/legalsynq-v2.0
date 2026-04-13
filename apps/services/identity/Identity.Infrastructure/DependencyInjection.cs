@@ -11,7 +11,9 @@ using LegalSynq.AuditClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using StackExchange.Redis;
 using System;
 
 namespace Identity.Infrastructure;
@@ -43,7 +45,7 @@ public static class DependencyInjection
 
         services.AddMemoryCache();
         services.AddHttpContextAccessor();
-        services.AddScoped<ICapabilityService, CapabilityService>();
+        services.AddScoped<IPermissionService, PermissionService>();
         services.AddScoped<AuthorizationService>();
         services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 
@@ -71,9 +73,96 @@ public static class DependencyInjection
         services.AddScoped<IProductProvisioningHandler, CareConnectProvisioningHandler>();
         services.AddScoped<IProductProvisioningService, ProductProvisioningService>();
 
-        services.AddScoped<IProductRoleMapper, CareConnectRoleMapper>();
-        services.AddScoped<IProductRoleResolutionService, ProductRoleResolutionService>();
+        services.AddScoped<IAuditPublisher, AuditPublisher>();
+        services.AddScoped<ITenantProductEntitlementService, TenantProductEntitlementService>();
+        services.AddScoped<IUserProductAccessService, UserProductAccessService>();
+        services.AddScoped<IUserRoleAssignmentService, UserRoleAssignmentService>();
+        services.AddScoped<IAccessSourceQueryService, AccessSourceQueryService>();
+        services.AddScoped<IEffectiveAccessService, EffectiveAccessService>();
+        services.AddScoped<IAuthorizationSimulationService, AuthorizationSimulationService>();
+
+        services.AddScoped<IGroupService, GroupService>();
+        services.AddScoped<IGroupMembershipService, GroupMembershipService>();
+        services.AddScoped<IGroupProductAccessService, GroupProductAccessService>();
+        services.AddScoped<IGroupRoleAssignmentService, GroupRoleAssignmentService>();
+
+        services.Configure<PolicyCachingOptions>(configuration.GetSection("Authorization:PolicyCaching"));
+        services.Configure<PolicyLoggingOptions>(configuration.GetSection("Authorization:PolicyLogging"));
+        services.Configure<PolicyVersioningOptions>(configuration.GetSection("Authorization:PolicyVersioning"));
+        services.AddSingleton<PolicyMetrics>();
+
+        services.AddScoped<IAttributeProvider, DefaultAttributeProvider>();
+        services.AddScoped<IPolicyEvaluationService, PolicyEvaluationService>();
+        services.AddScoped<IPolicyResourceContextAccessor, HttpContextPolicyResourceContextAccessor>();
+
+        AddPolicyInfrastructure(services, configuration);
 
         return services;
+    }
+
+    private static void AddPolicyInfrastructure(IServiceCollection services, IConfiguration configuration)
+    {
+        var cachingProvider = configuration["Authorization:PolicyCaching:Provider"] ?? "InMemory";
+        var versioningProvider = configuration["Authorization:PolicyVersioning:Provider"] ?? "InMemory";
+        var redisUrl = configuration["Authorization:Redis:Url"] ?? configuration["Redis:Url"] ?? "";
+        var useRedis = string.Equals(cachingProvider, "Redis", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(versioningProvider, "Redis", StringComparison.OrdinalIgnoreCase);
+
+        if (useRedis && !string.IsNullOrWhiteSpace(redisUrl))
+        {
+            services.AddSingleton<IConnectionMultiplexer>(sp =>
+            {
+                var logger = sp.GetRequiredService<ILogger<RedisPolicyVersionProvider>>();
+                try
+                {
+                    return ConnectionMultiplexer.Connect(redisUrl);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Redis connection failed — distributed policy features will use in-memory fallback");
+                    throw;
+                }
+            });
+        }
+
+        if (string.Equals(versioningProvider, "Redis", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(redisUrl))
+        {
+            services.AddSingleton<IPolicyVersionProvider>(sp =>
+            {
+                try
+                {
+                    var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+                    return new RedisPolicyVersionProvider(redis, sp.GetRequiredService<ILogger<RedisPolicyVersionProvider>>(), sp.GetRequiredService<PolicyMetrics>());
+                }
+                catch
+                {
+                    return new InMemoryPolicyVersionProvider();
+                }
+            });
+        }
+        else
+        {
+            services.AddSingleton<IPolicyVersionProvider, InMemoryPolicyVersionProvider>();
+        }
+
+        if (string.Equals(cachingProvider, "Redis", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(redisUrl))
+        {
+            services.AddSingleton<IPolicyEvaluationCache>(sp =>
+            {
+                try
+                {
+                    var redis = sp.GetRequiredService<IConnectionMultiplexer>();
+                    return new RedisPolicyEvaluationCache(redis, sp.GetRequiredService<ILogger<RedisPolicyEvaluationCache>>());
+                }
+                catch
+                {
+                    return new InMemoryPolicyEvaluationCache(sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>());
+                }
+            });
+        }
+        else
+        {
+            services.AddSingleton<IPolicyEvaluationCache, InMemoryPolicyEvaluationCache>();
+        }
     }
 }

@@ -156,3 +156,51 @@ id = "BRimKA1N4Froggm56pgDp"
 uri = "file://analysis/LS-COR-PRD-001-report.md"
 type = "text"
 title = "LS-COR-PRD-001 Product Provisioning Engine Report"
+
+[[outputs]]
+id = "DFtiUUOWQ65AgdOwSlnke"
+uri = "file://LS-COR-AUT-004-report.md"
+type = "text"
+title = "LS-COR-AUT-004 — Groups + Inherited Access Report"
+
+[[outputs]]
+id = "J36Ifqawltp8GhfMbN4Z9"
+uri = "file://analysis/LS-COR-AUT-005-report.md"
+type = "text"
+title = "LS-COR-AUT-005 Report — Admin UI Access Management Layer"
+
+[[outputs]]
+id = "F9_4oWT95_NUQIzVYzLYD"
+uri = "file://analysis/core-rebuild/LS-COR-AUT-010A-report.md"
+type = "text"
+title = "LS-COR-AUT-010A — Permission Model Alignment Report"
+
+[[outputs]]
+id = "j3lTyjGWlSRDwh3_-4vPU"
+uri = "file://analysis/LS-COR-AUT-010A-report.md"
+type = "text"
+title = "LS-COR-AUT-010A — Permission Model Alignment Report"
+
+[[outputs]]
+id = "iB0AZjCHNVvW_UwwSzydC"
+uri = "file://analysis/LS-COR-AUT-011A-report.md"
+type = "text"
+title = "LS-COR-AUT-011A — Policy Engine Hardening Report"
+
+[[outputs]]
+id = "rCN9DlcAHElCqmC159aDO"
+uri = "file://downloads/legalsynq-source.tar.gz"
+type = "unspecified"
+title = "LegalSynq Source Code (tar.gz)"
+
+[[outputs]]
+id = "gx4xlWV71X2YTIY94eXMK"
+uri = "file://analysis/LS-LIENS-01-001-report.md"
+type = "text"
+title = "LS-LIENS-01-001 Scaffolding Report"
+
+[[outputs]]
+id = "C_fA2oy8SmS74K1Mu12lj"
+uri = "file://analysis/LS-LIENS-01-001-01-report.md"
+type = "text"
+title = "LS-LIENS-01-001-01 Hardening Iteration Report"

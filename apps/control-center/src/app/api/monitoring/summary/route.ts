@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 
 const SERVICES: ServiceDef[] = [
-  { name: 'Gateway',       url: 'http://localhost:5010/health', category: 'infrastructure' },
-  { name: 'Identity',      url: 'http://localhost:5001/health', category: 'infrastructure' },
-  { name: 'Notifications', url: 'http://localhost:5008/v1/health', category: 'infrastructure' },
-  { name: 'Audit',         url: 'http://localhost:5007/health', category: 'infrastructure' },
-  { name: 'SynqFund',      url: 'http://localhost:5002/health', category: 'product' },
-  { name: 'CareConnect',   url: 'http://localhost:5003/health', category: 'product' },
+  { name: 'Gateway',       url: 'http://127.0.0.1:5010/health', category: 'infrastructure' },
+  { name: 'Identity',      url: 'http://127.0.0.1:5001/health', category: 'infrastructure' },
+  { name: 'Notifications', url: 'http://127.0.0.1:5008/health', category: 'infrastructure' },
+  { name: 'Audit',         url: 'http://127.0.0.1:5007/health', category: 'infrastructure' },
+  { name: 'SynqFund',      url: 'http://127.0.0.1:5002/health', category: 'product' },
+  { name: 'CareConnect',   url: 'http://127.0.0.1:5003/health', category: 'product' },
 ];
 
 interface ServiceDef {

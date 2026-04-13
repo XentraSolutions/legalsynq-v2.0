@@ -10,7 +10,7 @@ const nextConfig = {
     },
   },
   async rewrites() {
-    const gatewayUrl = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+    const gatewayUrl = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
     return {
       // beforeFiles: run before pages/static — intentionally empty
       beforeFiles: [],

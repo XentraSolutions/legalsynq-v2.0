@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 export async function GET(req: NextRequest) {
-  const host = req.headers.get('host') ?? '';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? '';
 
   let tenantCode = req.nextUrl.searchParams.get('tenantCode') ?? '';
 

@@ -140,7 +140,7 @@ const nextConfig = {
     const gatewayUrl =
       process.env.CONTROL_CENTER_API_BASE ??
       process.env.GATEWAY_URL             ??
-      'http://localhost:5010';
+      'http://127.0.0.1:5010';
 
     return {
       beforeFiles: [],

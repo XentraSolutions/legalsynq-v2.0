@@ -21,11 +21,11 @@ public class IdentityDbContext : DbContext
 
     // Product role model
     public DbSet<ProductRole> ProductRoles => Set<ProductRole>();
-    public DbSet<Capability> Capabilities => Set<Capability>();
-    public DbSet<RoleCapability> RoleCapabilities => Set<RoleCapability>();
+    public DbSet<Permission> Permissions => Set<Permission>();
+    public DbSet<RolePermissionMapping> RolePermissionMappings => Set<RolePermissionMapping>();
 
-    // UIX-005: Role ↔ Capability assignments (for tenant custom roles)
-    public DbSet<RoleCapabilityAssignment> RoleCapabilityAssignments => Set<RoleCapabilityAssignment>();
+    // Role ↔ Permission assignments (for tenant custom roles)
+    public DbSet<RolePermissionAssignment> RolePermissionAssignments => Set<RolePermissionAssignment>();
 
     // User organization membership
     public DbSet<UserOrganizationMembership> UserOrganizationMemberships => Set<UserOrganizationMembership>();
@@ -42,12 +42,27 @@ public class IdentityDbContext : DbContext
     public DbSet<ScopedRoleAssignment>          ScopedRoleAssignments          => Set<ScopedRoleAssignment>();
 
     // UIX-002: User Management
-    public DbSet<TenantGroup>                   TenantGroups                   => Set<TenantGroup>();
-    public DbSet<GroupMembership>               GroupMemberships               => Set<GroupMembership>();
+    // LS-COR-AUT-007: TenantGroups/GroupMemberships tables dropped — see migration.
     public DbSet<UserInvitation>                UserInvitations                => Set<UserInvitation>();
 
     // UIX-003-03: Security / admin-triggered password reset
     public DbSet<PasswordResetToken>            PasswordResetTokens            => Set<PasswordResetToken>();
+
+    // LS-COR-AUT-002: Access Source-of-Truth
+    public DbSet<TenantProductEntitlement>      TenantProductEntitlements       => Set<TenantProductEntitlement>();
+    public DbSet<UserProductAccess>             UserProductAccessRecords        => Set<UserProductAccess>();
+    public DbSet<UserRoleAssignment>            UserRoleAssignments             => Set<UserRoleAssignment>();
+
+    // LS-COR-AUT-004: Groups + Inherited Access
+    public DbSet<AccessGroup>                   AccessGroups                    => Set<AccessGroup>();
+    public DbSet<AccessGroupMembership>         AccessGroupMemberships          => Set<AccessGroupMembership>();
+    public DbSet<GroupProductAccess>            GroupProductAccessRecords        => Set<GroupProductAccess>();
+    public DbSet<GroupRoleAssignment>           GroupRoleAssignments             => Set<GroupRoleAssignment>();
+
+    // LS-COR-AUT-011: ABAC Policies
+    public DbSet<Policy>                        Policies                        => Set<Policy>();
+    public DbSet<PolicyRule>                    PolicyRules                      => Set<PolicyRule>();
+    public DbSet<PermissionPolicy>             PermissionPolicies               => Set<PermissionPolicy>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

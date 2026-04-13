@@ -22,7 +22,7 @@ import { cookies } from 'next/headers';
 const GATEWAY_URL = (
   process.env.CONTROL_CENTER_API_BASE ??
   process.env.GATEWAY_URL             ??
-  'http://localhost:5010'
+  'http://127.0.0.1:5010'
 );
 
 const NOTIF_PREFIX = '/notifications/v1';

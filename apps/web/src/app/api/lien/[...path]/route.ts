@@ -11,7 +11,7 @@ import { cookies } from 'next/headers';
  * Cookie reading: uses cookies() from next/headers (server-side store) rather
  * than request.cookies — more reliable inside App Router Route Handlers.
  */
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 async function proxy(req: NextRequest, segments: string[]): Promise<NextResponse> {
   const path   = segments.join('/');

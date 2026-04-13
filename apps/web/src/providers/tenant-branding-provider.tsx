@@ -30,12 +30,17 @@ export function TenantBrandingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function loadBranding() {
       try {
-        // In development, no subdomain exists on localhost.
-        // Send X-Tenant-Code header so the Identity service can resolve the tenant.
-        // In production the Host header (forwarded by the gateway) is sufficient.
         const headers: Record<string, string> = {};
         const devTenantCode = process.env.NEXT_PUBLIC_TENANT_CODE;
-        if (devTenantCode) headers['X-Tenant-Code'] = devTenantCode;
+        if (devTenantCode) {
+          headers['X-Tenant-Code'] = devTenantCode;
+        } else {
+          const cookieTenant = document.cookie
+            .split('; ')
+            .find(c => c.startsWith('tenant_code='))
+            ?.split('=')[1];
+          if (cookieTenant) headers['X-Tenant-Code'] = cookieTenant;
+        }
 
         const res = await fetch('/api/identity/api/tenants/current/branding', {
           headers,

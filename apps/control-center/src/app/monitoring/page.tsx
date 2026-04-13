@@ -9,7 +9,7 @@ import type { MonitoringSummary } from '@/types/control-center';
 export const dynamic = 'force-dynamic';
 
 async function fetchMonitoringSummary(): Promise<MonitoringSummary> {
-  const base = process.env.CONTROL_CENTER_SELF_URL ?? 'http://localhost:5004';
+  const base = process.env.CONTROL_CENTER_SELF_URL ?? 'http://127.0.0.1:5004';
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
   const res = await fetch(`${base}/api/monitoring/summary`, {

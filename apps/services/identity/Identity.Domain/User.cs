@@ -42,6 +42,15 @@ public class User
     public int SessionVersion { get; private set; }
 
     /// <summary>
+    /// LS-COR-AUT-003: Monotonically-increasing access version counter.
+    /// Embedded in JWT as access_version. Incremented whenever the user's
+    /// product access or role assignments change. Tokens with a stale
+    /// access_version are rejected by auth/me, forcing re-authentication
+    /// to pick up updated claims.
+    /// </summary>
+    public int AccessVersion { get; private set; }
+
+    /// <summary>
     /// Reference to the user's profile picture stored in the Documents service.
     /// Null when no avatar has been uploaded.
     /// </summary>
@@ -132,6 +141,16 @@ public class User
     }
 
     /// <summary>
+    /// LS-COR-AUT-003: Increments the access version to mark existing JWTs as stale.
+    /// Called when the user's product access or role assignments change.
+    /// </summary>
+    public void IncrementAccessVersion()
+    {
+        AccessVersion++;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
     /// Replaces the stored password hash. Used when an invited user sets their
     /// password on first login (accept-invite flow) or when admin-triggered
     /// password reset is confirmed by the user.
@@ -187,6 +206,7 @@ public class User
             IsActive       = true,
             IsLocked       = false,
             SessionVersion = 0,
+            AccessVersion  = 0,
             CreatedAtUtc   = now,
             UpdatedAtUtc   = now
         };

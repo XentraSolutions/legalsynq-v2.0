@@ -61,14 +61,23 @@ import type {
   AuditExport,
   IntegrityCheckpoint,
   LegalHold,
-  GroupSummary,
-  GroupDetail,
+  AccessGroupSummary,
+  AccessGroupMember,
+  GroupProductAccess,
+  GroupRoleAssignment,
   PermissionCatalogItem,
   UserActivityEvent,
   RoleCapabilityItem,
   EffectivePermission,
   PermissionSource,
   EffectivePermissionsResult,
+  AccessDebugResult,
+  PolicySummary,
+  PolicyDetail,
+  PolicyRule,
+  PermissionPolicyMapping,
+  PermissionPolicySummary,
+  SupportedFieldsResponse,
 } from '@/types/control-center';
 
 // ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -110,6 +119,16 @@ function str(
     console.warn(`[api-mappers] ${warnLabel}: expected string at "${snake}"/"${camel}", got ${got}. Using fallback "${fallback}".`);
   }
   return fallback;
+}
+
+function strOrNull(
+  raw:   Record<string, unknown>,
+  snake: string,
+  camel: string,
+): string | null {
+  const val = raw[snake] ?? raw[camel];
+  if (typeof val === 'string' && val.length > 0) return val;
+  return null;
 }
 
 /**
@@ -406,37 +425,60 @@ export function mapUserDetail(raw: unknown): UserDetail {
   };
 }
 
-export function mapGroupSummary(raw: unknown): GroupSummary {
+export function mapAccessGroupSummary(raw: unknown): AccessGroupSummary {
   const r = asObj(raw);
   return {
-    id:          str(r, 'id',           'id',          ''),
-    tenantId:    str(r, 'tenant_id',    'tenantId',    ''),
-    name:        str(r, 'name',         'name',        ''),
-    description: optStr(r, 'description', 'description'),
-    memberCount: num(r, 'member_count', 'memberCount', 0),
-    isActive:    bool(r, 'is_active',   'isActive',    true),
-    createdAtUtc: str(r, 'created_at_utc', 'createdAtUtc', ''),
+    id:              str(r, 'id',              'id',              ''),
+    tenantId:        str(r, 'tenant_id',       'tenantId',        ''),
+    name:            str(r, 'name',            'name',            ''),
+    description:     optStr(r, 'description',  'description'),
+    status:          str(r, 'status',          'status',          'Active') as AccessGroupSummary['status'],
+    scopeType:       str(r, 'scope_type',      'scopeType',       'Tenant') as AccessGroupSummary['scopeType'],
+    productCode:     optStr(r, 'product_code', 'productCode'),
+    organizationId:  optStr(r, 'organization_id', 'organizationId'),
+    createdAtUtc:    str(r, 'created_at_utc',  'createdAtUtc',    ''),
+    updatedAtUtc:    str(r, 'updated_at_utc',  'updatedAtUtc',    ''),
   };
 }
 
-export function mapGroupDetail(raw: unknown): GroupDetail {
-  const r    = asObj(raw);
-  const base = mapGroupSummary(raw);
-  const rawMembers = asArr(r['members']);
+export function mapAccessGroupMember(raw: unknown): AccessGroupMember {
+  const r = asObj(raw);
   return {
-    ...base,
-    updatedAtUtc: str(r, 'updated_at_utc', 'updatedAtUtc', ''),
-    members: rawMembers.map(m => {
-      const mo = asObj(m);
-      return {
-        membershipId: str(mo, 'membership_id', 'membershipId', ''),
-        userId:       str(mo, 'user_id',       'userId',       ''),
-        firstName:    str(mo, 'first_name',    'firstName',    ''),
-        lastName:     str(mo, 'last_name',     'lastName',     ''),
-        email:        str(mo, 'email',         'email',        ''),
-        joinedAtUtc:  str(mo, 'joined_at_utc', 'joinedAtUtc',  ''),
-      };
-    }),
+    id:               str(r, 'id',                'id',               ''),
+    tenantId:         str(r, 'tenant_id',         'tenantId',         ''),
+    groupId:          str(r, 'group_id',          'groupId',          ''),
+    userId:           str(r, 'user_id',           'userId',           ''),
+    membershipStatus: str(r, 'membership_status', 'membershipStatus', 'Active') as AccessGroupMember['membershipStatus'],
+    addedAtUtc:       str(r, 'added_at_utc',      'addedAtUtc',       ''),
+    removedAtUtc:     optStr(r, 'removed_at_utc',  'removedAtUtc'),
+  };
+}
+
+export function mapGroupProductAccess(raw: unknown): GroupProductAccess {
+  const r = asObj(raw);
+  return {
+    id:           str(r, 'id',            'id',           ''),
+    tenantId:     str(r, 'tenant_id',     'tenantId',     ''),
+    groupId:      str(r, 'group_id',      'groupId',      ''),
+    productCode:  str(r, 'product_code',  'productCode',  ''),
+    accessStatus: str(r, 'access_status', 'accessStatus', 'Granted') as GroupProductAccess['accessStatus'],
+    grantedAtUtc: str(r, 'granted_at_utc','grantedAtUtc', ''),
+    revokedAtUtc: optStr(r, 'revoked_at_utc', 'revokedAtUtc'),
+  };
+}
+
+export function mapGroupRoleAssignment(raw: unknown): GroupRoleAssignment {
+  const r = asObj(raw);
+  return {
+    id:               str(r, 'id',                'id',               ''),
+    tenantId:         str(r, 'tenant_id',         'tenantId',         ''),
+    groupId:          str(r, 'group_id',          'groupId',          ''),
+    roleCode:         str(r, 'role_code',         'roleCode',         ''),
+    productCode:      optStr(r, 'product_code',   'productCode'),
+    organizationId:   optStr(r, 'organization_id','organizationId'),
+    assignmentStatus: str(r, 'assignment_status', 'assignmentStatus', 'Active') as GroupRoleAssignment['assignmentStatus'],
+    assignedAtUtc:    str(r, 'assigned_at_utc',   'assignedAtUtc',    ''),
+    removedAtUtc:     optStr(r, 'removed_at_utc', 'removedAtUtc'),
   };
 }
 
@@ -447,9 +489,12 @@ export function mapPermissionCatalogItem(raw: unknown): PermissionCatalogItem {
     code:        str(r, 'code',        'code',        ''),
     name:        str(r, 'name',        'name',        ''),
     description: optStr(r, 'description', 'description'),
+    category:    optStr(r, 'category',    'category'),
     productId:   str(r, 'product_id',  'productId',   ''),
     productName: str(r, 'product_name','productName',  ''),
+    productCode: str(r, 'product_code','productCode',  ''),
     isActive:    bool(r, 'is_active',  'isActive',    true),
+    updatedAtUtc: optStr(r, 'updated_at_utc', 'updatedAtUtc'),
   };
 }
 
@@ -599,6 +644,74 @@ export function mapEffectivePermissionsResult(raw: unknown): EffectivePermission
     items:      asArr(r['items']).map(mapEffectivePermission),
     totalCount: num(r, 'total_count', 'totalCount', 0),
     roleCount:  num(r, 'role_count',  'roleCount',  0),
+  };
+}
+
+// ── Access Debug mapper (LS-COR-AUT-008) ─────────────────────────────────────
+
+export function mapAccessDebugResult(raw: unknown): AccessDebugResult {
+  const r = asObj(raw);
+  return {
+    userId:        str(r, 'userId', 'user_id', ''),
+    tenantId:      str(r, 'tenantId', 'tenant_id', ''),
+    accessVersion: num(r, 'accessVersion', 'access_version', 0),
+    products: asArr(r['products']).map((p) => {
+      const o = asObj(p);
+      return {
+        productCode: str(o, 'productCode', 'product_code', ''),
+        source:      str(o, 'source', 'source', ''),
+        groupId:     strOrNull(o, 'groupId', 'group_id'),
+        groupName:   strOrNull(o, 'groupName', 'group_name'),
+      };
+    }),
+    roles: asArr(r['roles']).map((p) => {
+      const o = asObj(p);
+      return {
+        roleCode:    str(o, 'roleCode', 'role_code', ''),
+        productCode: strOrNull(o, 'productCode', 'product_code'),
+        source:      str(o, 'source', 'source', ''),
+        groupId:     strOrNull(o, 'groupId', 'group_id'),
+        groupName:   strOrNull(o, 'groupName', 'group_name'),
+      };
+    }),
+    systemRoles: asArr(r['systemRoles'] ?? r['system_roles']).map((p) => {
+      const o = asObj(p);
+      return {
+        roleName:  str(o, 'roleName', 'role_name', ''),
+        scopeType: str(o, 'scopeType', 'scope_type', ''),
+      };
+    }),
+    groups: asArr(r['groups']).map((p) => {
+      const o = asObj(p);
+      return {
+        groupId:     str(o, 'groupId', 'group_id', ''),
+        groupName:   str(o, 'groupName', 'group_name', ''),
+        status:      str(o, 'status', 'status', ''),
+        scopeType:   str(o, 'scopeType', 'scope_type', ''),
+        productCode: strOrNull(o, 'productCode', 'product_code'),
+      };
+    }),
+    entitlements: asArr(r['entitlements']).map((p) => {
+      const o = asObj(p);
+      return {
+        productCode: str(o, 'productCode', 'product_code', ''),
+        status:      str(o, 'status', 'status', ''),
+      };
+    }),
+    productRolesFlat: asArr(r['productRolesFlat'] ?? r['product_roles_flat']).map((v) => String(v ?? '')),
+    tenantRoles:      asArr(r['tenantRoles'] ?? r['tenant_roles']).map((v) => String(v ?? '')),
+    permissions:      asArr(r['permissions']).map((v) => String(v ?? '')),
+    permissionSources: asArr(r['permissionSources'] ?? r['permission_sources']).map((p) => {
+      const o = asObj(p);
+      return {
+        permissionCode: str(o, 'permissionCode', 'permission_code', ''),
+        productCode:    str(o, 'productCode', 'product_code', ''),
+        source:         str(o, 'source', 'source', ''),
+        viaRoleCode:    strOrNull(o, 'viaRoleCode', 'via_role_code') ?? undefined,
+        groupId:        strOrNull(o, 'groupId', 'group_id') ?? undefined,
+        groupName:      strOrNull(o, 'groupName', 'group_name') ?? undefined,
+      };
+    }),
   };
 }
 
@@ -1326,5 +1439,83 @@ export function mapLegalHold(raw: unknown): LegalHold {
     isActive:         (r['isActive'] as boolean) ?? true,
     releasedAtUtc:    r['releasedAtUtc']    as string | undefined,
     releasedByUserId: r['releasedByUserId'] as string | undefined,
+  };
+}
+
+// ── LS-COR-AUT-011: ABAC Policy mappers ────────────────────────────────────
+
+export function mapPolicySummary(raw: unknown): PolicySummary {
+  const r = asObj(raw);
+  return {
+    id:              str(r, 'id', 'id', ''),
+    policyCode:      str(r, 'policyCode', 'policy_code', ''),
+    name:            str(r, 'name', 'name', ''),
+    description:     r['description'] as string | undefined,
+    productCode:     str(r, 'productCode', 'product_code', ''),
+    isActive:        (r['isActive'] as boolean) ?? true,
+    priority:        (r['priority'] as number) ?? 0,
+    effect:          str(r, 'effect', 'effect', 'Allow'),
+    rulesCount:      (r['rulesCount'] as number) ?? 0,
+    permissionCount: (r['permissionCount'] as number) ?? 0,
+    createdAtUtc:    str(r, 'createdAtUtc', 'created_at_utc', ''),
+    updatedAtUtc:    r['updatedAtUtc'] as string | undefined,
+  };
+}
+
+export function mapPolicyRule(raw: unknown): PolicyRule {
+  const r = asObj(raw);
+  return {
+    id:            str(r, 'id', 'id', ''),
+    conditionType: str(r, 'conditionType', 'condition_type', ''),
+    field:         str(r, 'field', 'field', ''),
+    op:            str(r, 'op', 'operator', ''),
+    value:         str(r, 'value', 'value', ''),
+    logicalGroup:  str(r, 'logicalGroup', 'logical_group', 'And'),
+    createdAtUtc:  str(r, 'createdAtUtc', 'created_at_utc', ''),
+  };
+}
+
+export function mapPermissionPolicyMapping(raw: unknown): PermissionPolicyMapping {
+  const r = asObj(raw);
+  return {
+    id:             str(r, 'id', 'id', ''),
+    permissionCode: str(r, 'permissionCode', 'permission_code', ''),
+    isActive:       (r['isActive'] as boolean) ?? true,
+    createdAtUtc:   str(r, 'createdAtUtc', 'created_at_utc', ''),
+  };
+}
+
+export function mapPolicyDetail(raw: unknown): PolicyDetail {
+  const r = asObj(raw);
+  return {
+    ...mapPolicySummary(raw),
+    createdBy:          r['createdBy'] as string | undefined,
+    updatedBy:          r['updatedBy'] as string | undefined,
+    rules:              asArr(r['rules']).map(mapPolicyRule),
+    permissionMappings: asArr(r['permissionMappings']).map(mapPermissionPolicyMapping),
+  };
+}
+
+export function mapPermissionPolicySummary(raw: unknown): PermissionPolicySummary {
+  const r = asObj(raw);
+  return {
+    id:             str(r, 'id', 'id', ''),
+    permissionCode: str(r, 'permissionCode', 'permission_code', ''),
+    policyId:       str(r, 'policyId', 'policy_id', ''),
+    policyCode:     str(r, 'policyCode', 'policy_code', ''),
+    policyName:     str(r, 'policyName', 'policy_name', ''),
+    isActive:       (r['isActive'] as boolean) ?? true,
+    createdAtUtc:   str(r, 'createdAtUtc', 'created_at_utc', ''),
+  };
+}
+
+export function mapSupportedFields(raw: unknown): SupportedFieldsResponse {
+  const r = asObj(raw);
+  return {
+    fields:         asArr(r['fields']).map(v => String(v)),
+    operators:      asArr(r['operators']).map(v => String(v)),
+    conditionTypes: asArr(r['conditionTypes']).map(v => String(v)),
+    logicalGroups:  asArr(r['logicalGroups']).map(v => String(v)),
+    effects:        asArr(r['effects']).map(v => String(v)),
   };
 }

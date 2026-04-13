@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Json;
 using Identity.Application.DTOs;
@@ -17,7 +18,7 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuditEventClient _auditClient;
-    private readonly IProductRoleResolutionService _roleResolutionService;
+    private readonly IEffectiveAccessService _effectiveAccessService;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -26,7 +27,7 @@ public class AuthService : IAuthService
         IPasswordHasher passwordHasher,
         IJwtTokenService jwtTokenService,
         IAuditEventClient auditClient,
-        IProductRoleResolutionService roleResolutionService,
+        IEffectiveAccessService effectiveAccessService,
         ILogger<AuthService> logger)
     {
         _userRepository = userRepository;
@@ -34,12 +35,13 @@ public class AuthService : IAuthService
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
         _auditClient = auditClient;
-        _roleResolutionService = roleResolutionService;
+        _effectiveAccessService = effectiveAccessService;
         _logger = logger;
     }
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request, string? ipAddress = null, CancellationToken ct = default)
     {
+        var sw = Stopwatch.StartNew();
         // Canonical audit helpers — used when a login failure must be emitted before re-throwing.
         // fire-and-observe: never awaited, never allowed to gate the primary auth response.
         var tenantCodeNorm  = request.TenantCode.ToUpperInvariant().Trim();
@@ -107,20 +109,15 @@ public class AuthService : IAuthService
         var orgMembership = await _userRepository.GetPrimaryOrgMembershipAsync(user.Id, ct);
         var org = orgMembership?.Organization;
 
-        // LS-COR-ROL-001: centralized product role resolution via ProductRoleResolutionService
-        var accessContext = await _roleResolutionService.ResolveAsync(user.Id, tenant.Id, ct);
-        var productRoles = accessContext.GetEffectiveProductRoles().ToList();
-
-        if (accessContext.DeniedReasons.Count > 0)
-        {
-            _logger.LogDebug(
-                "Product role resolution for user={UserId}: {DeniedCount} denial(s) recorded.",
-                user.Id, accessContext.DeniedReasons.Count);
-        }
+        // LS-COR-AUT-003/006: compute effective access from the single source-of-truth model.
+        // All product roles come exclusively from EffectiveAccessService (direct + group-inherited).
+        var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, user.Id, ct);
 
         var (token, expiresAtUtc) = _jwtTokenService.GenerateToken(
-            userWithRoles, tenant, roleNames, org, productRoles,
-            sessionTimeoutMinutes: tenant.SessionTimeoutMinutes);
+            userWithRoles, tenant, roleNames, org, effectiveAccess.ProductRolesFlat,
+            sessionTimeoutMinutes: tenant.SessionTimeoutMinutes,
+            productCodes: effectiveAccess.Products,
+            permissions: effectiveAccess.Permissions);
 
         // Phase H: derive org_type code from OrganizationTypeId FK (authoritative) when available;
         // fall back to the stored OrgType string for compatibility.
@@ -139,7 +136,7 @@ public class AuthService : IAuthService
             roleNames,
             org?.Id,
             orgTypeForResponse,
-            productRoles);
+            effectiveAccess.ProductRolesFlat);
 
         // Canonical audit: fire-and-observe — never throw, never gate login on audit success.
         var now = DateTimeOffset.UtcNow;
@@ -182,6 +179,11 @@ public class AuthService : IAuthService
         {
             _logger.LogWarning(ex, "Failed to persist LastLoginAtUtc for user {UserId}. Non-fatal.", userWithRoles.Id);
         }
+
+        sw.Stop();
+        _logger.LogInformation(
+            "LoginPerf userId={UserId} tenantId={TenantId} elapsedMs={ElapsedMs} accessVersion={AccessVersion}",
+            userWithRoles.Id, tenant.Id, sw.ElapsedMilliseconds, userWithRoles.AccessVersion);
 
         return new LoginResponse(token, expiresAtUtc, userResponse);
     }
@@ -233,11 +235,14 @@ public class AuthService : IAuthService
         {
             var user = await _userRepository.GetByIdAsync(userGuid, ct);
 
+            if (user == null)
+                throw new UnauthorizedAccessException("User not found.");
+
             // UIX-003-03: reject locked accounts immediately — they cannot use existing sessions.
-            if (user?.IsLocked == true)
+            if (user.IsLocked)
                 throw new UnauthorizedAccessException("Account is locked.");
 
-            avatarDocumentId = user?.AvatarDocumentId;
+            avatarDocumentId = user.AvatarDocumentId;
 
             // UIX-003-03: validate session version. Tokens from before a force-logout
             // or lock will have an older session_version and must be rejected.
@@ -245,10 +250,19 @@ public class AuthService : IAuthService
             var sessionVersionClaim = principal.FindFirstValue("session_version");
             if (sessionVersionClaim is not null
                 && int.TryParse(sessionVersionClaim, out var tokenVersion)
-                && user is not null
                 && tokenVersion < user.SessionVersion)
             {
                 throw new UnauthorizedAccessException("Session has been invalidated.");
+            }
+
+            // LS-COR-AUT-003: validate access version. Tokens from before an access
+            // change will have a stale access_version and must be rejected.
+            var accessVersionClaim = principal.FindFirstValue("access_version");
+            if (accessVersionClaim is not null
+                && int.TryParse(accessVersionClaim, out var tokenAccessVersion)
+                && tokenAccessVersion < user.AccessVersion)
+            {
+                throw new UnauthorizedAccessException("Access has been updated. Please re-authenticate.");
             }
         }
 
