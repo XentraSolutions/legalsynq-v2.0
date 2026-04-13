@@ -198,3 +198,9 @@ id = "gx4xlWV71X2YTIY94eXMK"
 uri = "file://analysis/LS-LIENS-01-001-report.md"
 type = "text"
 title = "LS-LIENS-01-001 Scaffolding Report"
+
+[[outputs]]
+id = "C_fA2oy8SmS74K1Mu12lj"
+uri = "file://analysis/LS-LIENS-01-001-01-report.md"
+type = "text"
+title = "LS-LIENS-01-001-01 Hardening Iteration Report"
