@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Liens.Domain\Liens.Domain.csproj" />
     <ProjectReference Include="..\Liens.Application\Liens.Application.csproj" />
+    <ProjectReference Include="..\..\..\..\shared\building-blocks\BuildingBlocks\BuildingBlocks.csproj" />
   </ItemGroup>
 
   <ItemGroup>

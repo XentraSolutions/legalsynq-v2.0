@@ -1,3 +1,4 @@
+using BuildingBlocks.Context;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,6 +11,7 @@ public static class DependencyInjection
         IConfiguration configuration)
     {
         services.AddHttpContextAccessor();
+        services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 
         return services;
     }

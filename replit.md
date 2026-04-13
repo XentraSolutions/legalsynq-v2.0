@@ -3587,3 +3587,23 @@ Final closure of the legacy authorization model. All frontend and backend consum
 - Provider: `70000000-0000-0000-0000-000000000003`
 - Funder: `70000000-0000-0000-0000-000000000004`
 - LienOwner: `70000000-0000-0000-0000-000000000005`
+
+## Liens Service JWT Auth Integration — 2026-04-13
+
+### Summary
+Integrated Liens microservice with the v2 JWT auth/identity pattern used by Fund, CareConnect, and other services.
+
+### Changes
+- **`Liens.Api/Program.cs`** — JWT Bearer auth fully wired: issuer/audience/signing-key validation, `MapInboundClaims=false`, shared authorization policies (`AuthenticatedUser`, `AdminOnly`, `PlatformOrTenantAdmin`), `/context` diagnostic endpoint (auth-required), `/health` and `/info` (anonymous)
+- **`Liens.Infrastructure/DependencyInjection.cs`** — Registered `ICurrentRequestContext` → `CurrentRequestContext` (scoped) + `IHttpContextAccessor`, matching Fund/CareConnect pattern
+- **`Liens.Api/appsettings.json`** — Added `Jwt` section with placeholder signing key (overridden per environment)
+- **`Liens.Api/appsettings.Development.json`** — Dev JWT config: issuer `legalsynq-identity`, audience `legalsynq-platform`, shared dev signing key
+- **`Liens.Api/Properties/launchSettings.json`** — Created with `ASPNETCORE_ENVIRONMENT=Development` on port 5009
+- **`Liens.Api.csproj` / `Liens.Infrastructure.csproj`** — Added `BuildingBlocks` and `Microsoft.AspNetCore.Authentication.JwtBearer` references
+- **`Gateway.Api/appsettings.json`** — `liens-protected` route: removed `AuthorizationPolicy: "Anonymous"`, now inherits global `RequireAuthorization()` (auth-required for all non-health/info Liens routes)
+
+### Verified
+- `dotnet build` succeeds for Liens.Api and Gateway.Api (0 warnings, 0 errors)
+- `/health` → 200 (anonymous), `/info` → 200 (anonymous), `/context` → 401 (unauthenticated)
+- `/context` with valid JWT → 200, returns full identity claims (userId, tenantId, tenantCode, email, orgId, orgType, roles, productRoles)
+- Gateway paths: `/liens/health` anonymous OK, `/liens/context` requires auth, all verified end-to-end
