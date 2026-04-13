@@ -70,23 +70,7 @@ export function TopBar() {
 
       {/* ── Logo ────────────────────────────────────────────────────────── */}
       <Link href="/dashboard" className="flex items-center shrink-0">
-        {session && branding.logoDocumentId ? (
-          <img
-            src={`/api/branding/logo/${branding.logoDocumentId}`}
-            alt={branding.displayName}
-            className="h-7 w-auto object-contain max-w-[160px]"
-          />
-        ) : (
-          <Image
-            src="/legalsynq-logo-white.png"
-            alt="LegalSynq"
-            width={130}
-            height={32}
-            priority
-            unoptimized
-            className="h-7 w-auto"
-          />
-        )}
+        <TenantLogo branding={branding} hasSession={!!session} />
       </Link>
 
       {/* ── Spacer ──────────────────────────────────────────────────────── */}
@@ -320,6 +304,37 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
         </div>
       )}
     </div>
+  );
+}
+
+function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useTenantBranding>; hasSession: boolean }) {
+  const [imgError, setImgError] = useState(false);
+
+  const logoSrc = branding.logoDocumentId && hasSession
+    ? `/api/branding/logo/${branding.logoDocumentId}`
+    : branding.logoUrl || null;
+
+  if (logoSrc && !imgError) {
+    return (
+      <img
+        src={logoSrc}
+        alt={branding.displayName || 'Tenant logo'}
+        className="h-7 w-auto object-contain max-w-[160px]"
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  return (
+    <Image
+      src="/legalsynq-logo-white.png"
+      alt="LegalSynq"
+      width={130}
+      height={32}
+      priority
+      unoptimized
+      className="h-7 w-auto"
+    />
   );
 }
 
