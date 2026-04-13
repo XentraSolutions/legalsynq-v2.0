@@ -11,7 +11,8 @@ public static class ReferralWorkflowRules
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> AllowedTransitions =
         new Dictionary<string, IReadOnlyList<string>>
         {
-            [Referral.ValidStatuses.New]        = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
+            [Referral.ValidStatuses.New]        = new[] { Referral.ValidStatuses.NewOpened, Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
+            [Referral.ValidStatuses.NewOpened] = new[] { Referral.ValidStatuses.Accepted, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
             [Referral.ValidStatuses.Accepted]   = new[] { Referral.ValidStatuses.InProgress, Referral.ValidStatuses.Declined, Referral.ValidStatuses.Cancelled },
             [Referral.ValidStatuses.InProgress] = new[] { Referral.ValidStatuses.Completed, Referral.ValidStatuses.Cancelled },
             [Referral.ValidStatuses.Completed]  = Array.Empty<string>(),
@@ -62,12 +63,12 @@ public static class ReferralWorkflowRules
     /// </summary>
     // LSCC-001: CareConnect permission enforcement — status-driven capability gate
     // LSCC-01-001-01: InProgress is explicit; Scheduled kept as fall-through for legacy rows.
-    public static string RequiredCapabilityFor(string toStatus) => toStatus switch
+    public static string RequiredPermissionFor(string toStatus) => toStatus switch
     {
-        Referral.ValidStatuses.Accepted   => BuildingBlocks.Authorization.CapabilityCodes.ReferralAccept,
-        Referral.ValidStatuses.Declined   => BuildingBlocks.Authorization.CapabilityCodes.ReferralDecline,
-        Referral.ValidStatuses.Cancelled  => BuildingBlocks.Authorization.CapabilityCodes.ReferralCancel,
-        Referral.ValidStatuses.InProgress => BuildingBlocks.Authorization.CapabilityCodes.ReferralUpdateStatus,
-        _                                 => BuildingBlocks.Authorization.CapabilityCodes.ReferralUpdateStatus,
+        Referral.ValidStatuses.Accepted   => BuildingBlocks.Authorization.PermissionCodes.ReferralAccept,
+        Referral.ValidStatuses.Declined   => BuildingBlocks.Authorization.PermissionCodes.ReferralDecline,
+        Referral.ValidStatuses.Cancelled  => BuildingBlocks.Authorization.PermissionCodes.ReferralCancel,
+        Referral.ValidStatuses.InProgress => BuildingBlocks.Authorization.PermissionCodes.ReferralUpdateStatus,
+        _                                 => BuildingBlocks.Authorization.PermissionCodes.ReferralUpdateStatus,
     };
 }

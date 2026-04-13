@@ -27,12 +27,12 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ActivationLanding } from './activation-landing';
 
-const GATEWAY_URL  = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const GATEWAY_URL  = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 const INVALID_ID   = 'invalid';
 
 interface PageProps {
-  params:       { referralId: string };
-  searchParams: { token?: string; reason?: string };
+  params:       Promise<{ referralId: string }>;
+  searchParams: Promise<{ token?: string; reason?: string }>;
 }
 
 interface PublicSummary {
@@ -160,9 +160,10 @@ function AlreadyAcceptedScreen({ summary }: { summary: PublicSummary }) {
 // ── Server Component ──────────────────────────────────────────────────────────
 
 export default async function ReferralAcceptPage({ params, searchParams }: PageProps) {
-  const { referralId } = params;
-  const token  = searchParams.token?.trim()  ?? '';
-  const reason = searchParams.reason?.trim() ?? '';
+  const { referralId } = await params;
+  const sp = await searchParams;
+  const token  = sp.token?.trim()  ?? '';
+  const reason = sp.reason?.trim() ?? '';
 
   // Static invalid route (e.g. /referrals/accept/invalid?reason=...)
   if (referralId === INVALID_ID) {

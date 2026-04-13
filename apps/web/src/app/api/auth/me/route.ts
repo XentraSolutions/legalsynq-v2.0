@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5000';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 
 /**
  * BFF /auth/me route — GET /api/auth/me
@@ -40,8 +40,13 @@ export async function GET(request: NextRequest) {
   }
 
   if (!identityRes.ok) {
-    // 401 from identity = token expired or invalid
-    return NextResponse.json({ message: 'Session expired' }, { status: 401 });
+    if (identityRes.status === 401 || identityRes.status === 403) {
+      return NextResponse.json({ message: 'Session expired' }, { status: 401 });
+    }
+    return NextResponse.json(
+      { message: 'Identity service error' },
+      { status: identityRes.status >= 500 ? 503 : identityRes.status },
+    );
   }
 
   const data = await identityRes.json();

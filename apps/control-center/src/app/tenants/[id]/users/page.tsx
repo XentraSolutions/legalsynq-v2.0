@@ -3,7 +3,7 @@ import { controlCenterServerApi }     from '@/lib/control-center-api';
 import { UserListTable }              from '@/components/users/user-list-table';
 
 interface TenantUsersPageProps {
-  params:       { id: string };
+  params:       Promise<{ id: string }>;
   searchParams: Promise<{ page?: string; search?: string }>;
 }
 
@@ -22,7 +22,7 @@ export default async function TenantScopedUsersPage({
   const searchParamsData = await searchParams;
   await requirePlatformAdmin();
 
-  const { id }   = params;
+  const { id }   = await params;
   const page     = Math.max(1, parseInt(searchParamsData.page ?? '1') || 1);
   const search   = searchParamsData.search ?? '';
 

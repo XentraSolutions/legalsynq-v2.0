@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import type { TenantSummary, TenantStatus, TenantType } from '@/types/control-center';
+import type { TenantSummary, TenantStatus, TenantType, ProvisioningStatus } from '@/types/control-center';
 import { Routes } from '@/lib/routes';
 
 interface TenantListTableProps {
@@ -21,6 +21,8 @@ function formatType(type: TenantType): string {
   const labels: Record<TenantType, string> = {
     LawFirm:    'Law Firm',
     Provider:   'Provider',
+    Funder:     'Funder',
+    LienOwner:  'Lien Owner',
     Corporate:  'Corporate',
     Government: 'Government',
     Other:      'Other',
@@ -37,6 +39,32 @@ function StatusBadge({ status }: { status: TenantStatus }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${styles[status] ?? styles.Inactive}`}>
       {status}
+    </span>
+  );
+}
+
+function ProvisioningBadge({ status }: { status?: ProvisioningStatus }) {
+  if (!status) return null;
+  const styles: Record<ProvisioningStatus, string> = {
+    Pending:     'bg-gray-100 text-gray-600 border-gray-200',
+    InProgress:  'bg-blue-50 text-blue-700 border-blue-200',
+    Provisioned: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+    Verifying:   'bg-amber-50 text-amber-700 border-amber-200',
+    Active:      'bg-green-50 text-green-700 border-green-200',
+    Failed:      'bg-red-50 text-red-700 border-red-200',
+  };
+  const labels: Record<ProvisioningStatus, string> = {
+    Pending:     'DNS Pending',
+    InProgress:  'Provisioning…',
+    Provisioned: 'DNS Provisioned',
+    Verifying:   'Verifying…',
+    Active:      'DNS Active',
+    Failed:      'DNS Failed',
+  };
+  const isRetrying = status === 'Verifying';
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${styles[status] ?? styles.Pending} ${isRetrying ? 'animate-pulse' : ''}`}>
+      {labels[status] ?? status}
     </span>
   );
 }
@@ -59,6 +87,7 @@ export function TenantListTable({ tenants, totalCount, page, pageSize }: TenantL
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Name</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">DNS</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Primary Contact</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Created</th>
               <th className="px-4 py-3" />
@@ -76,6 +105,9 @@ export function TenantListTable({ tenants, totalCount, page, pageSize }: TenantL
                 </td>
                 <td className="px-4 py-3">
                   <StatusBadge status={tenant.status} />
+                </td>
+                <td className="px-4 py-3">
+                  <ProvisioningBadge status={tenant.provisioningStatus} />
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-700">
                   {tenant.primaryContactName}

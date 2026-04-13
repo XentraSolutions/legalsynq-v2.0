@@ -8,10 +8,8 @@ namespace Identity.Infrastructure.Services;
 
 /// <summary>
 /// DB-backed implementation of IScopedAuthorizationService.
-///
-/// Phase I: provides real scope-aware authorization checks against
-/// ScopedRoleAssignments.  GLOBAL scope always satisfies narrower scope checks
-/// (a global admin can always act within any org or product).
+/// LS-COR-AUT-007: ScopedRoleAssignment restricted to GLOBAL scope only.
+/// GLOBAL scope always satisfies any authorization check.
 /// </summary>
 public sealed class ScopedAuthorizationService : IScopedAuthorizationService
 {
@@ -29,9 +27,7 @@ public sealed class ScopedAuthorizationService : IScopedAuthorizationService
                 s.UserId   == userId &&
                 s.IsActive &&
                 s.Role.Name == roleName &&
-                (s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global ||
-                 (s.ScopeType == ScopedRoleAssignment.ScopeTypes.Organization &&
-                  s.OrganizationId == organizationId)),
+                s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global,
                 ct);
 
     public Task<bool> HasProductRoleAsync(
@@ -44,9 +40,7 @@ public sealed class ScopedAuthorizationService : IScopedAuthorizationService
                 s.UserId   == userId &&
                 s.IsActive &&
                 s.Role.Name == roleName &&
-                (s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global ||
-                 (s.ScopeType == ScopedRoleAssignment.ScopeTypes.Product &&
-                  s.ProductId == productId)),
+                s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global,
                 ct);
 
     public async Task<ScopedRoleSummaryResponse> GetScopedRoleSummaryAsync(
@@ -56,8 +50,7 @@ public sealed class ScopedAuthorizationService : IScopedAuthorizationService
         var rows = await _db.ScopedRoleAssignments
             .Include(s => s.Role)
             .Where(s => s.UserId == userId && s.IsActive)
-            .OrderBy(s => s.ScopeType)
-            .ThenBy(s => s.AssignedAtUtc)
+            .OrderBy(s => s.AssignedAtUtc)
             .ToListAsync(ct);
 
         var entries = rows

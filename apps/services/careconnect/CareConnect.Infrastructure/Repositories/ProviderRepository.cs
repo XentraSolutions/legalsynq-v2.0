@@ -161,12 +161,17 @@ public class ProviderRepository : IProviderRepository
         return q;
     }
 
-    // LSCC-002-01: Return all active providers with no Identity org link
     public async Task<List<Provider>> GetUnlinkedAsync(Guid tenantId, CancellationToken ct = default)
     {
         return await _db.Providers
             .Where(p => p.TenantId == tenantId && p.IsActive && p.OrganizationId == null)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
+    }
+
+    public async Task<Provider?> GetByOrganizationIdAsync(Guid organizationId, CancellationToken ct = default)
+    {
+        return await _db.Providers
+            .FirstOrDefaultAsync(p => p.OrganizationId == organizationId, ct);
     }
 }

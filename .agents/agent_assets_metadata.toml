@@ -126,3 +126,81 @@ id = "n9WYEXqwv1Y_EH4a8rEGb"
 uri = "file://UIX-002-01-AdminNavigationExposure.md"
 type = "text"
 title = "UIX-002-01 — Admin Navigation Exposure Report"
+
+[[outputs]]
+id = "hMNeuWk-d-3VCNyuuqNU_"
+uri = "file://exports/legalsynq-source.tar.gz"
+type = "unspecified"
+title = "LegalSynq Source Code (tar.gz)"
+
+[[outputs]]
+id = "C6F4ylIiluOOk8Xkvng_F"
+uri = "file://analysis/NOTIF-UI-010-report.md"
+type = "text"
+title = "NOTIF-UI-010 — Delivery Controls Report"
+
+[[outputs]]
+id = "ZY4BpKY0Tz-ewVLh-Tmj5"
+uri = "file://legalsynq-source-codes-20260408.zip"
+type = "unspecified"
+title = "LegalSynq Source Codes (2026-04-08)"
+
+[[outputs]]
+id = "ZHLgIm8qWjW2WTSDi4Z0a"
+uri = "file://analysis/LSCC-01-006-report.md"
+type = "text"
+title = "LSCC-01-006 Report — Tenant Logo Display on Login"
+
+[[outputs]]
+id = "BRimKA1N4Froggm56pgDp"
+uri = "file://analysis/LS-COR-PRD-001-report.md"
+type = "text"
+title = "LS-COR-PRD-001 Product Provisioning Engine Report"
+
+[[outputs]]
+id = "DFtiUUOWQ65AgdOwSlnke"
+uri = "file://LS-COR-AUT-004-report.md"
+type = "text"
+title = "LS-COR-AUT-004 — Groups + Inherited Access Report"
+
+[[outputs]]
+id = "J36Ifqawltp8GhfMbN4Z9"
+uri = "file://analysis/LS-COR-AUT-005-report.md"
+type = "text"
+title = "LS-COR-AUT-005 Report — Admin UI Access Management Layer"
+
+[[outputs]]
+id = "F9_4oWT95_NUQIzVYzLYD"
+uri = "file://analysis/core-rebuild/LS-COR-AUT-010A-report.md"
+type = "text"
+title = "LS-COR-AUT-010A — Permission Model Alignment Report"
+
+[[outputs]]
+id = "j3lTyjGWlSRDwh3_-4vPU"
+uri = "file://analysis/LS-COR-AUT-010A-report.md"
+type = "text"
+title = "LS-COR-AUT-010A — Permission Model Alignment Report"
+
+[[outputs]]
+id = "iB0AZjCHNVvW_UwwSzydC"
+uri = "file://analysis/LS-COR-AUT-011A-report.md"
+type = "text"
+title = "LS-COR-AUT-011A — Policy Engine Hardening Report"
+
+[[outputs]]
+id = "rCN9DlcAHElCqmC159aDO"
+uri = "file://downloads/legalsynq-source.tar.gz"
+type = "unspecified"
+title = "LegalSynq Source Code (tar.gz)"
+
+[[outputs]]
+id = "gx4xlWV71X2YTIY94eXMK"
+uri = "file://analysis/LS-LIENS-01-001-report.md"
+type = "text"
+title = "LS-LIENS-01-001 Scaffolding Report"
+
+[[outputs]]
+id = "C_fA2oy8SmS74K1Mu12lj"
+uri = "file://analysis/LS-LIENS-01-001-01-report.md"
+type = "text"
+title = "LS-LIENS-01-001-01 Hardening Iteration Report"

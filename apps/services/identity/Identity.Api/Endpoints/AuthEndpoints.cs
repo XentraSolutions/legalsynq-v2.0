@@ -468,10 +468,113 @@ public static class AuthEndpoints
             return Results.Ok(new { message = "Password updated successfully." });
         })
         .AllowAnonymous();
+
+        // ── POST /api/auth/forgot-password ──────────────────────────────────
+        // Anonymous. Self-service password reset request.
+        // Accepts { tenantCode, email }, validates the user exists, generates a
+        // reset token, and returns the raw token in the response.
+        // Future: the raw token will be emailed instead of returned in the response.
+        app.MapPost("/api/auth/forgot-password", async (
+            ForgotPasswordRequest      body,
+            IdentityDbContext          db,
+            IAuditEventClient          auditClient,
+            ILoggerFactory             loggerFactory,
+            CancellationToken          ct) =>
+        {
+            var logger = loggerFactory.CreateLogger(nameof(AuthEndpoints));
+
+            if (string.IsNullOrWhiteSpace(body.TenantCode))
+                return Results.BadRequest(new { error = "tenantCode is required." });
+            if (string.IsNullOrWhiteSpace(body.Email))
+                return Results.BadRequest(new { error = "email is required." });
+
+            logger.LogInformation("[forgot-password] Received request: tenantCode={TenantCode}, email={Email}",
+                body.TenantCode, body.Email);
+
+            var tenant = await db.Tenants
+                .FirstOrDefaultAsync(t => t.Code == body.TenantCode && t.IsActive, ct);
+
+            if (tenant is null)
+            {
+                logger.LogWarning("[forgot-password] Tenant not found for code={TenantCode}", body.TenantCode);
+                var allTenants = await db.Tenants.Select(t => new { t.Code, t.IsActive }).ToListAsync(ct);
+                logger.LogInformation("[forgot-password] Available tenants: {Tenants}",
+                    string.Join(", ", allTenants.Select(t => $"{t.Code}(active={t.IsActive})")));
+                return Results.Ok(new { message = "If an account exists with that email, a password reset link has been generated." });
+            }
+
+            logger.LogInformation("[forgot-password] Tenant found: {TenantId} ({TenantCode})", tenant.Id, tenant.Code);
+
+            var user = await db.Users
+                .FirstOrDefaultAsync(u => u.TenantId == tenant.Id && u.Email == body.Email && u.IsActive, ct);
+
+            if (user is null)
+            {
+                logger.LogWarning("[forgot-password] User not found: email={Email}, tenantId={TenantId}", body.Email, tenant.Id);
+                return Results.Ok(new { message = "If an account exists with that email, a password reset link has been generated." });
+            }
+
+            logger.LogInformation("[forgot-password] User found: {UserId} ({Email})", user.Id, user.Email);
+
+            var existingTokens = await db.PasswordResetTokens
+                .Where(t => t.UserId == user.Id && t.Status == PasswordResetToken.Statuses.Pending)
+                .ToListAsync(ct);
+            foreach (var old in existingTokens) old.Revoke();
+
+            var rawToken  = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            var tokenHash = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(rawToken)));
+
+            var resetToken = PasswordResetToken.Create(user.Id, tenant.Id, tokenHash);
+            db.PasswordResetTokens.Add(resetToken);
+            await db.SaveChangesAsync(ct);
+
+            logger.LogInformation(
+                "Password reset requested for user {UserId} ({Email}) in tenant {TenantCode}.",
+                user.Id, user.Email, tenant.Code);
+
+            var now = DateTimeOffset.UtcNow;
+            _ = auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "identity.user.password_reset_requested",
+                EventCategory = EventCategory.Security,
+                SourceSystem  = "identity-service",
+                SourceService = "auth-api",
+                Visibility    = VisibilityScope.Tenant,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = now,
+                Scope = new AuditEventScopeDto
+                {
+                    ScopeType = ScopeType.Tenant,
+                    TenantId  = tenant.Id.ToString(),
+                },
+                Actor = new AuditEventActorDto
+                {
+                    Id   = user.Id.ToString(),
+                    Type = ActorType.User,
+                    Name = user.Email,
+                },
+                Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+                Action      = "PasswordResetRequested",
+                Description = $"Self-service password reset requested for user '{user.Email}' in tenant {tenant.Code}.",
+                IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
+                    now, "identity-service", "identity.user.password_reset_requested", user.Id.ToString()),
+                Tags = ["auth", "security", "password-reset"],
+            });
+
+            return Results.Ok(new
+            {
+                message = "If an account exists with that email, a password reset link has been generated.",
+                resetToken = rawToken,
+            });
+        })
+        .AllowAnonymous();
     }
 
     private record AcceptInviteRequest(string Token, string NewPassword);
     private record PasswordResetConfirmRequest(string Token, string NewPassword);
     private record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     private record SetAvatarRequest(string DocumentId);
+    private record ForgotPasswordRequest(string TenantCode, string Email);
 }

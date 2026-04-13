@@ -27,8 +27,8 @@ interface ProvidersPageProps {
 /**
  * /careconnect/providers — Provider search with list/map toggle.
  *
- * Access: CARECONNECT_REFERRER or CARECONNECT_RECEIVER. Users with neither
- * role see an inline access-required message (no redirect).
+ * Access: CARECONNECT_REFERRER only. Receivers (providers) are shown an
+ * inline message directing them to their Referral Inbox instead.
  *
  * Rendering: Server Component — fetches initial list data and passes it
  * to ProviderMapShell (Client Component) as a prop.
@@ -47,12 +47,13 @@ export default async function ProvidersPage({ searchParams }: ProvidersPageProps
   const session = await requireOrg();
 
   const isReferrer = session.productRoles.includes(ProductRole.CareConnectReferrer);
-  const isReceiver = session.productRoles.includes(ProductRole.CareConnectReceiver);
 
-  if (!isReferrer && !isReceiver) {
+  if (!isReferrer) {
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-700">
-        You do not have a CareConnect role. Contact your administrator to gain access.
+        Provider search is available to referring organizations. Visit your{' '}
+        <a href="/careconnect/referrals" className="text-blue-600 hover:underline font-medium">Referral Inbox</a>{' '}
+        to view referrals assigned to you.
       </div>
     );
   }

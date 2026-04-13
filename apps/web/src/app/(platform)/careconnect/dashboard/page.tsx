@@ -14,6 +14,7 @@ import {
   computeAppointmentMetrics,
   computeProviderPerformance,
 } from '@/lib/careconnect-metrics';
+import { formatShortTimestamp } from '@/lib/format-date';
 import type { ReferralSummary, AppointmentSummary } from '@/types/careconnect';
 
 interface DashboardPageProps {
@@ -25,16 +26,11 @@ interface DashboardPageProps {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-}
-
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('en-US', {
     month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true,
+    timeZone: 'America/New_York',
   });
 }
 
@@ -97,7 +93,7 @@ function ReferralRows({ referrals }: { referrals: ReferralSummary[] }) {
               <UrgencyBadge urgency={r.urgency} />
               <StatusBadge status={r.status} />
               <span className="text-xs text-gray-300 hidden sm:inline">
-                {formatDate(r.createdAtUtc)}
+                {formatShortTimestamp(r.createdAtUtc)}
               </span>
             </div>
           </Link>

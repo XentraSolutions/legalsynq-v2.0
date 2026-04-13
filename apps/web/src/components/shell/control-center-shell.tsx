@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from '@/hooks/use-session';
@@ -8,7 +8,7 @@ import { useTenantBranding } from '@/hooks/use-tenant-branding';
 import { buildControlCenterNav } from '@/lib/control-center-nav';
 import { CCRoutes } from '@/lib/control-center-routes';
 import { CC_LOGIN_URL } from '@/lib/control-center-config';
-import type { NavGroup, NavItem } from '@/types';
+import type { NavGroup, NavItem, TenantBranding } from '@/types';
 import { clsx } from 'clsx';
 
 interface ControlCenterShellProps {
@@ -58,14 +58,9 @@ function ControlCenterTopBar() {
 
   return (
     <header className="h-14 border-b border-gray-200 bg-white flex items-center px-4 gap-4 z-10">
-      {/* Tenant logo / name — links to CC dashboard via CCRoutes */}
       <div className="flex items-center gap-2 shrink-0">
         <Link href={CCRoutes.dashboard} className="flex items-center gap-2">
-          {branding.logoUrl ? (
-            <img src={branding.logoUrl} alt={branding.displayName} className="h-7 w-auto" />
-          ) : (
-            <span className="font-semibold text-gray-900">{branding.displayName}</span>
-          )}
+          <CCTenantLogo branding={branding} />
         </Link>
       </div>
 
@@ -147,5 +142,47 @@ function SidebarItem({ item, pathname }: { item: NavItem; pathname: string }) {
         {item.label}
       </Link>
     </li>
+  );
+}
+
+function CCTenantLogo({ branding }: { branding: TenantBranding }) {
+  const sources: string[] = [];
+  if (branding.logoDocumentId)
+    sources.push(`/api/branding/logo/${branding.logoDocumentId}`);
+  if (branding.logoUrl)
+    sources.push(branding.logoUrl);
+  sources.push('/api/branding/logo/public');
+
+  const [srcIndex, setSrcIndex] = useState(0);
+  const [exhausted, setExhausted] = useState(false);
+
+  const sourcesKey = sources.join('|');
+  useEffect(() => {
+    setSrcIndex(0);
+    setExhausted(false);
+  }, [sourcesKey]);
+
+  function handleError() {
+    const next = srcIndex + 1;
+    if (next < sources.length) {
+      setSrcIndex(next);
+    } else {
+      setExhausted(true);
+    }
+  }
+
+  if (exhausted) {
+    return (
+      <span className="font-semibold text-gray-900">{branding.displayName}</span>
+    );
+  }
+
+  return (
+    <img
+      src={sources[srcIndex]}
+      alt={branding.displayName || 'Tenant logo'}
+      className="h-7 w-auto max-w-[160px] object-contain"
+      onError={handleError}
+    />
   );
 }

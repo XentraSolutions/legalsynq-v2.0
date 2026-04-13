@@ -10,12 +10,13 @@ import { UserActivityPanel }             from '@/components/users/user-activity-
 import { EffectivePermissionsPanel }     from '@/components/users/effective-permissions-panel';
 import { RoleAssignmentPanel }            from '@/components/users/role-assignment-panel';
 import { OrgMembershipPanel }             from '@/components/users/org-membership-panel';
-import { GroupMembershipPanel }           from '@/components/users/group-membership-panel';
+import { AccessGroupMembershipPanel }    from '@/components/access-groups/access-group-membership-panel';
+import { AccessExplanationPanel }        from '@/components/users/access-explanation-panel';
 import { startImpersonationAction }       from '@/app/actions/impersonation';
 import type { UserStatus }                from '@/types/control-center';
 
 interface UserDetailPageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 /**
@@ -33,7 +34,7 @@ interface UserDetailPageProps {
  */
 export default async function UserDetailPage({ params }: UserDetailPageProps) {
   const session = await requireAdmin();
-  const { id }  = params;
+  const { id }  = await params;
 
   let user        = null;
   let fetchError: string | null = null;
@@ -44,31 +45,42 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
     fetchError = err instanceof Error ? err.message : 'Failed to load user.';
   }
 
-  // Fetch access-control reference data + security summary in parallel; failures are non-fatal.
-  const [rolesResult, orgsResult, groupsResult, securityResult, permissionsResult] = await Promise.allSettled([
-    controlCenterServerApi.roles.list(),
+  const [assignableRolesResult, orgsResult, securityResult, permissionsResult, accessGroupsResult, userAccessGroupsResult, accessDebugResult] = await Promise.allSettled([
+    user
+      ? controlCenterServerApi.users.getAssignableRoles(user.id)
+      : Promise.resolve(null),
     user
       ? controlCenterServerApi.organizations.listByTenant(user.tenantId)
       : Promise.resolve([]),
     user
-      ? controlCenterServerApi.groups.list({ tenantId: user.tenantId, pageSize: 200 })
-      : Promise.resolve({ items: [], total: 0, page: 1, pageSize: 200, totalPages: 0 }),
-    user
       ? controlCenterServerApi.users.getSecurity(user.id)
       : Promise.resolve(null),
-    // UIX-005: effective permissions for this user
     user
       ? controlCenterServerApi.users.getEffectivePermissions(user.id)
       : Promise.resolve(null),
+    user
+      ? controlCenterServerApi.accessGroups.list(user.tenantId)
+      : Promise.resolve([]),
+    user
+      ? controlCenterServerApi.accessGroups.listUserGroups(user.tenantId, user.id)
+      : Promise.resolve([]),
+    user
+      ? controlCenterServerApi.users.getAccessDebug(user.id)
+      : Promise.resolve(null),
   ]);
 
-  const availableRoles  = rolesResult.status      === 'fulfilled' ? rolesResult.value              : [];
-  const availableOrgs   = orgsResult.status       === 'fulfilled' ? orgsResult.value               : [];
-  const availableGroups = groupsResult.status     === 'fulfilled' ? groupsResult.value.items       : [];
-  const security        = securityResult.status   === 'fulfilled' ? securityResult.value           : null;
-  const effectivePerms  = permissionsResult.status === 'fulfilled' ? permissionsResult.value       : null;
-  const permsError      = permissionsResult.status === 'rejected'
+  const assignableData    = assignableRolesResult.status  === 'fulfilled' ? assignableRolesResult.value   : null;
+  const availableOrgs     = orgsResult.status            === 'fulfilled' ? orgsResult.value               : [];
+  const security          = securityResult.status        === 'fulfilled' ? securityResult.value           : null;
+  const effectivePerms    = permissionsResult.status     === 'fulfilled' ? permissionsResult.value       : null;
+  const permsError        = permissionsResult.status     === 'rejected'
     ? (permissionsResult.reason instanceof Error ? permissionsResult.reason.message : 'Failed to load permissions.')
+    : null;
+  const accessGroupsList  = accessGroupsResult.status    === 'fulfilled' ? accessGroupsResult.value      : [];
+  const userAccessGroups  = userAccessGroupsResult.status === 'fulfilled' ? userAccessGroupsResult.value : [];
+  const accessDebug       = accessDebugResult.status      === 'fulfilled' ? accessDebugResult.value      : null;
+  const accessDebugError  = accessDebugResult.status      === 'rejected'
+    ? (accessDebugResult.reason instanceof Error ? accessDebugResult.reason.message : 'Failed to load access debug.')
     : null;
 
   return (
@@ -185,6 +197,12 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
               fetchError={permsError}
             />
 
+            {/* ── Access Explanation (LS-COR-AUT-008) ──────────────────────── */}
+            <AccessExplanationPanel
+              data={accessDebug}
+              fetchError={accessDebugError}
+            />
+
             {/* ── Access Control Management (UIX-003) ──────────────────────── */}
             <div className="space-y-3">
               <div className="flex items-center gap-3">
@@ -204,7 +222,8 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
               <RoleAssignmentPanel
                 userId={user.id}
                 currentRoles={user.roles ?? []}
-                availableRoles={availableRoles}
+                assignableRoles={assignableData?.items}
+                userOrgType={assignableData?.userOrgType}
               />
 
               <OrgMembershipPanel
@@ -213,10 +232,11 @@ export default async function UserDetailPage({ params }: UserDetailPageProps) {
                 availableOrgs={availableOrgs}
               />
 
-              <GroupMembershipPanel
+              <AccessGroupMembershipPanel
+                tenantId={user.tenantId}
                 userId={user.id}
-                currentGroups={user.groups ?? []}
-                availableGroups={availableGroups}
+                userMemberships={userAccessGroups}
+                allAccessGroups={accessGroupsList}
               />
             </div>
           </>

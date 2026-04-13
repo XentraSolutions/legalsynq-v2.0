@@ -75,6 +75,26 @@ public class NotificationRepository : INotificationRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task<bool> ExistsByDedupeKeyAsync(string dedupeKey, CancellationToken ct = default)
+        => await _db.CareConnectNotifications
+            .AnyAsync(n => n.DedupeKey == dedupeKey, ct);
+
+    public async Task<bool> TryAddWithDedupeAsync(CareConnectNotification notification, CancellationToken ct = default)
+    {
+        try
+        {
+            await _db.CareConnectNotifications.AddAsync(notification, ct);
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
+            when (ex.InnerException is MySqlConnector.MySqlException { Number: 1062 })
+        {
+            _db.Entry(notification).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+            return false;
+        }
+    }
+
     // LSCC-005-01: Referral-scoped notification queries
 
     /// <summary>

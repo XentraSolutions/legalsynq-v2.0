@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
@@ -20,7 +21,8 @@ public static class AttachmentEndpoints
             var result = await service.GetByReferralAsync(tenantId, referralId, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPost("/api/referrals/{referralId:guid}/attachments", async (
             Guid referralId,
@@ -33,7 +35,8 @@ public static class AttachmentEndpoints
             var result = await service.CreateAsync(tenantId, referralId, ctx.UserId, request, ct);
             return Results.Created($"/api/referrals/{referralId}/attachments/{result.Id}", result);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapGet("/api/appointments/{appointmentId:guid}/attachments", async (
             Guid appointmentId,
@@ -45,7 +48,8 @@ public static class AttachmentEndpoints
             var result = await service.GetByAppointmentAsync(tenantId, appointmentId, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPost("/api/appointments/{appointmentId:guid}/attachments", async (
             Guid appointmentId,
@@ -58,6 +62,7 @@ public static class AttachmentEndpoints
             var result = await service.CreateAsync(tenantId, appointmentId, ctx.UserId, request, ct);
             return Results.Created($"/api/appointments/{appointmentId}/attachments/{result.Id}", result);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
     }
 }

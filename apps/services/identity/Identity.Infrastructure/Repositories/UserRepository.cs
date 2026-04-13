@@ -94,6 +94,25 @@ public class UserRepository : IUserRepository
             .OrderBy(m => m.JoinedAtUtc)
             .FirstOrDefaultAsync(ct);
 
+    public Task<List<UserOrganizationMembership>> GetActiveMembershipsWithProductsAsync(
+        Guid userId, Guid tenantId, CancellationToken ct = default) =>
+        _db.UserOrganizationMemberships
+            .Include(m => m.Organization)
+                .ThenInclude(o => o.OrganizationProducts.Where(op => op.IsEnabled))
+                    .ThenInclude(op => op.Product)
+                        .ThenInclude(p => p.ProductRoles.Where(pr => pr.IsActive))
+                            .ThenInclude(pr => pr.OrgTypeRules)
+                                .ThenInclude(r => r.OrganizationType)
+            .Include(m => m.Organization)
+                .ThenInclude(o => o.OrganizationTypeRef)
+            .Where(m => m.UserId == userId
+                     && m.IsActive
+                     && m.Organization.IsActive
+                     && m.Organization.TenantId == tenantId)
+            .OrderByDescending(m => m.IsPrimary)
+            .ThenBy(m => m.JoinedAtUtc)
+            .ToListAsync(ct);
+
     /// <summary>
     /// UIX-003-03: Persists pending change-tracked mutations for User entities
     /// already loaded by this repository (e.g. RecordLogin, IncrementSessionVersion).

@@ -35,7 +35,7 @@ export function ReferralPageHeader({ referral }: ReferralPageHeaderProps) {
         {/* Status + urgency pills */}
         <div className="flex items-center gap-2 shrink-0">
           <UrgencyBadge urgency={referral.urgency} />
-          <StatusBadge status={referral.status === 'New' ? 'New' : referral.status} size="md" />
+          <StatusBadge status={referral.status} size="md" />
         </div>
       </div>
 

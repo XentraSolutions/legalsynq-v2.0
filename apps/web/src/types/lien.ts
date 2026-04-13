@@ -105,6 +105,245 @@ export interface LienDetail extends LienSummary {
   updatedByUserId?:    string;
 }
 
+// ── Case status ──────────────────────────────────────────────────────────────
+
+export const CaseStatus = {
+  PreDemand:     'PreDemand',
+  DemandSent:    'DemandSent',
+  InNegotiation: 'InNegotiation',
+  CaseSettled:   'CaseSettled',
+  Closed:        'Closed',
+} as const;
+export type CaseStatusValue = typeof CaseStatus[keyof typeof CaseStatus];
+
+export const CASE_STATUS_LABELS: Record<string, string> = {
+  PreDemand:     'Pre-Demand',
+  DemandSent:    'Demand Sent',
+  InNegotiation: 'In Negotiation',
+  CaseSettled:   'Case Settled',
+  Closed:        'Closed',
+};
+
+// ── Case summary ─────────────────────────────────────────────────────────────
+
+export interface CaseSummary {
+  id:               string;
+  caseNumber:       string;
+  status:           string;
+  clientName:       string;
+  lawFirm:          string;
+  medicalFacility:  string;
+  dateOfIncident:   string;
+  totalLienAmount:  number;
+  lienCount:        number;
+  assignedTo:       string;
+  createdAtUtc:     string;
+  updatedAtUtc:     string;
+}
+
+export interface CaseDetail extends CaseSummary {
+  description?:     string;
+  clientDob?:       string;
+  clientPhone?:     string;
+  clientEmail?:     string;
+  clientAddress?:   string;
+  insuranceCarrier?: string;
+  policyNumber?:    string;
+  claimNumber?:     string;
+  demandAmount?:    number;
+  settlementAmount?: number;
+  notes?:           string;
+}
+
+// ── Bill of Sale ─────────────────────────────────────────────────────────────
+
+export const BillOfSaleStatus = {
+  Draft:     'Draft',
+  Pending:   'Pending',
+  Executed:  'Executed',
+  Cancelled: 'Cancelled',
+} as const;
+
+export interface BillOfSaleSummary {
+  id:               string;
+  bosNumber:        string;
+  status:           string;
+  lienId:           string;
+  lienNumber:       string;
+  caseNumber?:      string;
+  sellerOrg:        string;
+  buyerOrg:         string;
+  saleAmount:       number;
+  executionDate?:   string;
+  createdAtUtc:     string;
+}
+
+export interface BillOfSaleDetail extends BillOfSaleSummary {
+  originalLienAmount: number;
+  discountPercent:    number;
+  sellerContact?:     string;
+  buyerContact?:      string;
+  terms?:             string;
+  notes?:             string;
+}
+
+// ── Servicing ────────────────────────────────────────────────────────────────
+
+export const ServicingStatus = {
+  Pending:    'Pending',
+  InProgress: 'InProgress',
+  Completed:  'Completed',
+  Escalated:  'Escalated',
+  OnHold:     'OnHold',
+} as const;
+
+export const ServicingPriority = {
+  Low:    'Low',
+  Normal: 'Normal',
+  High:   'High',
+  Urgent: 'Urgent',
+} as const;
+
+export interface ServicingItem {
+  id:             string;
+  taskNumber:     string;
+  taskType:       string;
+  status:         string;
+  priority:       string;
+  caseNumber?:    string;
+  lienNumber?:    string;
+  assignedTo:     string;
+  description:    string;
+  dueDate:        string;
+  createdAtUtc:   string;
+  updatedAtUtc:   string;
+}
+
+export interface ServicingDetail extends ServicingItem {
+  notes?:         string;
+  resolution?:    string;
+  linkedCaseId?:  string;
+  linkedLienId?:  string;
+  linkedContactId?: string;
+  history:        { action: string; timestamp: string; actor: string; note?: string }[];
+}
+
+// ── Contact ──────────────────────────────────────────────────────────────────
+
+export const ContactType = {
+  LawFirm:      'LawFirm',
+  Provider:     'Provider',
+  LienHolder:   'LienHolder',
+  CaseManager:  'CaseManager',
+  InternalUser: 'InternalUser',
+} as const;
+
+export const CONTACT_TYPE_LABELS: Record<string, string> = {
+  LawFirm:      'Law Firm',
+  Provider:     'Provider',
+  LienHolder:   'Lien Holder',
+  CaseManager:  'Case Manager',
+  InternalUser: 'Internal User',
+};
+
+export interface ContactSummary {
+  id:             string;
+  contactType:    string;
+  name:           string;
+  organization:   string;
+  email:          string;
+  phone:          string;
+  city:           string;
+  state:          string;
+  activeCases:    number;
+  createdAtUtc:   string;
+}
+
+export interface ContactDetail extends ContactSummary {
+  title?:         string;
+  address?:       string;
+  zipCode?:       string;
+  notes?:         string;
+  website?:       string;
+  fax?:           string;
+}
+
+// ── Document ─────────────────────────────────────────────────────────────────
+
+export const DocumentStatus = {
+  Pending:    'Pending',
+  Processing: 'Processing',
+  Completed:  'Completed',
+  Failed:     'Failed',
+  Archived:   'Archived',
+} as const;
+
+export const DocumentCategory = {
+  MedicalRecord: 'MedicalRecord',
+  LegalFiling:   'LegalFiling',
+  Financial:     'Financial',
+  Correspondence: 'Correspondence',
+  Contract:      'Contract',
+  Other:         'Other',
+} as const;
+
+export const DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
+  MedicalRecord:  'Medical Record',
+  LegalFiling:    'Legal Filing',
+  Financial:      'Financial',
+  Correspondence: 'Correspondence',
+  Contract:       'Contract',
+  Other:          'Other',
+};
+
+export interface DocumentSummary {
+  id:             string;
+  documentNumber: string;
+  fileName:       string;
+  category:       string;
+  status:         string;
+  linkedEntity:   string;
+  linkedEntityId: string;
+  uploadedBy:     string;
+  fileSize:       string;
+  createdAtUtc:   string;
+}
+
+export interface DocumentDetail extends DocumentSummary {
+  description?:   string;
+  mimeType:       string;
+  version:        number;
+  tags:           string[];
+  processingNotes?: string;
+}
+
+// ── User Management ──────────────────────────────────────────────────────────
+
+export const UserStatus = {
+  Active:   'Active',
+  Inactive: 'Inactive',
+  Invited:  'Invited',
+  Locked:   'Locked',
+} as const;
+
+export interface LienUser {
+  id:             string;
+  name:           string;
+  email:          string;
+  role:           string;
+  status:         string;
+  department:     string;
+  lastLoginAtUtc?: string;
+  createdAtUtc:   string;
+}
+
+export interface LienUserDetail extends LienUser {
+  phone?:         string;
+  title?:         string;
+  permissions:    string[];
+  activityLog:    { action: string; timestamp: string }[];
+}
+
 // ── Requests ──────────────────────────────────────────────────────────────────
 
 export interface CreateLienRequest {

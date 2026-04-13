@@ -43,7 +43,7 @@ export function ProviderAvailabilityPreview({ providerId, providerName }: Provid
     careConnectApi.providers
       .getAvailability(providerId, { from: isoDate(today), to: isoDate(to) })
       .then(({ data }) => {
-        const available = data.slots.filter(s => s.isAvailable).slice(0, 5);
+        const available = data.slots.filter((s: { isAvailable: boolean }) => s.isAvailable).slice(0, 5);
         setSlots(available);
       })
       .catch(() => setSlots([]))

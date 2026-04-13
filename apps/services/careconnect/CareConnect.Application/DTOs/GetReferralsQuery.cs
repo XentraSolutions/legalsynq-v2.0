@@ -15,4 +15,6 @@ public class GetReferralsQuery
     // Org-participant scoping: when set, only referrals involving the specified org are returned.
     public Guid? ReferringOrgId { get; set; }
     public Guid? ReceivingOrgId { get; set; }
+
+    public bool CrossTenantReceiver { get; set; }
 }

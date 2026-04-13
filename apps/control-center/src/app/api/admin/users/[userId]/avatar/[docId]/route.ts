@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE_NAME } from '@/lib/app-config';
 
-const DOCS_URL = 'http://localhost:5006';
+const DOCS_URL = 'http://127.0.0.1:5006';
 
 /**
  * GET /api/admin/users/[userId]/avatar/[docId]

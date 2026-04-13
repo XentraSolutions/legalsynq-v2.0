@@ -7,7 +7,7 @@ import { NotificationStatusBadge }       from '@/components/notifications/status
 import { ChannelBadge }                  from '@/components/notifications/channel-badge';
 
 interface Props {
-  params:       { id: string };
+  params:       Promise<{ id: string }>;
   searchParams: Promise<{
     status?:  string;
     channel?: string;
@@ -38,7 +38,7 @@ export default async function TenantNotificationsPage({ params, searchParams }: 
   const searchParamsData = await searchParams;
   await requirePlatformAdmin();
 
-  const { id } = params;
+  const { id } = await params;
   const status  = searchParamsData.status  ?? '';
   const channel = searchParamsData.channel ?? '';
   const page    = Math.max(1, parseInt(searchParamsData.page ?? '1', 10));

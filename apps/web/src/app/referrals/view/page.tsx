@@ -22,14 +22,15 @@ import { redirect } from 'next/navigation';
  *     → /referrals/accept/invalid  (error page)
  */
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 interface Props {
-  searchParams: { token?: string };
+  searchParams: Promise<{ token?: string }>;
 }
 
 export default async function ReferralViewPage({ searchParams }: Props) {
-  const token = searchParams.token?.trim();
+  const sp = await searchParams;
+  const token = sp.token?.trim();
 
   if (!token) {
     redirect('/referrals/accept/invalid?reason=missing-token');

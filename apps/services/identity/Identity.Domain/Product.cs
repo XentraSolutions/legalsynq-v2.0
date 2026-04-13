@@ -12,7 +12,7 @@ public class Product
     public ICollection<TenantProduct> TenantProducts { get; private set; } = [];
     public ICollection<OrganizationProduct> OrganizationProducts { get; private set; } = [];
     public ICollection<ProductRole> ProductRoles { get; private set; } = [];
-    public ICollection<Capability> Capabilities { get; private set; } = [];
+    public ICollection<Permission> Permissions { get; private set; } = [];
 
     private Product() { }
 

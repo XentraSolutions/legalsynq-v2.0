@@ -1,0 +1,14 @@
+using Notifications.Domain;
+
+namespace Notifications.Application.Interfaces;
+
+public interface INotificationRepository
+{
+    Task<Notification?> GetByIdAsync(Guid id);
+    Task<Notification?> GetByIdAndTenantAsync(Guid id, Guid tenantId);
+    Task<Notification?> FindByIdempotencyKeyAsync(Guid tenantId, string idempotencyKey);
+    Task<List<Notification>> GetByTenantAsync(Guid tenantId, int limit = 50, int offset = 0);
+    Task<Notification> CreateAsync(Notification notification);
+    Task UpdateAsync(Notification notification);
+    Task UpdateStatusAsync(Guid id, string status, string? providerUsed = null, string? failureCategory = null, string? lastErrorMessage = null);
+}

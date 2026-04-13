@@ -6,6 +6,7 @@ import { useSession } from '@/hooks/use-session';
 import { ProductRole } from '@/types';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
+import { useSettings } from '@/contexts/settings-context';
 import { ProviderDetailCard } from '@/components/careconnect/provider-detail-card';
 import { CreateReferralForm } from '@/components/careconnect/create-referral-form';
 import { ProviderAvailabilityPreview } from '@/components/careconnect/provider-availability-preview';
@@ -23,7 +24,8 @@ import type { ProviderDetail } from '@/types/careconnect';
  *   - Backend enforces tenant-scoped access; a 403 is surfaced gracefully.
  *
  * UX shaping:
- *   - "Create Referral" CTA is visible only to CARECONNECT_REFERRER.
+ *   - "Create Referral" CTA is visible to CARECONNECT_REFERRER, TenantAdmin,
+ *     and PlatformAdmin users — any user who can view a provider can refer.
  *   - If the provider is not accepting referrals, the button is disabled
  *     with a tooltip — the backend would reject it anyway.
  */
@@ -31,13 +33,17 @@ export default function ProviderDetailPage() {
   const params  = useParams<{ id: string }>();
   const router  = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
+  const { careConnect } = useSettings();
 
   const [provider, setProvider] = useState<ProviderDetail | null>(null);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const isReferrer = session?.productRoles.includes(ProductRole.CareConnectReferrer) ?? false;
+  const canRefer =
+    (session?.productRoles.includes(ProductRole.CareConnectReferrer) ||
+     session?.isPlatformAdmin ||
+     session?.isTenantAdmin) ?? false;
 
   useEffect(() => {
     if (sessionLoading) return;
@@ -99,11 +105,13 @@ export default function ProviderDetailPage() {
       {/* Provider detail card */}
       <ProviderDetailCard provider={provider} />
 
-      {/* Availability preview — first 5 open slots in the next 2 weeks */}
-      <ProviderAvailabilityPreview providerId={provider.id} providerName={provider.displayLabel} />
+      {/* Availability preview — shown only when availability checking is enabled */}
+      {careConnect.requireAvailabilityCheck && (
+        <ProviderAvailabilityPreview providerId={provider.id} providerName={provider.displayLabel} />
+      )}
 
       {/* Create Referral CTA — only for referrers */}
-      {isReferrer && (
+      {canRefer && (
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowForm(true)}

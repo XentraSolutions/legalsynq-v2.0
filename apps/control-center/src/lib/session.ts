@@ -37,7 +37,7 @@ const AUTH_ME_URL  = `${CONTROL_CENTER_API_BASE}/identity/api/auth/me`;
  * Returns null if the session cookie is absent or the token is invalid/expired.
  */
 export async function getServerSession(): Promise<PlatformSession | null> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
 
   if (!sessionCookie?.value) return null;

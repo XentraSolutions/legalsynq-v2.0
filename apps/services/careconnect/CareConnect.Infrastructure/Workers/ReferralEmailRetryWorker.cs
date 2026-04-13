@@ -112,20 +112,18 @@ public sealed class ReferralEmailRetryWorker : BackgroundService
                 return;
             }
 
-            // Skip retrying if the referral has moved past the point where the notification is still relevant.
-            // New = still awaiting provider response — appropriate to keep retrying.
-            // Any other status (Accepted, Cancelled, etc.) means the original notification is stale.
-            if (referral.Status != "New")
+            if (!IsNotificationStillRelevant(notification.NotificationType, referral.Status))
             {
                 _logger.LogInformation(
-                    "RetryWorker: referral {ReferralId} is in status '{Status}'. Suppressing retry for notification {NotifId}.",
-                    referral.Id, referral.Status, notification.Id);
+                    "RetryWorker: referral {ReferralId} is in status '{Status}'. " +
+                    "Notification type '{NotifType}' is no longer relevant. Suppressing retry for {NotifId}.",
+                    referral.Id, referral.Status, notification.NotificationType, notification.Id);
                 notification.ClearRetrySchedule();
                 await notifRepo.UpdateAsync(notification, ct);
                 return;
             }
 
-            var provider = await providerRepo.GetByIdAsync(referral.TenantId, referral.ProviderId, ct);
+            var provider = await providerRepo.GetByIdCrossAsync(referral.ProviderId, ct);
             if (provider is null)
             {
                 _logger.LogWarning(
@@ -148,5 +146,31 @@ public sealed class ReferralEmailRetryWorker : BackgroundService
                 "RetryWorker: unexpected error processing notification {NotifId}. Skipping this iteration.",
                 notification.Id);
         }
+    }
+
+    private static bool IsNotificationStillRelevant(string notificationType, string referralStatus)
+    {
+        return notificationType switch
+        {
+            NotificationType.ReferralCreated or
+            NotificationType.ReferralEmailAutoRetry or
+            NotificationType.ReferralEmailResent
+                => referralStatus is "New" or "NewOpened",
+
+            NotificationType.ReferralAcceptedProvider or
+            NotificationType.ReferralAcceptedReferrer or
+            NotificationType.ReferralAcceptedClient
+                => referralStatus == "Accepted",
+
+            NotificationType.ReferralRejectedProvider or
+            NotificationType.ReferralRejectedReferrer
+                => referralStatus == "Declined",
+
+            NotificationType.ReferralCancelledProvider or
+            NotificationType.ReferralCancelledReferrer
+                => referralStatus == "Cancelled",
+
+            _ => false,
+        };
     }
 }

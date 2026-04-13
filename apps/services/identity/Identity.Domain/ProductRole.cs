@@ -13,7 +13,7 @@ public class ProductRole
     public DateTime CreatedAtUtc { get; private set; }
 
     public Product Product { get; private set; } = null!;
-    public ICollection<RoleCapability> RoleCapabilities { get; private set; } = [];
+    public ICollection<RolePermissionMapping> RolePermissionMappings { get; private set; } = [];
     public ICollection<ProductOrganizationTypeRule> OrgTypeRules { get; private set; } = [];
 
     private ProductRole() { }

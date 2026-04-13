@@ -77,12 +77,13 @@ export interface ReferralHistoryItem {
 // ── Referral ──────────────────────────────────────────────────────────────────
 
 export const ReferralStatus = {
-  New:       'New',
-  Received:  'Received',
-  Contacted: 'Contacted',
-  Scheduled: 'Scheduled',
-  Completed: 'Completed',
-  Cancelled: 'Cancelled',
+  New:        'New',
+  NewOpened:  'NewOpened',
+  Received:   'Received',
+  Contacted:  'Contacted',
+  Scheduled:  'Scheduled',
+  Completed:  'Completed',
+  Cancelled:  'Cancelled',
 } as const;
 export type ReferralStatusValue = typeof ReferralStatus[keyof typeof ReferralStatus];
 
@@ -193,11 +194,13 @@ export interface ReferralSearchParams {
 // ── Appointment ───────────────────────────────────────────────────────────────
 
 export const AppointmentStatus = {
-  Scheduled:  'Scheduled',
-  Confirmed:  'Confirmed',
-  Cancelled:  'Cancelled',
-  Completed:  'Completed',
-  NoShow:     'NoShow',
+  Pending:     'Pending',
+  Scheduled:   'Scheduled',
+  Confirmed:   'Confirmed',
+  Rescheduled: 'Rescheduled',
+  Cancelled:   'Cancelled',
+  Completed:   'Completed',
+  NoShow:      'NoShow',
 } as const;
 export type AppointmentStatusValue = typeof AppointmentStatus[keyof typeof AppointmentStatus];
 

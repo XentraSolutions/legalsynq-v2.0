@@ -66,16 +66,15 @@ public class ReferralWorkflowRulesTests
         Assert.Equal(expected, ReferralWorkflowRules.IsTerminal(status));
     }
 
-    // ── RequiredCapabilityFor maps to the correct code ────────────────────────
     [Theory]
-    [InlineData("Accepted",   CapabilityCodes.ReferralAccept)]
-    [InlineData("Declined",   CapabilityCodes.ReferralDecline)]
-    [InlineData("Cancelled",  CapabilityCodes.ReferralCancel)]
-    [InlineData("InProgress", CapabilityCodes.ReferralUpdateStatus)]
-    [InlineData("Completed",  CapabilityCodes.ReferralUpdateStatus)]
-    public void RequiredCapabilityFor_ReturnsExpected(string toStatus, string expectedCap)
+    [InlineData("Accepted",   PermissionCodes.ReferralAccept)]
+    [InlineData("Declined",   PermissionCodes.ReferralDecline)]
+    [InlineData("Cancelled",  PermissionCodes.ReferralCancel)]
+    [InlineData("InProgress", PermissionCodes.ReferralUpdateStatus)]
+    [InlineData("Completed",  PermissionCodes.ReferralUpdateStatus)]
+    public void RequiredPermissionFor_ReturnsExpected(string toStatus, string expectedPerm)
     {
-        Assert.Equal(expectedCap, ReferralWorkflowRules.RequiredCapabilityFor(toStatus));
+        Assert.Equal(expectedPerm, ReferralWorkflowRules.RequiredPermissionFor(toStatus));
     }
 
     // ── ValidStatuses.All contains canonical values ───────────────────────────

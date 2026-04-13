@@ -93,11 +93,14 @@ export const Routes = {
   /** /roles/:id — Role detail */
   roleDetail: (id: string) => `/roles/${id}`,
 
-  /** /groups — Tenant groups list */
+  /** /groups — Access groups list */
   groups: '/groups',
 
-  /** /groups/:id — Group detail */
+  /** /groups/:id — Group detail (legacy) */
   groupDetail: (id: string) => `/groups/${id}`,
+
+  /** /access-groups/:tenantId/:groupId — Access group detail */
+  accessGroupDetail: (tenantId: string, groupId: string) => `/access-groups/${tenantId}/${groupId}`,
 
   /** /tenants/:id/notifications — Notification activity for a specific tenant */
   tenantNotifications: (id: string) => `/tenants/${id}/notifications`,
@@ -107,4 +110,7 @@ export const Routes = {
 
   /** /permissions — Platform permission catalog */
   permissions: '/permissions',
+
+  /** /authorization-simulator — Authorization simulation console */
+  authorizationSimulator: '/authorization-simulator',
 } as const;

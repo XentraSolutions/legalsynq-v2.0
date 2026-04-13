@@ -1,34 +1,28 @@
 namespace Identity.Domain;
 
 /// <summary>
-/// Enriched role assignment with explicit scope context.
-/// Evolves UserRoleAssignment toward: per-org, per-product, per-relationship scoping.
-/// Existing UserRoleAssignment records are preserved and can be migrated incrementally.
+/// System/admin role assignment with GLOBAL scope only.
+/// LS-COR-AUT-007: ScopedRoleAssignment is restricted to GLOBAL scope exclusively.
+/// Used for PlatformAdmin and TenantAdmin system roles emitted as "role" JWT claims.
+/// Product roles are managed via UserRoleAssignment/GroupRoleAssignment and emitted
+/// as "product_roles" JWT claims by EffectiveAccessService.
 /// </summary>
 public class ScopedRoleAssignment
 {
     public static class ScopeTypes
     {
-        public const string Global       = "GLOBAL";
-        public const string Tenant       = "TENANT";
-        public const string Organization = "ORGANIZATION";
-        public const string Product      = "PRODUCT";
-        public const string Relationship = "RELATIONSHIP";
+        public const string Global = "GLOBAL";
 
-        public static readonly IReadOnlyList<string> All =
-            [Global, Tenant, Organization, Product, Relationship];
-
-        public static bool IsValid(string value) => All.Contains(value);
+        public static bool IsValid(string value) =>
+            string.Equals(value, Global, StringComparison.OrdinalIgnoreCase);
     }
 
     public Guid   Id                       { get; private set; }
     public Guid   UserId                   { get; private set; }
     public Guid   RoleId                   { get; private set; }
 
-    // Scope discriminator
     public string ScopeType               { get; private set; } = ScopeTypes.Global;
 
-    // Nullable scope context — only the applicable field is populated
     public Guid?  TenantId                { get; private set; }
     public Guid?  OrganizationId          { get; private set; }
     public Guid?  OrganizationRelationshipId { get; private set; }
@@ -55,7 +49,10 @@ public class ScopedRoleAssignment
         Guid?  assignedByUserId         = null)
     {
         if (!ScopeTypes.IsValid(scopeType))
-            throw new ArgumentException($"Invalid ScopeType: {scopeType}", nameof(scopeType));
+            throw new ArgumentException(
+                $"ScopedRoleAssignment only supports GLOBAL scope. Received: '{scopeType}'. " +
+                "Use UserRoleAssignment/GroupRoleAssignment for product-scoped roles.",
+                nameof(scopeType));
 
         var now = DateTime.UtcNow;
         return new ScopedRoleAssignment
@@ -63,11 +60,11 @@ public class ScopedRoleAssignment
             Id                        = Guid.NewGuid(),
             UserId                    = userId,
             RoleId                    = roleId,
-            ScopeType                 = scopeType,
+            ScopeType                 = ScopeTypes.Global,
             TenantId                  = tenantId,
-            OrganizationId            = organizationId,
-            OrganizationRelationshipId = organizationRelationshipId,
-            ProductId                 = productId,
+            OrganizationId            = null,
+            OrganizationRelationshipId = null,
+            ProductId                 = null,
             IsActive                  = true,
             AssignedAtUtc             = now,
             UpdatedAtUtc              = now,

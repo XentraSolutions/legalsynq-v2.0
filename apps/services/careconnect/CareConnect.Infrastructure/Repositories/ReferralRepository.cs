@@ -17,7 +17,16 @@ public class ReferralRepository : IReferralRepository
 
     public async Task<(List<Referral> Items, int TotalCount)> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default)
     {
-        var q = _db.Referrals.Where(r => r.TenantId == tenantId);
+        IQueryable<Referral> q;
+
+        if (query.CrossTenantReceiver && query.ReceivingOrgId.HasValue)
+        {
+            q = _db.Referrals.Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
+        }
+        else
+        {
+            q = _db.Referrals.Where(r => r.TenantId == tenantId);
+        }
 
         if (!string.IsNullOrWhiteSpace(query.Status))
             q = q.Where(r => r.Status == query.Status);
@@ -49,11 +58,10 @@ public class ReferralRepository : IReferralRepository
         if (query.CreatedTo.HasValue)
             q = q.Where(r => r.CreatedAtUtc <= query.CreatedTo.Value);
 
-        // Org-participant scoping: filter by referring or receiving org when provided.
         if (query.ReferringOrgId.HasValue)
             q = q.Where(r => r.ReferringOrganizationId == query.ReferringOrgId.Value);
 
-        if (query.ReceivingOrgId.HasValue)
+        if (!query.CrossTenantReceiver && query.ReceivingOrgId.HasValue)
             q = q.Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
 
         var totalCount = await q.CountAsync(ct);

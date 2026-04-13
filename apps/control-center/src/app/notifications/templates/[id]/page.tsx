@@ -9,10 +9,11 @@ import type { NotifTemplate, NotifTemplateVersion } from '@/lib/notifications-ap
 import { ApiError }                       from '@/lib/api-client';
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default async function TemplateDetailPage({ params }: Props) {
+export default async function TemplateDetailPage(props: Props) {
+  const params = await props.params;
   const session = await requirePlatformAdmin();
 
   let template:   NotifTemplate | null       = null;

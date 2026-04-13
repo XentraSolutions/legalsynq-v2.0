@@ -6,9 +6,12 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 export interface CreateTenantResult {
   success: boolean;
   tenant?: {
-    tenantId:    string;
-    displayName: string;
-    code:        string;
+    tenantId:            string;
+    displayName:         string;
+    code:                string;
+    subdomain?:          string;
+    provisioningStatus?: string;
+    hostname?:           string;
   };
   adminUser?: {
     adminUserId:       string;
@@ -18,19 +21,14 @@ export interface CreateTenantResult {
   error?: string;
 }
 
-/**
- * Server Action: create a new tenant with a default admin user.
- *
- * Requires an active PlatformAdmin session.
- * Returns the new tenant info + a one-time temporary password on success.
- */
 export async function createTenantAction(data: {
-  name:           string;
-  code:           string;
-  orgType:        string;
-  adminEmail:     string;
-  adminFirstName: string;
-  adminLastName:  string;
+  name:               string;
+  code:               string;
+  orgType:            string;
+  adminEmail:         string;
+  adminFirstName:     string;
+  adminLastName:      string;
+  preferredSubdomain?: string;
 }): Promise<CreateTenantResult> {
   await requirePlatformAdmin();
 
@@ -39,9 +37,12 @@ export async function createTenantAction(data: {
     return {
       success: true,
       tenant: {
-        tenantId:    result.tenantId,
-        displayName: result.displayName,
-        code:        result.code,
+        tenantId:            result.tenantId,
+        displayName:         result.displayName,
+        code:                result.code,
+        subdomain:           result.subdomain,
+        provisioningStatus:  result.provisioningStatus,
+        hostname:            result.hostname,
       },
       adminUser: {
         adminUserId:       result.adminUserId,
@@ -53,6 +54,51 @@ export async function createTenantAction(data: {
     return {
       success: false,
       error: err instanceof Error ? err.message : 'Failed to create tenant.',
+    };
+  }
+}
+
+export interface RetryProvisioningResult {
+  success:            boolean;
+  provisioningStatus: string;
+  hostname?:          string;
+  error?:             string;
+}
+
+export async function retryProvisioningAction(tenantId: string): Promise<RetryProvisioningResult> {
+  await requirePlatformAdmin();
+
+  try {
+    const result = await controlCenterServerApi.tenants.retryProvisioning(tenantId);
+    return result;
+  } catch (err) {
+    return {
+      success: false,
+      provisioningStatus: 'Failed',
+      error: err instanceof Error ? err.message : 'Failed to retry provisioning.',
+    };
+  }
+}
+
+export interface RetryVerificationResult {
+  success:            boolean;
+  provisioningStatus: string;
+  hostname?:          string;
+  error?:             string;
+  failureStage?:      string;
+}
+
+export async function retryVerificationAction(tenantId: string): Promise<RetryVerificationResult> {
+  await requirePlatformAdmin();
+
+  try {
+    const result = await controlCenterServerApi.tenants.retryVerification(tenantId);
+    return result;
+  } catch (err) {
+    return {
+      success: false,
+      provisioningStatus: 'Failed',
+      error: err instanceof Error ? err.message : 'Failed to retry verification.',
     };
   }
 }

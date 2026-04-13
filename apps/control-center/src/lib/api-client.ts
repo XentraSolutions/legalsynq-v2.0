@@ -348,6 +348,8 @@ export const CACHE_TAGS = {
   ccIntegrity:          'cc:careconnect-integrity',
   // Step 24 — canonical audit (Platform Audit Event Service)
   auditCanonical:       'cc:audit-canonical',
+  // LS-COR-AUT-005 — Access Groups
+  accessGroups:         'cc:access-groups',
   // Step 28 — SynqAudit extensions
   auditExports:         'cc:audit-exports',
   auditIntegrity:       'cc:audit-integrity',
@@ -358,6 +360,8 @@ export const CACHE_TAGS = {
   notifProviders:       'notif:providers',
   notifBilling:         'notif:billing',
   notifContacts:        'notif:contacts',
+  // LS-COR-AUT-011 — ABAC Policies
+  policies:             'cc:policies',
 } as const;
 
 export type CacheTag = typeof CACHE_TAGS[keyof typeof CACHE_TAGS];

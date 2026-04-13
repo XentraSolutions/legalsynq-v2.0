@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5000';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 const IS_PROD     = process.env.NODE_ENV === 'production';
 
 /**
@@ -38,9 +38,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
   }
 
-  // Resolve tenantCode: explicit value (dev) falls back to subdomain extraction (prod)
-  const tenantCode = explicitTenantCode?.trim()
-    || extractTenantCodeFromHost(request);
+  const subdomainTenant = extractTenantCodeFromHost(request);
+  const tenantCode = subdomainTenant || explicitTenantCode?.trim() || null;
+
+  const rawHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
+  console.log(`[login] host=${rawHost}, subdomainTenant=${subdomainTenant}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, email=${email}`);
 
   if (!tenantCode) {
     return NextResponse.json(
@@ -49,7 +51,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Forward login to Identity service via gateway
   let identityRes: Response;
   try {
     identityRes = await fetch(`${GATEWAY_URL}/identity/api/auth/login`, {
@@ -57,14 +58,34 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ tenantCode, email, password }),
     });
-  } catch {
+  } catch (err) {
+    console.error(`[login] Identity service fetch error:`, err);
     return NextResponse.json({ message: 'Identity service unavailable' }, { status: 503 });
   }
 
   if (!identityRes.ok) {
     const errBody = await identityRes.json().catch(() => ({}));
+    const message = errBody.detail ?? errBody.title ?? 'Invalid credentials';
+    console.log(`[login] Identity returned ${identityRes.status}: ${JSON.stringify(errBody)}`);
+
+    const isVerifying = typeof message === 'string' && message.includes('verifying DNS configuration');
+    if (isVerifying) {
+      return NextResponse.json(
+        { message: 'Your workspace is verifying DNS configuration. This typically completes within a few minutes. Please try again shortly.' },
+        { status: 503 },
+      );
+    }
+
+    const isNotProvisioned = typeof message === 'string' && message.includes('not fully provisioned');
+    if (isNotProvisioned) {
+      return NextResponse.json(
+        { message: 'This tenant is still being set up. Please try again shortly.' },
+        { status: 503 },
+      );
+    }
+
     return NextResponse.json(
-      { message: errBody.detail ?? errBody.title ?? 'Invalid credentials' },
+      { message },
       { status: identityRes.status === 401 ? 401 : 400 },
     );
   }
@@ -101,26 +122,47 @@ export async function POST(request: NextRequest) {
     // domain: intentionally omitted — scopes to exact request origin only
   });
 
+  const resolvedTenantCode = user.tenantCode ?? tenantCode;
+  response.cookies.set('tenant_code', resolvedTenantCode, {
+    httpOnly: false,
+    secure:   IS_PROD,
+    sameSite: IS_PROD ? 'strict' : 'lax',
+    path:     '/',
+    maxAge:   maxAgeSeconds,
+  });
+
   return response;
 }
 
 /**
  * Extracts a tenantCode from the request's Host header.
- * "firm-a.legalsynq.com" → "firm-a"
- * "localhost:3000"        → null (no subdomain)
+ *
+ * Subdomain slugs use hyphens for readability (URL-friendly), but tenant
+ * codes are stored without hyphens in uppercase.
+ *
+ * Examples:
+ *   "maner-law.demo.legalsynq.com" → "MANERLAW"
+ *   "lisa-medical.demo.legalsynq.com" → "LISAMEDICAL"
+ *   "legalsynq.demo.legalsynq.com" → "LEGALSYNQ"
+ *   "localhost:3000" → null (no subdomain)
  */
 function extractTenantCodeFromHost(request: NextRequest): string | null {
-  const host = request.headers.get('x-forwarded-host')
+  const rawHost = request.headers.get('x-forwarded-host')
     ?? request.headers.get('host')
     ?? '';
 
-  // Strip port
+  const host = rawHost.split(',')[0].trim();
   const hostWithoutPort = host.includes(':') ? host.split(':')[0] : host;
-  const parts = hostWithoutPort.split('.');
+  const lower = hostWithoutPort.toLowerCase();
 
-  // A subdomain exists when there are at least 3 parts (sub.domain.tld)
+  if (!/^[a-z0-9.-]+$/.test(lower)) return null;
+
+  const parts = lower.split('.');
+
   if (parts.length >= 3) {
-    return parts[0].toUpperCase();
+    const sub = parts[0];
+    if (sub === 'www') return null;
+    return sub.toUpperCase();
   }
 
   return null;

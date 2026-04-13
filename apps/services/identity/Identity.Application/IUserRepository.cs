@@ -13,6 +13,8 @@ public interface IUserRepository
     Task AddAsync(User user, IReadOnlyList<Guid> roleIds, CancellationToken ct = default);
     Task<UserOrganizationMembership?> GetPrimaryOrgMembershipAsync(Guid userId, CancellationToken ct = default);
 
+    Task<List<UserOrganizationMembership>> GetActiveMembershipsWithProductsAsync(Guid userId, Guid tenantId, CancellationToken ct = default);
+
     /// <summary>
     /// Updates the user's AvatarDocumentId. Pass null to clear the avatar.
     /// </summary>

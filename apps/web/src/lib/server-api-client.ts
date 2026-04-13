@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://localhost:5000';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 
 // ── Error ────────────────────────────────────────────────────────────────────
 
@@ -63,8 +63,9 @@ async function serverRequest<T>(
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export const serverApi = {
-  get:   <T>(path: string)                 => serverRequest<T>(path),
-  post:  <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'POST', body }),
-  put:   <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'PUT',  body }),
-  patch: <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'PATCH', body }),
+  get:    <T>(path: string)                 => serverRequest<T>(path),
+  post:   <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'POST', body }),
+  put:    <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'PUT',  body }),
+  patch:  <T>(path: string, body: unknown)  => serverRequest<T>(path, { method: 'PATCH', body }),
+  delete: <T>(path: string)                 => serverRequest<T>(path, { method: 'DELETE' }),
 };

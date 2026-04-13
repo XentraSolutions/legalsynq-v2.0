@@ -14,7 +14,7 @@ interface Props {
 const PAGE_SIZE = 50;
 
 export default async function ProviderLogsPage({ params, searchParams }: Props) {
-  await requirePlatformAdmin();
+  const session = await requirePlatformAdmin();
 
   const { configId }                   = await params;
   const { status, from, to, page: pg } = await searchParams;
@@ -46,11 +46,11 @@ export default async function ProviderLogsPage({ params, searchParams }: Props) 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const configLabel = config
-    ? `${config.displayName ?? config.provider} — ${config.channel}`
+    ? `${config.displayName ?? config.providerType} — ${config.channel}`
     : configId;
 
   return (
-    <CCShell>
+    <CCShell userEmail={session.email}>
       <div className="space-y-6">
 
         {/* Header */}

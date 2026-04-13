@@ -1,36 +1,28 @@
 'use client';
 
-/**
- * UserRowActions — compact inline action buttons for a user list table row.
- *
- * Actions wired to live BFF:
- *   - Activate   → POST /api/identity/admin/users/{id}/activate
- *   - Deactivate → POST /api/identity/admin/users/{id}/deactivate  (confirm dialog)
- *   - Resend     → POST /api/identity/admin/users/{id}/resend-invite
- *
- * After a successful action the page is refreshed via router.refresh() so the
- * server component re-fetches updated data from the identity service.
- */
-
-import { useState }        from 'react';
-import { useRouter }       from 'next/navigation';
-import Link                from 'next/link';
-import type { UserStatus } from '@/types/control-center';
-import { Routes }          from '@/lib/routes';
+import { useState }              from 'react';
+import { useRouter }             from 'next/navigation';
+import Link                      from 'next/link';
+import type { UserStatus }       from '@/types/control-center';
+import { Routes }                from '@/lib/routes';
+import { SetPasswordModal }      from './set-password-modal';
 
 interface UserRowActionsProps {
   userId:        string;
+  userName:      string;
+  userEmail:     string;
   currentStatus: UserStatus;
 }
 
 type RowAction = 'activate' | 'deactivate' | 'resend-invite';
 
-export function UserRowActions({ userId, currentStatus }: UserRowActionsProps) {
+export function UserRowActions({ userId, userName, userEmail, currentStatus }: UserRowActionsProps) {
   const router = useRouter();
 
   const [pending,    setPending]    = useState<RowAction | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [error,      setError]      = useState<string | null>(null);
+  const [showSetPassword, setShowSetPassword] = useState(false);
 
   const isActive   = currentStatus === 'Active';
   const isInactive = currentStatus === 'Inactive';
@@ -110,6 +102,16 @@ export function UserRowActions({ userId, currentStatus }: UserRowActionsProps) {
         </span>
       )}
 
+      {/* Set Password */}
+      {!isInvited && (
+        <ActionButton
+          label="Set Password"
+          isPending={false}
+          variant="neutral"
+          onClick={() => setShowSetPassword(true)}
+        />
+      )}
+
       {/* Resend Invite — only for Invited status */}
       {isInvited && (
         <ActionButton
@@ -125,6 +127,15 @@ export function UserRowActions({ userId, currentStatus }: UserRowActionsProps) {
         <span className="text-[11px] text-red-600" title={error}>
           ⚠ {error.length > 30 ? error.slice(0, 28) + '…' : error}
         </span>
+      )}
+
+      {showSetPassword && (
+        <SetPasswordModal
+          userId={userId}
+          userName={userName}
+          userEmail={userEmail}
+          onClose={() => setShowSetPassword(false)}
+        />
       )}
     </div>
   );

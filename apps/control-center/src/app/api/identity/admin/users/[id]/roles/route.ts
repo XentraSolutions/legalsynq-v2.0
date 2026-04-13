@@ -32,7 +32,12 @@ export async function POST(
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to assign role.';
-    const status  = message.includes('409') || message.toLowerCase().includes('conflict') ? 409 : 500;
+    const lower = message.toLowerCase();
+    let status = 500;
+    if (lower.includes('409') || lower.includes('conflict') || lower.includes('already')) status = 409;
+    else if (lower.includes('product_not_enabled') || lower.includes('invalid_org_type') || lower.includes('no_organization_membership')) status = 400;
+    else if (lower.includes('not found') || lower.includes('404')) status = 404;
+    else if (lower.includes('403') || lower.includes('forbid')) status = 403;
     return NextResponse.json({ message }, { status });
   }
 }

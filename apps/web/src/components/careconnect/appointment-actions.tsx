@@ -34,11 +34,10 @@ function formatDateTime(iso: string): string {
 /**
  * Appointment action buttons for the detail page.
  *
- * Receiver (provider):
- *   - Confirm         → PUT /api/appointments/{id}   { status: 'Confirmed' }
- *   - Mark NoShow     → PUT /api/appointments/{id}   { status: 'NoShow' }
- *
- * Referrer + Receiver:
+ * Receiver (provider) only — requires AppointmentManage capability:
+ *   - Confirm         → POST /api/appointments/{id}/confirm
+ *   - Mark Completed  → POST /api/appointments/{id}/complete
+ *   - Mark NoShow     → PUT  /api/appointments/{id}   { status: 'NoShow' }
  *   - Reschedule      → POST /api/appointments/{id}/reschedule { newAppointmentSlotId, notes? }
  *
  * Cancel is handled separately by AppointmentCancelButton.
@@ -51,9 +50,10 @@ export function AppointmentActions({ appointment, isReceiver, isReferrer }: Appo
   const providerId = appointment.providerId;
 
   const isTerminal   = ['Cancelled', 'Completed', 'NoShow'].includes(status);
-  const canConfirm   = isReceiver && status === 'Scheduled';
+  const canConfirm   = isReceiver && ['Scheduled', 'Pending', 'Rescheduled'].includes(status);
+  const canComplete  = isReceiver && status === 'Confirmed';
   const canNoShow    = isReceiver && status === 'Confirmed';
-  const canReschedule= (isReferrer || isReceiver) && ['Scheduled', 'Confirmed'].includes(status);
+  const canReschedule= isReceiver && ['Scheduled', 'Pending', 'Confirmed'].includes(status);
 
   const [loading,  setLoading]  = useState<string | null>(null);
   const [error,    setError]    = useState<string | null>(null);
@@ -90,18 +90,59 @@ export function AppointmentActions({ appointment, isReceiver, isReferrer }: Appo
   }, [showReschedule, availability, loadSlots]);
 
   if (isTerminal) return null;
-  if (!canConfirm && !canNoShow && !canReschedule) return null;
+  if (!canConfirm && !canComplete && !canNoShow && !canReschedule) return null;
 
   // ── Mutation helpers ───────────────────────────────────────────────────────
-  async function doUpdate(toStatus: string) {
-    setLoading(toStatus);
+  async function doConfirm() {
+    setLoading('Confirmed');
     setError(null);
     try {
-      await careConnectApi.appointments.update(appointment.id, { status: toStatus });
-      showToast(
-        toStatus === 'Confirmed' ? 'Appointment confirmed.' : 'Appointment marked as no-show.',
-        'success',
-      );
+      await careConnectApi.appointments.confirm(appointment.id);
+      showToast('Appointment confirmed.', 'success');
+      router.refresh();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.isUnauthorized) { router.push('/login'); return; }
+        if (err.isForbidden)    { setError('You do not have permission to confirm this appointment.'); return; }
+        if (err.isConflict)     { setError('This appointment cannot be confirmed in its current state.'); return; }
+        setError(err.message);
+      } else {
+        setError('Failed to confirm appointment.');
+      }
+      showToast('Failed to confirm appointment.', 'error');
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function doComplete() {
+    setLoading('Completed');
+    setError(null);
+    try {
+      await careConnectApi.appointments.complete(appointment.id);
+      showToast('Appointment marked as completed.', 'success');
+      router.refresh();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.isUnauthorized) { router.push('/login'); return; }
+        if (err.isForbidden)    { setError('You do not have permission to complete this appointment.'); return; }
+        if (err.isConflict)     { setError('This appointment cannot be completed in its current state.'); return; }
+        setError(err.message);
+      } else {
+        setError('Failed to complete appointment.');
+      }
+      showToast('Failed to complete appointment.', 'error');
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function doNoShow() {
+    setLoading('NoShow');
+    setError(null);
+    try {
+      await careConnectApi.appointments.update(appointment.id, { status: 'NoShow' });
+      showToast('Appointment marked as no-show.', 'success');
       router.refresh();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -166,7 +207,7 @@ export function AppointmentActions({ appointment, isReceiver, isReferrer }: Appo
         <div className="flex flex-wrap items-center gap-3">
           {canConfirm && (
             <button
-              onClick={() => doUpdate('Confirmed')}
+              onClick={doConfirm}
               disabled={!!loading}
               className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-60 transition-colors"
             >
@@ -174,9 +215,19 @@ export function AppointmentActions({ appointment, isReceiver, isReferrer }: Appo
             </button>
           )}
 
+          {canComplete && (
+            <button
+              onClick={doComplete}
+              disabled={!!loading}
+              className="bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-60 transition-colors"
+            >
+              {loading === 'Completed' ? 'Completing…' : 'Mark Completed'}
+            </button>
+          )}
+
           {canNoShow && (
             <button
-              onClick={() => doUpdate('NoShow')}
+              onClick={doNoShow}
               disabled={!!loading}
               className="border border-orange-300 text-orange-600 text-sm font-medium px-4 py-2 rounded-md hover:bg-orange-50 disabled:opacity-60 transition-colors"
             >

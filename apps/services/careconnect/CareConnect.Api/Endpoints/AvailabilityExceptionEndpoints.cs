@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
@@ -21,7 +22,8 @@ public static class AvailabilityExceptionEndpoints
             var result = await service.GetByProviderAsync(tenantId, providerId, isActive, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser);
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPost("/api/providers/{providerId:guid}/availability-exceptions", async (
             Guid providerId,
@@ -34,7 +36,8 @@ public static class AvailabilityExceptionEndpoints
             var result = await service.CreateAsync(tenantId, providerId, ctx.UserId, request, ct);
             return Results.Created($"/api/providers/{providerId}/availability-exceptions/{result.Id}", result);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPut("/api/availability-exceptions/{id:guid}", async (
             Guid id,
@@ -47,7 +50,8 @@ public static class AvailabilityExceptionEndpoints
             var result = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
 
         app.MapPost("/api/providers/{providerId:guid}/slots/apply-exceptions", async (
             Guid providerId,
@@ -59,6 +63,7 @@ public static class AvailabilityExceptionEndpoints
             var result = await service.ApplyExceptionsToSlotsAsync(tenantId, providerId, ctx.UserId, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
     }
 }

@@ -12,8 +12,20 @@ packages/
 # Secrets & environment
 appsettings.*.json
 !appsettings.Development.json
+!appsettings.Production.json
 *.env
 .env*
+
+# Next.js
+.next/
+out/
+
+# Node
+node_modules/
+
+# SQLite dev databases
+*.db-wal
+*.db-shm
 
 # OS
 .DS_Store

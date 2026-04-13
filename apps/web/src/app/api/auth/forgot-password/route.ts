@@ -1,0 +1,75 @@
+import { type NextRequest, NextResponse } from 'next/server';
+
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
+
+function extractTenantCodeFromHost(req: NextRequest): string | null {
+  const host =
+    req.headers.get('x-forwarded-host') ??
+    req.headers.get('host') ??
+    '';
+  const parts = host.split('.');
+  if (parts.length < 3 || parts[0] === 'www') return null;
+  return parts[0].toUpperCase();
+}
+
+export async function POST(request: NextRequest) {
+  let body: Record<string, string>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ message: 'Invalid request body' }, { status: 400 });
+  }
+
+  const { email, tenantCode: explicitTenantCode } = body;
+
+  if (!email) {
+    return NextResponse.json({ message: 'Email is required' }, { status: 400 });
+  }
+
+  const tenantCode = explicitTenantCode?.trim() || extractTenantCodeFromHost(request);
+
+  if (!tenantCode) {
+    return NextResponse.json(
+      { message: 'Tenant could not be resolved.' },
+      { status: 400 },
+    );
+  }
+
+  let identityRes: Response;
+  try {
+    identityRes = await fetch(`${GATEWAY_URL}/identity/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantCode, email }),
+    });
+  } catch {
+    return NextResponse.json({ message: 'Identity service unavailable' }, { status: 503 });
+  }
+
+  if (!identityRes.ok) {
+    const errBody = await identityRes.json().catch(() => ({}));
+    return NextResponse.json(
+      { message: errBody.error ?? 'Something went wrong. Please try again.' },
+      { status: identityRes.status },
+    );
+  }
+
+  const data = await identityRes.json();
+
+  const host =
+    request.headers.get('x-forwarded-host') ??
+    request.headers.get('host') ??
+    'localhost:3000';
+  const protocol = request.headers.get('x-forwarded-proto') ?? 'http';
+  const origin = `${protocol}://${host}`;
+
+  const result: Record<string, string> = {
+    message: data.message,
+  };
+
+  if (data.resetToken) {
+    result.resetLink = `${origin}/reset-password?token=${encodeURIComponent(data.resetToken)}`;
+  }
+
+  return NextResponse.json(result);
+}

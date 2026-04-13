@@ -48,12 +48,12 @@ export default async function DeliveryIssuesPage({ searchParams }: Props) {
   }
 
   const allItems = [
-    ...(failedData?.items  ?? []),
-    ...(blockedData?.items ?? []),
+    ...(failedData?.data  ?? []),
+    ...(blockedData?.data ?? []),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const failedCount  = failedData?.total  ?? 0;
-  const blockedCount = blockedData?.total ?? 0;
+  const failedCount  = failedData?.meta?.total  ?? 0;
+  const blockedCount = blockedData?.meta?.total ?? 0;
 
   function buildPageUrl(p: number) {
     return `/notifications/delivery-issues?page=${p}`;

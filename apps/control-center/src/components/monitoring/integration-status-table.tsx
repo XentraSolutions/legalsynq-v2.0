@@ -3,17 +3,11 @@ import { StatusBadge } from './system-health-card';
 
 interface IntegrationStatusTableProps {
   integrations: IntegrationStatus[];
+  title?:       string;
+  subtitle?:    string;
 }
 
-/**
- * IntegrationStatusTable — tabular view of downstream service health.
- *
- * Pure server component. Renders name, status badge, latency, and
- * last-checked time for each integration.
- *
- * Sorted: Down → Degraded → Healthy, then alphabetically within each group.
- */
-export function IntegrationStatusTable({ integrations }: IntegrationStatusTableProps) {
+export function IntegrationStatusTable({ integrations, title, subtitle }: IntegrationStatusTableProps) {
   const ORDER = { Down: 0, Degraded: 1, Healthy: 2 } as const;
 
   const sorted = [...integrations].sort((a, b) => {
@@ -21,13 +15,20 @@ export function IntegrationStatusTable({ integrations }: IntegrationStatusTableP
     return diff !== 0 ? diff : a.name.localeCompare(b.name);
   });
 
+  if (integrations.length === 0) return null;
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
 
       <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Integration Health
-        </h2>
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            {title ?? 'Integration Health'}
+          </h2>
+          {subtitle && (
+            <p className="text-[11px] text-gray-400 mt-0.5">{subtitle}</p>
+          )}
+        </div>
         <span className="text-xs text-gray-400 tabular-nums">
           {integrations.filter(i => i.status === 'Healthy').length} / {integrations.length} healthy
         </span>
