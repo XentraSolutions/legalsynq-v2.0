@@ -3606,6 +3606,38 @@ When a TenantAdmin logs in, they automatically receive the full scope of all pro
 - PlatformAdmin (non-TenantAdmin) is unaffected — no regression
 - Cache works correctly (HIT on second request)
 
+## Liens Domain Entity Foundation — 2026-04-13
+
+### Summary
+Defined foundational domain entities for the Liens microservice following v2 patterns from Fund and CareConnect services. Domain layer remains pure — no persistence, API, or auth logic.
+
+### Entities Created
+- **Case** (`Liens.Domain/Entities/Case.cs`) — TenantId, OrgId, CaseNumber, ExternalReference, inline client fields, status lifecycle (PreDemand→DemandSent→InNegotiation→CaseSettled→Closed), insurance fields, demand/settlement amounts
+- **Contact** (`Liens.Domain/Entities/Contact.cs`) — ContactType (LawFirm, Provider, LienHolder, CaseManager, InternalUser), FirstName/LastName/DisplayName, inline address, IsActive
+- **Facility** (`Liens.Domain/Entities/Facility.cs`) — Name, Code, ExternalReference, inline address, OrganizationId soft FK to Identity, IsActive
+- **LookupValue** (`Liens.Domain/Entities/LookupValue.cs`) — Category-driven (CaseStatus, LienStatus, etc.), tenant-scoped or global, IsSystem guard
+
+### Supporting Types
+- **Enums:** `CaseStatus`, `ContactType`, `LienType`, `LienStatus`, `ServicingStatus`, `ServicingPriority`, `LookupCategory` (all string constants with `IReadOnlySet<string> All`)
+- **Value Objects:** `Address` (sealed record with factory method)
+
+### Patterns Followed
+- Inherits `AuditableEntity` from BuildingBlocks
+- Private constructors + static `Create()` factory methods
+- Private setters + domain update methods
+- `ArgumentException.ThrowIfNullOrWhiteSpace` validation guards
+- String constants for statuses (CareConnect pattern, not C# enums)
+
+### v1 Compatibility
+- All v1 SynqLiens field names preserved or mapped with simple transformation
+- `programId` → `TenantId`/`OrgId`
+- `clientName` → `ClientFirstName`/`ClientLastName` (structured)
+- `zipCode` → `PostalCode` (v2 convention)
+
+### Build
+- Full Liens service stack: 0 warnings, 0 errors
+- Report: `analysis/LS-LIENS-03-001-report.md`
+
 ## Liens Service JWT Auth Integration — 2026-04-13
 
 ### Summary
