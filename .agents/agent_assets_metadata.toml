@@ -186,3 +186,9 @@ id = "iB0AZjCHNVvW_UwwSzydC"
 uri = "file://analysis/LS-COR-AUT-011A-report.md"
 type = "text"
 title = "LS-COR-AUT-011A — Policy Engine Hardening Report"
+
+[[outputs]]
+id = "rCN9DlcAHElCqmC159aDO"
+uri = "file://downloads/legalsynq-source.tar.gz"
+type = "unspecified"
+title = "LegalSynq Source Code (tar.gz)"
