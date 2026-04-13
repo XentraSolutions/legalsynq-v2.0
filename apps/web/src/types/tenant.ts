@@ -43,15 +43,47 @@ export interface TenantUserDetail {
 
 export interface TenantGroup {
   id: string;
+  tenantId: string;
   name: string;
   description?: string;
-  scope?: string;
-  memberCount?: number;
-  roles?: string[];
-  products?: string[];
-  status?: string;
-  scopeType?: string;
+  status: string;
+  scopeType: string;
   productCode?: string;
+  organizationId?: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface GroupMember {
+  id: string;
+  tenantId: string;
+  groupId: string;
+  userId: string;
+  membershipStatus: string;
+  addedAtUtc: string;
+  removedAtUtc?: string;
+}
+
+export interface GroupProductAccess {
+  id: string;
+  tenantId: string;
+  groupId: string;
+  productCode: string;
+  accessStatus: string;
+  grantedAtUtc: string;
+  revokedAtUtc?: string;
+}
+
+export interface GroupRoleAssignment {
+  id: string;
+  tenantId: string;
+  groupId: string;
+  roleCode: string;
+  productCode?: string;
+  organizationId?: string;
+  assignmentStatus: string;
+  assignedAtUtc: string;
+  removedAtUtc?: string;
 }
 
 export interface AccessDebugProductSource {

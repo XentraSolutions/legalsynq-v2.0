@@ -1,23 +1,40 @@
-export default function AuthorizationGroupsPage() {
+import { requireTenantAdmin } from '@/lib/tenant-auth-guard';
+import { tenantServerApi } from '@/lib/tenant-api';
+import { GroupTable } from './GroupTable';
+import type { TenantGroup, TenantUser } from '@/types/tenant';
+
+export default async function GroupsPage() {
+  const session = await requireTenantAdmin();
+
+  let groups: TenantGroup[] = [];
+  let users: TenantUser[] = [];
+  let fetchError: string | null = null;
+
+  try {
+    const results = await Promise.allSettled([
+      tenantServerApi.getGroups(session.tenantId),
+      tenantServerApi.getUsers(),
+    ]);
+    groups = results[0].status === 'fulfilled' ? results[0].value : [];
+    users = results[1].status === 'fulfilled' ? results[1].value : [];
+    if (results[0].status === 'rejected') {
+      fetchError = 'Failed to load groups. Is the identity service running?';
+    }
+  } catch {
+    fetchError = 'Failed to load groups.';
+  }
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-8">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
-          <i className="ri-group-line text-xl text-indigo-600" />
+    <div className="space-y-4">
+      {fetchError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="flex items-center gap-2">
+            <i className="ri-error-warning-line text-base" />
+            {fetchError}
+          </div>
         </div>
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Group Management</h2>
-          <p className="text-sm text-gray-500">Coming in LS-TENANT-003</p>
-        </div>
-      </div>
-      <p className="text-sm text-gray-600 leading-relaxed">
-        Create and manage authorization groups to organize users and streamline permission assignments.
-        Groups enable role-based access control at scale across your tenant.
-      </p>
-      <div className="mt-6 flex items-center gap-2 text-xs text-gray-400">
-        <i className="ri-time-line" />
-        <span>Scheduled for upcoming release</span>
-      </div>
+      )}
+      <GroupTable groups={groups} users={users} tenantId={session.tenantId} />
     </div>
   );
 }

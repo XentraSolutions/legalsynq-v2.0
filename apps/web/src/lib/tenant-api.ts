@@ -6,6 +6,9 @@ import type {
   TenantGroup,
   AccessDebugResponse,
   AssignableRolesResponse,
+  GroupMember,
+  GroupProductAccess,
+  GroupRoleAssignment,
 } from '@/types/tenant';
 
 export { ServerApiError, ApiError };
@@ -29,6 +32,18 @@ export const tenantServerApi = {
   getGroups: (tenantId: string) =>
     serverApi.get<TenantGroup[]>(`/identity/api/tenants/${tenantId}/groups`),
 
+  getGroup: (tenantId: string, groupId: string) =>
+    serverApi.get<TenantGroup>(`/identity/api/tenants/${tenantId}/groups/${groupId}`),
+
+  getGroupMembers: (tenantId: string, groupId: string) =>
+    serverApi.get<GroupMember[]>(`/identity/api/tenants/${tenantId}/groups/${groupId}/members`),
+
+  getGroupProducts: (tenantId: string, groupId: string) =>
+    serverApi.get<GroupProductAccess[]>(`/identity/api/tenants/${tenantId}/groups/${groupId}/products`),
+
+  getGroupRoles: (tenantId: string, groupId: string) =>
+    serverApi.get<GroupRoleAssignment[]>(`/identity/api/tenants/${tenantId}/groups/${groupId}/roles`),
+
   getProducts: () =>
     serverApi.get<{ code: string; name: string; isActive: boolean }[]>('/identity/api/admin/products'),
 };
@@ -51,4 +66,25 @@ export const tenantClientApi = {
 
   removeFromGroup: (tenantId: string, groupId: string, userId: string) =>
     apiClient.delete<void>(`/identity/api/tenants/${tenantId}/groups/${groupId}/members/${userId}`),
+
+  createGroup: (tenantId: string, body: { name: string; description?: string }) =>
+    apiClient.post<TenantGroup>(`/identity/api/tenants/${tenantId}/groups`, body),
+
+  updateGroup: (tenantId: string, groupId: string, body: { name: string; description?: string }) =>
+    apiClient.patch<TenantGroup>(`/identity/api/tenants/${tenantId}/groups/${groupId}`, body),
+
+  archiveGroup: (tenantId: string, groupId: string) =>
+    apiClient.delete<void>(`/identity/api/tenants/${tenantId}/groups/${groupId}`),
+
+  grantGroupProduct: (tenantId: string, groupId: string, productCode: string) =>
+    apiClient.put<void>(`/identity/api/tenants/${tenantId}/groups/${groupId}/products/${productCode}`, {}),
+
+  revokeGroupProduct: (tenantId: string, groupId: string, productCode: string) =>
+    apiClient.delete<void>(`/identity/api/tenants/${tenantId}/groups/${groupId}/products/${productCode}`),
+
+  assignGroupRole: (tenantId: string, groupId: string, roleCode: string, productCode?: string) =>
+    apiClient.post<void>(`/identity/api/tenants/${tenantId}/groups/${groupId}/roles`, { roleCode, productCode }),
+
+  removeGroupRole: (tenantId: string, groupId: string, assignmentId: string) =>
+    apiClient.delete<void>(`/identity/api/tenants/${tenantId}/groups/${groupId}/roles/${assignmentId}`),
 };

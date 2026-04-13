@@ -164,7 +164,10 @@ apps/web/
           users/AuthUserTable.tsx                 ← client table: search, status filter, row click → detail
           users/[userId]/page.tsx                 ← LS-TENANT-002: user detail (identity, products, roles, groups, effective access)
           users/[userId]/UserDetailClient.tsx     ← client detail: assign/revoke products/roles/groups, access-debug, simulator link
-          groups/page.tsx                         ← placeholder (LS-TENANT-003)
+          groups/page.tsx                         ← LS-TENANT-003: group list with search/filter/pagination/create
+          groups/GroupTable.tsx                    ← client table: search, status filter, create modal, row click → detail
+          groups/[groupId]/page.tsx               ← LS-TENANT-003: group detail (summary, members, products, roles, access preview)
+          groups/[groupId]/GroupDetailClient.tsx   ← client detail: edit/archive, member picker, product/role assign/revoke, effective access
           access/page.tsx                         ← placeholder (LS-TENANT-004)
           simulator/page.tsx                      ← placeholder (LS-TENANT-005)
       (admin)/                  ← route group: requireAdmin() guard + AppShell
