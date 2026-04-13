@@ -1701,8 +1701,8 @@ The legacy `AuditEvents` table is tracked in the EF model snapshot (so the ORM k
 | `IngestSourceRegistrations` | bigint AI | — | 2 indexes; (SourceSystem, SourceService) UNIQUE |
 
 ### Production deployment
-- **Build:** `scripts/build-prod.sh` — cleans `.next` directories before building (prevents stale dev cache from causing hydration/hook errors), builds both Next.js apps and all .NET services in Release mode
-- **Run:** `scripts/run-prod.sh` — starts web (port 3050 internal → 5000 proxy), control center (port 5004), gateway (port 5010), all .NET services (including notifications on port 5008), artifacts server (port 5020)
+- **Build:** `scripts/build-prod.sh` — cleans `.next` directories before building (prevents stale dev cache from causing hydration/hook errors), builds both Next.js apps and all .NET services (including Liens) in Release mode. Post-build cleanup removes `.git` (~3.3GB), pnpm store (~2.1GB), NuGet cache (~232MB), Replit agent state (~638MB), `_archived`, `.NET obj/Debug` dirs, test artifacts, analysis/exports/downloads to keep the deployment image under 8GB.
+- **Run:** `scripts/run-prod.sh` — starts web (port 3050 internal → 5000 proxy), control center (port 5004), gateway (port 5010), all .NET services (including notifications on port 5008, liens on port 5009), artifacts server (port 5020). Includes fallback build block for all services including Liens.
 - **CareConnect internal provisioning:** Identity service calls CareConnect on port 5003 (fallback in `DependencyInjection.cs`; override via `CareConnect:InternalUrl` config)
 - **Documents `appsettings.Production.json`:** Sets `BasePath` to `/home/runner/data/docs-local` (persists on Reserved VM, not Autoscale)
 ```bash
