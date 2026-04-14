@@ -6,20 +6,27 @@ import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { casesService, type CaseDetail, type CaseLienItem } from '@/lib/cases';
 import { ApiError } from '@/lib/api-client';
-import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
-import { StatusProgress } from '@/components/lien/status-progress';
 import { NotesPanel } from '@/components/lien/notes-panel';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { EntityTimeline } from '@/components/lien/entity-timeline';
 
-const CASE_STEPS = ['Pre-Demand', 'Demand Sent', 'In Negotiation', 'Settled', 'Closed'];
-const STATUS_TO_STEP: Record<string, string> = { PreDemand: 'Pre-Demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Settled', Closed: 'Closed' };
-const STATUS_LABELS: Record<string, string> = { PreDemand: 'Pre-Demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Case Settled', Closed: 'Closed' };
+const STATUS_LABELS: Record<string, string> = { PreDemand: 'Pre-demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Case Settled', Closed: 'Closed' };
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
 
+const TABS = [
+  { key: 'details', label: 'Details' },
+  { key: 'liens', label: 'Liens' },
+  { key: 'documents', label: 'Documents' },
+  { key: 'servicing', label: 'Servicing' },
+  { key: 'notes', label: 'Notes' },
+  { key: 'taskmanager', label: 'Task Manager' },
+] as const;
+
+type TabKey = (typeof TABS)[number]['key'];
+
 function formatCurrency(amount: number | null): string {
-  if (amount === null || amount === undefined) return '-';
+  if (amount === null || amount === undefined) return '---';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
@@ -34,6 +41,10 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<TabKey>('details');
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
 
   const fetchCase = useCallback(async () => {
     setLoading(true);
@@ -102,105 +113,104 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     }
   };
 
-  const nextStepHint = () => {
-    switch (d.status) {
-      case 'PreDemand': return 'Gather documentation and prepare demand letter';
-      case 'DemandSent': return 'Awaiting response from insurance carrier';
-      case 'InNegotiation': return 'Review counteroffers and negotiate settlement';
-      case 'CaseSettled': return 'Process settlement distribution and close liens';
-      default: return null;
-    }
-  };
-
   return (
-    <div className="space-y-5">
-      <DetailHeader title={d.caseNumber} subtitle={d.clientName}
-        badge={<StatusBadge status={d.status} size="md" />}
-        backHref="/lien/cases" backLabel="Back to Cases"
-        meta={[
-          { label: 'Title', value: d.title || '-' },
-          { label: 'Insurance', value: d.insuranceCarrier || '-' },
-          { label: 'Incident', value: d.dateOfIncident || '-' },
-        ]}
-        actions={canEdit ? (
-          <div className="flex gap-2">
-            <button onClick={advanceStatus} disabled={d.status === 'Closed'} className="text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40">Advance Status</button>
-          </div>
-        ) : undefined}
-      />
+    <div className="flex flex-col h-full min-h-0">
+      <div className="px-5 pt-3 pb-0 text-xs text-gray-400 flex items-center gap-1">
+        <Link href="/lien/cases" className="hover:text-gray-600 transition-colors">Cases</Link>
+        <i className="ri-arrow-right-s-line text-sm" />
+        <span className="text-gray-500">Liens Management</span>
+      </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-gray-800 mb-4">Case Workflow</h3>
-        <StatusProgress steps={CASE_STEPS} currentStep={STATUS_TO_STEP[d.status] || 'Pre-Demand'} />
-        {nextStepHint() && (
-          <div className="mt-4 flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <i className="ri-lightbulb-line text-blue-600" />
-            <p className="text-xs text-blue-700"><span className="font-medium">Next step:</span> {nextStepHint()}</p>
+      <div className="bg-white border-b border-gray-200 px-6 py-4 mt-2">
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold text-gray-900">{d.clientName}</h1>
+            <p className="text-sm text-gray-400 mt-0.5">Case ID: {d.caseNumber}</p>
           </div>
+          <div className="flex items-start gap-8 text-sm shrink-0">
+            <div>
+              <p className="text-xs text-gray-400 font-medium">Case Type</p>
+              <p className="text-gray-700 mt-0.5">{d.title || '---'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium">Case Status</p>
+              <div className="mt-0.5"><StatusBadge status={d.status} /></div>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium">Date of Loss</p>
+              <p className="text-gray-700 mt-0.5">{d.dateOfIncident || '---'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium">Date of Birth</p>
+              <p className="text-gray-700 mt-0.5">{d.clientDob || '---'}</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-end justify-between mt-3">
+          <div className="flex items-center gap-8 text-sm">
+            <div>
+              <p className="text-xs text-gray-400 font-medium">State of Incident</p>
+              <p className="text-gray-700 mt-0.5">{d.clientAddress ? d.clientAddress.split(',').pop()?.trim()?.split(' ')[0] || '---' : '---'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium">Law Firm</p>
+              <p className="text-gray-700 mt-0.5">{d.insuranceCarrier || '---'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400 font-medium">Case Manager</p>
+              <p className="text-gray-700 mt-0.5">---</p>
+            </div>
+          </div>
+          {canEdit && (
+            <button onClick={advanceStatus} disabled={d.status === 'Closed'}
+              className="text-sm font-medium px-5 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors">
+              Actions
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white border-b border-gray-200 px-6">
+        <nav className="flex gap-0 -mb-px">
+          {TABS.map((tab) => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+              className={[
+                'px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                activeTab === tab.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+              ].join(' ')}>
+              {tab.label}
+              {tab.key === 'liens' && (
+                <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
+                  {relatedLiens.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-auto bg-gray-50 p-5">
+        {activeTab === 'details' && (
+          <DetailsPanels d={d} leftOpen={leftOpen} rightOpen={rightOpen} setLeftOpen={setLeftOpen} setRightOpen={setRightOpen} />
+        )}
+        {activeTab === 'liens' && (
+          <LiensTab liens={relatedLiens} />
+        )}
+        {activeTab === 'documents' && (
+          <EmptyTab icon="ri-file-copy-2-line" label="Documents" />
+        )}
+        {activeTab === 'servicing' && (
+          <EmptyTab icon="ri-tools-line" label="Servicing" />
+        )}
+        {activeTab === 'notes' && (
+          <NotesPanel notes={caseNotes} onAddNote={() => {}} readOnly />
+        )}
+        {activeTab === 'taskmanager' && (
+          <EmptyTab icon="ri-task-line" label="Task Manager" />
         )}
       </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs text-gray-400 font-medium">Related Liens</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{relatedLiens.length}</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs text-gray-400 font-medium">Demand Amount</p>
-          <p className="text-2xl font-bold text-blue-600 mt-1">{formatCurrency(d.demandAmount)}</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs text-gray-400 font-medium">Settlement Amount</p>
-          <p className="text-2xl font-bold text-emerald-600 mt-1">{formatCurrency(d.settlementAmount)}</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <DetailSection title="Client Information" icon="ri-user-3-line" fields={[
-          { label: 'Name', value: d.clientName },
-          { label: 'Date of Birth', value: d.clientDob || undefined },
-          { label: 'Phone', value: d.clientPhone || undefined },
-          { label: 'Email', value: d.clientEmail || undefined },
-          { label: 'Address', value: d.clientAddress || undefined },
-        ]} />
-        <DetailSection title="Case Details" icon="ri-folder-open-line" fields={[
-          { label: 'Title', value: d.title || undefined },
-          { label: 'External Reference', value: d.externalReference || undefined },
-          { label: 'Insurance Carrier', value: d.insuranceCarrier || undefined },
-          { label: 'Policy Number', value: d.policyNumber || undefined },
-          { label: 'Claim Number', value: d.claimNumber || undefined },
-        ]} />
-      </div>
-
-      {d.description && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-gray-800 mb-2">Description</h3>
-          <p className="text-sm text-gray-600">{d.description}</p>
-        </div>
-      )}
-
-      {relatedLiens.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-800">Related Liens ({relatedLiens.length})</h3>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {relatedLiens.map((l) => (
-              <Link key={l.id} href={`/lien/liens/${l.id}`} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
-                <div>
-                  <span className="text-xs font-mono text-primary">{l.lienNumber}</span>
-                  <span className="text-sm text-gray-600 ml-2">{formatCurrency(l.originalAmount)}</span>
-                </div>
-                <StatusBadge status={l.status} />
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <NotesPanel notes={caseNotes} onAddNote={() => {}} readOnly />
-
-      <EntityTimeline entityType="Case" entityId={id} />
 
       {confirmStatus && (
         <ConfirmDialog open onClose={() => setConfirmStatus(null)}
@@ -208,6 +218,197 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
           title="Advance Case Status" description={`Move ${d.caseNumber} to "${STATUS_LABELS[confirmStatus]}"?`} confirmLabel="Advance"
         />
       )}
+    </div>
+  );
+}
+
+function CollapsedStrip({ label, side, onExpand }: { label: string; side: 'left' | 'right'; onExpand: () => void }) {
+  return (
+    <div className="w-12 shrink-0 bg-white border border-gray-200 rounded-xl flex flex-col items-center pt-3 gap-2 self-stretch">
+      <button onClick={onExpand} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+        <i className={side === 'left' ? 'ri-arrow-right-double-line text-lg' : 'ri-arrow-left-double-line text-lg'} />
+      </button>
+      <span className="writing-vertical text-xs font-semibold text-primary tracking-wide" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function PanelHeader({ title, side, onCollapse }: { title: string; side: 'left' | 'right'; onCollapse: () => void }) {
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+        <button onClick={onCollapse} className="text-gray-400 hover:text-gray-600 transition-colors">
+          <i className={side === 'left' ? 'ri-arrow-left-s-line text-lg' : 'ri-arrow-right-s-line text-lg'} />
+        </button>
+        {title}
+      </h2>
+    </div>
+  );
+}
+
+function DetailsPanels({
+  d, leftOpen, rightOpen, setLeftOpen, setRightOpen,
+}: {
+  d: CaseDetail;
+  leftOpen: boolean;
+  rightOpen: boolean;
+  setLeftOpen: (v: boolean) => void;
+  setRightOpen: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex gap-4 h-full min-h-[400px]">
+      {leftOpen ? (
+        <div className={`bg-white border border-gray-200 rounded-xl p-5 overflow-auto transition-all ${rightOpen ? 'flex-1 min-w-0' : 'flex-[2] min-w-0'}`}>
+          <PanelHeader title="Plaintiff" side="left" onCollapse={() => setLeftOpen(false)} />
+
+          <div className="bg-white border border-gray-200 rounded-xl p-5 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <i className="ri-user-3-line text-sm text-blue-600" />
+                </span>
+                Plaintiff Info
+              </h3>
+              <button className="w-7 h-7 rounded-lg hover:bg-gray-100 flex items-center justify-center transition-colors">
+                <i className="ri-pencil-line text-sm text-green-600" />
+              </button>
+            </div>
+            <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4">
+              <div className="sm:col-span-3">
+                <dt className="text-xs font-semibold text-gray-900">Full Name</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{d.clientName || '---'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">Phone number</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{d.clientPhone || '---'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">Email</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{d.clientEmail || '---'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">Birthdate</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{d.clientDob || '---'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">Sex</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">---</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">Address</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{d.clientAddress || '---'}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <span className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
+                  <i className="ri-folder-open-line text-sm text-indigo-600" />
+                </span>
+                Case Details
+              </h3>
+            </div>
+            <dl className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4">
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">External Reference</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{d.externalReference || '---'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">Insurance Carrier</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{d.insuranceCarrier || '---'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">Policy Number</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{d.policyNumber || '---'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">Claim Number</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{d.claimNumber || '---'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">Demand Amount</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{formatCurrency(d.demandAmount)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-gray-900">Settlement Amount</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{formatCurrency(d.settlementAmount)}</dd>
+              </div>
+            </dl>
+            {d.description && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <dt className="text-xs font-semibold text-gray-900">Description</dt>
+                <dd className="text-sm text-gray-600 mt-0.5">{d.description}</dd>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <CollapsedStrip label="Details" side="left" onExpand={() => setLeftOpen(true)} />
+      )}
+
+      {rightOpen ? (
+        <div className={`bg-white border border-gray-200 rounded-xl p-5 overflow-auto transition-all ${leftOpen ? 'w-[340px] shrink-0' : 'flex-1 min-w-0'}`}>
+          <PanelHeader title="Email" side="right" onCollapse={() => setRightOpen(false)} />
+
+          <button className="w-full flex items-center justify-center gap-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-3 transition-colors">
+            <i className="ri-mail-send-line text-base" />
+            Compose New Email
+          </button>
+
+          <div className="mt-6">
+            <p className="text-sm text-gray-400 text-center py-8">No emails yet</p>
+          </div>
+        </div>
+      ) : (
+        <CollapsedStrip label="Email" side="right" onExpand={() => setRightOpen(true)} />
+      )}
+    </div>
+  );
+}
+
+function LiensTab({ liens }: { liens: CaseLienItem[] }) {
+  if (liens.length === 0) {
+    return <EmptyTab icon="ri-stack-line" label="Liens" message="No liens linked to this case" />;
+  }
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-100">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Lien #</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {liens.map((l) => (
+              <tr key={l.id} className="hover:bg-gray-50 transition-colors">
+                <td className="px-4 py-3">
+                  <Link href={`/lien/liens/${l.id}`} className="text-xs font-mono text-primary hover:underline">{l.lienNumber}</Link>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-600">{l.lienType}</td>
+                <td className="px-4 py-3 text-sm text-gray-700 font-medium tabular-nums">{formatCurrency(l.originalAmount)}</td>
+                <td className="px-4 py-3"><StatusBadge status={l.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function EmptyTab({ icon, label, message }: { icon: string; label: string; message?: string }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
+      <i className={`${icon} text-3xl text-gray-300`} />
+      <p className="text-sm text-gray-400 mt-2">{message || `No ${label.toLowerCase()} data available`}</p>
     </div>
   );
 }
