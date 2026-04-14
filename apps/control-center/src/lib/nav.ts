@@ -14,7 +14,7 @@ export const CC_NAV: NavSection[] = [
   {
     heading: 'OVERVIEW',
     items: [
-      { href: '/', label: 'Dashboard', icon: 'ri-dashboard-3-line' },
+      { href: '/', label: 'Dashboard', icon: 'ri-dashboard-3-line', badge: 'LIVE' },
     ],
   },
 

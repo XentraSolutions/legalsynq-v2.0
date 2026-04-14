@@ -31,6 +31,7 @@ Bash-based monorepo for a .NET 8 microservices platform + Next.js 14 App Router 
 - **Environment:** `apps/control-center/.env.local` — `CONTROL_CENTER_API_BASE=http://127.0.0.1:5010`
 - **node_modules:** Uses root monorepo `node_modules` (no local `node_modules`). Must NOT have its own `node_modules` — a local copy causes duplicate React, which triggers the `useReducer` null error on every render.
 - **Key files:** `src/lib/env.ts` (centralised env access), `src/lib/session.ts` (server session), `src/lib/auth-guards.ts` (requirePlatformAdmin), `src/lib/control-center-api.ts` (API client with stubbed data), `src/middleware.ts` (route protection)
+- **Dashboard (`/`):** Statistics dashboard (Server Component). Fetches tenants, users (with status-filtered count queries), monitoring health, canonical audit events, and support cases via `Promise.allSettled` for graceful degradation. Displays: system health status card, 4 KPI stat cards (tenants, users, support cases, alerts), tenant type distribution, recent support cases, recent audit events, and quick-link cards to Platform Readiness, SynqAudit, and CareConnect Integrity. Components in `src/components/dashboard/`.
 
 ### Frontend Structure
 ```
