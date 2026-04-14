@@ -1,5 +1,7 @@
 using BuildingBlocks.Context;
+using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
+using Liens.Application.Services;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +34,9 @@ public static class DependencyInjection
         services.AddScoped<ILienRepository, LienRepository>();
         services.AddScoped<ILienOfferRepository, LienOfferRepository>();
         services.AddScoped<IBillOfSaleRepository, BillOfSaleRepository>();
+
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<ILienSaleService, LienSaleService>();
 
         return services;
     }
