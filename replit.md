@@ -107,12 +107,18 @@ apps/web/
       fund-api.ts                ← typed wrappers: fundServerApi (server) + fundApi (client)
       lien-api.ts                ← typed wrappers: lienServerApi (server) + lienApi (client); my-liens/marketplace/portfolio/offer/purchase/submit-offer
       lien-mock-data.ts          ← V2 prototype mock data: cases, liens, BOS, servicing, contacts, documents, users + formatCurrency/formatDate/timeAgo helpers
+      cases/                     ← LS-LIENS-UI-002: layered API service pattern for Cases
+        cases.types.ts           ← DTOs (CaseResponseDto, CreateCaseRequestDto, UpdateCaseRequestDto), UI models (CaseListItem, CaseDetail, CaseLienItem), PaginationMeta
+        cases.api.ts             ← raw HTTP client: list, getById, getByNumber, create, update, listLiensByCase → uses apiClient
+        cases.mapper.ts          ← DTO→UI model mappers: mapCaseToListItem, mapCaseToDetail, mapDtoToUpdateRequest, mapLienToListItem, mapPagination
+        cases.service.ts         ← business service: getCases, getCase, createCase, updateCase, updateCaseStatus (non-destructive: re-fetches DTO), getCaseLiens
+        index.ts                 ← barrel exports
     stores/
       lien-store.ts              ← Zustand store: full CRUD for all 7 entities, role simulation, toast state, activity log, case notes, canPerformAction() helper
     app/api/
       careconnect/[...path]/route.ts ← BFF catch-all proxy for CareConnect client calls
       fund/[...path]/route.ts        ← BFF catch-all proxy for Fund client calls
-      lien/[...path]/route.ts        ← BFF catch-all proxy for SynqLien client calls
+      lien/[...path]/route.ts        ← BFF catch-all proxy for SynqLien client calls (fixed: /liens/ prefix matches gateway YARP route)
     types/
       careconnect.ts             ← ProviderSummary/Detail, ReferralSummary/Detail, CreateReferralRequest, PagedResponse
       fund.ts                    ← FundingApplicationSummary/Detail, Create/Submit/Approve/DenyRequest, ApplicationStatus
@@ -142,8 +148,8 @@ apps/web/
         lien/layout.tsx                           ← LienProviders wrapper (ToastContainer + RoleSwitcher)
         lien/dashboard/page.tsx                   ← V2 UX: store-wired dashboard, KPI cards, task queue, activity feed, donut charts, Create Case modal
         lien/task-manager/page.tsx                ← V2 UX: Kanban board + list view, KPI cards (pending/in-progress/escalated/overdue), board/list toggle, filter by priority/assignee, quick status actions
-        lien/cases/page.tsx                       ← V2 UX: store-backed list, Create Case modal, ActionMenu (advance/reassign), SideDrawer preview, ConfirmDialog
-        lien/cases/[id]/page.tsx                  ← V2 UX: StatusProgress workflow, Add Lien/Doc/Task, NotesPanel, advance status with confirm
+        lien/cases/page.tsx                       ← LS-LIENS-UI-002: API-backed list via casesService, loading/error/pagination, Create Case modal, ActionMenu (advance status via API), SideDrawer preview
+        lien/cases/[id]/page.tsx                  ← LS-LIENS-UI-002: API-backed detail via casesService, StatusProgress workflow, related liens from API, advance status via API, NotesPanel (read-only until backend supports)
         lien/liens/page.tsx                       ← V2 UX: store-backed list, Create Lien modal, ActionMenu (list/withdraw), SideDrawer, multi-filter
         lien/liens/[id]/page.tsx                  ← V2 UX: lien lifecycle StatusProgress, Submit/Accept/Reject Offer workflow, FormModal, ConfirmDialog
         lien/bill-of-sales/page.tsx               ← V2 UX: store-backed KPI cards, ActionMenu (submit/execute/cancel), ConfirmDialog

@@ -5,8 +5,11 @@ import { cookies } from 'next/headers';
  * Catch-all BFF proxy for all SynqLien client-side API calls.
  *
  * Client Components call  /api/lien/api/liens/...
- * This handler forwards    → GATEWAY_URL/lien/api/liens/...
+ * This handler forwards    → GATEWAY_URL/liens/api/liens/...
  * with the session cookie forwarded as Authorization: Bearer.
+ *
+ * The gateway YARP route matches `/liens/{**catch-all}` (plural) and strips
+ * the `/liens` prefix before forwarding to the Liens service on :5009.
  *
  * Cookie reading: uses cookies() from next/headers (server-side store) rather
  * than request.cookies — more reliable inside App Router Route Handlers.
@@ -16,7 +19,7 @@ const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 async function proxy(req: NextRequest, segments: string[]): Promise<NextResponse> {
   const path   = segments.join('/');
   const search = req.nextUrl.search;
-  const url    = `${GATEWAY_URL}/lien/${path}${search}`;
+  const url    = `${GATEWAY_URL}/liens/${path}${search}`;
 
   const cookieStore = await cookies();
   const token = cookieStore.get('platform_session')?.value;
