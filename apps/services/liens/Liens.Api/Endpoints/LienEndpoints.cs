@@ -1,6 +1,8 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
+using Liens.Application.DTOs;
+using Liens.Application.Interfaces;
 using Liens.Domain;
 
 namespace Liens.Api.Endpoints;
@@ -9,40 +11,111 @@ public static class LienEndpoints
 {
     public static void MapLienEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/liens")
+        var group = app.MapGroup("/api/liens/liens")
             .RequireAuthorization(Policies.AuthenticatedUser)
             .RequireProductAccess(LiensPermissions.ProductCode);
 
-        group.MapGet("/own", (ICurrentRequestContext ctx) =>
-            Results.Ok(new { message = "Own liens listing (stub)", orgId = ctx.OrgId }))
-            .RequirePermission(LiensPermissions.LienReadOwn);
+        group.MapGet("/", ListLiens)
+            .RequirePermission(LiensPermissions.LienRead);
 
-        group.MapGet("/held", (ICurrentRequestContext ctx) =>
-            Results.Ok(new { message = "Held liens listing (stub)", orgId = ctx.OrgId }))
-            .RequirePermission(LiensPermissions.LienReadHeld);
+        group.MapGet("/{id:guid}", GetLienById)
+            .RequirePermission(LiensPermissions.LienRead);
 
-        group.MapPost("/", (ICurrentRequestContext ctx) =>
-            Results.Ok(new { message = "Lien created (stub)", orgId = ctx.OrgId }))
+        group.MapGet("/by-number/{lienNumber}", GetLienByNumber)
+            .RequirePermission(LiensPermissions.LienRead);
+
+        group.MapPost("/", CreateLien)
             .RequirePermission(LiensPermissions.LienCreate);
 
-        group.MapPost("/{lienId:guid}/offers", (Guid lienId, ICurrentRequestContext ctx) =>
-            Results.Ok(new { message = "Lien offered (stub)", lienId, orgId = ctx.OrgId }))
-            .RequirePermission(LiensPermissions.LienOffer);
+        group.MapPut("/{id:guid}", UpdateLien)
+            .RequirePermission(LiensPermissions.LienUpdate);
+    }
 
-        group.MapGet("/marketplace", (ICurrentRequestContext ctx) =>
-            Results.Ok(new { message = "Marketplace listing (stub)", orgId = ctx.OrgId }))
-            .RequirePermission(LiensPermissions.LienBrowse);
+    private static Guid RequireTenantId(ICurrentRequestContext ctx)
+    {
+        return ctx.TenantId
+            ?? throw new UnauthorizedAccessException("Tenant context is required.");
+    }
 
-        group.MapPost("/{lienId:guid}/purchase", (Guid lienId, ICurrentRequestContext ctx) =>
-            Results.Ok(new { message = "Lien purchased (stub)", lienId, orgId = ctx.OrgId }))
-            .RequirePermission(LiensPermissions.LienPurchase);
+    private static Guid RequireUserId(ICurrentRequestContext ctx)
+    {
+        return ctx.UserId
+            ?? throw new UnauthorizedAccessException("User context is required.");
+    }
 
-        group.MapPost("/{lienId:guid}/service", (Guid lienId, ICurrentRequestContext ctx) =>
-            Results.Ok(new { message = "Lien serviced (stub)", lienId, orgId = ctx.OrgId }))
-            .RequirePermission(LiensPermissions.LienService);
+    private static Guid RequireOrgId(ICurrentRequestContext ctx)
+    {
+        return ctx.OrgId
+            ?? throw new UnauthorizedAccessException("Organization context is required.");
+    }
 
-        group.MapPost("/{lienId:guid}/settle", (Guid lienId, ICurrentRequestContext ctx) =>
-            Results.Ok(new { message = "Lien settled (stub)", lienId, orgId = ctx.OrgId }))
-            .RequirePermission(LiensPermissions.LienSettle);
+    private static async Task<IResult> ListLiens(
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        string? search = null,
+        string? status = null,
+        string? lienType = null,
+        Guid? caseId = null,
+        Guid? facilityId = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var result = await lienService.SearchAsync(
+            tenantId, search, status, lienType, caseId, facilityId, page, pageSize, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetLienById(
+        Guid id,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var result = await lienService.GetByIdAsync(tenantId, id, ct);
+        return result is null
+            ? Results.NotFound(new { error = new { code = "not_found", message = $"Lien '{id}' not found." } })
+            : Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetLienByNumber(
+        string lienNumber,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var result = await lienService.GetByLienNumberAsync(tenantId, lienNumber, ct);
+        return result is null
+            ? Results.NotFound(new { error = new { code = "not_found", message = $"Lien with number '{lienNumber}' not found." } })
+            : Results.Ok(result);
+    }
+
+    private static async Task<IResult> CreateLien(
+        CreateLienRequest request,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var orgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await lienService.CreateAsync(tenantId, orgId, userId, request, ct);
+        return Results.Created($"/api/liens/liens/{result.Id}", result);
+    }
+
+    private static async Task<IResult> UpdateLien(
+        Guid id,
+        UpdateLienRequest request,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await lienService.UpdateAsync(tenantId, id, userId, request, ct);
+        return Results.Ok(result);
     }
 }

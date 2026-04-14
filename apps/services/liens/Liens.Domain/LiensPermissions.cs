@@ -4,7 +4,9 @@ public static class LiensPermissions
 {
     public const string ProductCode = "SYNQ_LIENS";
 
+    public const string LienRead     = "SYNQ_LIENS.lien:read";
     public const string LienCreate   = "SYNQ_LIENS.lien:create";
+    public const string LienUpdate   = "SYNQ_LIENS.lien:update";
     public const string LienOffer    = "SYNQ_LIENS.lien:offer";
     public const string LienReadOwn  = "SYNQ_LIENS.lien:read:own";
     public const string LienBrowse   = "SYNQ_LIENS.lien:browse";
