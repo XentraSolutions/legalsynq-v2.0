@@ -16,6 +16,8 @@ public sealed class SaleFinalizationResult
     public decimal OriginalLienAmount { get; init; }
     public decimal? DiscountPercent { get; init; }
 
+    public Guid? DocumentId { get; init; }
+
     public int CompetingOffersRejected { get; init; }
     public DateTime FinalizedAtUtc { get; init; }
 }

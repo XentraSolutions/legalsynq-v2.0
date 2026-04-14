@@ -3917,3 +3917,32 @@ Exposed the existing `ILienSaleService.AcceptOfferAsync` workflow through a sing
 
 ### Report
 Full analysis at `analysis/LS-LIENS-06-005-report.md`
+
+## BillOfSale Document Integration (LS-LIENS-06-006) — 2026-04-14
+
+### Summary
+Integrated Liens service with Documents service for automated BOS PDF generation and storage on sale finalization. Uses post-commit recoverable pattern — document failures never block the sale transaction.
+
+### Components Added
+- `IBillOfSalePdfGenerator` / `BillOfSalePdfGenerator` — QuestPDF 2024.10.2, Letter-size PDF with seller/buyer/financial/dates sections
+- `IBillOfSaleDocumentService` / `BillOfSaleDocumentService` — multipart HTTP client to Documents service (`POST /documents`)
+- DI: PDF generator (singleton), document service (scoped), named HttpClient `"DocumentsService"` (base URL from `Services:DocumentsUrl`, defaults to `http://localhost:5006`)
+
+### How It Works
+1. Sale transaction commits (offer accepted, BOS created, competing offers rejected, lien marked sold)
+2. Post-commit: PDF generated → uploaded to Documents service → `DocumentId` attached to BOS record
+3. If document step fails: logged as warning, BOS exists with `DocumentId = null`, sale response still returns success
+
+### Key Details
+- Well-known BOS DocumentTypeId: `00000000-0000-0000-0000-000000000B05`
+- `SaleFinalizationResult` DTO now includes nullable `DocumentId` (backward compatible)
+- `OperationCanceledException` properly re-thrown (not swallowed)
+- Post-commit document logic runs in isolated try/catch (separate from transaction rollback)
+
+### Files
+- Created: `Liens.Application/Interfaces/IBillOfSalePdfGenerator.cs`, `IBillOfSaleDocumentService.cs`
+- Created: `Liens.Infrastructure/Documents/BillOfSalePdfGenerator.cs`, `BillOfSaleDocumentService.cs`
+- Modified: `LienSaleService.cs`, `SaleFinalizationResult.cs`, `DependencyInjection.cs`, `Liens.Infrastructure.csproj`
+
+### Report
+Full analysis at `analysis/LS-LIENS-07-001-report.md`

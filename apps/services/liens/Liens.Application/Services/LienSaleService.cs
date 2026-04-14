@@ -13,6 +13,7 @@ public sealed class LienSaleService : ILienSaleService
     private readonly ILienOfferRepository _offerRepo;
     private readonly IBillOfSaleRepository _bosRepo;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IBillOfSaleDocumentService _docService;
     private readonly ILogger<LienSaleService> _logger;
 
     public LienSaleService(
@@ -20,12 +21,14 @@ public sealed class LienSaleService : ILienSaleService
         ILienOfferRepository offerRepo,
         IBillOfSaleRepository bosRepo,
         IUnitOfWork unitOfWork,
+        IBillOfSaleDocumentService docService,
         ILogger<LienSaleService> logger)
     {
         _lienRepo   = lienRepo;
         _offerRepo  = offerRepo;
         _bosRepo    = bosRepo;
         _unitOfWork = unitOfWork;
+        _docService = docService;
         _logger     = logger;
     }
 
@@ -77,6 +80,7 @@ public sealed class LienSaleService : ILienSaleService
                     PurchaseAmount       = existingBos.PurchaseAmount,
                     OriginalLienAmount   = existingBos.OriginalLienAmount,
                     DiscountPercent      = existingBos.DiscountPercent,
+                    DocumentId           = existingBos.DocumentId,
                     CompetingOffersRejected = 0,
                     FinalizedAtUtc       = existingBos.IssuedAtUtc,
                 };
@@ -113,6 +117,9 @@ public sealed class LienSaleService : ILienSaleService
                 $"Lien '{lien.Id}' already has an active Bill of Sale '{activeBos.Id}'.",
                 "LIEN_ALREADY_HAS_BOS");
 
+        Domain.Entities.BillOfSale bos;
+        int rejectedCount = 0;
+
         await using var transaction = await _unitOfWork.BeginTransactionAsync(ct);
 
         try
@@ -122,7 +129,7 @@ public sealed class LienSaleService : ILienSaleService
 
             var billOfSaleNumber = GenerateBillOfSaleNumber(lien.LienNumber);
 
-            var bos = Domain.Entities.BillOfSale.CreateFromAcceptedOffer(
+            bos = Domain.Entities.BillOfSale.CreateFromAcceptedOffer(
                 tenantId:           tenantId,
                 lienId:             lien.Id,
                 lienOfferId:        offer.Id,
@@ -136,7 +143,6 @@ public sealed class LienSaleService : ILienSaleService
             await _bosRepo.AddAsync(bos, ct);
 
             var competingOffers = await _offerRepo.GetByLienIdAsync(tenantId, lien.Id, ct);
-            int rejectedCount = 0;
 
             foreach (var competing in competingOffers)
             {
@@ -160,22 +166,6 @@ public sealed class LienSaleService : ILienSaleService
                 "SaleFinalization: committed — Offer={OfferId} Lien={LienId} BOS={BosId} " +
                 "Rejected={RejectedCount} PurchaseAmount={Amount}",
                 offer.Id, lien.Id, bos.Id, rejectedCount, offer.OfferAmount);
-
-            return new SaleFinalizationResult
-            {
-                AcceptedOfferId      = offer.Id,
-                AcceptedOfferStatus  = offer.Status,
-                LienId               = lien.Id,
-                FinalLienStatus      = lien.Status,
-                BillOfSaleId         = bos.Id,
-                BillOfSaleNumber     = bos.BillOfSaleNumber,
-                BillOfSaleStatus     = bos.Status,
-                PurchaseAmount       = bos.PurchaseAmount,
-                OriginalLienAmount   = bos.OriginalLienAmount,
-                DiscountPercent      = bos.DiscountPercent,
-                CompetingOffersRejected = rejectedCount,
-                FinalizedAtUtc       = bos.IssuedAtUtc,
-            };
         }
         catch (Exception ex)
         {
@@ -186,6 +176,53 @@ public sealed class LienSaleService : ILienSaleService
             await transaction.RollbackAsync(ct);
             throw;
         }
+
+        try
+        {
+            var documentId = await _docService.GenerateAndStoreAsync(bos, actingUserId, ct);
+            if (documentId.HasValue)
+            {
+                bos.AttachDocument(documentId.Value, actingUserId);
+                await _bosRepo.UpdateAsync(bos, ct);
+
+                _logger.LogInformation(
+                    "SaleFinalization: document attached — BOS={BosId} DocumentId={DocumentId}",
+                    bos.Id, documentId.Value);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "SaleFinalization: document generation/storage failed (recoverable) — BOS={BosId} Tenant={TenantId}",
+                    bos.Id, tenantId);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "SaleFinalization: post-commit document step failed (recoverable) — BOS={BosId} Tenant={TenantId}",
+                bos.Id, tenantId);
+        }
+
+        return new SaleFinalizationResult
+        {
+            AcceptedOfferId      = offer.Id,
+            AcceptedOfferStatus  = offer.Status,
+            LienId               = lien.Id,
+            FinalLienStatus      = lien.Status,
+            BillOfSaleId         = bos.Id,
+            BillOfSaleNumber     = bos.BillOfSaleNumber,
+            BillOfSaleStatus     = bos.Status,
+            PurchaseAmount       = bos.PurchaseAmount,
+            OriginalLienAmount   = bos.OriginalLienAmount,
+            DiscountPercent      = bos.DiscountPercent,
+            DocumentId           = bos.DocumentId,
+            CompetingOffersRejected = rejectedCount,
+            FinalizedAtUtc       = bos.IssuedAtUtc,
+        };
     }
 
     private static string GenerateBillOfSaleNumber(string lienNumber)

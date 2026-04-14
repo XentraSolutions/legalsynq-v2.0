@@ -2,6 +2,7 @@ using BuildingBlocks.Context;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
 using Liens.Application.Services;
+using Liens.Infrastructure.Documents;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -36,11 +37,20 @@ public static class DependencyInjection
         services.AddScoped<IBillOfSaleRepository, BillOfSaleRepository>();
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddSingleton<IBillOfSalePdfGenerator, BillOfSalePdfGenerator>();
+        services.AddScoped<IBillOfSaleDocumentService, BillOfSaleDocumentService>();
         services.AddScoped<ILienSaleService, LienSaleService>();
         services.AddScoped<ILienService, LienService>();
         services.AddScoped<ILienOfferService, LienOfferService>();
         services.AddScoped<IBillOfSaleService, BillOfSaleService>();
         services.AddScoped<ICaseService, CaseService>();
+
+        var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
+        services.AddHttpClient("DocumentsService", client =>
+        {
+            client.BaseAddress = new Uri(docsBaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
 
         return services;
     }
