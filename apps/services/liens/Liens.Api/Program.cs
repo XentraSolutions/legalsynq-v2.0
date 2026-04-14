@@ -121,6 +121,7 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
 
 app.MapLienEndpoints();
 app.MapLienOfferEndpoints();
+app.MapBillOfSaleEndpoints();
 app.MapCaseEndpoints();
 
 app.Run();

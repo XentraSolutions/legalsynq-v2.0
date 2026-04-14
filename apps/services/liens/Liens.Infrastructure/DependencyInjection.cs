@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<ILienSaleService, LienSaleService>();
         services.AddScoped<ILienService, LienService>();
         services.AddScoped<ILienOfferService, LienOfferService>();
+        services.AddScoped<IBillOfSaleService, BillOfSaleService>();
         services.AddScoped<ICaseService, CaseService>();
 
         return services;

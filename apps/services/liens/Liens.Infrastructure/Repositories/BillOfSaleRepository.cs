@@ -21,6 +21,13 @@ public class BillOfSaleRepository : IBillOfSaleRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<BillOfSale?> GetByBillOfSaleNumberAsync(Guid tenantId, string billOfSaleNumber, CancellationToken ct = default)
+    {
+        return await _db.BillsOfSale
+            .Where(b => b.TenantId == tenantId && b.BillOfSaleNumber == billOfSaleNumber)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<BillOfSale?> GetByLienOfferIdAsync(Guid tenantId, Guid lienOfferId, CancellationToken ct = default)
     {
         return await _db.BillsOfSale
@@ -38,6 +45,7 @@ public class BillOfSaleRepository : IBillOfSaleRepository
 
     public async Task<(List<BillOfSale> Items, int TotalCount)> SearchAsync(
         Guid tenantId, Guid? lienId, string? status,
+        Guid? buyerOrgId, Guid? sellerOrgId, string? search,
         int page, int pageSize, CancellationToken ct = default)
     {
         var q = _db.BillsOfSale.Where(b => b.TenantId == tenantId);
@@ -47,6 +55,15 @@ public class BillOfSaleRepository : IBillOfSaleRepository
 
         if (!string.IsNullOrWhiteSpace(status))
             q = q.Where(b => b.Status == status);
+
+        if (buyerOrgId.HasValue)
+            q = q.Where(b => b.BuyerOrgId == buyerOrgId.Value);
+
+        if (sellerOrgId.HasValue)
+            q = q.Where(b => b.SellerOrgId == sellerOrgId.Value);
+
+        if (!string.IsNullOrWhiteSpace(search))
+            q = q.Where(b => b.BillOfSaleNumber.Contains(search));
 
         var totalCount = await q.CountAsync(ct);
 
