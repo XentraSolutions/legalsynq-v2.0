@@ -3866,3 +3866,33 @@ Implemented four database-backed LienOffer endpoints for marketplace offer creat
 
 ### Report
 Full analysis at `analysis/LS-LIENS-06-003-report.md`
+
+## BillOfSale HTTP APIs (LS-LIENS-06-004) — 2026-04-14
+
+### Summary
+Implemented four read-only BillOfSale HTTP endpoints for retrieval and listing. Follows the established Case/Lien/LienOffer patterns. No mutation endpoints exposed — sale finalization workflow is separate.
+
+### Endpoints
+- `GET /api/liens/bill-of-sales` — paginated search (filters: search, status, lienId, sellerOrgId, buyerOrgId)
+- `GET /api/liens/bill-of-sales/{id}` — get by id
+- `GET /api/liens/bill-of-sales/by-number/{billOfSaleNumber}` — get by BOS number
+- `GET /api/liens/liens/{lienId}/bill-of-sales` — all BOS for a lien
+
+### Key Details
+- Auth: `AuthenticatedUser` + `RequireProductAccess(SYNQ_LIENS)` + `RequirePermission(LienRead)`
+- Permission gap: no dedicated `bos:read` permission yet; using `LienRead`
+- `IBillOfSaleService` / `BillOfSaleService` — GetByIdAsync, GetByBillOfSaleNumberAsync, SearchAsync, GetByLienIdAsync
+- Returns scalar IDs only (no cross-service enrichment)
+
+### Files
+- `Liens.Application/DTOs/BillOfSaleResponse.cs` — 22-field response DTO
+- `Liens.Application/Interfaces/IBillOfSaleService.cs`
+- `Liens.Application/Services/BillOfSaleService.cs`
+- `Liens.Api/Endpoints/BillOfSaleEndpoints.cs`
+- Modified: `IBillOfSaleRepository` (added GetByBillOfSaleNumberAsync, extended SearchAsync with buyerOrgId/sellerOrgId/search)
+- Modified: `BillOfSaleRepository` (implemented new methods)
+- Modified: `DependencyInjection.cs` (registered IBillOfSaleService)
+- Modified: `Program.cs` (mapped BillOfSaleEndpoints)
+
+### Report
+Full analysis at `analysis/LS-LIENS-06-004-report.md`
