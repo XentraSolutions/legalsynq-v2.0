@@ -30,6 +30,12 @@ public static class BillOfSaleEndpoints
 
         lienBosGroup.MapGet("/", GetBillsOfSaleByLienId)
             .RequirePermission(LiensPermissions.LienRead);
+
+        bosGroup.MapGet("/{id:guid}/document", GetBillOfSaleDocument)
+            .RequirePermission(LiensPermissions.LienRead);
+
+        bosGroup.MapGet("/by-number/{billOfSaleNumber}/document", GetBillOfSaleDocumentByNumber)
+            .RequirePermission(LiensPermissions.LienRead);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx)
@@ -91,5 +97,33 @@ public static class BillOfSaleEndpoints
         var tenantId = RequireTenantId(ctx);
         var result = await bosService.GetByLienIdAsync(tenantId, lienId, ct);
         return Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetBillOfSaleDocument(
+        Guid id,
+        IBillOfSaleDocumentQueryService docQueryService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var result = await docQueryService.GetDocumentByBosIdAsync(tenantId, id, ct);
+        return Results.File(
+            result.Content,
+            contentType: result.ContentType,
+            fileDownloadName: result.FileName);
+    }
+
+    private static async Task<IResult> GetBillOfSaleDocumentByNumber(
+        string billOfSaleNumber,
+        IBillOfSaleDocumentQueryService docQueryService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var result = await docQueryService.GetDocumentByBosNumberAsync(tenantId, billOfSaleNumber, ct);
+        return Results.File(
+            result.Content,
+            contentType: result.ContentType,
+            fileDownloadName: result.FileName);
     }
 }

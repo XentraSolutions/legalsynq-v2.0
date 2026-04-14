@@ -72,6 +72,19 @@ public class ExceptionHandlingMiddleware
                 }
             });
         }
+        catch (ServiceUnavailableException ex)
+        {
+            context.Response.StatusCode = StatusCodes.Status502BadGateway;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = new
+                {
+                    code = "service_unavailable",
+                    message = ex.Message
+                }
+            });
+        }
         catch (UnauthorizedAccessException ex)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;

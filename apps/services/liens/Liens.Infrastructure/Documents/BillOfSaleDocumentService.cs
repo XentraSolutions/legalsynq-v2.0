@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain.Entities;
 using Microsoft.Extensions.Logging;
@@ -100,5 +101,51 @@ public sealed class BillOfSaleDocumentService : IBillOfSaleDocumentService
                 bos.Id, bos.TenantId);
             return null;
         }
+    }
+
+    public async Task<DocumentRetrievalResult?> RetrieveDocumentAsync(
+        Guid documentId,
+        CancellationToken ct = default)
+    {
+        var client = _httpClientFactory.CreateClient("DocumentsService");
+
+        var response = await client.GetAsync(
+            $"/documents/{documentId}/content?type=download",
+            HttpCompletionOption.ResponseHeadersRead,
+            ct);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _logger.LogWarning(
+                "Documents service returned 404 for DocumentId={DocumentId}",
+                documentId);
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogError(
+                "Documents service returned {StatusCode} for DocumentId={DocumentId}",
+                response.StatusCode, documentId);
+            return null;
+        }
+
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+
+        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+                       ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                       ?? $"document-{documentId}.pdf";
+
+        var contentLength = response.Content.Headers.ContentLength;
+
+        var stream = await response.Content.ReadAsStreamAsync(ct);
+
+        return new DocumentRetrievalResult
+        {
+            Content = stream,
+            ContentType = contentType,
+            FileName = fileName,
+            ContentLength = contentLength,
+        };
     }
 }
