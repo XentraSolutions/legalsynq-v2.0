@@ -55,19 +55,16 @@ var env = app.Environment.EnvironmentName;
 
 app.Logger.LogInformation("Starting {Service} {Version} in {Environment}", ServiceName, Version, env);
 
-if (app.Environment.IsDevelopment())
+try
 {
-    try
-    {
-        using var scope = app.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-        db.Database.Migrate();
-        app.Logger.LogInformation("Database migrations applied");
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogWarning(ex, "Could not apply migrations — ensure MySQL is running and connection string is correct");
-    }
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    db.Database.Migrate();
+    app.Logger.LogInformation("Database migrations applied");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Could not apply migrations — ensure MySQL is running and connection string is correct");
 }
 
 // ── Startup diagnostic: Phase G authorization status ─────────────────────────

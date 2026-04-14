@@ -215,6 +215,17 @@ public static class SchemaRenamer
         ("ntf_UsageMeterEvents", "idx_usage_meter_events_tenant_unit_time", "IX_UsageMeterEvents_TenantId_UsageUnit_OccurredAt"),
     };
 
+    private static readonly Dictionary<string, (string Column, string SqlType, string Default)[]> MissingColumns = new()
+    {
+        ["ntf_ProviderHealth"] = new[]
+        {
+            ("ConsecutiveFailures", "int NOT NULL", "0"),
+            ("ConsecutiveSuccesses", "int NOT NULL", "0"),
+            ("LastLatencyMs", "int NULL", ""),
+            ("LastRecoveryAt", "datetime(6) NULL", ""),
+        },
+    };
+
     public static async Task RenameSchemaAsync(NotificationsDbContext db, ILogger logger)
     {
         var connection = db.Database.GetDbConnection();
@@ -226,6 +237,7 @@ public static class SchemaRenamer
             await RenameTablesAsync(db, dbName, logger);
             await RenameColumnsAsync(db, dbName, logger);
             await RenameIndexesAsync(db, dbName, logger);
+            await EnsureMissingColumnsAsync(db, dbName, logger);
         }
         finally
         {
@@ -334,5 +346,32 @@ public static class SchemaRenamer
             columns.Add(reader.GetString(0));
         }
         return columns;
+    }
+
+    private static async Task EnsureMissingColumnsAsync(NotificationsDbContext db, string dbName, ILogger logger)
+    {
+        foreach (var (tableName, columns) in MissingColumns)
+        {
+            if (!await TableExistsAsync(db, dbName, tableName)) continue;
+
+            var existingColumns = await GetColumnNamesAsync(db, dbName, tableName);
+
+            foreach (var (colName, sqlType, defaultValue) in columns)
+            {
+                if (existingColumns.Contains(colName)) continue;
+
+                try
+                {
+                    var defaultClause = string.IsNullOrEmpty(defaultValue) ? "" : $" DEFAULT {defaultValue}";
+                    await db.Database.ExecuteSqlRawAsync(
+                        $"ALTER TABLE `{tableName}` ADD COLUMN `{colName}` {sqlType}{defaultClause}");
+                    logger.LogInformation("Added missing column {Table}.{Column}", tableName, colName);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Failed to add column {Table}.{Column}", tableName, colName);
+                }
+            }
+        }
     }
 }
