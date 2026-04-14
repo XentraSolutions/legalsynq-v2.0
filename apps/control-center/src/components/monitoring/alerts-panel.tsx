@@ -107,7 +107,7 @@ export function AlertsPanel({ alerts }: AlertsPanelProps) {
 function AlertRow({ alert }: { alert: SystemAlert }) {
   const cfg  = SEVERITY_CONFIG[alert.severity];
   const icon = SEVERITY_ICONS[alert.severity];
-  const time = formatRelative(alert.createdAtUtc);
+  const time = formatTimestamp(alert.createdAtUtc);
 
   return (
     <div className={`flex items-start gap-3.5 px-5 py-3.5 ${cfg.bg} ${cfg.border} border-l-4 border-t-0 border-r-0 border-b-0`}>
@@ -129,15 +129,16 @@ function AlertRow({ alert }: { alert: SystemAlert }) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function formatRelative(iso: string): string {
+function formatTimestamp(iso: string): string {
   try {
-    const diffMs  = Date.now() - new Date(iso).getTime();
-    const minutes = Math.floor(diffMs / 60_000);
-    if (minutes < 1)  return 'just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24)   return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
+    return new Date(iso).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: 'UTC',
+      timeZoneName: 'short',
+    });
   } catch {
     return iso;
   }
