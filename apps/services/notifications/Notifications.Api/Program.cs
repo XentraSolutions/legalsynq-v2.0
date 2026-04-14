@@ -105,5 +105,4 @@ app.MapContactEndpoints();
 app.MapBrandingEndpoints();
 app.MapInternalEndpoints();
 
-var port = builder.Configuration["PORT"] ?? "5008";
-app.Run($"http://0.0.0.0:{port}");
+app.Run();
