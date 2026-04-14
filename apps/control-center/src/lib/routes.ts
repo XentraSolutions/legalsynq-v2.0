@@ -9,8 +9,8 @@
 export const Routes = {
   // ── Overview ──────────────────────────────────────────────────────────────
 
-  /** / — Admin dashboard */
-  dashboard: '/',
+  /** /systemstatus — System status and navigation index */
+  systemStatus: '/systemstatus',
 
   // ── Platform diagnostics ──────────────────────────────────────────────────
 
