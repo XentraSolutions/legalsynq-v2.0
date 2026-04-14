@@ -35,12 +35,15 @@ public sealed class LienSaleService : ILienSaleService
         Guid actingUserId,
         CancellationToken ct = default)
     {
+        var errors = new Dictionary<string, string[]>();
         if (tenantId == Guid.Empty)
-            throw new ArgumentException("TenantId is required.", nameof(tenantId));
+            errors.Add("tenantId", ["TenantId is required."]);
         if (lienOfferId == Guid.Empty)
-            throw new ArgumentException("LienOfferId is required.", nameof(lienOfferId));
+            errors.Add("lienOfferId", ["LienOfferId is required."]);
         if (actingUserId == Guid.Empty)
-            throw new ArgumentException("ActingUserId is required.", nameof(actingUserId));
+            errors.Add("actingUserId", ["ActingUserId is required."]);
+        if (errors.Count > 0)
+            throw new ValidationException("One or more input parameters are invalid.", errors);
 
         _logger.LogInformation(
             "SaleFinalization: starting for Offer={OfferId} Tenant={TenantId} Actor={ActorId}",
