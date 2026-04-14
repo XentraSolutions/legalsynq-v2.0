@@ -101,7 +101,11 @@ export interface CaseListItem {
   title: string;
   status: string;
   statusLabel: string;
+  lawFirm: string;
+  caseManager: string;
+  accidentType: string;
   dateOfIncident: string;
+  clientDob: string;
   insuranceCarrier: string;
   demandAmount: number | null;
   settlementAmount: number | null;

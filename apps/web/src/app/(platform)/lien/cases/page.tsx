@@ -28,11 +28,6 @@ const STATUS_LABELS: Record<string, string> = {
   Closed: 'Closed',
 };
 
-function formatCurrency(amount: number | null): string {
-  if (amount === null || amount === undefined) return '-';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
-
 const BULK_ACTIONS: BulkActionConfig[] = [
   {
     key: 'advance-status',
@@ -186,12 +181,13 @@ export default function CasesPage() {
                         className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
                     </th>
                   )}
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Case #</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Client</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Title / Ref</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Insurance</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Demand</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Incident</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Case ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Plaintiff Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Law Firm</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Case Manager</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Accident Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date of Loss</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date of Birth</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-4 py-3" />
                 </tr></thead>
@@ -206,10 +202,11 @@ export default function CasesPage() {
                       )}
                       <td className="px-4 py-3"><Link href={`/lien/cases/${c.id}`} onClick={(e) => e.stopPropagation()} className="text-xs font-mono text-primary hover:underline">{c.caseNumber}</Link></td>
                       <td className="px-4 py-3 text-sm text-gray-700">{c.clientName}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{c.title || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{c.insuranceCarrier || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 font-medium tabular-nums">{formatCurrency(c.demandAmount)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{c.lawFirm || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{c.caseManager || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{c.accidentType || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-500">{c.dateOfIncident || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500">{c.clientDob || '-'}</td>
                       <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
                       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <ActionMenu items={[
@@ -271,10 +268,11 @@ export default function CasesPage() {
           <div className="space-y-4">
             <StatusBadge status={previewCase.status} size="md" />
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><p className="text-xs text-gray-400">Title</p><p className="text-gray-700">{previewCase.title || '-'}</p></div>
-              <div><p className="text-xs text-gray-400">Insurance</p><p className="text-gray-700">{previewCase.insuranceCarrier || '-'}</p></div>
-              <div><p className="text-xs text-gray-400">Demand</p><p className="font-medium text-gray-700">{formatCurrency(previewCase.demandAmount)}</p></div>
-              <div><p className="text-xs text-gray-400">Incident</p><p className="text-gray-700">{previewCase.dateOfIncident || '-'}</p></div>
+              <div><p className="text-xs text-gray-400">Law Firm</p><p className="text-gray-700">{previewCase.lawFirm || '-'}</p></div>
+              <div><p className="text-xs text-gray-400">Case Manager</p><p className="text-gray-700">{previewCase.caseManager || '-'}</p></div>
+              <div><p className="text-xs text-gray-400">Accident Type</p><p className="text-gray-700">{previewCase.accidentType || '-'}</p></div>
+              <div><p className="text-xs text-gray-400">Date of Loss</p><p className="text-gray-700">{previewCase.dateOfIncident || '-'}</p></div>
+              <div><p className="text-xs text-gray-400">Date of Birth</p><p className="text-gray-700">{previewCase.clientDob || '-'}</p></div>
             </div>
             <Link href={`/lien/cases/${previewCase.id}`} className="block text-center text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">View Full Details</Link>
           </div>
