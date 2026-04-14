@@ -1,5 +1,7 @@
 using BuildingBlocks.Context;
+using Liens.Application.Repositories;
 using Liens.Infrastructure.Persistence;
+using Liens.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +24,14 @@ public static class DependencyInjection
 
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
+
+        services.AddScoped<ICaseRepository, CaseRepository>();
+        services.AddScoped<IContactRepository, ContactRepository>();
+        services.AddScoped<IFacilityRepository, FacilityRepository>();
+        services.AddScoped<ILookupValueRepository, LookupValueRepository>();
+        services.AddScoped<ILienRepository, LienRepository>();
+        services.AddScoped<ILienOfferRepository, LienOfferRepository>();
+        services.AddScoped<IBillOfSaleRepository, BillOfSaleRepository>();
 
         return services;
     }
