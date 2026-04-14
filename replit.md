@@ -573,7 +573,8 @@ shared/
 - **Login Hardening:** `AuthService.LoginAsync` rejects tenants with `ProvisioningStatus == Verifying` (DNS verifying message) or `!= Active` (not provisioned); BFF returns 503 with user-friendly messages
 - **DI:** `ITenantProvisioningService` (Scoped), `ITenantVerificationService` (Scoped), `IVerificationRetryService` (Scoped), `IDnsService` (Singleton)
 - **Secrets:** `Route53__HostedZoneId`, `Route53__BaseDomain`, `Route53__RecordValue`
-- **Login:** `extractTenantCodeFromHost()` in BFF route resolves tenant from Host header in production; explicit `tenantCode` only accepted when `NEXT_PUBLIC_ENV=development`
+- **Tenant Code = Subdomain:** The tenant code and subdomain slug are unified — the same lowercase slug (e.g. `acme-law`) is used as both the `Code` column and the `Subdomain`. This eliminates mapping issues between codes and subdomains. The `Tenant.Create` factory normalizes via `SlugGenerator.Normalize()`. `AuthService.LoginAsync` tries lowercase first, then uppercase fallback (for legacy tenants), then subdomain lookup. Create-tenant modal has a single "Tenant Code" field that shows the resulting subdomain URL inline.
+- **Login:** `extractRawSubdomain()` in BFF route resolves tenant code from Host header in production (raw subdomain = tenant code); explicit `tenantCode` only accepted when `NEXT_PUBLIC_ENV=development`
 - **Migration:** `20260407100001_AddVerificationRetryFields` — adds `VerificationAttemptCount`, `LastVerificationAttemptUtc`, `NextVerificationRetryAtUtc`, `IsVerificationRetryExhausted`, `ProvisioningFailureStage` to Tenants; `VerifiedAtUtc` to TenantDomains
 
 ### Smart Verification Retry (LSCC-01-006-02)

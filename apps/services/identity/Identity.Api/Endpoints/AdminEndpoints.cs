@@ -339,16 +339,10 @@ public static class AdminEndpoints
         if (string.IsNullOrWhiteSpace(body.Code))
             return Results.BadRequest(new { error = "Tenant code is required." });
 
-        var code = body.Code.ToUpperInvariant().Trim();
-        if (code.Length < 2 || code.Length > 12 || !code.All(c => char.IsLetterOrDigit(c)))
-            return Results.BadRequest(new { error = "Code must be 2–12 alphanumeric characters." });
-
-        if (!string.IsNullOrWhiteSpace(body.PreferredSubdomain))
-        {
-            var (slugValid, slugError) = SlugGenerator.Validate(SlugGenerator.Normalize(body.PreferredSubdomain));
-            if (!slugValid)
-                return Results.BadRequest(new { error = slugError });
-        }
+        var code = SlugGenerator.Normalize(body.Code);
+        var (slugValid, slugError) = SlugGenerator.Validate(code);
+        if (!slugValid)
+            return Results.BadRequest(new { error = slugError });
 
         if (string.IsNullOrWhiteSpace(body.AdminEmail))
             return Results.BadRequest(new { error = "Admin email is required." });
@@ -388,7 +382,7 @@ public static class AdminEndpoints
         var passwordHash = passwordHasher.Hash(tempPassword);
 
         // ── Create tenant + org + user + membership + role assignment ──────────
-        var tenant = Tenant.Create(body.Name.Trim(), code, body.PreferredSubdomain);
+        var tenant = Tenant.Create(body.Name.Trim(), code);
         db.Tenants.Add(tenant);
 
         var org = Organization.Create(

@@ -280,7 +280,6 @@ export const controlCenterServerApi = {
       adminEmail:         string;
       adminFirstName:     string;
       adminLastName:      string;
-      preferredSubdomain?: string;
     }): Promise<{
       tenantId:            string;
       displayName:         string;

@@ -30,8 +30,7 @@ export async function POST(request: NextRequest) {
   }
 
   const rawSubdomain = extractRawSubdomain(request);
-  const subdomainCode = rawSubdomain ? rawSubdomain.replace(/-/g, '').toUpperCase() : null;
-  const tenantCode = explicitTenantCode?.trim() || subdomainCode;
+  const tenantCode = explicitTenantCode?.trim() || rawSubdomain;
 
   if (!tenantCode) {
     return NextResponse.json(

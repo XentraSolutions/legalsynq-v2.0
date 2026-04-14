@@ -28,7 +28,6 @@ export async function createTenantAction(data: {
   adminEmail:         string;
   adminFirstName:     string;
   adminLastName:      string;
-  preferredSubdomain?: string;
 }): Promise<CreateTenantResult> {
   await requirePlatformAdmin();
 

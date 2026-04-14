@@ -44,10 +44,16 @@ public class AuthService : IAuthService
         var sw = Stopwatch.StartNew();
         // Canonical audit helpers — used when a login failure must be emitted before re-throwing.
         // fire-and-observe: never awaited, never allowed to gate the primary auth response.
-        var tenantCodeNorm  = request.TenantCode.ToUpperInvariant().Trim();
+        var tenantCodeNorm  = request.TenantCode.ToLowerInvariant().Trim();
         var emailNorm       = request.Email.ToLowerInvariant().Trim();
 
         var tenant = await _tenantRepository.GetByCodeAsync(tenantCodeNorm, ct);
+
+        if (tenant is null)
+        {
+            var upperCode = request.TenantCode.ToUpperInvariant().Trim();
+            tenant = await _tenantRepository.GetByCodeAsync(upperCode, ct);
+        }
 
         if (tenant is null && !string.IsNullOrWhiteSpace(request.Subdomain))
         {

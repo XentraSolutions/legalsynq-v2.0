@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
   }
 
-  const tenantCode = explicitTenantCode?.trim() || extractTenantCodeFromHost(request) || 'LEGALSYNQ';
+  const tenantCode = explicitTenantCode?.trim() || extractTenantCodeFromHost(request) || 'legalsynq';
 
 
   let identityRes: Response;
@@ -103,6 +103,6 @@ function extractTenantCodeFromHost(request: NextRequest): string | null {
     ?? '';
   const hostWithoutPort = host.includes(':') ? host.split(':')[0] : host;
   const parts = hostWithoutPort.split('.');
-  if (parts.length >= 3) return parts[0].toUpperCase();
+  if (parts.length >= 3) return parts[0].toLowerCase();
   return null;
 }

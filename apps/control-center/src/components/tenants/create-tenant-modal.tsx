@@ -30,7 +30,6 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
     adminEmail:         '',
     adminFirstName:     '',
     adminLastName:      '',
-    preferredSubdomain: '',
   });
 
   useEffect(() => {
@@ -47,13 +46,6 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
 
   function deriveCode(name: string) {
     return name
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '')
-      .slice(0, 8);
-  }
-
-  function deriveSubdomain(name: string) {
-    return name
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9\s-]/g, '')
@@ -69,7 +61,6 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
       ...f,
       name,
       code: f.code === deriveCode(f.name) ? deriveCode(name) : f.code,
-      preferredSubdomain: f.preferredSubdomain === deriveSubdomain(f.name) ? deriveSubdomain(name) : f.preferredSubdomain,
     }));
   }
 
@@ -158,20 +149,22 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
 
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Short Code <span className="text-red-500">*</span>
+                  Tenant Code <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  maxLength={12}
-                  pattern="[A-Za-z0-9]{2,12}"
+                  minLength={2}
+                  maxLength={63}
+                  pattern="[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?"
                   value={form.code}
-                  onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') }))}
-                  placeholder="e.g. ACMELG"
-                  className={`${inputClass} font-mono tracking-widest`}
+                  onChange={e => setForm(f => ({ ...f, code: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').replace(/^-/, '') }))}
+                  placeholder="e.g. acme-law"
+                  className={`${inputClass} font-mono`}
                 />
                 <p className="mt-1 text-[11px] text-gray-400">
-                  2–12 alphanumeric characters. Used as a unique identifier — cannot be changed later.
+                  Lowercase letters, numbers, and hyphens. This will also be the tenant's subdomain
+                  (<span className="font-mono">{form.code || '...'}.demo.legalsynq.com</span>). Cannot be changed later.
                 </p>
               </div>
 
@@ -194,22 +187,6 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
                 </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Subdomain
-                </label>
-                <input
-                  type="text"
-                  maxLength={63}
-                  value={form.preferredSubdomain}
-                  onChange={e => setForm(f => ({ ...f, preferredSubdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))}
-                  placeholder="e.g. acme-law"
-                  className={`${inputClass} font-mono`}
-                />
-                <p className="mt-1 text-[11px] text-gray-400">
-                  Optional. Auto-generated from name if left blank. Lowercase letters, numbers, and hyphens only.
-                </p>
-              </div>
             </fieldset>
 
             {/* Divider */}
@@ -345,7 +322,7 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
                 </div>
 
                 <DnsSetupInstructions
-                  subdomain={result.subdomain || form.preferredSubdomain || deriveSubdomain(form.name)}
+                  subdomain={result.subdomain || result.code || form.code}
                   hostname={result.hostname}
                   status={result.provisioningStatus}
                 />

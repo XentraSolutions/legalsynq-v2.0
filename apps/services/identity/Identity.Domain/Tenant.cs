@@ -61,17 +61,17 @@ public class Tenant
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
 
+        var slug = SlugGenerator.Normalize(code);
+
         var now = DateTime.UtcNow;
         return new Tenant
         {
             Id = Guid.NewGuid(),
             Name = name.Trim(),
-            Code = code.ToUpperInvariant().Trim(),
+            Code = slug,
             IsActive = true,
             Subdomain = null,
-            PreferredSubdomain = string.IsNullOrWhiteSpace(preferredSubdomain)
-                ? null
-                : SlugGenerator.Normalize(preferredSubdomain),
+            PreferredSubdomain = slug,
             ProvisioningStatus = ProvisioningStatus.Pending,
             ProvisioningFailureStage = ProvisioningFailureStage.None,
             VerificationAttemptCount = 0,
