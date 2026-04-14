@@ -226,6 +226,13 @@ try
                     ALTER TABLE docs_document_audits ALTER COLUMN actor_id DROP NOT NULL;
                 END IF;
             END $$;
+            CREATE TABLE IF NOT EXISTS docs_file_blobs (
+                storage_key VARCHAR(1000) PRIMARY KEY,
+                content     BYTEA NOT NULL,
+                mime_type   VARCHAR(200) NOT NULL DEFAULT 'application/octet-stream',
+                size_bytes  BIGINT NOT NULL DEFAULT 0,
+                created_at_utc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc')
+            );
         ");
         app.Logger.LogInformation("Schema patches applied successfully");
     }

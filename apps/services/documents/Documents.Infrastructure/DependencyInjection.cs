@@ -62,6 +62,7 @@ public static class DependencyInjection
         services.Configure<S3StorageOptions>(config.GetSection("Storage:S3"));
         services.AddSingleton<LocalStorageProvider>();
         services.AddSingleton<S3StorageProvider>();
+        services.AddSingleton<DatabaseStorageProvider>();
         services.AddSingleton<IStorageProvider>(sp =>
             StorageProviderFactory.Create(storageProvider, sp));
 

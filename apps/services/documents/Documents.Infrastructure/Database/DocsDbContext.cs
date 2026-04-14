@@ -13,6 +13,7 @@ public sealed class DocsDbContext : DbContext
     public DbSet<Document>        Documents       { get; set; } = null!;
     public DbSet<DocumentVersion> DocumentVersions { get; set; } = null!;
     public DbSet<DocumentAudit>   DocumentAudits   { get; set; } = null!;
+    public DbSet<FileBlob>        FileBlobs        { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -109,6 +110,18 @@ public sealed class DocsDbContext : DbContext
             e.HasOne(v => v.Document)
                 .WithMany(d => d.Versions)
                 .HasForeignKey(v => v.DocumentId);
+        });
+
+        // ── FileBlob ───────────────────────────────────────────────────────
+        mb.Entity<FileBlob>(e =>
+        {
+            e.ToTable("docs_file_blobs");
+            e.HasKey(b => b.StorageKey);
+            e.Property(b => b.StorageKey).HasColumnName("storage_key").HasMaxLength(1000);
+            e.Property(b => b.Content).HasColumnName("content").HasColumnType("bytea").IsRequired();
+            e.Property(b => b.MimeType).HasColumnName("mime_type").HasMaxLength(200);
+            e.Property(b => b.SizeBytes).HasColumnName("size_bytes");
+            e.Property(b => b.CreatedAtUtc).HasColumnName("created_at_utc");
         });
 
         // ── DocumentAudit ────────────────────────────────────────────────────
