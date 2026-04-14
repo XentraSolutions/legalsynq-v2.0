@@ -240,3 +240,9 @@ id = "cquRXeBA8H4iA0nmPeMH7"
 uri = "file://README.md"
 type = "text"
 title = "LegalSynq README"
+
+[[outputs]]
+id = "mjHcNPE_TSKV_4farL5Wo"
+uri = "file://analysis/LS-LIENS-05-001-report.md"
+type = "text"
+title = "LS-LIENS-05-001 Report — Core Repository Interfaces & EF Core Implementations"
