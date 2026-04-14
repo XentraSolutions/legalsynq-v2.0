@@ -137,6 +137,12 @@ apps/web/
         notifications.mapper.ts    ← DTO→UI model mappers: mapNotificationItem (parses recipientJson, metadataJson), mapNotificationStats
         notifications.service.ts   ← business service: getNotifications, getRecentNotifications, getStats, getFailedCount
         index.ts                   ← barrel exports
+      unified-activity/            ← LS-LIENS-UI-010: unified activity feed merging audit + notification events
+        unified-activity.types.ts  ← UnifiedActivityItem, AuditSourceDetail, NotificationSourceDetail, ActivitySource, ActivityEntityRef, ActivityActorRef, UnifiedActivityQuery/Result
+        unified-activity.api.ts    ← delegates to auditApi.getEvents() + notificationsApi.list() — no direct HTTP
+        unified-activity.mapper.ts ← mapAuditToUnified, mapNotificationToUnified, getEntityHref (entity→route), getNotificationHref
+        unified-activity.service.ts ← getUnifiedActivity (merge+sort), getRecentUnifiedActivity, getUnifiedActivityBySource — resilient (partial results if one source fails)
+        index.ts                   ← barrel exports
     stores/
       lien-store.ts              ← Zustand store: full CRUD for all 7 entities, role simulation, toast state, activity log, case notes, canPerformAction() helper
     app/api/

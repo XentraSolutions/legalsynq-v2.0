@@ -9,7 +9,7 @@ import {
   MOCK_CASES, MOCK_CASE_DETAILS, MOCK_LIENS, MOCK_LIEN_DETAILS, MOCK_LIEN_HISTORY,
   MOCK_BILLS_OF_SALE, MOCK_BOS_DETAILS, MOCK_SERVICING, MOCK_SERVICING_DETAILS,
   MOCK_CONTACTS, MOCK_CONTACT_DETAILS, MOCK_DOCUMENTS, MOCK_DOCUMENT_DETAILS,
-  MOCK_USERS, MOCK_USER_DETAILS, MOCK_RECENT_ACTIVITY,
+  MOCK_USERS, MOCK_USER_DETAILS,
 } from '@/lib/lien-mock-data';
 
 export type AppRole = 'Admin' | 'Case Manager' | 'Analyst' | 'Viewer';
@@ -268,7 +268,7 @@ export const useLienStore = create<LienStore>((set, get) => ({
     }));
   },
 
-  activity: MOCK_RECENT_ACTIVITY.map((a) => ({ ...a })),
+  activity: [],
   addActivity: (entry) => {
     const id = `act-${++activityCounter}`;
     set((s) => ({ activity: [{ ...entry, id }, ...s.activity].slice(0, 50) }));
