@@ -3678,7 +3678,7 @@ Each microservice uses a table name prefix for organizational clarity:
 | Notifications | `ntf_` | MySQL | `ntf_notifications`, `ntf_templates` |
 | Audit | `aud_` | MySQL/SQLite | `aud_AuditEventRecords`, `aud_LegalHolds` |
 | Documents | `docs_` | PostgreSQL | `docs_documents`, `docs_document_versions` |
-| Liens | `liens_` | TBD | Convention set for future entity configurations |
+| Liens | `liens_` | MySQL | `liens_Cases`, `liens_Liens`, `liens_BillsOfSale` |
 
 ### Implementation
 - Each service's EF Core entity configurations use `builder.ToTable("prefix_TableName")`
@@ -3714,6 +3714,36 @@ Created the `LienOffer` domain entity to model marketplace buyer offers against 
 ### Build
 - Full Liens service stack: 0 warnings, 0 errors
 - Report: `analysis/LS-LIENS-03-003-report.md`
+
+## Liens DbContext + Initial Migration (LS-LIENS-04-002) — 2026-04-14
+
+### Summary
+Created `LiensDbContext` with 7 DbSets, wired into DI with MySQL/Pomelo, added design-time factory, and generated the initial EF Core migration.
+
+### DbContext
+- **Location:** `Liens.Infrastructure/Persistence/LiensDbContext.cs`
+- **DbSets:** Cases, Contacts, Facilities, LookupValues, Liens, LienOffers, BillsOfSale
+- **OnModelCreating:** `ApplyConfigurationsFromAssembly(typeof(LiensDbContext).Assembly)`
+- **SaveChangesAsync:** Overridden — auto-populates `CreatedAtUtc`/`UpdatedAtUtc` on `AuditableEntity` entries (same as Fund/CareConnect)
+
+### DI Registration
+- `DependencyInjection.cs` → `AddLiensServices()` registers `LiensDbContext` via `AddDbContext<LiensDbContext>` with `UseMySql()` (Pomelo, MySQL 8.0)
+- Connection string key: `LiensDb` (placeholder in appsettings.json)
+
+### Design-Time Factory
+- `Liens.Api/DesignTimeDbContextFactory.cs` — reads appsettings, builds context for `dotnet ef` CLI
+
+### Migration
+- **Name:** `InitialCreate` (timestamp: 20260414041807)
+- **Location:** `Liens.Infrastructure/Persistence/Migrations/`
+- **Tables:** `liens_Cases`, `liens_Contacts`, `liens_Facilities`, `liens_LookupValues`, `liens_Liens`, `liens_LienOffers`, `liens_BillsOfSale`
+- **FKs:** Lien→Case(Restrict), Lien→Facility(Restrict), LienOffer→Lien(Restrict), BillOfSale→Lien(Restrict), BillOfSale→LienOffer(Restrict) — all within-service only
+- **Auto-migration:** `Program.cs` calls `db.Database.Migrate()` in Development environment
+
+### Build
+- All 4 Liens projects: 0 errors, 0 warnings
+- Identity, Gateway: 0 errors, 0 warnings
+- Report: `analysis/LS-LIENS-04-002-report.md`
 
 ## Liens Service JWT Auth Integration — 2026-04-13
 
