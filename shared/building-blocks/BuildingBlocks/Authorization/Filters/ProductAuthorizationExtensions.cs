@@ -29,4 +29,10 @@ public static class ProductAuthorizationExtensions
     public static RouteGroupBuilder RequirePermission(
         this RouteGroupBuilder builder, string permissionCode, params string[] fallbackRoles) =>
         builder.AddEndpointFilter(new RequirePermissionFilter(permissionCode, fallbackRoles.Length > 0 ? fallbackRoles : null));
+
+    public static RouteHandlerBuilder RequireSellMode(this RouteHandlerBuilder builder) =>
+        builder.AddEndpointFilter(new RequireSellModeFilter());
+
+    public static RouteGroupBuilder RequireSellMode(this RouteGroupBuilder builder) =>
+        builder.AddEndpointFilter(new RequireSellModeFilter());
 }

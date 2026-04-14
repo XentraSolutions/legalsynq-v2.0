@@ -66,6 +66,8 @@ public class JwtTokenService : IJwtTokenService
             // Also emit the canonical OrganizationTypeId for consumers that understand the catalog.
             if (organization.OrganizationTypeId.HasValue)
                 claims.Add(new Claim("org_type_id", organization.OrganizationTypeId.Value.ToString()));
+
+            claims.Add(new Claim("provider_mode", Identity.Domain.ProviderModes.Normalize(organization.ProviderMode)));
         }
 
         foreach (var pc in productCodes ?? [])

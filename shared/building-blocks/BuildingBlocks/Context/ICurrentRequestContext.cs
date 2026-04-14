@@ -17,6 +17,9 @@ public interface ICurrentRequestContext
     /// Prefer this over OrgType (string) in new code.
     /// </summary>
     Guid? OrgTypeId { get; }
+    string? ProviderMode { get; }
+    bool IsSellMode { get; }
+    bool IsManageMode { get; }
     IReadOnlyCollection<string> Roles { get; }
     IReadOnlyCollection<string> ProductRoles { get; }
     IReadOnlyCollection<string> Permissions { get; }

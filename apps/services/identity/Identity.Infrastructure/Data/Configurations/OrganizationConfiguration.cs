@@ -28,6 +28,11 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
         // Phase 1: typed org-type FK (nullable; backfilled in migration)
         builder.Property(o => o.OrganizationTypeId);
 
+        builder.Property(o => o.ProviderMode)
+            .IsRequired()
+            .HasMaxLength(20)
+            .HasDefaultValue("sell");
+
         builder.Property(o => o.IsActive).IsRequired();
         builder.Property(o => o.CreatedAtUtc).IsRequired();
         builder.Property(o => o.UpdatedAtUtc).IsRequired();
@@ -57,6 +62,7 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
             DisplayName = (string?)"LegalSynq Internal",
             OrgType = Domain.OrgType.Internal,
             OrganizationTypeId = (Guid?)SeedIds.OrgTypeInternal,
+            ProviderMode = Domain.ProviderModes.Sell,
             IsActive = true,
             CreatedAtUtc = SeedIds.SeededAt,
             UpdatedAtUtc = SeedIds.SeededAt,

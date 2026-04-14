@@ -11,6 +11,8 @@ public class Organization
     // Platform Phase 1: typed org-type FK (nullable during migration window; backfilled from OrgType)
     public Guid? OrganizationTypeId { get; private set; }
 
+    public string ProviderMode { get; private set; } = ProviderModes.Sell;
+
     public bool IsActive { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
@@ -143,6 +145,13 @@ public class Organization
 
         if (organizationTypeId.HasValue)
             AssignOrganizationType(organizationTypeId.Value, orgTypeCode ?? OrgType);
+    }
+
+    public void SetProviderMode(string mode, Guid? updatedByUserId = null)
+    {
+        ProviderMode = ProviderModes.Normalize(mode);
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
     }
 
     public void Deactivate(Guid? updatedByUserId)

@@ -69,6 +69,7 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/organizations",          AdminEndpointsLscc010.CreateProviderOrganization);
         routes.MapGet("/api/admin/organizations/{id:guid}", AdminEndpointsLscc010.GetOrganizationById);
         routes.MapPut("/api/admin/organizations/{id:guid}", UpdateOrganization);
+        routes.MapPatch("/api/admin/organizations/{id:guid}/provider-mode", UpdateOrganizationProviderMode);
 
         // ── Platform Foundation — Phase 1-6 ──────────────────────────────
         routes.MapGet("/api/admin/organization-types",             ListOrganizationTypes);
@@ -4249,12 +4250,13 @@ public static class AdminEndpoints
             .OrderBy(o => o.DisplayName ?? o.Name)
             .Select(o => new
             {
-                id          = o.Id,
-                tenantId    = o.TenantId,
-                name        = o.Name,
-                displayName = o.DisplayName ?? o.Name,
-                orgType     = o.OrgType,
-                isActive    = o.IsActive,
+                id           = o.Id,
+                tenantId     = o.TenantId,
+                name         = o.Name,
+                displayName  = o.DisplayName ?? o.Name,
+                orgType      = o.OrgType,
+                providerMode = o.ProviderMode,
+                isActive     = o.IsActive,
             })
             .ToListAsync(ct);
 
@@ -4293,16 +4295,53 @@ public static class AdminEndpoints
 
         return Results.Ok(new
         {
-            id          = org.Id,
-            tenantId    = org.TenantId,
-            name        = org.Name,
-            displayName = org.DisplayName ?? org.Name,
-            orgType     = org.OrgType,
-            isActive    = org.IsActive,
+            id           = org.Id,
+            tenantId     = org.TenantId,
+            name         = org.Name,
+            displayName  = org.DisplayName ?? org.Name,
+            orgType      = org.OrgType,
+            providerMode = org.ProviderMode,
+            isActive     = org.IsActive,
+        });
+    }
+
+    private static async Task<IResult> UpdateOrganizationProviderMode(
+        Guid              id,
+        UpdateProviderModeRequest body,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+            return Results.Forbid();
+
+        if (string.IsNullOrWhiteSpace(body.ProviderMode) || !ProviderModes.IsValid(body.ProviderMode))
+            return Results.BadRequest(new
+            {
+                error = new
+                {
+                    code    = "INVALID_PROVIDER_MODE",
+                    message = $"Invalid provider mode: '{body.ProviderMode}'. Valid values: sell, manage."
+                }
+            });
+
+        var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == id, ct);
+        if (org is null)
+            return Results.NotFound(new { error = $"Organization '{id}' not found." });
+
+        org.SetProviderMode(body.ProviderMode);
+        await db.SaveChangesAsync(ct);
+
+        return Results.Ok(new
+        {
+            id           = org.Id,
+            providerMode = org.ProviderMode,
         });
     }
 
     // ── Request / response DTOs (private, scoped to AdminEndpoints) ─────────
+
+    private record UpdateProviderModeRequest(string ProviderMode);
 
     private record AssignRoleRequest(
         Guid    RoleId,
@@ -5025,7 +5064,7 @@ public static partial class AdminEndpointsLscc010
         var org = await db.Organizations
             .AsNoTracking()
             .Where(o => o.Id == id)
-            .Select(o => new { o.Id, o.TenantId, o.Name, o.OrgType, o.IsActive, o.CreatedAtUtc })
+            .Select(o => new { o.Id, o.TenantId, o.Name, o.OrgType, o.ProviderMode, o.IsActive, o.CreatedAtUtc })
             .FirstOrDefaultAsync(ct);
 
         return org is null ? Results.NotFound() : Results.Ok(org);

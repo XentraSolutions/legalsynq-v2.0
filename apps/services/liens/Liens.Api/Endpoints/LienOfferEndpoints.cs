@@ -22,10 +22,12 @@ public static class LienOfferEndpoints
             .RequirePermission(LiensPermissions.LienRead);
 
         offersGroup.MapPost("/", CreateOffer)
-            .RequirePermission(LiensPermissions.LienOffer);
+            .RequirePermission(LiensPermissions.LienOffer)
+            .RequireSellMode();
 
         offersGroup.MapPost("/{offerId:guid}/accept", AcceptOffer)
-            .RequirePermission(LiensPermissions.LienUpdate);
+            .RequirePermission(LiensPermissions.LienUpdate)
+            .RequireSellMode();
 
         var lienOffersGroup = app.MapGroup("/api/liens/liens/{lienId:guid}/offers")
             .RequireAuthorization(Policies.AuthenticatedUser)

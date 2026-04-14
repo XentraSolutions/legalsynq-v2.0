@@ -38,13 +38,16 @@ public static class BillOfSaleEndpoints
             .RequirePermission(LiensPermissions.LienRead);
 
         bosGroup.MapPut("/{id:guid}/submit", SubmitForExecution)
-            .RequirePermission(LiensPermissions.LienService);
+            .RequirePermission(LiensPermissions.LienService)
+            .RequireSellMode();
 
         bosGroup.MapPut("/{id:guid}/execute", ExecuteBillOfSale)
-            .RequirePermission(LiensPermissions.LienService);
+            .RequirePermission(LiensPermissions.LienService)
+            .RequireSellMode();
 
         bosGroup.MapPut("/{id:guid}/cancel", CancelBillOfSale)
-            .RequirePermission(LiensPermissions.LienService);
+            .RequirePermission(LiensPermissions.LienService)
+            .RequireSellMode();
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx)

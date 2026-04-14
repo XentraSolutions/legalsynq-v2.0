@@ -38,6 +38,15 @@ public class CurrentRequestContext : ICurrentRequestContext
     public Guid? OrgTypeId =>
         Guid.TryParse(User?.FindFirstValue("org_type_id"), out var otid) ? otid : null;
 
+    public string? ProviderMode => User?.FindFirstValue("provider_mode");
+
+    public bool IsSellMode =>
+        string.IsNullOrEmpty(ProviderMode) ||
+        string.Equals(ProviderMode, "sell", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsManageMode =>
+        string.Equals(ProviderMode, "manage", StringComparison.OrdinalIgnoreCase);
+
     public IReadOnlyCollection<string> Roles =>
         User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList().AsReadOnly()
         ?? (IReadOnlyCollection<string>)Array.Empty<string>();

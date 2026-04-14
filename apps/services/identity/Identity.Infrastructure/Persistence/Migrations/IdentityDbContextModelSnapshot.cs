@@ -638,6 +638,13 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("OrganizationTypeId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("ProviderMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("sell");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("char(36)");
 
@@ -668,6 +675,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                             Name = "LegalSynq Platform",
                             OrgType = "INTERNAL",
                             OrganizationTypeId = new Guid("70000000-0000-0000-0000-000000000001"),
+                            ProviderMode = "sell",
                             TenantId = new Guid("20000000-0000-0000-0000-000000000001"),
                             UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         });

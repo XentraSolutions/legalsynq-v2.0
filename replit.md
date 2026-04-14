@@ -138,7 +138,7 @@ apps/web/
         notifications.mapper.ts    ← DTO→UI model mappers: mapNotificationItem (parses recipientJson, metadataJson), mapNotificationStats
         notifications.service.ts   ← business service: getNotifications, getRecentNotifications, getStats, getFailedCount
         index.ts                   ← barrel exports
-      provider-mode/               ← LS-LIENS-UI-011: sell vs manage mode from org config API
+      provider-mode/               ← LS-LIENS-UI-011/011-01: sell vs manage mode from org config API (backed by DB + JWT claim)
         provider-mode.types.ts     ← ProviderMode, OrgConfigResponseDto, ProviderModeInfo
         provider-mode.api.ts       ← fetchOrgConfig() — calls BFF /api/org-config
         provider-mode.service.ts   ← resolveProviderMode(), getDefaultModeInfo(), isSellMode(), isManageMode()

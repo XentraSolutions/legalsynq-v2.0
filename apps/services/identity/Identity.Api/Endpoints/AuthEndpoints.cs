@@ -117,7 +117,6 @@ public static class AuthEndpoints
         // ── GET /api/organizations/my/config ──────────────────────────────────
         // Authenticated. Returns org-level configuration for the caller's organization.
         // LS-LIENS-UI-011: Provider mode (sell vs manage) is sourced from here.
-        // Currently returns a default configuration; future DB column will back this.
         app.MapGet("/api/organizations/my/config", async (
             HttpContext        httpContext,
             IdentityDbContext  db,
@@ -129,13 +128,13 @@ public static class AuthEndpoints
                 {
                     organizationId = (string?)null,
                     productCode    = "LIENS",
-                    settings       = new { providerMode = "sell" }
+                    settings       = new { providerMode = ProviderModes.Sell }
                 });
 
             var org = await db.Organizations
                 .AsNoTracking()
                 .Where(o => o.Id == orgId && o.IsActive)
-                .Select(o => new { o.Id, o.Name, o.OrgType })
+                .Select(o => new { o.Id, o.ProviderMode })
                 .FirstOrDefaultAsync(ct);
 
             if (org is null)
@@ -143,16 +142,14 @@ public static class AuthEndpoints
                 {
                     organizationId = orgIdStr,
                     productCode    = "LIENS",
-                    settings       = new { providerMode = "sell" }
+                    settings       = new { providerMode = ProviderModes.Sell }
                 });
 
-            // TODO: Read providerMode from an org settings column/table once added.
-            // For now, all orgs default to "sell" mode.
             return Results.Ok(new
             {
                 organizationId = org.Id.ToString(),
                 productCode    = "LIENS",
-                settings       = new { providerMode = "sell" }
+                settings       = new { providerMode = ProviderModes.Normalize(org.ProviderMode) }
             });
         })
         .RequireAuthorization();
