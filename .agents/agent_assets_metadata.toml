@@ -228,3 +228,9 @@ id = "-iBdD2q7Iospb_tKMNn14"
 uri = "file://analysis/LS-LIENS-02-002-01-report.md"
 type = "text"
 title = "LS-LIENS-02-002-01 — Liens Capability Abstraction Layer Report"
+
+[[outputs]]
+id = "KyPp_BYbGdZkp3tQzVY-1"
+uri = "file://analysis/LS-LIENS-03-005-report.md"
+type = "text"
+title = "LS-LIENS-03-005 — v1 SynqLiens → v2 Liens Migration Matrix"
