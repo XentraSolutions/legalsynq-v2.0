@@ -430,7 +430,7 @@ shared/
 | `Route53__RecordValue` | Identity.Api | CNAME target for tenant subdomains |
 | `Route53__AccessKeyId` | Identity.Api | AWS access key (optional; falls back to instance role) |
 | `Route53__SecretAccessKey` | Identity.Api | AWS secret key (optional; falls back to instance role) |
-| `ConnectionStrings__AuditEventDb` | Audit Service | MySQL connection string for audit_db on RDS. Production: `MigrateOnStartup=true` runs 3 migrations (InitialSchema, LegalHolds/Outbox, AddTablePrefixes). AddTablePrefixes handles both fresh DB (creates `aud_AuditEvents`) and existing DB (renames unprefixed tables). |
+| `ConnectionStrings__AuditEventDb` | Audit Service | MySQL connection string for audit_db on RDS. Production: `MigrateOnStartup=true` runs 3 migrations (InitialSchema, LegalHolds/Outbox, AddTablePrefixes). AddTablePrefixes handles both fresh DB (creates `aud_AuditEvents`) and existing DB (renames unprefixed tables). **Fallback:** If MySQL connection string is absent, Program.cs auto-falls back to SQLite (`audit_dev.db`). Migration failures are non-fatal (logged, service continues). |
 
 ## JWT
 

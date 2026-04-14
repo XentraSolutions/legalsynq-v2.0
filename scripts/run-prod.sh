@@ -77,7 +77,7 @@ if command -v dotnet &>/dev/null; then
     launch_svc "CareConnect"  "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
     launch_svc "Documents"    "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
     launch_svc "Audit"        "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" \
-      env ASPNETCORE_URLS=http://0.0.0.0:5007 QueryAuth__Mode=None
+      env ASPNETCORE_URLS=http://0.0.0.0:5007
     launch_svc "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" \
       env ASPNETCORE_URLS=http://0.0.0.0:5008
     launch_svc "Liens"        "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj"

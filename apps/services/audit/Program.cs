@@ -74,19 +74,25 @@ try
             : cfg.GetConnectionString("AuditEventDb");
 
     // ── Database + Repository wiring ─────────────────────────────────────────
-    switch (dbOpts.Provider)
+    var effectiveProvider = dbOpts.Provider;
+
+    if (effectiveProvider == "MySQL" && string.IsNullOrWhiteSpace(connectionString))
+    {
+        Log.Warning(
+            "Database:Provider is 'MySQL' but no connection string was found. " +
+            "Falling back to SQLite for durable local storage. " +
+            "Set Database:ConnectionString or ConnectionStrings:AuditEventDb for MySQL.");
+        effectiveProvider = "Sqlite";
+    }
+
+    switch (effectiveProvider)
     {
         case "MySQL":
-            if (string.IsNullOrWhiteSpace(connectionString))
-                throw new InvalidOperationException(
-                    "Database:Provider is 'MySQL' but no connection string was found. " +
-                    "Set Database:ConnectionString or ConnectionStrings:AuditEventDb.");
-
             var serverVersion = ServerVersion.Parse(dbOpts.ServerVersion);
 
             builder.Services.AddDbContextFactory<AuditEventDbContext>(opts =>
             {
-                opts.UseMySql(connectionString, serverVersion, mysql =>
+                opts.UseMySql(connectionString!, serverVersion, mysql =>
                 {
                     mysql.CommandTimeout(dbOpts.CommandTimeoutSeconds);
                     mysql.EnableRetryOnFailure(
@@ -588,23 +594,31 @@ try
     }
 
     // ── Startup DB verification (non-fatal probe) ─────────────────────────────
-    if (dbOpts.Provider == "MySQL" && dbOpts.VerifyConnectionOnStartup)
+    if (effectiveProvider == "MySQL" && dbOpts.VerifyConnectionOnStartup)
     {
         await VerifyDatabaseConnectionAsync(app.Services, dbOpts, app.Logger);
     }
 
     // ── Startup migration (opt-in) ────────────────────────────────────────────
-    if (dbOpts.Provider == "MySQL" && dbOpts.MigrateOnStartup)
+    if ((effectiveProvider == "MySQL" || effectiveProvider == "Sqlite") && dbOpts.MigrateOnStartup)
     {
-        await RunMigrationsAsync(app.Services, app.Logger);
+        try
+        {
+            await RunMigrationsAsync(app.Services, app.Logger);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex,
+                "EF Core migration failed on startup. Service will continue but database " +
+                "operations may fail until connectivity is restored. Provider={Provider}",
+                effectiveProvider);
+        }
     }
 
-    // ── SQLite: EnsureCreated (dev only) ─────────────────────────────────────
-    // Migrations are MySQL-specific (Pomelo). For SQLite, EnsureCreated() creates the
-    // schema from the EF Core model on first boot. Subsequent starts are no-ops when
-    // the file already exists. This gives development environments durable persistence
-    // without requiring the MySQL stack.
-    if (dbOpts.Provider == "Sqlite")
+    // ── SQLite: EnsureCreated ────────────────────────────────────────────────
+    // EnsureCreated() creates the schema from the EF Core model on first boot.
+    // Subsequent starts are no-ops when the file already exists.
+    if (effectiveProvider == "Sqlite")
     {
         try
         {
@@ -688,7 +702,7 @@ try
         "Platform Audit/Event Service ready | Version={Version} | Env={Env} | DB={DbProvider} | Swagger={Swagger}",
         svcOpts.Version,
         app.Environment.EnvironmentName,
-        dbOpts.Provider,
+        effectiveProvider,
         showSwagger ? "enabled" : "disabled");
 
     var port = cfg["PORT"] ?? cfg["ASPNETCORE_URLS"]?.Split(':').LastOrDefault() ?? "5007";
