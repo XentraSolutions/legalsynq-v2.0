@@ -3772,7 +3772,7 @@ Implemented 7 repository interfaces in `Liens.Application/Repositories/` and 7 E
 - `IFacilityRepository` — GetById, Search(tenantId, search, isActive, page, pageSize), Add, Update
 - `ILookupValueRepository` — GetById(tenantId?, id), GetByCategory(tenantId?, category), GetByCode(tenantId?, category, code), Add, Update
 - `ILienRepository` — GetById, GetByLienNumber, Search(tenantId, search, status, lienType, caseId, facilityId, page, pageSize), GetByCaseId, GetByFacilityId, Add, Update
-- `ILienOfferRepository` — GetById, GetByLienId, Search(tenantId, lienId, status, page, pageSize), Add, Update
+- `ILienOfferRepository` — GetById, GetByLienId, Search(tenantId, lienId, status, buyerOrgId, sellerOrgId, page, pageSize), HasActiveOfferAsync(tenantId, lienId, buyerOrgId), Add, Update
 - `IBillOfSaleRepository` — GetById, GetByLienOfferId, GetByLienId, Search(tenantId, lienId, status, page, pageSize), Add, Update
 
 ### Implementations (Liens.Infrastructure/Repositories/)
@@ -3833,3 +3833,36 @@ Integrated Liens microservice with the v2 JWT auth/identity pattern used by Fund
 - `/health` → 200 (anonymous), `/info` → 200 (anonymous), `/context` → 401 (unauthenticated)
 - `/context` with valid JWT → 200, returns full identity claims (userId, tenantId, tenantCode, email, orgId, orgType, roles, productRoles)
 - Gateway paths: `/liens/health` anonymous OK, `/liens/context` requires auth, all verified end-to-end
+
+## LienOffer HTTP APIs (LS-LIENS-06-003) — 2026-04-14
+
+### Summary
+Implemented four database-backed LienOffer endpoints for marketplace offer creation and retrieval. Clean separation from sale-finalization workflow.
+
+### Endpoints
+| Method | Route | Permission |
+|---|---|---|
+| GET | `/api/liens/offers` | `SYNQ_LIENS.lien:read` |
+| GET | `/api/liens/offers/{id}` | `SYNQ_LIENS.lien:read` |
+| POST | `/api/liens/offers` | `SYNQ_LIENS.lien:offer` |
+| GET | `/api/liens/liens/{lienId}/offers` | `SYNQ_LIENS.lien:read` |
+
+### Application Service
+- `ILienOfferService` / `LienOfferService` — SearchAsync, GetByIdAsync, GetByLienIdAsync, CreateAsync
+- Create validates: lien exists, lien in offerable state (Offered/UnderReview), positive amount, future expiry, buyer≠seller, one active offer per buyer per lien
+- Seller org derived from `lien.SellingOrgId ?? lien.OrgId`
+- Buyer org from request context (never client-supplied)
+
+### Files
+- `Liens.Application/DTOs/LienOfferResponse.cs` — 16-field response DTO with computed `IsExpired`
+- `Liens.Application/DTOs/CreateLienOfferRequest.cs` — 4 fields (lienId, offerAmount, notes, expiresAtUtc)
+- `Liens.Application/Interfaces/ILienOfferService.cs`
+- `Liens.Application/Services/LienOfferService.cs`
+- `Liens.Api/Endpoints/LienOfferEndpoints.cs`
+- Modified: `ILienOfferRepository` (added buyerOrgId/sellerOrgId search filters, HasActiveOfferAsync)
+- Modified: `LienOfferRepository` (implemented new methods)
+- Modified: `DependencyInjection.cs` (registered ILienOfferService)
+- Modified: `Program.cs` (mapped LienOfferEndpoints)
+
+### Report
+Full analysis at `analysis/LS-LIENS-06-003-report.md`
