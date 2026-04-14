@@ -48,6 +48,14 @@ public class AuthService : IAuthService
         var emailNorm       = request.Email.ToLowerInvariant().Trim();
 
         var tenant = await _tenantRepository.GetByCodeAsync(tenantCodeNorm, ct);
+
+        if (tenant is null && !string.IsNullOrWhiteSpace(request.Subdomain))
+        {
+            var subNorm = request.Subdomain.ToLowerInvariant().Trim();
+            _logger.LogInformation("Code lookup missed for {Code}, trying subdomain {Subdomain}", tenantCodeNorm, subNorm);
+            tenant = await _tenantRepository.GetBySubdomainAsync(subNorm, ct);
+        }
+
         if (tenant is null || !tenant.IsActive)
         {
             EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotFound", ipAddress: ipAddress);

@@ -38,11 +38,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
   }
 
-  const subdomainTenant = extractTenantCodeFromHost(request);
+  const rawHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
+  const rawSubdomain = extractRawSubdomain(rawHost);
+  const subdomainTenant = rawSubdomain ? rawSubdomain.replace(/-/g, '').toUpperCase() : null;
   const tenantCode = subdomainTenant || explicitTenantCode?.trim() || null;
 
-  const rawHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
-  console.log(`[login] host=${rawHost}, subdomainTenant=${subdomainTenant}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, email=${email}`);
+  console.log(`[login] host=${rawHost}, rawSubdomain=${rawSubdomain}, subdomainTenant=${subdomainTenant}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, email=${email}`);
 
   if (!tenantCode) {
     return NextResponse.json(
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
     identityRes = await fetch(`${GATEWAY_URL}/identity/api/auth/login`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ tenantCode, email, password }),
+      body:    JSON.stringify({ tenantCode, email, password, subdomain: rawSubdomain }),
     });
   } catch (err) {
     console.error(`[login] Identity service fetch error:`, err);
@@ -135,22 +136,14 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Extracts a tenantCode from the request's Host header.
- *
- * Subdomain slugs use hyphens for readability (URL-friendly), but tenant
- * codes are stored without hyphens in uppercase.
+ * Extracts the raw subdomain slug from a hostname string.
  *
  * Examples:
- *   "maner-law.demo.legalsynq.com" → "MANERLAW"
- *   "lisa-medical.demo.legalsynq.com" → "LISAMEDICAL"
- *   "legalsynq.demo.legalsynq.com" → "LEGALSYNQ"
- *   "localhost:3000" → null (no subdomain)
+ *   "liens-company.demo.legalsynq.com" → "liens-company"
+ *   "legalsynq.demo.legalsynq.com"     → "legalsynq"
+ *   "localhost:3000"                     → null (no subdomain)
  */
-function extractTenantCodeFromHost(request: NextRequest): string | null {
-  const rawHost = request.headers.get('x-forwarded-host')
-    ?? request.headers.get('host')
-    ?? '';
-
+function extractRawSubdomain(rawHost: string): string | null {
   const host = rawHost.split(',')[0].trim();
   const hostWithoutPort = host.includes(':') ? host.split(':')[0] : host;
   const lower = hostWithoutPort.toLowerCase();
@@ -162,7 +155,7 @@ function extractTenantCodeFromHost(request: NextRequest): string | null {
   if (parts.length >= 3) {
     const sub = parts[0];
     if (sub === 'www') return null;
-    return sub.replace(/-/g, '').toUpperCase();
+    return sub;
   }
 
   return null;

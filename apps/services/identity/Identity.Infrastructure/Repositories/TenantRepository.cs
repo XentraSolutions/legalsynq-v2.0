@@ -17,6 +17,9 @@ public class TenantRepository : ITenantRepository
     public Task<Tenant?> GetByCodeAsync(string code, CancellationToken ct = default) =>
         _db.Tenants.FirstOrDefaultAsync(t => t.Code == code, ct);
 
+    public Task<Tenant?> GetBySubdomainAsync(string subdomain, CancellationToken ct = default) =>
+        _db.Tenants.FirstOrDefaultAsync(t => t.Subdomain == subdomain, ct);
+
     /// <summary>
     /// Resolves a tenant from the full HTTP hostname.
     /// Strips any port (e.g. "firm-a.legalsynq.com:3000" → "firm-a.legalsynq.com")

@@ -2,14 +2,17 @@ import { type NextRequest, NextResponse } from 'next/server';
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 
-function extractTenantCodeFromHost(req: NextRequest): string | null {
+function extractRawSubdomain(req: NextRequest): string | null {
   const host =
     req.headers.get('x-forwarded-host') ??
     req.headers.get('host') ??
     '';
-  const parts = host.split('.');
+  const hostClean = host.split(',')[0].trim();
+  const hostWithoutPort = hostClean.includes(':') ? hostClean.split(':')[0] : hostClean;
+  const lower = hostWithoutPort.toLowerCase();
+  const parts = lower.split('.');
   if (parts.length < 3 || parts[0] === 'www') return null;
-  return parts[0].replace(/-/g, '').toUpperCase();
+  return parts[0];
 }
 
 export async function POST(request: NextRequest) {
@@ -26,7 +29,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Email is required' }, { status: 400 });
   }
 
-  const tenantCode = explicitTenantCode?.trim() || extractTenantCodeFromHost(request);
+  const rawSubdomain = extractRawSubdomain(request);
+  const subdomainCode = rawSubdomain ? rawSubdomain.replace(/-/g, '').toUpperCase() : null;
+  const tenantCode = explicitTenantCode?.trim() || subdomainCode;
 
   if (!tenantCode) {
     return NextResponse.json(
@@ -40,7 +45,7 @@ export async function POST(request: NextRequest) {
     identityRes = await fetch(`${GATEWAY_URL}/identity/api/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenantCode, email }),
+      body: JSON.stringify({ tenantCode, email, subdomain: rawSubdomain }),
     });
   } catch {
     return NextResponse.json({ message: 'Identity service unavailable' }, { status: 503 });

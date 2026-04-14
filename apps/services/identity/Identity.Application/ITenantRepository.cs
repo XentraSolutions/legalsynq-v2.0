@@ -6,6 +6,7 @@ public interface ITenantRepository
 {
     Task<Tenant?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<Tenant?> GetByCodeAsync(string code, CancellationToken ct = default);
+    Task<Tenant?> GetBySubdomainAsync(string subdomain, CancellationToken ct = default);
 
     /// <summary>
     /// Resolves a tenant from the full hostname (e.g. "firm-a.legalsynq.com").

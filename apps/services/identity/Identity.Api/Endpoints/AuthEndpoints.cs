@@ -534,6 +534,14 @@ public static class AuthEndpoints
             var tenant = await db.Tenants
                 .FirstOrDefaultAsync(t => t.Code == body.TenantCode && t.IsActive, ct);
 
+            if (tenant is null && !string.IsNullOrWhiteSpace(body.Subdomain))
+            {
+                var subNorm = body.Subdomain.ToLowerInvariant().Trim();
+                logger.LogInformation("[forgot-password] Code lookup missed for {Code}, trying subdomain {Subdomain}", body.TenantCode, subNorm);
+                tenant = await db.Tenants
+                    .FirstOrDefaultAsync(t => t.Subdomain == subNorm && t.IsActive, ct);
+            }
+
             if (tenant is null)
             {
                 logger.LogWarning("[forgot-password] Tenant not found for code={TenantCode}", body.TenantCode);
@@ -616,5 +624,5 @@ public static class AuthEndpoints
     private record PasswordResetConfirmRequest(string Token, string NewPassword);
     private record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     private record SetAvatarRequest(string DocumentId);
-    private record ForgotPasswordRequest(string TenantCode, string Email);
+    private record ForgotPasswordRequest(string TenantCode, string Email, string? Subdomain = null);
 }
