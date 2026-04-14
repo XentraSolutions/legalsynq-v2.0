@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+'use client';
+
+import { type ReactNode, useState } from 'react';
 import type { TenantDetail, ProvisioningStatus, ProvisioningFailureStage } from '@/types/control-center';
 import { RetryProvisioningButton } from './retry-provisioning-button';
 import { RetryVerificationButton } from './retry-verification-button';
@@ -171,6 +173,15 @@ export function TenantDetailCard({ tenant }: TenantDetailCardProps) {
               <RetryVerificationButton tenantId={tenant.id} />
             </div>
           )}
+          {tenant.subdomain && (
+            <div className="px-5 py-3">
+              <DnsInstructionsPanel
+                subdomain={tenant.subdomain}
+                hostname={tenant.hostname}
+                status={tenant.provisioningStatus}
+              />
+            </div>
+          )}
         </dl>
       </div>
 
@@ -232,4 +243,104 @@ function formatType(type: string): string {
     Other:      'Other',
   };
   return labels[type] ?? type;
+}
+
+const DNS_BASE_DOMAIN = 'demo.legalsynq.com';
+
+function DnsInstructionsPanel({
+  subdomain,
+  hostname,
+  status,
+}: {
+  subdomain: string;
+  hostname?: string;
+  status?: ProvisioningStatus;
+}) {
+  const [open, setOpen] = useState(false);
+  const fqdn = hostname || `${subdomain}.${DNS_BASE_DOMAIN}`;
+
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-gray-100 transition-colors"
+      >
+        <span className="text-xs font-semibold text-gray-700">DNS Setup Instructions</span>
+        <svg
+          className={`h-3.5 w-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-4 border-t border-gray-200 text-[11px] leading-relaxed text-gray-600">
+          <div className="pt-3">
+            <p className="text-xs font-medium text-gray-700 mb-1">Platform Subdomain</p>
+            <p>
+              The platform automatically provisions and manages a DNS record for this tenant at:
+            </p>
+            <div className="mt-1.5 flex items-center gap-2">
+              <code className="font-mono bg-white border border-gray-200 px-2 py-1 rounded text-gray-800 select-all">
+                https://{fqdn}
+              </code>
+              {status === 'Active' && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200">
+                  Live
+                </span>
+              )}
+            </div>
+            <p className="mt-1.5 text-gray-500">
+              This is an <strong>A record</strong> pointing to the LegalSynq platform server, created in Route53 with a TTL of 300 seconds.
+              No manual DNS setup is required for this address.
+            </p>
+          </div>
+
+          <div className="border-t border-gray-200 pt-3">
+            <p className="text-xs font-medium text-gray-700 mb-1">Custom Domain Setup</p>
+            <p>
+              If the tenant wants to use their own branded domain (e.g. <code className="text-[10px] bg-white px-0.5 rounded">liens.acmelaw.com</code>),
+              instruct them to create a <strong>CNAME</strong> record with their DNS provider:
+            </p>
+            <div className="mt-2 bg-white border border-gray-200 rounded-md overflow-x-auto">
+              <table className="w-full min-w-[320px]">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">Type</th>
+                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">Host / Name</th>
+                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">Points To</th>
+                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">TTL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="px-3 py-1.5 font-mono text-gray-800">CNAME</td>
+                    <td className="px-3 py-1.5 font-mono text-gray-500 italic">liens</td>
+                    <td className="px-3 py-1.5 font-mono text-blue-700 select-all break-all">{fqdn}</td>
+                    <td className="px-3 py-1.5 font-mono text-gray-800">300</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-gray-500">
+              The tenant replaces <code className="bg-white px-0.5 rounded">liens</code> with whatever subdomain they want on their own domain.
+              After the CNAME record is created, contact LegalSynq platform support to register the custom domain.
+            </p>
+          </div>
+
+          <div className="border-t border-gray-200 pt-3">
+            <p className="text-xs font-medium text-gray-700 mb-1">Troubleshooting</p>
+            <ul className="space-y-1 list-disc list-inside text-gray-600">
+              <li><strong>DNS not resolving</strong> — allow 5–10 minutes for propagation, then retry verification.</li>
+              <li><strong>Verification fails</strong> — check for conflicting A/AAAA records on the same hostname that override the CNAME.</li>
+              <li><strong>HTTPS errors</strong> — TLS certificates are provisioned automatically after DNS resolves. Allow a few extra minutes after DNS propagation.</li>
+              <li><strong>Retries exhausted</strong> — confirm the DNS record exists using a tool like <code className="bg-white px-0.5 rounded">dig</code> or <code className="bg-white px-0.5 rounded">nslookup</code>, fix any issues, then use the retry button above.</li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

@@ -320,28 +320,35 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
               </div>
             </div>
 
-            {/* Provisioning status */}
             {result.provisioningStatus && (
-              <div className={`flex items-start gap-3 rounded-md px-4 py-3 border ${
-                result.provisioningStatus === 'Active'
-                  ? 'bg-blue-50 border-blue-200'
-                  : 'bg-amber-50 border-amber-200'
-              }`}>
-                <div className="text-xs">
-                  <p className={`font-semibold ${result.provisioningStatus === 'Active' ? 'text-blue-800' : 'text-amber-800'}`}>
-                    Subdomain: {result.provisioningStatus === 'Active' ? 'Provisioned' : result.provisioningStatus}
-                  </p>
-                  {result.hostname && (
-                    <p className="mt-0.5 text-blue-700">
-                      <span className="font-mono bg-blue-100 px-1 rounded">{result.hostname}</span>
+              <div className="space-y-3">
+                <div className={`flex items-start gap-3 rounded-md px-4 py-3 border ${
+                  result.provisioningStatus === 'Active'
+                    ? 'bg-blue-50 border-blue-200'
+                    : 'bg-amber-50 border-amber-200'
+                }`}>
+                  <div className="text-xs">
+                    <p className={`font-semibold ${result.provisioningStatus === 'Active' ? 'text-blue-800' : 'text-amber-800'}`}>
+                      Subdomain: {result.provisioningStatus === 'Active' ? 'Provisioned' : result.provisioningStatus}
                     </p>
-                  )}
-                  {result.provisioningStatus !== 'Active' && (
-                    <p className="mt-0.5 text-amber-700">
-                      DNS provisioning will be retried from the tenant detail page.
-                    </p>
-                  )}
+                    {result.hostname && (
+                      <p className="mt-0.5 text-blue-700">
+                        <span className="font-mono bg-blue-100 px-1 rounded">{result.hostname}</span>
+                      </p>
+                    )}
+                    {result.provisioningStatus !== 'Active' && (
+                      <p className="mt-0.5 text-amber-700">
+                        DNS provisioning will be retried from the tenant detail page.
+                      </p>
+                    )}
+                  </div>
                 </div>
+
+                <DnsSetupInstructions
+                  subdomain={result.subdomain || form.preferredSubdomain || deriveSubdomain(form.name)}
+                  hostname={result.hostname}
+                  status={result.provisioningStatus}
+                />
               </div>
             )}
 
@@ -400,3 +407,99 @@ const selectClass = [
   'text-gray-900',
   'focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400',
 ].join(' ');
+
+const BASE_DOMAIN = 'demo.legalsynq.com';
+
+function DnsSetupInstructions({
+  subdomain,
+  hostname,
+  status,
+}: {
+  subdomain: string;
+  hostname?: string;
+  status: string;
+}) {
+  const fqdn = hostname || `${subdomain}.${BASE_DOMAIN}`;
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-gray-100 transition-colors"
+      >
+        <span className="text-xs font-semibold text-gray-700">DNS Setup Instructions</span>
+        <svg
+          className={`h-3.5 w-3.5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 space-y-3 border-t border-gray-200">
+          <div className="pt-3">
+            <p className="text-xs font-medium text-gray-700 mb-1.5">Platform Subdomain (Automatic)</p>
+            <p className="text-[11px] text-gray-600 leading-relaxed">
+              The platform automatically creates a DNS record for this tenant.
+              {status === 'Active' ? ' The subdomain is live and ready to use.' : ' DNS propagation typically takes 1–5 minutes.'}
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-[11px] text-gray-500 shrink-0">URL:</span>
+              <code className="text-[11px] font-mono bg-white border border-gray-200 px-2 py-1 rounded text-gray-800 select-all">
+                https://{fqdn}
+              </code>
+            </div>
+          </div>
+
+          <div className="border-t border-gray-200 pt-3">
+            <p className="text-xs font-medium text-gray-700 mb-1.5">Custom Domain (Optional)</p>
+            <p className="text-[11px] text-gray-600 leading-relaxed">
+              If this tenant wants to use their own domain (e.g. <code className="text-[10px] bg-white px-0.5 rounded">app.acmelaw.com</code>),
+              they need to add a <strong>CNAME</strong> record with their DNS provider:
+            </p>
+            <div className="mt-2 bg-white border border-gray-200 rounded-md overflow-x-auto">
+              <table className="w-full text-[11px] min-w-[320px]">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">Type</th>
+                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">Name</th>
+                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">Value</th>
+                    <th className="text-left px-3 py-1.5 font-semibold text-gray-600">TTL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="px-3 py-1.5 font-mono text-gray-800">CNAME</td>
+                    <td className="px-3 py-1.5 font-mono text-gray-800">app</td>
+                    <td className="px-3 py-1.5 font-mono text-blue-700 select-all break-all">{fqdn}</td>
+                    <td className="px-3 py-1.5 font-mono text-gray-800">300</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500 leading-relaxed">
+              Replace <code className="text-[10px] bg-white px-0.5 rounded">app</code> with the desired subdomain prefix
+              on the tenant's own domain. After the CNAME is set, contact platform support to enable the custom domain on LegalSynq.
+            </p>
+          </div>
+
+          <div className="border-t border-gray-200 pt-3">
+            <p className="text-xs font-medium text-gray-700 mb-1.5">Verification</p>
+            <p className="text-[11px] text-gray-600 leading-relaxed">
+              The platform automatically verifies that the DNS record resolves correctly and the tenant portal is reachable.
+              If verification fails, you can retry from the tenant detail page. Common causes of failure:
+            </p>
+            <ul className="mt-1.5 text-[11px] text-gray-600 space-y-1 list-disc list-inside">
+              <li>DNS propagation hasn't completed yet (wait 5–10 minutes and retry)</li>
+              <li>Conflicting DNS records on the domain (A/AAAA records override CNAME)</li>
+              <li>Firewall or proxy blocking verification requests</li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
