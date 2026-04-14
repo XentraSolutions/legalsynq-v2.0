@@ -131,12 +131,20 @@ apps/web/
         documents.mapper.ts      ← DTO→UI model mappers: mapDocumentToListItem, mapDocumentToDetail, mapDocumentVersion, mapDocumentPagination; formatFileSize helper
         documents.service.ts     ← business service: list, getById, upload, update, delete, getViewUrl, getDownloadUrl, listVersions
         index.ts                 ← barrel exports
+      notifications/               ← LS-LIENS-UI-009: notification service layer for SynqLiens shell (bell icon + dashboard activity)
+        notifications.types.ts     ← DTOs (NotifSummaryDto, NotifStatsDto, NotifListResponseDto, NotifStatsResponseDto), UI models (NotificationItem, NotificationStats, NotificationListResult), NotificationQuery
+        notifications.api.ts       ← HTTP client calling BFF routes at /api/notifications/{list,stats} with credentials
+        notifications.mapper.ts    ← DTO→UI model mappers: mapNotificationItem (parses recipientJson, metadataJson), mapNotificationStats
+        notifications.service.ts   ← business service: getNotifications, getRecentNotifications, getStats, getFailedCount
+        index.ts                   ← barrel exports
     stores/
       lien-store.ts              ← Zustand store: full CRUD for all 7 entities, role simulation, toast state, activity log, case notes, canPerformAction() helper
     app/api/
       careconnect/[...path]/route.ts ← BFF catch-all proxy for CareConnect client calls
       fund/[...path]/route.ts        ← BFF catch-all proxy for Fund client calls
       lien/[...path]/route.ts        ← BFF catch-all proxy for SynqLien client calls (fixed: /liens/ prefix matches gateway YARP route)
+      notifications/list/route.ts    ← BFF proxy: resolves tenantId from session → injects X-Tenant-Id → proxies GET /v1/notifications
+      notifications/stats/route.ts   ← BFF proxy: resolves tenantId from session → injects X-Tenant-Id → proxies GET /v1/notifications/stats
     types/
       careconnect.ts             ← ProviderSummary/Detail, ReferralSummary/Detail, CreateReferralRequest, PagedResponse
       fund.ts                    ← FundingApplicationSummary/Detail, Create/Submit/Approve/DenyRequest, ApplicationStatus

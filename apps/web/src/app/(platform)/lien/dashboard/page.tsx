@@ -1,20 +1,64 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { KpiCard } from '@/components/lien/kpi-card';
 import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
 import { useLienStore, canPerformAction } from '@/stores/lien-store';
-import { formatCurrency, timeAgo } from '@/lib/lien-mock-data';
+import { formatCurrency } from '@/lib/lien-mock-data';
 import { CreateCaseForm } from '@/components/lien/forms/create-case-form';
+import { notificationsService, type NotificationItem } from '@/lib/notifications';
+
+const CHANNEL_ICON: Record<string, string> = {
+  email: 'ri-mail-line',
+  sms: 'ri-chat-1-line',
+  push: 'ri-notification-3-line',
+  'in-app': 'ri-apps-line',
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  sent: 'text-emerald-600',
+  accepted: 'text-blue-600',
+  processing: 'text-indigo-600',
+  failed: 'text-red-600',
+  blocked: 'text-amber-600',
+};
+
+function notifTimeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
 
 export default function LienDashboardPage() {
   const cases = useLienStore((s) => s.cases);
   const liens = useLienStore((s) => s.liens);
   const servicing = useLienStore((s) => s.servicing);
-  const activity = useLienStore((s) => s.activity);
   const role = useLienStore((s) => s.currentRole);
   const [showCreateCase, setShowCreateCase] = useState(false);
+  const [recentNotifs, setRecentNotifs] = useState<NotificationItem[]>([]);
+  const [notifsLoading, setNotifsLoading] = useState(true);
+  const [notifsError, setNotifsError] = useState(false);
+
+  const loadNotifs = useCallback(async () => {
+    setNotifsLoading(true);
+    setNotifsError(false);
+    try {
+      const items = await notificationsService.getRecentNotifications(6);
+      setRecentNotifs(items);
+    } catch {
+      setNotifsError(true);
+    } finally {
+      setNotifsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadNotifs(); }, [loadNotifs]);
 
   const pendingTasks = servicing.filter((s) => s.status !== 'Completed');
   const overdueTasks = pendingTasks.filter((s) => new Date(s.dueDate) < new Date());
@@ -93,18 +137,36 @@ export default function LienDashboardPage() {
         <div className="bg-white border border-gray-200 rounded-xl">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <h2 className="text-sm font-semibold text-gray-800">Recent Activity</h2>
+            <Link href="/notifications/activity" className="text-xs text-primary font-medium hover:underline">View All</Link>
           </div>
           <div className="divide-y divide-gray-100">
-            {activity.slice(0, 6).map((a) => (
-              <div key={a.id} className="px-5 py-3 flex gap-3">
-                <div className={`w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 ${a.color}`}>
-                  <i className={`${a.icon} text-base`} />
+            {notifsLoading && (
+              <div className="px-5 py-8 flex items-center justify-center gap-2 text-sm text-gray-400">
+                <span className="inline-block w-4 h-4 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+                Loading...
+              </div>
+            )}
+            {!notifsLoading && notifsError && (
+              <div className="px-5 py-8 text-center">
+                <p className="text-xs text-gray-400">Unable to load recent activity</p>
+                <button onClick={loadNotifs} className="text-xs text-indigo-600 mt-1 hover:underline">Retry</button>
+              </div>
+            )}
+            {!notifsLoading && !notifsError && recentNotifs.length === 0 && (
+              <div className="px-5 py-8 text-center text-sm text-gray-400">No recent activity</div>
+            )}
+            {!notifsLoading && !notifsError && recentNotifs.map((n) => (
+              <Link key={n.id} href={`/notifications/activity/${n.id}`} className="px-5 py-3 flex gap-3 hover:bg-gray-50 transition-colors block">
+                <div className={`w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 ${STATUS_COLOR[n.status.toLowerCase()] ?? 'text-gray-500'}`}>
+                  <i className={`${CHANNEL_ICON[n.channel] ?? 'ri-mail-line'} text-base`} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-gray-700">{a.description}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{a.actor} &middot; {timeAgo(a.timestamp)}</p>
+                  <p className="text-xs text-gray-700 font-medium truncate">{n.subject ?? n.templateKey ?? n.channel} notification</p>
+                  <p className="text-xs text-gray-500 truncate">To: {n.recipient}</p>
+                  {n.errorMessage && <p className="text-[10px] text-red-500 truncate mt-0.5">{n.errorMessage}</p>}
+                  <p className="text-xs text-gray-400 mt-0.5">{n.status} &middot; {notifTimeAgo(n.timestampRaw)}</p>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>

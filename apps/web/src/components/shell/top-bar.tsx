@@ -7,6 +7,7 @@ import { useSession } from '@/hooks/use-session';
 import { useProduct } from '@/contexts/product-context';
 import { orgTypeLabel, PRODUCT_CODE_TO_NAV_KEY } from '@/lib/nav';
 import { useTenantBranding } from '@/providers/tenant-branding-provider';
+import { NotificationBell } from '@/components/shell/notification-bell';
 
 // ── All platform products shown in the app switcher ──────────────────────────
 
@@ -75,6 +76,9 @@ export function TopBar() {
 
       {/* ── Spacer ──────────────────────────────────────────────────────── */}
       <div className="flex-1" />
+
+      {/* ── Notification bell ──────────────────────────────────────────── */}
+      <NotificationBell />
 
       {/* ── User menu ────────────────────────────────────────────────────────── */}
       {/* Always render something so the top-right corner never goes blank:    */}
