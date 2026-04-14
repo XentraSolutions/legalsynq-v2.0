@@ -40,6 +40,14 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
       ],
     },
     {
+      heading: 'MARKETPLACE',
+      items: [
+        { href: '/lien/my-liens',    label: 'My Liens',    icon: 'ri-price-tag-3-line',         requiredRoles: [ProductRole.SynqLienSeller] },
+        { href: '/lien/marketplace', label: 'Marketplace', icon: 'ri-store-2-line',              requiredRoles: [ProductRole.SynqLienBuyer] },
+        { href: '/lien/portfolio',   label: 'Portfolio',   icon: 'ri-briefcase-line',            requiredRoles: [ProductRole.SynqLienBuyer, ProductRole.SynqLienHolder] },
+      ],
+    },
+    {
       heading: 'MY TOOLS',
       items: [
         { href: '/lien/batch-entry',       label: 'Batch Entry',       icon: 'ri-upload-2-line' },

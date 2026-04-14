@@ -43,7 +43,7 @@ apps/web/
       auth-guards.ts            ← requireAuthenticated/Org/ProductRole/Admin (server components)
       tenant-auth-guard.ts      ← requireTenantAdmin() — redirects non-admins to /tenant/access-denied
       tenant-api.ts             ← BFF layer for tenant authorization APIs (server + client methods)
-      nav.ts                    ← buildNavGroups(session) — role-driven nav derivation
+      nav.ts                    ← buildNavGroups(session) — role-driven nav derivation; PRODUCT_NAV lien section has MY TASKS, MARKETPLACE (role-gated: SynqLienSeller/Buyer/Holder), MY TOOLS, SETTINGS; filterNavByRoles() gates items by ProductRole
     providers/
       session-provider.tsx      ← SessionProvider — fetches BFF /api/auth/me client-side on mount
       tenant-branding-provider.tsx ← TenantBrandingProvider — anonymous branding fetch + CSS vars + X-Tenant-Code header
@@ -141,6 +141,7 @@ apps/web/
         lien/marketplace/page.tsx
         lien/layout.tsx                           ← LienProviders wrapper (ToastContainer + RoleSwitcher)
         lien/dashboard/page.tsx                   ← V2 UX: store-wired dashboard, KPI cards, task queue, activity feed, donut charts, Create Case modal
+        lien/task-manager/page.tsx                ← V2 UX: Kanban board + list view, KPI cards (pending/in-progress/escalated/overdue), board/list toggle, filter by priority/assignee, quick status actions
         lien/cases/page.tsx                       ← V2 UX: store-backed list, Create Case modal, ActionMenu (advance/reassign), SideDrawer preview, ConfirmDialog
         lien/cases/[id]/page.tsx                  ← V2 UX: StatusProgress workflow, Add Lien/Doc/Task, NotesPanel, advance status with confirm
         lien/liens/page.tsx                       ← V2 UX: store-backed list, Create Lien modal, ActionMenu (list/withdraw), SideDrawer, multi-filter
