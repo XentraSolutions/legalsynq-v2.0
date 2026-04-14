@@ -1,3 +1,4 @@
+import { isRedirectError }         from 'next/dist/client/components/redirect-error';
 import { requirePlatformAdmin }    from '@/lib/auth-guards';
 import { controlCenterServerApi }  from '@/lib/control-center-api';
 import { CCShell }                 from '@/components/shell/cc-shell';
@@ -35,6 +36,7 @@ export default async function TraceViewerPage({ searchParams }: Props) {
         (a, b) => new Date(a.occurredAtUtc).getTime() - new Date(b.occurredAtUtc).getTime(),
       );
     } catch (err) {
+      if (isRedirectError(err)) throw err;
       fetchError = err instanceof Error ? err.message : 'Failed to load trace events.';
     }
   }

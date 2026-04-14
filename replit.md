@@ -455,6 +455,20 @@ shared/
 | `/careconnect/health` | Anonymous | CareConnect :5003 |
 | `/careconnect/info` | Anonymous | CareConnect :5003 |
 | `/careconnect/**` | Bearer JWT required | CareConnect :5003 |
+| `/audit-service/health` | Anonymous | Audit :5007 |
+| `/audit-service/info` | Anonymous | Audit :5007 |
+| `/audit-service/audit/**` | Anonymous (audit service handles own auth via QueryAuth__Mode) | Audit :5007 |
+| `/audit-service/export/**` | Anonymous (audit service handles own auth via QueryAuth__Mode) | Audit :5007 |
+| `/notifications/health` | Anonymous | Notifications :5008 |
+| `/notifications/**` | Bearer JWT required | Notifications :5008 |
+| `/documents/health` | Anonymous | Documents :5006 |
+| `/documents/access/**` | Anonymous | Documents :5006 |
+| `/documents/internal/**` | Anonymous | Documents :5006 |
+| `/documents/public/logo/{id}` | Anonymous | Documents :5006 |
+| `/documents/**` | Bearer JWT required | Documents :5006 |
+| `/liens/health` | Anonymous | Liens :5009 |
+| `/liens/info` | Anonymous | Liens :5009 |
+| `/liens/**` | Bearer JWT required | Liens :5009 |
 
 ## Identity Domain Model
 

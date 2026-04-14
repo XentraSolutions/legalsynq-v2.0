@@ -1,3 +1,4 @@
+import { isRedirectError }        from 'next/dist/client/components/redirect-error';
 import { requirePlatformAdmin }   from '@/lib/auth-guards';
 import { getTenantContext }       from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
@@ -63,6 +64,7 @@ export default async function UserActivityPage({ searchParams }: Props) {
     items      = result.items;
     totalCount = result.totalCount;
   } catch (err) {
+    if (isRedirectError(err)) throw err;
     fetchError = err instanceof Error ? err.message : 'Failed to load user activity.';
   }
 

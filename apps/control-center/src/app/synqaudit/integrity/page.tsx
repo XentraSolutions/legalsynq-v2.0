@@ -1,3 +1,4 @@
+import { isRedirectError }         from 'next/dist/client/components/redirect-error';
 import { requirePlatformAdmin }    from '@/lib/auth-guards';
 import { controlCenterServerApi }  from '@/lib/control-center-api';
 import { CCShell }                 from '@/components/shell/cc-shell';
@@ -18,6 +19,7 @@ export default async function IntegrityPage() {
   try {
     checkpoints = await controlCenterServerApi.auditIntegrity.list();
   } catch (err) {
+    if (isRedirectError(err)) throw err;
     fetchError = err instanceof Error ? err.message : 'Could not load integrity checkpoints.';
   }
 

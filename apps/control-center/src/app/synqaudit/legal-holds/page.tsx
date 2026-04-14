@@ -1,3 +1,4 @@
+import { isRedirectError }         from 'next/dist/client/components/redirect-error';
 import { requirePlatformAdmin }    from '@/lib/auth-guards';
 import { controlCenterServerApi }  from '@/lib/control-center-api';
 import { CCShell }                 from '@/components/shell/cc-shell';
@@ -26,6 +27,7 @@ export default async function LegalHoldsPage({ searchParams }: Props) {
     try {
       holds = await controlCenterServerApi.auditLegalHolds.listForRecord(auditId);
     } catch (err) {
+      if (isRedirectError(err)) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('404') || msg.includes('not found')) {
         notFound = true;

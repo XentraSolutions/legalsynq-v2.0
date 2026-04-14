@@ -1,3 +1,4 @@
+import { isRedirectError }         from 'next/dist/client/components/redirect-error';
 import { requirePlatformAdmin }    from '@/lib/auth-guards';
 import { controlCenterServerApi }  from '@/lib/control-center-api';
 import { CCShell }                 from '@/components/shell/cc-shell';
@@ -25,6 +26,7 @@ export default async function SynqAuditOverviewPage() {
     recentEvents = result.items;
     totalCount   = result.totalCount;
   } catch (err) {
+    if (isRedirectError(err)) throw err;
     fetchError = err instanceof Error ? err.message : 'Could not reach the audit service.';
   }
 
