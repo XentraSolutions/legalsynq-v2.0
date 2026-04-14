@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 const SERVICES: ServiceDef[] = [
   { name: 'Gateway',       url: 'http://127.0.0.1:5010/health', category: 'infrastructure' },
   { name: 'Identity',      url: 'http://127.0.0.1:5001/health', category: 'infrastructure' },
+  { name: 'Documents',     url: 'http://127.0.0.1:5006/health', category: 'infrastructure' },
   { name: 'Notifications', url: 'http://127.0.0.1:5008/health', category: 'infrastructure' },
   { name: 'Audit',         url: 'http://127.0.0.1:5007/health', category: 'infrastructure' },
   { name: 'SynqFund',      url: 'http://127.0.0.1:5002/health', category: 'product' },
