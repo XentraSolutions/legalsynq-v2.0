@@ -3,7 +3,7 @@
 import { use, useState } from 'react';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
-import { formatDate, formatDateTime } from '@/lib/lien-mock-data';
+import { formatDate, formatDateTime } from '@/lib/lien-utils';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { ConfirmDialog } from '@/components/lien/modal';

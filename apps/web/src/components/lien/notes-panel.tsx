@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { formatDateTime } from '@/lib/lien-mock-data';
+import { formatDateTime } from '@/lib/lien-utils';
 
 interface Note {
   id: string;

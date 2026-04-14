@@ -10,7 +10,7 @@ import { AddUserForm } from '@/components/lien/forms/add-user-form';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
-import { formatDate } from '@/lib/lien-mock-data';
+import { formatDate } from '@/lib/lien-utils';
 
 export default function UserManagementPage() {
   const users = useLienStore((s) => s.users);

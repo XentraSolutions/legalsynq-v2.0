@@ -5,12 +5,6 @@ import type {
   ContactSummary, ContactDetail, DocumentSummary, DocumentDetail,
   LienUser, LienUserDetail, LienOfferSummary,
 } from '@/types/lien';
-import {
-  MOCK_CASES, MOCK_CASE_DETAILS, MOCK_LIENS, MOCK_LIEN_DETAILS, MOCK_LIEN_HISTORY,
-  MOCK_BILLS_OF_SALE, MOCK_BOS_DETAILS, MOCK_SERVICING, MOCK_SERVICING_DETAILS,
-  MOCK_CONTACTS, MOCK_CONTACT_DETAILS, MOCK_DOCUMENTS, MOCK_DOCUMENT_DETAILS,
-  MOCK_USERS, MOCK_USER_DETAILS,
-} from '@/lib/lien-mock-data';
 
 export type AppRole = 'Admin' | 'Case Manager' | 'Analyst' | 'Viewer';
 
@@ -114,8 +108,8 @@ export const useLienStore = create<LienStore>((set, get) => ({
   },
   removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
-  cases: [...MOCK_CASES],
-  caseDetails: { ...MOCK_CASE_DETAILS },
+  cases: [],
+  caseDetails: {},
   addCase: (c) => {
     if (!guardMutation(get, 'create')) return;
     set((s) => ({ cases: [c, ...s.cases] }));
@@ -131,8 +125,8 @@ export const useLienStore = create<LienStore>((set, get) => ({
   },
   getCaseDetail: (id) => get().caseDetails[id] ?? get().cases.find((c) => c.id === id),
 
-  liens: [...MOCK_LIENS],
-  lienDetails: { ...MOCK_LIEN_DETAILS },
+  liens: [],
+  lienDetails: {},
   addLien: (l) => {
     if (!guardMutation(get, 'create')) return;
     set((s) => {
@@ -191,8 +185,8 @@ export const useLienStore = create<LienStore>((set, get) => ({
   },
   getLienDetail: (id) => get().lienDetails[id] ?? get().liens.find((l) => l.id === id),
 
-  billsOfSale: [...MOCK_BILLS_OF_SALE],
-  bosDetails: { ...MOCK_BOS_DETAILS },
+  billsOfSale: [],
+  bosDetails: {},
   addBos: (b) => {
     if (!guardMutation(get, 'create')) return;
     set((s) => ({ billsOfSale: [b, ...s.billsOfSale] }));
@@ -206,8 +200,8 @@ export const useLienStore = create<LienStore>((set, get) => ({
     }));
   },
 
-  servicing: [...MOCK_SERVICING],
-  servicingDetails: { ...MOCK_SERVICING_DETAILS },
+  servicing: [],
+  servicingDetails: {},
   addServicingTask: (s) => {
     if (!guardMutation(get, 'create')) return;
     set((st) => ({ servicing: [s, ...st.servicing] }));
@@ -223,8 +217,8 @@ export const useLienStore = create<LienStore>((set, get) => ({
     }));
   },
 
-  contacts: [...MOCK_CONTACTS],
-  contactDetails: { ...MOCK_CONTACT_DETAILS },
+  contacts: [],
+  contactDetails: {},
   addContact: (c) => {
     if (!guardMutation(get, 'create')) return;
     set((s) => ({ contacts: [c, ...s.contacts] }));
@@ -238,8 +232,8 @@ export const useLienStore = create<LienStore>((set, get) => ({
     }));
   },
 
-  documents: [...MOCK_DOCUMENTS],
-  documentDetails: { ...MOCK_DOCUMENT_DETAILS },
+  documents: [],
+  documentDetails: {},
   addDocument: (d) => {
     if (!guardMutation(get, 'create')) return;
     set((s) => ({ documents: [d, ...s.documents] }));
@@ -253,8 +247,8 @@ export const useLienStore = create<LienStore>((set, get) => ({
     }));
   },
 
-  users: [...MOCK_USERS],
-  userDetails: { ...MOCK_USER_DETAILS },
+  users: [],
+  userDetails: {},
   addUser: (u) => {
     if (!guardMutation(get, 'create')) return;
     set((s) => ({ users: [u, ...s.users] }));

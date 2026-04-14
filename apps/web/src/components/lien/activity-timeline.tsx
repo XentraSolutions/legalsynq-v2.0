@@ -1,4 +1,4 @@
-import { formatDateTime } from '@/lib/lien-mock-data';
+import { formatDateTime } from '@/lib/lien-utils';
 
 interface TimelineEvent {
   action: string;

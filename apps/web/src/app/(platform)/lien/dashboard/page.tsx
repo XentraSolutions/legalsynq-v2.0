@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { KpiCard } from '@/components/lien/kpi-card';
 import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
 import { useLienStore } from '@/stores/lien-store';
-import { formatCurrency } from '@/lib/lien-mock-data';
+import { formatCurrency } from '@/lib/lien-utils';
 import { CreateCaseForm } from '@/components/lien/forms/create-case-form';
 import {
   unifiedActivityService,
