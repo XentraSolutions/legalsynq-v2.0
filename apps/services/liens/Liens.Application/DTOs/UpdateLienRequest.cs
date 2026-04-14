@@ -7,7 +7,6 @@ public sealed class UpdateLienRequest
     public Guid? CaseId { get; init; }
     public Guid? FacilityId { get; init; }
     public decimal OriginalAmount { get; init; }
-    public decimal? OfferPrice { get; init; }
     public string? Jurisdiction { get; init; }
     public bool? IsConfidential { get; init; }
     public string? SubjectFirstName { get; init; }

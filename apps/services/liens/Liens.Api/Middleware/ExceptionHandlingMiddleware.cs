@@ -59,6 +59,19 @@ public class ExceptionHandlingMiddleware
                 }
             });
         }
+        catch (InvalidOperationException ex)
+        {
+            context.Response.StatusCode = StatusCodes.Status409Conflict;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = new
+                {
+                    code = "business_rule_violation",
+                    message = ex.Message
+                }
+            });
+        }
         catch (UnauthorizedAccessException ex)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;

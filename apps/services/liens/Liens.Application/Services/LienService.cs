@@ -73,8 +73,6 @@ public sealed class LienService : ILienService
             errors.Add("lienType", [$"Invalid lien type: '{request.LienType}'. Valid values: {string.Join(", ", LienType.All)}"]);
         if (request.OriginalAmount < 0)
             errors.Add("originalAmount", ["Original amount cannot be negative."]);
-        if (request.OfferPrice.HasValue && request.OfferPrice.Value < 0)
-            errors.Add("offerPrice", ["Offer price cannot be negative."]);
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing or invalid.", errors);
 
@@ -140,8 +138,6 @@ public sealed class LienService : ILienService
             errors.Add("lienType", [$"Invalid lien type: '{request.LienType}'. Valid values: {string.Join(", ", LienType.All)}"]);
         if (request.OriginalAmount < 0)
             errors.Add("originalAmount", ["Original amount cannot be negative."]);
-        if (request.OfferPrice.HasValue && request.OfferPrice.Value < 0)
-            errors.Add("offerPrice", ["Offer price cannot be negative."]);
         if (errors.Count > 0)
             throw new ValidationException("One or more fields are invalid.", errors);
 
@@ -178,9 +174,6 @@ public sealed class LienService : ILienService
 
         if (request.FacilityId.HasValue)
             entity.AttachFacility(request.FacilityId.Value, actingUserId);
-
-        if (request.OfferPrice.HasValue)
-            entity.SetFinancials(request.OriginalAmount, actingUserId, offerPrice: request.OfferPrice);
 
         await _lienRepo.UpdateAsync(entity, ct);
 

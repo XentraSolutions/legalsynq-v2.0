@@ -289,20 +289,22 @@ apps/
     liens/
       Liens.Api/                          → ASP.NET Core Web API (port 5009)
         Endpoints/
-          LienEndpoints.cs               ← permission-guarded stub endpoints (RequireProductAccess + RequirePermission filters)
-        Middleware/ExceptionHandlingMiddleware.cs
+          LienEndpoints.cs               ← real database-backed Lien CRUD endpoints (GET list/by-id/by-number, POST, PUT)
+          CaseEndpoints.cs               ← real database-backed Case CRUD endpoints (GET list/by-id/by-number, POST, PUT)
+        Middleware/ExceptionHandlingMiddleware.cs ← handles ValidationException→400, NotFoundException→404, ConflictException→409, InvalidOperationException→409, UnauthorizedAccessException→401
         appsettings.json                  ← port 5009 + ConnectionStrings:LiensDb (placeholder)
         appsettings.Development.json      ← dev JWT signing key + debug logging
       Liens.Application/
-        Interfaces/                       ← future service interfaces
-        Services/                         ← future application services
+        DTOs/                             ← LienResponse, CreateLienRequest, UpdateLienRequest, CaseResponse, CreateCaseRequest, UpdateCaseRequest, PaginatedResult<T>
+        Interfaces/                       ← ILienService, ICaseService, ILienSaleService, IUnitOfWork, ITransactionScope
+        Services/                         ← LienService, CaseService, LienSaleService
       Liens.Domain/
-        Entities/                         ← Lien, LienOffer, Case, Contact, Facility, LookupValue
-        LiensPermissions.cs              ← static permission code constants (SYNQ_LIENS.lien:create/offer/read:own/browse/purchase/read:held/service/settle)
+        Entities/                         ← Lien, LienOffer, Case, Contact, Facility, LookupValue, BillOfSale
+        LiensPermissions.cs              ← static permission code constants (LienRead/Create/Update/Offer/ReadOwn/Browse/Purchase/ReadHeld/Service/Settle + CaseRead/Create/Update)
       Liens.Infrastructure/
-        DependencyInjection.cs            ← AddLiensServices() extension (ICurrentRequestContext registration)
-        Persistence/                      ← future DbContext + migrations
-        Repositories/                     ← future repository implementations
+        DependencyInjection.cs            ← AddLiensServices() extension (repos, services, UnitOfWork, ICurrentRequestContext)
+        Persistence/                      ← LiensDbContext, UnitOfWork, migrations
+        Repositories/                     ← LienRepository, CaseRepository, FacilityRepository, ContactRepository, etc.
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/
