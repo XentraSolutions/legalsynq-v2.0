@@ -71,7 +71,7 @@ function resolveTenantCode(): string | null {
   const host = window.location.hostname;
   const parts = host.split('.');
   if (parts.length >= 3 && !host.startsWith('localhost')) {
-    return parts[0].toUpperCase();
+    return parts[0];
   }
 
   const envTenantCode = process.env.NEXT_PUBLIC_TENANT_CODE;

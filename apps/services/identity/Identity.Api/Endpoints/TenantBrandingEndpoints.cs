@@ -62,12 +62,24 @@ public static class TenantBrandingEndpoints
         ITenantRepository tenantRepository,
         CancellationToken ct)
     {
-        // Priority 1: explicit header (dev override or Next.js BFF-set header)
         if (httpContext.Request.Headers.TryGetValue("X-Tenant-Code", out var tenantCodeHeader))
         {
-            var code = tenantCodeHeader.ToString().Trim().ToUpperInvariant();
+            var code = tenantCodeHeader.ToString().Trim();
             if (!string.IsNullOrEmpty(code))
-                return await tenantRepository.GetByCodeAsync(code, ct);
+            {
+                var tenant = await tenantRepository.GetByCodeAsync(code, ct);
+                if (tenant is not null) return tenant;
+
+                var upper = code.ToUpperInvariant();
+                if (upper != code)
+                {
+                    tenant = await tenantRepository.GetByCodeAsync(upper, ct);
+                    if (tenant is not null) return tenant;
+                }
+
+                tenant = await tenantRepository.GetBySubdomainAsync(code, ct);
+                if (tenant is not null) return tenant;
+            }
         }
 
         // Priority 2: resolve from Host header via TenantDomains table (production)

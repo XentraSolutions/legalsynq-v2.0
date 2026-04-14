@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   if (!tenantCode) {
     const parts = host.split('.');
     if (parts.length >= 3) {
-      tenantCode = parts[0].toUpperCase();
+      tenantCode = parts[0];
     }
   }
 
