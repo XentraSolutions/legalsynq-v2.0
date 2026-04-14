@@ -125,6 +125,12 @@ apps/web/
         servicing.mapper.ts      ← DTO→UI model mappers: mapServicingToListItem, mapServicingToDetail, mapServicingPagination
         servicing.service.ts     ← business service: getItems, getItem, createItem, updateItem, updateStatus
         index.ts                 ← barrel exports
+      documents/                 ← LS-LIENS-UI-005: layered API service for Documents (v2 shared Documents service integration)
+        documents.types.ts       ← DTOs (DocumentResponseDto, DocumentListResponseDto, DocumentVersionResponseDto, IssuedTokenResponseDto, UpdateDocumentRequestDto), UI models (DocumentListItem, DocumentDetail, DocumentVersion), PaginationMeta, DocumentsQuery, UploadDocumentParams
+        documents.api.ts         ← raw HTTP client: list, getById, upload (FormData/multipart), update, delete, requestViewUrl, requestDownloadUrl, listVersions → uses apiClient + raw fetch for uploads
+        documents.mapper.ts      ← DTO→UI model mappers: mapDocumentToListItem, mapDocumentToDetail, mapDocumentVersion, mapDocumentPagination; formatFileSize helper
+        documents.service.ts     ← business service: list, getById, upload, update, delete, getViewUrl, getDownloadUrl, listVersions
+        index.ts                 ← barrel exports
     stores/
       lien-store.ts              ← Zustand store: full CRUD for all 7 entities, role simulation, toast state, activity log, case notes, canPerformAction() helper
     app/api/
@@ -171,8 +177,8 @@ apps/web/
         lien/contacts/page.tsx                    ← V2 UX: AddContactForm, SideDrawer preview, ActionMenu with email
         lien/contacts/[id]/page.tsx               ← V2 UX: store-backed detail, related cases from store, edit/email actions
         lien/batch-entry/page.tsx                 ← V2 prototype: 4-step bulk import wizard
-        lien/document-handling/page.tsx            ← V2 UX: UploadDocumentForm, ActionMenu (complete/archive/download), ConfirmDialog
-        lien/document-handling/[id]/page.tsx       ← V2 UX: store-backed detail, complete review/archive/share actions
+        lien/document-handling/page.tsx            ← LS-LIENS-UI-005: real API-backed document list, FilterToolbar (status), async list via documentsService, download via opaque tokens, archive via PATCH
+        lien/document-handling/[id]/page.tsx       ← LS-LIENS-UI-005: real API-backed document detail, preview/download via opaque tokens, version history table, scan threat display
         lien/user-management/page.tsx              ← V2 UX: AddUserForm, ActionMenu (activate/deactivate/unlock), admin-only, ConfirmDialog
         lien/user-management/[id]/page.tsx         ← V2 UX: store-backed detail, activate/deactivate/unlock actions
       tenant/

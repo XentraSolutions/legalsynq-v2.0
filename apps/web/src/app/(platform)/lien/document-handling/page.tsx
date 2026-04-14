@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/lien/page-header';
 import { FilterToolbar } from '@/components/lien/filter-toolbar';
@@ -9,32 +9,86 @@ import { ActionMenu } from '@/components/lien/action-menu';
 import { UploadDocumentForm } from '@/components/lien/forms/upload-document-form';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { useLienStore, canPerformAction } from '@/stores/lien-store';
-import { formatDate } from '@/lib/lien-mock-data';
-import { DOCUMENT_CATEGORY_LABELS } from '@/types/lien';
+import { documentsService, type DocumentListItem } from '@/lib/documents';
+
+const STATUS_OPTIONS = [
+  { value: 'DRAFT', label: 'Draft' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'ARCHIVED', label: 'Archived' },
+  { value: 'LEGAL_HOLD', label: 'Legal Hold' },
+];
+
+const STATUS_DISPLAY: Record<string, string> = {
+  DRAFT: 'Pending',
+  ACTIVE: 'Active',
+  ARCHIVED: 'Archived',
+  LEGAL_HOLD: 'Legal Hold',
+};
 
 export default function DocumentHandlingPage() {
-  const documents = useLienStore((s) => s.documents);
-  const updateDocument = useLienStore((s) => s.updateDocument);
   const addToast = useLienStore((s) => s.addToast);
   const role = useLienStore((s) => s.currentRole);
+  const [documents, setDocuments] = useState<DocumentListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
   const [showUpload, setShowUpload] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ id: string; status: string; label: string } | null>(null);
 
+  const fetchDocuments = useCallback(async () => {
+    try {
+      setLoading(true);
+      const result = await documentsService.list({
+        status: statusFilter || undefined,
+        limit: 100,
+      });
+      setDocuments(result.items);
+      setTotal(result.pagination.total);
+    } catch (err) {
+      addToast({ type: 'error', title: 'Load Failed', description: err instanceof Error ? err.message : 'Failed to load documents' });
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, addToast]);
+
+  useEffect(() => { fetchDocuments(); }, [fetchDocuments]);
+
   const filtered = documents.filter((d) => {
-    if (search && !d.fileName.toLowerCase().includes(search.toLowerCase()) && !d.documentNumber.toLowerCase().includes(search.toLowerCase())) return false;
-    if (statusFilter && d.status !== statusFilter) return false;
-    if (categoryFilter && d.category !== categoryFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!d.title.toLowerCase().includes(q) && !d.referenceId.toLowerCase().includes(q)) return false;
+    }
     return true;
   });
 
   const canEdit = canPerformAction(role, 'edit');
 
+  const handleStatusUpdate = async () => {
+    if (!confirmAction) return;
+    try {
+      await documentsService.update(confirmAction.id, { status: confirmAction.status });
+      addToast({ type: 'success', title: confirmAction.label });
+      setConfirmAction(null);
+      fetchDocuments();
+    } catch (err) {
+      addToast({ type: 'error', title: 'Update Failed', description: err instanceof Error ? err.message : 'Failed to update document' });
+      setConfirmAction(null);
+    }
+  };
+
+  const handleDownload = async (doc: DocumentListItem) => {
+    try {
+      const url = await documentsService.getDownloadUrl(doc.id);
+      window.open(url, '_blank');
+    } catch (err) {
+      addToast({ type: 'error', title: 'Download Failed', description: err instanceof Error ? err.message : 'Could not generate download link' });
+    }
+  };
+
   return (
     <div className="space-y-5">
-      <PageHeader title="Document Handling" subtitle={`${filtered.length} documents`}
+      <PageHeader title="Document Handling" subtitle={`${total} documents`}
         actions={canPerformAction(role, 'create') ? (
           <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
             <i className="ri-upload-2-line text-base" />Upload Document
@@ -42,55 +96,60 @@ export default function DocumentHandlingPage() {
         ) : undefined}
       />
       <FilterToolbar searchPlaceholder="Search documents..." onSearch={setSearch} filters={[
-        { label: 'All Statuses', value: statusFilter, onChange: setStatusFilter, options: [{ value: 'Pending', label: 'Pending' }, { value: 'Processing', label: 'Processing' }, { value: 'Completed', label: 'Completed' }, { value: 'Failed', label: 'Failed' }, { value: 'Archived', label: 'Archived' }] },
-        { label: 'All Categories', value: categoryFilter, onChange: setCategoryFilter, options: Object.entries(DOCUMENT_CATEGORY_LABELS).map(([v, l]) => ({ value: v, label: l })) },
+        { label: 'All Statuses', value: statusFilter, onChange: setStatusFilter, options: STATUS_OPTIONS },
       ]} />
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-100">
-            <thead><tr className="bg-gray-50">
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Doc #</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">File Name</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Category</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Linked To</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Size</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Uploaded By</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
-              <th className="px-4 py-3" />
-            </tr></thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.map((d) => (
-                <tr key={d.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3"><Link href={`/lien/document-handling/${d.id}`} className="text-xs font-mono text-primary hover:underline">{d.documentNumber}</Link></td>
-                  <td className="px-4 py-3"><div className="flex items-center gap-2"><i className="ri-file-text-line text-gray-400" /><span className="text-sm text-gray-700">{d.fileName}</span></div></td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{DOCUMENT_CATEGORY_LABELS[d.category] ?? d.category}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{d.linkedEntity}: {d.linkedEntityId}</td>
-                  <td className="px-4 py-3 text-xs text-gray-400">{d.fileSize}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{d.uploadedBy}</td>
-                  <td className="px-4 py-3"><StatusBadge status={d.status} /></td>
-                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(d.createdAtUtc)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <ActionMenu items={[
-                      { label: 'View Details', icon: 'ri-eye-line', onClick: () => {} },
-                      { label: 'Download', icon: 'ri-download-2-line', onClick: () => addToast({ type: 'info', title: 'Download', description: `${d.fileName} download simulated` }) },
-                      ...(canEdit && d.status === 'Pending' ? [{ label: 'Mark Complete', icon: 'ri-checkbox-circle-line', onClick: () => setConfirmAction({ id: d.id, status: 'Completed', label: 'Complete Review' }) }] : []),
-                      ...(canEdit && d.status !== 'Archived' ? [{ label: 'Archive', icon: 'ri-archive-line', onClick: () => setConfirmAction({ id: d.id, status: 'Archived', label: 'Archive Document' }), divider: true }] : []),
-                    ]} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {filtered.length === 0 && <div className="p-10 text-center text-sm text-gray-400">No documents found.</div>}
+        {loading ? (
+          <div className="p-10 text-center text-sm text-gray-400">Loading documents...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-100">
+              <thead><tr className="bg-gray-50">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Linked To</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Size</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Versions</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Scan</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
+                <th className="px-4 py-3" />
+              </tr></thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((d) => (
+                  <tr key={d.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <Link href={`/lien/document-handling/${d.id}`} className="text-sm font-medium text-primary hover:underline">{d.title}</Link>
+                      {d.mimeType && <p className="text-xs text-gray-400 mt-0.5">{d.mimeType}</p>}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{d.referenceType}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500">{d.referenceId || '—'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{d.fileSize}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500">v{d.versionCount}</td>
+                    <td className="px-4 py-3"><StatusBadge status={d.scanStatus} /></td>
+                    <td className="px-4 py-3"><StatusBadge status={STATUS_DISPLAY[d.status] ?? d.status} /></td>
+                    <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{d.createdAt}</td>
+                    <td className="px-4 py-3 text-right">
+                      <ActionMenu items={[
+                        { label: 'View Details', icon: 'ri-eye-line', onClick: () => {} },
+                        { label: 'Download', icon: 'ri-download-2-line', onClick: () => handleDownload(d) },
+                        ...(canEdit && d.status !== 'ARCHIVED' ? [{ label: 'Archive', icon: 'ri-archive-line', onClick: () => setConfirmAction({ id: d.id, status: 'ARCHIVED', label: 'Archive Document' }), divider: true }] : []),
+                      ]} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!loading && filtered.length === 0 && <div className="p-10 text-center text-sm text-gray-400">No documents found.</div>}
       </div>
 
-      <UploadDocumentForm open={showUpload} onClose={() => setShowUpload(false)} />
+      <UploadDocumentForm open={showUpload} onClose={() => setShowUpload(false)} onUploaded={fetchDocuments} />
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}
-          onConfirm={() => { updateDocument(confirmAction.id, { status: confirmAction.status }); addToast({ type: 'success', title: confirmAction.label }); setConfirmAction(null); }}
+          onConfirm={handleStatusUpdate}
           title={confirmAction.label} description={`${confirmAction.label} for this document?`} confirmLabel={confirmAction.label}
         />
       )}
