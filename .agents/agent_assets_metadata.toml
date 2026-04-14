@@ -276,3 +276,9 @@ id = "4lILri0fR4UG9sh3TNIS2"
 uri = "file://analysis/LS-LIENS-UI-007-report.md"
 type = "text"
 title = "LS-LIENS-UI-007 Report — Bill of Sale & Settlement Flow"
+
+[[outputs]]
+id = "OMYnrRpx-jaXjDbxY_rbY"
+uri = "file://analysis/LS-LIENS-UI-009-report.md"
+type = "text"
+title = "LS-LIENS-UI-009: Notifications Integration Report"
