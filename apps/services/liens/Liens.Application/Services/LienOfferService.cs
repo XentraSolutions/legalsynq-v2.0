@@ -13,6 +13,7 @@ public sealed class LienOfferService : ILienOfferService
     private readonly ILienOfferRepository _offerRepo;
     private readonly ILienRepository _lienRepo;
     private readonly IAuditPublisher _audit;
+    private readonly INotificationPublisher _notifications;
     private readonly ILogger<LienOfferService> _logger;
 
     private static readonly IReadOnlySet<string> OfferableStatuses = new HashSet<string>
@@ -25,11 +26,13 @@ public sealed class LienOfferService : ILienOfferService
         ILienOfferRepository offerRepo,
         ILienRepository lienRepo,
         IAuditPublisher audit,
+        INotificationPublisher notifications,
         ILogger<LienOfferService> logger)
     {
         _offerRepo = offerRepo;
         _lienRepo = lienRepo;
         _audit = audit;
+        _notifications = notifications;
         _logger = logger;
     }
 
@@ -123,6 +126,18 @@ public sealed class LienOfferService : ILienOfferService
             actorUserId: actingUserId,
             entityType: "LienOffer",
             entityId: entity.Id.ToString());
+
+        _ = _notifications.PublishAsync("lienoffer.submitted", tenantId, new Dictionary<string, string>
+        {
+            ["offerId"] = entity.Id.ToString(),
+            ["lienId"] = entity.LienId.ToString(),
+            ["lienNumber"] = lien.LienNumber,
+            ["buyerOrgId"] = entity.BuyerOrgId.ToString(),
+            ["sellerOrgId"] = entity.SellerOrgId.ToString(),
+            ["offerAmount"] = entity.OfferAmount.ToString("F2"),
+            ["originalLienAmount"] = lien.OriginalAmount.ToString("F2"),
+            ["userId"] = actingUserId.ToString(),
+        }, ct);
 
         return MapToResponse(entity);
     }

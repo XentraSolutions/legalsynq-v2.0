@@ -5,6 +5,7 @@ using Liens.Application.Repositories;
 using Liens.Application.Services;
 using Liens.Infrastructure.Audit;
 using Liens.Infrastructure.Documents;
+using Liens.Infrastructure.Notifications;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -57,6 +58,14 @@ public static class DependencyInjection
 
         services.AddAuditEventClient(configuration);
         services.AddScoped<IAuditPublisher, AuditPublisher>();
+
+        var notifBaseUrl = configuration["Services:NotificationsUrl"] ?? "http://localhost:5008";
+        services.AddHttpClient("NotificationsService", client =>
+        {
+            client.BaseAddress = new Uri(notifBaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddScoped<INotificationPublisher, NotificationPublisher>();
 
         return services;
     }

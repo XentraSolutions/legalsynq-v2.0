@@ -15,6 +15,7 @@ public sealed class LienSaleService : ILienSaleService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IBillOfSaleDocumentService _docService;
     private readonly IAuditPublisher _audit;
+    private readonly INotificationPublisher _notifications;
     private readonly ILogger<LienSaleService> _logger;
 
     public LienSaleService(
@@ -24,6 +25,7 @@ public sealed class LienSaleService : ILienSaleService
         IUnitOfWork unitOfWork,
         IBillOfSaleDocumentService docService,
         IAuditPublisher audit,
+        INotificationPublisher notifications,
         ILogger<LienSaleService> logger)
     {
         _lienRepo   = lienRepo;
@@ -32,6 +34,7 @@ public sealed class LienSaleService : ILienSaleService
         _unitOfWork = unitOfWork;
         _docService = docService;
         _audit      = audit;
+        _notifications = notifications;
         _logger     = logger;
     }
 
@@ -122,6 +125,7 @@ public sealed class LienSaleService : ILienSaleService
 
         Domain.Entities.BillOfSale bos;
         int rejectedCount = 0;
+        var rejectedOfferIds = new List<(Guid OfferId, Guid BuyerOrgId)>();
 
         await using var transaction = await _unitOfWork.BeginTransactionAsync(ct);
 
@@ -157,6 +161,7 @@ public sealed class LienSaleService : ILienSaleService
 
                 competing.Reject(actingUserId, $"Rejected: competing offer superseded by accepted offer '{offer.Id}'");
                 await _offerRepo.UpdateAsync(competing, ct);
+                rejectedOfferIds.Add((competing.Id, competing.BuyerOrgId));
                 rejectedCount++;
             }
 
@@ -180,6 +185,38 @@ public sealed class LienSaleService : ILienSaleService
                 entityType: "BillOfSale",
                 entityId: bos.Id.ToString(),
                 metadata: $"{{\"lienId\":\"{lien.Id}\",\"offerId\":\"{offer.Id}\",\"rejectedOffers\":{rejectedCount}}}");
+
+            var saleData = new Dictionary<string, string>
+            {
+                ["lienId"] = lien.Id.ToString(),
+                ["lienNumber"] = lien.LienNumber,
+                ["offerId"] = offer.Id.ToString(),
+                ["billOfSaleId"] = bos.Id.ToString(),
+                ["billOfSaleNumber"] = bos.BillOfSaleNumber,
+                ["buyerOrgId"] = offer.BuyerOrgId.ToString(),
+                ["sellerOrgId"] = offer.SellerOrgId.ToString(),
+                ["purchaseAmount"] = bos.PurchaseAmount.ToString("F2"),
+                ["originalLienAmount"] = bos.OriginalLienAmount.ToString("F2"),
+                ["discountPercent"] = bos.DiscountPercent?.ToString("F2") ?? "0.00",
+                ["userId"] = actingUserId.ToString(),
+            };
+
+            _ = _notifications.PublishAsync("lienoffer.accepted", tenantId, saleData, ct);
+            _ = _notifications.PublishAsync("lien.sale.finalized", tenantId, saleData, ct);
+
+            foreach (var (rejectedOfferId, rejectedBuyerOrgId) in rejectedOfferIds)
+            {
+                _ = _notifications.PublishAsync("lienoffer.rejected", tenantId, new Dictionary<string, string>
+                {
+                    ["offerId"] = rejectedOfferId.ToString(),
+                    ["lienId"] = lien.Id.ToString(),
+                    ["lienNumber"] = lien.LienNumber,
+                    ["buyerOrgId"] = rejectedBuyerOrgId.ToString(),
+                    ["sellerOrgId"] = offer.SellerOrgId.ToString(),
+                    ["acceptedOfferId"] = offer.Id.ToString(),
+                    ["userId"] = actingUserId.ToString(),
+                }, ct);
+            }
         }
         catch (Exception ex)
         {
@@ -202,6 +239,18 @@ public sealed class LienSaleService : ILienSaleService
                 _logger.LogInformation(
                     "SaleFinalization: document attached — BOS={BosId} DocumentId={DocumentId}",
                     bos.Id, documentId.Value);
+
+                _ = _notifications.PublishAsync("billofsale.document.generated", tenantId, new Dictionary<string, string>
+                {
+                    ["billOfSaleId"] = bos.Id.ToString(),
+                    ["billOfSaleNumber"] = bos.BillOfSaleNumber,
+                    ["documentId"] = documentId.Value.ToString(),
+                    ["lienId"] = lien.Id.ToString(),
+                    ["lienNumber"] = lien.LienNumber,
+                    ["buyerOrgId"] = offer.BuyerOrgId.ToString(),
+                    ["sellerOrgId"] = offer.SellerOrgId.ToString(),
+                    ["userId"] = actingUserId.ToString(),
+                }, ct);
             }
             else
             {
