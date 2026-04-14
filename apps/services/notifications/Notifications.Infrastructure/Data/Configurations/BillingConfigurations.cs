@@ -8,19 +8,13 @@ public class TenantBillingPlanConfiguration : IEntityTypeConfiguration<TenantBil
 {
     public void Configure(EntityTypeBuilder<TenantBillingPlan> builder)
     {
-        builder.ToTable("ntf_tenant_billing_plans");
+        builder.ToTable("ntf_TenantBillingPlans");
         builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).HasColumnName("id");
-        builder.Property(e => e.TenantId).HasColumnName("tenant_id");
-        builder.Property(e => e.PlanName).HasColumnName("plan_name").HasMaxLength(200);
-        builder.Property(e => e.BillingMode).HasColumnName("billing_mode").HasMaxLength(30);
-        builder.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("active");
-        builder.Property(e => e.MonthlyFlatRate).HasColumnName("monthly_flat_rate").HasColumnType("decimal(10,2)");
-        builder.Property(e => e.Currency).HasColumnName("currency").HasMaxLength(10).HasDefaultValue("USD");
-        builder.Property(e => e.EffectiveFrom).HasColumnName("effective_from");
-        builder.Property(e => e.EffectiveTo).HasColumnName("effective_to");
-        builder.Property(e => e.CreatedAt).HasColumnName("created_at");
-        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+        builder.Property(e => e.PlanName).HasMaxLength(200);
+        builder.Property(e => e.BillingMode).HasMaxLength(30);
+        builder.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("active");
+        builder.Property(e => e.MonthlyFlatRate).HasColumnType("decimal(10,2)");
+        builder.Property(e => e.Currency).HasMaxLength(10).HasDefaultValue("USD");
     }
 }
 
@@ -28,18 +22,14 @@ public class TenantBillingRateConfiguration : IEntityTypeConfiguration<TenantBil
 {
     public void Configure(EntityTypeBuilder<TenantBillingRate> builder)
     {
-        builder.ToTable("ntf_tenant_billing_rates");
+        builder.ToTable("ntf_TenantBillingRates");
         builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).HasColumnName("id");
-        builder.Property(e => e.BillingPlanId).HasColumnName("billing_plan_id");
-        builder.Property(e => e.UsageUnit).HasColumnName("usage_unit").HasMaxLength(100);
-        builder.Property(e => e.Channel).HasColumnName("channel").HasMaxLength(20);
-        builder.Property(e => e.ProviderOwnershipMode).HasColumnName("provider_ownership_mode").HasMaxLength(20);
-        builder.Property(e => e.UnitPrice).HasColumnName("unit_price").HasColumnType("decimal(10,6)");
-        builder.Property(e => e.Currency).HasColumnName("currency").HasMaxLength(10).HasDefaultValue("USD");
-        builder.Property(e => e.IsBillable).HasColumnName("is_billable").HasDefaultValue(true);
-        builder.Property(e => e.CreatedAt).HasColumnName("created_at");
-        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+        builder.Property(e => e.UsageUnit).HasMaxLength(100);
+        builder.Property(e => e.Channel).HasMaxLength(20);
+        builder.Property(e => e.ProviderOwnershipMode).HasMaxLength(20);
+        builder.Property(e => e.UnitPrice).HasColumnType("decimal(10,6)");
+        builder.Property(e => e.Currency).HasMaxLength(10).HasDefaultValue("USD");
+        builder.Property(e => e.IsBillable).HasDefaultValue(true);
     }
 }
 
@@ -47,18 +37,10 @@ public class TenantRateLimitPolicyConfiguration : IEntityTypeConfiguration<Tenan
 {
     public void Configure(EntityTypeBuilder<TenantRateLimitPolicy> builder)
     {
-        builder.ToTable("ntf_tenant_rate_limit_policies");
+        builder.ToTable("ntf_TenantRateLimitPolicies");
         builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).HasColumnName("id");
-        builder.Property(e => e.TenantId).HasColumnName("tenant_id");
-        builder.Property(e => e.Channel).HasColumnName("channel").HasMaxLength(20);
-        builder.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("active");
-        builder.Property(e => e.MaxRequestsPerMinute).HasColumnName("max_requests_per_minute");
-        builder.Property(e => e.MaxAttemptsPerMinute).HasColumnName("max_attempts_per_minute");
-        builder.Property(e => e.MaxDailyUsage).HasColumnName("max_daily_usage");
-        builder.Property(e => e.MaxMonthlyUsage).HasColumnName("max_monthly_usage");
-        builder.Property(e => e.CreatedAt).HasColumnName("created_at");
-        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+        builder.Property(e => e.Channel).HasMaxLength(20);
+        builder.Property(e => e.Status).HasMaxLength(20).HasDefaultValue("active");
     }
 }
 
@@ -66,20 +48,16 @@ public class TenantContactPolicyConfiguration : IEntityTypeConfiguration<TenantC
 {
     public void Configure(EntityTypeBuilder<TenantContactPolicy> builder)
     {
-        builder.ToTable("ntf_tenant_contact_policies");
+        builder.ToTable("ntf_TenantContactPolicies");
         builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).HasColumnName("id");
-        builder.Property(e => e.TenantId).HasColumnName("tenant_id");
-        builder.Property(e => e.Channel).HasColumnName("channel").HasMaxLength(20);
-        builder.Property(e => e.BlockSuppressedContacts).HasColumnName("block_suppressed_contacts").HasDefaultValue(true);
-        builder.Property(e => e.BlockUnsubscribedContacts).HasColumnName("block_unsubscribed_contacts").HasDefaultValue(true);
-        builder.Property(e => e.BlockComplainedContacts).HasColumnName("block_complained_contacts").HasDefaultValue(true);
-        builder.Property(e => e.BlockBouncedContacts).HasColumnName("block_bounced_contacts").HasDefaultValue(false);
-        builder.Property(e => e.BlockInvalidContacts).HasColumnName("block_invalid_contacts").HasDefaultValue(false);
-        builder.Property(e => e.BlockCarrierRejectedContacts).HasColumnName("block_carrier_rejected_contacts").HasDefaultValue(false);
-        builder.Property(e => e.AllowManualOverride).HasColumnName("allow_manual_override").HasDefaultValue(false);
-        builder.Property(e => e.CreatedAt).HasColumnName("created_at");
-        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+        builder.Property(e => e.Channel).HasMaxLength(20);
+        builder.Property(e => e.BlockSuppressedContacts).HasDefaultValue(true);
+        builder.Property(e => e.BlockUnsubscribedContacts).HasDefaultValue(true);
+        builder.Property(e => e.BlockComplainedContacts).HasDefaultValue(true);
+        builder.Property(e => e.BlockBouncedContacts).HasDefaultValue(false);
+        builder.Property(e => e.BlockInvalidContacts).HasDefaultValue(false);
+        builder.Property(e => e.BlockCarrierRejectedContacts).HasDefaultValue(false);
+        builder.Property(e => e.AllowManualOverride).HasDefaultValue(false);
     }
 }
 
@@ -87,30 +65,26 @@ public class TenantBrandingConfiguration : IEntityTypeConfiguration<TenantBrandi
 {
     public void Configure(EntityTypeBuilder<TenantBranding> builder)
     {
-        builder.ToTable("ntf_tenant_brandings");
+        builder.ToTable("ntf_TenantBrandings");
         builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).HasColumnName("id");
-        builder.Property(e => e.TenantId).HasColumnName("tenant_id");
-        builder.Property(e => e.ProductType).HasColumnName("product_type").HasMaxLength(50);
-        builder.Property(e => e.BrandName).HasColumnName("brand_name").HasMaxLength(200);
-        builder.Property(e => e.LogoUrl).HasColumnName("logo_url").HasMaxLength(2000);
-        builder.Property(e => e.PrimaryColor).HasColumnName("primary_color").HasMaxLength(50);
-        builder.Property(e => e.SecondaryColor).HasColumnName("secondary_color").HasMaxLength(50);
-        builder.Property(e => e.AccentColor).HasColumnName("accent_color").HasMaxLength(50);
-        builder.Property(e => e.TextColor).HasColumnName("text_color").HasMaxLength(50);
-        builder.Property(e => e.BackgroundColor).HasColumnName("background_color").HasMaxLength(50);
-        builder.Property(e => e.ButtonRadius).HasColumnName("button_radius").HasMaxLength(30);
-        builder.Property(e => e.FontFamily).HasColumnName("font_family").HasMaxLength(200);
-        builder.Property(e => e.SupportEmail).HasColumnName("support_email").HasMaxLength(255);
-        builder.Property(e => e.SupportPhone).HasColumnName("support_phone").HasMaxLength(50);
-        builder.Property(e => e.WebsiteUrl).HasColumnName("website_url").HasMaxLength(2000);
-        builder.Property(e => e.EmailHeaderHtml).HasColumnName("email_header_html").HasColumnType("text");
-        builder.Property(e => e.EmailFooterHtml).HasColumnName("email_footer_html").HasColumnType("text");
-        builder.Property(e => e.CreatedAt).HasColumnName("created_at");
-        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+        builder.Property(e => e.ProductType).HasMaxLength(50);
+        builder.Property(e => e.BrandName).HasMaxLength(200);
+        builder.Property(e => e.LogoUrl).HasMaxLength(2000);
+        builder.Property(e => e.PrimaryColor).HasMaxLength(50);
+        builder.Property(e => e.SecondaryColor).HasMaxLength(50);
+        builder.Property(e => e.AccentColor).HasMaxLength(50);
+        builder.Property(e => e.TextColor).HasMaxLength(50);
+        builder.Property(e => e.BackgroundColor).HasMaxLength(50);
+        builder.Property(e => e.ButtonRadius).HasMaxLength(30);
+        builder.Property(e => e.FontFamily).HasMaxLength(200);
+        builder.Property(e => e.SupportEmail).HasMaxLength(255);
+        builder.Property(e => e.SupportPhone).HasMaxLength(50);
+        builder.Property(e => e.WebsiteUrl).HasMaxLength(2000);
+        builder.Property(e => e.EmailHeaderHtml).HasColumnType("text");
+        builder.Property(e => e.EmailFooterHtml).HasColumnType("text");
 
         builder.HasIndex(e => new { e.TenantId, e.ProductType })
-            .HasDatabaseName("uq_tenant_branding")
+            .HasDatabaseName("UX_TenantBrandings_TenantId_ProductType")
             .IsUnique();
     }
 }
@@ -119,28 +93,19 @@ public class UsageMeterEventConfiguration : IEntityTypeConfiguration<UsageMeterE
 {
     public void Configure(EntityTypeBuilder<UsageMeterEvent> builder)
     {
-        builder.ToTable("ntf_usage_meter_events");
+        builder.ToTable("ntf_UsageMeterEvents");
         builder.HasKey(e => e.Id);
-        builder.Property(e => e.Id).HasColumnName("id");
-        builder.Property(e => e.TenantId).HasColumnName("tenant_id");
-        builder.Property(e => e.NotificationId).HasColumnName("notification_id");
-        builder.Property(e => e.NotificationAttemptId).HasColumnName("notification_attempt_id");
-        builder.Property(e => e.Channel).HasColumnName("channel").HasMaxLength(20);
-        builder.Property(e => e.Provider).HasColumnName("provider").HasMaxLength(100);
-        builder.Property(e => e.ProviderOwnershipMode).HasColumnName("provider_ownership_mode").HasMaxLength(20);
-        builder.Property(e => e.ProviderConfigId).HasColumnName("provider_config_id");
-        builder.Property(e => e.UsageUnit).HasColumnName("usage_unit").HasMaxLength(100);
-        builder.Property(e => e.Quantity).HasColumnName("quantity").HasDefaultValue(1);
-        builder.Property(e => e.IsBillable).HasColumnName("is_billable");
-        builder.Property(e => e.ProviderUnitCost).HasColumnName("provider_unit_cost").HasColumnType("decimal(10,6)");
-        builder.Property(e => e.ProviderTotalCost).HasColumnName("provider_total_cost").HasColumnType("decimal(10,6)");
-        builder.Property(e => e.Currency).HasColumnName("currency").HasMaxLength(10);
-        builder.Property(e => e.MetadataJson).HasColumnName("metadata_json").HasColumnType("text");
-        builder.Property(e => e.OccurredAt).HasColumnName("occurred_at");
-        builder.Property(e => e.CreatedAt).HasColumnName("created_at");
-        builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+        builder.Property(e => e.Channel).HasMaxLength(20);
+        builder.Property(e => e.Provider).HasMaxLength(100);
+        builder.Property(e => e.ProviderOwnershipMode).HasMaxLength(20);
+        builder.Property(e => e.UsageUnit).HasMaxLength(100);
+        builder.Property(e => e.Quantity).HasDefaultValue(1);
+        builder.Property(e => e.ProviderUnitCost).HasColumnType("decimal(10,6)");
+        builder.Property(e => e.ProviderTotalCost).HasColumnType("decimal(10,6)");
+        builder.Property(e => e.Currency).HasMaxLength(10);
+        builder.Property(e => e.MetadataJson).HasColumnType("text");
 
         builder.HasIndex(e => new { e.TenantId, e.UsageUnit, e.OccurredAt })
-            .HasDatabaseName("idx_usage_meter_events_tenant_unit_time");
+            .HasDatabaseName("IX_UsageMeterEvents_TenantId_UsageUnit_OccurredAt");
     }
 }

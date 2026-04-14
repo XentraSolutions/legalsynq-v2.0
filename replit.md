@@ -375,7 +375,8 @@ apps/
       Notifications.Domain/                  → 18 entities + comprehensive Enums.cs
       Notifications.Infrastructure/
         Data/NotificationsDbContext.cs        ← 18 DbSets, all entity configurations
-        Data/Configurations/                 ← 18 IEntityTypeConfiguration per entity
+        Data/SchemaRenamer.cs                ← Startup migration: renames tables (ntf_snake_case → ntf_PascalCase), columns (snake_case → PascalCase), indexes (idx_/uq_ → IX_/UX_)
+        Data/Configurations/                 ← 18 IEntityTypeConfiguration per entity (ntf_PascalCase tables, no HasColumnName, IX_/UX_ indexes)
         Repositories/                        ← All repository implementations
         Providers/Adapters/
           SendGridAdapter.cs                 ← HTTP-based SendGrid v3 mail/send
@@ -3698,7 +3699,7 @@ Each microservice uses a table name prefix for organizational clarity:
 | Identity | `idt_` | MySQL | `idt_Tenants`, `idt_Users`, `idt_Organizations` |
 | Fund | `fund_` | MySQL | `fund_Applications` |
 | CareConnect | `cc_` | MySQL | `cc_Referrals`, `cc_Providers`, `cc_Appointments` |
-| Notifications | `ntf_` | MySQL | `ntf_notifications`, `ntf_templates` |
+| Notifications | `ntf_` | MySQL | `ntf_Notifications`, `ntf_Templates` |
 | Audit | `aud_` | MySQL/SQLite | `aud_AuditEventRecords`, `aud_LegalHolds` |
 | Documents | `docs_` | PostgreSQL | `docs_documents`, `docs_document_versions` |
 | Liens | `liens_` | MySQL | `liens_Cases`, `liens_Liens`, `liens_BillsOfSale` |
@@ -3712,7 +3713,7 @@ Each microservice uses a table name prefix for organizational clarity:
 - Identity: 33 configuration files in `Identity.Infrastructure/Data/Configurations/`
 - Fund: 1 configuration file
 - CareConnect: 23 configuration files
-- Notifications: 18 ToTable calls across 5 configuration files
+- Notifications: 18 ToTable calls across 5 configuration files + `SchemaRenamer.cs` startup migration (tables, columns, indexes)
 - Audit: 7 configuration files
 - Documents: `DocsDbContext.cs` + `schema.sql` + `Program.cs` (auto-rename migration)
 
@@ -4013,3 +4014,19 @@ Integrated Liens service with the v2 Audit service using the shared `LegalSynq.A
 ### Files
 - Created: `IAuditPublisher.cs` (Application), `AuditPublisher.cs` (Infrastructure/Audit)
 - Modified: `LienService.cs`, `LienOfferService.cs`, `LienSaleService.cs`, `CaseService.cs`, `DependencyInjection.cs`, `Liens.Infrastructure.csproj`, `appsettings.json`
+
+## Notifications DB Naming Convention Fix — 2026-04-14
+
+### Summary
+Standardized all Notifications service table/column/index names from `ntf_snake_case` to `ntf_PascalCase` convention, matching the platform-wide pattern used by Identity, Liens, CareConnect, Audit, and Fund services.
+
+### Changes
+- **5 configuration files updated**: `NotificationConfiguration.cs`, `TemplateConfiguration.cs`, `EventConfigurations.cs`, `ProviderConfigurations.cs`, `BillingConfigurations.cs`
+  - 18 tables renamed from `ntf_snake_case` to `ntf_PascalCase` (e.g., `ntf_notifications` → `ntf_Notifications`)
+  - All explicit `.HasColumnName("snake_case")` calls removed — EF Core now uses default PascalCase from domain property names
+  - 14 indexes renamed from `idx_/uq_` pattern to `IX_/UX_` pattern (e.g., `idx_attempts_notification_id` → `IX_NotificationAttempts_NotificationId`)
+- **New file**: `SchemaRenamer.cs` — startup migration helper that safely renames tables, columns, and indexes on existing databases
+  - Handles both legacy unprefixed tables and `ntf_snake_case` tables → `ntf_PascalCase`
+  - Column renames: only multi-word snake_case columns (e.g., `tenant_id` → `TenantId`) since MySQL column names are case-insensitive for single-word identifiers
+  - All operations are idempotent with existence checks before each rename
+- **Program.cs simplified**: replaced inline rename logic with `SchemaRenamer.RenameSchemaAsync()` call; restored `MapBrandingEndpoints()` and `MapInternalEndpoints()`
