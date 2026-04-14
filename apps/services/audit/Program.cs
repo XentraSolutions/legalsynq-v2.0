@@ -691,7 +691,8 @@ try
         dbOpts.Provider,
         showSwagger ? "enabled" : "disabled");
 
-    await app.RunAsync();
+    var port = cfg["PORT"] ?? cfg["ASPNETCORE_URLS"]?.Split(':').LastOrDefault() ?? "5007";
+    await app.RunAsync($"http://0.0.0.0:{port}");
 }
 catch (Exception ex) when (ex is not HostAbortedException)
 {
