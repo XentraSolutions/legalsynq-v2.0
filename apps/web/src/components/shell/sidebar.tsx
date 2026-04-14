@@ -8,6 +8,7 @@ import { useSettings } from '@/contexts/settings-context';
 import { PRODUCT_NAV, PRODUCT_META, GLOBAL_BOTTOM_NAV, buildNavGroups, filterNavByRoles } from '@/lib/nav';
 import { useSession } from '@/hooks/use-session';
 import { useNavBadges } from '@/hooks/use-nav-badges';
+import { useProviderMode } from '@/hooks/use-provider-mode';
 import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
 
@@ -20,6 +21,7 @@ export function Sidebar() {
   const nav                   = settings.appearance.nav;
   const { session }           = useSession();
   const badges                = useNavBadges();
+  const { isSellMode }        = useProviderMode();
   const adminSections         = session ? buildNavGroups(session) : [];
 
   const [collapsed, setCollapsed] = useState(false);
@@ -50,7 +52,14 @@ export function Sidebar() {
 
   const width    = !mounted ? 220 : collapsed ? 52 : 220;
   const rawSections = selectedProductId ? (PRODUCT_NAV[selectedProductId] ?? []) : [];
-  const sections = session ? filterNavByRoles(rawSections, session.productRoles) : rawSections;
+  const roleSections = session ? filterNavByRoles(rawSections, session.productRoles) : rawSections;
+  const sections = roleSections
+    .filter((s) => !s.sellModeOnly || isSellMode)
+    .map((s) => ({
+      ...s,
+      items: s.items.filter((item) => !item.sellModeOnly || isSellMode),
+    }))
+    .filter((s) => s.items.length > 0);
   const meta     = selectedProductId ? PRODUCT_META[selectedProductId] : null;
 
   return (

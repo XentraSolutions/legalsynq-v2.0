@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/lien/page-header';
 import { FilterToolbar } from '@/components/lien/filter-toolbar';
 import { StatusBadge } from '@/components/lien/status-badge';
@@ -9,6 +10,7 @@ import { KpiCard } from '@/components/lien/kpi-card';
 import { ActionMenu } from '@/components/lien/action-menu';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useProviderMode } from '@/hooks/use-provider-mode';
 import {
   billOfSaleService,
   formatCurrency,
@@ -17,6 +19,8 @@ import {
 } from '@/lib/billofsale';
 
 export default function BillOfSalesPage() {
+  const { isManageMode, isReady } = useProviderMode();
+  const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const role = useLienStore((s) => s.currentRole);
   const [items, setItems] = useState<BillOfSaleListItem[]>([]);
@@ -43,7 +47,24 @@ export default function BillOfSalesPage() {
     }
   }, [search, statusFilter, addToast]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    if (isReady && isManageMode) {
+      router.replace('/lien/dashboard');
+      return;
+    }
+    if (isReady && !isManageMode) {
+      fetchData();
+    }
+  }, [fetchData, isReady, isManageMode, router]);
+
+  if (!isReady || isManageMode) {
+    return (
+      <div className="p-10 text-center">
+        <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-gray-400 mt-2">Loading...</p>
+      </div>
+    );
+  }
 
   const executedCount = items.filter((b) => b.status === 'Executed').length;
   const pendingCount = items.filter((b) => b.status === 'Pending').length;

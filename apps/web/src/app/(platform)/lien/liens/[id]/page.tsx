@@ -13,7 +13,8 @@ import { ConfirmDialog, FormModal } from '@/components/lien/modal';
 import { EntityTimeline } from '@/components/lien/entity-timeline';
 import { useProviderMode } from '@/hooks/use-provider-mode';
 
-const LIEN_STEPS = ['Draft', 'Active', 'Negotiation', 'Sold', 'Closed'];
+const SELL_LIEN_STEPS = ['Draft', 'Active', 'Negotiation', 'Sold', 'Closed'];
+const MANAGE_LIEN_STEPS = ['Draft', 'Active', 'Closed'];
 const STATUS_MAP: Record<string, string> = { Draft: 'Draft', Offered: 'Active', Sold: 'Sold', Withdrawn: 'Closed' };
 
 function formatCurrency(amount: number | null): string {
@@ -155,7 +156,7 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
 
       <div className="bg-white border border-gray-200 rounded-xl p-5">
         <h3 className="text-sm font-semibold text-gray-800 mb-4">Lien Lifecycle</h3>
-        <StatusProgress steps={LIEN_STEPS} currentStep={STATUS_MAP[d.status] || 'Draft'} />
+        <StatusProgress steps={isSellMode ? SELL_LIEN_STEPS : MANAGE_LIEN_STEPS} currentStep={STATUS_MAP[d.status] || 'Draft'} />
       </div>
 
       <div className={`grid grid-cols-1 ${isSellMode ? 'sm:grid-cols-3' : 'sm:grid-cols-1'} gap-4`}>

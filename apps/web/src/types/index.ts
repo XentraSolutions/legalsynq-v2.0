@@ -87,11 +87,13 @@ export interface NavItem {
   badge?: string;
   badgeKey?: string;
   requiredRoles?: ProductRoleValue[];
+  sellModeOnly?: boolean;
 }
 
 export interface NavSection {
   heading?: string;
   items: NavItem[];
+  sellModeOnly?: boolean;
 }
 
 /** @deprecated Use NavSection[] */

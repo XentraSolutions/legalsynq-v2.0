@@ -34,13 +34,14 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         { href: '/lien/task-manager',  label: 'Task Manager',  icon: 'ri-task-line' },
         { href: '/lien/cases',         label: 'Cases',         icon: 'ri-folder-open-line' },
         { href: '/lien/liens',         label: 'Liens',         icon: 'ri-stack-line' },
-        { href: '/lien/bill-of-sales', label: 'Bill of Sales', icon: 'ri-receipt-line', requiredRoles: [ProductRole.SynqLienSeller, ProductRole.SynqLienBuyer, ProductRole.SynqLienHolder] },
+        { href: '/lien/bill-of-sales', label: 'Bill of Sales', icon: 'ri-receipt-line', sellModeOnly: true },
         { href: '/lien/servicing',     label: 'Servicing',     icon: 'ri-tools-line' },
         { href: '/lien/contacts',      label: 'Contacts',      icon: 'ri-contacts-book-line' },
       ],
     },
     {
       heading: 'MARKETPLACE',
+      sellModeOnly: true,
       items: [
         { href: '/lien/my-liens',    label: 'My Liens',    icon: 'ri-price-tag-3-line',         requiredRoles: [ProductRole.SynqLienSeller] },
         { href: '/lien/marketplace', label: 'Marketplace', icon: 'ri-store-2-line',              requiredRoles: [ProductRole.SynqLienBuyer] },

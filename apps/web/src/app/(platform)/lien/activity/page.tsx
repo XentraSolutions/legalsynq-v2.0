@@ -6,9 +6,11 @@ import {
   unifiedActivityService,
   getEntityHref,
   getNotificationHref,
+  filterActivityByMode,
   type UnifiedActivityItem,
   type ActivitySource,
 } from '@/lib/unified-activity';
+import { useProviderMode } from '@/hooks/use-provider-mode';
 
 const SOURCE_LABELS: Record<string, string> = {
   audit: 'Audit',
@@ -37,6 +39,7 @@ function getItemHref(item: UnifiedActivityItem): string | null {
 }
 
 export default function UnifiedActivityPage() {
+  const { isSellMode } = useProviderMode();
   const [items, setItems] = useState<UnifiedActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -53,14 +56,15 @@ export default function UnifiedActivityPage() {
         page: p,
         source: src || undefined,
       });
-      setItems(p === 1 ? result.items : (prev) => [...prev, ...result.items]);
+      const filtered = filterActivityByMode(result.items, isSellMode);
+      setItems(p === 1 ? filtered : (prev) => [...prev, ...filtered]);
       setHasMore(result.hasMore);
     } catch {
       setError(true);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isSellMode]);
 
   useEffect(() => {
     setPage(1);

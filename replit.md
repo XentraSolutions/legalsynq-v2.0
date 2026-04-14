@@ -49,7 +49,7 @@ apps/web/
       tenant-branding-provider.tsx ← TenantBrandingProvider — anonymous branding fetch + CSS vars + X-Tenant-Code header
     hooks/
       use-session.ts            ← useSession() / useRequiredSession()
-      use-provider-mode.ts      ← useProviderMode() — derives sell/manage mode from session productRoles; returns ProviderModeInfo & { isReady }
+      use-provider-mode.ts      ← useProviderMode() — returns ProviderModeInfo & { isReady } from ProviderModeContext (org config API sourced)
       use-tenant-branding.ts    ← re-exports useTenantBranding()
       use-nav-badges.ts         ← useNavBadges() — polls new referral count for Provider/CareConnectReceiver users (30s interval)
     contexts/
@@ -138,9 +138,10 @@ apps/web/
         notifications.mapper.ts    ← DTO→UI model mappers: mapNotificationItem (parses recipientJson, metadataJson), mapNotificationStats
         notifications.service.ts   ← business service: getNotifications, getRecentNotifications, getStats, getFailedCount
         index.ts                   ← barrel exports
-      provider-mode/               ← LS-LIENS-UI-011: sell vs manage mode derivation from session productRoles
-        provider-mode.types.ts     ← ProviderMode ('sell'|'manage'), ProviderModeInfo interface
-        provider-mode.service.ts   ← deriveProviderMode(), getMode(), isSellMode(), isManageMode()
+      provider-mode/               ← LS-LIENS-UI-011: sell vs manage mode from org config API
+        provider-mode.types.ts     ← ProviderMode, OrgConfigResponseDto, ProviderModeInfo
+        provider-mode.api.ts       ← fetchOrgConfig() — calls BFF /api/org-config
+        provider-mode.service.ts   ← resolveProviderMode(), getDefaultModeInfo(), isSellMode(), isManageMode()
         index.ts                   ← barrel export
       unified-activity/            ← LS-LIENS-UI-010: unified activity feed merging audit + notification events
         unified-activity.types.ts  ← UnifiedActivityItem, AuditSourceDetail, NotificationSourceDetail, ActivitySource, ActivityEntityRef, ActivityActorRef, UnifiedActivityQuery/Result

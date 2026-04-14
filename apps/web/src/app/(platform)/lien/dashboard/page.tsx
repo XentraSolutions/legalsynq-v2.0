@@ -11,6 +11,7 @@ import {
   unifiedActivityService,
   getEntityHref,
   getNotificationHref,
+  filterActivityByMode,
   type UnifiedActivityItem,
 } from '@/lib/unified-activity';
 import { useProviderMode } from '@/hooks/use-provider-mode';
@@ -52,14 +53,14 @@ export default function LienDashboardPage() {
     setActivityLoading(true);
     setActivityError(false);
     try {
-      const items = await unifiedActivityService.getRecentUnifiedActivity(6);
-      setRecentActivity(items);
+      const items = await unifiedActivityService.getRecentUnifiedActivity(10);
+      setRecentActivity(filterActivityByMode(items, isSellMode).slice(0, 6));
     } catch {
       setActivityError(true);
     } finally {
       setActivityLoading(false);
     }
-  }, []);
+  }, [isSellMode]);
 
   useEffect(() => { loadActivity(); }, [loadActivity]);
 
@@ -76,7 +77,7 @@ export default function LienDashboardPage() {
               'text-[10px] font-semibold px-2 py-0.5 rounded-full leading-none',
               mode === 'sell' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200',
             ].join(' ')}>
-              {mode === 'sell' ? 'Sell Mode' : 'Manage Mode'}
+              {mode === 'sell' ? 'Sell Mode' : 'Internal Mode'}
             </span>
           </div>
           <p className="text-sm text-gray-500 mt-0.5">SynqLien operational overview</p>

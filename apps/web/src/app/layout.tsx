@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { TenantBrandingProvider } from '@/providers/tenant-branding-provider';
 import { SessionProvider, type SerializableSession } from '@/providers/session-provider';
+import { ProviderModeProvider } from '@/providers/provider-mode-provider';
 import { getServerSession } from '@/lib/session';
 
 export const metadata: Metadata = {
@@ -35,7 +36,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="antialiased">
         <TenantBrandingProvider>
           <SessionProvider initialSession={initialSession}>
-            {children}
+            <ProviderModeProvider>
+              {children}
+            </ProviderModeProvider>
           </SessionProvider>
         </TenantBrandingProvider>
       </body>

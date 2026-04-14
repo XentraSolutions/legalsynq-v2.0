@@ -114,6 +114,49 @@ public static class AuthEndpoints
         })
         .AllowAnonymous();
 
+        // ── GET /api/organizations/my/config ──────────────────────────────────
+        // Authenticated. Returns org-level configuration for the caller's organization.
+        // LS-LIENS-UI-011: Provider mode (sell vs manage) is sourced from here.
+        // Currently returns a default configuration; future DB column will back this.
+        app.MapGet("/api/organizations/my/config", async (
+            HttpContext        httpContext,
+            IdentityDbContext  db,
+            CancellationToken  ct) =>
+        {
+            var orgIdStr = httpContext.User.FindFirstValue("org_id");
+            if (!Guid.TryParse(orgIdStr, out var orgId))
+                return Results.Ok(new
+                {
+                    organizationId = (string?)null,
+                    productCode    = "LIENS",
+                    settings       = new { providerMode = "sell" }
+                });
+
+            var org = await db.Organizations
+                .AsNoTracking()
+                .Where(o => o.Id == orgId && o.IsActive)
+                .Select(o => new { o.Id, o.Name, o.OrgType })
+                .FirstOrDefaultAsync(ct);
+
+            if (org is null)
+                return Results.Ok(new
+                {
+                    organizationId = orgIdStr,
+                    productCode    = "LIENS",
+                    settings       = new { providerMode = "sell" }
+                });
+
+            // TODO: Read providerMode from an org settings column/table once added.
+            // For now, all orgs default to "sell" mode.
+            return Results.Ok(new
+            {
+                organizationId = org.Id.ToString(),
+                productCode    = "LIENS",
+                settings       = new { providerMode = "sell" }
+            });
+        })
+        .RequireAuthorization();
+
         // ── POST /api/auth/accept-invite ─────────────────────────────────────
         // Anonymous. Accepts an invitation token, sets a new password, and
         // activates the invited user account.
