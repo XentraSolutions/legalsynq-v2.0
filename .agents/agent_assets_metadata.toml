@@ -252,3 +252,9 @@ id = "EPKZAskgH_dRy3PzeRS19"
 uri = "file://analysis/LS-LIENS-07-003-report.md"
 type = "text"
 title = "LS-LIENS-07-003 — Liens Audit Service Integration Report"
+
+[[outputs]]
+id = "N1msYHTTsdB_iVRJQ7MiJ"
+uri = "file://analysis/LS-LIENS-UI-003-report.md"
+type = "text"
+title = "LS-LIENS-UI-003 Report: Liens UI → Real API Integration"
