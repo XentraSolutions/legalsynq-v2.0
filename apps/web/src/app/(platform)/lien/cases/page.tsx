@@ -9,9 +9,14 @@ import { ActionMenu } from '@/components/lien/action-menu';
 import { SideDrawer } from '@/components/lien/side-drawer';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { CreateCaseForm } from '@/components/lien/forms/create-case-form';
+import { BulkActionBar } from '@/components/lien/bulk-action-bar';
+import { BulkConfirmModal } from '@/components/lien/bulk-confirm-modal';
+import { BulkResultBanner } from '@/components/lien/bulk-result-banner';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { useSelectionState } from '@/hooks/use-selection-state';
 import { casesService, type CaseListItem, type PaginationMeta } from '@/lib/cases';
+import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
 import { ApiError } from '@/lib/api-client';
 
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
@@ -28,9 +33,22 @@ function formatCurrency(amount: number | null): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
+const BULK_ACTIONS: BulkActionConfig[] = [
+  {
+    key: 'advance-status',
+    label: 'Advance Status',
+    icon: 'ri-arrow-right-line',
+    variant: 'primary',
+    confirmTitle: 'Advance Case Status',
+    confirmDescription: (count) =>
+      `This will advance ${count} case${count !== 1 ? 's' : ''} to their next status. Cases already at "Closed" will be skipped.`,
+  },
+];
+
 export default function CasesPage() {
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
+  const selection = useSelectionState();
 
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });
@@ -42,6 +60,10 @@ export default function CasesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ id: string; status: string } | null>(null);
+
+  const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(null);
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
@@ -99,6 +121,30 @@ export default function CasesPage() {
     fetchCases();
   };
 
+  const handleBulkAction = (actionKey: string) => {
+    const action = BULK_ACTIONS.find((a) => a.key === actionKey);
+    if (action) setBulkAction(action);
+  };
+
+  const executeBulkAction = async () => {
+    if (!bulkAction) return;
+    setBulkLoading(true);
+    const result = await executeBulk(selection.ids, async (id) => {
+      const caseItem = cases.find((c) => c.id === id);
+      if (!caseItem) throw new Error('Case not found in current list');
+      const idx = STATUSES.indexOf(caseItem.status);
+      if (idx >= STATUSES.length - 1) throw new Error(`Case is already "${STATUS_LABELS[caseItem.status] || caseItem.status}"`);
+      await casesService.updateCaseStatus(id, STATUSES[idx + 1]);
+    });
+    setBulkLoading(false);
+    setBulkAction(null);
+    setBulkResult(result);
+    selection.clear();
+    fetchCases();
+  };
+
+  const allIds = cases.map((c) => c.id);
+
   return (
     <div className="space-y-5">
       <PageHeader title="Cases" subtitle={loading ? 'Loading...' : `${pagination.totalCount} cases`}
@@ -112,6 +158,8 @@ export default function CasesPage() {
         label: 'All Statuses', value: statusFilter, onChange: setStatusFilter,
         options: STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] || s })),
       }]} />
+
+      <BulkResultBanner result={bulkResult} onDismiss={() => setBulkResult(null)} entityLabel="cases" />
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
@@ -132,6 +180,12 @@ export default function CasesPage() {
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-100">
                 <thead><tr className="bg-gray-50">
+                  {canEdit && (
+                    <th className="px-4 py-3 w-10">
+                      <input type="checkbox" checked={selection.isAllSelected(allIds)} onChange={() => selection.toggleAll(allIds)}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
+                    </th>
+                  )}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Case #</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Client</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Title / Ref</th>
@@ -143,7 +197,13 @@ export default function CasesPage() {
                 </tr></thead>
                 <tbody className="divide-y divide-gray-100">
                   {cases.map((c) => (
-                    <tr key={c.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => setPreviewId(c.id)}>
+                    <tr key={c.id} className={`hover:bg-gray-50 transition-colors cursor-pointer ${selection.isSelected(c.id) ? 'bg-primary/5' : ''}`} onClick={() => setPreviewId(c.id)}>
+                      {canEdit && (
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={selection.isSelected(c.id)} onChange={() => selection.toggle(c.id)}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
+                        </td>
+                      )}
                       <td className="px-4 py-3"><Link href={`/lien/cases/${c.id}`} onClick={(e) => e.stopPropagation()} className="text-xs font-mono text-primary hover:underline">{c.caseNumber}</Link></td>
                       <td className="px-4 py-3 text-sm text-gray-700">{c.clientName}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{c.title || '-'}</td>
@@ -185,6 +245,23 @@ export default function CasesPage() {
             >Next</button>
           </div>
         </div>
+      )}
+
+      {canEdit && (
+        <BulkActionBar count={selection.count} actions={BULK_ACTIONS} onAction={handleBulkAction} onClear={selection.clear} />
+      )}
+
+      {bulkAction && (
+        <BulkConfirmModal
+          open
+          onClose={() => setBulkAction(null)}
+          onConfirm={executeBulkAction}
+          title={bulkAction.confirmTitle}
+          description={bulkAction.confirmDescription(selection.count)}
+          count={selection.count}
+          variant={bulkAction.variant}
+          loading={bulkLoading}
+        />
       )}
 
       <CreateCaseForm open={showCreate} onClose={() => setShowCreate(false)} onCreated={handleCaseCreated} />

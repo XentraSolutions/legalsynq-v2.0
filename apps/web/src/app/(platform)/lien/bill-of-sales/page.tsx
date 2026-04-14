@@ -9,27 +9,50 @@ import { StatusBadge } from '@/components/lien/status-badge';
 import { KpiCard } from '@/components/lien/kpi-card';
 import { ActionMenu } from '@/components/lien/action-menu';
 import { ConfirmDialog } from '@/components/lien/modal';
+import { BulkActionBar } from '@/components/lien/bulk-action-bar';
+import { BulkConfirmModal } from '@/components/lien/bulk-confirm-modal';
+import { BulkResultBanner } from '@/components/lien/bulk-result-banner';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { useProviderMode } from '@/hooks/use-provider-mode';
+import { useSelectionState } from '@/hooks/use-selection-state';
 import {
   billOfSaleService,
   formatCurrency,
   BOS_STATUS_LABELS,
   type BillOfSaleListItem,
 } from '@/lib/billofsale';
+import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
+
+const BULK_ACTIONS: BulkActionConfig[] = [
+  {
+    key: 'execute',
+    label: 'Execute',
+    icon: 'ri-checkbox-circle-line',
+    variant: 'primary',
+    confirmTitle: 'Execute Bill of Sales',
+    confirmDescription: (count) =>
+      `This will execute ${count} bill of sale${count !== 1 ? 's' : ''}. Only items in "Pending" status will be processed.`,
+  },
+];
 
 export default function BillOfSalesPage() {
   const { isManageMode, isReady } = useProviderMode();
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
+  const selection = useSelectionState();
+
   const [items, setItems] = useState<BillOfSaleListItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [confirmAction, setConfirmAction] = useState<{ id: string; action: string; label: string } | null>(null);
+
+  const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -91,6 +114,29 @@ export default function BillOfSalesPage() {
     }
   };
 
+  const handleBulkAction = (actionKey: string) => {
+    const action = BULK_ACTIONS.find((a) => a.key === actionKey);
+    if (action) setBulkAction(action);
+  };
+
+  const executeBulkAction = async () => {
+    if (!bulkAction) return;
+    setBulkLoading(true);
+    const result = await executeBulk(selection.ids, async (id) => {
+      const bos = items.find((b) => b.id === id);
+      if (!bos) throw new Error('Bill of Sale not found in current list');
+      if (bos.status !== 'Pending') throw new Error(`Bill of Sale is "${bos.status}" — only Pending items can be executed`);
+      await billOfSaleService.execute(id);
+    });
+    setBulkLoading(false);
+    setBulkAction(null);
+    setBulkResult(result);
+    selection.clear();
+    fetchData();
+  };
+
+  const allIds = items.map((b) => b.id);
+
   return (
     <div className="space-y-5">
       <PageHeader title="Bill of Sales" subtitle={`${totalCount} records`}
@@ -112,6 +158,8 @@ export default function BillOfSalesPage() {
         { label: 'All Statuses', value: statusFilter, onChange: setStatusFilter, options: Object.entries(BOS_STATUS_LABELS).map(([v, l]) => ({ value: v, label: l })) },
       ]} />
 
+      <BulkResultBanner result={bulkResult} onDismiss={() => setBulkResult(null)} entityLabel="bill of sales" />
+
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {loading ? (
           <div className="p-10 text-center text-sm text-gray-400">Loading bill of sales...</div>
@@ -119,6 +167,12 @@ export default function BillOfSalesPage() {
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-100">
               <thead><tr className="bg-gray-50">
+                {canEdit && (
+                  <th className="px-4 py-3 w-10">
+                    <input type="checkbox" checked={selection.isAllSelected(allIds)} onChange={() => selection.toggleAll(allIds)}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
+                  </th>
+                )}
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">BOS #</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Seller</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Buyer</th>
@@ -131,15 +185,21 @@ export default function BillOfSalesPage() {
               </tr></thead>
               <tbody className="divide-y divide-gray-100">
                 {items.map((b) => (
-                  <tr key={b.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={b.id} className={`hover:bg-gray-50 transition-colors ${selection.isSelected(b.id) ? 'bg-primary/5' : ''}`}>
+                    {canEdit && (
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={selection.isSelected(b.id)} onChange={() => selection.toggle(b.id)}
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
+                      </td>
+                    )}
                     <td className="px-4 py-3"><Link href={`/lien/bill-of-sales/${b.id}`} className="text-xs font-mono text-primary hover:underline">{b.bosNumber}</Link></td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{b.sellerContactName || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{b.buyerContactName || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{b.sellerContactName || '\u2014'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{b.buyerContactName || '\u2014'}</td>
                     <td className="px-4 py-3 text-sm text-gray-700 font-medium tabular-nums">{formatCurrency(b.purchaseAmount)}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500 tabular-nums">{b.discountPercent != null ? `${b.discountPercent.toFixed(1)}%` : '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 tabular-nums">{b.discountPercent != null ? `${b.discountPercent.toFixed(1)}%` : '\u2014'}</td>
                     <td className="px-4 py-3"><StatusBadge status={b.status} /></td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{b.issuedAt || '—'}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{b.executedAt || '—'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{b.issuedAt || '\u2014'}</td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{b.executedAt || '\u2014'}</td>
                     <td className="px-4 py-3 text-right">
                       <ActionMenu items={[
                         { label: 'View Details', icon: 'ri-eye-line', onClick: () => {} },
@@ -156,6 +216,23 @@ export default function BillOfSalesPage() {
         )}
         {!loading && items.length === 0 && <div className="p-10 text-center text-sm text-gray-400">No bill of sales found.</div>}
       </div>
+
+      {canEdit && (
+        <BulkActionBar count={selection.count} actions={BULK_ACTIONS} onAction={handleBulkAction} onClear={selection.clear} />
+      )}
+
+      {bulkAction && (
+        <BulkConfirmModal
+          open
+          onClose={() => setBulkAction(null)}
+          onConfirm={executeBulkAction}
+          title={bulkAction.confirmTitle}
+          description={bulkAction.confirmDescription(selection.count)}
+          count={selection.count}
+          variant={bulkAction.variant}
+          loading={bulkLoading}
+        />
+      )}
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}

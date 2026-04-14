@@ -9,10 +9,15 @@ import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
 import { ActionMenu } from '@/components/lien/action-menu';
 import { AssignTaskForm } from '@/components/lien/forms/assign-task-form';
 import { ConfirmDialog } from '@/components/lien/modal';
+import { BulkActionBar } from '@/components/lien/bulk-action-bar';
+import { BulkConfirmModal } from '@/components/lien/bulk-confirm-modal';
+import { BulkResultBanner } from '@/components/lien/bulk-result-banner';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { useSelectionState } from '@/hooks/use-selection-state';
 import { servicingService } from '@/lib/servicing';
 import type { ServicingListItem, PaginationMeta } from '@/lib/servicing';
+import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
 
 function formatDate(val: string): string {
   if (!val) return '\u2014';
@@ -25,10 +30,23 @@ function formatDate(val: string): string {
   }
 }
 
+const BULK_ACTIONS: BulkActionConfig[] = [
+  {
+    key: 'complete',
+    label: 'Mark Complete',
+    icon: 'ri-checkbox-circle-line',
+    variant: 'primary',
+    confirmTitle: 'Complete Tasks',
+    confirmDescription: (count) =>
+      `This will mark ${count} task${count !== 1 ? 's' : ''} as completed. Tasks already completed will be skipped.`,
+  },
+];
+
 export default function ServicingPage() {
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
+  const selection = useSelectionState();
 
   const [items, setItems] = useState<ServicingListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });
@@ -41,6 +59,10 @@ export default function ServicingPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ id: string; status: string; label: string } | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(null);
 
   const fetchData = useCallback(async (page = 1) => {
     setLoading(true);
@@ -92,6 +114,29 @@ export default function ServicingPage() {
     }
   }
 
+  const handleBulkAction = (actionKey: string) => {
+    const action = BULK_ACTIONS.find((a) => a.key === actionKey);
+    if (action) setBulkAction(action);
+  };
+
+  const executeBulkAction = async () => {
+    if (!bulkAction) return;
+    setBulkLoading(true);
+    const result = await executeBulk(selection.ids, async (id) => {
+      const item = items.find((s) => s.id === id);
+      if (!item) throw new Error('Task not found in current list');
+      if (item.status === 'Completed') throw new Error('Task is already completed');
+      await servicingService.updateStatus(id, 'Completed');
+    });
+    setBulkLoading(false);
+    setBulkAction(null);
+    setBulkResult(result);
+    selection.clear();
+    fetchData(pagination.page);
+  };
+
+  const allIds = items.map((s) => s.id);
+
   return (
     <div className="space-y-5">
       <PageHeader title="Servicing" subtitle={`${pagination.totalCount} tasks`}
@@ -105,6 +150,8 @@ export default function ServicingPage() {
         { label: 'All Statuses', value: statusFilter, onChange: setStatusFilter, options: [{ value: 'Pending', label: 'Pending' }, { value: 'InProgress', label: 'In Progress' }, { value: 'Completed', label: 'Completed' }, { value: 'Escalated', label: 'Escalated' }, { value: 'OnHold', label: 'On Hold' }] },
         { label: 'All Priorities', value: priorityFilter, onChange: setPriorityFilter, options: [{ value: 'Low', label: 'Low' }, { value: 'Normal', label: 'Normal' }, { value: 'High', label: 'High' }, { value: 'Urgent', label: 'Urgent' }] },
       ]} />
+
+      <BulkResultBanner result={bulkResult} onDismiss={() => setBulkResult(null)} entityLabel="tasks" />
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
@@ -127,6 +174,12 @@ export default function ServicingPage() {
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-100">
                 <thead><tr className="bg-gray-50">
+                  {canEdit && (
+                    <th className="px-4 py-3 w-10">
+                      <input type="checkbox" checked={selection.isAllSelected(allIds)} onChange={() => selection.toggleAll(allIds)}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
+                    </th>
+                  )}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Task #</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Description</th>
@@ -138,7 +191,13 @@ export default function ServicingPage() {
                 </tr></thead>
                 <tbody className="divide-y divide-gray-100">
                   {items.map((s) => (
-                    <tr key={s.id} className={`hover:bg-gray-50 transition-colors ${actionLoading === s.id ? 'opacity-50' : ''}`}>
+                    <tr key={s.id} className={`hover:bg-gray-50 transition-colors ${actionLoading === s.id ? 'opacity-50' : ''} ${selection.isSelected(s.id) ? 'bg-primary/5' : ''}`}>
+                      {canEdit && (
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={selection.isSelected(s.id)} onChange={() => selection.toggle(s.id)}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
+                        </td>
+                      )}
                       <td className="px-4 py-3"><Link href={`/lien/servicing/${s.id}`} className="text-xs font-mono text-primary hover:underline">{s.taskNumber}</Link></td>
                       <td className="px-4 py-3 text-sm text-gray-700">{s.taskType}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{s.description}</td>
@@ -177,6 +236,23 @@ export default function ServicingPage() {
           </>
         )}
       </div>
+
+      {canEdit && (
+        <BulkActionBar count={selection.count} actions={BULK_ACTIONS} onAction={handleBulkAction} onClear={selection.clear} />
+      )}
+
+      {bulkAction && (
+        <BulkConfirmModal
+          open
+          onClose={() => setBulkAction(null)}
+          onConfirm={executeBulkAction}
+          title={bulkAction.confirmTitle}
+          description={bulkAction.confirmDescription(selection.count)}
+          count={selection.count}
+          variant={bulkAction.variant}
+          loading={bulkLoading}
+        />
+      )}
 
       <AssignTaskForm open={showCreate} onClose={() => setShowCreate(false)} onCreated={() => fetchData(1)} />
 

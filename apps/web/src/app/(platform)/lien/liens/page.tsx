@@ -7,21 +7,39 @@ import { FilterToolbar } from '@/components/lien/filter-toolbar';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { SideDrawer } from '@/components/lien/side-drawer';
 import { CreateLienModal } from '@/components/lien/forms/create-lien-modal';
+import { BulkActionBar } from '@/components/lien/bulk-action-bar';
+import { BulkConfirmModal } from '@/components/lien/bulk-confirm-modal';
+import { BulkResultBanner } from '@/components/lien/bulk-result-banner';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { useSelectionState } from '@/hooks/use-selection-state';
 import { ApiError } from '@/lib/api-client';
 import { liensService, type LienListItem, type LiensQuery, type PaginationMeta } from '@/lib/liens';
 import { useProviderMode } from '@/hooks/use-provider-mode';
+import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return '\u2014';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
+const BULK_ACTIONS: BulkActionConfig[] = [
+  {
+    key: 'withdraw',
+    label: 'Withdraw',
+    icon: 'ri-close-circle-line',
+    variant: 'danger',
+    confirmTitle: 'Withdraw Liens',
+    confirmDescription: (count) =>
+      `This will withdraw ${count} lien${count !== 1 ? 's' : ''} from the marketplace. Only liens in "Active" or "Offered" status will be affected.`,
+  },
+];
+
 export default function LiensPage() {
   const { isSellMode } = useProviderMode();
   const ra = useRoleAccess();
   const addToast = useLienStore((s) => s.addToast);
+  const selection = useSelectionState();
 
   const [liens, setLiens] = useState<LienListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });
@@ -33,6 +51,18 @@ export default function LiensPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
+
+  const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(null);
+
+  const currentQuery = useCallback((): LiensQuery => ({
+    search: search || undefined,
+    status: statusFilter || undefined,
+    lienType: typeFilter || undefined,
+    page: 1,
+    pageSize: 20,
+  }), [search, statusFilter, typeFilter]);
 
   const fetchLiens = useCallback(async (query: LiensQuery = {}) => {
     setLoading(true);
@@ -53,32 +83,47 @@ export default function LiensPage() {
   }, []);
 
   useEffect(() => {
-    fetchLiens({
-      search: search || undefined,
-      status: statusFilter || undefined,
-      lienType: typeFilter || undefined,
-      page: 1,
-      pageSize: 20,
-    });
-  }, [search, statusFilter, typeFilter, fetchLiens]);
+    fetchLiens(currentQuery());
+  }, [search, statusFilter, typeFilter, fetchLiens, currentQuery]);
 
   const handlePageChange = (newPage: number) => {
-    fetchLiens({
-      search: search || undefined,
-      status: statusFilter || undefined,
-      lienType: typeFilter || undefined,
-      page: newPage,
-      pageSize: pagination.pageSize,
-    });
+    fetchLiens({ ...currentQuery(), page: newPage, pageSize: pagination.pageSize });
   };
 
   const previewLien = previewId ? liens.find((l) => l.id === previewId) : null;
 
   const handleCreated = () => {
     setShowCreate(false);
-    fetchLiens({ search: search || undefined, status: statusFilter || undefined, lienType: typeFilter || undefined, page: 1, pageSize: 20 });
+    fetchLiens(currentQuery());
     addToast({ type: 'success', title: 'Lien Created', description: 'New lien has been created successfully' });
   };
+
+  const canEdit = ra.can('lien:edit');
+
+  const handleBulkAction = (actionKey: string) => {
+    const action = BULK_ACTIONS.find((a) => a.key === actionKey);
+    if (action) setBulkAction(action);
+  };
+
+  const executeBulkAction = async () => {
+    if (!bulkAction) return;
+    setBulkLoading(true);
+    const result = await executeBulk(selection.ids, async (id) => {
+      const lien = liens.find((l) => l.id === id);
+      if (!lien) throw new Error('Lien not found in current list');
+      if (lien.status !== 'Active' && lien.status !== 'Offered') {
+        throw new Error(`Lien is "${lien.status}" — only Active or Offered liens can be withdrawn`);
+      }
+      await liensService.updateLien(id, { status: 'Withdrawn' });
+    });
+    setBulkLoading(false);
+    setBulkAction(null);
+    setBulkResult(result);
+    selection.clear();
+    fetchLiens(currentQuery());
+  };
+
+  const allIds = liens.map((l) => l.id);
 
   return (
     <div className="space-y-5">
@@ -106,11 +151,13 @@ export default function LiensPage() {
         ] },
       ]} />
 
+      <BulkResultBanner result={bulkResult} onDismiss={() => setBulkResult(null)} entityLabel="liens" />
+
       {error && (
         <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
           <i className="ri-error-warning-line text-red-600" />
           <p className="text-sm text-red-700">{error}</p>
-          <button onClick={() => fetchLiens({ search: search || undefined, status: statusFilter || undefined, lienType: typeFilter || undefined, page: 1, pageSize: 20 })} className="ml-auto text-sm text-red-600 hover:underline">Retry</button>
+          <button onClick={() => fetchLiens(currentQuery())} className="ml-auto text-sm text-red-600 hover:underline">Retry</button>
         </div>
       )}
 
@@ -125,6 +172,12 @@ export default function LiensPage() {
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-100">
                 <thead><tr className="bg-gray-50">
+                  {canEdit && (
+                    <th className="px-4 py-3 w-10">
+                      <input type="checkbox" checked={selection.isAllSelected(allIds)} onChange={() => selection.toggleAll(allIds)}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
+                    </th>
+                  )}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Lien #</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Subject</th>
@@ -135,7 +188,13 @@ export default function LiensPage() {
                 </tr></thead>
                 <tbody className="divide-y divide-gray-100">
                   {liens.map((l) => (
-                    <tr key={l.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => setPreviewId(l.id)}>
+                    <tr key={l.id} className={`hover:bg-gray-50 transition-colors cursor-pointer ${selection.isSelected(l.id) ? 'bg-primary/5' : ''}`} onClick={() => setPreviewId(l.id)}>
+                      {canEdit && (
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={selection.isSelected(l.id)} onChange={() => selection.toggle(l.id)}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
+                        </td>
+                      )}
                       <td className="px-4 py-3"><Link href={`/lien/liens/${l.id}`} onClick={(e) => e.stopPropagation()} className="text-xs font-mono text-primary hover:underline">{l.lienNumber}</Link></td>
                       <td className="px-4 py-3 text-sm text-gray-700">{l.lienTypeLabel}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">{l.isConfidential ? <span className="italic text-gray-400">Confidential</span> : l.subjectName || '\u2014'}</td>
@@ -165,6 +224,23 @@ export default function LiensPage() {
             </div>
           )}
         </>
+      )}
+
+      {canEdit && (
+        <BulkActionBar count={selection.count} actions={BULK_ACTIONS} onAction={handleBulkAction} onClear={selection.clear} />
+      )}
+
+      {bulkAction && (
+        <BulkConfirmModal
+          open
+          onClose={() => setBulkAction(null)}
+          onConfirm={executeBulkAction}
+          title={bulkAction.confirmTitle}
+          description={bulkAction.confirmDescription(selection.count)}
+          count={selection.count}
+          variant={bulkAction.variant}
+          loading={bulkLoading}
+        />
       )}
 
       <CreateLienModal open={showCreate} onClose={() => setShowCreate(false)} onCreated={handleCreated} />
