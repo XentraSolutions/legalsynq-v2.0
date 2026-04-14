@@ -264,3 +264,9 @@ id = "-DpVTjYj7pL3OKE3FCiEz"
 uri = "file://analysis/LS-LIENS-UI-005-report.md"
 type = "text"
 title = "LS-LIENS-UI-005 Report: Documents Integration"
+
+[[outputs]]
+id = "xFuwna7Qo37CR4kHiEW9G"
+uri = "file://analysis/LS-LIENS-UI-006-report.md"
+type = "text"
+title = "LS-LIENS-UI-006 Report — Contacts & Participants Integration"
