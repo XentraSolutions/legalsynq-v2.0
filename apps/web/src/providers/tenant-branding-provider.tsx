@@ -30,20 +30,11 @@ export function TenantBrandingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function loadBranding() {
       try {
-        const headers: Record<string, string> = {};
-        const devTenantCode = process.env.NEXT_PUBLIC_TENANT_CODE;
-        if (devTenantCode) {
-          headers['X-Tenant-Code'] = devTenantCode;
-        } else {
-          const cookieTenant = document.cookie
-            .split('; ')
-            .find(c => c.startsWith('tenant_code='))
-            ?.split('=')[1];
-          if (cookieTenant) headers['X-Tenant-Code'] = cookieTenant;
-        }
+        const tenantCode = resolveTenantCode();
+        if (!tenantCode) return;
 
         const res = await fetch('/api/identity/api/tenants/current/branding', {
-          headers,
+          headers: { 'X-Tenant-Code': tenantCode },
           cache: 'no-store',
         });
         if (!res.ok) return;
@@ -66,6 +57,27 @@ export function TenantBrandingProvider({ children }: { children: ReactNode }) {
 
 export function useTenantBranding(): TenantBranding {
   return useContext(TenantBrandingContext);
+}
+
+// ── Tenant code resolution ───────────────────────────────────────────────────
+
+function resolveTenantCode(): string | null {
+  const cookieTenant = document.cookie
+    .split('; ')
+    .find(c => c.startsWith('tenant_code='))
+    ?.split('=')[1];
+  if (cookieTenant) return cookieTenant;
+
+  const host = window.location.hostname;
+  const parts = host.split('.');
+  if (parts.length >= 3 && !host.startsWith('localhost')) {
+    return parts[0].toUpperCase();
+  }
+
+  const envTenantCode = process.env.NEXT_PUBLIC_TENANT_CODE;
+  if (envTenantCode) return envTenantCode;
+
+  return null;
 }
 
 // ── DOM mutation helpers ──────────────────────────────────────────────────────
