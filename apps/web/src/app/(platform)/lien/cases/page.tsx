@@ -9,7 +9,8 @@ import { ActionMenu } from '@/components/lien/action-menu';
 import { SideDrawer } from '@/components/lien/side-drawer';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { CreateCaseForm } from '@/components/lien/forms/create-case-form';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { casesService, type CaseListItem, type PaginationMeta } from '@/lib/cases';
 import { ApiError } from '@/lib/api-client';
 
@@ -28,8 +29,8 @@ function formatCurrency(amount: number | null): string {
 }
 
 export default function CasesPage() {
-  const role = useLienStore((s) => s.currentRole);
   const addToast = useLienStore((s) => s.addToast);
+  const ra = useRoleAccess();
 
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });
@@ -70,7 +71,7 @@ export default function CasesPage() {
   }, [fetchCases]);
 
   const previewCase = previewId ? cases.find((c) => c.id === previewId) : null;
-  const canEdit = canPerformAction(role, 'edit');
+  const canEdit = ra.can('case:edit');
 
   const handleAdvanceStatus = async (caseItem: CaseListItem) => {
     const idx = STATUSES.indexOf(caseItem.status);
@@ -101,7 +102,7 @@ export default function CasesPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Cases" subtitle={loading ? 'Loading...' : `${pagination.totalCount} cases`}
-        actions={canPerformAction(role, 'create') ? (
+        actions={ra.can('case:create') ? (
           <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
             <i className="ri-add-line text-base" />Create Case
           </button>

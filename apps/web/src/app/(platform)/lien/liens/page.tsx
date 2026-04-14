@@ -7,7 +7,8 @@ import { FilterToolbar } from '@/components/lien/filter-toolbar';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { SideDrawer } from '@/components/lien/side-drawer';
 import { CreateLienModal } from '@/components/lien/forms/create-lien-modal';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { ApiError } from '@/lib/api-client';
 import { liensService, type LienListItem, type LiensQuery, type PaginationMeta } from '@/lib/liens';
 import { useProviderMode } from '@/hooks/use-provider-mode';
@@ -18,8 +19,8 @@ function formatCurrency(amount: number | null): string {
 }
 
 export default function LiensPage() {
-  const role = useLienStore((s) => s.currentRole);
   const { isSellMode } = useProviderMode();
+  const ra = useRoleAccess();
   const addToast = useLienStore((s) => s.addToast);
 
   const [liens, setLiens] = useState<LienListItem[]>([]);
@@ -82,7 +83,7 @@ export default function LiensPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Liens" subtitle={loading ? 'Loading...' : `${pagination.totalCount} liens`}
-        actions={canPerformAction(role, 'create') ? (
+        actions={ra.can('lien:create') ? (
           <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
             <i className="ri-add-line text-base" />New Lien
           </button>

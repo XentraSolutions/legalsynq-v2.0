@@ -1,7 +1,8 @@
 'use client';
 
 import { use, useState, useEffect, useCallback } from 'react';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { ConfirmDialog } from '@/components/lien/modal';
@@ -17,7 +18,7 @@ const STATUS_DISPLAY: Record<string, string> = {
 export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const addToast = useLienStore((s) => s.addToast);
-  const role = useLienStore((s) => s.currentRole);
+  const ra = useRoleAccess();
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +42,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
 
   useEffect(() => { fetchDocument(); }, [fetchDocument]);
 
-  const canEdit = canPerformAction(role, 'edit');
+  const canEdit = ra.can('document:edit');
 
   const handleStatusUpdate = async () => {
     if (!confirmAction || !doc) return;

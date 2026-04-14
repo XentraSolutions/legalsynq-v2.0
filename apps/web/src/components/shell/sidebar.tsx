@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useProduct } from '@/contexts/product-context';
 import { useSettings } from '@/contexts/settings-context';
-import { PRODUCT_NAV, PRODUCT_META, GLOBAL_BOTTOM_NAV, buildNavGroups, filterNavByRoles } from '@/lib/nav';
+import { PRODUCT_NAV, PRODUCT_META, GLOBAL_BOTTOM_NAV, buildNavGroups, filterNavByAccess } from '@/lib/nav';
 import { useSession } from '@/hooks/use-session';
 import { useNavBadges } from '@/hooks/use-nav-badges';
 import { useProviderMode } from '@/hooks/use-provider-mode';
@@ -52,14 +52,9 @@ export function Sidebar() {
 
   const width    = !mounted ? 220 : collapsed ? 52 : 220;
   const rawSections = selectedProductId ? (PRODUCT_NAV[selectedProductId] ?? []) : [];
-  const roleSections = session ? filterNavByRoles(rawSections, session.productRoles) : rawSections;
-  const sections = roleSections
-    .filter((s) => !s.sellModeOnly || isSellMode)
-    .map((s) => ({
-      ...s,
-      items: s.items.filter((item) => !item.sellModeOnly || isSellMode),
-    }))
-    .filter((s) => s.items.length > 0);
+  const sections = session
+    ? filterNavByAccess(rawSections, session.productRoles, isSellMode)
+    : rawSections;
   const meta     = selectedProductId ? PRODUCT_META[selectedProductId] : null;
 
   return (

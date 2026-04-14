@@ -9,7 +9,8 @@ import { StatusBadge } from '@/components/lien/status-badge';
 import { KpiCard } from '@/components/lien/kpi-card';
 import { ActionMenu } from '@/components/lien/action-menu';
 import { ConfirmDialog } from '@/components/lien/modal';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { useProviderMode } from '@/hooks/use-provider-mode';
 import {
   billOfSaleService,
@@ -22,7 +23,7 @@ export default function BillOfSalesPage() {
   const { isManageMode, isReady } = useProviderMode();
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
-  const role = useLienStore((s) => s.currentRole);
+  const ra = useRoleAccess();
   const [items, setItems] = useState<BillOfSaleListItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -69,7 +70,7 @@ export default function BillOfSalesPage() {
   const executedCount = items.filter((b) => b.status === 'Executed').length;
   const pendingCount = items.filter((b) => b.status === 'Pending').length;
   const totalVolume = items.filter((b) => b.status === 'Executed').reduce((s, b) => s + b.purchaseAmount, 0);
-  const canEdit = canPerformAction(role, 'edit');
+  const canEdit = ra.can('bos:manage');
 
   const handleConfirmAction = async () => {
     if (!confirmAction) return;
@@ -93,7 +94,7 @@ export default function BillOfSalesPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Bill of Sales" subtitle={`${totalCount} records`}
-        actions={canPerformAction(role, 'create') ? (
+        actions={ra.can('bos:manage') ? (
           <button onClick={() => addToast({ type: 'info', title: 'Info', description: 'BOS creation is done via the lien sale flow' })} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
             <i className="ri-add-line text-base" />New Bill of Sale
           </button>

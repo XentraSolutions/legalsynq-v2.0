@@ -1,7 +1,8 @@
 'use client';
 
 import { use, useState } from 'react';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { formatDate, formatDateTime } from '@/lib/lien-mock-data';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
@@ -13,7 +14,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const userDetails = useLienStore((s) => s.userDetails);
   const updateUser = useLienStore((s) => s.updateUser);
   const addToast = useLienStore((s) => s.addToast);
-  const role = useLienStore((s) => s.currentRole);
+  const ra = useRoleAccess();
   const [confirmAction, setConfirmAction] = useState<{ status: string; label: string } | null>(null);
 
   const summary = users.find((u) => u.id === id);
@@ -21,7 +22,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const user = detail ? { ...summary, ...detail } : summary;
   if (!user) return <div className="p-10 text-center text-gray-400">User not found.</div>;
   const d = user as any;
-  const isAdmin = role === 'Admin';
+  const isAdmin = ra.isAdmin || ra.isTenantAdmin;
 
   return (
     <div className="space-y-5">

@@ -8,14 +8,15 @@ import { StatusBadge } from '@/components/lien/status-badge';
 import { ActionMenu } from '@/components/lien/action-menu';
 import { AddUserForm } from '@/components/lien/forms/add-user-form';
 import { ConfirmDialog } from '@/components/lien/modal';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { formatDate } from '@/lib/lien-mock-data';
 
 export default function UserManagementPage() {
   const users = useLienStore((s) => s.users);
   const updateUser = useLienStore((s) => s.updateUser);
   const addToast = useLienStore((s) => s.addToast);
-  const role = useLienStore((s) => s.currentRole);
+  const ra = useRoleAccess();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -30,7 +31,7 @@ export default function UserManagementPage() {
   });
 
   const uniqueRoles = [...new Set(users.map((u) => u.role))];
-  const isAdmin = role === 'Admin';
+  const isAdmin = ra.isAdmin || ra.isTenantAdmin;
 
   return (
     <div className="space-y-5">

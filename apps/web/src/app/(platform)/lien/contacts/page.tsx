@@ -7,13 +7,14 @@ import { FilterToolbar } from '@/components/lien/filter-toolbar';
 import { ActionMenu } from '@/components/lien/action-menu';
 import { SideDrawer } from '@/components/lien/side-drawer';
 import { AddContactForm } from '@/components/lien/forms/add-contact-form';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { CONTACT_TYPE_LABELS } from '@/types/lien';
 import { contactsService, type ContactListItem } from '@/lib/contacts';
 
 export default function ContactsPage() {
-  const role = useLienStore((s) => s.currentRole);
   const addToast = useLienStore((s) => s.addToast);
+  const ra = useRoleAccess();
   const [contacts, setContacts] = useState<ContactListItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -46,7 +47,7 @@ export default function ContactsPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Contacts" subtitle={`${totalCount} contacts`}
-        actions={canPerformAction(role, 'create') ? (
+        actions={ra.can('contact:create') ? (
           <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
             <i className="ri-add-line text-base" />Add Contact
           </button>

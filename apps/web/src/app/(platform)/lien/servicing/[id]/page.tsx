@@ -7,7 +7,8 @@ import { PageHeader } from '@/components/lien/page-header';
 import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { EntityTimeline } from '@/components/lien/entity-timeline';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { servicingService } from '@/lib/servicing';
 import type { ServicingDetail } from '@/lib/servicing';
 
@@ -26,7 +27,7 @@ export default function ServicingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
-  const role = useLienStore((s) => s.currentRole);
+  const ra = useRoleAccess();
 
   const [item, setItem] = useState<ServicingDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,7 +51,7 @@ export default function ServicingDetailPage() {
 
   useEffect(() => { fetchItem(); }, [fetchItem]);
 
-  const canEdit = canPerformAction(role, 'edit');
+  const canEdit = ra.can('servicing:edit');
 
   async function handleStatusUpdate(status: string) {
     if (!item) return;

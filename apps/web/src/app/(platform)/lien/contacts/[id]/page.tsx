@@ -1,7 +1,8 @@
 'use client';
 
 import { use, useState, useEffect, useCallback } from 'react';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { CONTACT_TYPE_LABELS } from '@/types/lien';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { ConfirmDialog } from '@/components/lien/modal';
@@ -11,7 +12,7 @@ import { contactsService, type ContactDetail } from '@/lib/contacts';
 export default function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const addToast = useLienStore((s) => s.addToast);
-  const role = useLienStore((s) => s.currentRole);
+  const ra = useRoleAccess();
   const [contact, setContact] = useState<ContactDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmAction, setConfirmAction] = useState<{ action: string; label: string } | null>(null);
@@ -30,7 +31,7 @@ export default function ContactDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => { fetchContact(); }, [fetchContact]);
 
-  const canEdit = canPerformAction(role, 'edit');
+  const canEdit = ra.can('contact:edit');
 
   const handleStatusToggle = async () => {
     if (!confirmAction || !contact) return;

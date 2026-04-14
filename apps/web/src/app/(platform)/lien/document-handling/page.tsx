@@ -8,7 +8,8 @@ import { StatusBadge } from '@/components/lien/status-badge';
 import { ActionMenu } from '@/components/lien/action-menu';
 import { UploadDocumentForm } from '@/components/lien/forms/upload-document-form';
 import { ConfirmDialog } from '@/components/lien/modal';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { documentsService, type DocumentListItem } from '@/lib/documents';
 
 const STATUS_OPTIONS = [
@@ -27,7 +28,7 @@ const STATUS_DISPLAY: Record<string, string> = {
 
 export default function DocumentHandlingPage() {
   const addToast = useLienStore((s) => s.addToast);
-  const role = useLienStore((s) => s.currentRole);
+  const ra = useRoleAccess();
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -62,7 +63,7 @@ export default function DocumentHandlingPage() {
     return true;
   });
 
-  const canEdit = canPerformAction(role, 'edit');
+  const canEdit = ra.can('document:edit');
 
   const handleStatusUpdate = async () => {
     if (!confirmAction) return;
@@ -89,7 +90,7 @@ export default function DocumentHandlingPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Document Handling" subtitle={`${total} documents`}
-        actions={canPerformAction(role, 'create') ? (
+        actions={ra.can('document:upload') ? (
           <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
             <i className="ri-upload-2-line text-base" />Upload Document
           </button>

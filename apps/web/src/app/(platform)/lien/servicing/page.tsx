@@ -9,7 +9,8 @@ import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
 import { ActionMenu } from '@/components/lien/action-menu';
 import { AssignTaskForm } from '@/components/lien/forms/assign-task-form';
 import { ConfirmDialog } from '@/components/lien/modal';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { servicingService } from '@/lib/servicing';
 import type { ServicingListItem, PaginationMeta } from '@/lib/servicing';
 
@@ -27,7 +28,7 @@ function formatDate(val: string): string {
 export default function ServicingPage() {
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
-  const role = useLienStore((s) => s.currentRole);
+  const ra = useRoleAccess();
 
   const [items, setItems] = useState<ServicingListItem[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });
@@ -63,7 +64,7 @@ export default function ServicingPage() {
 
   useEffect(() => { fetchData(1); }, [fetchData]);
 
-  const canEdit = canPerformAction(role, 'edit');
+  const canEdit = ra.can('servicing:edit');
 
   async function handleStatusUpdate(id: string, status: string) {
     setActionLoading(id);
@@ -94,7 +95,7 @@ export default function ServicingPage() {
   return (
     <div className="space-y-5">
       <PageHeader title="Servicing" subtitle={`${pagination.totalCount} tasks`}
-        actions={canPerformAction(role, 'create') ? (
+        actions={ra.can('servicing:assign') ? (
           <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
             <i className="ri-add-line text-base" />Assign Task
           </button>

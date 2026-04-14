@@ -2,7 +2,8 @@
 
 import { use, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { casesService, type CaseDetail, type CaseLienItem } from '@/lib/cases';
 import { ApiError } from '@/lib/api-client';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
@@ -24,8 +25,8 @@ function formatCurrency(amount: number | null): string {
 
 export default function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const role = useLienStore((s) => s.currentRole);
   const addToast = useLienStore((s) => s.addToast);
+  const ra = useRoleAccess();
   const caseNotes = useLienStore((s) => s.caseNotes[id] || []);
 
   const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
@@ -59,7 +60,7 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     fetchCase();
   }, [fetchCase]);
 
-  const canEdit = canPerformAction(role, 'edit');
+  const canEdit = ra.can('case:edit');
 
   if (loading) {
     return (

@@ -51,7 +51,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     {
       heading: 'MY TOOLS',
       items: [
-        { href: '/lien/batch-entry',       label: 'Batch Entry',       icon: 'ri-upload-2-line' },
+        { href: '/lien/batch-entry',       label: 'Batch Entry',       icon: 'ri-upload-2-line', requiredRoles: [ProductRole.SynqLienSeller] },
         { href: '/lien/document-handling', label: 'Document Handling', icon: 'ri-file-copy-2-line' },
       ],
     },
@@ -125,6 +125,20 @@ export function filterNavByRoles(sections: NavSection[], userRoles: ProductRoleV
       }),
     }))
     .filter(section => section.items.length > 0);
+}
+
+export function filterNavByAccess(
+  sections: NavSection[],
+  userRoles: ProductRoleValue[],
+  isSellMode: boolean,
+): NavSection[] {
+  return filterNavByRoles(sections, userRoles)
+    .filter((s) => !s.sellModeOnly || isSellMode)
+    .map((s) => ({
+      ...s,
+      items: s.items.filter((item) => !item.sellModeOnly || isSellMode),
+    }))
+    .filter((s) => s.items.length > 0);
 }
 
 // ── Infer product from pathname ───────────────────────────────────────────────

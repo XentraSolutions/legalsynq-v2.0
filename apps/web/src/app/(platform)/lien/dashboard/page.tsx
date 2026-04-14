@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { KpiCard } from '@/components/lien/kpi-card';
 import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
 import { formatCurrency } from '@/lib/lien-mock-data';
 import { CreateCaseForm } from '@/components/lien/forms/create-case-form';
 import {
@@ -15,6 +15,7 @@ import {
   type UnifiedActivityItem,
 } from '@/lib/unified-activity';
 import { useProviderMode } from '@/hooks/use-provider-mode';
+import { useRoleAccess } from '@/hooks/use-role-access';
 
 const SOURCE_LABELS: Record<string, string> = {
   audit: 'Audit',
@@ -42,9 +43,9 @@ export default function LienDashboardPage() {
   const cases = useLienStore((s) => s.cases);
   const liens = useLienStore((s) => s.liens);
   const servicing = useLienStore((s) => s.servicing);
-  const role = useLienStore((s) => s.currentRole);
   const [showCreateCase, setShowCreateCase] = useState(false);
   const { mode, isSellMode } = useProviderMode();
+  const ra = useRoleAccess();
   const [recentActivity, setRecentActivity] = useState<UnifiedActivityItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState(false);
@@ -82,7 +83,7 @@ export default function LienDashboardPage() {
           </div>
           <p className="text-sm text-gray-500 mt-0.5">SynqLien operational overview</p>
         </div>
-        {canPerformAction(role, 'create') && (
+        {ra.can('case:create') && (
           <button onClick={() => setShowCreateCase(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
             <i className="ri-add-line text-base" />
             New Case
@@ -207,13 +208,13 @@ export default function LienDashboardPage() {
         <h2 className="text-sm font-semibold text-gray-800 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
-            { href: '/lien/cases', icon: 'ri-folder-add-line', label: 'New Case', color: 'text-blue-600', sellOnly: false },
-            { href: '/lien/liens', icon: 'ri-stack-line', label: 'New Lien', color: 'text-indigo-600', sellOnly: false },
-            { href: '/lien/bill-of-sales', icon: 'ri-receipt-line', label: 'Bill of Sale', color: 'text-green-600', sellOnly: true },
-            { href: '/lien/batch-entry', icon: 'ri-upload-2-line', label: 'Batch Import', color: 'text-purple-600', sellOnly: false },
-            { href: '/lien/document-handling', icon: 'ri-file-copy-2-line', label: 'Documents', color: 'text-amber-600', sellOnly: false },
-            { href: '/lien/contacts', icon: 'ri-contacts-book-line', label: 'Contacts', color: 'text-teal-600', sellOnly: false },
-          ].filter((a) => !a.sellOnly || isSellMode).map((action) => (
+            { href: '/lien/cases', icon: 'ri-folder-add-line', label: 'New Case', color: 'text-blue-600', sellOnly: false, show: ra.can('case:create') },
+            { href: '/lien/liens', icon: 'ri-stack-line', label: 'New Lien', color: 'text-indigo-600', sellOnly: false, show: ra.can('lien:create') },
+            { href: '/lien/bill-of-sales', icon: 'ri-receipt-line', label: 'Bill of Sale', color: 'text-green-600', sellOnly: true, show: ra.can('bos:view') },
+            { href: '/lien/batch-entry', icon: 'ri-upload-2-line', label: 'Batch Import', color: 'text-purple-600', sellOnly: false, show: ra.isSeller || ra.isAdmin },
+            { href: '/lien/document-handling', icon: 'ri-file-copy-2-line', label: 'Documents', color: 'text-amber-600', sellOnly: false, show: ra.can('document:view') },
+            { href: '/lien/contacts', icon: 'ri-contacts-book-line', label: 'Contacts', color: 'text-teal-600', sellOnly: false, show: ra.can('contact:view') },
+          ].filter((a) => a.show && (!a.sellOnly || isSellMode)).map((action) => (
             <Link key={action.href} href={action.href} className="flex flex-col items-center gap-2 p-4 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-colors">
               <div className={`w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center ${action.color}`}>
                 <i className={`${action.icon} text-xl`} />

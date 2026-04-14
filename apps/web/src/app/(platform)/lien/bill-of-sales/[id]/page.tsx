@@ -2,7 +2,10 @@
 
 import { use, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useRouter } from 'next/navigation';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { useProviderMode } from '@/hooks/use-provider-mode';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { StatusProgress } from '@/components/lien/status-progress';
@@ -17,11 +20,19 @@ import {
 
 export default function BillOfSaleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
+  const { isManageMode, isReady } = useProviderMode();
   const addToast = useLienStore((s) => s.addToast);
-  const role = useLienStore((s) => s.currentRole);
+  const ra = useRoleAccess();
   const [bos, setBos] = useState<BillOfSaleDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmAction, setConfirmAction] = useState<{ action: string; label: string } | null>(null);
+
+  useEffect(() => {
+    if (isReady && isManageMode) {
+      router.replace('/lien/dashboard');
+    }
+  }, [isReady, isManageMode, router]);
 
   const fetchBos = useCallback(async () => {
     try {
@@ -35,9 +46,11 @@ export default function BillOfSaleDetailPage({ params }: { params: Promise<{ id:
     }
   }, [id, addToast]);
 
-  useEffect(() => { fetchBos(); }, [fetchBos]);
+  useEffect(() => {
+    if (isReady && !isManageMode) fetchBos();
+  }, [fetchBos, isReady, isManageMode]);
 
-  const canEdit = canPerformAction(role, 'edit');
+  const canEdit = ra.can('bos:manage');
 
   const handleConfirmAction = async () => {
     if (!confirmAction || !bos) return;

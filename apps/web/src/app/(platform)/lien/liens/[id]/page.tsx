@@ -2,7 +2,8 @@
 
 import { use, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { useLienStore } from '@/stores/lien-store';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { ApiError } from '@/lib/api-client';
 import { liensService, type LienDetail, type LienOfferItem } from '@/lib/liens';
 import { casesService, type CaseDetail as CaseInfo } from '@/lib/cases';
@@ -24,8 +25,8 @@ function formatCurrency(amount: number | null): string {
 
 export default function LienDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const role = useLienStore((s) => s.currentRole);
   const addToast = useLienStore((s) => s.addToast);
+  const ra = useRoleAccess();
   const { isSellMode, isReady: modeReady } = useProviderMode();
 
   const [lien, setLien] = useState<LienDetail | null>(null);
@@ -78,7 +79,7 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
     if (modeReady) fetchLien();
   }, [fetchLien, modeReady]);
 
-  const canEdit = canPerformAction(role, 'edit');
+  const canEdit = ra.can('lien:edit');
 
   if (loading) {
     return (
