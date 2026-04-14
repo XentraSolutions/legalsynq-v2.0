@@ -5,6 +5,7 @@ using BuildingBlocks.Context;
 using Contracts;
 using Liens.Api.Endpoints;
 using Liens.Api.Middleware;
+using Liens.Domain;
 using Liens.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -91,6 +92,12 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
         productRoles  = ctx.ProductRoles,
         permissions   = ctx.Permissions,
         isPlatformAdmin = ctx.IsPlatformAdmin,
+        capabilities = new
+        {
+            sell = ctx.CanSellLiens(),
+            manageInternal = ctx.CanManageLiensInternal(),
+            resolved = ctx.GetLiensCapabilities(),
+        },
     });
 })
 .RequireAuthorization(Policies.AuthenticatedUser);

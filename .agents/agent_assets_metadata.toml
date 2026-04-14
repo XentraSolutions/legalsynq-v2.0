@@ -222,3 +222,9 @@ id = "0wcwcrsXJI5poJYeo0CyH"
 uri = "file://analysis/LS-LIENS-02-002-report.md"
 type = "text"
 title = "LS-LIENS-02-002 — Liens Product Capability Model Report"
+
+[[outputs]]
+id = "-iBdD2q7Iospb_tKMNn14"
+uri = "file://analysis/LS-LIENS-02-002-01-report.md"
+type = "text"
+title = "LS-LIENS-02-002-01 — Liens Capability Abstraction Layer Report"
