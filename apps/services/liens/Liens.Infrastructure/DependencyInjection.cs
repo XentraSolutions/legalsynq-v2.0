@@ -38,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<ILienRepository, LienRepository>();
         services.AddScoped<ILienOfferRepository, LienOfferRepository>();
         services.AddScoped<IBillOfSaleRepository, BillOfSaleRepository>();
+        services.AddScoped<IServicingItemRepository, ServicingItemRepository>();
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddSingleton<IBillOfSalePdfGenerator, BillOfSalePdfGenerator>();
@@ -48,6 +49,7 @@ public static class DependencyInjection
         services.AddScoped<IBillOfSaleService, BillOfSaleService>();
         services.AddScoped<IBillOfSaleDocumentQueryService, BillOfSaleDocumentQueryService>();
         services.AddScoped<ICaseService, CaseService>();
+        services.AddScoped<IServicingItemService, ServicingItemService>();
 
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
         services.AddHttpClient("DocumentsService", client =>

@@ -3,48 +3,66 @@
 import { useState } from 'react';
 import { FormModal } from '@/components/lien/modal';
 import { useLienStore } from '@/stores/lien-store';
+import { servicingService } from '@/lib/servicing';
 
 interface AssignTaskFormProps {
   open: boolean;
   onClose: () => void;
+  onCreated?: () => void;
+  caseId?: string;
+  lienId?: string;
   caseNumber?: string;
   lienNumber?: string;
 }
 
-export function AssignTaskForm({ open, onClose, caseNumber, lienNumber }: AssignTaskFormProps) {
-  const addServicingTask = useLienStore((s) => s.addServicingTask);
+export function AssignTaskForm({ open, onClose, onCreated, caseId, lienId, caseNumber, lienNumber }: AssignTaskFormProps) {
+  const addToast = useLienStore((s) => s.addToast);
   const [form, setForm] = useState({ taskType: '', description: '', assignedTo: '', priority: 'Normal', dueDate: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   const validate = () => {
     const e: Record<string, string> = {};
     if (!form.taskType) e.taskType = 'Task type is required';
     if (!form.description.trim()) e.description = 'Description is required';
-    if (!form.assignedTo) e.assignedTo = 'Assignee is required';
+    if (!form.assignedTo.trim()) e.assignedTo = 'Assignee is required';
     if (!form.dueDate) e.dueDate = 'Due date is required';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return;
-    const id = `sv-${Date.now()}`;
-    const num = `SVC-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000 + 1000))}`;
-    addServicingTask({
-      id, taskNumber: num, taskType: form.taskType, status: 'Pending',
-      priority: form.priority, caseNumber, lienNumber,
-      assignedTo: form.assignedTo, description: form.description,
-      dueDate: form.dueDate, createdAtUtc: new Date().toISOString(), updatedAtUtc: new Date().toISOString(),
-    });
-    setForm({ taskType: '', description: '', assignedTo: '', priority: 'Normal', dueDate: '' });
-    setErrors({});
-    onClose();
+    setSubmitting(true);
+    try {
+      const taskNumber = `SVC-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000 + 1000))}`;
+      await servicingService.createItem({
+        taskNumber,
+        taskType: form.taskType,
+        description: form.description,
+        assignedTo: form.assignedTo,
+        priority: form.priority,
+        dueDate: form.dueDate,
+        caseId: caseId || undefined,
+        lienId: lienId || undefined,
+      });
+      addToast({ type: 'success', title: 'Task Created', description: `${taskNumber} assigned to ${form.assignedTo}` });
+      setForm({ taskType: '', description: '', assignedTo: '', priority: 'Normal', dueDate: '' });
+      setErrors({});
+      onClose();
+      onCreated?.();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create task';
+      addToast({ type: 'error', title: 'Creation Failed', description: msg });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const reset = () => { setForm({ taskType: '', description: '', assignedTo: '', priority: 'Normal', dueDate: '' }); setErrors({}); onClose(); };
 
   return (
-    <FormModal open={open} onClose={reset} onSubmit={handleSubmit} title="Assign Task" submitLabel="Create Task">
+    <FormModal open={open} onClose={reset} onSubmit={handleSubmit} title="Assign Task" submitLabel={submitting ? 'Creating...' : 'Create Task'}>
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Task Type<span className="text-red-500 ml-0.5">*</span></label>
@@ -69,13 +87,9 @@ export function AssignTaskForm({ open, onClose, caseNumber, lienNumber }: Assign
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Assigned To<span className="text-red-500 ml-0.5">*</span></label>
-            <select value={form.assignedTo} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}
-              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.assignedTo ? 'border-red-300' : 'border-gray-200'} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`}>
-              <option value="">Select...</option>
-              <option value="Sarah Chen">Sarah Chen</option>
-              <option value="Michael Park">Michael Park</option>
-              <option value="Lisa Wang">Lisa Wang</option>
-            </select>
+            <input type="text" value={form.assignedTo} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}
+              placeholder="Enter name..."
+              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.assignedTo ? 'border-red-300' : 'border-gray-200'} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`} />
             {errors.assignedTo && <p className="text-xs text-red-500 mt-1">{errors.assignedTo}</p>}
           </div>
           <div>

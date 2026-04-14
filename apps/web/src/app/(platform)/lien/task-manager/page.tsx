@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { KpiCard } from '@/components/lien/kpi-card';
@@ -11,7 +11,19 @@ import { ActionMenu } from '@/components/lien/action-menu';
 import { AssignTaskForm } from '@/components/lien/forms/assign-task-form';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { useLienStore, canPerformAction } from '@/stores/lien-store';
-import { formatDate } from '@/lib/lien-mock-data';
+import { servicingService } from '@/lib/servicing';
+import type { ServicingListItem, PaginationMeta } from '@/lib/servicing';
+
+function formatDate(val: string): string {
+  if (!val) return '\u2014';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return val;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return val;
+  }
+}
 
 const STATUS_COLUMNS = [
   { key: 'Pending',    label: 'Pending',     icon: 'ri-time-line',              color: 'border-t-gray-400' },
@@ -25,10 +37,13 @@ type ViewMode = 'board' | 'list';
 
 export default function TaskManagerPage() {
   const router = useRouter();
-  const servicing = useLienStore((s) => s.servicing);
-  const updateServicing = useLienStore((s) => s.updateServicing);
   const addToast = useLienStore((s) => s.addToast);
   const role = useLienStore((s) => s.currentRole);
+
+  const [items, setItems] = useState<ServicingListItem[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: 100, totalCount: 0, totalPages: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -36,51 +51,88 @@ export default function TaskManagerPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('board');
   const [showCreate, setShowCreate] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ id: string; status: string; label: string } | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const canEdit = canPerformAction(role, 'edit');
 
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await servicingService.getItems({
+        search: search || undefined,
+        priority: priorityFilter || undefined,
+        assignedTo: assigneeFilter || undefined,
+        page: 1,
+        pageSize: 100,
+      });
+      setItems(result.items);
+      setPagination(result.pagination);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load tasks');
+    } finally {
+      setLoading(false);
+    }
+  }, [search, priorityFilter, assigneeFilter]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
   const assignees = useMemo(() => {
-    const set = new Set(servicing.map((s) => s.assignedTo));
+    const set = new Set(items.map((s) => s.assignedTo));
     return Array.from(set).sort();
-  }, [servicing]);
+  }, [items]);
 
-  const filtered = useMemo(() => servicing.filter((s) => {
-    if (search && !s.taskNumber.toLowerCase().includes(search.toLowerCase()) && !s.description.toLowerCase().includes(search.toLowerCase()) && !s.assignedTo.toLowerCase().includes(search.toLowerCase())) return false;
-    if (priorityFilter && s.priority !== priorityFilter) return false;
-    if (assigneeFilter && s.assignedTo !== assigneeFilter) return false;
-    return true;
-  }), [servicing, search, priorityFilter, assigneeFilter]);
+  const pendingCount = items.filter((s) => s.status === 'Pending').length;
+  const inProgressCount = items.filter((s) => s.status === 'InProgress').length;
+  const escalatedCount = items.filter((s) => s.status === 'Escalated').length;
+  const overdueCount = items.filter((s) => s.status !== 'Completed' && s.dueDate && new Date(s.dueDate) < new Date()).length;
 
-  const pendingCount = servicing.filter((s) => s.status === 'Pending').length;
-  const inProgressCount = servicing.filter((s) => s.status === 'InProgress').length;
-  const escalatedCount = servicing.filter((s) => s.status === 'Escalated').length;
-  const overdueCount = servicing.filter((s) => s.status !== 'Completed' && new Date(s.dueDate) < new Date()).length;
-
-  function handleQuickStatus(id: string, status: string) {
-    updateServicing(id, { status });
-    addToast({ type: 'success', title: `Task ${status === 'Completed' ? 'Completed' : status === 'InProgress' ? 'Started' : status}` });
+  async function handleQuickStatus(id: string, status: string) {
+    setActionLoading(id);
+    try {
+      await servicingService.updateStatus(id, status);
+      addToast({ type: 'success', title: `Task ${status === 'Completed' ? 'Completed' : status === 'InProgress' ? 'Started' : status}` });
+      await fetchData();
+    } catch (err) {
+      addToast({ type: 'error', title: 'Action Failed', description: err instanceof Error ? err.message : 'Unknown error' });
+    } finally {
+      setActionLoading(null);
+    }
   }
 
-  function getTaskActions(task: typeof servicing[0]) {
-    const items: { label: string; icon: string; onClick: () => void; variant?: 'danger'; disabled?: boolean; divider?: boolean }[] = [
+  async function handleEscalate(id: string) {
+    setActionLoading(id);
+    try {
+      await servicingService.updateStatus(id, 'Escalated');
+      addToast({ type: 'warning', title: 'Task Escalated' });
+      await fetchData();
+    } catch (err) {
+      addToast({ type: 'error', title: 'Escalation Failed', description: err instanceof Error ? err.message : 'Unknown error' });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  function getTaskActions(task: ServicingListItem) {
+    const menuItems: { label: string; icon: string; onClick: () => void; variant?: 'danger'; disabled?: boolean; divider?: boolean }[] = [
       { label: 'View Details', icon: 'ri-eye-line', onClick: () => router.push(`/lien/servicing/${task.id}`) },
     ];
     if (canEdit && task.status !== 'Completed') {
-      items.push(
+      menuItems.push(
         { label: 'Start Work', icon: 'ri-play-line', onClick: () => handleQuickStatus(task.id, 'InProgress'), disabled: task.status === 'InProgress' },
         { label: 'Mark Complete', icon: 'ri-checkbox-circle-line', onClick: () => setConfirmAction({ id: task.id, status: 'Completed', label: 'Complete Task' }) },
         { label: 'Put On Hold', icon: 'ri-pause-circle-line', onClick: () => handleQuickStatus(task.id, 'OnHold'), disabled: task.status === 'OnHold' },
-        { label: 'Escalate', icon: 'ri-alarm-warning-line', onClick: () => { updateServicing(task.id, { status: 'Escalated', priority: 'Urgent' }); addToast({ type: 'warning', title: 'Task Escalated' }); }, variant: 'danger' as const, divider: true },
+        { label: 'Escalate', icon: 'ri-alarm-warning-line', onClick: () => handleEscalate(task.id), variant: 'danger' as const, divider: true },
       );
     }
-    return items;
+    return menuItems;
   }
 
-  const isOverdue = (dueDate: string) => new Date(dueDate) < new Date();
+  const isOverdue = (dueDate: string) => dueDate && new Date(dueDate) < new Date();
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Task Manager" subtitle={`${filtered.length} tasks across ${assignees.length} team members`}
+      <PageHeader title="Task Manager" subtitle={`${pagination.totalCount} tasks across ${assignees.length} team members`}
         actions={
           <div className="flex items-center gap-2">
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
@@ -112,10 +164,25 @@ export default function TaskManagerPage() {
         { label: 'All Assignees', value: assigneeFilter, onChange: setAssigneeFilter, options: assignees.map((a) => ({ value: a, label: a })) },
       ]} />
 
-      {viewMode === 'board' ? (
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <i className="ri-error-warning-line text-red-500" />
+            <span className="text-sm text-red-700">{error}</span>
+          </div>
+          <button onClick={fetchData} className="text-sm text-red-600 hover:text-red-800 font-medium">Retry</button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="p-10 text-center">
+          <i className="ri-loader-4-line animate-spin text-2xl text-gray-400" />
+          <p className="text-sm text-gray-400 mt-2">Loading tasks...</p>
+        </div>
+      ) : viewMode === 'board' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {STATUS_COLUMNS.map((col) => {
-            const tasks = filtered.filter((t) => t.status === col.key);
+            const tasks = items.filter((t) => t.status === col.key);
             return (
               <div key={col.key} className={`bg-gray-50 rounded-xl border border-gray-200 border-t-4 ${col.color} min-h-[200px]`}>
                 <div className="px-4 py-3 flex items-center justify-between">
@@ -127,7 +194,7 @@ export default function TaskManagerPage() {
                 </div>
                 <div className="px-3 pb-3 space-y-2">
                   {tasks.map((task) => (
-                    <div key={task.id} className="bg-white border border-gray-200 rounded-lg p-3 hover:shadow-sm transition-shadow">
+                    <div key={task.id} className={`bg-white border border-gray-200 rounded-lg p-3 hover:shadow-sm transition-shadow ${actionLoading === task.id ? 'opacity-50' : ''}`}>
                       <div className="flex items-start justify-between mb-2">
                         <Link href={`/lien/servicing/${task.id}`} className="text-xs font-mono text-primary hover:underline">{task.taskNumber}</Link>
                         <ActionMenu items={getTaskActions(task)} />
@@ -135,7 +202,6 @@ export default function TaskManagerPage() {
                       <p className="text-sm text-gray-700 line-clamp-2 mb-2">{task.description}</p>
                       <div className="flex items-center gap-2 mb-2">
                         <PriorityBadge priority={task.priority} />
-                        {task.caseNumber && <span className="text-[10px] font-mono text-gray-400">{task.caseNumber}</span>}
                       </div>
                       <div className="flex items-center justify-between text-xs text-gray-400">
                         <span className="flex items-center gap-1">
@@ -164,7 +230,6 @@ export default function TaskManagerPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Task #</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Description</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Case / Lien</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Assigned</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Priority</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
@@ -172,12 +237,11 @@ export default function TaskManagerPage() {
                 <th className="px-4 py-3" />
               </tr></thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((task) => (
-                  <tr key={task.id} className="hover:bg-gray-50 transition-colors">
+                {items.map((task) => (
+                  <tr key={task.id} className={`hover:bg-gray-50 transition-colors ${actionLoading === task.id ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-3"><Link href={`/lien/servicing/${task.id}`} className="text-xs font-mono text-primary hover:underline">{task.taskNumber}</Link></td>
                     <td className="px-4 py-3 text-sm text-gray-700">{task.taskType}</td>
                     <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{task.description}</td>
-                    <td className="px-4 py-3 text-xs font-mono text-gray-500">{[task.caseNumber, task.lienNumber].filter(Boolean).join(' / ') || '\u2014'}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{task.assignedTo}</td>
                     <td className="px-4 py-3"><PriorityBadge priority={task.priority} /></td>
                     <td className="px-4 py-3"><StatusBadge status={task.status} /></td>
@@ -195,15 +259,15 @@ export default function TaskManagerPage() {
               </tbody>
             </table>
           </div>
-          {filtered.length === 0 && <div className="p-10 text-center text-sm text-gray-400">No tasks match your filters.</div>}
+          {items.length === 0 && !loading && <div className="p-10 text-center text-sm text-gray-400">No tasks match your filters.</div>}
         </div>
       )}
 
-      <AssignTaskForm open={showCreate} onClose={() => setShowCreate(false)} />
+      <AssignTaskForm open={showCreate} onClose={() => setShowCreate(false)} onCreated={fetchData} />
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}
-          onConfirm={() => { updateServicing(confirmAction.id, { status: confirmAction.status }); addToast({ type: 'success', title: confirmAction.label }); setConfirmAction(null); }}
+          onConfirm={async () => { await handleQuickStatus(confirmAction.id, confirmAction.status); setConfirmAction(null); }}
           title={confirmAction.label} description={`Mark this task as ${confirmAction.status.toLowerCase()}?`} confirmLabel={confirmAction.label}
         />
       )}

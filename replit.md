@@ -119,6 +119,12 @@ apps/web/
         liens.mapper.ts          ← DTO→UI model mappers: mapLienToListItem, mapLienToDetail, mapOfferToItem, mapDtoToUpdateRequest, mapPagination; inline LIEN_TYPE_LABELS
         liens.service.ts         ← business service: getLiens, getLien, createLien, updateLien, getLienOffers, createOffer, acceptOffer
         index.ts                 ← barrel exports
+      servicing/                 ← LS-LIENS-UI-004: layered API service pattern for Servicing (same 5-file pattern)
+        servicing.types.ts       ← DTOs (ServicingItemResponseDto, CreateServicingItemRequestDto, UpdateServicingItemRequestDto, UpdateServicingStatusRequestDto), UI models (ServicingListItem, ServicingDetail), PaginationMeta, ServicingQuery
+        servicing.api.ts         ← raw HTTP client: list, getById, create, update, updateStatus → uses apiClient
+        servicing.mapper.ts      ← DTO→UI model mappers: mapServicingToListItem, mapServicingToDetail, mapServicingPagination
+        servicing.service.ts     ← business service: getItems, getItem, createItem, updateItem, updateStatus
+        index.ts                 ← barrel exports
     stores/
       lien-store.ts              ← Zustand store: full CRUD for all 7 entities, role simulation, toast state, activity log, case notes, canPerformAction() helper
     app/api/
@@ -3650,6 +3656,7 @@ Defined foundational domain entities for the Liens microservice following v2 pat
 - **Contact** (`Liens.Domain/Entities/Contact.cs`) — ContactType (LawFirm, Provider, LienHolder, CaseManager, InternalUser), FirstName/LastName/DisplayName, inline address, IsActive
 - **Facility** (`Liens.Domain/Entities/Facility.cs`) — Name, Code, ExternalReference, inline address, OrganizationId soft FK to Identity, IsActive
 - **LookupValue** (`Liens.Domain/Entities/LookupValue.cs`) — Category-driven (CaseStatus, LienStatus, etc.), tenant-scoped or global, IsSystem guard
+- **ServicingItem** (`Liens.Domain/Entities/ServicingItem.cs`) — LS-LIENS-UI-004: task management entity with TenantId, OrgId, TaskNumber (unique per tenant), TaskType, Description, Status lifecycle (Pending→InProgress→Completed/Escalated/OnHold), Priority (auto-escalation to Urgent on escalate), AssignedTo, DueDate, CaseId/LienId cross-entity links, Notes, Resolution, timeline timestamps (StartedAtUtc, CompletedAtUtc, EscalatedAtUtc). Full backend stack: entity → repository → service → DTOs → endpoints. Table: `liens_ServicingItems`. EF migration: `AddServicingItem`. API: 5 endpoints at `/api/liens/servicing`.
 
 ### Supporting Types
 - **Enums:** `CaseStatus`, `ContactType`, `LienType`, `LienStatus`, `ServicingStatus`, `ServicingPriority`, `LookupCategory` (all string constants with `IReadOnlySet<string> All`)

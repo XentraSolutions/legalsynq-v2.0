@@ -1,85 +1,186 @@
 'use client';
 
-import { use, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useLienStore, canPerformAction } from '@/stores/lien-store';
-import { formatDate } from '@/lib/lien-mock-data';
-import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
+import { PageHeader } from '@/components/lien/page-header';
 import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
-import { StatusProgress } from '@/components/lien/status-progress';
 import { ConfirmDialog } from '@/components/lien/modal';
-import { ActivityTimeline } from '@/components/lien/activity-timeline';
+import { useLienStore, canPerformAction } from '@/stores/lien-store';
+import { servicingService } from '@/lib/servicing';
+import type { ServicingDetail } from '@/lib/servicing';
 
-const TASK_STEPS = ['Pending', 'In Progress', 'Completed'];
+function formatDate(val: string): string {
+  if (!val) return '\u2014';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return val;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return val;
+  }
+}
 
-export default function ServicingDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const servicing = useLienStore((s) => s.servicing);
-  const servicingDetails = useLienStore((s) => s.servicingDetails);
-  const updateServicing = useLienStore((s) => s.updateServicing);
+export default function ServicingDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const role = useLienStore((s) => s.currentRole);
-  const [confirmAction, setConfirmAction] = useState<{ status: string; label: string } | null>(null);
 
-  const summary = servicing.find((s) => s.id === id);
-  const detail = servicingDetails[id];
-  const item = detail ? { ...summary, ...detail } : summary;
-  if (!item) return <div className="p-10 text-center text-gray-400">Servicing task not found.</div>;
-  const d = item as any;
+  const [item, setItem] = useState<ServicingDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ status: string; label: string } | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const fetchItem = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await servicingService.getItem(id);
+      setItem(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load servicing task');
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => { fetchItem(); }, [fetchItem]);
+
   const canEdit = canPerformAction(role, 'edit');
-  const statusStep = d.status === 'InProgress' ? 'In Progress' : d.status === 'Escalated' ? 'In Progress' : d.status;
+
+  async function handleStatusUpdate(status: string) {
+    if (!item) return;
+    setActionLoading(true);
+    try {
+      const updated = await servicingService.updateStatus(item.id, status);
+      setItem(updated);
+      addToast({ type: 'success', title: `Task ${status === 'Completed' ? 'Completed' : status === 'InProgress' ? 'Started' : status}` });
+    } catch (err) {
+      addToast({ type: 'error', title: 'Action Failed', description: err instanceof Error ? err.message : 'Unknown error' });
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <i className="ri-loader-4-line animate-spin text-2xl text-gray-400" />
+        <span className="ml-2 text-sm text-gray-400">Loading task...</span>
+      </div>
+    );
+  }
+
+  if (error || !item) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+        <i className="ri-error-warning-line text-red-500 text-2xl mb-2" />
+        <p className="text-sm text-red-700 mb-3">{error ?? 'Task not found'}</p>
+        <div className="flex items-center justify-center gap-3">
+          <button onClick={fetchItem} className="text-sm text-red-600 hover:text-red-800 font-medium">Retry</button>
+          <Link href="/lien/servicing" className="text-sm text-gray-600 hover:text-gray-800">Back to list</Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
-      <DetailHeader title={d.taskNumber} subtitle={d.taskType}
-        badge={<><StatusBadge status={d.status} size="md" /><PriorityBadge priority={d.priority} /></>}
-        backHref="/lien/servicing" backLabel="Back to Servicing"
-        meta={[
-          { label: 'Assigned', value: d.assignedTo },
-          { label: 'Due', value: formatDate(d.dueDate) },
-        ]}
-        actions={canEdit ? (
-          <div className="flex gap-2">
-            {d.status === 'Pending' && <button onClick={() => { updateServicing(id, { status: 'InProgress' }); addToast({ type: 'success', title: 'Task Started' }); }} className="text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90">Start Work</button>}
-            {d.status !== 'Completed' && <button onClick={() => setConfirmAction({ status: 'Completed', label: 'Mark Complete' })} className="text-sm px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Mark Complete</button>}
-            {d.status !== 'Escalated' && d.status !== 'Completed' && <button onClick={() => { updateServicing(id, { status: 'Escalated', priority: 'Urgent' }); addToast({ type: 'warning', title: 'Task Escalated' }); }} className="text-sm px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Escalate</button>}
-            {d.status !== 'Completed' && <button onClick={() => {
-              const assignees = ['Sarah Chen', 'Michael Park', 'Lisa Wang'];
-              const next = assignees.find((a) => a !== d.assignedTo) || assignees[0];
-              updateServicing(id, { assignedTo: next });
-              addToast({ type: 'success', title: 'Task Reassigned', description: `Now assigned to ${next}` });
-            }} className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">Reassign</button>}
+      <PageHeader title={item.taskNumber} subtitle={item.taskType}
+        actions={
+          <div className="flex items-center gap-2">
+            <Link href="/lien/servicing" className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+              <i className="ri-arrow-left-line" />Back
+            </Link>
+            {canEdit && item.status !== 'Completed' && (
+              <>
+                {item.status !== 'InProgress' && (
+                  <button disabled={actionLoading} onClick={() => handleStatusUpdate('InProgress')}
+                    className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg px-4 py-2 transition-colors disabled:opacity-50">
+                    <i className="ri-play-line mr-1" />Start Work
+                  </button>
+                )}
+                <button disabled={actionLoading} onClick={() => setConfirmAction({ status: 'Completed', label: 'Complete Task' })}
+                  className="text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg px-4 py-2 transition-colors disabled:opacity-50">
+                  <i className="ri-checkbox-circle-line mr-1" />Complete
+                </button>
+                <button disabled={actionLoading} onClick={() => handleStatusUpdate('Escalated')}
+                  className="text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg px-4 py-2 transition-colors disabled:opacity-50">
+                  <i className="ri-alarm-warning-line mr-1" />Escalate
+                </button>
+              </>
+            )}
           </div>
-        ) : undefined}
+        }
       />
 
-      <div className="bg-white border border-gray-200 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-gray-800 mb-4">Task Progress</h3>
-        <StatusProgress steps={TASK_STEPS} currentStep={statusStep} />
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2 space-y-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Task Details</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><span className="text-xs text-gray-400 block">Status</span><StatusBadge status={item.status} /></div>
+              <div><span className="text-xs text-gray-400 block">Priority</span><PriorityBadge priority={item.priority} /></div>
+              <div><span className="text-xs text-gray-400 block">Assigned To</span><span className="text-sm text-gray-700">{item.assignedTo}</span></div>
+              <div><span className="text-xs text-gray-400 block">Due Date</span><span className="text-sm text-gray-700">{formatDate(item.dueDate)}</span></div>
+              <div className="col-span-2"><span className="text-xs text-gray-400 block">Description</span><p className="text-sm text-gray-700 whitespace-pre-wrap">{item.description}</p></div>
+            </div>
+          </div>
 
-      <DetailSection title="Task Details" icon="ri-tools-line" fields={[
-        { label: 'Description', value: d.description },
-        { label: 'Case Reference', value: d.caseNumber ? <Link href="/lien/cases" className="text-primary hover:underline">{d.caseNumber}</Link> : undefined },
-        { label: 'Lien Reference', value: d.lienNumber ? <Link href="/lien/liens" className="text-primary hover:underline">{d.lienNumber}</Link> : undefined },
-        { label: 'Due Date', value: formatDate(d.dueDate) },
-        { label: 'Created', value: formatDate(d.createdAtUtc) },
-        { label: 'Last Updated', value: formatDate(d.updatedAtUtc) },
-      ]} />
+          {item.notes && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Notes</h3>
+              <p className="text-sm text-gray-600 whitespace-pre-wrap">{item.notes}</p>
+            </div>
+          )}
 
-      {d.notes && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-gray-800 mb-2">Notes</h3>
-          <p className="text-sm text-gray-600">{d.notes}</p>
+          {item.resolution && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-green-700 mb-2">Resolution</h3>
+              <p className="text-sm text-green-600 whitespace-pre-wrap">{item.resolution}</p>
+            </div>
+          )}
         </div>
-      )}
 
-      {d.history && d.history.length > 0 && <ActivityTimeline events={d.history} title="Action History" />}
+        <div className="space-y-5">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Timeline</h3>
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between"><span className="text-gray-400">Created</span><span className="text-gray-700">{item.createdAt}</span></div>
+              {item.startedAt && <div className="flex items-center justify-between"><span className="text-gray-400">Started</span><span className="text-gray-700">{item.startedAt}</span></div>}
+              {item.escalatedAt && <div className="flex items-center justify-between"><span className="text-red-400">Escalated</span><span className="text-red-700">{item.escalatedAt}</span></div>}
+              {item.completedAt && <div className="flex items-center justify-between"><span className="text-green-400">Completed</span><span className="text-green-700">{item.completedAt}</span></div>}
+              <div className="flex items-center justify-between"><span className="text-gray-400">Updated</span><span className="text-gray-700">{item.updatedAt}</span></div>
+            </div>
+          </div>
+
+          {(item.caseId || item.lienId) && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">Linked Entities</h3>
+              <div className="space-y-2">
+                {item.caseId && (
+                  <Link href={`/lien/cases/${item.caseId}`} className="flex items-center gap-2 text-sm text-primary hover:underline">
+                    <i className="ri-folder-line" />Case: {item.caseId}
+                  </Link>
+                )}
+                {item.lienId && (
+                  <Link href={`/lien/liens/${item.lienId}`} className="flex items-center gap-2 text-sm text-primary hover:underline">
+                    <i className="ri-file-text-line" />Lien: {item.lienId}
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}
-          onConfirm={() => { updateServicing(id, { status: confirmAction.status }); addToast({ type: 'success', title: confirmAction.label }); setConfirmAction(null); }}
-          title={confirmAction.label} description={`Mark task ${d.taskNumber} as ${confirmAction.status.toLowerCase()}?`} confirmLabel={confirmAction.label}
+          onConfirm={async () => { await handleStatusUpdate(confirmAction.status); setConfirmAction(null); }}
+          title={confirmAction.label} description={`Mark this task as ${confirmAction.status.toLowerCase()}?`} confirmLabel={confirmAction.label}
         />
       )}
     </div>

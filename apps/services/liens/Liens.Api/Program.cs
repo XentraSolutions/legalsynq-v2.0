@@ -123,5 +123,6 @@ app.MapLienEndpoints();
 app.MapLienOfferEndpoints();
 app.MapBillOfSaleEndpoints();
 app.MapCaseEndpoints();
+app.MapServicingEndpoints();
 
 app.Run();

@@ -15,6 +15,7 @@ public class LiensDbContext : DbContext
     public DbSet<Lien> Liens => Set<Lien>();
     public DbSet<LienOffer> LienOffers => Set<LienOffer>();
     public DbSet<BillOfSale> BillsOfSale => Set<BillOfSale>();
+    public DbSet<ServicingItem> ServicingItems => Set<ServicingItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
