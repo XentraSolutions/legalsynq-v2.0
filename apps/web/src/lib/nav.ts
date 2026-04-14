@@ -173,17 +173,5 @@ export function buildNavGroups(session: PlatformSession): NavSection[] {
     ],
   });
 
-  const adminItems: NavSection['items'] = [
-    { href: '/admin/users',          label: 'Users',          icon: 'ri-user-3-line'     },
-    { href: '/admin/organizations',   label: 'Organizations',   icon: 'ri-building-line'   },
-    { href: '/admin/products',        label: 'Products',        icon: 'ri-grid-line'       },
-  ];
-
-  if (session.isPlatformAdmin) {
-    adminItems.push({ href: '/admin/tenants', label: 'All Tenants', icon: 'ri-building-4-line' });
-  }
-
-  sections.push({ heading: 'ADMINISTRATION', items: adminItems });
-
   return sections;
 }
