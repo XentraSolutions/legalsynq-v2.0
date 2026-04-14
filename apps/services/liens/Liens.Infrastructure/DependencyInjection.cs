@@ -1,7 +1,9 @@
 using BuildingBlocks.Context;
+using LegalSynq.AuditClient;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
 using Liens.Application.Services;
+using Liens.Infrastructure.Audit;
 using Liens.Infrastructure.Documents;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Repositories;
