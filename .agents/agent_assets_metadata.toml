@@ -234,3 +234,9 @@ id = "KyPp_BYbGdZkp3tQzVY-1"
 uri = "file://analysis/LS-LIENS-03-005-report.md"
 type = "text"
 title = "LS-LIENS-03-005 — v1 SynqLiens → v2 Liens Migration Matrix"
+
+[[outputs]]
+id = "cquRXeBA8H4iA0nmPeMH7"
+uri = "file://README.md"
+type = "text"
+title = "LegalSynq README"
