@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Reports.Application\Reports.Application.csproj" />
+    <ProjectReference Include="..\Reports.Domain\Reports.Domain.csproj" />
+    <ProjectReference Include="..\Reports.Contracts\Reports.Contracts.csproj" />
+    <ProjectReference Include="..\Reports.Shared\Reports.Shared.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
