@@ -34,7 +34,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         { href: '/lien/task-manager',  label: 'Task Manager',  icon: 'ri-task-line' },
         { href: '/lien/cases',         label: 'Cases',         icon: 'ri-folder-open-line' },
         { href: '/lien/liens',         label: 'Liens',         icon: 'ri-stack-line' },
-        { href: '/lien/bill-of-sales', label: 'Bill of Sales', icon: 'ri-receipt-line' },
+        { href: '/lien/bill-of-sales', label: 'Bill of Sales', icon: 'ri-receipt-line', requiredRoles: [ProductRole.SynqLienSeller, ProductRole.SynqLienBuyer, ProductRole.SynqLienHolder] },
         { href: '/lien/servicing',     label: 'Servicing',     icon: 'ri-tools-line' },
         { href: '/lien/contacts',      label: 'Contacts',      icon: 'ri-contacts-book-line' },
       ],

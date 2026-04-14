@@ -13,6 +13,7 @@ import {
   getNotificationHref,
   type UnifiedActivityItem,
 } from '@/lib/unified-activity';
+import { useProviderMode } from '@/hooks/use-provider-mode';
 
 const SOURCE_LABELS: Record<string, string> = {
   audit: 'Audit',
@@ -42,6 +43,7 @@ export default function LienDashboardPage() {
   const servicing = useLienStore((s) => s.servicing);
   const role = useLienStore((s) => s.currentRole);
   const [showCreateCase, setShowCreateCase] = useState(false);
+  const { mode, isSellMode } = useProviderMode();
   const [recentActivity, setRecentActivity] = useState<UnifiedActivityItem[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [activityError, setActivityError] = useState(false);
@@ -68,7 +70,15 @@ export default function LienDashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
+            <span className={[
+              'text-[10px] font-semibold px-2 py-0.5 rounded-full leading-none',
+              mode === 'sell' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200',
+            ].join(' ')}>
+              {mode === 'sell' ? 'Sell Mode' : 'Manage Mode'}
+            </span>
+          </div>
           <p className="text-sm text-gray-500 mt-0.5">SynqLien operational overview</p>
         </div>
         {canPerformAction(role, 'create') && (
@@ -196,13 +206,13 @@ export default function LienDashboardPage() {
         <h2 className="text-sm font-semibold text-gray-800 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
-            { href: '/lien/cases', icon: 'ri-folder-add-line', label: 'New Case', color: 'text-blue-600' },
-            { href: '/lien/liens', icon: 'ri-stack-line', label: 'New Lien', color: 'text-indigo-600' },
-            { href: '/lien/bill-of-sales', icon: 'ri-receipt-line', label: 'Bill of Sale', color: 'text-green-600' },
-            { href: '/lien/batch-entry', icon: 'ri-upload-2-line', label: 'Batch Import', color: 'text-purple-600' },
-            { href: '/lien/document-handling', icon: 'ri-file-copy-2-line', label: 'Documents', color: 'text-amber-600' },
-            { href: '/lien/contacts', icon: 'ri-contacts-book-line', label: 'Contacts', color: 'text-teal-600' },
-          ].map((action) => (
+            { href: '/lien/cases', icon: 'ri-folder-add-line', label: 'New Case', color: 'text-blue-600', sellOnly: false },
+            { href: '/lien/liens', icon: 'ri-stack-line', label: 'New Lien', color: 'text-indigo-600', sellOnly: false },
+            { href: '/lien/bill-of-sales', icon: 'ri-receipt-line', label: 'Bill of Sale', color: 'text-green-600', sellOnly: true },
+            { href: '/lien/batch-entry', icon: 'ri-upload-2-line', label: 'Batch Import', color: 'text-purple-600', sellOnly: false },
+            { href: '/lien/document-handling', icon: 'ri-file-copy-2-line', label: 'Documents', color: 'text-amber-600', sellOnly: false },
+            { href: '/lien/contacts', icon: 'ri-contacts-book-line', label: 'Contacts', color: 'text-teal-600', sellOnly: false },
+          ].filter((a) => !a.sellOnly || isSellMode).map((action) => (
             <Link key={action.href} href={action.href} className="flex flex-col items-center gap-2 p-4 rounded-lg border border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-colors">
               <div className={`w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center ${action.color}`}>
                 <i className={`${action.icon} text-xl`} />

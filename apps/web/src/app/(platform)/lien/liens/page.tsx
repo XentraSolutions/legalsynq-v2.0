@@ -10,6 +10,7 @@ import { CreateLienModal } from '@/components/lien/forms/create-lien-modal';
 import { useLienStore, canPerformAction } from '@/stores/lien-store';
 import { ApiError } from '@/lib/api-client';
 import { liensService, type LienListItem, type LiensQuery, type PaginationMeta } from '@/lib/liens';
+import { useProviderMode } from '@/hooks/use-provider-mode';
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return '\u2014';
@@ -18,6 +19,7 @@ function formatCurrency(amount: number | null): string {
 
 export default function LiensPage() {
   const role = useLienStore((s) => s.currentRole);
+  const { isSellMode } = useProviderMode();
   const addToast = useLienStore((s) => s.addToast);
 
   const [liens, setLiens] = useState<LienListItem[]>([]);
@@ -87,7 +89,12 @@ export default function LiensPage() {
         ) : undefined}
       />
       <FilterToolbar searchPlaceholder="Search liens by number or subject..." onSearch={setSearch} filters={[
-        { label: 'All Statuses', value: statusFilter, onChange: setStatusFilter, options: [{ value: 'Draft', label: 'Draft' }, { value: 'Active', label: 'Active' }, { value: 'Offered', label: 'Offered' }, { value: 'Sold', label: 'Sold' }, { value: 'Withdrawn', label: 'Withdrawn' }] },
+        { label: 'All Statuses', value: statusFilter, onChange: setStatusFilter, options: [
+          { value: 'Draft', label: 'Draft' },
+          { value: 'Active', label: 'Active' },
+          ...(isSellMode ? [{ value: 'Offered', label: 'Offered' }, { value: 'Sold', label: 'Sold' }] : []),
+          { value: 'Withdrawn', label: 'Withdrawn' },
+        ] },
         { label: 'All Types', value: typeFilter, onChange: setTypeFilter, options: [
           { value: 'MedicalLien', label: 'Medical Lien' },
           { value: 'AttorneyLien', label: 'Attorney Lien' },
@@ -121,7 +128,7 @@ export default function LiensPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Subject</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Original</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Offer</th>
+                  {isSellMode && <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Offer</th>}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Created</th>
                 </tr></thead>
@@ -132,7 +139,7 @@ export default function LiensPage() {
                       <td className="px-4 py-3 text-sm text-gray-700">{l.lienTypeLabel}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">{l.isConfidential ? <span className="italic text-gray-400">Confidential</span> : l.subjectName || '\u2014'}</td>
                       <td className="px-4 py-3 text-sm text-gray-700 tabular-nums">{formatCurrency(l.originalAmount)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 tabular-nums">{formatCurrency(l.offerPrice)}</td>
+                      {isSellMode && <td className="px-4 py-3 text-sm text-gray-700 tabular-nums">{formatCurrency(l.offerPrice)}</td>}
                       <td className="px-4 py-3"><StatusBadge status={l.status} /></td>
                       <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">{l.createdAt}</td>
                     </tr>
@@ -167,7 +174,7 @@ export default function LiensPage() {
             <StatusBadge status={previewLien.status} size="md" />
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div><p className="text-xs text-gray-400">Original</p><p className="font-medium text-gray-700">{formatCurrency(previewLien.originalAmount)}</p></div>
-              <div><p className="text-xs text-gray-400">Offer Price</p><p className="font-medium text-blue-600">{formatCurrency(previewLien.offerPrice)}</p></div>
+              {isSellMode && <div><p className="text-xs text-gray-400">Offer Price</p><p className="font-medium text-blue-600">{formatCurrency(previewLien.offerPrice)}</p></div>}
               <div><p className="text-xs text-gray-400">Jurisdiction</p><p className="text-gray-700">{previewLien.jurisdiction || '\u2014'}</p></div>
               <div><p className="text-xs text-gray-400">Case</p><p className="text-gray-700">{previewLien.caseId ? <Link href={`/lien/cases/${previewLien.caseId}`} className="text-primary hover:underline">View Case</Link> : '\u2014'}</p></div>
             </div>

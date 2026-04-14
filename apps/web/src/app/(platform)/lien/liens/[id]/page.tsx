@@ -11,6 +11,7 @@ import { StatusBadge } from '@/components/lien/status-badge';
 import { StatusProgress } from '@/components/lien/status-progress';
 import { ConfirmDialog, FormModal } from '@/components/lien/modal';
 import { EntityTimeline } from '@/components/lien/entity-timeline';
+import { useProviderMode } from '@/hooks/use-provider-mode';
 
 const LIEN_STEPS = ['Draft', 'Active', 'Negotiation', 'Sold', 'Closed'];
 const STATUS_MAP: Record<string, string> = { Draft: 'Draft', Offered: 'Active', Sold: 'Sold', Withdrawn: 'Closed' };
@@ -24,6 +25,7 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
   const { id } = use(params);
   const role = useLienStore((s) => s.currentRole);
   const addToast = useLienStore((s) => s.addToast);
+  const { isSellMode, isReady: modeReady } = useProviderMode();
 
   const [lien, setLien] = useState<LienDetail | null>(null);
   const [offers, setOffers] = useState<LienOfferItem[]>([]);
@@ -41,10 +43,12 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
     setLoading(true);
     setError(null);
     try {
-      const [detail, offersResult] = await Promise.all([
-        liensService.getLien(id),
-        liensService.getLienOffers(id).catch(() => ({ items: [] })),
-      ]);
+      const detailPromise = liensService.getLien(id);
+      const offersPromise = isSellMode
+        ? liensService.getLienOffers(id).catch(() => ({ items: [] as LienOfferItem[] }))
+        : Promise.resolve({ items: [] as LienOfferItem[] });
+
+      const [detail, offersResult] = await Promise.all([detailPromise, offersPromise]);
       setLien(detail);
       setOffers(offersResult.items);
 
@@ -67,11 +71,11 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, isSellMode]);
 
   useEffect(() => {
-    fetchLien();
-  }, [fetchLien]);
+    if (modeReady) fetchLien();
+  }, [fetchLien, modeReady]);
 
   const canEdit = canPerformAction(role, 'edit');
 
@@ -142,7 +146,7 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
           { label: 'Jurisdiction', value: d.jurisdiction || '\u2014' },
           { label: 'Created', value: d.createdAt },
         ]}
-        actions={canEdit ? (
+        actions={canEdit && isSellMode ? (
           <div className="flex gap-2">
             {d.status === 'Offered' && <button onClick={() => setShowOfferModal(true)} className="text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90">Submit Offer</button>}
           </div>
@@ -154,19 +158,23 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
         <StatusProgress steps={LIEN_STEPS} currentStep={STATUS_MAP[d.status] || 'Draft'} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className={`grid grid-cols-1 ${isSellMode ? 'sm:grid-cols-3' : 'sm:grid-cols-1'} gap-4`}>
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <p className="text-xs text-gray-400 font-medium">Original Amount</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(d.originalAmount)}</p>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs text-gray-400 font-medium">Offer Price</p>
-          <p className="text-2xl font-bold text-blue-600 mt-1">{formatCurrency(d.offerPrice)}</p>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs text-gray-400 font-medium">Purchase Price</p>
-          <p className="text-2xl font-bold text-emerald-600 mt-1">{formatCurrency(d.purchasePrice)}</p>
-        </div>
+        {isSellMode && (
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <p className="text-xs text-gray-400 font-medium">Offer Price</p>
+            <p className="text-2xl font-bold text-blue-600 mt-1">{formatCurrency(d.offerPrice)}</p>
+          </div>
+        )}
+        {isSellMode && (
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <p className="text-xs text-gray-400 font-medium">Purchase Price</p>
+            <p className="text-2xl font-bold text-emerald-600 mt-1">{formatCurrency(d.purchasePrice)}</p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -186,7 +194,7 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
         ]} />
       </div>
 
-      {offers.length > 0 && (
+      {isSellMode && offers.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-xl">
           <div className="px-5 py-4 border-b border-gray-100">
             <h3 className="text-sm font-semibold text-gray-800">Offers ({offers.length})</h3>
@@ -213,14 +221,14 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {pendingOffers.length > 0 && (
+      {isSellMode && pendingOffers.length > 0 && (
         <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <i className="ri-alert-line text-amber-600" />
           <p className="text-xs text-amber-700"><span className="font-medium">Action Required:</span> This lien has {pendingOffers.length} pending offer(s) requiring review.</p>
         </div>
       )}
 
-      <FormModal open={showOfferModal} onClose={() => setShowOfferModal(false)} onSubmit={handleSubmitOffer} title="Submit Offer" submitLabel={submitting ? 'Submitting...' : 'Submit Offer'} submitDisabled={!offerAmount || isNaN(Number(offerAmount)) || submitting}>
+      <FormModal open={isSellMode && showOfferModal} onClose={() => setShowOfferModal(false)} onSubmit={handleSubmitOffer} title="Submit Offer" submitLabel={submitting ? 'Submitting...' : 'Submit Offer'} submitDisabled={!offerAmount || isNaN(Number(offerAmount)) || submitting}>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Offer Amount<span className="text-red-500 ml-0.5">*</span></label>
