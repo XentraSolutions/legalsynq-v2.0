@@ -40,7 +40,9 @@ Task<DocumentRetrievalResult?> RetrieveDocumentAsync(Guid documentId, Cancellati
 ```
 - Calls `GET /documents/{documentId}/content?type=download` via named HttpClient
 - Returns `DocumentRetrievalResult` (stream, content type, filename, length) or `null`
-- Handles 404 and non-success responses gracefully (returns null)
+- Handles 404, non-success HTTP responses, `HttpRequestException`, and unexpected errors (returns null)
+- Properly disposes `HttpResponseMessage` on failure paths
+- On success, couples `HttpResponseMessage` lifetime to `DocumentRetrievalResult.ResponseOwner` for safe disposal after streaming
 
 ### IBillOfSaleDocumentQueryService (application layer)
 ```csharp
@@ -84,6 +86,7 @@ Both endpoints:
 4. HttpClient follows the 302 redirect to the signed storage URL
 5. Streams the response (using `HttpCompletionOption.ResponseHeadersRead` for efficiency)
 6. Returns file to caller via `Results.File`
+7. `HttpResponseMessage` is disposed via `RegisterForDispose` after the response completes
 
 ## 7. How BOS is Resolved Before Document Retrieval
 

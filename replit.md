@@ -3946,3 +3946,33 @@ Integrated Liens service with Documents service for automated BOS PDF generation
 
 ### Report
 Full analysis at `analysis/LS-LIENS-07-001-report.md`
+
+## BillOfSale Document Retrieval API (LS-LIENS-07-002) — 2026-04-14
+
+### Summary
+Secure BOS document retrieval through Liens service. Liens validates business ownership (tenant scope, BOS existence, DocumentId) then proxies the file download from the Documents service. No direct Documents access exposed to callers.
+
+### Endpoints Added
+- `GET /api/liens/bill-of-sales/{id}/document` — download BOS document by BOS ID
+- `GET /api/liens/bill-of-sales/by-number/{billOfSaleNumber}/document` — download by BOS number
+- Auth: `AuthenticatedUser` + `RequireProductAccess(SYNQ_LIENS)` + `RequirePermission(LienRead)`
+
+### Architecture
+- **Proxy download model**: Liens calls `GET /documents/{id}/content?type=download` on Documents service, follows 302 redirect to signed storage URL, streams file back to caller
+- `IBillOfSaleDocumentQueryService` (application layer): orchestrates BOS lookup → validation → document retrieval
+- `IBillOfSaleDocumentService.RetrieveDocumentAsync` (infrastructure): HTTP call to Documents, returns disposable `DocumentRetrievalResult`
+- `DocumentRetrievalResult` implements `IDisposable`/`IAsyncDisposable` to properly dispose `HttpResponseMessage` after streaming
+- Endpoint uses `RegisterForDispose` to tie response lifecycle to HTTP pipeline
+
+### Error Handling
+- BOS not found → 404
+- DocumentId null → 409 (code: `DOCUMENT_NOT_AVAILABLE`)
+- Documents service failure → 502 (new `ServiceUnavailableException` in BuildingBlocks)
+- Transport errors (`HttpRequestException`) → caught and mapped to 502
+
+### Files
+- Created: `DocumentRetrievalResult.cs`, `IBillOfSaleDocumentQueryService.cs`, `BillOfSaleDocumentQueryService.cs`, `ServiceUnavailableException.cs`
+- Modified: `IBillOfSaleDocumentService.cs`, `BillOfSaleDocumentService.cs`, `BillOfSaleEndpoints.cs`, `ExceptionHandlingMiddleware.cs`, `DependencyInjection.cs`
+
+### Report
+Full analysis at `analysis/LS-LIENS-07-002-report.md`

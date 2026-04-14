@@ -103,10 +103,12 @@ public static class BillOfSaleEndpoints
         Guid id,
         IBillOfSaleDocumentQueryService docQueryService,
         ICurrentRequestContext ctx,
+        HttpContext httpContext,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
         var result = await docQueryService.GetDocumentByBosIdAsync(tenantId, id, ct);
+        httpContext.Response.RegisterForDispose(result);
         return Results.File(
             result.Content,
             contentType: result.ContentType,
@@ -117,10 +119,12 @@ public static class BillOfSaleEndpoints
         string billOfSaleNumber,
         IBillOfSaleDocumentQueryService docQueryService,
         ICurrentRequestContext ctx,
+        HttpContext httpContext,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
         var result = await docQueryService.GetDocumentByBosNumberAsync(tenantId, billOfSaleNumber, ct);
+        httpContext.Response.RegisterForDispose(result);
         return Results.File(
             result.Content,
             contentType: result.ContentType,
