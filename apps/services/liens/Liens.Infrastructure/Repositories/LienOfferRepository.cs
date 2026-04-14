@@ -30,7 +30,7 @@ public class LienOfferRepository : ILienOfferRepository
     }
 
     public async Task<(List<LienOffer> Items, int TotalCount)> SearchAsync(
-        Guid tenantId, Guid? lienId, string? status,
+        Guid tenantId, Guid? lienId, string? status, Guid? buyerOrgId, Guid? sellerOrgId,
         int page, int pageSize, CancellationToken ct = default)
     {
         var q = _db.LienOffers.Where(o => o.TenantId == tenantId);
@@ -41,6 +41,12 @@ public class LienOfferRepository : ILienOfferRepository
         if (!string.IsNullOrWhiteSpace(status))
             q = q.Where(o => o.Status == status);
 
+        if (buyerOrgId.HasValue)
+            q = q.Where(o => o.BuyerOrgId == buyerOrgId.Value);
+
+        if (sellerOrgId.HasValue)
+            q = q.Where(o => o.SellerOrgId == sellerOrgId.Value);
+
         var totalCount = await q.CountAsync(ct);
 
         var items = await q
@@ -50,6 +56,15 @@ public class LienOfferRepository : ILienOfferRepository
             .ToListAsync(ct);
 
         return (items, totalCount);
+    }
+
+    public async Task<bool> HasActiveOfferAsync(Guid tenantId, Guid lienId, Guid buyerOrgId, CancellationToken ct = default)
+    {
+        return await _db.LienOffers
+            .AnyAsync(o => o.TenantId == tenantId
+                        && o.LienId == lienId
+                        && o.BuyerOrgId == buyerOrgId
+                        && o.Status == Liens.Domain.Enums.OfferStatus.Pending, ct);
     }
 
     public async Task AddAsync(LienOffer entity, CancellationToken ct = default)
