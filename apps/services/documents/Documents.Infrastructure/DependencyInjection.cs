@@ -59,7 +59,18 @@ public static class DependencyInjection
         // ── Storage provider ─────────────────────────────────────────────────
         var storageProvider = config["Storage:Provider"] ?? "local";
         services.Configure<LocalStorageOptions>(config.GetSection("Storage:Local"));
-        services.Configure<S3StorageOptions>(config.GetSection("Storage:S3"));
+        services.Configure<S3StorageOptions>(opts =>
+        {
+            config.GetSection("Storage:S3").Bind(opts);
+            var envBucket = Environment.GetEnvironmentVariable("AWS_S3_BUCKET_NAME");
+            var envRegion = Environment.GetEnvironmentVariable("AWS_S3_REGION");
+            var envKey    = Environment.GetEnvironmentVariable("AWS_S3_ACCESS_KEY_ID");
+            var envSecret = Environment.GetEnvironmentVariable("AWS_S3_SECRET_ACCESS_KEY");
+            if (!string.IsNullOrWhiteSpace(envBucket)) opts.BucketName     = envBucket;
+            if (!string.IsNullOrWhiteSpace(envRegion)) opts.Region         = envRegion;
+            if (!string.IsNullOrWhiteSpace(envKey))    opts.AccessKeyId    = envKey;
+            if (!string.IsNullOrWhiteSpace(envSecret)) opts.SecretAccessKey = envSecret;
+        });
         services.AddSingleton<LocalStorageProvider>();
         services.AddSingleton<S3StorageProvider>();
         services.AddSingleton<DatabaseStorageProvider>();

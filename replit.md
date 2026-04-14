@@ -902,7 +902,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - **Full API parity**: 13/13 TypeScript endpoints implemented
 - **Three-layer tenant isolation**: L1 pre-query guard + L2 LINQ WHERE predicate + L3 ABAC in DocumentService
 - **RBAC**: 5 roles (DocReader/DocUploader/DocManager/TenantAdmin/PlatformAdmin)
-- **Storage**: `local` (dev), `database` (prod), or `s3` (optional), selected via `Storage:Provider` config
+- **Storage**: `local` (dev) or `s3` (prod), selected via `Storage:Provider` config. Database provider also available as fallback.
 - **File scanning**: `none` / `mock` / `clamav` (TCP to clamd) — `Scanner:Provider` config; fully async background worker model
 - **Async scanning**: Uploads immediately return `scanStatus: "PENDING"`; `DocumentScanWorker` (BackgroundService) scans asynchronously via `IScanJobQueue` (lease/ack pattern)
 - **Durable scan queue**: `ScanWorker:QueueProvider=memory` (dev) or `redis` (prod via Redis Streams XADD/XREADGROUP/XAUTOCLAIM); configurable via `ScanWorker:*`
@@ -931,7 +931,7 @@ At startup, `Program.cs` handles schema automatically:
   - `ALTER TABLE document_audits ALTER COLUMN actor_id DROP NOT NULL;` (scan worker audits have no actor)
 - **No EF Core migrations**: The migration snapshot is a placeholder; schema is managed via `EnsureCreated` + startup patches
 - **Dev vs Prod Postgres**: Dev uses `helium:5432` (Replit built-in); Prod uses `DATABASE_URL` (Replit deployment Postgres). Document IDs are NOT portable between environments.
-- **Storage**: Dev uses `/tmp/docs-local` (local filesystem); Prod uses `database` provider (PostgreSQL `docs_file_blobs` table) so files persist across deployments. S3 provider also available via `Storage:Provider=s3`. Local filesystem option retained as fallback (`/home/runner/data/docs-local`).
+- **Storage**: Dev uses `/tmp/docs-local` (local filesystem); Prod uses S3 (`Storage:Provider=s3`) with credentials from env vars (`AWS_S3_BUCKET_NAME`, `AWS_S3_REGION`, `AWS_S3_ACCESS_KEY_ID`, `AWS_S3_SECRET_ACCESS_KEY`). Database provider (`docs_file_blobs` table) available as fallback. Local filesystem option also retained (`/home/runner/data/docs-local`).
 
 Reference schema: `apps/services/documents/Documents.Infrastructure/Database/schema.sql`
 
@@ -1724,7 +1724,7 @@ The legacy `AuditEvents` table is tracked in the EF model snapshot (so the ORM k
 - **Build:** `scripts/build-prod.sh` — cleans `.next` directories before building (prevents stale dev cache from causing hydration/hook errors), builds both Next.js apps and all .NET services (including Liens) in Release mode. Post-build cleanup removes `.git` (~3.3GB), pnpm store (~2.1GB), NuGet cache (~232MB), Replit agent state (~638MB), `_archived`, `.NET obj/Debug` dirs, test artifacts, analysis/exports/downloads to keep the deployment image under 8GB.
 - **Run:** `scripts/run-prod.sh` — starts web (port 3050 internal → 5000 proxy), control center (port 5004), gateway (port 5010), all .NET services (including notifications on port 5008, liens on port 5009), artifacts server (port 5020). Includes fallback build block for all services including Liens.
 - **CareConnect internal provisioning:** Identity service calls CareConnect on port 5003 (fallback in `DependencyInjection.cs`; override via `CareConnect:InternalUrl` config)
-- **Documents `appsettings.Production.json`:** Sets `Storage:Provider` to `database` (PostgreSQL-backed, persists across all deployment types). Local filesystem fallback path remains at `/home/runner/data/docs-local`
+- **Documents `appsettings.Production.json`:** Sets `Storage:Provider` to `s3` (AWS S3, persistent). S3 credentials read from env vars (`AWS_S3_BUCKET_NAME`, `AWS_S3_REGION`, `AWS_S3_ACCESS_KEY_ID`, `AWS_S3_SECRET_ACCESS_KEY`). Database and local filesystem providers available as fallback options.
 ```bash
 # Idempotent SQL (safe to run multiple times):
 dotnet ef migrations script --idempotent -o migration.sql
