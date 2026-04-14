@@ -4071,3 +4071,29 @@ Wired the Liens UI (list page, detail page, create modal) to real backend APIs, 
 
 ### Remaining Store Usage
 - `useLienStore` still used for: `currentRole` (role gating), `addToast` (notifications). All data reads now come from API.
+
+---
+
+## LS-LIENS-UI-006: Contacts & Participants Integration
+
+### Summary
+Built full Contact CRUD backend stack (service + endpoints) on existing entity/repository, created 5-file frontend service layer, and rewrote contacts list/detail/add-contact pages to consume real API instead of mock store data.
+
+### Backend
+- **`ContactService.cs`**: Full CRUD with validation, audit publishing, `NotFoundException`/`ValidationException` pattern matching `ServicingItemService`
+- **`ContactEndpoints.cs`**: MinimalAPI group `/api/liens/contacts` — `GET /` (list+search), `GET /{id}`, `POST /`, `PUT /{id}`, `PUT /{id}/deactivate`, `PUT /{id}/reactivate`
+- **DTOs**: `ContactResponse`, `CreateContactRequest`, `UpdateContactRequest`
+- **DI**: `IContactService` → `ContactService` registered; `app.MapContactEndpoints()` in Program.cs
+
+### Service Layer (`apps/web/src/lib/contacts/`)
+- **5-file pattern**: `contacts.types.ts` → `contacts.api.ts` → `contacts.mapper.ts` → `contacts.service.ts` → `index.ts`
+- **Gateway path**: `/lien/api/liens/contacts`
+- **Field mapping**: Backend `firstName`/`lastName`/`displayName`/`addressLine1`/`postalCode` mapped to UI-friendly fields
+
+### Pages Rewritten
+- **`contacts/page.tsx`**: `contactsService.getContacts()` with search/type filter, side drawer preview, Add Contact modal
+- **`contacts/[id]/page.tsx`**: `contactsService.getContact()` for detail, deactivate/reactivate actions
+- **`add-contact-form.tsx`**: `contactsService.createContact()` with validation, proper field mapping
+
+### Store Usage
+- `useLienStore` only for `currentRole`, `addToast` — all contact data from API

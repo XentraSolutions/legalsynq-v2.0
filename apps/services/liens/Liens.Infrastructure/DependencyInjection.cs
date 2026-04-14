@@ -50,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<IBillOfSaleDocumentQueryService, BillOfSaleDocumentQueryService>();
         services.AddScoped<ICaseService, CaseService>();
         services.AddScoped<IServicingItemService, ServicingItemService>();
+        services.AddScoped<IContactService, ContactService>();
 
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
         services.AddHttpClient("DocumentsService", client =>

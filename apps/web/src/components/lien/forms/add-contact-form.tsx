@@ -4,50 +4,76 @@ import { useState } from 'react';
 import { FormModal } from '@/components/lien/modal';
 import { useLienStore } from '@/stores/lien-store';
 import { CONTACT_TYPE_LABELS } from '@/types/lien';
+import { contactsService } from '@/lib/contacts';
 
 interface AddContactFormProps {
   open: boolean;
   onClose: () => void;
+  onCreated?: () => void;
 }
 
-export function AddContactForm({ open, onClose }: AddContactFormProps) {
-  const addContact = useLienStore((s) => s.addContact);
-  const [form, setForm] = useState({ name: '', contactType: '', organization: '', email: '', phone: '', city: '', state: '' });
+export function AddContactForm({ open, onClose, onCreated }: AddContactFormProps) {
+  const addToast = useLienStore((s) => s.addToast);
+  const [form, setForm] = useState({ firstName: '', lastName: '', contactType: '', organization: '', email: '', phone: '', city: '', state: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.name.trim()) e.name = 'Name is required';
+    if (!form.firstName.trim()) e.firstName = 'First name is required';
+    if (!form.lastName.trim()) e.lastName = 'Last name is required';
     if (!form.contactType) e.contactType = 'Type is required';
-    if (!form.organization.trim()) e.organization = 'Organization is required';
-    if (!form.email.trim()) e.email = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Invalid email format';
+    if (form.email && !/\S+@\S+\.\S+/.test(form.email)) e.email = 'Invalid email format';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return;
-    addContact({
-      id: `ct-${Date.now()}`, contactType: form.contactType, name: form.name,
-      organization: form.organization, email: form.email, phone: form.phone,
-      city: form.city, state: form.state, activeCases: 0, createdAtUtc: new Date().toISOString(),
-    });
-    setForm({ name: '', contactType: '', organization: '', email: '', phone: '', city: '', state: '' });
+    try {
+      setSubmitting(true);
+      await contactsService.createContact({
+        firstName: form.firstName,
+        lastName: form.lastName,
+        contactType: form.contactType,
+        organization: form.organization || undefined,
+        email: form.email || undefined,
+        phone: form.phone || undefined,
+        city: form.city || undefined,
+        state: form.state || undefined,
+      });
+      addToast({ type: 'success', title: 'Contact Created', description: `${form.firstName} ${form.lastName}` });
+      resetAndClose();
+      onCreated?.();
+    } catch (err) {
+      addToast({ type: 'error', title: 'Create Failed', description: err instanceof Error ? err.message : 'Failed to create contact' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const resetAndClose = () => {
+    setForm({ firstName: '', lastName: '', contactType: '', organization: '', email: '', phone: '', city: '', state: '' });
     setErrors({});
     onClose();
   };
 
-  const reset = () => { setForm({ name: '', contactType: '', organization: '', email: '', phone: '', city: '', state: '' }); setErrors({}); onClose(); };
-
   return (
-    <FormModal open={open} onClose={reset} onSubmit={handleSubmit} title="Add Contact" submitLabel="Add Contact">
+    <FormModal open={open} onClose={resetAndClose} onSubmit={handleSubmit} title="Add Contact" submitLabel={submitting ? 'Creating...' : 'Add Contact'}>
       <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Name<span className="text-red-500 ml-0.5">*</span></label>
-          <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Full name"
-            className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.name ? 'border-red-300' : 'border-gray-200'} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`} />
-          {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name}</p>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">First Name<span className="text-red-500 ml-0.5">*</span></label>
+            <input type="text" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} placeholder="First name"
+              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.firstName ? 'border-red-300' : 'border-gray-200'} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`} />
+            {errors.firstName && <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Last Name<span className="text-red-500 ml-0.5">*</span></label>
+            <input type="text" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} placeholder="Last name"
+              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.lastName ? 'border-red-300' : 'border-gray-200'} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`} />
+            {errors.lastName && <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>}
+          </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -60,15 +86,14 @@ export function AddContactForm({ open, onClose }: AddContactFormProps) {
             {errors.contactType && <p className="text-xs text-red-500 mt-1">{errors.contactType}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Organization<span className="text-red-500 ml-0.5">*</span></label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Organization</label>
             <input type="text" value={form.organization} onChange={(e) => setForm({ ...form, organization: e.target.value })} placeholder="Organization"
-              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.organization ? 'border-red-300' : 'border-gray-200'} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`} />
-            {errors.organization && <p className="text-xs text-red-500 mt-1">{errors.organization}</p>}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email<span className="text-red-500 ml-0.5">*</span></label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
             <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com"
               className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.email ? 'border-red-300' : 'border-gray-200'} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`} />
             {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
