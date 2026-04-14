@@ -3786,6 +3786,32 @@ All 7 repositories registered as `AddScoped<IXRepository, XRepository>()`
 ### Build
 - All 4 Liens projects: 0 errors, 0 warnings
 
+## Liens Case HTTP APIs — 2026-04-14
+
+### Summary
+Implemented the first real database-backed Liens API surface: five Case endpoints with full CRUD, authorization, and tenant isolation.
+
+### Endpoints
+| Method | Route | Permission |
+|---|---|---|
+| GET | `/api/liens/cases` | `SYNQ_LIENS.case:read` |
+| GET | `/api/liens/cases/{id}` | `SYNQ_LIENS.case:read` |
+| GET | `/api/liens/cases/by-number/{caseNumber}` | `SYNQ_LIENS.case:read` |
+| POST | `/api/liens/cases` | `SYNQ_LIENS.case:create` |
+| PUT | `/api/liens/cases/{id}` | `SYNQ_LIENS.case:update` |
+
+### Files Created
+- `Liens.Application/DTOs/CaseResponse.cs`, `CreateCaseRequest.cs`, `UpdateCaseRequest.cs`, `PaginatedResult.cs`
+- `Liens.Application/Interfaces/ICaseService.cs`
+- `Liens.Application/Services/CaseService.cs`
+- `Liens.Api/Endpoints/CaseEndpoints.cs`
+
+### Files Changed
+- `Liens.Domain/LiensPermissions.cs` — added `CaseRead`, `CaseCreate`, `CaseUpdate`
+- `Liens.Infrastructure/DependencyInjection.cs` — registered `ICaseService`
+- `Liens.Api/Program.cs` — mapped `CaseEndpoints`
+- `Liens.Api/Middleware/ExceptionHandlingMiddleware.cs` — added `UnauthorizedAccessException` → 401 handling
+
 ## Liens Service JWT Auth Integration — 2026-04-13
 
 ### Summary

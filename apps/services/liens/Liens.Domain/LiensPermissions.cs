@@ -12,4 +12,8 @@ public static class LiensPermissions
     public const string LienReadHeld = "SYNQ_LIENS.lien:read:held";
     public const string LienService  = "SYNQ_LIENS.lien:service";
     public const string LienSettle   = "SYNQ_LIENS.lien:settle";
+
+    public const string CaseRead   = "SYNQ_LIENS.case:read";
+    public const string CaseCreate = "SYNQ_LIENS.case:create";
+    public const string CaseUpdate = "SYNQ_LIENS.case:update";
 }

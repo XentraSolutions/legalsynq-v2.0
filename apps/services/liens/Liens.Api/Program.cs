@@ -120,5 +120,6 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
 .RequireAuthorization(Policies.AuthenticatedUser);
 
 app.MapLienEndpoints();
+app.MapCaseEndpoints();
 
 app.Run();

@@ -59,6 +59,19 @@ public class ExceptionHandlingMiddleware
                 }
             });
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = new
+                {
+                    code = "unauthorized",
+                    message = ex.Message
+                }
+            });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception");
