@@ -3759,6 +3759,33 @@ Created `LiensDbContext` with 7 DbSets, wired into DI with MySQL/Pomelo, added d
 - Identity, Gateway: 0 errors, 0 warnings
 - Report: `analysis/LS-LIENS-04-002-report.md`
 
+## Liens Repository Layer (LS-LIENS-05-001) — 2026-04-14
+
+### Summary
+Implemented 7 repository interfaces in `Liens.Application/Repositories/` and 7 EF Core implementations in `Liens.Infrastructure/Repositories/`, following the CareConnect repository pattern. All wired into DI.
+
+### Interfaces (Liens.Application/Repositories/)
+- `ICaseRepository` — GetById, GetByCaseNumber, Search(tenantId, search, status, page, pageSize), Add, Update
+- `IContactRepository` — GetById, Search(tenantId, search, contactType, isActive, page, pageSize), Add, Update
+- `IFacilityRepository` — GetById, Search(tenantId, search, isActive, page, pageSize), Add, Update
+- `ILookupValueRepository` — GetById(tenantId?, id), GetByCategory(tenantId?, category), GetByCode(tenantId?, category, code), Add, Update
+- `ILienRepository` — GetById, GetByLienNumber, Search(tenantId, search, status, lienType, caseId, facilityId, page, pageSize), GetByCaseId, GetByFacilityId, Add, Update
+- `ILienOfferRepository` — GetById, GetByLienId, Search(tenantId, lienId, status, page, pageSize), Add, Update
+- `IBillOfSaleRepository` — GetById, GetByLienOfferId, GetByLienId, Search(tenantId, lienId, status, page, pageSize), Add, Update
+
+### Implementations (Liens.Infrastructure/Repositories/)
+- All use constructor-injected `LiensDbContext`
+- Repository-level `SaveChangesAsync()` on every write (no unit-of-work)
+- All read queries are tenant-scoped (`TenantId == tenantId`)
+- LookupValue: tenant-scoped with system-wide fallback (`TenantId == null || TenantId == tenantId`)
+- Search methods return `(List<T> Items, int TotalCount)` for paginated results
+
+### DI Registration (DependencyInjection.cs)
+All 7 repositories registered as `AddScoped<IXRepository, XRepository>()`
+
+### Build
+- All 4 Liens projects: 0 errors, 0 warnings
+
 ## Liens Service JWT Auth Integration — 2026-04-13
 
 ### Summary

@@ -14,10 +14,10 @@ public class LookupValueRepository : ILookupValueRepository
         _db = db;
     }
 
-    public async Task<LookupValue?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    public async Task<LookupValue?> GetByIdAsync(Guid? tenantId, Guid id, CancellationToken ct = default)
     {
         return await _db.LookupValues
-            .Where(lv => lv.Id == id)
+            .Where(lv => lv.Id == id && (lv.TenantId == null || lv.TenantId == tenantId))
             .FirstOrDefaultAsync(ct);
     }
 
@@ -33,7 +33,7 @@ public class LookupValueRepository : ILookupValueRepository
     public async Task<LookupValue?> GetByCodeAsync(Guid? tenantId, string category, string code, CancellationToken ct = default)
     {
         return await _db.LookupValues
-            .Where(lv => (lv.TenantId == null || lv.TenantId == tenantId) && lv.Category == category && lv.Code == code)
+            .Where(lv => (lv.TenantId == null || lv.TenantId == tenantId) && lv.Category == category && lv.Code == code && lv.IsActive)
             .FirstOrDefaultAsync(ct);
     }
 
