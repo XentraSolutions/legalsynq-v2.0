@@ -1,80 +1,147 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useLienStore, canPerformAction } from '@/stores/lien-store';
-import { formatCurrency, formatDate } from '@/lib/lien-mock-data';
-import { LIEN_TYPE_LABELS } from '@/types/lien';
+import { ApiError } from '@/lib/api-client';
+import { liensService, type LienDetail, type LienOfferItem } from '@/lib/liens';
+import { casesService, type CaseDetail as CaseInfo } from '@/lib/cases';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { StatusProgress } from '@/components/lien/status-progress';
-import { ActivityTimeline } from '@/components/lien/activity-timeline';
 import { ConfirmDialog, FormModal } from '@/components/lien/modal';
 
 const LIEN_STEPS = ['Draft', 'Active', 'Negotiation', 'Sold', 'Closed'];
 const STATUS_MAP: Record<string, string> = { Draft: 'Draft', Offered: 'Active', Sold: 'Sold', Withdrawn: 'Closed' };
 
+function formatCurrency(amount: number | null): string {
+  if (amount === null || amount === undefined) return '\u2014';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+}
+
 export default function LienDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const getLienDetail = useLienStore((s) => s.getLienDetail);
-  const updateLien = useLienStore((s) => s.updateLien);
-  const addOffer = useLienStore((s) => s.addOffer);
-  const updateOffer = useLienStore((s) => s.updateOffer);
-  const addToast = useLienStore((s) => s.addToast);
-  const addActivity = useLienStore((s) => s.addActivity);
   const role = useLienStore((s) => s.currentRole);
+  const addToast = useLienStore((s) => s.addToast);
+
+  const [lien, setLien] = useState<LienDetail | null>(null);
+  const [offers, setOffers] = useState<LienOfferItem[]>([]);
+  const [linkedCase, setLinkedCase] = useState<CaseInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [offerAmount, setOfferAmount] = useState('');
   const [offerNotes, setOfferNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ type: string; offerId?: string } | null>(null);
 
-  const d = getLienDetail(id) as any;
-  if (!d) return <div className="p-10 text-center text-gray-400">Lien not found.</div>;
+  const fetchLien = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [detail, offersResult] = await Promise.all([
+        liensService.getLien(id),
+        liensService.getLienOffers(id).catch(() => ({ items: [] })),
+      ]);
+      setLien(detail);
+      setOffers(offersResult.items);
+
+      if (detail.caseId) {
+        try {
+          const caseDetail = await casesService.getCase(detail.caseId);
+          setLinkedCase(caseDetail);
+        } catch {
+          setLinkedCase(null);
+        }
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.isNotFound ? 'Lien not found.' : err.message);
+      } else {
+        setError('Failed to load lien details');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchLien();
+  }, [fetchLien]);
 
   const canEdit = canPerformAction(role, 'edit');
-  const offers = d.offers || [];
 
-  const handleSubmitOffer = () => {
+  if (loading) {
+    return (
+      <div className="p-10 text-center">
+        <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-gray-400 mt-2">Loading lien details...</p>
+      </div>
+    );
+  }
+
+  if (error || !lien) {
+    return (
+      <div className="p-10 text-center space-y-3">
+        <i className="ri-error-warning-line text-3xl text-gray-300" />
+        <p className="text-sm text-gray-500">{error || 'Lien not found.'}</p>
+        <Link href="/lien/liens" className="text-sm text-primary hover:underline">Back to Liens</Link>
+      </div>
+    );
+  }
+
+  const d = lien;
+  const pendingOffers = offers.filter((o) => o.status === 'Pending');
+
+  const handleSubmitOffer = async () => {
     if (!offerAmount || isNaN(Number(offerAmount))) return;
-    const offer = {
-      id: `off-${Date.now()}`, lienId: id, buyerOrgId: 'o-buyer', buyerOrgName: 'My Organization',
-      offerAmount: Number(offerAmount), notes: offerNotes || undefined, status: 'Pending' as const,
-      createdAtUtc: new Date().toISOString(), updatedAtUtc: new Date().toISOString(),
-    };
-    addOffer(id, offer);
-    addToast({ type: 'success', title: 'Offer Submitted', description: `$${Number(offerAmount).toLocaleString()} offer placed` });
-    setOfferAmount('');
-    setOfferNotes('');
-    setShowOfferModal(false);
+    setSubmitting(true);
+    try {
+      await liensService.createOffer({
+        lienId: id,
+        offerAmount: Number(offerAmount),
+        notes: offerNotes || undefined,
+      });
+      addToast({ type: 'success', title: 'Offer Submitted', description: `$${Number(offerAmount).toLocaleString()} offer placed` });
+      setOfferAmount('');
+      setOfferNotes('');
+      setShowOfferModal(false);
+      await fetchLien();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to submit offer';
+      addToast({ type: 'error', title: 'Offer Failed', description: message });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleOfferAction = (offerId: string, action: 'Accepted' | 'Rejected') => {
-    updateOffer(id, offerId, { status: action });
-    if (action === 'Accepted') {
-      const offer = offers.find((o: any) => o.id === offerId);
-      updateLien(id, { status: 'Sold', purchasePrice: offer?.offerAmount });
-      addActivity({ type: 'lien_sold', description: `Lien ${d.lienNumber} sold for ${formatCurrency(offer?.offerAmount)}`, actor: 'Current User', timestamp: new Date().toISOString(), icon: 'ri-check-double-line', color: 'text-green-600' });
+  const handleAcceptOffer = async (offerId: string) => {
+    try {
+      const result = await liensService.acceptOffer(offerId);
+      addToast({ type: 'success', title: 'Offer Accepted', description: `Lien sold — Bill of Sale ${result.billOfSaleNumber} created` });
+      setConfirmAction(null);
+      await fetchLien();
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to accept offer';
+      addToast({ type: 'error', title: 'Accept Failed', description: message });
+      setConfirmAction(null);
     }
-    addToast({ type: action === 'Accepted' ? 'success' : 'info', title: `Offer ${action}` });
-    setConfirmAction(null);
   };
 
   return (
     <div className="space-y-5">
-      <DetailHeader title={d.lienNumber} subtitle={LIEN_TYPE_LABELS[d.lienType] ?? d.lienType}
+      <DetailHeader title={d.lienNumber} subtitle={d.lienTypeLabel}
         badge={<StatusBadge status={d.status} size="md" />}
         backHref="/lien/liens" backLabel="Back to Liens"
         meta={[
-          { label: 'Case', value: d.caseRef ?? '\u2014' },
-          { label: 'Jurisdiction', value: d.jurisdiction ?? '\u2014' },
-          { label: 'Created', value: formatDate(d.createdAtUtc) },
+          { label: 'Case', value: linkedCase ? linkedCase.caseNumber : d.caseId || '\u2014' },
+          { label: 'Jurisdiction', value: d.jurisdiction || '\u2014' },
+          { label: 'Created', value: d.createdAt },
         ]}
         actions={canEdit ? (
           <div className="flex gap-2">
-            {d.status === 'Draft' && <button onClick={() => { updateLien(id, { status: 'Offered', offerPrice: Math.round(d.originalAmount * 0.8) }); addToast({ type: 'success', title: 'Listed for Sale' }); }} className="text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90">List for Sale</button>}
             {d.status === 'Offered' && <button onClick={() => setShowOfferModal(true)} className="text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90">Submit Offer</button>}
-            {d.status === 'Offered' && <button onClick={() => { updateLien(id, { status: 'Withdrawn' }); addToast({ type: 'warning', title: 'Lien Withdrawn' }); }} className="text-sm px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Withdraw</button>}
           </div>
         ) : undefined}
       />
@@ -102,17 +169,17 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <DetailSection title="Lien Summary" icon="ri-stack-line" fields={[
           { label: 'Lien Number', value: d.lienNumber },
-          { label: 'Type', value: LIEN_TYPE_LABELS[d.lienType] ?? d.lienType },
-          { label: 'Jurisdiction', value: d.jurisdiction },
-          { label: 'Incident Date', value: d.incidentDate ? formatDate(d.incidentDate) : undefined },
+          { label: 'Type', value: d.lienTypeLabel },
+          { label: 'Jurisdiction', value: d.jurisdiction || undefined },
+          { label: 'Incident Date', value: d.incidentDate || undefined },
           { label: 'Confidential', value: d.isConfidential ? 'Yes' : 'No' },
-          { label: 'Case Reference', value: d.caseRef ? <Link href="/lien/cases" className="text-primary hover:underline">{d.caseRef}</Link> : undefined },
+          { label: 'Case', value: linkedCase ? (
+            <Link href={`/lien/cases/${d.caseId}`} className="text-primary hover:underline">{linkedCase.caseNumber} — {linkedCase.clientName}</Link>
+          ) : d.caseId ? 'Linked (details unavailable)' : undefined },
         ]} />
-        <DetailSection title="Parties" icon="ri-group-line" fields={[
-          { label: 'Subject', value: d.subjectParty ? `${d.subjectParty.firstName} ${d.subjectParty.lastName}` : d.isConfidential ? 'Confidential' : undefined },
-          { label: 'Selling Organization', value: d.sellingOrg?.orgName },
-          { label: 'Buying Organization', value: d.buyingOrg?.orgName },
-          { label: 'Holding Organization', value: d.holdingOrg?.orgName },
+        <DetailSection title="Subject Information" icon="ri-group-line" fields={[
+          { label: 'Subject', value: d.isConfidential ? 'Confidential' : d.subjectName || undefined },
+          { label: 'Description', value: d.description || undefined },
         ]} />
       </div>
 
@@ -122,11 +189,11 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
             <h3 className="text-sm font-semibold text-gray-800">Offers ({offers.length})</h3>
           </div>
           <div className="divide-y divide-gray-100">
-            {offers.map((offer: any) => (
+            {offers.map((offer) => (
               <div key={offer.id} className="px-5 py-3 flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-700 font-medium">{offer.buyerOrgName}</p>
-                  <p className="text-xs text-gray-400">{offer.notes || 'No notes'} &middot; {formatDate(offer.createdAtUtc)}</p>
+                  <p className="text-sm text-gray-700 font-medium">Offer from Org {offer.buyerOrgId.slice(0, 8)}...</p>
+                  <p className="text-xs text-gray-400">{offer.notes || 'No notes'} &middot; {offer.offeredAt}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium text-gray-900 tabular-nums">{formatCurrency(offer.offerAmount)}</span>
@@ -134,7 +201,6 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
                   {canEdit && offer.status === 'Pending' && (
                     <div className="flex gap-1">
                       <button onClick={() => setConfirmAction({ type: 'accept', offerId: offer.id })} className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200">Accept</button>
-                      <button onClick={() => setConfirmAction({ type: 'reject', offerId: offer.id })} className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200">Reject</button>
                     </div>
                   )}
                 </div>
@@ -144,14 +210,14 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {d.status === 'Offered' && offers.filter((o: any) => o.status === 'Pending').length > 0 && (
+      {pendingOffers.length > 0 && (
         <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <i className="ri-alert-line text-amber-600" />
-          <p className="text-xs text-amber-700"><span className="font-medium">Action Required:</span> This lien has {offers.filter((o: any) => o.status === 'Pending').length} pending offer(s) requiring review.</p>
+          <p className="text-xs text-amber-700"><span className="font-medium">Action Required:</span> This lien has {pendingOffers.length} pending offer(s) requiring review.</p>
         </div>
       )}
 
-      <FormModal open={showOfferModal} onClose={() => setShowOfferModal(false)} onSubmit={handleSubmitOffer} title="Submit Offer" submitLabel="Submit Offer" submitDisabled={!offerAmount || isNaN(Number(offerAmount))}>
+      <FormModal open={showOfferModal} onClose={() => setShowOfferModal(false)} onSubmit={handleSubmitOffer} title="Submit Offer" submitLabel={submitting ? 'Submitting...' : 'Submit Offer'} submitDisabled={!offerAmount || isNaN(Number(offerAmount)) || submitting}>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Offer Amount<span className="text-red-500 ml-0.5">*</span></label>
@@ -171,11 +237,10 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
 
       {confirmAction && confirmAction.offerId && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}
-          onConfirm={() => handleOfferAction(confirmAction.offerId!, confirmAction.type === 'accept' ? 'Accepted' : 'Rejected')}
-          title={confirmAction.type === 'accept' ? 'Accept Offer' : 'Reject Offer'}
-          description={confirmAction.type === 'accept' ? 'Accept this offer and mark the lien as sold?' : 'Reject this offer? This cannot be undone.'}
-          confirmLabel={confirmAction.type === 'accept' ? 'Accept' : 'Reject'}
-          confirmVariant={confirmAction.type === 'reject' ? 'danger' : 'primary'}
+          onConfirm={() => handleAcceptOffer(confirmAction.offerId!)}
+          title="Accept Offer"
+          description="Accept this offer? This will mark the lien as sold and create a Bill of Sale. All other pending offers will be rejected."
+          confirmLabel="Accept"
         />
       )}
     </div>
