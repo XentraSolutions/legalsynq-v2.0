@@ -117,7 +117,7 @@ public sealed class DocsDbContext : DbContext
         {
             e.ToTable("docs_file_blobs");
             e.HasKey(b => b.StorageKey);
-            e.Property(b => b.StorageKey).HasColumnName("storage_key").HasMaxLength(1000);
+            e.Property(b => b.StorageKey).HasColumnName("storage_key").HasMaxLength(500);
             e.Property(b => b.Content).HasColumnName("content").HasColumnType("longblob").IsRequired();
             e.Property(b => b.MimeType).HasColumnName("mime_type").HasMaxLength(200);
             e.Property(b => b.SizeBytes).HasColumnName("size_bytes");

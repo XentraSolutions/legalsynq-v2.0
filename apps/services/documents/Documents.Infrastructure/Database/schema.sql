@@ -92,7 +92,7 @@ CREATE INDEX idx_audits_tenant   ON docs_document_audits (tenant_id, occurred_at
 
 -- ── docs_file_blobs (fallback storage) ──────────────────────────────────────
 CREATE TABLE IF NOT EXISTS docs_file_blobs (
-    storage_key    VARCHAR(1000) PRIMARY KEY,
+    storage_key    VARCHAR(500)  PRIMARY KEY,
     content        LONGBLOB     NOT NULL,
     mime_type      VARCHAR(200) NOT NULL DEFAULT 'application/octet-stream',
     size_bytes     BIGINT       NOT NULL DEFAULT 0,
