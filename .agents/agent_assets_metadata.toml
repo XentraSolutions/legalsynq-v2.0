@@ -258,3 +258,9 @@ id = "N1msYHTTsdB_iVRJQ7MiJ"
 uri = "file://analysis/LS-LIENS-UI-003-report.md"
 type = "text"
 title = "LS-LIENS-UI-003 Report: Liens UI → Real API Integration"
+
+[[outputs]]
+id = "-DpVTjYj7pL3OKE3FCiEz"
+uri = "file://analysis/LS-LIENS-UI-005-report.md"
+type = "text"
+title = "LS-LIENS-UI-005 Report: Documents Integration"
