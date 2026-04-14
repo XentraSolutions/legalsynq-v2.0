@@ -40,8 +40,13 @@ async function probeService(svc: ServiceDef): Promise<ProbeResult> {
 
     let detail: string | undefined;
     try {
-      const body = await res.json();
-      detail = body.status ?? body.service ?? undefined;
+      const text = await res.text();
+      try {
+        const body = JSON.parse(text);
+        detail = body.status ?? body.service ?? undefined;
+      } catch {
+        if (text) detail = text.trim();
+      }
     } catch {}
 
     const status: Status = !res.ok
