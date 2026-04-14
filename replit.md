@@ -4097,3 +4097,29 @@ Built full Contact CRUD backend stack (service + endpoints) on existing entity/r
 
 ### Store Usage
 - `useLienStore` only for `currentRole`, `addToast` — all contact data from API
+
+---
+
+## LS-LIENS-UI-007: Bill of Sale & Settlement Flow
+
+### Summary
+Added status transition endpoints to BillOfSale backend (submit/execute/cancel), built 5-file frontend service layer, rewrote list and detail pages to use real API.
+
+### Backend Changes
+- **`IBillOfSaleService`**: Added `SubmitForExecutionAsync`, `ExecuteAsync`, `CancelAsync`
+- **`BillOfSaleService`**: Implemented transitions with `NotFoundException`, `ValidationException`, audit publishing
+- **`BillOfSaleEndpoints`**: Added `PUT /{id}/submit`, `PUT /{id}/execute`, `PUT /{id}/cancel`
+- Existing read endpoints unchanged
+
+### Service Layer (`apps/web/src/lib/billofsale/`)
+- **5-file pattern**: `billofsale.types.ts` → `billofsale.api.ts` → `billofsale.mapper.ts` → `billofsale.service.ts` → `index.ts`
+- **Gateway path**: `/lien/api/liens/bill-of-sales`
+- **Document URL**: `/api/lien/api/liens/bill-of-sales/{id}/document` (BFF proxy path for browser downloads)
+- **Utilities**: `formatCurrency`, `formatDate` moved from mock data to service layer
+
+### Pages Rewritten
+- **`bill-of-sales/page.tsx`**: `billOfSaleService.getBillOfSales()`, KPI cards, status actions via API
+- **`bill-of-sales/[id]/page.tsx`**: `billOfSaleService.getBillOfSale()`, workflow stepper, status transitions, PDF download
+
+### Store Usage
+- `useLienStore` only for `currentRole`, `addToast` — all BOS data from API

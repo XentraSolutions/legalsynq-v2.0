@@ -36,6 +36,15 @@ public static class BillOfSaleEndpoints
 
         bosGroup.MapGet("/by-number/{billOfSaleNumber}/document", GetBillOfSaleDocumentByNumber)
             .RequirePermission(LiensPermissions.LienRead);
+
+        bosGroup.MapPut("/{id:guid}/submit", SubmitForExecution)
+            .RequirePermission(LiensPermissions.LienService);
+
+        bosGroup.MapPut("/{id:guid}/execute", ExecuteBillOfSale)
+            .RequirePermission(LiensPermissions.LienService);
+
+        bosGroup.MapPut("/{id:guid}/cancel", CancelBillOfSale)
+            .RequirePermission(LiensPermissions.LienService);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx)
@@ -129,5 +138,48 @@ public static class BillOfSaleEndpoints
             result.Content,
             contentType: result.ContentType,
             fileDownloadName: result.FileName);
+    }
+
+    private static Guid RequireUserId(ICurrentRequestContext ctx)
+    {
+        return ctx.UserId
+            ?? throw new UnauthorizedAccessException("User context is required.");
+    }
+
+    private static async Task<IResult> SubmitForExecution(
+        Guid id,
+        IBillOfSaleService bosService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await bosService.SubmitForExecutionAsync(tenantId, id, userId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> ExecuteBillOfSale(
+        Guid id,
+        IBillOfSaleService bosService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await bosService.ExecuteAsync(tenantId, id, userId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> CancelBillOfSale(
+        Guid id,
+        IBillOfSaleService bosService,
+        ICurrentRequestContext ctx,
+        string? reason = null,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await bosService.CancelAsync(tenantId, id, userId, reason, ct);
+        return Results.Ok(result);
     }
 }

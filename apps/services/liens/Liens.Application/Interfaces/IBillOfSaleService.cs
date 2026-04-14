@@ -16,4 +16,10 @@ public interface IBillOfSaleService
         CancellationToken ct = default);
 
     Task<List<BillOfSaleResponse>> GetByLienIdAsync(Guid tenantId, Guid lienId, CancellationToken ct = default);
+
+    Task<BillOfSaleResponse> SubmitForExecutionAsync(Guid tenantId, Guid id, Guid actingUserId, CancellationToken ct = default);
+
+    Task<BillOfSaleResponse> ExecuteAsync(Guid tenantId, Guid id, Guid actingUserId, CancellationToken ct = default);
+
+    Task<BillOfSaleResponse> CancelAsync(Guid tenantId, Guid id, Guid actingUserId, string? reason = null, CancellationToken ct = default);
 }
