@@ -219,9 +219,12 @@ public static class SchemaRenamer
     {
         ["ntf_ProviderHealth"] = new[]
         {
+            ("HealthStatus", "varchar(20) NOT NULL", "'healthy'"),
             ("ConsecutiveFailures", "int NOT NULL", "0"),
             ("ConsecutiveSuccesses", "int NOT NULL", "0"),
             ("LastLatencyMs", "int NULL", ""),
+            ("LastCheckAt", "datetime(6) NULL", ""),
+            ("LastFailureAt", "datetime(6) NULL", ""),
             ("LastRecoveryAt", "datetime(6) NULL", ""),
         },
     };

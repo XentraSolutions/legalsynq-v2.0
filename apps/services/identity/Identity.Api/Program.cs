@@ -67,6 +67,47 @@ catch (Exception ex)
     app.Logger.LogWarning(ex, "Could not apply migrations — ensure MySQL is running and connection string is correct");
 }
 
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    var conn = db.Database.GetDbConnection();
+    var dbName = conn.Database;
+    await conn.OpenAsync();
+    try
+    {
+        var columnsToEnsure = new (string Table, string Column, string SqlType, string Default)[]
+        {
+            ("idt_Organizations", "ProviderMode", "varchar(20) NOT NULL", "'sell'"),
+            ("idt_Tenants", "LogoWhiteDocumentId", "char(36) NULL", ""),
+        };
+
+        foreach (var (table, column, sqlType, defaultValue) in columnsToEnsure)
+        {
+            using var checkCmd = conn.CreateCommand();
+            checkCmd.CommandText = $@"SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = '{dbName}' AND table_name = '{table}' AND column_name = '{column}'";
+            var exists = Convert.ToInt64(await checkCmd.ExecuteScalarAsync()) > 0;
+            if (!exists)
+            {
+                var defaultClause = string.IsNullOrEmpty(defaultValue) ? "" : $" DEFAULT {defaultValue}";
+                using var alterCmd = conn.CreateCommand();
+                alterCmd.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{column}` {sqlType}{defaultClause}";
+                await alterCmd.ExecuteNonQueryAsync();
+                app.Logger.LogInformation("Added missing column {Table}.{Column}", table, column);
+            }
+        }
+    }
+    finally
+    {
+        await conn.CloseAsync();
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Could not ensure missing columns");
+}
+
 // ── Startup diagnostic: Phase G authorization status ─────────────────────────
 // Phase G COMPLETE: UserRoles + UserRoleAssignments tables dropped.
 // Diagnostics verify OrgTypeRule coverage and ScopedRoleAssignment counts.
