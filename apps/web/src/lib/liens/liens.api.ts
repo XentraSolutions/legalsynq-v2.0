@@ -58,4 +58,11 @@ export const liensApi = {
       {},
     );
   },
+
+  withdraw(id: string) {
+    return apiClient.post<LienResponseDto>(
+      `/lien/api/liens/liens/${id}/withdraw`,
+      {},
+    );
+  },
 };

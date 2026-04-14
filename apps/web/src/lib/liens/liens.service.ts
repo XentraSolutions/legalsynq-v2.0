@@ -50,6 +50,11 @@ export const liensService = {
     return mapLienToDetail(data);
   },
 
+  async withdraw(id: string): Promise<LienDetail> {
+    const { data } = await liensApi.withdraw(id);
+    return mapLienToDetail(data);
+  },
+
   async getLienOffers(lienId: string): Promise<LienOffersResult> {
     const { data } = await liensApi.getOffers(lienId);
     return {

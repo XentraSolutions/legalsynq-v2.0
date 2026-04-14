@@ -114,7 +114,7 @@ export default function LiensPage() {
       if (lien.status !== 'Active' && lien.status !== 'Offered') {
         throw new Error(`Lien is "${lien.status}" — only Active or Offered liens can be withdrawn`);
       }
-      await liensService.updateLien(id, { status: 'Withdrawn' });
+      await liensService.withdraw(id);
     });
     setBulkLoading(false);
     setBulkAction(null);

@@ -46,6 +46,7 @@ apps/web/
       tenant-api.ts             ← BFF layer for tenant authorization APIs (server + client methods)
       nav.ts                    ← buildNavGroups(session) — role-driven nav derivation; PRODUCT_NAV lien section has MY TASKS, MARKETPLACE (role-gated: SynqLienSeller/Buyer/Holder), MY TOOLS, SETTINGS; filterNavByRoles() gates items by ProductRole; filterNavByAccess() combines role + mode filtering (LS-LIENS-UI-012)
       role-access/              ← Centralized role-access service (LS-LIENS-UI-012): buildRoleAccess() maps productRoles + mode → RoleAccessInfo with can(LienAction) and canViewModule(LienModule). Replaces legacy AppRole/canPerformAction from lien-store.
+      bulk-operations/          ← Bulk operations framework (LS-LIENS-UI-013): executeBulk(ids, handler) processes items sequentially, returns BulkOperationResult with succeeded/failed counts. Types: BulkActionConfig, BulkOperationResult, BulkItemResult, BulkExecutor.
     providers/
       session-provider.tsx      ← SessionProvider — fetches BFF /api/auth/me client-side on mount
       tenant-branding-provider.tsx ← TenantBrandingProvider — anonymous branding fetch + CSS vars + X-Tenant-Code header
@@ -53,6 +54,7 @@ apps/web/
       use-session.ts            ← useSession() / useRequiredSession()
       use-provider-mode.ts      ← useProviderMode() — returns ProviderModeInfo & { isReady } from ProviderModeContext (org config API sourced)
       use-role-access.ts        ← useRoleAccess() — returns RoleAccessInfo (can(), canViewModule(), isSeller/isBuyer/isHolder flags); combines session productRoles + provider mode into granular action-level checks (LS-LIENS-UI-012)
+      use-selection-state.ts    ← useSelectionState<T>() — generic multi-select state hook (select/deselect/toggle-all/clear); used by bulk operations (LS-LIENS-UI-013)
       use-tenant-branding.ts    ← re-exports useTenantBranding()
       use-nav-badges.ts         ← useNavBadges() — polls new referral count for Provider/CareConnectReceiver users (30s interval)
     contexts/
