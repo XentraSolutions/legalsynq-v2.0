@@ -7,7 +7,9 @@ using Liens.Api.Endpoints;
 using Liens.Api.Middleware;
 using Liens.Domain;
 using Liens.Infrastructure;
+using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 const string ServiceName = "liens";
@@ -60,6 +62,21 @@ var app = builder.Build();
 
 var env = app.Environment.EnvironmentName;
 app.Logger.LogInformation("Starting {Service} {Version} in {Environment}", ServiceName, Version, env);
+
+if (app.Environment.IsDevelopment())
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.Database.Migrate();
+        app.Logger.LogInformation("Database migrations applied");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Could not apply migrations on startup");
+    }
+}
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();

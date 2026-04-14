@@ -1,0 +1,46 @@
+using BuildingBlocks.Domain;
+using Liens.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Liens.Infrastructure.Persistence;
+
+public class LiensDbContext : DbContext
+{
+    public LiensDbContext(DbContextOptions<LiensDbContext> options) : base(options) { }
+
+    public DbSet<Case> Cases => Set<Case>();
+    public DbSet<Contact> Contacts => Set<Contact>();
+    public DbSet<Facility> Facilities => Set<Facility>();
+    public DbSet<LookupValue> LookupValues => Set<LookupValue>();
+    public DbSet<Lien> Liens => Set<Lien>();
+    public DbSet<LienOffer> LienOffers => Set<LienOffer>();
+    public DbSet<BillOfSale> BillsOfSale => Set<BillOfSale>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(LiensDbContext).Assembly);
+        base.OnModelCreating(modelBuilder);
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+
+        foreach (var entry in ChangeTracker.Entries<AuditableEntity>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                if (entry.Entity.CreatedAtUtc == default)
+                    entry.Property(nameof(AuditableEntity.CreatedAtUtc)).CurrentValue = now;
+
+                entry.Property(nameof(AuditableEntity.UpdatedAtUtc)).CurrentValue = now;
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                entry.Property(nameof(AuditableEntity.UpdatedAtUtc)).CurrentValue = now;
+            }
+        }
+
+        return base.SaveChangesAsync(cancellationToken);
+    }
+}
