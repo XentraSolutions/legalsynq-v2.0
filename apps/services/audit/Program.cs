@@ -705,7 +705,9 @@ try
         effectiveProvider,
         showSwagger ? "enabled" : "disabled");
 
-    var port = cfg["PORT"] ?? cfg["ASPNETCORE_URLS"]?.Split(':').LastOrDefault() ?? "5007";
+    var port = cfg["ServicePort"]
+        ?? cfg["ASPNETCORE_URLS"]?.Split(':').LastOrDefault()
+        ?? "5007";
     await app.RunAsync($"http://0.0.0.0:{port}");
 }
 catch (Exception ex) when (ex is not HostAbortedException)
