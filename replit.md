@@ -3896,3 +3896,24 @@ Implemented four read-only BillOfSale HTTP endpoints for retrieval and listing. 
 
 ### Report
 Full analysis at `analysis/LS-LIENS-06-004-report.md`
+
+## Sale Finalization Endpoint (LS-LIENS-06-005) — 2026-04-14
+
+### Summary
+Exposed the existing `ILienSaleService.AcceptOfferAsync` workflow through a single thin HTTP endpoint. No workflow logic duplicated — endpoint only extracts context, delegates to service, and returns result.
+
+### Endpoint
+- `POST /api/liens/offers/{offerId}/accept` — bodyless, accepts offer and finalizes sale
+
+### Key Details
+- Auth: `AuthenticatedUser` + `RequireProductAccess(SYNQ_LIENS)` + `RequirePermission(LienUpdate)`
+- Permission gap: no dedicated `sale:finalize` permission yet; using `LienUpdate`
+- Returns `SaleFinalizationResult` DTO (12 fields including BOS details, competing offers rejected count)
+- Idempotent: repeat calls return existing result if offer already accepted
+- Error handling: NotFoundException, ConflictException, ValidationException from service propagated via middleware
+
+### Files
+- Modified: `Liens.Api/Endpoints/LienOfferEndpoints.cs` (added route + handler)
+
+### Report
+Full analysis at `analysis/LS-LIENS-06-005-report.md`

@@ -24,6 +24,9 @@ public static class LienOfferEndpoints
         offersGroup.MapPost("/", CreateOffer)
             .RequirePermission(LiensPermissions.LienOffer);
 
+        offersGroup.MapPost("/{offerId:guid}/accept", AcceptOffer)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
         var lienOffersGroup = app.MapGroup("/api/liens/liens/{lienId:guid}/offers")
             .RequireAuthorization(Policies.AuthenticatedUser)
             .RequireProductAccess(LiensPermissions.ProductCode);
@@ -102,5 +105,17 @@ public static class LienOfferEndpoints
         var userId = RequireUserId(ctx);
         var result = await offerService.CreateAsync(tenantId, buyerOrgId, userId, request, ct);
         return Results.Created($"/api/liens/offers/{result.Id}", result);
+    }
+
+    private static async Task<IResult> AcceptOffer(
+        Guid offerId,
+        ILienSaleService saleService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await saleService.AcceptOfferAsync(tenantId, offerId, userId, ct);
+        return Results.Ok(result);
     }
 }
