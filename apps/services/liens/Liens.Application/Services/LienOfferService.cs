@@ -12,6 +12,7 @@ public sealed class LienOfferService : ILienOfferService
 {
     private readonly ILienOfferRepository _offerRepo;
     private readonly ILienRepository _lienRepo;
+    private readonly IAuditPublisher _audit;
     private readonly ILogger<LienOfferService> _logger;
 
     private static readonly IReadOnlySet<string> OfferableStatuses = new HashSet<string>
@@ -23,10 +24,12 @@ public sealed class LienOfferService : ILienOfferService
     public LienOfferService(
         ILienOfferRepository offerRepo,
         ILienRepository lienRepo,
+        IAuditPublisher audit,
         ILogger<LienOfferService> logger)
     {
         _offerRepo = offerRepo;
         _lienRepo = lienRepo;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -111,6 +114,15 @@ public sealed class LienOfferService : ILienOfferService
         _logger.LogInformation(
             "LienOffer created: {OfferId} Lien={LienId} Buyer={BuyerOrgId} Amount={Amount} Tenant={TenantId}",
             entity.Id, entity.LienId, entity.BuyerOrgId, entity.OfferAmount, tenantId);
+
+        _audit.Publish(
+            eventType: "liens.offer.created",
+            action: "create",
+            description: $"Offer created on lien '{entity.LienId}' for amount {entity.OfferAmount}",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "LienOffer",
+            entityId: entity.Id.ToString());
 
         return MapToResponse(entity);
     }

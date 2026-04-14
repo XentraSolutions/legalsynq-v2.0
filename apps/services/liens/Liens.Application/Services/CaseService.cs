@@ -11,11 +11,16 @@ namespace Liens.Application.Services;
 public sealed class CaseService : ICaseService
 {
     private readonly ICaseRepository _caseRepo;
+    private readonly IAuditPublisher _audit;
     private readonly ILogger<CaseService> _logger;
 
-    public CaseService(ICaseRepository caseRepo, ILogger<CaseService> logger)
+    public CaseService(
+        ICaseRepository caseRepo,
+        IAuditPublisher audit,
+        ILogger<CaseService> logger)
     {
         _caseRepo = caseRepo;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -96,6 +101,15 @@ public sealed class CaseService : ICaseService
             "Case created: {CaseId} CaseNumber={CaseNumber} Tenant={TenantId}",
             entity.Id, entity.CaseNumber, tenantId);
 
+        _audit.Publish(
+            eventType: "liens.case.created",
+            action: "create",
+            description: $"Case '{entity.CaseNumber}' created",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Case",
+            entityId: entity.Id.ToString());
+
         return MapToResponse(entity);
     }
 
@@ -150,6 +164,15 @@ public sealed class CaseService : ICaseService
 
         _logger.LogInformation(
             "Case updated: {CaseId} Tenant={TenantId}", entity.Id, tenantId);
+
+        _audit.Publish(
+            eventType: "liens.case.updated",
+            action: "update",
+            description: $"Case '{entity.CaseNumber}' updated",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Case",
+            entityId: entity.Id.ToString());
 
         return MapToResponse(entity);
     }

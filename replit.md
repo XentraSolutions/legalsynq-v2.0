@@ -3976,3 +3976,33 @@ Secure BOS document retrieval through Liens service. Liens validates business ow
 
 ### Report
 Full analysis at `analysis/LS-LIENS-07-002-report.md`
+
+## Liens Audit Integration — 2026-04-14
+
+### Summary
+Integrated Liens service with the v2 Audit service using the shared `LegalSynq.AuditClient` SDK. All critical business write operations now emit structured audit events via fire-and-forget publishing. Audit failures never block business workflows.
+
+### Pattern
+- Uses shared `LegalSynq.AuditClient` NuGet (same as Identity, CareConnect, Notifications)
+- `IAuditPublisher` (application interface) → `AuditPublisher` (infrastructure implementation)
+- Fire-and-observe: `_client.IngestAsync(...).ContinueWith(...)` — never awaited, failures logged as warnings
+- SourceSystem: `liens-service`, EventCategory: `Business`, ScopeType: `Tenant`
+- Idempotency keys generated via `IdempotencyKey.ForWithTimestamp`
+
+### Audit Events
+| Event Type | Service | Trigger |
+|---|---|---|
+| `liens.lien.created` | LienService | Lien creation |
+| `liens.lien.updated` | LienService | Lien update |
+| `liens.offer.created` | LienOfferService | Offer submission |
+| `liens.sale.finalized` | LienSaleService | Offer accepted, BOS created (after commit) |
+| `liens.case.created` | CaseService | Case creation |
+| `liens.case.updated` | CaseService | Case update |
+
+### Configuration
+- `AuditClient` section added to `appsettings.json` (BaseUrl, SourceSystem, TimeoutSeconds)
+- Registered via `services.AddAuditEventClient(configuration)` in DI
+
+### Files
+- Created: `IAuditPublisher.cs` (Application), `AuditPublisher.cs` (Infrastructure/Audit)
+- Modified: `LienService.cs`, `LienOfferService.cs`, `LienSaleService.cs`, `CaseService.cs`, `DependencyInjection.cs`, `Liens.Infrastructure.csproj`, `appsettings.json`

@@ -57,8 +57,8 @@ public sealed class AuditPublisher : IAuditPublisher
             Before = before,
             After = after,
             Metadata = metadata,
-            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
-                now, "liens-service", eventType, entityId ?? tenantId.ToString()),
+            IdempotencyKey = IdempotencyKey.For(
+                "liens-service", eventType, entityId ?? tenantId.ToString(), now.UtcTicks.ToString()),
             Tags = ["liens"],
         };
 

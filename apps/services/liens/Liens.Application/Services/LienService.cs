@@ -13,17 +13,20 @@ public sealed class LienService : ILienService
     private readonly ILienRepository _lienRepo;
     private readonly ICaseRepository _caseRepo;
     private readonly IFacilityRepository _facilityRepo;
+    private readonly IAuditPublisher _audit;
     private readonly ILogger<LienService> _logger;
 
     public LienService(
         ILienRepository lienRepo,
         ICaseRepository caseRepo,
         IFacilityRepository facilityRepo,
+        IAuditPublisher audit,
         ILogger<LienService> logger)
     {
         _lienRepo = lienRepo;
         _caseRepo = caseRepo;
         _facilityRepo = facilityRepo;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -121,6 +124,15 @@ public sealed class LienService : ILienService
             "Lien created: {LienId} LienNumber={LienNumber} Tenant={TenantId}",
             entity.Id, entity.LienNumber, tenantId);
 
+        _audit.Publish(
+            eventType: "liens.lien.created",
+            action: "create",
+            description: $"Lien '{entity.LienNumber}' created (type={entity.LienType}, amount={entity.OriginalAmount})",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Lien",
+            entityId: entity.Id.ToString());
+
         return MapToResponse(entity);
     }
 
@@ -179,6 +191,15 @@ public sealed class LienService : ILienService
 
         _logger.LogInformation(
             "Lien updated: {LienId} Tenant={TenantId}", entity.Id, tenantId);
+
+        _audit.Publish(
+            eventType: "liens.lien.updated",
+            action: "update",
+            description: $"Lien '{entity.LienNumber}' updated",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Lien",
+            entityId: entity.Id.ToString());
 
         return MapToResponse(entity);
     }

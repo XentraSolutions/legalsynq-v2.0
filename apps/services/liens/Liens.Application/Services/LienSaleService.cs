@@ -14,6 +14,7 @@ public sealed class LienSaleService : ILienSaleService
     private readonly IBillOfSaleRepository _bosRepo;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IBillOfSaleDocumentService _docService;
+    private readonly IAuditPublisher _audit;
     private readonly ILogger<LienSaleService> _logger;
 
     public LienSaleService(
@@ -22,6 +23,7 @@ public sealed class LienSaleService : ILienSaleService
         IBillOfSaleRepository bosRepo,
         IUnitOfWork unitOfWork,
         IBillOfSaleDocumentService docService,
+        IAuditPublisher audit,
         ILogger<LienSaleService> logger)
     {
         _lienRepo   = lienRepo;
@@ -29,6 +31,7 @@ public sealed class LienSaleService : ILienSaleService
         _bosRepo    = bosRepo;
         _unitOfWork = unitOfWork;
         _docService = docService;
+        _audit      = audit;
         _logger     = logger;
     }
 
@@ -166,6 +169,17 @@ public sealed class LienSaleService : ILienSaleService
                 "SaleFinalization: committed — Offer={OfferId} Lien={LienId} BOS={BosId} " +
                 "Rejected={RejectedCount} PurchaseAmount={Amount}",
                 offer.Id, lien.Id, bos.Id, rejectedCount, offer.OfferAmount);
+
+            _audit.Publish(
+                eventType: "liens.sale.finalized",
+                action: "finalize",
+                description: $"Sale finalized: Offer '{offer.Id}' accepted, BOS '{bos.BillOfSaleNumber}' created, " +
+                             $"{rejectedCount} competing offer(s) rejected, amount={offer.OfferAmount}",
+                tenantId: tenantId,
+                actorUserId: actingUserId,
+                entityType: "BillOfSale",
+                entityId: bos.Id.ToString(),
+                metadata: $"{{\"lienId\":\"{lien.Id}\",\"offerId\":\"{offer.Id}\",\"rejectedOffers\":{rejectedCount}}}");
         }
         catch (Exception ex)
         {

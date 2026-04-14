@@ -55,6 +55,9 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(30);
         });
 
+        services.AddAuditEventClient(configuration);
+        services.AddScoped<IAuditPublisher, AuditPublisher>();
+
         return services;
     }
 }
