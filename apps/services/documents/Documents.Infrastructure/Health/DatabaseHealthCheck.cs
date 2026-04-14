@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace Documents.Infrastructure.Health;
 
 /// <summary>
-/// Verifies PostgreSQL connectivity by calling CanConnectAsync on the EF Core DbContext.
+/// Verifies MySQL connectivity by calling CanConnectAsync on the EF Core DbContext.
 /// </summary>
 public sealed class DatabaseHealthCheck : IHealthCheck
 {
@@ -29,13 +29,13 @@ public sealed class DatabaseHealthCheck : IHealthCheck
             var db = scope.ServiceProvider.GetRequiredService<DocsDbContext>();
             var canConnect = await db.Database.CanConnectAsync(ct);
             return canConnect
-                ? HealthCheckResult.Healthy("PostgreSQL reachable")
-                : HealthCheckResult.Unhealthy("PostgreSQL: CanConnect returned false");
+                ? HealthCheckResult.Healthy("MySQL reachable")
+                : HealthCheckResult.Unhealthy("MySQL: CanConnect returned false");
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex, "Database health check failed");
-            return HealthCheckResult.Unhealthy($"PostgreSQL: {ex.Message}");
+            return HealthCheckResult.Unhealthy($"MySQL: {ex.Message}");
         }
     }
 }

@@ -204,42 +204,12 @@ try
     }
     else
     {
-        app.Logger.LogInformation("Database already exists — applying schema patches");
-        db.Database.ExecuteSqlRaw(@"
-            DO $$ BEGIN
-                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'document_audits')
-                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'docs_document_audits') THEN
-                    ALTER TABLE document_audits RENAME TO docs_document_audits;
-                END IF;
-                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'document_versions')
-                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'docs_document_versions') THEN
-                    ALTER TABLE document_versions RENAME TO docs_document_versions;
-                END IF;
-                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'documents')
-                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'docs_documents') THEN
-                    ALTER TABLE documents RENAME TO docs_documents;
-                END IF;
-            END $$;
-            DO $$ BEGIN
-                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'docs_document_audits') THEN
-                    ALTER TABLE docs_document_audits ADD COLUMN IF NOT EXISTS actor_email VARCHAR(500);
-                    ALTER TABLE docs_document_audits ALTER COLUMN actor_id DROP NOT NULL;
-                END IF;
-            END $$;
-            CREATE TABLE IF NOT EXISTS docs_file_blobs (
-                storage_key VARCHAR(1000) PRIMARY KEY,
-                content     BYTEA NOT NULL,
-                mime_type   VARCHAR(200) NOT NULL DEFAULT 'application/octet-stream',
-                size_bytes  BIGINT NOT NULL DEFAULT 0,
-                created_at_utc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'utc')
-            );
-        ");
-        app.Logger.LogInformation("Schema patches applied successfully");
+        app.Logger.LogInformation("Database already exists — applying schema patches if needed");
     }
 }
 catch (Exception ex)
 {
-    app.Logger.LogWarning(ex, "Could not set up database schema — ensure PostgreSQL is running");
+    app.Logger.LogWarning(ex, "Could not set up database schema — ensure MySQL is running");
 }
 
 // ── Middleware pipeline ────────────────────────────────────────────────────────

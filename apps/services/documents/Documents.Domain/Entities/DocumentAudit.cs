@@ -13,7 +13,7 @@ public sealed class DocumentAudit
     public string?  UserAgent     { get; set; }
     public string?  CorrelationId { get; set; }
 
-    /// <summary>Arbitrary JSON detail payload stored as a string (maps to JSONB in PostgreSQL).</summary>
+    /// <summary>Arbitrary JSON detail payload stored as a string (maps to JSON column).</summary>
     public string?  Detail        { get; set; }
 
     public DateTime OccurredAt    { get; set; }

@@ -52,7 +52,7 @@ public sealed class DocsDbContext : DbContext
                 .HasConversion(
                     v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
                     v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new())
-                .HasColumnType("jsonb");
+                .HasColumnType("json");
             e.Property(d => d.ScanEngineVersion).HasColumnName("scan_engine_version").HasMaxLength(100);
             e.Property(d => d.IsDeleted).HasColumnName("is_deleted");
             e.Property(d => d.DeletedAt).HasColumnName("deleted_at");
@@ -95,7 +95,7 @@ public sealed class DocsDbContext : DbContext
                 .HasConversion(
                     v2 => JsonSerializer.Serialize(v2, (JsonSerializerOptions?)null),
                     v2 => JsonSerializer.Deserialize<List<string>>(v2, (JsonSerializerOptions?)null) ?? new())
-                .HasColumnType("jsonb");
+                .HasColumnType("json");
             e.Property(v => v.ScanEngineVersion).HasColumnName("scan_engine_version");
             e.Property(v => v.Label).HasColumnName("label").HasMaxLength(200);
             e.Property(v => v.IsDeleted).HasColumnName("is_deleted");
@@ -118,7 +118,7 @@ public sealed class DocsDbContext : DbContext
             e.ToTable("docs_file_blobs");
             e.HasKey(b => b.StorageKey);
             e.Property(b => b.StorageKey).HasColumnName("storage_key").HasMaxLength(1000);
-            e.Property(b => b.Content).HasColumnName("content").HasColumnType("bytea").IsRequired();
+            e.Property(b => b.Content).HasColumnName("content").HasColumnType("longblob").IsRequired();
             e.Property(b => b.MimeType).HasColumnName("mime_type").HasMaxLength(200);
             e.Property(b => b.SizeBytes).HasColumnName("size_bytes");
             e.Property(b => b.CreatedAtUtc).HasColumnName("created_at_utc");
@@ -139,7 +139,7 @@ public sealed class DocsDbContext : DbContext
             e.Property(a => a.IpAddress).HasColumnName("ip_address").HasMaxLength(50);
             e.Property(a => a.UserAgent).HasColumnName("user_agent").HasMaxLength(1000);
             e.Property(a => a.CorrelationId).HasColumnName("correlation_id").HasMaxLength(100);
-            e.Property(a => a.Detail).HasColumnName("detail").HasColumnType("jsonb");
+            e.Property(a => a.Detail).HasColumnName("detail").HasColumnType("json");
             e.Property(a => a.OccurredAt).HasColumnName("occurred_at");
 
             e.HasIndex(a => new { a.DocumentId, a.TenantId }).HasDatabaseName("idx_audits_document");
