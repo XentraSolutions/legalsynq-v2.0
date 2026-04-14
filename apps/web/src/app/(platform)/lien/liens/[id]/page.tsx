@@ -54,6 +54,8 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
         } catch {
           setLinkedCase(null);
         }
+      } else {
+        setLinkedCase(null);
       }
     } catch (err) {
       if (err instanceof ApiError) {

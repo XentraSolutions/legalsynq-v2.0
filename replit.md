@@ -113,6 +113,12 @@ apps/web/
         cases.mapper.ts          ← DTO→UI model mappers: mapCaseToListItem, mapCaseToDetail, mapDtoToUpdateRequest, mapLienToListItem, mapPagination
         cases.service.ts         ← business service: getCases, getCase, createCase, updateCase, updateCaseStatus (non-destructive: re-fetches DTO), getCaseLiens
         index.ts                 ← barrel exports
+      liens/                     ← LS-LIENS-UI-003: layered API service pattern for Liens (same 5-file pattern as Cases)
+        liens.types.ts           ← DTOs (LienResponseDto, LienOfferResponseDto, CreateLienRequestDto, UpdateLienRequestDto, CreateLienOfferRequestDto, SaleFinalizationResultDto), UI models (LienListItem, LienDetail, LienOfferItem), PaginationMeta, LiensQuery
+        liens.api.ts             ← raw HTTP client: list, getById, getByNumber, create, update, getOffers, createOffer, acceptOffer → uses apiClient
+        liens.mapper.ts          ← DTO→UI model mappers: mapLienToListItem, mapLienToDetail, mapOfferToItem, mapDtoToUpdateRequest, mapPagination; inline LIEN_TYPE_LABELS
+        liens.service.ts         ← business service: getLiens, getLien, createLien, updateLien, getLienOffers, createOffer, acceptOffer
+        index.ts                 ← barrel exports
     stores/
       lien-store.ts              ← Zustand store: full CRUD for all 7 entities, role simulation, toast state, activity log, case notes, canPerformAction() helper
     app/api/
@@ -4030,3 +4036,25 @@ Standardized all Notifications service table/column/index names from `ntf_snake_
   - Column renames: only multi-word snake_case columns (e.g., `tenant_id` → `TenantId`) since MySQL column names are case-insensitive for single-word identifiers
   - All operations are idempotent with existence checks before each rename
 - **Program.cs simplified**: replaced inline rename logic with `SchemaRenamer.RenameSchemaAsync()` call; restored `MapBrandingEndpoints()` and `MapInternalEndpoints()`
+
+## LS-LIENS-UI-003: Liens API Integration — 2026-04-14
+
+### Summary
+Wired the Liens UI (list page, detail page, create modal) to real backend APIs, replacing Zustand mock store reads with the same layered service pattern used by Cases.
+
+### Service Layer (`apps/web/src/lib/liens/`)
+- **5-file pattern** matching Cases: `liens.types.ts` → `liens.api.ts` → `liens.mapper.ts` → `liens.service.ts` → `index.ts`
+- **Backend routes**: `GET /lien/api/liens/liens` (list with `?search`, `?status`, `?lienType`, `?caseId`, `?page`, `?pageSize`), `GET .../liens/{id}`, `POST .../liens` (create), `PUT .../liens/{id}` (update), `GET .../liens/{id}/offers`, `POST .../offers`, `POST .../offers/{id}/accept`
+- **DTO parity**: Frontend types match backend DTOs (`LienResponse`, `CreateLienRequest`, `UpdateLienRequest`, `LienOfferResponse`, `CreateLienOfferRequest`, `SaleFinalizationResult`)
+
+### Pages Rewritten
+- **`liens/page.tsx`**: Server-side filtering + pagination via `liensService.getLiens()`, loading/error states with retry, `onCreated` callback for list refresh after creation
+- **`liens/[id]/page.tsx`**: `liensService.getLien()` + `getLienOffers()` for live data, `liensService.acceptOffer()` for offer acceptance (creates Bill of Sale), cross-entity case lookup via `casesService.getCase(caseId)` for linked case display with navigation
+- **`create-lien-modal.tsx`**: Calls `liensService.createLien()` with `CreateLienRequestDto`, lien number field added (required by backend), proper error display
+
+### Cross-Entity Integration
+- **Case → Lien**: Already working (`cases/[id]/page.tsx` fetches `getCaseLiens(id)` and links to `/lien/liens/{id}`)
+- **Lien → Case**: New (`liens/[id]/page.tsx` fetches `casesService.getCase(caseId)` and shows case number + client name with link to `/lien/cases/{caseId}`); stale link cleared on navigation
+
+### Remaining Store Usage
+- `useLienStore` still used for: `currentRole` (role gating), `addToast` (notifications). All data reads now come from API.

@@ -102,7 +102,7 @@ export default function LiensPage() {
         <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
           <i className="ri-error-warning-line text-red-600" />
           <p className="text-sm text-red-700">{error}</p>
-          <button onClick={() => fetchLiens({ page: 1, pageSize: 20 })} className="ml-auto text-sm text-red-600 hover:underline">Retry</button>
+          <button onClick={() => fetchLiens({ search: search || undefined, status: statusFilter || undefined, lienType: typeFilter || undefined, page: 1, pageSize: 20 })} className="ml-auto text-sm text-red-600 hover:underline">Retry</button>
         </div>
       )}
 
