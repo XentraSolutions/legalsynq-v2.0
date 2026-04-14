@@ -9,7 +9,7 @@ function extractTenantCodeFromHost(req: NextRequest): string | null {
     '';
   const parts = host.split('.');
   if (parts.length < 3 || parts[0] === 'www') return null;
-  return parts[0].toUpperCase();
+  return parts[0].replace(/-/g, '').toUpperCase();
 }
 
 export async function POST(request: NextRequest) {

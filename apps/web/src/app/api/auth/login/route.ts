@@ -162,7 +162,7 @@ function extractTenantCodeFromHost(request: NextRequest): string | null {
   if (parts.length >= 3) {
     const sub = parts[0];
     if (sub === 'www') return null;
-    return sub.toUpperCase();
+    return sub.replace(/-/g, '').toUpperCase();
   }
 
   return null;
