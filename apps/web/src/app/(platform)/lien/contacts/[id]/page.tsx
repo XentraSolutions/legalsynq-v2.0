@@ -5,6 +5,7 @@ import { useLienStore, canPerformAction } from '@/stores/lien-store';
 import { CONTACT_TYPE_LABELS } from '@/types/lien';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { ConfirmDialog } from '@/components/lien/modal';
+import { EntityTimeline } from '@/components/lien/entity-timeline';
 import { contactsService, type ContactDetail } from '@/lib/contacts';
 
 export default function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -94,6 +95,8 @@ export default function ContactDetailPage({ params }: { params: Promise<{ id: st
           <p className="text-sm text-gray-600">{contact.notes}</p>
         </div>
       )}
+
+      <EntityTimeline entityType="Contact" entityId={id} />
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}

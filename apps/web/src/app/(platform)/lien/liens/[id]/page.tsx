@@ -10,6 +10,7 @@ import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { StatusProgress } from '@/components/lien/status-progress';
 import { ConfirmDialog, FormModal } from '@/components/lien/modal';
+import { EntityTimeline } from '@/components/lien/entity-timeline';
 
 const LIEN_STEPS = ['Draft', 'Active', 'Negotiation', 'Sold', 'Closed'];
 const STATUS_MAP: Record<string, string> = { Draft: 'Draft', Offered: 'Active', Sold: 'Sold', Withdrawn: 'Closed' };
@@ -236,6 +237,8 @@ export default function LienDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
       </FormModal>
+
+      <EntityTimeline entityType="Lien" entityId={id} />
 
       {confirmAction && confirmAction.offerId && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}

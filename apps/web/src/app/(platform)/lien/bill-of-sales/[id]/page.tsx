@@ -7,6 +7,7 @@ import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { StatusProgress } from '@/components/lien/status-progress';
 import { ConfirmDialog } from '@/components/lien/modal';
+import { EntityTimeline } from '@/components/lien/entity-timeline';
 import {
   billOfSaleService,
   formatCurrency,
@@ -133,6 +134,8 @@ export default function BillOfSaleDetailPage({ params }: { params: Promise<{ id:
           <p className="text-sm text-gray-600">{bos.notes}</p>
         </div>
       )}
+
+      <EntityTimeline entityType="BillOfSale" entityId={id} />
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}

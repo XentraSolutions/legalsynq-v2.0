@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/lien/page-header';
 import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
 import { ConfirmDialog } from '@/components/lien/modal';
+import { EntityTimeline } from '@/components/lien/entity-timeline';
 import { useLienStore, canPerformAction } from '@/stores/lien-store';
 import { servicingService } from '@/lib/servicing';
 import type { ServicingDetail } from '@/lib/servicing';
@@ -176,6 +177,8 @@ export default function ServicingDetailPage() {
           )}
         </div>
       </div>
+
+      <EntityTimeline entityType="ServicingItem" entityId={id} />
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}

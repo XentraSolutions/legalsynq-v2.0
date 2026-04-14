@@ -10,6 +10,7 @@ import { StatusBadge } from '@/components/lien/status-badge';
 import { StatusProgress } from '@/components/lien/status-progress';
 import { NotesPanel } from '@/components/lien/notes-panel';
 import { ConfirmDialog } from '@/components/lien/modal';
+import { EntityTimeline } from '@/components/lien/entity-timeline';
 
 const CASE_STEPS = ['Pre-Demand', 'Demand Sent', 'In Negotiation', 'Settled', 'Closed'];
 const STATUS_TO_STEP: Record<string, string> = { PreDemand: 'Pre-Demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Settled', Closed: 'Closed' };
@@ -197,6 +198,8 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
       )}
 
       <NotesPanel notes={caseNotes} onAddNote={() => {}} readOnly />
+
+      <EntityTimeline entityType="Case" entityId={id} />
 
       {confirmStatus && (
         <ConfirmDialog open onClose={() => setConfirmStatus(null)}

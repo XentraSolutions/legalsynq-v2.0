@@ -4121,5 +4121,20 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 - **`bill-of-sales/page.tsx`**: `billOfSaleService.getBillOfSales()`, KPI cards, status actions via API
 - **`bill-of-sales/[id]/page.tsx`**: `billOfSaleService.getBillOfSale()`, workflow stepper, status transitions, PDF download
 
+### Service Layer (`apps/web/src/lib/audit/`)
+- **5-file pattern**: `audit.types.ts` → `audit.api.ts` → `audit.mapper.ts` → `audit.service.ts` → `index.ts`
+- **Gateway path**: `/audit-service/audit/entity/{entityType}/{entityId}` (via Next.js fallback rewrite → gateway → audit cluster)
+- **Entity types**: `Case`, `Lien`, `ServicingItem`, `BillOfSale`, `Contact`, `Document` (typed as `AuditEntityType` union)
+- **Enums**: Backend serializes enums as strings (`JsonStringEnumConverter`); frontend types use string unions
+- **Query params**: `Page`, `PageSize`, `EventTypes`, `SortDescending` (PascalCase matching backend `AuditEventQueryRequest`)
+- **Component**: `EntityTimeline` at `apps/web/src/components/lien/entity-timeline.tsx` — reusable, takes `entityType` + `entityId`, handles loading/error/empty/pagination
+
+### Pages with EntityTimeline
+- `cases/[id]/page.tsx` — entity type `Case`
+- `liens/[id]/page.tsx` — entity type `Lien`
+- `servicing/[id]/page.tsx` — entity type `ServicingItem`
+- `bill-of-sales/[id]/page.tsx` — entity type `BillOfSale`
+- `contacts/[id]/page.tsx` — entity type `Contact`
+
 ### Store Usage
 - `useLienStore` only for `currentRole`, `addToast` — all BOS data from API
