@@ -246,3 +246,9 @@ id = "mjHcNPE_TSKV_4farL5Wo"
 uri = "file://analysis/LS-LIENS-05-001-report.md"
 type = "text"
 title = "LS-LIENS-05-001 Report — Core Repository Interfaces & EF Core Implementations"
+
+[[outputs]]
+id = "EPKZAskgH_dRy3PzeRS19"
+uri = "file://analysis/LS-LIENS-07-003-report.md"
+type = "text"
+title = "LS-LIENS-07-003 — Liens Audit Service Integration Report"
