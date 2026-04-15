@@ -27,5 +27,5 @@ public sealed class ReportContent
 public interface IDocumentAdapter
 {
     Task<AdapterResult<StoredDocumentInfo>> StoreReportAsync(RequestContext ctx, TenantContext tenant, StoreReportRequest request, CancellationToken ct = default);
-    Task<AdapterResult<ReportContent>> RetrieveReportAsync(RequestContext ctx, string documentId, CancellationToken ct = default);
+    Task<AdapterResult<ReportContent>> RetrieveReportAsync(RequestContext ctx, TenantContext tenant, string documentId, CancellationToken ct = default);
 }

@@ -45,7 +45,8 @@ public static class HealthEndpoints
             checks["tenant_adapter"] = (await ProbeAdapter(() => tenant.IsTenantActiveAsync(ctx, "probe"))).Success ? "ok" : "fail";
             checks["entitlement_adapter"] = (await ProbeAdapter(() => entitlement.CanAccessReportsAsync(ctx, mockTenant, mockUser))).Success ? "ok" : "fail";
             checks["audit_adapter"] = (await ProbeAdapter(() => audit.RecordEventAsync(ctx, mockTenant, "probe", "readiness", "probe"))).Success ? "ok" : "fail";
-            checks["document_adapter"] = (await ProbeAdapter(() => document.RetrieveReportAsync(ctx, "probe"))).Called ? "ok" : "fail";
+            var docProbe = await ProbeAdapter(() => document.RetrieveReportAsync(ctx, mockTenant, "probe"));
+            checks["document_adapter"] = docProbe.Called && (docProbe.Success || docProbe.ErrorCode == AdapterErrors.NotFound) ? "ok" : "fail";
             checks["notification_adapter"] = (await ProbeAdapter(() => notification.NotifyReportReadyAsync(ctx, mockTenant, "probe", mockNotification))).Success ? "ok" : "fail";
             checks["product_data_adapter"] = (await ProbeAdapter(() => productData.GetAvailableProductsAsync(ctx, mockTenant))).Success ? "ok" : "fail";
             checks["job_queue"] = await ProbeAdapterSimple(() => queue.GetPendingCountAsync()) ? "ok" : "fail";
@@ -65,16 +66,16 @@ public static class HealthEndpoints
         });
     }
 
-    private static async Task<(bool Success, bool Called)> ProbeAdapter<T>(Func<Task<AdapterResult<T>>> probe)
+    private static async Task<(bool Success, bool Called, string? ErrorCode)> ProbeAdapter<T>(Func<Task<AdapterResult<T>>> probe)
     {
         try
         {
             var result = await probe();
-            return (result.Success, true);
+            return (result.Success, true, result.ErrorCode);
         }
         catch
         {
-            return (false, false);
+            return (false, false, null);
         }
     }
 

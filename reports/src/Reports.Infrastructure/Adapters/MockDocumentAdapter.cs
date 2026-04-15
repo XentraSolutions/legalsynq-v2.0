@@ -23,9 +23,10 @@ public sealed class MockDocumentAdapter : IDocumentAdapter
         return Task.FromResult(AdapterResult<StoredDocumentInfo>.Ok(info));
     }
 
-    public Task<AdapterResult<ReportContent>> RetrieveReportAsync(RequestContext ctx, string documentId, CancellationToken ct)
+    public Task<AdapterResult<ReportContent>> RetrieveReportAsync(RequestContext ctx, TenantContext tenant, string documentId, CancellationToken ct)
     {
-        _log.LogDebug("MockDocumentAdapter: RetrieveReport {DocumentId} [Correlation={CorrelationId}]", documentId, ctx.CorrelationId);
+        _log.LogDebug("MockDocumentAdapter: RetrieveReport {DocumentId} for tenant {TenantId} [Correlation={CorrelationId}]",
+            documentId, tenant.TenantId, ctx.CorrelationId);
         return Task.FromResult(AdapterErrors.NotFoundResult<ReportContent>($"Document {documentId} not found (mock)"));
     }
 }
