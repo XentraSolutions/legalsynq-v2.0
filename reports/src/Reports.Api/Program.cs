@@ -15,7 +15,7 @@ builder.Services.Configure<AdapterSettings>(
     builder.Configuration.GetSection(AdapterSettings.SectionName));
 
 builder.Services.AddReportsApplication();
-builder.Services.AddReportsInfrastructure();
+builder.Services.AddReportsInfrastructure(builder.Configuration);
 
 builder.Services.AddHostedService<ReportWorkerService>();
 

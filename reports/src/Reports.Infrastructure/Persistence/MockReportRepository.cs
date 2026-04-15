@@ -1,38 +1,38 @@
 using Microsoft.Extensions.Logging;
 using Reports.Contracts.Persistence;
+using Reports.Domain.Entities;
 
 namespace Reports.Infrastructure.Persistence;
 
-/// <summary>
-/// Bootstrap placeholder — in-memory mock of <see cref="IReportRepository"/>.
-/// <para>
-/// Returns empty/generated data for all operations. Exists solely to
-/// satisfy the DI graph during Epic 00 bootstrap. Will be replaced by a
-/// real MySQL-backed implementation in LS-REPORTS-00-002+.
-/// </para>
-/// </summary>
 public sealed class MockReportRepository : IReportRepository
 {
     private readonly ILogger<MockReportRepository> _log;
 
     public MockReportRepository(ILogger<MockReportRepository> log) => _log = log;
 
-    public Task<string> SaveAsync(object reportEntity, CancellationToken ct)
+    public Task<ReportExecution> SaveAsync(ReportExecution execution, CancellationToken ct)
     {
-        var id = Guid.NewGuid().ToString();
-        _log.LogDebug("MockReportRepository: Saved entity with id {Id}", id);
-        return Task.FromResult(id);
+        if (execution.Id == Guid.Empty)
+            execution.Id = Guid.NewGuid();
+        _log.LogDebug("MockReportRepository: Saved execution {Id}", execution.Id);
+        return Task.FromResult(execution);
     }
 
-    public Task<object?> GetByIdAsync(string id, CancellationToken ct)
+    public Task<ReportExecution?> GetByIdAsync(Guid id, CancellationToken ct)
     {
         _log.LogDebug("MockReportRepository: GetById {Id}", id);
-        return Task.FromResult<object?>(null);
+        return Task.FromResult<ReportExecution?>(null);
     }
 
-    public Task<IReadOnlyList<object>> ListByTenantAsync(string tenantId, int page, int pageSize, CancellationToken ct)
+    public Task<IReadOnlyList<ReportExecution>> ListByTenantAsync(string tenantId, int page, int pageSize, CancellationToken ct)
     {
         _log.LogDebug("MockReportRepository: ListByTenant {TenantId} page={Page}", tenantId, page);
-        return Task.FromResult<IReadOnlyList<object>>(Array.Empty<object>());
+        return Task.FromResult<IReadOnlyList<ReportExecution>>(Array.Empty<ReportExecution>());
+    }
+
+    public Task<ReportExecution> UpdateAsync(ReportExecution execution, CancellationToken ct)
+    {
+        _log.LogDebug("MockReportRepository: Updated execution {Id}", execution.Id);
+        return Task.FromResult(execution);
     }
 }

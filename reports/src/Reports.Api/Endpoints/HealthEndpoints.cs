@@ -1,7 +1,9 @@
+using Microsoft.EntityFrameworkCore;
 using Reports.Contracts.Adapters;
 using Reports.Contracts.Context;
 using Reports.Contracts.Guardrails;
 using Reports.Contracts.Queue;
+using Reports.Infrastructure.Persistence;
 
 namespace Reports.Api.Endpoints;
 
@@ -21,6 +23,7 @@ public static class HealthEndpoints
         }));
 
         group.MapGet("/ready", async (
+            IServiceProvider sp,
             IIdentityAdapter identity,
             ITenantAdapter tenant,
             IEntitlementAdapter entitlement,
@@ -41,6 +44,24 @@ public static class HealthEndpoints
 
             checks["config_loaded"] = !string.IsNullOrEmpty(config["ReportsService:ServiceName"]) ? "ok" : "fail";
 
+            var dbContext = sp.GetService<ReportsDbContext>();
+            if (dbContext is not null)
+            {
+                try
+                {
+                    await dbContext.Database.CanConnectAsync();
+                    checks["database"] = "ok";
+                }
+                catch
+                {
+                    checks["database"] = "fail";
+                }
+            }
+            else
+            {
+                checks["database"] = "mock";
+            }
+
             checks["identity_adapter"] = (await ProbeAdapter(() => identity.ValidateTokenAsync(ctx, "probe"))).Success ? "ok" : "fail";
             checks["tenant_adapter"] = (await ProbeAdapter(() => tenant.IsTenantActiveAsync(ctx, "probe"))).Success ? "ok" : "fail";
             checks["entitlement_adapter"] = (await ProbeAdapter(() => entitlement.CanAccessReportsAsync(ctx, mockTenant, mockUser))).Success ? "ok" : "fail";
@@ -52,7 +73,7 @@ public static class HealthEndpoints
             checks["job_queue"] = await ProbeAdapterSimple(() => queue.GetPendingCountAsync()) ? "ok" : "fail";
             checks["guardrails"] = guardrails.ValidateExecutionLimits("probe", "probe").IsValid ? "ok" : "fail";
 
-            var allOk = checks.Values.All(v => v == "ok");
+            var allOk = checks.Values.All(v => v == "ok" || v == "mock");
 
             var response = new
             {
