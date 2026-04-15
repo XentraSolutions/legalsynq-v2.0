@@ -14,4 +14,5 @@ public sealed class ReportTemplate
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
     public ICollection<ReportTemplateVersion> Versions { get; set; } = new List<ReportTemplateVersion>();
+    public ICollection<ReportTemplateAssignment> Assignments { get; set; } = new List<ReportTemplateAssignment>();
 }

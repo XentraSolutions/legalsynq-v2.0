@@ -10,6 +10,8 @@ public class ReportsDbContext : DbContext
     public DbSet<ReportTemplate> ReportTemplates => Set<ReportTemplate>();
     public DbSet<ReportTemplateVersion> ReportTemplateVersions => Set<ReportTemplateVersion>();
     public DbSet<ReportExecution> ReportExecutions => Set<ReportExecution>();
+    public DbSet<ReportTemplateAssignment> ReportTemplateAssignments => Set<ReportTemplateAssignment>();
+    public DbSet<ReportTemplateAssignmentTenant> ReportTemplateAssignmentTenants => Set<ReportTemplateAssignmentTenant>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
