@@ -2312,7 +2312,7 @@ Added nullable `long? RecordCount` to track the number of records written. EF co
 | Product Access Rules | LIVE | `app/product-rules/page.tsx` |
 | Audit Logs | IN PROGRESS | `app/audit-logs/page.tsx` |
 | Support Tools | IN PROGRESS | `app/support/page.tsx` |
-| System Health | LIVE | `app/monitoring/page.tsx` — BFF at `app/api/monitoring/summary/route.ts` probes 6 services (Gateway, Identity, Notifications, Audit, SynqFund, CareConnect) via `/health` endpoints; grouped into Platform Services + Products; auth-protected via cookie forwarding |
+| System Health | LIVE | `app/monitoring/page.tsx` — BFF at `app/api/monitoring/summary/route.ts` probes 9 services (Gateway, Identity, Documents, Notifications, Audit, Reports, Synq Fund, Synq CareConnect, Synq Liens) via `/health` endpoints; grouped into Platform Services + Products; auth-protected via cookie forwarding |
 | Platform Settings | IN PROGRESS | `app/settings/page.tsx` |
 
 ### Verification
