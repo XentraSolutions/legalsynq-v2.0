@@ -184,7 +184,7 @@ export function CaseDetailClient({ id }: { id: string }) {
         {activeTab === 'details' && (
           <DetailsTab d={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />
         )}
-        {activeTab === 'liens' && <LiensTab liens={relatedLiens} />}
+        {activeTab === 'liens' && <LiensTab liens={relatedLiens} caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
         {activeTab === 'documents' && <EmptyTab icon="ri-file-copy-2-line" label="Documents" />}
         {activeTab === 'servicing' && <EmptyTab icon="ri-tools-line" label="Servicing" />}
         {activeTab === 'notes' && <NotesPanel notes={caseNotes} onAddNote={() => {}} readOnly />}
@@ -440,38 +440,203 @@ function DetailsTab({ d, panelMode, onPanelModeChange }: { d: CaseDetail; panelM
   return <LayoutSplit left={leftContent} right={rightContent} mode={panelMode} onModeChange={onPanelModeChange} />;
 }
 
-function LiensTab({ liens }: { liens: CaseLienItem[] }) {
-  if (liens.length === 0) {
-    return <EmptyTab icon="ri-stack-line" label="Liens" message="No liens linked to this case" />;
-  }
-  return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50/80 border-b border-gray-100">
-              <th className="px-5 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Lien #</th>
-              <th className="px-5 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Type</th>
-              <th className="px-5 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wide">Amount</th>
-              <th className="px-5 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {liens.map((l) => (
-              <tr key={l.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-5 py-2.5">
-                  <Link href={`/lien/liens/${l.id}`} className="text-xs font-mono text-primary hover:underline">{l.lienNumber}</Link>
-                </td>
-                <td className="px-5 py-2.5 text-sm text-gray-600">{l.lienType}</td>
-                <td className="px-5 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">{formatCurrency(l.originalAmount)}</td>
-                <td className="px-5 py-2.5"><StatusBadge status={l.status} /></td>
+/* TEMP: visual fallback data for UI review only */
+const TEMP_LIEN_EXTRAS: Record<string, { facility: string; serviceDate: string; purchaseDate: string; purchaseAmount: number }> = {};
+const TEMP_LIEN_FALLBACK_ROWS = [
+  { id: 'temp-1', lienNumber: 'LN-2026-0041', lienType: 'Medical', status: 'Active', originalAmount: 12500, facility: 'Tampa General Hospital', serviceDate: '01/15/2026', purchaseDate: '02/10/2026', purchaseAmount: 8750 },
+  { id: 'temp-2', lienNumber: 'LN-2026-0042', lienType: 'Medical', status: 'Active', originalAmount: 4200, facility: 'Clearwater Radiology', serviceDate: '01/22/2026', purchaseDate: '02/15/2026', purchaseAmount: 2940 },
+  { id: 'temp-3', lienNumber: 'LN-2026-0043', lienType: 'Medical', status: 'UnderReview', originalAmount: 8900, facility: 'Bay Area Physical Therapy', serviceDate: '02/03/2026', purchaseDate: '03/01/2026', purchaseAmount: 6230 },
+];
+
+const TEMP_LIEN_UPDATES = [
+  { id: '1', timestamp: '04/14/2026 3:15 PM', lienId: 'LN-2026-0041', action: 'Status Changed', description: 'Lien status updated to Active', updatedBy: 'Sarah Mitchell' },
+  { id: '2', timestamp: '04/12/2026 11:30 AM', lienId: 'LN-2026-0043', action: 'Document Uploaded', description: 'Medical records received from Bay Area PT', updatedBy: 'James Rivera' },
+  { id: '3', timestamp: '04/10/2026 9:45 AM', lienId: 'LN-2026-0042', action: 'Lien Linked', description: 'Lien linked to case from Clearwater Radiology', updatedBy: 'Sarah Mitchell' },
+  { id: '4', timestamp: '04/08/2026 2:00 PM', lienId: 'LN-2026-0041', action: 'Purchase Completed', description: 'Lien purchased from Tampa General Hospital', updatedBy: 'System' },
+];
+
+function LiensTab({ liens, caseDetail, panelMode, onPanelModeChange }: { liens: CaseLienItem[]; caseDetail: CaseDetail; panelMode: PanelMode; onPanelModeChange: (m: PanelMode) => void }) {
+  const [search, setSearch] = useState('');
+
+  /* TEMP: visual fallback data for UI review only */
+  const displayLiens = liens.length > 0
+    ? liens.map((l) => {
+        const extras = TEMP_LIEN_EXTRAS[l.id] || { facility: '---', serviceDate: '---', purchaseDate: '---', purchaseAmount: 0 };
+        return { ...l, facility: extras.facility, serviceDate: extras.serviceDate, purchaseDate: extras.purchaseDate, purchaseAmount: extras.purchaseAmount };
+      })
+    : TEMP_LIEN_FALLBACK_ROWS;
+
+  const filtered = displayLiens.filter((l) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      l.lienNumber.toLowerCase().includes(q) ||
+      l.facility.toLowerCase().includes(q) ||
+      l.lienType.toLowerCase().includes(q) ||
+      l.status.toLowerCase().includes(q)
+    );
+  });
+
+  const totalBilling = filtered.reduce((sum, l) => sum + (l.originalAmount ?? 0), 0);
+  const totalPurchase = filtered.reduce((sum, l) => sum + (l.purchaseAmount ?? 0), 0);
+
+  const leftContent = (
+    <div className="space-y-4">
+      <CollapsibleSection title="Liens" icon="ri-stack-line">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="relative flex-1">
+            <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search liens..."
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+            />
+          </div>
+          <button className="px-3.5 py-2 text-sm font-medium text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap">
+            <i className="ri-link text-sm" />
+            Link Lien
+          </button>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div className="text-center py-8">
+            <i className="ri-stack-line text-2xl text-gray-300" />
+            <p className="text-sm text-gray-400 mt-2">{search ? 'No liens match your search' : 'No liens linked to this case'}</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto -mx-5 px-5">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Lien ID</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Facility Name</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Service Date</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Purchase Date</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Purchase Amt</th>
+                  <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Billing Amt</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Status</th>
+                  <th className="pl-3 py-2 text-center text-[11px] font-medium text-gray-400 uppercase tracking-wide w-[50px]"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.map((l) => (
+                  <tr key={l.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="pr-3 py-2.5">
+                      <Link href={`/lien/liens/${l.id}`} className="text-xs font-mono text-primary hover:underline">{l.lienNumber}</Link>
+                    </td>
+                    <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[160px]">{l.facility}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{l.serviceDate}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{l.purchaseDate}</td>
+                    <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">{formatCurrency(l.purchaseAmount)}</td>
+                    <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">{formatCurrency(l.originalAmount)}</td>
+                    <td className="px-3 py-2.5"><StatusBadge status={l.status} /></td>
+                    <td className="pl-3 py-2.5 text-center">
+                      <Link href={`/lien/liens/${l.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                        <i className="ri-eye-line text-sm" />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-gray-200 bg-gray-50/50">
+                  <td colSpan={4} className="pr-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Totals ({filtered.length} lien{filtered.length !== 1 ? 's' : ''})
+                  </td>
+                  <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">{formatCurrency(totalPurchase)}</td>
+                  <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">{formatCurrency(totalBilling)}</td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Updates" icon="ri-history-line">
+        <div className="overflow-x-auto -mx-5 px-5">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Timestamp</th>
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Lien ID</th>
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Actions</th>
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Description</th>
+                <th className="pl-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Updated By</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {/* TEMP: visual fallback data for UI review only */}
+              {TEMP_LIEN_UPDATES.map((u) => (
+                <tr key={u.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{u.timestamp}</td>
+                  <td className="px-3 py-2.5 text-xs font-mono text-primary">{u.lienId}</td>
+                  <td className="px-3 py-2.5">
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">{u.action}</span>
+                  </td>
+                  <td className="px-3 py-2.5 text-sm text-gray-600">{u.description}</td>
+                  <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">{u.updatedBy}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+          <p className="text-xs text-gray-400">Showing {TEMP_LIEN_UPDATES.length} entries</p>
+        </div>
+      </CollapsibleSection>
     </div>
   );
+
+  const rightContent = (
+    <div className="space-y-4">
+      <CollapsibleSection title="Email" icon="ri-mail-send-line">
+        <div className="flex justify-center py-2">
+          <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+            <i className="ri-mail-send-line text-sm" />
+            Compose New Email
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="SMS" icon="ri-message-2-line">
+        <div className="flex justify-center py-2">
+          <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+            <i className="ri-message-2-line text-sm" />
+            Send SMS
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Contacts" icon="ri-contacts-line">
+        {/* TEMP: visual fallback data for UI review only */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <i className="ri-user-line text-sm text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm text-gray-700 font-medium truncate">Sarah Mitchell</p>
+              <p className="text-xs text-gray-400">Case Manager</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+              <i className="ri-building-line text-sm text-blue-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm text-gray-700 font-medium truncate">{caseDetail.insuranceCarrier || 'Smith & Associates'}</p>
+              <p className="text-xs text-gray-400">Law Firm</p>
+            </div>
+          </div>
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+
+  return <LayoutSplit left={leftContent} right={rightContent} mode={panelMode} onModeChange={onPanelModeChange} />;
 }
 
 function EmptyTab({ icon, label, message }: { icon: string; label: string; message?: string }) {
