@@ -1,38 +1,57 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { ApiError } from '@/lib/api-client';
 import { liensService, type LienDetail, type LienOfferItem } from '@/lib/liens';
 import { casesService, type CaseDetail as CaseInfo } from '@/lib/cases';
-import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { StatusProgress } from '@/components/lien/status-progress';
 import { ConfirmDialog, FormModal } from '@/components/lien/modal';
 import { EntityTimeline } from '@/components/lien/entity-timeline';
+import { NotesPanel } from '@/components/lien/notes-panel';
 import { useProviderMode } from '@/hooks/use-provider-mode';
 
 const SELL_LIEN_STEPS = ['Draft', 'Active', 'Negotiation', 'Sold', 'Closed'];
 const MANAGE_LIEN_STEPS = ['Draft', 'Active', 'Closed'];
 const STATUS_MAP: Record<string, string> = { Draft: 'Draft', Offered: 'Active', Sold: 'Sold', Withdrawn: 'Closed' };
 
+const TABS = [
+  { key: 'details', label: 'Details' },
+  { key: 'documents', label: 'Documents' },
+  { key: 'servicing', label: 'Servicing' },
+  { key: 'notes', label: 'Notes' },
+  { key: 'history', label: 'History' },
+  { key: 'tasks', label: 'Tasks' },
+] as const;
+
+type TabKey = (typeof TABS)[number]['key'];
+
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return '\u2014';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
+const EMPTY_NOTES: { id: string; text: string; author: string; timestamp: string }[] = [];
+
+type PanelMode = 'split' | 'left' | 'right';
+
 export function LienDetailClient({ id }: { id: string }) {
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
   const { isSellMode, isReady: modeReady } = useProviderMode();
+  const lienNotes = EMPTY_NOTES;
 
   const [lien, setLien] = useState<LienDetail | null>(null);
   const [offers, setOffers] = useState<LienOfferItem[]>([]);
   const [linkedCase, setLinkedCase] = useState<CaseInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<TabKey>('details');
+  const [panelMode, setPanelMode] = useState<PanelMode>('split');
 
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [offerAmount, setOfferAmount] = useState('');
@@ -101,6 +120,7 @@ export function LienDetailClient({ id }: { id: string }) {
 
   const d = lien;
   const pendingOffers = offers.filter((o) => o.status === 'Pending');
+  const personName = d.subjectName || `${d.subjectFirstName} ${d.subjectLastName}`.trim();
 
   const handleSubmitOffer = async () => {
     if (!offerAmount || isNaN(Number(offerAmount))) return;
@@ -138,97 +158,89 @@ export function LienDetailClient({ id }: { id: string }) {
   };
 
   return (
-    <div className="space-y-5">
-      <DetailHeader title={d.lienNumber} subtitle={d.lienTypeLabel}
-        badge={<StatusBadge status={d.status} size="md" />}
-        backHref="/lien/liens" backLabel="Back to Liens"
-        meta={[
-          { label: 'Case', value: linkedCase ? linkedCase.caseNumber : d.caseId || '\u2014' },
-          { label: 'Jurisdiction', value: d.jurisdiction || '\u2014' },
-          { label: 'Created', value: d.createdAt },
-        ]}
-        actions={canEdit && isSellMode ? (
-          <div className="flex gap-2">
-            {d.status === 'Offered' && <button onClick={() => setShowOfferModal(true)} className="text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90">Submit Offer</button>}
-          </div>
-        ) : undefined}
-      />
-
-      <div className="bg-white border border-gray-200 rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-gray-800 mb-4">Lien Lifecycle</h3>
-        <StatusProgress steps={isSellMode ? SELL_LIEN_STEPS : MANAGE_LIEN_STEPS} currentStep={STATUS_MAP[d.status] || 'Draft'} />
+    <div className="flex flex-col h-full min-h-0">
+      {/* Breadcrumb */}
+      <div className="px-6 pt-3 pb-0 text-xs text-gray-400 flex items-center gap-1">
+        <Link href="/lien/liens" className="hover:text-gray-600 transition-colors">Liens</Link>
+        <i className="ri-arrow-right-s-line text-sm" />
+        <span className="text-gray-500">Lien Detail</span>
       </div>
 
-      <div className={`grid grid-cols-1 ${isSellMode ? 'sm:grid-cols-3' : 'sm:grid-cols-1'} gap-4`}>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs text-gray-400 font-medium">Original Amount</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(d.originalAmount)}</p>
-        </div>
-        {isSellMode && (
-          <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <p className="text-xs text-gray-400 font-medium">Offer Price</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1">{formatCurrency(d.offerPrice)}</p>
+      {/* Header Panel — Rounded card matching lower panel styling */}
+      <div className="mx-6 mt-2 bg-white border border-gray-200 rounded-lg px-6 py-4">
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0 shrink-0">
+            {/* TEMP: UI mock data for visual review only — personName fallback */}
+            <h1 className="text-lg font-semibold text-gray-900">{personName || 'John Doe'}</h1>
+            <p className="text-xs text-gray-400 mt-0.5">{d.lienNumber}</p>
           </div>
+          <div className="flex items-center gap-5 flex-wrap text-sm">
+            <HeaderMeta label="Lien Type" value={d.lienTypeLabel} />
+            <HeaderMeta label="Status">
+              <StatusBadge status={d.status} size="md" />
+            </HeaderMeta>
+            <HeaderMeta label="Incident Date" value={d.incidentDate || '---'} />
+            <HeaderMeta label="Jurisdiction" value={d.jurisdiction || '---'} />
+            <HeaderMeta label="Case" value={linkedCase ? linkedCase.caseNumber : d.caseId || '---'} />
+            {/* TEMP: UI mock data for visual review only */}
+            <HeaderMeta label="Law Firm" value={linkedCase?.insuranceCarrier || 'Smith & Associates'} />
+            {/* TEMP: UI mock data for visual review only */}
+            <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
+            {canEdit && isSellMode && d.status === 'Offered' && (
+              <button onClick={() => setShowOfferModal(true)}
+                className="text-sm font-medium px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors whitespace-nowrap">
+                Submit Offer
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Bar */}
+      <div className="mx-6 bg-white border-x border-b border-gray-200 rounded-b-lg px-6">
+        <nav className="flex gap-0 -mb-px">
+          {TABS.map((tab) => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+              className={[
+                'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                activeTab === tab.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+              ].join(' ')}>
+              {tab.label}
+              {tab.key === 'documents' && (
+                <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
+                  0
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      <div className="flex-1 min-h-0 overflow-auto bg-gray-50 p-6">
+        {activeTab === 'details' && (
+          <DetailsTab
+            d={d}
+            linkedCase={linkedCase}
+            offers={offers}
+            pendingOffers={pendingOffers}
+            isSellMode={isSellMode}
+            canEdit={canEdit}
+            panelMode={panelMode}
+            setPanelMode={setPanelMode}
+            onAcceptOffer={(offerId) => setConfirmAction({ type: 'accept', offerId })}
+          />
         )}
-        {isSellMode && (
-          <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <p className="text-xs text-gray-400 font-medium">Purchase Price</p>
-            <p className="text-2xl font-bold text-emerald-600 mt-1">{formatCurrency(d.purchasePrice)}</p>
-          </div>
-        )}
+        {activeTab === 'documents' && <EmptyTab icon="ri-file-copy-2-line" label="Documents" />}
+        {activeTab === 'servicing' && <EmptyTab icon="ri-tools-line" label="Servicing" />}
+        {activeTab === 'notes' && <NotesPanel notes={lienNotes} onAddNote={() => {}} readOnly />}
+        {activeTab === 'history' && <EntityTimeline entityType="Lien" entityId={id} />}
+        {activeTab === 'tasks' && <EmptyTab icon="ri-task-line" label="Tasks" />}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <DetailSection title="Lien Summary" icon="ri-stack-line" fields={[
-          { label: 'Lien Number', value: d.lienNumber },
-          { label: 'Type', value: d.lienTypeLabel },
-          { label: 'Jurisdiction', value: d.jurisdiction || undefined },
-          { label: 'Incident Date', value: d.incidentDate || undefined },
-          { label: 'Confidential', value: d.isConfidential ? 'Yes' : 'No' },
-          { label: 'Case', value: linkedCase ? (
-            <Link href={`/lien/cases/${d.caseId}`} className="text-primary hover:underline">{linkedCase.caseNumber} — {linkedCase.clientName}</Link>
-          ) : d.caseId ? 'Linked (details unavailable)' : undefined },
-        ]} />
-        <DetailSection title="Subject Information" icon="ri-group-line" fields={[
-          { label: 'Subject', value: d.isConfidential ? 'Confidential' : d.subjectName || undefined },
-          { label: 'Description', value: d.description || undefined },
-        ]} />
-      </div>
-
-      {isSellMode && offers.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl">
-          <div className="px-5 py-4 border-b border-gray-100">
-            <h3 className="text-sm font-semibold text-gray-800">Offers ({offers.length})</h3>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {offers.map((offer) => (
-              <div key={offer.id} className="px-5 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-700 font-medium">Offer from Org {offer.buyerOrgId.slice(0, 8)}...</p>
-                  <p className="text-xs text-gray-400">{offer.notes || 'No notes'} &middot; {offer.offeredAt}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-900 tabular-nums">{formatCurrency(offer.offerAmount)}</span>
-                  <StatusBadge status={offer.status} />
-                  {canEdit && offer.status === 'Pending' && (
-                    <div className="flex gap-1">
-                      <button onClick={() => setConfirmAction({ type: 'accept', offerId: offer.id })} className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200">Accept</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {isSellMode && pendingOffers.length > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <i className="ri-alert-line text-amber-600" />
-          <p className="text-xs text-amber-700"><span className="font-medium">Action Required:</span> This lien has {pendingOffers.length} pending offer(s) requiring review.</p>
-        </div>
-      )}
-
+      {/* Offer Modal */}
       <FormModal open={isSellMode && showOfferModal} onClose={() => setShowOfferModal(false)} onSubmit={handleSubmitOffer} title="Submit Offer" submitLabel={submitting ? 'Submitting...' : 'Submit Offer'} submitDisabled={!offerAmount || isNaN(Number(offerAmount)) || submitting}>
         <div className="space-y-4">
           <div>
@@ -247,8 +259,6 @@ export function LienDetailClient({ id }: { id: string }) {
         </div>
       </FormModal>
 
-      <EntityTimeline entityType="Lien" entityId={id} />
-
       {confirmAction && confirmAction.offerId && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}
           onConfirm={() => handleAcceptOffer(confirmAction.offerId!)}
@@ -257,6 +267,334 @@ export function LienDetailClient({ id }: { id: string }) {
           confirmLabel="Accept"
         />
       )}
+    </div>
+  );
+}
+
+/* ── Header Metadata Item ── */
+function HeaderMeta({ label, value, children }: { label: string; value?: string; children?: ReactNode }) {
+  return (
+    <div className="text-center min-w-0">
+      <p className="text-[11px] text-gray-400 uppercase tracking-wide">{label}</p>
+      {children ? (
+        <div className="mt-0.5">{children}</div>
+      ) : (
+        <p className="text-sm text-gray-700 font-medium mt-0.5 truncate">{value || '---'}</p>
+      )}
+    </div>
+  );
+}
+
+/* ── Collapsible Section Card ── */
+function CollapsibleSection({
+  title,
+  icon,
+  defaultExpanded = true,
+  onEdit,
+  children,
+}: {
+  title: string;
+  icon: string;
+  defaultExpanded?: boolean;
+  onEdit?: () => void;
+  children: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+        <div className="flex items-center gap-2">
+          <i className={`ri-arrow-${expanded ? 'down' : 'right'}-s-line text-gray-400 text-base`} />
+          <i className={`${icon} text-sm text-gray-500`} />
+          <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+        </div>
+        <div className="flex items-center gap-1">
+          {onEdit && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <i className="ri-pencil-line text-sm" />
+            </button>
+          )}
+        </div>
+      </div>
+      {expanded && (
+        <div className="px-4 py-4">{children}</div>
+      )}
+    </div>
+  );
+}
+
+/* ── Field Grid (2 columns) ── */
+function FieldGrid({ children }: { children: ReactNode }) {
+  return <dl className="grid grid-cols-2 gap-x-8 gap-y-4">{children}</dl>;
+}
+
+function FieldItem({ label, value }: { label: string; value?: string | ReactNode | null }) {
+  return (
+    <div>
+      <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{label}</dt>
+      <dd className="text-sm text-gray-700 mt-0.5">{value || '---'}</dd>
+    </div>
+  );
+}
+
+/* ── Expand/Collapse Divider ── */
+function PanelDivider({ mode, onChangeMode }: { mode: PanelMode; onChangeMode: (m: PanelMode) => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-1 px-1 sticky top-1/2">
+      <button
+        onClick={() => onChangeMode(mode === 'left' ? 'split' : 'left')}
+        title={mode === 'left' ? 'Restore split view' : 'Expand left panel'}
+        className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
+          mode === 'left'
+            ? 'border-primary bg-primary/10 text-primary'
+            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300'
+        }`}
+      >
+        <i className={`ri-arrow-${mode === 'left' ? 'right' : 'left'}-s-line text-sm`} />
+      </button>
+      <button
+        onClick={() => onChangeMode(mode === 'right' ? 'split' : 'right')}
+        title={mode === 'right' ? 'Restore split view' : 'Expand right panel'}
+        className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
+          mode === 'right'
+            ? 'border-primary bg-primary/10 text-primary'
+            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300'
+        }`}
+      >
+        <i className={`ri-arrow-${mode === 'right' ? 'left' : 'right'}-s-line text-sm`} />
+      </button>
+    </div>
+  );
+}
+
+/* ── Details Tab — Two-column layout with expand/collapse ── */
+function DetailsTab({
+  d,
+  linkedCase,
+  offers,
+  pendingOffers,
+  isSellMode,
+  canEdit,
+  panelMode,
+  setPanelMode,
+  onAcceptOffer,
+}: {
+  d: LienDetail;
+  linkedCase: CaseInfo | null;
+  offers: LienOfferItem[];
+  pendingOffers: LienOfferItem[];
+  isSellMode: boolean;
+  canEdit: boolean;
+  panelMode: PanelMode;
+  setPanelMode: (m: PanelMode) => void;
+  onAcceptOffer: (offerId: string) => void;
+}) {
+  const showLeft = panelMode !== 'right';
+  const showRight = panelMode !== 'left';
+
+  const gridClass =
+    panelMode === 'split'
+      ? 'grid-cols-[1fr_auto_minmax(0,0.42fr)]'
+      : panelMode === 'left'
+        ? 'grid-cols-[1fr_auto]'
+        : 'grid-cols-[auto_1fr]';
+
+  return (
+    <div className={`grid ${gridClass} gap-0 items-stretch`}>
+      {/* LEFT COLUMN */}
+      {showLeft && (
+        <div className="space-y-5 min-w-0">
+          {/* Lien Lifecycle */}
+          <div className="bg-white border border-gray-200 rounded-lg p-5">
+            <h3 className="text-sm font-semibold text-gray-800 mb-4">Lien Lifecycle</h3>
+            <StatusProgress steps={isSellMode ? SELL_LIEN_STEPS : MANAGE_LIEN_STEPS} currentStep={STATUS_MAP[d.status] || 'Draft'} />
+          </div>
+
+          {/* Lien Information */}
+          <CollapsibleSection title="Lien Information" icon="ri-stack-line">
+            <FieldGrid>
+              <FieldItem label="Lien Number" value={d.lienNumber} />
+              <FieldItem label="Lien Type" value={d.lienTypeLabel} />
+              <FieldItem label="Jurisdiction" value={d.jurisdiction} />
+              <FieldItem label="Incident Date" value={d.incidentDate} />
+              <FieldItem label="Confidential" value={d.isConfidential ? 'Yes' : 'No'} />
+              <FieldItem label="External Reference" value={d.externalReference} />
+              <FieldItem label="Linked Case" value={
+                linkedCase ? (
+                  <Link href={`/lien/cases/${d.caseId}`} className="text-primary hover:underline text-sm">{linkedCase.caseNumber} — {linkedCase.clientName}</Link>
+                ) : d.caseId ? 'Linked (details unavailable)' : undefined
+              } />
+            </FieldGrid>
+            {d.description && (
+              <div className="mt-4 pt-3 border-t border-gray-100">
+                <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Description</dt>
+                <dd className="text-sm text-gray-600 mt-1">{d.description}</dd>
+              </div>
+            )}
+          </CollapsibleSection>
+
+          {/* Subject Information */}
+          <CollapsibleSection title="Subject Information" icon="ri-group-line">
+            <FieldGrid>
+              <FieldItem label="Full Name" value={d.isConfidential ? 'Confidential' : (d.subjectName || `${d.subjectFirstName} ${d.subjectLastName}`.trim() || undefined)} />
+              <FieldItem label="First Name" value={d.isConfidential ? 'Confidential' : d.subjectFirstName} />
+              <FieldItem label="Last Name" value={d.isConfidential ? 'Confidential' : d.subjectLastName} />
+            </FieldGrid>
+          </CollapsibleSection>
+
+          {/* Offers Section (Sell Mode) */}
+          {isSellMode && offers.length > 0 && (
+            <CollapsibleSection title={`Offers (${offers.length})`} icon="ri-hand-coin-line">
+              <div className="divide-y divide-gray-100 -mx-4 -mb-4">
+                {offers.map((offer) => (
+                  <div key={offer.id} className="px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-700 font-medium">Offer from Org {offer.buyerOrgId.slice(0, 8)}...</p>
+                      <p className="text-xs text-gray-400">{offer.notes || 'No notes'} &middot; {offer.offeredAt}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-gray-900 tabular-nums">{formatCurrency(offer.offerAmount)}</span>
+                      <StatusBadge status={offer.status} />
+                      {canEdit && offer.status === 'Pending' && (
+                        <button onClick={() => onAcceptOffer(offer.id)} className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200">Accept</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleSection>
+          )}
+
+          {/* Pending Offers Alert */}
+          {isSellMode && pendingOffers.length > 0 && (
+            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <i className="ri-alert-line text-amber-600" />
+              <p className="text-xs text-amber-700"><span className="font-medium">Action Required:</span> This lien has {pendingOffers.length} pending offer(s) requiring review.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* DIVIDER */}
+      <PanelDivider mode={panelMode} onChangeMode={setPanelMode} />
+
+      {/* RIGHT COLUMN — Status + Communications */}
+      {showRight && (
+        <div className="space-y-5 min-w-0">
+          {/* Financial Summary */}
+          <CollapsibleSection title="Financial Summary" icon="ri-money-dollar-circle-line">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Original Amount</span>
+                <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.originalAmount)}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Current Balance</span>
+                <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.currentBalance)}</span>
+              </div>
+              {isSellMode && (
+                <>
+                  <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                    <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Offer Price</span>
+                    <span className="text-sm font-bold text-blue-600 tabular-nums">{formatCurrency(d.offerPrice)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                    <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Purchase Price</span>
+                    <span className="text-sm font-bold text-emerald-600 tabular-nums">{formatCurrency(d.purchasePrice)}</span>
+                  </div>
+                </>
+              )}
+              {d.payoffAmount !== null && (
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Payoff Amount</span>
+                  <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.payoffAmount)}</span>
+                </div>
+              )}
+            </div>
+          </CollapsibleSection>
+
+          {/* Important Dates */}
+          <CollapsibleSection title="Important Dates" icon="ri-calendar-event-line">
+            <div className="space-y-3">
+              <DateRow label="Incident Date" value={d.incidentDate} />
+              <DateRow label="Opened" value={d.openedAt} />
+              <DateRow label="Created" value={d.createdAt} />
+              <DateRow label="Last Updated" value={d.updatedAt} />
+              {d.closedAt && <DateRow label="Closed" value={d.closedAt} />}
+            </div>
+          </CollapsibleSection>
+
+          {/* Communications */}
+          <CollapsibleSection title="Communications" icon="ri-mail-line">
+            {/* TEMP: UI mock data for visual review only */}
+            <div className="space-y-3">
+              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Contacts</div>
+              <div className="space-y-2">
+                {/* TEMP: UI mock data for visual review only */}
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                    <i className="ri-user-line text-sm text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-700 font-medium truncate">Sarah Mitchell</p>
+                    <p className="text-xs text-gray-400">Case Manager</p>
+                  </div>
+                </div>
+                {/* TEMP: UI mock data for visual review only */}
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+                  <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
+                    <i className="ri-building-line text-sm text-blue-500" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-700 font-medium truncate">Smith & Associates</p>
+                    <p className="text-xs text-gray-400">Law Firm</p>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-3 border-t border-gray-100">
+                <button className="w-full px-4 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+                  Compose New Email
+                </button>
+              </div>
+            </div>
+          </CollapsibleSection>
+
+          {/* Status Summary */}
+          <div className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+            <div className="flex items-center gap-2">
+              <i className="ri-information-line text-sm text-gray-400" />
+              <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Current Status</span>
+            </div>
+            <div className="mt-2">
+              <StatusBadge status={d.status} size="md" />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Date Row Helper ── */
+function DateRow({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-xs text-gray-400 font-medium">{label}</span>
+      <span className="text-sm text-gray-700">{value || '---'}</span>
+    </div>
+  );
+}
+
+/* ── Empty Tab ── */
+function EmptyTab({ icon, label, message }: { icon: string; label: string; message?: string }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">
+      <i className={`${icon} text-3xl text-gray-300`} />
+      <p className="text-sm text-gray-400 mt-2">{message || `No ${label.toLowerCase()} data available`}</p>
     </div>
   );
 }

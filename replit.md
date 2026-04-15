@@ -202,6 +202,7 @@ apps/web/
         lien/cases/[id]/page.tsx                  ← LS-LIENS-UI-002: API-backed detail via casesService, StatusProgress workflow, related liens from API, advance status via API, NotesPanel (read-only until backend supports)
         lien/liens/page.tsx                       ← V2 UX: store-backed list, Create Lien modal, ActionMenu (list/withdraw), SideDrawer, multi-filter
         lien/liens/[id]/page.tsx                  ← V2 UX: lien lifecycle StatusProgress, Submit/Accept/Reject Offer workflow, FormModal, ConfirmDialog
+        lien/liens/[id]/lien-detail-client.tsx    ← LS-LIENS-UI-DESIGN-002: full body redesign matching Case Detail pattern — rounded header card (person name primary, lien# secondary, 7-item metadata grid), 6-tab bar (Details/Documents/Servicing/Notes/History/Tasks), two-column Details tab (70/30 split) with expand/collapse divider, left: lifecycle stepper + Lien Info + Subject + Offers (collapsible), right: Financial Summary + Important Dates + Communications + Status. All business logic preserved (offers, modals, sell/manage mode, role access).
         lien/bill-of-sales/page.tsx               ← V2 UX: store-backed KPI cards, ActionMenu (submit/execute/cancel), ConfirmDialog
         lien/bill-of-sales/[id]/page.tsx          ← V2 UX: BOS workflow StatusProgress, submit/execute/cancel with confirm
         lien/servicing/page.tsx                   ← V2 UX: AssignTaskForm, ActionMenu (start/complete/escalate/reassign), ConfirmDialog
