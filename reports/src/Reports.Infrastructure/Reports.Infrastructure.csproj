@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Reports.Contracts\Reports.Contracts.csproj" />
     <ProjectReference Include="..\Reports.Domain\Reports.Domain.csproj" />
+    <ProjectReference Include="..\..\..\shared\audit-client\LegalSynq.AuditClient\LegalSynq.AuditClient.csproj" />
   </ItemGroup>
 
   <ItemGroup>

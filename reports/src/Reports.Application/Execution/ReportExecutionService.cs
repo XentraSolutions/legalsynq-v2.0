@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Reports.Application.Audit;
 using Reports.Application.Execution.DTOs;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
@@ -95,8 +96,9 @@ public sealed class ReportExecutionService : IReportExecutionService
 
         try
         {
-            await TryAuditAsync("report.execution.started",
-                $"Execution '{execution.Id}' started for tenant '{tenantId}' template '{template.Code}' v{publishedVersion.VersionNumber}");
+            await TryAuditAsync(AuditEventFactory.ExecutionStarted(
+                tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,
+                publishedVersion.VersionNumber, template.ProductCode));
 
             execution.Status = "Running";
             await _executionRepo.UpdateAsync(execution, ct);
@@ -126,8 +128,9 @@ public sealed class ReportExecutionService : IReportExecutionService
                 execution.CompletedAtUtc = DateTimeOffset.UtcNow;
                 await _executionRepo.UpdateAsync(execution, ct);
 
-                await TryAuditAsync("report.execution.failed",
-                    $"Execution '{execution.Id}' failed: {reason}");
+                await TryAuditAsync(AuditEventFactory.ExecutionFailed(
+                    tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,
+                    reason, template.ProductCode));
 
                 return ServiceResult<ReportExecutionResponse>.Fail(
                     $"Report execution failed: {reason}");
@@ -155,8 +158,9 @@ public sealed class ReportExecutionService : IReportExecutionService
             execution.CompletedAtUtc = DateTimeOffset.UtcNow;
             await _executionRepo.UpdateAsync(execution, ct);
 
-            await TryAuditAsync("report.execution.completed",
-                $"Execution '{execution.Id}' completed for tenant '{tenantId}' template '{template.Code}' — {resultSet.TotalRowCount} rows");
+            await TryAuditAsync(AuditEventFactory.ExecutionCompleted(
+                tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,
+                resultSet.TotalRowCount, template.ProductCode));
 
             _log.LogInformation(
                 "Execution completed: {ExecutionId} tenant={TenantId} template={TemplateCode} rows={RowCount}",
@@ -200,8 +204,9 @@ public sealed class ReportExecutionService : IReportExecutionService
             try { await _executionRepo.UpdateAsync(execution, ct); }
             catch (Exception updateEx) { _log.LogWarning(updateEx, "Failed to update execution status after failure"); }
 
-            await TryAuditAsync("report.execution.failed",
-                $"Execution '{execution.Id}' failed with exception: {ex.Message}");
+            await TryAuditAsync(AuditEventFactory.ExecutionFailed(
+                tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,
+                ex.Message, template.ProductCode));
 
             return ServiceResult<ReportExecutionResponse>.Fail(
                 $"Report execution failed unexpectedly: {ex.Message}");
@@ -277,17 +282,15 @@ public sealed class ReportExecutionService : IReportExecutionService
         return null;
     }
 
-    private async Task TryAuditAsync(string action, string description)
+    private async Task TryAuditAsync(Reports.Contracts.Audit.AuditEventDto auditEvent)
     {
         try
         {
-            var ctx = RequestContext.Default();
-            var tenant = new TenantContext { TenantId = "system", IsActive = true };
-            await _audit.RecordEventAsync(ctx, tenant, "system", action, description);
+            await _audit.RecordEventAsync(auditEvent);
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Audit hook failed for action {Action}", action);
+            _log.LogWarning(ex, "Audit hook failed for action {Action}", auditEvent.EventType);
         }
     }
 }

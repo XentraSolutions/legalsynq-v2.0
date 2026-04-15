@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Reports.Application.Audit;
 using Reports.Application.Overrides.DTOs;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
@@ -78,8 +79,8 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
 
             result = await _overrideRepo.UpdateAsync(existingOverride, ct);
 
-            await TryAuditAsync("tenant.override.reactivated",
-                $"Override '{result.Id}' reactivated for tenant '{tenantId}' template '{templateId}' (base version: {result.BaseTemplateVersionNumber})");
+            await TryAuditAsync(AuditEventFactory.OverrideReactivated(
+                tenantId, request.CreatedByUserId.Trim(), result.Id, templateId));
 
             _log.LogInformation("Override reactivated: {OverrideId} tenant={TenantId} template={TemplateId} baseVersion={BaseVersion}",
                 result.Id, tenantId, templateId, result.BaseTemplateVersionNumber);
@@ -115,8 +116,8 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
                 return ServiceResult<TenantReportOverrideResponse>.Conflict(ex.Message);
             }
 
-            await TryAuditAsync("tenant.override.created",
-                $"Override '{result.Id}' created for tenant '{tenantId}' template '{templateId}' (base version: {result.BaseTemplateVersionNumber})");
+            await TryAuditAsync(AuditEventFactory.OverrideCreated(
+                tenantId, request.CreatedByUserId.Trim(), result.Id, templateId));
 
             _log.LogInformation("Override created: {OverrideId} tenant={TenantId} template={TemplateId} baseVersion={BaseVersion}",
                 result.Id, tenantId, templateId, result.BaseTemplateVersionNumber);
@@ -176,8 +177,8 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
             return ServiceResult<TenantReportOverrideResponse>.Conflict(ex.Message);
         }
 
-        await TryAuditAsync("tenant.override.updated",
-            $"Override '{updated.Id}' updated for tenant '{updated.TenantId}' template '{templateId}'");
+        await TryAuditAsync(AuditEventFactory.OverrideUpdated(
+            updated.TenantId, request.UpdatedByUserId.Trim(), updated.Id, templateId));
 
         _log.LogInformation("Override updated: {OverrideId} tenant={TenantId} template={TemplateId}",
             updated.Id, updated.TenantId, templateId);
@@ -221,8 +222,8 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
 
         var updated = await _overrideRepo.UpdateAsync(existing, ct);
 
-        await TryAuditAsync("tenant.override.deactivated",
-            $"Override '{updated.Id}' deactivated for tenant '{updated.TenantId}' template '{templateId}'");
+        await TryAuditAsync(AuditEventFactory.OverrideDeactivated(
+            updated.TenantId, "system", updated.Id, templateId));
 
         _log.LogInformation("Override deactivated: {OverrideId} tenant={TenantId} template={TemplateId}",
             updated.Id, updated.TenantId, templateId);
@@ -278,8 +279,7 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
             MinimumTierCode = activeOverride?.MinimumTierCode
         };
 
-        await TryAuditAsync("tenant.effective.report.resolved",
-            $"Effective report resolved for tenant '{tenantId}' template '{templateId}' (hasOverride: {response.HasOverride})");
+        await TryAuditAsync(AuditEventFactory.EffectiveReportResolved(tenantId, templateId));
 
         return ServiceResult<TenantEffectiveReportResponse>.Ok(response);
     }
@@ -323,17 +323,15 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
         UpdatedAtUtc = entity.UpdatedAtUtc
     };
 
-    private async Task TryAuditAsync(string action, string description)
+    private async Task TryAuditAsync(Reports.Contracts.Audit.AuditEventDto auditEvent)
     {
         try
         {
-            var ctx = RequestContext.Default();
-            var tenant = new TenantContext { TenantId = "system", IsActive = true };
-            await _audit.RecordEventAsync(ctx, tenant, "system", action, description);
+            await _audit.RecordEventAsync(auditEvent);
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Audit hook failed for action {Action}", action);
+            _log.LogWarning(ex, "Audit hook failed for action {Action}", auditEvent.EventType);
         }
     }
 }

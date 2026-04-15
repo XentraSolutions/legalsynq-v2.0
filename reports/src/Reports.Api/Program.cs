@@ -13,6 +13,8 @@ builder.Services.Configure<MySqlSettings>(
     builder.Configuration.GetSection(MySqlSettings.SectionName));
 builder.Services.Configure<AdapterSettings>(
     builder.Configuration.GetSection(AdapterSettings.SectionName));
+builder.Services.Configure<AuditServiceSettings>(
+    builder.Configuration.GetSection(AuditServiceSettings.SectionName));
 
 builder.Services.AddReportsApplication();
 builder.Services.AddReportsInfrastructure(builder.Configuration);

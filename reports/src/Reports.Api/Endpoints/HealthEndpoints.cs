@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Audit;
 using Reports.Contracts.Context;
 using Reports.Contracts.Guardrails;
 using Reports.Contracts.Queue;
@@ -65,7 +66,27 @@ public static class HealthEndpoints
             checks["identity_adapter"] = (await ProbeAdapter(() => identity.ValidateTokenAsync(ctx, "probe"))).Success ? "ok" : "fail";
             checks["tenant_adapter"] = (await ProbeAdapter(() => tenant.IsTenantActiveAsync(ctx, "probe"))).Success ? "ok" : "fail";
             checks["entitlement_adapter"] = (await ProbeAdapter(() => entitlement.CanAccessReportsAsync(ctx, mockTenant, mockUser))).Success ? "ok" : "fail";
-            checks["audit_adapter"] = (await ProbeAdapter(() => audit.RecordEventAsync(ctx, mockTenant, "probe", "readiness", "probe"))).Success ? "ok" : "fail";
+
+            if (audit.IsRealIntegration)
+            {
+                var probeEvent = new AuditEventDto
+                {
+                    EventType = "readiness.probe",
+                    TenantId = "probe",
+                    ActorUserId = "probe",
+                    EntityType = "HealthCheck",
+                    EntityId = "probe",
+                    Action = "readiness",
+                    Description = "probe"
+                };
+                var auditProbe = await ProbeAdapter(() => audit.RecordEventAsync(probeEvent));
+                checks["audit_adapter"] = auditProbe.Success ? "ok" : "fail";
+            }
+            else
+            {
+                checks["audit_adapter"] = "mock";
+            }
+
             var docProbe = await ProbeAdapter(() => document.RetrieveReportAsync(ctx, mockTenant, "probe"));
             checks["document_adapter"] = docProbe.Called && (docProbe.Success || docProbe.ErrorCode == AdapterErrors.NotFound) ? "ok" : "fail";
             checks["notification_adapter"] = (await ProbeAdapter(() => notification.NotifyReportReadyAsync(ctx, mockTenant, "probe", mockNotification))).Success ? "ok" : "fail";

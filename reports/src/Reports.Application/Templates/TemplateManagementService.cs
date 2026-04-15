@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Reports.Application.Audit;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
 using Reports.Contracts.Context;
@@ -46,7 +47,8 @@ public sealed class TemplateManagementService : ITemplateManagementService
 
         var created = await _repo.CreateAsync(entity, ct);
 
-        await TryAuditAsync("template.created", $"Template '{created.Code}' created (ID: {created.Id})");
+        await TryAuditAsync(AuditEventFactory.TemplateCreated(
+            "system", "system", created.Id, created.Code, created.ProductCode));
 
         _log.LogInformation("Template created: {TemplateId} code={Code}", created.Id, created.Code);
         return ServiceResult<TemplateResponse>.Created(MapToResponse(created));
@@ -70,7 +72,8 @@ public sealed class TemplateManagementService : ITemplateManagementService
 
         var updated = await _repo.UpdateAsync(entity, ct);
 
-        await TryAuditAsync("template.updated", $"Template '{updated.Code}' updated (ID: {updated.Id})");
+        await TryAuditAsync(AuditEventFactory.TemplateUpdated(
+            "system", "system", updated.Id, updated.Code, updated.ProductCode));
 
         _log.LogInformation("Template updated: {TemplateId}", updated.Id);
         return ServiceResult<TemplateResponse>.Ok(MapToResponse(updated));
@@ -117,7 +120,8 @@ public sealed class TemplateManagementService : ITemplateManagementService
 
         var created = await _repo.CreateVersionAtomicAsync(template, version, ct);
 
-        await TryAuditAsync("version.created", $"Version {created.VersionNumber} created for template '{template.Code}' (ID: {templateId})");
+        await TryAuditAsync(AuditEventFactory.VersionCreated(
+            "system", request.CreatedByUserId.Trim(), templateId, template.Code, created.VersionNumber, template.ProductCode));
 
         _log.LogInformation("Version {Version} created for template {TemplateId}", created.VersionNumber, templateId);
         return ServiceResult<TemplateVersionResponse>.Created(MapToVersionResponse(created));
@@ -167,7 +171,8 @@ public sealed class TemplateManagementService : ITemplateManagementService
 
         var updated = await _repo.PublishVersionAtomicAsync(templateId, versionNumber, request.PublishedByUserId.Trim(), ct);
 
-        await TryAuditAsync("version.published", $"Version {versionNumber} published for template '{template.Code}' (ID: {templateId})");
+        await TryAuditAsync(AuditEventFactory.VersionPublished(
+            "system", request.PublishedByUserId.Trim(), templateId, template.Code, versionNumber, template.ProductCode));
 
         _log.LogInformation("Version {Version} published for template {TemplateId}", versionNumber, templateId);
         return ServiceResult<TemplateVersionResponse>.Ok(MapToVersionResponse(updated));
@@ -237,17 +242,15 @@ public sealed class TemplateManagementService : ITemplateManagementService
         CreatedByUserId = entity.CreatedByUserId
     };
 
-    private async Task TryAuditAsync(string action, string description)
+    private async Task TryAuditAsync(Reports.Contracts.Audit.AuditEventDto auditEvent)
     {
         try
         {
-            var ctx = RequestContext.Default();
-            var tenant = new TenantContext { TenantId = "system", IsActive = true };
-            await _audit.RecordEventAsync(ctx, tenant, "system", action, description);
+            await _audit.RecordEventAsync(auditEvent);
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Audit hook failed for action {Action}", action);
+            _log.LogWarning(ex, "Audit hook failed for action {Action}", auditEvent.EventType);
         }
     }
 }

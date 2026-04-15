@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Reports.Application.Audit;
 using Reports.Application.Assignments.DTOs;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
@@ -126,8 +127,8 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
             return ServiceResult<TemplateAssignmentResponse>.Conflict(ex.Message);
         }
 
-        await TryAuditAsync("template.assignment.created",
-            $"Assignment '{created.Id}' created for template '{templateId}' (scope: {created.AssignmentScope})");
+        await TryAuditAsync(AuditEventFactory.AssignmentCreated(
+            "system", request.CreatedByUserId.Trim(), created.Id, templateId, created.AssignmentScope));
 
         _log.LogInformation("Assignment created: {AssignmentId} template={TemplateId} scope={Scope}",
             created.Id, templateId, created.AssignmentScope);
@@ -228,8 +229,8 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
             return ServiceResult<TemplateAssignmentResponse>.Conflict(ex.Message);
         }
 
-        await TryAuditAsync("template.assignment.updated",
-            $"Assignment '{updated.Id}' updated for template '{templateId}'");
+        await TryAuditAsync(AuditEventFactory.AssignmentUpdated(
+            "system", request.UpdatedByUserId.Trim(), updated.Id, templateId));
 
         _log.LogInformation("Assignment updated: {AssignmentId} template={TemplateId}", updated.Id, templateId);
 
@@ -296,8 +297,8 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
             });
         }
 
-        await TryAuditAsync("tenant.catalog.resolved",
-            $"Tenant catalog resolved for tenant '{query.TenantId}' product='{query.ProductCode}' org='{query.OrganizationType}' — {items.Count} templates");
+        await TryAuditAsync(AuditEventFactory.TenantCatalogResolved(
+            query.TenantId.Trim(), query.ProductCode.Trim(), items.Count));
 
         return ServiceResult<IReadOnlyList<TenantTemplateCatalogItemResponse>>.Ok(items.AsReadOnly());
     }
@@ -331,17 +332,15 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
         UpdatedAtUtc = entity.UpdatedAtUtc
     };
 
-    private async Task TryAuditAsync(string action, string description)
+    private async Task TryAuditAsync(Reports.Contracts.Audit.AuditEventDto auditEvent)
     {
         try
         {
-            var ctx = RequestContext.Default();
-            var tenant = new TenantContext { TenantId = "system", IsActive = true };
-            await _audit.RecordEventAsync(ctx, tenant, "system", action, description);
+            await _audit.RecordEventAsync(auditEvent);
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Audit hook failed for action {Action}", action);
+            _log.LogWarning(ex, "Audit hook failed for action {Action}", auditEvent.EventType);
         }
     }
 }

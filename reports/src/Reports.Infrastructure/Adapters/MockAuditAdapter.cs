@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Reports.Contracts.Adapters;
-using Reports.Contracts.Context;
+using Reports.Contracts.Audit;
 
 namespace Reports.Infrastructure.Adapters;
 
@@ -10,10 +10,19 @@ public sealed class MockAuditAdapter : IAuditAdapter
 
     public MockAuditAdapter(ILogger<MockAuditAdapter> log) => _log = log;
 
-    public Task<AdapterResult<bool>> RecordEventAsync(RequestContext ctx, TenantContext tenant, string userId, string action, string description, CancellationToken ct)
+    public bool IsRealIntegration => false;
+
+    public Task<AdapterResult<bool>> RecordEventAsync(AuditEventDto auditEvent, CancellationToken ct)
     {
-        _log.LogInformation("MockAuditAdapter: [{Action}] tenant={TenantId} user={UserId} — {Description} [Correlation={CorrelationId}]",
-            action, tenant.TenantId, userId, description, ctx.CorrelationId);
+        _log.LogInformation(
+            "MockAuditAdapter: [{EventType}] tenant={TenantId} user={ActorUserId} entity={EntityType}/{EntityId} — {Description} [Correlation={CorrelationId}]",
+            auditEvent.EventType,
+            auditEvent.TenantId,
+            auditEvent.ActorUserId,
+            auditEvent.EntityType,
+            auditEvent.EntityId,
+            auditEvent.Description,
+            auditEvent.CorrelationId);
         return Task.FromResult(AdapterResult<bool>.Ok(true));
     }
 }

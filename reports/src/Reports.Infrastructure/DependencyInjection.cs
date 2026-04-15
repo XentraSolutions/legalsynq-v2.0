@@ -1,3 +1,4 @@
+using LegalSynq.AuditClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,10 +39,22 @@ public static class DependencyInjection
             services.AddSingleton<ITenantReportOverrideRepository, MockTenantReportOverrideRepository>();
         }
 
+        var auditEnabled = configuration.GetValue<bool>("AuditService:Enabled");
+        var auditBaseUrl = configuration["AuditService:BaseUrl"];
+
+        if (auditEnabled && !string.IsNullOrWhiteSpace(auditBaseUrl))
+        {
+            services.AddAuditEventClient(configuration.GetSection("AuditClient"), auditBaseUrl, configuration);
+            services.AddSingleton<IAuditAdapter, SharedAuditAdapter>();
+        }
+        else
+        {
+            services.AddSingleton<IAuditAdapter, MockAuditAdapter>();
+        }
+
         services.AddSingleton<IIdentityAdapter, MockIdentityAdapter>();
         services.AddSingleton<ITenantAdapter, MockTenantAdapter>();
         services.AddSingleton<IEntitlementAdapter, MockEntitlementAdapter>();
-        services.AddSingleton<IAuditAdapter, MockAuditAdapter>();
         services.AddSingleton<IDocumentAdapter, MockDocumentAdapter>();
         services.AddSingleton<INotificationAdapter, MockNotificationAdapter>();
         services.AddSingleton<IProductDataAdapter, MockProductDataAdapter>();
@@ -51,5 +64,26 @@ public static class DependencyInjection
         services.AddSingleton<IJobProcessor, MockJobProcessor>();
 
         return services;
+    }
+
+    private static void AddAuditEventClient(
+        this IServiceCollection services,
+        IConfigurationSection auditClientSection,
+        string baseUrl,
+        IConfiguration configuration)
+    {
+        var timeoutSeconds = configuration.GetValue<int?>("AuditService:TimeoutSeconds") ?? 5;
+        var serviceToken = configuration["AuditService:ServiceToken"] ?? string.Empty;
+
+        services.Configure<AuditClientOptions>(opts =>
+        {
+            opts.BaseUrl = baseUrl;
+            opts.TimeoutSeconds = timeoutSeconds;
+            opts.ServiceToken = serviceToken;
+            opts.SourceSystem = "legalsynq-platform";
+            opts.SourceService = "reports-service";
+        });
+
+        services.AddHttpClient<IAuditEventClient, HttpAuditEventClient>("AuditEventClient");
     }
 }
