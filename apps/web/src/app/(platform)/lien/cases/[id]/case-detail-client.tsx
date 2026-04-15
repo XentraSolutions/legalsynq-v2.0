@@ -348,7 +348,7 @@ function DetailsTab({ d, panelMode, onPanelModeChange }: { d: CaseDetail; panelM
         {/* TEMP: visual fallback data for UI review only */}
         <div className="mt-4 pt-4 border-t border-gray-100">
           <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight mb-3">Case Flags</p>
-          <div className="space-y-2.5">
+          <div className="grid grid-cols-3 gap-x-6 gap-y-2.5">
             <CheckboxField label="Share this case with Associated Law Firm" checked={shareWithLawFirm} onChange={setShareWithLawFirm} />
             <CheckboxField label="UCC Filed" checked={uccFiled} onChange={setUccFiled} />
             <CheckboxField label="Case Dropped" checked={caseDropped} onChange={setCaseDropped} />
