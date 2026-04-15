@@ -3,9 +3,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Export;
 using Reports.Contracts.Persistence;
 using Reports.Contracts.Queue;
 using Reports.Infrastructure.Adapters;
+using Reports.Infrastructure.Exporters;
 using Reports.Infrastructure.Persistence;
 using Reports.Infrastructure.Queue;
 
@@ -62,6 +64,10 @@ public static class DependencyInjection
 
         services.AddSingleton<IJobQueue, InMemoryJobQueue>();
         services.AddSingleton<IJobProcessor, MockJobProcessor>();
+
+        services.AddSingleton<IReportExporter, CsvReportExporter>();
+        services.AddSingleton<IReportExporter, XlsxReportExporter>();
+        services.AddSingleton<IReportExporter, PdfReportExporter>();
 
         return services;
     }

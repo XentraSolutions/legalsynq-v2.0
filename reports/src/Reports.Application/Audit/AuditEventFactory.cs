@@ -67,6 +67,18 @@ public static class AuditEventFactory
         => Build("report.execution.failed", tenantId, userId, "ReportExecution", executionId.ToString(), $"Execution failed for template '{templateCode}': {reason}", productCode, ctx,
             outcome: "Failure", metadata: new { templateId, templateCode, reason });
 
+    public static AuditEventDto ExportStarted(string tenantId, string userId, Guid exportId, Guid templateId, string format, string? productCode, RequestContext? ctx = null)
+        => Build("report.export.started", tenantId, userId, "ReportExport", exportId.ToString(), $"Export started: template '{templateId}' format {format}", productCode, ctx,
+            metadata: new { templateId, format });
+
+    public static AuditEventDto ExportCompleted(string tenantId, string userId, Guid exportId, Guid templateId, string format, int rowCount, long fileSize, string? productCode, RequestContext? ctx = null)
+        => Build("report.export.completed", tenantId, userId, "ReportExport", exportId.ToString(), $"Export completed: {rowCount} rows, {fileSize} bytes, format {format}", productCode, ctx,
+            outcome: "Success", metadata: new { templateId, format, rowCount, fileSize });
+
+    public static AuditEventDto ExportFailed(string tenantId, string userId, Guid exportId, Guid templateId, string format, string reason, string? productCode, RequestContext? ctx = null)
+        => Build("report.export.failed", tenantId, userId, "ReportExport", exportId.ToString(), $"Export failed: {reason}", productCode, ctx,
+            outcome: "Failure", metadata: new { templateId, format, reason });
+
     private static AuditEventDto Build(
         string eventType,
         string tenantId,
