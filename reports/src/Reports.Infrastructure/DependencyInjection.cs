@@ -45,6 +45,7 @@ public static class DependencyInjection
         services.AddSingleton<IDocumentAdapter, MockDocumentAdapter>();
         services.AddSingleton<INotificationAdapter, MockNotificationAdapter>();
         services.AddSingleton<IProductDataAdapter, MockProductDataAdapter>();
+        services.AddSingleton<IReportDataQueryAdapter, MockReportDataQueryAdapter>();
 
         services.AddSingleton<IJobQueue, InMemoryJobQueue>();
         services.AddSingleton<IJobProcessor, MockJobProcessor>();

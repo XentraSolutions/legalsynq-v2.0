@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Reports.Application.Assignments;
+using Reports.Application.Execution;
 using Reports.Application.Guardrails;
 using Reports.Application.Overrides;
 using Reports.Application.Templates;
@@ -15,6 +16,7 @@ public static class DependencyInjection
         services.AddScoped<ITemplateManagementService, TemplateManagementService>();
         services.AddScoped<ITemplateAssignmentService, TemplateAssignmentService>();
         services.AddScoped<ITenantReportOverrideService, TenantReportOverrideService>();
+        services.AddScoped<IReportExecutionService, ReportExecutionService>();
 
         return services;
     }

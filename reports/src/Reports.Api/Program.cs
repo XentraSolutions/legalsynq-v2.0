@@ -27,6 +27,7 @@ app.MapHealthEndpoints();
 app.MapTemplateEndpoints();
 app.MapAssignmentEndpoints();
 app.MapOverrideEndpoints();
+app.MapExecutionEndpoints();
 
 app.MapGet("/health", () => Results.Redirect("/api/v1/health", permanent: true))
     .ExcludeFromDescription();
