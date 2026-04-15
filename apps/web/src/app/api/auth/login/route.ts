@@ -51,12 +51,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const outgoingBody = JSON.stringify({ tenantCode, email, password, subdomain: rawSubdomain });
+  const outgoingBytes = new TextEncoder().encode(outgoingBody);
+
   let identityRes: Response;
   try {
     identityRes = await fetch(`${GATEWAY_URL}/identity/api/auth/login`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ tenantCode, email, password, subdomain: rawSubdomain }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(outgoingBytes.byteLength),
+      },
+      body: outgoingBody,
     });
   } catch (err) {
     console.error(`[login] Identity service fetch error:`, err);

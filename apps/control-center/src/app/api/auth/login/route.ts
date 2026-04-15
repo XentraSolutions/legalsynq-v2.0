@@ -31,12 +31,18 @@ export async function POST(request: NextRequest) {
   const tenantCode = explicitTenantCode?.trim() || extractTenantCodeFromHost(request) || 'legalsynq';
 
 
+  const outgoingBody = JSON.stringify({ tenantCode, email, password });
+  const outgoingBytes = new TextEncoder().encode(outgoingBody);
+
   let identityRes: Response;
   try {
     identityRes = await fetch(`${CONTROL_CENTER_API_BASE}/identity/api/auth/login`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ tenantCode, email, password }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(outgoingBytes.byteLength),
+      },
+      body: outgoingBody,
     });
   } catch {
     return NextResponse.json({ message: 'Identity service unavailable' }, { status: 503 });
