@@ -159,67 +159,65 @@ export function LienDetailClient({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Breadcrumb */}
       <div className="px-6 pt-3 pb-0 text-xs text-gray-400 flex items-center gap-1">
         <Link href="/lien/liens" className="hover:text-gray-600 transition-colors">Liens</Link>
         <i className="ri-arrow-right-s-line text-sm" />
         <span className="text-gray-500">Lien Detail</span>
       </div>
 
-      {/* Header Panel — Rounded card matching lower panel styling */}
-      <div className="mx-6 mt-2 bg-white border border-gray-200 rounded-lg px-6 py-4">
-        <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0 shrink-0">
-            {/* TEMP: UI mock data for visual review only — personName fallback */}
-            <h1 className="text-lg font-semibold text-gray-900">{personName || 'John Doe'}</h1>
-            <p className="text-xs text-gray-400 mt-0.5">{d.lienNumber}</p>
+      <div className="mx-6 mt-2 bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="px-6 py-4">
+          <div className="flex items-start justify-between gap-6">
+            <div className="min-w-0 shrink-0">
+              {/* TEMP: UI mock data for visual review only — personName fallback */}
+              <h1 className="text-lg font-semibold text-gray-900">{personName || 'John Doe'}</h1>
+              <p className="text-xs text-gray-400 mt-0.5">{d.lienNumber}</p>
+            </div>
+            <div className="flex items-center gap-5 flex-wrap text-sm">
+              <HeaderMeta label="Lien Type" value={d.lienTypeLabel} />
+              <HeaderMeta label="Status">
+                <StatusBadge status={d.status} size="md" />
+              </HeaderMeta>
+              <HeaderMeta label="Incident Date" value={d.incidentDate || '---'} />
+              <HeaderMeta label="Jurisdiction" value={d.jurisdiction || '---'} />
+              <HeaderMeta label="Case" value={linkedCase ? linkedCase.caseNumber : d.caseId || '---'} />
+              {/* TEMP: UI mock data for visual review only */}
+              <HeaderMeta label="Law Firm" value={linkedCase?.insuranceCarrier || 'Smith & Associates'} />
+              {/* TEMP: UI mock data for visual review only */}
+              <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
+              {canEdit && isSellMode && d.status === 'Offered' && (
+                <button onClick={() => setShowOfferModal(true)}
+                  className="text-sm font-medium px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors whitespace-nowrap">
+                  Submit Offer
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-5 flex-wrap text-sm">
-            <HeaderMeta label="Lien Type" value={d.lienTypeLabel} />
-            <HeaderMeta label="Status">
-              <StatusBadge status={d.status} size="md" />
-            </HeaderMeta>
-            <HeaderMeta label="Incident Date" value={d.incidentDate || '---'} />
-            <HeaderMeta label="Jurisdiction" value={d.jurisdiction || '---'} />
-            <HeaderMeta label="Case" value={linkedCase ? linkedCase.caseNumber : d.caseId || '---'} />
-            {/* TEMP: UI mock data for visual review only */}
-            <HeaderMeta label="Law Firm" value={linkedCase?.insuranceCarrier || 'Smith & Associates'} />
-            {/* TEMP: UI mock data for visual review only */}
-            <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
-            {canEdit && isSellMode && d.status === 'Offered' && (
-              <button onClick={() => setShowOfferModal(true)}
-                className="text-sm font-medium px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors whitespace-nowrap">
-                Submit Offer
+        </div>
+
+        <div className="border-t border-gray-100 px-6">
+          <nav className="flex gap-0 -mb-px">
+            {TABS.map((tab) => (
+              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                className={[
+                  'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                  activeTab === tab.key
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+                ].join(' ')}>
+                {tab.label}
+                {tab.key === 'documents' && (
+                  <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
+                    0
+                  </span>
+                )}
               </button>
-            )}
-          </div>
+            ))}
+          </nav>
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="mx-6 bg-white border-x border-b border-gray-200 rounded-b-lg px-6">
-        <nav className="flex gap-0 -mb-px">
-          {TABS.map((tab) => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              className={[
-                'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
-                activeTab === tab.key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
-              ].join(' ')}>
-              {tab.label}
-              {tab.key === 'documents' && (
-                <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
-                  0
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      <div className="flex-1 min-h-0 overflow-auto bg-gray-50 p-6">
+      <div className="flex-1 min-h-0 overflow-auto bg-gray-50 px-6 py-5">
         {activeTab === 'details' && (
           <DetailsTab
             d={d}
@@ -240,7 +238,6 @@ export function LienDetailClient({ id }: { id: string }) {
         {activeTab === 'tasks' && <EmptyTab icon="ri-task-line" label="Tasks" />}
       </div>
 
-      {/* Offer Modal */}
       <FormModal open={isSellMode && showOfferModal} onClose={() => setShowOfferModal(false)} onSubmit={handleSubmitOffer} title="Submit Offer" submitLabel={submitting ? 'Submitting...' : 'Submit Offer'} submitDisabled={!offerAmount || isNaN(Number(offerAmount)) || submitting}>
         <div className="space-y-4">
           <div>
@@ -271,21 +268,19 @@ export function LienDetailClient({ id }: { id: string }) {
   );
 }
 
-/* ── Header Metadata Item ── */
 function HeaderMeta({ label, value, children }: { label: string; value?: string; children?: ReactNode }) {
   return (
     <div className="text-center min-w-0">
-      <p className="text-[11px] text-gray-400 uppercase tracking-wide">{label}</p>
+      <p className="text-[11px] text-gray-400 uppercase tracking-wide leading-tight">{label}</p>
       {children ? (
-        <div className="mt-0.5">{children}</div>
+        <div className="mt-1">{children}</div>
       ) : (
-        <p className="text-sm text-gray-700 font-medium mt-0.5 truncate">{value || '---'}</p>
+        <p className="text-sm text-gray-700 font-medium mt-1 truncate">{value || '---'}</p>
       )}
     </div>
   );
 }
 
-/* ── Collapsible Section Card ── */
 function CollapsibleSection({
   title,
   icon,
@@ -302,8 +297,11 @@ function CollapsibleSection({
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div
+        className="flex items-center justify-between px-5 py-3 cursor-pointer select-none hover:bg-gray-50/50 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
         <div className="flex items-center gap-2">
           <i className={`ri-arrow-${expanded ? 'down' : 'right'}-s-line text-gray-400 text-base`} />
           <i className={`${icon} text-sm text-gray-500`} />
@@ -321,13 +319,12 @@ function CollapsibleSection({
         </div>
       </div>
       {expanded && (
-        <div className="px-4 py-4">{children}</div>
+        <div className="px-5 py-4 border-t border-gray-100">{children}</div>
       )}
     </div>
   );
 }
 
-/* ── Field Grid (2 columns) ── */
 function FieldGrid({ children }: { children: ReactNode }) {
   return <dl className="grid grid-cols-2 gap-x-8 gap-y-4">{children}</dl>;
 }
@@ -335,34 +332,34 @@ function FieldGrid({ children }: { children: ReactNode }) {
 function FieldItem({ label, value }: { label: string; value?: string | ReactNode | null }) {
   return (
     <div>
-      <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{label}</dt>
-      <dd className="text-sm text-gray-700 mt-0.5">{value || '---'}</dd>
+      <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">{label}</dt>
+      <dd className="text-sm text-gray-700 mt-1">{value || '---'}</dd>
     </div>
   );
 }
 
-/* ── Expand/Collapse Divider ── */
 function PanelDivider({ mode, onChangeMode }: { mode: PanelMode; onChangeMode: (m: PanelMode) => void }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-1 px-1 sticky top-1/2">
+    <div className="flex flex-col items-center justify-center gap-1 self-stretch shrink-0">
       <button
         onClick={() => onChangeMode(mode === 'left' ? 'split' : 'left')}
         title={mode === 'left' ? 'Restore split view' : 'Expand left panel'}
-        className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
+        className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
           mode === 'left'
             ? 'border-primary bg-primary/10 text-primary'
-            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300'
+            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:bg-gray-50'
         }`}
       >
         <i className={`ri-arrow-${mode === 'left' ? 'right' : 'left'}-s-line text-sm`} />
       </button>
+      <div className="w-px h-6 bg-gray-200" />
       <button
         onClick={() => onChangeMode(mode === 'right' ? 'split' : 'right')}
         title={mode === 'right' ? 'Restore split view' : 'Expand right panel'}
-        className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
+        className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
           mode === 'right'
             ? 'border-primary bg-primary/10 text-primary'
-            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300'
+            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:bg-gray-50'
         }`}
       >
         <i className={`ri-arrow-${mode === 'right' ? 'left' : 'right'}-s-line text-sm`} />
@@ -371,7 +368,6 @@ function PanelDivider({ mode, onChangeMode }: { mode: PanelMode; onChangeMode: (
   );
 }
 
-/* ── Details Tab — Two-column layout with expand/collapse ── */
 function DetailsTab({
   d,
   linkedCase,
@@ -404,17 +400,16 @@ function DetailsTab({
         : 'grid-cols-[auto_1fr]';
 
   return (
-    <div className={`grid ${gridClass} gap-0 items-stretch`}>
-      {/* LEFT COLUMN */}
+    <div className={`grid ${gridClass} gap-0 items-start`}>
       {showLeft && (
-        <div className="space-y-5 min-w-0">
-          {/* Lien Lifecycle */}
-          <div className="bg-white border border-gray-200 rounded-lg p-5">
-            <h3 className="text-sm font-semibold text-gray-800 mb-4">Lien Lifecycle</h3>
-            <StatusProgress steps={isSellMode ? SELL_LIEN_STEPS : MANAGE_LIEN_STEPS} currentStep={STATUS_MAP[d.status] || 'Draft'} />
+        <div className="space-y-4 min-w-0">
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="px-5 py-4">
+              <h3 className="text-sm font-semibold text-gray-800 mb-4">Lien Lifecycle</h3>
+              <StatusProgress steps={isSellMode ? SELL_LIEN_STEPS : MANAGE_LIEN_STEPS} currentStep={STATUS_MAP[d.status] || 'Draft'} />
+            </div>
           </div>
 
-          {/* Lien Information */}
           <CollapsibleSection title="Lien Information" icon="ri-stack-line">
             <FieldGrid>
               <FieldItem label="Lien Number" value={d.lienNumber} />
@@ -430,14 +425,13 @@ function DetailsTab({
               } />
             </FieldGrid>
             {d.description && (
-              <div className="mt-4 pt-3 border-t border-gray-100">
-                <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Description</dt>
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Description</dt>
                 <dd className="text-sm text-gray-600 mt-1">{d.description}</dd>
               </div>
             )}
           </CollapsibleSection>
 
-          {/* Subject Information */}
           <CollapsibleSection title="Subject Information" icon="ri-group-line">
             <FieldGrid>
               <FieldItem label="Full Name" value={d.isConfidential ? 'Confidential' : (d.subjectName || `${d.subjectFirstName} ${d.subjectLastName}`.trim() || undefined)} />
@@ -446,12 +440,11 @@ function DetailsTab({
             </FieldGrid>
           </CollapsibleSection>
 
-          {/* Offers Section (Sell Mode) */}
           {isSellMode && offers.length > 0 && (
             <CollapsibleSection title={`Offers (${offers.length})`} icon="ri-hand-coin-line">
-              <div className="divide-y divide-gray-100 -mx-4 -mb-4">
+              <div className="divide-y divide-gray-100 -mx-5 -mb-4">
                 {offers.map((offer) => (
-                  <div key={offer.id} className="px-4 py-3 flex items-center justify-between">
+                  <div key={offer.id} className="px-5 py-3 flex items-center justify-between">
                     <div>
                       <p className="text-sm text-gray-700 font-medium">Offer from Org {offer.buyerOrgId.slice(0, 8)}...</p>
                       <p className="text-xs text-gray-400">{offer.notes || 'No notes'} &middot; {offer.offeredAt}</p>
@@ -460,7 +453,7 @@ function DetailsTab({
                       <span className="text-sm font-medium text-gray-900 tabular-nums">{formatCurrency(offer.offerAmount)}</span>
                       <StatusBadge status={offer.status} />
                       {canEdit && offer.status === 'Pending' && (
-                        <button onClick={() => onAcceptOffer(offer.id)} className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200">Accept</button>
+                        <button onClick={() => onAcceptOffer(offer.id)} className="text-xs px-2.5 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors">Accept</button>
                       )}
                     </div>
                   </div>
@@ -469,9 +462,8 @@ function DetailsTab({
             </CollapsibleSection>
           )}
 
-          {/* Pending Offers Alert */}
           {isSellMode && pendingOffers.length > 0 && (
-            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
               <i className="ri-alert-line text-amber-600" />
               <p className="text-xs text-amber-700"><span className="font-medium">Action Required:</span> This lien has {pendingOffers.length} pending offer(s) requiring review.</p>
             </div>
@@ -479,47 +471,43 @@ function DetailsTab({
         </div>
       )}
 
-      {/* DIVIDER */}
       <PanelDivider mode={panelMode} onChangeMode={setPanelMode} />
 
-      {/* RIGHT COLUMN — Status + Communications */}
       {showRight && (
-        <div className="space-y-5 min-w-0">
-          {/* Financial Summary */}
+        <div className="space-y-4 min-w-0">
           <CollapsibleSection title="Financial Summary" icon="ri-money-dollar-circle-line">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between py-2 border-b border-gray-50">
-                <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Original Amount</span>
+            <div className="space-y-0">
+              <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
+                <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Original Amount</span>
                 <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.originalAmount)}</span>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-gray-50">
-                <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Current Balance</span>
+              <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
+                <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Current Balance</span>
                 <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.currentBalance)}</span>
               </div>
               {isSellMode && (
                 <>
-                  <div className="flex items-center justify-between py-2 border-b border-gray-50">
-                    <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Offer Price</span>
+                  <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
+                    <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Offer Price</span>
                     <span className="text-sm font-bold text-blue-600 tabular-nums">{formatCurrency(d.offerPrice)}</span>
                   </div>
-                  <div className="flex items-center justify-between py-2 border-b border-gray-50">
-                    <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Purchase Price</span>
+                  <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
+                    <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Purchase Price</span>
                     <span className="text-sm font-bold text-emerald-600 tabular-nums">{formatCurrency(d.purchasePrice)}</span>
                   </div>
                 </>
               )}
               {d.payoffAmount !== null && (
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Payoff Amount</span>
+                <div className="flex items-center justify-between py-2.5">
+                  <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Payoff Amount</span>
                   <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.payoffAmount)}</span>
                 </div>
               )}
             </div>
           </CollapsibleSection>
 
-          {/* Important Dates */}
           <CollapsibleSection title="Important Dates" icon="ri-calendar-event-line">
-            <div className="space-y-3">
+            <div className="space-y-0">
               <DateRow label="Incident Date" value={d.incidentDate} />
               <DateRow label="Opened" value={d.openedAt} />
               <DateRow label="Created" value={d.createdAt} />
@@ -528,30 +516,31 @@ function DetailsTab({
             </div>
           </CollapsibleSection>
 
-          {/* Communications */}
           <CollapsibleSection title="Communications" icon="ri-mail-line">
             {/* TEMP: UI mock data for visual review only */}
-            <div className="space-y-3">
-              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Contacts</div>
-              <div className="space-y-2">
-                {/* TEMP: UI mock data for visual review only */}
-                <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <i className="ri-user-line text-sm text-primary" />
+            <div className="space-y-4">
+              <div>
+                <div className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight mb-2.5">Contacts</div>
+                <div className="space-y-2">
+                  {/* TEMP: UI mock data for visual review only */}
+                  <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <i className="ri-user-line text-sm text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-700 font-medium truncate">Sarah Mitchell</p>
+                      <p className="text-xs text-gray-400">Case Manager</p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm text-gray-700 font-medium truncate">Sarah Mitchell</p>
-                    <p className="text-xs text-gray-400">Case Manager</p>
-                  </div>
-                </div>
-                {/* TEMP: UI mock data for visual review only */}
-                <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
-                  <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center">
-                    <i className="ri-building-line text-sm text-blue-500" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm text-gray-700 font-medium truncate">Smith & Associates</p>
-                    <p className="text-xs text-gray-400">Law Firm</p>
+                  {/* TEMP: UI mock data for visual review only */}
+                  <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+                    <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                      <i className="ri-building-line text-sm text-blue-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-700 font-medium truncate">Smith & Associates</p>
+                      <p className="text-xs text-gray-400">Law Firm</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -563,11 +552,10 @@ function DetailsTab({
             </div>
           </CollapsibleSection>
 
-          {/* Status Summary */}
-          <div className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden px-5 py-3.5">
             <div className="flex items-center gap-2">
               <i className="ri-information-line text-sm text-gray-400" />
-              <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">Current Status</span>
+              <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Current Status</span>
             </div>
             <div className="mt-2">
               <StatusBadge status={d.status} size="md" />
@@ -579,17 +567,15 @@ function DetailsTab({
   );
 }
 
-/* ── Date Row Helper ── */
 function DateRow({ label, value }: { label: string; value?: string | null }) {
   return (
-    <div className="flex items-center justify-between py-1.5">
-      <span className="text-xs text-gray-400 font-medium">{label}</span>
+    <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-b-0">
+      <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">{label}</span>
       <span className="text-sm text-gray-700">{value || '---'}</span>
     </div>
   );
 }
 
-/* ── Empty Tab ── */
 function EmptyTab({ icon, label, message }: { icon: string; label: string; message?: string }) {
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">

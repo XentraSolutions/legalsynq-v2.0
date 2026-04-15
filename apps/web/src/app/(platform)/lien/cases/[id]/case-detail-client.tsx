@@ -113,67 +113,65 @@ export function CaseDetailClient({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Breadcrumb */}
       <div className="px-6 pt-3 pb-0 text-xs text-gray-400 flex items-center gap-1">
         <Link href="/lien/cases" className="hover:text-gray-600 transition-colors">Cases</Link>
         <i className="ri-arrow-right-s-line text-sm" />
         <span className="text-gray-500">Liens Management</span>
       </div>
 
-      {/* Page Header — Full-width horizontal metadata grid */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 mt-2">
-        <div className="flex items-start justify-between gap-6">
-          <div className="min-w-0 shrink-0">
-            {/* TEMP: UI mock data for visual review only */}
-            <h1 className="text-lg font-semibold text-gray-900">{d.clientName || 'Maj Test'}</h1>
-            <p className="text-xs text-gray-400 mt-0.5">{d.caseNumber}</p>
+      <div className="mx-6 mt-2 bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="px-6 py-4">
+          <div className="flex items-start justify-between gap-6">
+            <div className="min-w-0 shrink-0">
+              {/* TEMP: UI mock data for visual review only */}
+              <h1 className="text-lg font-semibold text-gray-900">{d.clientName || 'Maj Test'}</h1>
+              <p className="text-xs text-gray-400 mt-0.5">{d.caseNumber}</p>
+            </div>
+            <div className="flex items-center gap-5 flex-wrap text-sm">
+              <HeaderMeta label="Case Type" value={d.title || 'Lien Case'} />
+              <HeaderMeta label="Case Status">
+                <StatusBadge status={d.status} />
+              </HeaderMeta>
+              <HeaderMeta label="Date of Loss" value={d.dateOfIncident || '---'} />
+              <HeaderMeta label="Date of Birth" value={d.clientDob || '---'} />
+              {/* TEMP: UI mock data for visual review only */}
+              <HeaderMeta label="State of Incident" value="FL" />
+              <HeaderMeta label="Law Firm" value={d.insuranceCarrier || 'Smith & Associates'} />
+              {/* TEMP: UI mock data for visual review only */}
+              <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
+              {canEdit && (
+                <button onClick={advanceStatus} disabled={d.status === 'Closed'}
+                  className="text-sm font-medium px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors whitespace-nowrap">
+                  Actions
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-5 flex-wrap text-sm">
-            <HeaderMeta label="Case Type" value={d.title || 'Lien Case'} />
-            <HeaderMeta label="Case Status">
-              <StatusBadge status={d.status} />
-            </HeaderMeta>
-            <HeaderMeta label="Date of Loss" value={d.dateOfIncident || '---'} />
-            <HeaderMeta label="Date of Birth" value={d.clientDob || '---'} />
-            {/* TEMP: UI mock data for visual review only */}
-            <HeaderMeta label="State of Incident" value="FL" />
-            <HeaderMeta label="Law Firm" value={d.insuranceCarrier || 'Smith & Associates'} />
-            {/* TEMP: UI mock data for visual review only */}
-            <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
-            {canEdit && (
-              <button onClick={advanceStatus} disabled={d.status === 'Closed'}
-                className="text-sm font-medium px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors whitespace-nowrap">
-                Actions
+        </div>
+
+        <div className="border-t border-gray-100 px-6">
+          <nav className="flex gap-0 -mb-px">
+            {TABS.map((tab) => (
+              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                className={[
+                  'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                  activeTab === tab.key
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+                ].join(' ')}>
+                {tab.label}
+                {tab.key === 'liens' && (
+                  <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
+                    {relatedLiens.length}
+                  </span>
+                )}
               </button>
-            )}
-          </div>
+            ))}
+          </nav>
         </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="bg-white border-b border-gray-200 px-6">
-        <nav className="flex gap-0 -mb-px">
-          {TABS.map((tab) => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-              className={[
-                'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
-                activeTab === tab.key
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
-              ].join(' ')}>
-              {tab.label}
-              {tab.key === 'liens' && (
-                <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
-                  {relatedLiens.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      <div className="flex-1 min-h-0 overflow-auto bg-gray-50 p-6">
+      <div className="flex-1 min-h-0 overflow-auto bg-gray-50 px-6 py-5">
         {activeTab === 'details' && <DetailsTab d={d} liens={relatedLiens} />}
         {activeTab === 'liens' && <LiensTab liens={relatedLiens} />}
         {activeTab === 'documents' && <EmptyTab icon="ri-file-copy-2-line" label="Documents" />}
@@ -192,21 +190,19 @@ export function CaseDetailClient({ id }: { id: string }) {
   );
 }
 
-/* ── Header Metadata Item ── */
 function HeaderMeta({ label, value, children }: { label: string; value?: string; children?: ReactNode }) {
   return (
     <div className="text-center min-w-0">
-      <p className="text-[11px] text-gray-400 uppercase tracking-wide">{label}</p>
+      <p className="text-[11px] text-gray-400 uppercase tracking-wide leading-tight">{label}</p>
       {children ? (
-        <div className="mt-0.5">{children}</div>
+        <div className="mt-1">{children}</div>
       ) : (
-        <p className="text-sm text-gray-700 font-medium mt-0.5 truncate">{value || '---'}</p>
+        <p className="text-sm text-gray-700 font-medium mt-1 truncate">{value || '---'}</p>
       )}
     </div>
   );
 }
 
-/* ── Collapsible Section Card ── */
 function CollapsibleSection({
   title,
   icon,
@@ -223,8 +219,11 @@ function CollapsibleSection({
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div
+        className="flex items-center justify-between px-5 py-3 cursor-pointer select-none hover:bg-gray-50/50 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
         <div className="flex items-center gap-2">
           <i className={`ri-arrow-${expanded ? 'down' : 'right'}-s-line text-gray-400 text-base`} />
           <i className={`${icon} text-sm text-gray-500`} />
@@ -242,13 +241,12 @@ function CollapsibleSection({
         </div>
       </div>
       {expanded && (
-        <div className="px-4 py-4">{children}</div>
+        <div className="px-5 py-4 border-t border-gray-100">{children}</div>
       )}
     </div>
   );
 }
 
-/* ── Field Grid (2 columns) ── */
 function FieldGrid({ children }: { children: ReactNode }) {
   return <dl className="grid grid-cols-2 gap-x-8 gap-y-4">{children}</dl>;
 }
@@ -256,22 +254,19 @@ function FieldGrid({ children }: { children: ReactNode }) {
 function FieldItem({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
-      <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{label}</dt>
-      <dd className="text-sm text-gray-700 mt-0.5">{value || '---'}</dd>
+      <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">{label}</dt>
+      <dd className="text-sm text-gray-700 mt-1">{value || '---'}</dd>
     </div>
   );
 }
 
-/* ── Details Tab — Two-column static layout ── */
 function DetailsTab({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-6">
-      {/* LEFT COLUMN — Primary */}
-      <div className="space-y-5">
-        {/* Plaintiff Section */}
+    <div className="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-5">
+      <div className="space-y-4">
         <CollapsibleSection title="Plaintiff" icon="ri-user-line" onEdit={() => {}}>
-          <div className="mb-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Plaintiff Info</p>
+          <div className="mb-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Plaintiff Info</p>
           </div>
           <FieldGrid>
             {/* TEMP: UI mock data for visual review only */}
@@ -285,16 +280,15 @@ function DetailsTab({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
           </FieldGrid>
         </CollapsibleSection>
 
-        {/* Case Tracking Section */}
         <CollapsibleSection title="Case Tracking" icon="ri-compass-3-line" onEdit={() => {}}>
-          <div className="mb-2">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Case Details</p>
+          <div className="mb-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Case Details</p>
           </div>
           <FieldGrid>
             {/* TEMP: UI mock data for visual review only */}
             <FieldItem label="Tracking Follow Up" value="04/20/2026" />
             <div>
-              <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Current Status</dt>
+              <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Current Status</dt>
               <dd className="mt-1"><StatusBadge status={d.status} /></dd>
             </div>
             {/* TEMP: UI mock data for visual review only */}
@@ -305,20 +299,18 @@ function DetailsTab({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
             {/* TEMP: UI mock data for visual review only */}
             <FieldItem label="Lead" value="Sarah Mitchell" />
           </FieldGrid>
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Case Tracking Note</dt>
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Case Tracking Note</dt>
             {/* TEMP: UI mock data for visual review only */}
             <dd className="text-sm text-gray-600 mt-1">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
           </div>
         </CollapsibleSection>
       </div>
 
-      {/* RIGHT COLUMN — Secondary */}
-      <div className="space-y-5">
-        {/* Email Section */}
+      <div className="space-y-4">
         <CollapsibleSection title="Email" icon="ri-mail-line">
-          <div className="flex justify-center py-4">
-            <button className="w-full px-6 py-3 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+          <div className="flex justify-center py-2">
+            <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
               Compose New Email
             </button>
           </div>
@@ -328,32 +320,31 @@ function DetailsTab({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
   );
 }
 
-/* ── Liens Tab ── */
 function LiensTab({ liens }: { liens: CaseLienItem[] }) {
   if (liens.length === 0) {
     return <EmptyTab icon="ri-stack-line" label="Liens" message="No liens linked to this case" />;
   }
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="bg-gray-50/80 border-b border-gray-100">
-              <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Lien #</th>
-              <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Type</th>
-              <th className="px-4 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wide">Amount</th>
-              <th className="px-4 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Status</th>
+              <th className="px-5 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Lien #</th>
+              <th className="px-5 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Type</th>
+              <th className="px-5 py-2.5 text-right text-[11px] font-medium text-gray-500 uppercase tracking-wide">Amount</th>
+              <th className="px-5 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {liens.map((l) => (
               <tr key={l.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-2.5">
+                <td className="px-5 py-2.5">
                   <Link href={`/lien/liens/${l.id}`} className="text-xs font-mono text-primary hover:underline">{l.lienNumber}</Link>
                 </td>
-                <td className="px-4 py-2.5 text-sm text-gray-600">{l.lienType}</td>
-                <td className="px-4 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">{formatCurrency(l.originalAmount)}</td>
-                <td className="px-4 py-2.5"><StatusBadge status={l.status} /></td>
+                <td className="px-5 py-2.5 text-sm text-gray-600">{l.lienType}</td>
+                <td className="px-5 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">{formatCurrency(l.originalAmount)}</td>
+                <td className="px-5 py-2.5"><StatusBadge status={l.status} /></td>
               </tr>
             ))}
           </tbody>
@@ -363,10 +354,9 @@ function LiensTab({ liens }: { liens: CaseLienItem[] }) {
   );
 }
 
-/* ── Empty Tab ── */
 function EmptyTab({ icon, label, message }: { icon: string; label: string; message?: string }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
+    <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">
       <i className={`${icon} text-3xl text-gray-300`} />
       <p className="text-sm text-gray-400 mt-2">{message || `No ${label.toLowerCase()} data available`}</p>
     </div>
