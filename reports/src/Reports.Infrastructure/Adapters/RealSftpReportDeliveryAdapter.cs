@@ -114,6 +114,7 @@ public sealed class RealSftpReportDeliveryAdapter : IReportDeliveryAdapter
         }
 
         sw.Stop();
+        var isRetryable = lastException is not (Renci.SshNet.Common.SshAuthenticationException or InvalidOperationException);
         return new DeliveryResult
         {
             Success = false,
@@ -122,7 +123,7 @@ public sealed class RealSftpReportDeliveryAdapter : IReportDeliveryAdapter
             DeliveredAtUtc = DateTimeOffset.UtcNow,
             ExternalReferenceId = fullRemotePath,
             DurationMs = sw.ElapsedMilliseconds,
-            IsRetryable = true,
+            IsRetryable = isRetryable,
             DetailJson = JsonSerializer.Serialize(new { host, port, remotePath = fullRemotePath, fileName, error = lastException?.Message, attempts = attempt }),
         };
     }

@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Reports.Application.Audit;
 using Reports.Application.Execution.DTOs;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
 using Reports.Contracts.Context;
+using Reports.Contracts.Observability;
 using Reports.Contracts.Persistence;
 using Reports.Domain.Entities;
 
@@ -19,6 +21,7 @@ public sealed class ReportExecutionService : IReportExecutionService
     private readonly ITenantReportOverrideRepository _overrideRepo;
     private readonly IReportDataQueryAdapter _queryAdapter;
     private readonly IAuditAdapter _audit;
+    private readonly IReportsMetrics _metrics;
     private readonly ILogger<ReportExecutionService> _log;
 
     public ReportExecutionService(
@@ -28,6 +31,7 @@ public sealed class ReportExecutionService : IReportExecutionService
         ITenantReportOverrideRepository overrideRepo,
         IReportDataQueryAdapter queryAdapter,
         IAuditAdapter audit,
+        IReportsMetrics metrics,
         ILogger<ReportExecutionService> log)
     {
         _executionRepo = executionRepo;
@@ -36,6 +40,7 @@ public sealed class ReportExecutionService : IReportExecutionService
         _overrideRepo = overrideRepo;
         _queryAdapter = queryAdapter;
         _audit = audit;
+        _metrics = metrics;
         _log = log;
     }
 
@@ -94,6 +99,7 @@ public sealed class ReportExecutionService : IReportExecutionService
 
         await _executionRepo.SaveAsync(execution, ct);
 
+        var execSw = Stopwatch.StartNew();
         try
         {
             await TryAuditAsync(AuditEventFactory.ExecutionStarted(
@@ -132,6 +138,10 @@ public sealed class ReportExecutionService : IReportExecutionService
                     tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,
                     reason, template.ProductCode));
 
+                execSw.Stop();
+                _metrics.IncrementExecutionCount(tenantId, template.ProductCode, "Failed");
+                _metrics.RecordExecutionDuration(tenantId, template.ProductCode, execSw.ElapsedMilliseconds);
+
                 return ServiceResult<ReportExecutionResponse>.Fail(
                     $"Report execution failed: {reason}");
             }
@@ -158,13 +168,17 @@ public sealed class ReportExecutionService : IReportExecutionService
             execution.CompletedAtUtc = DateTimeOffset.UtcNow;
             await _executionRepo.UpdateAsync(execution, ct);
 
+            execSw.Stop();
+            _metrics.IncrementExecutionCount(tenantId, template.ProductCode, "Success");
+            _metrics.RecordExecutionDuration(tenantId, template.ProductCode, execSw.ElapsedMilliseconds);
+
             await TryAuditAsync(AuditEventFactory.ExecutionCompleted(
                 tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,
                 resultSet.TotalRowCount, template.ProductCode));
 
             _log.LogInformation(
-                "Execution completed: {ExecutionId} tenant={TenantId} template={TemplateCode} rows={RowCount}",
-                execution.Id, tenantId, template.Code, resultSet.TotalRowCount);
+                "Execution completed: {ExecutionId} tenant={TenantId} template={TemplateCode} rows={RowCount} durationMs={DurationMs}",
+                execution.Id, tenantId, template.Code, resultSet.TotalRowCount, execSw.ElapsedMilliseconds);
 
             var response = new ReportExecutionResponse
             {
@@ -203,6 +217,10 @@ public sealed class ReportExecutionService : IReportExecutionService
 
             try { await _executionRepo.UpdateAsync(execution, ct); }
             catch (Exception updateEx) { _log.LogWarning(updateEx, "Failed to update execution status after failure"); }
+
+            execSw.Stop();
+            _metrics.IncrementExecutionCount(tenantId, template.ProductCode, "Failed");
+            _metrics.RecordExecutionDuration(tenantId, template.ProductCode, execSw.ElapsedMilliseconds);
 
             await TryAuditAsync(AuditEventFactory.ExecutionFailed(
                 tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,

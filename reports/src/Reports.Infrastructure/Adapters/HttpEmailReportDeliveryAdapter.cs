@@ -143,13 +143,25 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
 
                 lastException = new HttpRequestException($"Notifications service returned {(int)response.StatusCode}: {body}");
 
-                if ((int)response.StatusCode >= 500 && attempt < maxAttempts)
+                var isServerError = (int)response.StatusCode >= 500;
+                if (isServerError && attempt < maxAttempts)
                 {
                     await Task.Delay(1000 * attempt, ct);
                     continue;
                 }
 
-                break;
+                sw.Stop();
+                return new DeliveryResult
+                {
+                    Success = false,
+                    Method = MethodName,
+                    Message = $"Email delivery failed: HTTP {(int)response.StatusCode} — {body}",
+                    DeliveredAtUtc = DateTimeOffset.UtcNow,
+                    ExternalReferenceId = notificationId,
+                    DurationMs = sw.ElapsedMilliseconds,
+                    IsRetryable = isServerError,
+                    DetailJson = JsonSerializer.Serialize(new { recipients, fileName, statusCode = (int)response.StatusCode, error = body, attempts = attempt }),
+                };
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -175,7 +187,7 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
             DeliveredAtUtc = DateTimeOffset.UtcNow,
             ExternalReferenceId = notificationId,
             DurationMs = sw.ElapsedMilliseconds,
-            IsRetryable = true,
+            IsRetryable = lastException is HttpRequestException or TimeoutException,
             DetailJson = JsonSerializer.Serialize(new { recipients, fileName, error = lastException?.Message, attempts = attempt }),
         };
     }

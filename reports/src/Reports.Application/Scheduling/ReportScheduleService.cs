@@ -9,6 +9,7 @@ using Reports.Application.Scheduling.DTOs;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
 using Reports.Contracts.Delivery;
+using Reports.Contracts.Observability;
 using Reports.Contracts.Persistence;
 using Reports.Domain.Entities;
 
@@ -29,6 +30,7 @@ public sealed class ReportScheduleService : IReportScheduleService
     private readonly IReportExportService _exportService;
     private readonly IEnumerable<IReportDeliveryAdapter> _deliveryAdapters;
     private readonly IAuditAdapter _audit;
+    private readonly IReportsMetrics _metrics;
     private readonly ILogger<ReportScheduleService> _log;
 
     public ReportScheduleService(
@@ -39,6 +41,7 @@ public sealed class ReportScheduleService : IReportScheduleService
         IReportExportService exportService,
         IEnumerable<IReportDeliveryAdapter> deliveryAdapters,
         IAuditAdapter audit,
+        IReportsMetrics metrics,
         ILogger<ReportScheduleService> log)
     {
         _scheduleRepo = scheduleRepo;
@@ -48,6 +51,7 @@ public sealed class ReportScheduleService : IReportScheduleService
         _exportService = exportService;
         _deliveryAdapters = deliveryAdapters;
         _audit = audit;
+        _metrics = metrics;
         _log = log;
     }
 
@@ -346,7 +350,10 @@ public sealed class ReportScheduleService : IReportScheduleService
                 {
                     deliveryResult.Success,
                     deliveryResult.Method,
-                    deliveryResult.Message
+                    deliveryResult.Message,
+                    deliveryResult.ExternalReferenceId,
+                    deliveryResult.DurationMs,
+                    deliveryResult.IsRetryable,
                 });
 
                 if (deliveryResult.Success)
@@ -354,18 +361,28 @@ public sealed class ReportScheduleService : IReportScheduleService
                     run.Status = "Delivered";
                     run.DeliveredAtUtc = deliveryResult.DeliveredAtUtc;
 
+                    _metrics.IncrementDeliveryCount(schedule.DeliveryMethod, "Success");
+                    _metrics.IncrementScheduleRunCount(schedule.TenantId, "Success");
+
                     await TryAuditAsync(AuditEventFactory.ScheduleDeliveryCompleted(
                         schedule.TenantId, actorUserId, run.Id, schedule.Id,
-                        schedule.DeliveryMethod, schedule.ProductCode));
+                        schedule.DeliveryMethod, schedule.ProductCode,
+                        externalReferenceId: deliveryResult.ExternalReferenceId,
+                        durationMs: deliveryResult.DurationMs));
                 }
                 else
                 {
                     run.Status = "DeliveryFailed";
                     run.FailureReason = deliveryResult.Message;
 
+                    _metrics.IncrementDeliveryCount(schedule.DeliveryMethod, "Failed");
+                    _metrics.IncrementScheduleRunCount(schedule.TenantId, "Failed");
+
                     await TryAuditAsync(AuditEventFactory.ScheduleDeliveryFailed(
                         schedule.TenantId, actorUserId, run.Id, schedule.Id,
-                        schedule.DeliveryMethod, deliveryResult.Message ?? "Delivery failed", schedule.ProductCode));
+                        schedule.DeliveryMethod, deliveryResult.Message ?? "Delivery failed", schedule.ProductCode,
+                        externalReferenceId: deliveryResult.ExternalReferenceId,
+                        durationMs: deliveryResult.DurationMs));
                 }
 
                 await _scheduleRepo.UpdateRunAsync(run, ct);

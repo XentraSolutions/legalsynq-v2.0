@@ -10,4 +10,5 @@ public sealed class ExportReportResponse
     public ExportFormat Format { get; init; }
     public string Status { get; init; } = string.Empty;
     public byte[] FileContent { get; init; } = Array.Empty<byte>();
+    public string? StorageKey { get; init; }
 }

@@ -103,13 +103,23 @@ public static class AuditEventFactory
         => Build("report.schedule.run.failed", tenantId, userId, "ReportScheduleRun", runId.ToString(), $"Schedule run failed for '{scheduleName}': {reason}", productCode, ctx,
             outcome: "Failure", metadata: new { scheduleId, scheduleName, reason });
 
-    public static AuditEventDto ScheduleDeliveryCompleted(string tenantId, string userId, Guid runId, Guid scheduleId, string deliveryMethod, string? productCode, RequestContext? ctx = null)
+    public static AuditEventDto ScheduleDeliveryCompleted(string tenantId, string userId, Guid runId, Guid scheduleId, string deliveryMethod, string? productCode, RequestContext? ctx = null,
+        string? externalReferenceId = null, long? durationMs = null, string? storageKey = null)
         => Build("report.schedule.delivery.completed", tenantId, userId, "ReportScheduleRun", runId.ToString(), $"Delivery completed via {deliveryMethod}", productCode, ctx,
-            outcome: "Success", metadata: new { scheduleId, deliveryMethod });
+            outcome: "Success", metadata: new { scheduleId, deliveryMethod, externalReferenceId, durationMs, storageKey });
 
-    public static AuditEventDto ScheduleDeliveryFailed(string tenantId, string userId, Guid runId, Guid scheduleId, string deliveryMethod, string reason, string? productCode, RequestContext? ctx = null)
+    public static AuditEventDto ScheduleDeliveryFailed(string tenantId, string userId, Guid runId, Guid scheduleId, string deliveryMethod, string reason, string? productCode, RequestContext? ctx = null,
+        string? externalReferenceId = null, long? durationMs = null)
         => Build("report.schedule.delivery.failed", tenantId, userId, "ReportScheduleRun", runId.ToString(), $"Delivery failed via {deliveryMethod}: {reason}", productCode, ctx,
-            outcome: "Failure", metadata: new { scheduleId, deliveryMethod, reason });
+            outcome: "Failure", metadata: new { scheduleId, deliveryMethod, reason, externalReferenceId, durationMs });
+
+    public static AuditEventDto FileStored(string tenantId, string userId, Guid exportId, string storageKey, string provider, long sizeBytes, string? productCode, RequestContext? ctx = null)
+        => Build("report.file.stored", tenantId, userId, "ReportExport", exportId.ToString(), $"File stored: key={storageKey} provider={provider}", productCode, ctx,
+            outcome: "Success", metadata: new { storageKey, provider, sizeBytes });
+
+    public static AuditEventDto FileStoreFailed(string tenantId, string userId, Guid exportId, string reason, string? productCode, RequestContext? ctx = null)
+        => Build("report.file.store.failed", tenantId, userId, "ReportExport", exportId.ToString(), $"File store failed: {reason}", productCode, ctx,
+            outcome: "Failure", metadata: new { reason });
 
     private static AuditEventDto Build(
         string eventType,

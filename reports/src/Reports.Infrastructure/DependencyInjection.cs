@@ -97,8 +97,10 @@ public static class DependencyInjection
 
         services.Configure<LiensDataSettings>(configuration.GetSection(LiensDataSettings.SectionName));
 
-        if (liensSettings?.Enabled == true && !string.IsNullOrWhiteSpace(liensConnectionString))
+        if (liensSettings?.Enabled == true)
         {
+            if (string.IsNullOrWhiteSpace(liensConnectionString))
+                throw new InvalidOperationException("LiensData is enabled but ConnectionStrings:LiensDb is not configured.");
             services.AddSingleton<LiensReportDataQueryAdapter>();
             services.AddSingleton<MockReportDataQueryAdapter>();
             services.AddSingleton<IReportDataQueryAdapter>(sp =>
@@ -129,8 +131,11 @@ public static class DependencyInjection
 
         services.AddSingleton<IReportDeliveryAdapter, OnScreenReportDeliveryAdapter>();
 
-        if (emailSettings?.Enabled == true && !string.IsNullOrWhiteSpace(emailSettings.NotificationsBaseUrl))
+        if (emailSettings?.Enabled == true)
         {
+            if (string.IsNullOrWhiteSpace(emailSettings.NotificationsBaseUrl))
+                throw new InvalidOperationException("EmailDelivery is enabled but NotificationsBaseUrl is not configured.");
+
             services.AddHttpClient("EmailDelivery", client =>
             {
                 client.BaseAddress = new Uri(emailSettings.NotificationsBaseUrl);
@@ -144,8 +149,15 @@ public static class DependencyInjection
             services.AddSingleton<IReportDeliveryAdapter, EmailReportDeliveryAdapter>();
         }
 
-        if (sftpSettings?.Enabled == true && !string.IsNullOrWhiteSpace(sftpSettings.Host))
+        if (sftpSettings?.Enabled == true)
         {
+            if (string.IsNullOrWhiteSpace(sftpSettings.Host))
+                throw new InvalidOperationException("SftpDelivery is enabled but Host is not configured.");
+            if (string.IsNullOrWhiteSpace(sftpSettings.Username))
+                throw new InvalidOperationException("SftpDelivery is enabled but Username is not configured.");
+            if (string.IsNullOrEmpty(sftpSettings.Password) && string.IsNullOrEmpty(sftpSettings.PrivateKeyPath))
+                throw new InvalidOperationException("SftpDelivery is enabled but neither Password nor PrivateKeyPath is configured.");
+
             services.AddSingleton<IReportDeliveryAdapter, RealSftpReportDeliveryAdapter>();
         }
         else
@@ -159,8 +171,10 @@ public static class DependencyInjection
         var storageSettings = configuration.GetSection(StorageSettings.SectionName).Get<StorageSettings>();
         services.Configure<StorageSettings>(configuration.GetSection(StorageSettings.SectionName));
 
-        if (storageSettings?.Enabled == true && !string.IsNullOrWhiteSpace(storageSettings.BucketName))
+        if (storageSettings?.Enabled == true)
         {
+            if (string.IsNullOrWhiteSpace(storageSettings.BucketName))
+                throw new InvalidOperationException("Storage is enabled but BucketName is not configured.");
             var s3Config = new AmazonS3Config
             {
                 RegionEndpoint = RegionEndpoint.GetBySystemName(storageSettings.Region),

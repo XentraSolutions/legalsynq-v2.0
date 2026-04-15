@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Reports.Application.Audit;
 using Reports.Application.Execution;
@@ -6,6 +7,8 @@ using Reports.Application.Export.DTOs;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
 using Reports.Contracts.Export;
+using Reports.Contracts.Observability;
+using Reports.Contracts.Storage;
 
 namespace Reports.Application.Export;
 
@@ -16,17 +19,23 @@ public sealed class ReportExportService : IReportExportService
     private readonly IReportExecutionService _executionService;
     private readonly IEnumerable<IReportExporter> _exporters;
     private readonly IAuditAdapter _audit;
+    private readonly IFileStorageAdapter _storage;
+    private readonly IReportsMetrics _metrics;
     private readonly ILogger<ReportExportService> _log;
 
     public ReportExportService(
         IReportExecutionService executionService,
         IEnumerable<IReportExporter> exporters,
         IAuditAdapter audit,
+        IFileStorageAdapter storage,
+        IReportsMetrics metrics,
         ILogger<ReportExportService> log)
     {
         _executionService = executionService;
         _exporters = exporters;
         _audit = audit;
+        _storage = storage;
+        _metrics = metrics;
         _log = log;
     }
 
@@ -106,6 +115,7 @@ public sealed class ReportExportService : IReportExportService
         catch (Exception ex)
         {
             _log.LogError(ex, "Export {ExportId} failed during {Format} generation", exportId, request.Format);
+            _metrics.IncrementExportCount(request.TenantId, request.Format.ToString(), "Failed");
             await TryAuditAsync(AuditEventFactory.ExportFailed(
                 request.TenantId, request.RequestedByUserId, exportId,
                 request.TemplateId, request.Format.ToString(), ex.Message, request.ProductCode));
@@ -118,6 +128,7 @@ public sealed class ReportExportService : IReportExportService
         {
             var msg = $"Export file size ({exportResult.FileSize:N0} bytes) exceeds maximum ({MaxFileSizeBytes:N0} bytes).";
             _log.LogWarning("Export {ExportId}: {Message}", exportId, msg);
+            _metrics.IncrementExportCount(request.TenantId, request.Format.ToString(), "Failed");
             await TryAuditAsync(AuditEventFactory.ExportFailed(
                 request.TenantId, request.RequestedByUserId, exportId,
                 request.TemplateId, request.Format.ToString(), msg, request.ProductCode));
@@ -125,14 +136,48 @@ public sealed class ReportExportService : IReportExportService
             return ServiceResult<ExportReportResponse>.BadRequest(msg);
         }
 
+        string? storageKey = null;
+        if (_storage.IsEnabled)
+        {
+            try
+            {
+                var storageResult = await _storage.UploadAsync(new FileStorageRequest
+                {
+                    TenantId = request.TenantId,
+                    FileName = exportResult.FileName,
+                    Content = exportResult.FileContent,
+                    ContentType = exportResult.ContentType,
+                    SubPath = $"exports/{exportId}",
+                }, ct);
+
+                storageKey = storageResult.StorageKey;
+
+                _log.LogInformation(
+                    "Export {ExportId}: file stored — key={StorageKey} provider={Provider}",
+                    exportId, storageResult.StorageKey, storageResult.Provider);
+
+                await TryAuditAsync(AuditEventFactory.FileStored(
+                    request.TenantId, request.RequestedByUserId, exportId,
+                    storageResult.StorageKey, storageResult.Provider, storageResult.SizeBytes, request.ProductCode));
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Export {ExportId}: file storage failed (non-fatal)", exportId);
+                await TryAuditAsync(AuditEventFactory.FileStoreFailed(
+                    request.TenantId, request.RequestedByUserId, exportId, ex.Message, request.ProductCode));
+            }
+        }
+
+        _metrics.IncrementExportCount(request.TenantId, request.Format.ToString(), "Success");
+
         await TryAuditAsync(AuditEventFactory.ExportCompleted(
             request.TenantId, request.RequestedByUserId, exportId,
             request.TemplateId, request.Format.ToString(),
             execData.RowCount, exportResult.FileSize, request.ProductCode));
 
         _log.LogInformation(
-            "Export completed: {ExportId} format={Format} rows={Rows} size={Size}",
-            exportId, request.Format, execData.RowCount, exportResult.FileSize);
+            "Export completed: {ExportId} format={Format} rows={Rows} size={Size} storageKey={StorageKey}",
+            exportId, request.Format, execData.RowCount, exportResult.FileSize, storageKey);
 
         return ServiceResult<ExportReportResponse>.Ok(new ExportReportResponse
         {
@@ -143,7 +188,8 @@ public sealed class ReportExportService : IReportExportService
             GeneratedAtUtc = exportCtx.GeneratedAtUtc,
             Format = request.Format,
             Status = "Completed",
-            FileContent = exportResult.FileContent
+            FileContent = exportResult.FileContent,
+            StorageKey = storageKey
         });
     }
 
