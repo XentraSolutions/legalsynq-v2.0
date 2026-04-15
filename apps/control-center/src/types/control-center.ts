@@ -981,6 +981,51 @@ export interface SupportedFieldsResponse {
   effects:        string[];
 }
 
+// ── Reports ──────────────────────────────────────────────────────────────────
+
+export interface ReportTemplate {
+  id:               string;
+  code:             string;
+  name:             string;
+  description?:     string;
+  productCode:      string;
+  organizationType: string;
+  isActive:         boolean;
+  currentVersion:   number;
+  createdAtUtc:     string;
+  updatedAtUtc:     string;
+}
+
+export interface ReportTemplateVersion {
+  id:              string;
+  templateId:      string;
+  versionNumber:   number;
+  templateBody?:   string;
+  outputFormat:    string;
+  changeNotes?:    string;
+  isActive:        boolean;
+  isPublished:     boolean;
+  publishedAtUtc?: string;
+  createdAtUtc:    string;
+  createdByUserId: string;
+}
+
+export type ReportsServiceStatus = 'online' | 'degraded' | 'offline';
+
+export interface ReportsReadinessCheck {
+  name:   string;
+  status: 'ok' | 'fail' | 'mock';
+}
+
+export interface ReportsSummary {
+  serviceStatus:    ReportsServiceStatus;
+  serviceLatencyMs?: number;
+  lastCheckedAtUtc: string;
+  readinessChecks:  ReportsReadinessCheck[];
+  templates:        ReportTemplate[];
+  templateCount:    number;
+}
+
 // ── Shared ────────────────────────────────────────────────────────────────────
 
 export interface PagedResponse<T> {

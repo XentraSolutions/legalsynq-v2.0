@@ -6,6 +6,7 @@ const SERVICES: ServiceDef[] = [
   { name: 'Documents',     url: 'http://127.0.0.1:5006/health', category: 'infrastructure' },
   { name: 'Notifications', url: 'http://127.0.0.1:5008/health', category: 'infrastructure' },
   { name: 'Audit',         url: 'http://127.0.0.1:5007/health', category: 'infrastructure' },
+  { name: 'Reports',       url: 'http://127.0.0.1:5029/api/v1/health', category: 'infrastructure' },
   { name: 'SynqFund',      url: 'http://127.0.0.1:5002/health', category: 'product' },
   { name: 'CareConnect',   url: 'http://127.0.0.1:5003/health', category: 'product' },
 ];
