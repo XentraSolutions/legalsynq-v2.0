@@ -224,9 +224,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
 
 function CollapsedStrip({ label, side, onExpand }: { label: string; side: 'left' | 'right'; onExpand: () => void }) {
   return (
-    <div className="w-12 shrink-0 bg-white border border-gray-200 rounded-xl flex flex-col items-center pt-3 gap-2 self-stretch">
+    <div className="w-12 shrink-0 bg-white border border-gray-200 rounded-xl flex flex-col items-center pt-3 gap-3 self-stretch">
       <button onClick={onExpand} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
         <i className={side === 'left' ? 'ri-arrow-right-double-line text-lg' : 'ri-arrow-left-double-line text-lg'} />
+      </button>
+      <button onClick={onExpand} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+        <i className="ri-layout-column-line text-lg" />
       </button>
       <span className="writing-vertical text-xs font-semibold text-primary tracking-wide" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
         {label}
