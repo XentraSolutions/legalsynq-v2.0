@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
@@ -9,20 +9,6 @@ import { ApiError } from '@/lib/api-client';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { NotesPanel } from '@/components/lien/notes-panel';
 import { ConfirmDialog } from '@/components/lien/modal';
-import {
-  SplitPanelLayout,
-  SectionCard,
-  MetadataGrid,
-  MetadataItem,
-} from '@/components/lien/split-panel-layout';
-import {
-  MOCK_ACTIVITY,
-  MOCK_CONTACTS,
-  MOCK_CASE_SUMMARY,
-  formatMockDateTime,
-  type MockActivityItem,
-  type MockContact,
-} from '@/components/lien/case-mock-data';
 
 const STATUS_LABELS: Record<string, string> = { PreDemand: 'Pre-demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Case Settled', Closed: 'Closed' };
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
@@ -131,37 +117,33 @@ export function CaseDetailClient({ id }: { id: string }) {
       <div className="px-6 pt-3 pb-0 text-xs text-gray-400 flex items-center gap-1">
         <Link href="/lien/cases" className="hover:text-gray-600 transition-colors">Cases</Link>
         <i className="ri-arrow-right-s-line text-sm" />
-        <span className="text-gray-500">{d.caseNumber}</span>
+        <span className="text-gray-500">Liens Management</span>
       </div>
 
-      {/* Page Header */}
+      {/* Page Header — Full-width horizontal metadata grid */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 mt-2">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-lg font-semibold text-gray-900 truncate">{d.clientName || 'Test Case – Auto Claim'}</h1>
-                <StatusBadge status={d.status} />
-              </div>
-              <p className="text-xs text-gray-400 mt-0.5">{d.caseNumber} · {d.title || 'Lien Case'}</p>
-            </div>
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0 shrink-0">
+            {/* TEMP: UI mock data for visual review only */}
+            <h1 className="text-lg font-semibold text-gray-900">{d.clientName || 'Maj Test'}</h1>
+            <p className="text-xs text-gray-400 mt-0.5">{d.caseNumber}</p>
           </div>
-          <div className="flex items-center gap-6 shrink-0">
-            <div className="hidden lg:flex items-center gap-6 text-sm">
-              <div className="text-right">
-                <p className="text-[11px] text-gray-400 uppercase tracking-wide">Date of Loss</p>
-                <p className="text-sm text-gray-700 font-medium">{d.dateOfIncident || '---'}</p>
-              </div>
-              <div className="w-px h-8 bg-gray-200" />
-              <div className="text-right">
-                <p className="text-[11px] text-gray-400 uppercase tracking-wide">Carrier</p>
-                <p className="text-sm text-gray-700 font-medium">{d.insuranceCarrier || 'Allstate Insurance'}</p>
-              </div>
-            </div>
+          <div className="flex items-center gap-5 flex-wrap text-sm">
+            <HeaderMeta label="Case Type" value={d.title || 'Lien Case'} />
+            <HeaderMeta label="Case Status">
+              <StatusBadge status={d.status} />
+            </HeaderMeta>
+            <HeaderMeta label="Date of Loss" value={d.dateOfIncident || '---'} />
+            <HeaderMeta label="Date of Birth" value={d.clientDob || '---'} />
+            {/* TEMP: UI mock data for visual review only */}
+            <HeaderMeta label="State of Incident" value="FL" />
+            <HeaderMeta label="Law Firm" value={d.insuranceCarrier || 'Smith & Associates'} />
+            {/* TEMP: UI mock data for visual review only */}
+            <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
             {canEdit && (
               <button onClick={advanceStatus} disabled={d.status === 'Closed'}
-                className="text-sm font-medium px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors">
-                Advance Status
+                className="text-sm font-medium px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors whitespace-nowrap">
+                Actions
               </button>
             )}
           </div>
@@ -192,14 +174,7 @@ export function CaseDetailClient({ id }: { id: string }) {
 
       {/* Tab Content */}
       <div className="flex-1 min-h-0 overflow-auto bg-gray-50 p-6">
-        {activeTab === 'details' && (
-          <SplitPanelLayout
-            left={<LeftPanel d={d} liens={relatedLiens} />}
-            right={<RightPanel d={d} liens={relatedLiens} />}
-            leftLabel="Details"
-            rightLabel="Summary"
-          />
-        )}
+        {activeTab === 'details' && <DetailsTab d={d} liens={relatedLiens} />}
         {activeTab === 'liens' && <LiensTab liens={relatedLiens} />}
         {activeTab === 'documents' && <EmptyTab icon="ri-file-copy-2-line" label="Documents" />}
         {activeTab === 'servicing' && <EmptyTab icon="ri-tools-line" label="Servicing" />}
@@ -217,167 +192,137 @@ export function CaseDetailClient({ id }: { id: string }) {
   );
 }
 
-/* ── Left Panel: Primary record details ── */
-function LeftPanel({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
+/* ── Header Metadata Item ── */
+function HeaderMeta({ label, value, children }: { label: string; value?: string; children?: ReactNode }) {
   return (
-    <div className="p-5 space-y-5">
-      {/* Case Details */}
-      <SectionCard title="Case Details" icon="ri-folder-open-line" iconBg="bg-indigo-50" iconColor="text-indigo-600">
-        <MetadataGrid>
-          <MetadataItem label="External Reference" value={d.externalReference} />
-          <MetadataItem label="Insurance Carrier" value={d.insuranceCarrier || 'Allstate Insurance'} />
-          <MetadataItem label="Policy Number" value={d.policyNumber} />
-          <MetadataItem label="Claim Number" value={d.claimNumber} />
-          <MetadataItem label="Demand Amount" value={formatCurrency(d.demandAmount)} />
-          <MetadataItem label="Settlement Amount" value={formatCurrency(d.settlementAmount)} />
-        </MetadataGrid>
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Description</dt>
-          {/* TEMP: UI mock data for visual review only */}
-          <dd className="text-sm text-gray-600 mt-0.5">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
-        </div>
-      </SectionCard>
+    <div className="text-center min-w-0">
+      <p className="text-[11px] text-gray-400 uppercase tracking-wide">{label}</p>
+      {children ? (
+        <div className="mt-0.5">{children}</div>
+      ) : (
+        <p className="text-sm text-gray-700 font-medium mt-0.5 truncate">{value || '---'}</p>
+      )}
+    </div>
+  );
+}
 
-      {/* Related Liens */}
-      <SectionCard title="Related Liens" icon="ri-stack-line" iconBg="bg-purple-50" iconColor="text-purple-600"
-        actions={
-          <span className="text-xs text-gray-400 tabular-nums">{liens.length} lien{liens.length !== 1 ? 's' : ''}</span>
-        }
-      >
-        {liens.length === 0 ? (
-          <p className="text-sm text-gray-400 py-2">No liens linked to this case.</p>
-        ) : (
-          <div className="-mx-4 -mb-3">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-t border-gray-100">
-                  <th className="px-4 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Lien #</th>
-                  <th className="px-4 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Type</th>
-                  <th className="px-4 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide">Amount</th>
-                  <th className="px-4 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {liens.map((l) => (
-                  <tr key={l.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-2">
-                      <Link href={`/lien/liens/${l.id}`} className="text-xs font-mono text-primary hover:underline">{l.lienNumber}</Link>
-                    </td>
-                    <td className="px-4 py-2 text-xs text-gray-600">{l.lienType}</td>
-                    <td className="px-4 py-2 text-xs text-gray-700 font-medium tabular-nums text-right">{formatCurrency(l.originalAmount)}</td>
-                    <td className="px-4 py-2"><StatusBadge status={l.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+/* ── Collapsible Section Card ── */
+function CollapsibleSection({
+  title,
+  icon,
+  defaultExpanded = true,
+  onEdit,
+  children,
+}: {
+  title: string;
+  icon: string;
+  defaultExpanded?: boolean;
+  onEdit?: () => void;
+  children: ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 cursor-pointer select-none" onClick={() => setExpanded(!expanded)}>
+        <div className="flex items-center gap-2">
+          <i className={`ri-arrow-${expanded ? 'down' : 'right'}-s-line text-gray-400 text-base`} />
+          <i className={`${icon} text-sm text-gray-500`} />
+          <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+        </div>
+        <div className="flex items-center gap-1">
+          {onEdit && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <i className="ri-pencil-line text-sm" />
+            </button>
+          )}
+        </div>
+      </div>
+      {expanded && (
+        <div className="px-4 py-4">{children}</div>
+      )}
+    </div>
+  );
+}
+
+/* ── Field Grid (2 columns) ── */
+function FieldGrid({ children }: { children: ReactNode }) {
+  return <dl className="grid grid-cols-2 gap-x-8 gap-y-4">{children}</dl>;
+}
+
+function FieldItem({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div>
+      <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{label}</dt>
+      <dd className="text-sm text-gray-700 mt-0.5">{value || '---'}</dd>
+    </div>
+  );
+}
+
+/* ── Details Tab — Two-column static layout ── */
+function DetailsTab({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-6">
+      {/* LEFT COLUMN — Primary */}
+      <div className="space-y-5">
+        {/* Plaintiff Section */}
+        <CollapsibleSection title="Plaintiff" icon="ri-user-line" onEdit={() => {}}>
+          <div className="mb-2">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Plaintiff Info</p>
           </div>
-        )}
-      </SectionCard>
+          <FieldGrid>
+            {/* TEMP: UI mock data for visual review only */}
+            <FieldItem label="Full Name" value={d.clientName || 'Maj Test'} />
+            <FieldItem label="Phone Number" value={d.clientPhone} />
+            <FieldItem label="Email" value={d.clientEmail} />
+            <FieldItem label="Birthdate" value={d.clientDob} />
+            {/* TEMP: UI mock data for visual review only */}
+            <FieldItem label="Sex" value="Male" />
+            <FieldItem label="Address" value={d.clientAddress} />
+          </FieldGrid>
+        </CollapsibleSection>
 
-      {/* Recent Activity */}
-      {/* TEMP: UI mock data for visual review only */}
-      <SectionCard title="Recent Activity" icon="ri-time-line" iconBg="bg-green-50" iconColor="text-green-600">
-        <div className="space-y-3">
-          {MOCK_ACTIVITY.slice(0, 5).map((item) => (
-            <ActivityRow key={item.id} item={item} />
-          ))}
-        </div>
-      </SectionCard>
-    </div>
-  );
-}
-
-/* ── Right Panel: Contextual summary ── */
-function RightPanel({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
-  const totalLienAmount = liens.reduce((sum, l) => sum + (l.originalAmount || 0), 0);
-  const summaryLiens = liens.length > 0 ? liens.length : MOCK_CASE_SUMMARY.totalLiens;
-  const summaryAmount = liens.length > 0 ? totalLienAmount : MOCK_CASE_SUMMARY.totalLienAmount;
-
-  return (
-    <div className="p-5 space-y-5">
-      {/* Case Summary */}
-      <SectionCard title="Case Summary" icon="ri-bar-chart-box-line" iconBg="bg-amber-50" iconColor="text-amber-600">
-        <div className="grid grid-cols-2 gap-3">
-          <SummaryStatCard label="Total Liens" value={String(summaryLiens)} icon="ri-stack-line" />
-          <SummaryStatCard label="Lien Amount" value={formatCurrency(summaryAmount)} icon="ri-money-dollar-circle-line" />
-          {/* TEMP: UI mock data for visual review only */}
-          <SummaryStatCard label="Documents" value={String(MOCK_CASE_SUMMARY.documentsCount)} icon="ri-file-copy-2-line" />
-          <SummaryStatCard label="Open Tasks" value={String(MOCK_CASE_SUMMARY.openTasksCount)} icon="ri-task-line" />
-        </div>
-      </SectionCard>
-
-      {/* Key Dates */}
-      <SectionCard title="Key Dates" icon="ri-calendar-line" iconBg="bg-sky-50" iconColor="text-sky-600">
-        <div className="space-y-2">
-          <DateRow label="Date of Loss" value={d.dateOfIncident} />
-          <DateRow label="Date of Birth" value={d.clientDob} />
-          <DateRow label="Case Opened" value={d.openedAt} />
-          <DateRow label="Case Closed" value={d.closedAt} />
-          <DateRow label="Last Updated" value={d.updatedAt} />
-        </div>
-      </SectionCard>
-
-      {/* Contacts */}
-      {/* TEMP: UI mock data for visual review only */}
-      <SectionCard title="Contacts" icon="ri-contacts-book-line" iconBg="bg-teal-50" iconColor="text-teal-600">
-        <div className="space-y-3">
-          {MOCK_CONTACTS.map((c) => (
-            <ContactRow key={c.id} contact={c} />
-          ))}
-        </div>
-      </SectionCard>
-    </div>
-  );
-}
-
-/* ── Subcomponents ── */
-
-function SummaryStatCard({ label, value, icon }: { label: string; value: string; icon: string }) {
-  return (
-    <div className="bg-gray-50 rounded-lg px-3 py-2.5">
-      <div className="flex items-center gap-1.5 mb-1">
-        <i className={`${icon} text-xs text-gray-400`} />
-        <span className="text-[11px] text-gray-400 uppercase tracking-wide">{label}</span>
+        {/* Case Tracking Section */}
+        <CollapsibleSection title="Case Tracking" icon="ri-compass-3-line" onEdit={() => {}}>
+          <div className="mb-2">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Case Details</p>
+          </div>
+          <FieldGrid>
+            {/* TEMP: UI mock data for visual review only */}
+            <FieldItem label="Tracking Follow Up" value="04/20/2026" />
+            <div>
+              <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Current Status</dt>
+              <dd className="mt-1"><StatusBadge status={d.status} /></dd>
+            </div>
+            {/* TEMP: UI mock data for visual review only */}
+            <FieldItem label="Current Medical Status" value="Active Treatment" />
+            <FieldItem label="Case Type" value={d.title || 'Lien Case'} />
+            {/* TEMP: UI mock data for visual review only */}
+            <FieldItem label="State of Incident" value="FL" />
+            {/* TEMP: UI mock data for visual review only */}
+            <FieldItem label="Lead" value="Sarah Mitchell" />
+          </FieldGrid>
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Case Tracking Note</dt>
+            {/* TEMP: UI mock data for visual review only */}
+            <dd className="text-sm text-gray-600 mt-1">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
+          </div>
+        </CollapsibleSection>
       </div>
-      <p className="text-sm font-semibold text-gray-800 tabular-nums">{value}</p>
-    </div>
-  );
-}
 
-function DateRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between py-1">
-      <span className="text-xs text-gray-400">{label}</span>
-      <span className="text-xs text-gray-700 font-medium tabular-nums">{value || '---'}</span>
-    </div>
-  );
-}
-
-function ActivityRow({ item }: { item: MockActivityItem }) {
-  return (
-    <div className="flex items-start gap-2.5">
-      <div className="w-6 h-6 rounded-md bg-gray-50 flex items-center justify-center shrink-0 mt-0.5">
-        <i className={`${item.icon} text-xs text-gray-500`} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm text-gray-700 leading-snug">{item.description}</p>
-        <p className="text-[11px] text-gray-400 mt-0.5">{item.user} · {formatMockDateTime(item.timestamp)}</p>
-      </div>
-    </div>
-  );
-}
-
-function ContactRow({ contact }: { contact: MockContact }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-        <span className="text-[11px] font-semibold text-gray-500">
-          {contact.name.split(' ').map(n => n[0]).join('')}
-        </span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm text-gray-700 font-medium truncate">{contact.name}</p>
-        <p className="text-[11px] text-gray-400">{contact.role}</p>
+      {/* RIGHT COLUMN — Secondary */}
+      <div className="space-y-5">
+        {/* Email Section */}
+        <CollapsibleSection title="Email" icon="ri-mail-line">
+          <div className="flex justify-center py-4">
+            <button className="w-full px-6 py-3 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+              Compose New Email
+            </button>
+          </div>
+        </CollapsibleSection>
       </div>
     </div>
   );
