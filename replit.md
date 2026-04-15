@@ -954,7 +954,7 @@ Authorization uses a two-level check: PlatformAdmin/TenantAdmin always bypass ca
 - **Full API parity**: 13/13 TypeScript endpoints implemented
 - **Three-layer tenant isolation**: L1 pre-query guard + L2 LINQ WHERE predicate + L3 ABAC in DocumentService
 - **RBAC**: 5 roles (DocReader/DocUploader/DocManager/TenantAdmin/PlatformAdmin)
-- **Storage**: `local` (dev) or `s3` (prod), selected via `Storage:Provider` config. Database provider also available as fallback.
+- **Storage**: `s3` (both dev and prod), selected via `Storage:Provider` config. Dev and prod share the same RDS database, so both must use S3 to avoid storage-provider mismatch (local storage can't serve files uploaded via S3). Database provider also available as fallback.
 - **File scanning**: `none` / `mock` / `clamav` (TCP to clamd) — `Scanner:Provider` config; fully async background worker model
 - **Async scanning**: Uploads immediately return `scanStatus: "PENDING"`; `DocumentScanWorker` (BackgroundService) scans asynchronously via `IScanJobQueue` (lease/ack pattern)
 - **Durable scan queue**: `ScanWorker:QueueProvider=memory` (dev) or `redis` (prod via Redis Streams XADD/XREADGROUP/XAUTOCLAIM); configurable via `ScanWorker:*`
@@ -983,7 +983,7 @@ At startup, `Program.cs` handles schema automatically:
   - `ALTER TABLE document_audits ALTER COLUMN actor_id DROP NOT NULL;` (scan worker audits have no actor)
 - **No EF Core migrations**: The migration snapshot is a placeholder; schema is managed via `EnsureCreated` + startup patches
 - **Dev vs Prod Postgres**: Dev uses `helium:5432` (Replit built-in); Prod uses `DATABASE_URL` (Replit deployment Postgres). Document IDs are NOT portable between environments.
-- **Storage**: Dev uses `/tmp/docs-local` (local filesystem); Prod uses S3 (`Storage:Provider=s3`) with credentials from env vars (`AWS_S3_BUCKET_NAME`, `AWS_S3_REGION`, `AWS_S3_ACCESS_KEY_ID`, `AWS_S3_SECRET_ACCESS_KEY`). Database provider (`docs_file_blobs` table) available as fallback. Local filesystem option also retained (`/home/runner/data/docs-local`).
+- **Storage**: Both dev and prod use S3 (`Storage:Provider=s3`) with credentials from env vars (`AWS_S3_BUCKET_NAME`, `AWS_S3_REGION`, `AWS_S3_ACCESS_KEY_ID`, `AWS_S3_SECRET_ACCESS_KEY`). Dev and prod share the same RDS instance, so storage providers must match to avoid 404s on files uploaded from the other environment. Database provider (`docs_file_blobs` table) available as fallback. Local filesystem option retained for offline dev (`/home/runner/data/docs-local`).
 
 Reference schema: `apps/services/documents/Documents.Infrastructure/Database/schema.sql`
 

@@ -1,3 +1,4 @@
+using Amazon.S3;
 using Documents.Domain.Interfaces;
 using Documents.Infrastructure.Database;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +35,10 @@ public static class PublicLogoEndpoints
                 return Results.Stream(stream, doc.MimeType ?? "image/png");
             }
             catch (FileNotFoundException)
+            {
+                return Results.NotFound();
+            }
+            catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 return Results.NotFound();
             }
