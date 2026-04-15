@@ -141,7 +141,7 @@ export default function CasesPage() {
   const allIds = cases.map((c) => c.id);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <PageHeader title="Cases" subtitle={loading ? 'Loading...' : `${pagination.totalCount} cases`}
         actions={ra.can('case:create') ? (
           <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
@@ -149,6 +149,7 @@ export default function CasesPage() {
           </button>
         ) : undefined}
       />
+
       <FilterToolbar searchPlaceholder="Search by case number or client name..." onSearch={setSearch} filters={[{
         label: 'All Statuses', value: statusFilter, onChange: setStatusFilter,
         options: STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] || s })),
@@ -157,8 +158,8 @@ export default function CasesPage() {
       <BulkResultBanner result={bulkResult} onDismiss={() => setBulkResult(null)} entityLabel="cases" />
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
-          <i className="ri-error-warning-line text-red-500" />
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-center gap-2">
+          <i className="ri-error-warning-line text-red-500 text-sm" />
           <p className="text-sm text-red-700">{error}</p>
           <button onClick={fetchCases} className="ml-auto text-sm text-red-600 hover:underline font-medium">Retry</button>
         </div>
@@ -166,49 +167,57 @@ export default function CasesPage() {
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {loading ? (
-          <div className="p-10 text-center">
-            <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div className="py-12 text-center">
+            <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             <p className="text-sm text-gray-400 mt-2">Loading cases...</p>
           </div>
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100">
-                <thead><tr className="bg-gray-50">
-                  {canEdit && (
-                    <th className="px-4 py-3 w-10">
-                      <input type="checkbox" checked={selection.isAllSelected(allIds)} onChange={() => selection.toggleAll(allIds)}
-                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
-                    </th>
-                  )}
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Case ID</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Plaintiff Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Law Firm</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Case Manager</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Accident Type</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date of Loss</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date of Birth</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="px-4 py-3" />
-                </tr></thead>
-                <tbody className="divide-y divide-gray-100">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50/80 border-b border-gray-100">
+                    {canEdit && (
+                      <th className="px-3 py-2.5 w-10">
+                        <input type="checkbox" checked={selection.isAllSelected(allIds)} onChange={() => selection.toggleAll(allIds)}
+                          className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary/20" />
+                      </th>
+                    )}
+                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Case ID</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Plaintiff Name</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Law Firm</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Case Manager</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Accident Type</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Date of Loss</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">DOB</th>
+                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="px-3 py-2.5 w-10" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
                   {cases.map((c) => (
-                    <tr key={c.id} className={`hover:bg-gray-50 transition-colors cursor-pointer ${selection.isSelected(c.id) ? 'bg-primary/5' : ''}`} onClick={() => setPreviewId(c.id)}>
+                    <tr
+                      key={c.id}
+                      className={`hover:bg-gray-50/80 transition-colors cursor-pointer ${selection.isSelected(c.id) ? 'bg-primary/5' : ''}`}
+                      onClick={() => setPreviewId(c.id)}
+                    >
                       {canEdit && (
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={selection.isSelected(c.id)} onChange={() => selection.toggle(c.id)}
-                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/20" />
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary/20" />
                         </td>
                       )}
-                      <td className="px-4 py-3"><Link href={`/lien/cases/${c.id}`} onClick={(e) => e.stopPropagation()} className="text-xs font-mono text-primary hover:underline">{c.caseNumber}</Link></td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{c.clientName}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{c.lawFirm || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{c.caseManager || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{c.accidentType || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500">{c.dateOfIncident || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500">{c.clientDob || '-'}</td>
-                      <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-3 py-2.5">
+                        <Link href={`/lien/cases/${c.id}`} onClick={(e) => e.stopPropagation()} className="text-xs font-mono text-primary hover:underline">{c.caseNumber}</Link>
+                      </td>
+                      <td className="px-3 py-2.5 text-sm text-gray-700 font-medium">{c.clientName}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-600">{c.lawFirm || '—'}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-600">{c.caseManager || '—'}</td>
+                      <td className="px-3 py-2.5 text-sm text-gray-600">{c.accidentType || '—'}</td>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">{c.dateOfIncident || '—'}</td>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">{c.clientDob || '—'}</td>
+                      <td className="px-3 py-2.5"><StatusBadge status={c.status} /></td>
+                      <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                         <ActionMenu items={[
                           { label: 'View Details', icon: 'ri-eye-line', onClick: () => {} },
                           ...(canEdit ? [
@@ -221,24 +230,31 @@ export default function CasesPage() {
                 </tbody>
               </table>
             </div>
-            {cases.length === 0 && !loading && <div className="p-10 text-center text-sm text-gray-400">No cases match your filters.</div>}
+            {cases.length === 0 && !loading && (
+              <div className="py-12 text-center">
+                <i className="ri-folder-open-line text-2xl text-gray-300" />
+                <p className="text-sm text-gray-400 mt-2">No cases match your filters.</p>
+              </div>
+            )}
           </>
         )}
       </div>
 
       {pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between px-1">
-          <p className="text-sm text-gray-500">Page {pagination.page} of {pagination.totalPages}</p>
-          <div className="flex gap-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500">
+            Page {pagination.page} of {pagination.totalPages} · {pagination.totalCount} total
+          </p>
+          <div className="flex gap-1.5">
             <button
               onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
               disabled={pagination.page <= 1}
-              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
+              className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
             >Previous</button>
             <button
               onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
               disabled={pagination.page >= pagination.totalPages}
-              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
+              className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
             >Next</button>
           </div>
         </div>
@@ -268,11 +284,11 @@ export default function CasesPage() {
           <div className="space-y-4">
             <StatusBadge status={previewCase.status} size="md" />
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><p className="text-xs text-gray-400">Law Firm</p><p className="text-gray-700">{previewCase.lawFirm || '-'}</p></div>
-              <div><p className="text-xs text-gray-400">Case Manager</p><p className="text-gray-700">{previewCase.caseManager || '-'}</p></div>
-              <div><p className="text-xs text-gray-400">Accident Type</p><p className="text-gray-700">{previewCase.accidentType || '-'}</p></div>
-              <div><p className="text-xs text-gray-400">Date of Loss</p><p className="text-gray-700">{previewCase.dateOfIncident || '-'}</p></div>
-              <div><p className="text-xs text-gray-400">Date of Birth</p><p className="text-gray-700">{previewCase.clientDob || '-'}</p></div>
+              <div><p className="text-xs text-gray-400">Law Firm</p><p className="text-gray-700">{previewCase.lawFirm || '—'}</p></div>
+              <div><p className="text-xs text-gray-400">Case Manager</p><p className="text-gray-700">{previewCase.caseManager || '—'}</p></div>
+              <div><p className="text-xs text-gray-400">Accident Type</p><p className="text-gray-700">{previewCase.accidentType || '—'}</p></div>
+              <div><p className="text-xs text-gray-400">Date of Loss</p><p className="text-gray-700">{previewCase.dateOfIncident || '—'}</p></div>
+              <div><p className="text-xs text-gray-400">Date of Birth</p><p className="text-gray-700">{previewCase.clientDob || '—'}</p></div>
             </div>
             <Link href={`/lien/cases/${previewCase.id}`} className="block text-center text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">View Full Details</Link>
           </div>
