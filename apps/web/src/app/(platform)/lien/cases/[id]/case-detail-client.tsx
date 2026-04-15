@@ -188,7 +188,7 @@ export function CaseDetailClient({ id }: { id: string }) {
         {activeTab === 'documents' && <DocumentsTab caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
         {activeTab === 'servicing' && <ServicingTab caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
         {activeTab === 'notes' && <NotesPanel notes={caseNotes} onAddNote={() => {}} readOnly />}
-        {activeTab === 'taskmanager' && <EmptyTab icon="ri-task-line" label="Task Manager" />}
+        {activeTab === 'taskmanager' && <TaskManagerTab caseDetail={d} />}
       </div>
 
       {confirmStatus && (
@@ -1374,6 +1374,308 @@ function ServicingTab({ caseDetail, panelMode, onPanelModeChange }: { caseDetail
   );
 
   return <LayoutSplit left={leftContent} right={rightContent} mode={panelMode} onModeChange={onPanelModeChange} />;
+}
+
+/* TEMP: visual fallback data for UI review only */
+type TaskPriority = 'High' | 'Medium' | 'Low';
+type TaskStatus = 'Upcoming' | 'InProgress' | 'InReview' | 'Completed';
+
+interface TaskItem {
+  id: string;
+  name: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignee: string;
+  dueDate: string;
+  updatedAt: string;
+  description: string;
+}
+
+const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  Upcoming: 'Upcoming',
+  InProgress: 'In Progress',
+  InReview: 'In Review',
+  Completed: 'Completed',
+};
+
+const TASK_STATUS_COLORS: Record<TaskStatus, { bg: string; text: string; border: string }> = {
+  Upcoming: { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200' },
+  InProgress: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  InReview: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  Completed: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+};
+
+const TASK_PRIORITY_COLORS: Record<TaskPriority, string> = {
+  High: 'text-red-600 bg-red-50 border-red-200',
+  Medium: 'text-amber-600 bg-amber-50 border-amber-200',
+  Low: 'text-gray-500 bg-gray-50 border-gray-200',
+};
+
+const TASK_COLUMNS: TaskStatus[] = ['Upcoming', 'InProgress', 'InReview', 'Completed'];
+
+/* TEMP: visual fallback data for UI review only */
+const TEMP_TASKS: TaskItem[] = [
+  { id: 't-1', name: 'Request updated medical records', status: 'Upcoming', priority: 'High', assignee: 'Sarah Mitchell', dueDate: '04/20/2026', updatedAt: '04/14/2026', description: 'Contact Tampa General for latest treatment records' },
+  { id: 't-2', name: 'Follow up with insurance adjuster', status: 'Upcoming', priority: 'Medium', assignee: 'Sarah Mitchell', dueDate: '04/22/2026', updatedAt: '04/14/2026', description: 'State Farm claim review pending callback' },
+  { id: 't-3', name: 'Review lien purchase agreement', status: 'InProgress', priority: 'High', assignee: 'James Rivera', dueDate: '04/18/2026', updatedAt: '04/13/2026', description: 'Review terms for Bay Area PT lien acquisition' },
+  { id: 't-4', name: 'Prepare demand letter draft', status: 'InProgress', priority: 'Medium', assignee: 'Robert Chen', dueDate: '04/25/2026', updatedAt: '04/12/2026', description: 'Draft demand based on current medical totals' },
+  { id: 't-5', name: 'Verify billing statements', status: 'InReview', priority: 'Low', assignee: 'Sarah Mitchell', dueDate: '04/16/2026', updatedAt: '04/11/2026', description: 'Cross-check Clearwater Radiology billing against records' },
+  { id: 't-6', name: 'Send lien notification letter', status: 'Completed', priority: 'Medium', assignee: 'James Rivera', dueDate: '04/10/2026', updatedAt: '04/10/2026', description: 'Notification sent to all parties for LN-2026-0041' },
+  { id: 't-7', name: 'Collect signed authorization forms', status: 'Completed', priority: 'High', assignee: 'Sarah Mitchell', dueDate: '04/08/2026', updatedAt: '04/08/2026', description: 'HIPAA authorization collected from plaintiff' },
+];
+
+type TaskViewMode = 'kanban' | 'list';
+
+function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
+  const [viewMode, setViewMode] = useState<TaskViewMode>('kanban');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newTaskName, setNewTaskName] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>('Medium');
+  const [newTaskAssignee, setNewTaskAssignee] = useState('');
+  const [newTaskDueDate, setNewTaskDueDate] = useState('');
+
+  const tasks = TEMP_TASKS;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <i className="ri-task-line text-sm text-gray-500" />
+            <h3 className="text-sm font-semibold text-gray-800">Task Manager</h3>
+            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
+              {tasks.length}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+              <button
+                onClick={() => setViewMode('kanban')}
+                className={[
+                  'px-3 py-1.5 text-xs font-medium rounded-md transition-colors inline-flex items-center gap-1',
+                  viewMode === 'kanban' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                ].join(' ')}
+              >
+                <i className="ri-layout-column-line text-sm" />
+                Kanban
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={[
+                  'px-3 py-1.5 text-xs font-medium rounded-md transition-colors inline-flex items-center gap-1',
+                  viewMode === 'list' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                ].join(' ')}
+              >
+                <i className="ri-list-unordered text-sm" />
+                List
+              </button>
+            </div>
+            <button
+              onClick={() => setShowAddModal(!showAddModal)}
+              className="px-3.5 py-1.5 text-xs font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5"
+            >
+              <i className="ri-add-line text-sm" />
+              Add Task
+            </button>
+          </div>
+        </div>
+
+        <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
+          <p className="text-xs text-amber-700"><i className="ri-information-line mr-1" />Sample data shown for UI review. Real tasks will load from the API.</p>
+        </div>
+
+        {showAddModal && (
+          <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
+            <div className="grid grid-cols-4 gap-3">
+              <div className="col-span-2">
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Task Name</label>
+                <input
+                  type="text"
+                  value={newTaskName}
+                  onChange={(e) => setNewTaskName(e.target.value)}
+                  placeholder="Enter task name..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Priority</label>
+                <div className="relative">
+                  <select
+                    value={newTaskPriority}
+                    onChange={(e) => setNewTaskPriority(e.target.value as TaskPriority)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
+                  >
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                  <i className="ri-arrow-down-s-line absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Due Date</label>
+                <input
+                  type="date"
+                  value={newTaskDueDate}
+                  onChange={(e) => setNewTaskDueDate(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-3 mt-3">
+              <div className="col-span-2">
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Assignee</label>
+                <input
+                  type="text"
+                  value={newTaskAssignee}
+                  onChange={(e) => setNewTaskAssignee(e.target.value)}
+                  placeholder="Assignee name..."
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
+              <div className="col-span-2 flex items-end gap-2">
+                <button
+                  disabled
+                  className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg transition-colors inline-flex items-center gap-1.5 opacity-50 cursor-not-allowed"
+                  title="Not yet connected to API"
+                >
+                  <i className="ri-add-line text-sm" />
+                  Create Task
+                </button>
+                <button
+                  onClick={() => { setShowAddModal(false); setNewTaskName(''); setNewTaskAssignee(''); setNewTaskDueDate(''); }}
+                  className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <span className="text-xs text-gray-400 italic ml-1">Not yet connected to API</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {viewMode === 'kanban' && (
+          <div className="p-4">
+            <div className="grid grid-cols-4 gap-3">
+              {TASK_COLUMNS.map((col) => {
+                const colTasks = tasks.filter((t) => t.status === col);
+                const colors = TASK_STATUS_COLORS[col];
+                return (
+                  <div key={col} className={`rounded-lg border ${colors.border} ${colors.bg} min-h-[200px]`}>
+                    <div className="px-3 py-2.5 border-b border-inherit flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs font-semibold uppercase tracking-wide ${colors.text}`}>{TASK_STATUS_LABELS[col]}</span>
+                        <span className={`inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 text-[10px] font-semibold rounded-full ${colors.text} ${colors.bg} border ${colors.border}`}>
+                          {colTasks.length}
+                        </span>
+                      </div>
+                      <button className={`w-6 h-6 rounded flex items-center justify-center ${colors.text} hover:opacity-70 transition-opacity`} title="Add task">
+                        <i className="ri-add-line text-sm" />
+                      </button>
+                    </div>
+                    <div className="p-2 space-y-2">
+                      {colTasks.length === 0 ? (
+                        <div className="text-center py-6">
+                          <p className="text-xs text-gray-400">No tasks</p>
+                        </div>
+                      ) : (
+                        colTasks.map((task) => (
+                          <div key={task.id} className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm hover:shadow transition-shadow cursor-pointer">
+                            <p className="text-sm font-medium text-gray-800 leading-snug">{task.name}</p>
+                            <p className="text-xs text-gray-400 mt-1 line-clamp-2">{task.description}</p>
+                            <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-gray-100">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${TASK_PRIORITY_COLORS[task.priority]}`}>
+                                  {task.priority}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1 text-gray-400">
+                                <i className="ri-calendar-line text-xs" />
+                                <span className="text-[10px]">{task.dueDate}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-2">
+                              <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                <i className="ri-user-line text-[10px] text-primary" />
+                              </div>
+                              <span className="text-[11px] text-gray-500 truncate">{task.assignee}</span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {viewMode === 'list' && (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  <th className="px-5 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Task Name</th>
+                  <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Status</th>
+                  <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Priority</th>
+                  <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Assignee</th>
+                  <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Due Date</th>
+                  <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Updated At</th>
+                  <th className="px-5 py-2.5 text-center text-[11px] font-medium text-gray-400 uppercase tracking-wide w-[80px]">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {tasks.map((task) => (
+                  <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-5 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">{task.name}</p>
+                        <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[300px]">{task.description}</p>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded border ${TASK_STATUS_COLORS[task.status].text} ${TASK_STATUS_COLORS[task.status].bg} ${TASK_STATUS_COLORS[task.status].border}`}>
+                        {TASK_STATUS_LABELS[task.status]}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded border ${TASK_PRIORITY_COLORS[task.priority]}`}>
+                        {task.priority}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <i className="ri-user-line text-[10px] text-primary" />
+                        </div>
+                        <span className="text-sm text-gray-600 whitespace-nowrap">{task.assignee}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{task.dueDate}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{task.updatedAt}</td>
+                    <td className="px-5 py-2.5 text-center">
+                      <div className="inline-flex items-center gap-1">
+                        <button className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors" title="View">
+                          <i className="ri-eye-line text-sm" />
+                        </button>
+                        <button className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="Edit">
+                          <i className="ri-pencil-line text-sm" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+              <p className="text-xs text-gray-400">{tasks.length} task{tasks.length !== 1 ? 's' : ''}</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function EmptyTab({ icon, label, message }: { icon: string; label: string; message?: string }) {
