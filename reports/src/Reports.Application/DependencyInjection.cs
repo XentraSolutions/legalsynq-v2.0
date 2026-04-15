@@ -4,6 +4,7 @@ using Reports.Application.Execution;
 using Reports.Application.Export;
 using Reports.Application.Guardrails;
 using Reports.Application.Overrides;
+using Reports.Application.Scheduling;
 using Reports.Application.Templates;
 using Reports.Contracts.Guardrails;
 
@@ -19,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantReportOverrideService, TenantReportOverrideService>();
         services.AddScoped<IReportExecutionService, ReportExecutionService>();
         services.AddScoped<IReportExportService, ReportExportService>();
+        services.AddScoped<IReportScheduleService, ReportScheduleService>();
 
         return services;
     }

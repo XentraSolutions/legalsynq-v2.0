@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Delivery;
 using Reports.Contracts.Export;
 using Reports.Contracts.Persistence;
 using Reports.Contracts.Queue;
@@ -32,6 +33,7 @@ public static class DependencyInjection
             services.AddScoped<ITemplateRepository, EfTemplateRepository>();
             services.AddScoped<ITemplateAssignmentRepository, EfTemplateAssignmentRepository>();
             services.AddScoped<ITenantReportOverrideRepository, EfTenantReportOverrideRepository>();
+            services.AddScoped<IReportScheduleRepository, EfReportScheduleRepository>();
         }
         else
         {
@@ -39,6 +41,7 @@ public static class DependencyInjection
             services.AddSingleton<ITemplateRepository, MockTemplateRepository>();
             services.AddSingleton<ITemplateAssignmentRepository, MockTemplateAssignmentRepository>();
             services.AddSingleton<ITenantReportOverrideRepository, MockTenantReportOverrideRepository>();
+            services.AddSingleton<IReportScheduleRepository, MockReportScheduleRepository>();
         }
 
         var auditEnabled = configuration.GetValue<bool>("AuditService:Enabled");
@@ -68,6 +71,10 @@ public static class DependencyInjection
         services.AddSingleton<IReportExporter, CsvReportExporter>();
         services.AddSingleton<IReportExporter, XlsxReportExporter>();
         services.AddSingleton<IReportExporter, PdfReportExporter>();
+
+        services.AddSingleton<IReportDeliveryAdapter, OnScreenReportDeliveryAdapter>();
+        services.AddSingleton<IReportDeliveryAdapter, EmailReportDeliveryAdapter>();
+        services.AddSingleton<IReportDeliveryAdapter, SftpReportDeliveryAdapter>();
 
         return services;
     }

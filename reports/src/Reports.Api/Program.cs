@@ -20,6 +20,7 @@ builder.Services.AddReportsApplication();
 builder.Services.AddReportsInfrastructure(builder.Configuration);
 
 builder.Services.AddHostedService<ReportWorkerService>();
+builder.Services.AddHostedService<ScheduleWorkerService>();
 
 var app = builder.Build();
 
@@ -31,6 +32,7 @@ app.MapAssignmentEndpoints();
 app.MapOverrideEndpoints();
 app.MapExecutionEndpoints();
 app.MapExportEndpoints();
+app.MapScheduleEndpoints();
 
 app.MapGet("/health", () => Results.Redirect("/api/v1/health", permanent: true))
     .ExcludeFromDescription();

@@ -79,6 +79,38 @@ public static class AuditEventFactory
         => Build("report.export.failed", tenantId, userId, "ReportExport", exportId.ToString(), $"Export failed: {reason}", productCode, ctx,
             outcome: "Failure", metadata: new { templateId, format, reason });
 
+    public static AuditEventDto ScheduleCreated(string tenantId, string userId, Guid scheduleId, Guid templateId, string scheduleName, string? productCode, RequestContext? ctx = null)
+        => Build("report.schedule.created", tenantId, userId, "ReportSchedule", scheduleId.ToString(), $"Schedule '{scheduleName}' created for template '{templateId}'", productCode, ctx,
+            metadata: new { templateId, scheduleName });
+
+    public static AuditEventDto ScheduleUpdated(string tenantId, string userId, Guid scheduleId, Guid templateId, string scheduleName, string? productCode, RequestContext? ctx = null)
+        => Build("report.schedule.updated", tenantId, userId, "ReportSchedule", scheduleId.ToString(), $"Schedule '{scheduleName}' updated", productCode, ctx,
+            metadata: new { templateId, scheduleName });
+
+    public static AuditEventDto ScheduleDeactivated(string tenantId, string userId, Guid scheduleId, Guid templateId, string scheduleName, string? productCode, RequestContext? ctx = null)
+        => Build("report.schedule.deactivated", tenantId, userId, "ReportSchedule", scheduleId.ToString(), $"Schedule '{scheduleName}' deactivated", productCode, ctx,
+            metadata: new { templateId, scheduleName });
+
+    public static AuditEventDto ScheduleRunStarted(string tenantId, string userId, Guid runId, Guid scheduleId, string scheduleName, string? productCode, RequestContext? ctx = null)
+        => Build("report.schedule.run.started", tenantId, userId, "ReportScheduleRun", runId.ToString(), $"Schedule run started for '{scheduleName}'", productCode, ctx,
+            metadata: new { scheduleId, scheduleName });
+
+    public static AuditEventDto ScheduleRunCompleted(string tenantId, string userId, Guid runId, Guid scheduleId, string scheduleName, string fileName, long fileSize, string? productCode, RequestContext? ctx = null)
+        => Build("report.schedule.run.completed", tenantId, userId, "ReportScheduleRun", runId.ToString(), $"Schedule run completed for '{scheduleName}' — {fileName} ({fileSize} bytes)", productCode, ctx,
+            outcome: "Success", metadata: new { scheduleId, scheduleName, fileName, fileSize });
+
+    public static AuditEventDto ScheduleRunFailed(string tenantId, string userId, Guid runId, Guid scheduleId, string scheduleName, string reason, string? productCode, RequestContext? ctx = null)
+        => Build("report.schedule.run.failed", tenantId, userId, "ReportScheduleRun", runId.ToString(), $"Schedule run failed for '{scheduleName}': {reason}", productCode, ctx,
+            outcome: "Failure", metadata: new { scheduleId, scheduleName, reason });
+
+    public static AuditEventDto ScheduleDeliveryCompleted(string tenantId, string userId, Guid runId, Guid scheduleId, string deliveryMethod, string? productCode, RequestContext? ctx = null)
+        => Build("report.schedule.delivery.completed", tenantId, userId, "ReportScheduleRun", runId.ToString(), $"Delivery completed via {deliveryMethod}", productCode, ctx,
+            outcome: "Success", metadata: new { scheduleId, deliveryMethod });
+
+    public static AuditEventDto ScheduleDeliveryFailed(string tenantId, string userId, Guid runId, Guid scheduleId, string deliveryMethod, string reason, string? productCode, RequestContext? ctx = null)
+        => Build("report.schedule.delivery.failed", tenantId, userId, "ReportScheduleRun", runId.ToString(), $"Delivery failed via {deliveryMethod}: {reason}", productCode, ctx,
+            outcome: "Failure", metadata: new { scheduleId, deliveryMethod, reason });
+
     private static AuditEventDto Build(
         string eventType,
         string tenantId,
