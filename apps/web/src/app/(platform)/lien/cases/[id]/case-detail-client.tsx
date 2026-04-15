@@ -271,7 +271,36 @@ function FieldItem({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-2.5 cursor-pointer group">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30 cursor-pointer"
+      />
+      <span className="text-sm text-gray-600 group-hover:text-gray-800 transition-colors select-none">{label}</span>
+    </label>
+  );
+}
+
+/* TEMP: visual fallback data for UI review only */
+const TEMP_UPDATES = [
+  { id: '1', timestamp: '04/14/2026 2:45 PM', action: 'Status Changed', description: 'Case moved from Pre-demand to Demand Sent', updatedBy: 'Sarah Mitchell' },
+  { id: '2', timestamp: '04/10/2026 10:12 AM', action: 'Note Added', description: 'Follow-up scheduled with insurance adjuster', updatedBy: 'Sarah Mitchell' },
+  { id: '3', timestamp: '04/05/2026 3:30 PM', action: 'Document Uploaded', description: 'Medical records package uploaded for review', updatedBy: 'James Rivera' },
+  { id: '4', timestamp: '04/01/2026 9:00 AM', action: 'Case Created', description: 'New lien case opened for plaintiff', updatedBy: 'System' },
+];
+
 function DetailsTab({ d, panelMode, onPanelModeChange }: { d: CaseDetail; panelMode: PanelMode; onPanelModeChange: (m: PanelMode) => void }) {
+  /* TEMP: visual fallback data for UI review only */
+  const [shareWithLawFirm, setShareWithLawFirm] = useState(false);
+  const [uccFiled, setUccFiled] = useState(false);
+  const [caseDropped, setCaseDropped] = useState(false);
+  const [childSupport, setChildSupport] = useState(false);
+  const [minorComp, setMinorComp] = useState(false);
+
   const leftContent = (
     <div className="space-y-4">
       <CollapsibleSection title="Plaintiff" icon="ri-user-line" onEdit={() => {}}>
@@ -309,10 +338,54 @@ function DetailsTab({ d, panelMode, onPanelModeChange }: { d: CaseDetail; panelM
           {/* TEMP: UI mock data for visual review only */}
           <FieldItem label="Lead" value="Sarah Mitchell" />
         </FieldGrid>
+
         <div className="mt-4 pt-4 border-t border-gray-100">
           <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Case Tracking Note</dt>
           {/* TEMP: UI mock data for visual review only */}
-          <dd className="text-sm text-gray-600 mt-1">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
+          <dd className="text-sm text-gray-600 mt-1.5 leading-relaxed">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
+        </div>
+
+        {/* TEMP: visual fallback data for UI review only */}
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight mb-3">Case Flags</p>
+          <div className="space-y-2.5">
+            <CheckboxField label="Share this case with Associated Law Firm" checked={shareWithLawFirm} onChange={setShareWithLawFirm} />
+            <CheckboxField label="UCC Filed" checked={uccFiled} onChange={setUccFiled} />
+            <CheckboxField label="Case Dropped" checked={caseDropped} onChange={setCaseDropped} />
+            <CheckboxField label="Child Support" checked={childSupport} onChange={setChildSupport} />
+            <CheckboxField label="Minor Comp" checked={minorComp} onChange={setMinorComp} />
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Updates" icon="ri-history-line">
+        <div className="overflow-x-auto -mx-5 px-5">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="pr-4 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Timestamp</th>
+                <th className="px-4 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Actions</th>
+                <th className="px-4 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Description</th>
+                <th className="pl-4 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Updated By</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {/* TEMP: visual fallback data for UI review only */}
+              {TEMP_UPDATES.map((u) => (
+                <tr key={u.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="pr-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">{u.timestamp}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">{u.action}</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-sm text-gray-600">{u.description}</td>
+                  <td className="pl-4 py-2.5 text-sm text-gray-500 whitespace-nowrap">{u.updatedBy}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+          <p className="text-xs text-gray-400">Showing {TEMP_UPDATES.length} entries</p>
         </div>
       </CollapsibleSection>
     </div>
@@ -320,11 +393,45 @@ function DetailsTab({ d, panelMode, onPanelModeChange }: { d: CaseDetail; panelM
 
   const rightContent = (
     <div className="space-y-4">
-      <CollapsibleSection title="Email" icon="ri-mail-line">
+      <CollapsibleSection title="Email" icon="ri-mail-send-line">
         <div className="flex justify-center py-2">
-          <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+          <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+            <i className="ri-mail-send-line text-sm" />
             Compose New Email
           </button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="SMS" icon="ri-message-2-line">
+        <div className="flex justify-center py-2">
+          <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+            <i className="ri-message-2-line text-sm" />
+            Send SMS
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Contacts" icon="ri-contacts-line">
+        {/* TEMP: visual fallback data for UI review only */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <i className="ri-user-line text-sm text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm text-gray-700 font-medium truncate">Sarah Mitchell</p>
+              <p className="text-xs text-gray-400">Case Manager</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+              <i className="ri-building-line text-sm text-blue-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm text-gray-700 font-medium truncate">{d.insuranceCarrier || 'Smith & Associates'}</p>
+              <p className="text-xs text-gray-400">Law Firm</p>
+            </div>
+          </div>
         </div>
       </CollapsibleSection>
     </div>
