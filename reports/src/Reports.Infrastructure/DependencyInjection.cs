@@ -1,14 +1,21 @@
+using Amazon;
+using Amazon.S3;
 using LegalSynq.AuditClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Configuration;
 using Reports.Contracts.Delivery;
 using Reports.Contracts.Export;
+using Reports.Contracts.Observability;
 using Reports.Contracts.Persistence;
 using Reports.Contracts.Queue;
+using Reports.Contracts.Storage;
 using Reports.Infrastructure.Adapters;
 using Reports.Infrastructure.Exporters;
+using Reports.Infrastructure.Observability;
 using Reports.Infrastructure.Persistence;
 using Reports.Infrastructure.Queue;
 
@@ -44,6 +51,31 @@ public static class DependencyInjection
             services.AddSingleton<IReportScheduleRepository, MockReportScheduleRepository>();
         }
 
+        RegisterAuditAdapter(services, configuration);
+        RegisterDataQueryAdapters(services, configuration);
+        RegisterDeliveryAdapters(services, configuration);
+        RegisterFileStorage(services, configuration);
+        RegisterMetrics(services);
+
+        services.AddSingleton<IIdentityAdapter, MockIdentityAdapter>();
+        services.AddSingleton<ITenantAdapter, MockTenantAdapter>();
+        services.AddSingleton<IEntitlementAdapter, MockEntitlementAdapter>();
+        services.AddSingleton<IDocumentAdapter, MockDocumentAdapter>();
+        services.AddSingleton<INotificationAdapter, MockNotificationAdapter>();
+        services.AddSingleton<IProductDataAdapter, MockProductDataAdapter>();
+
+        services.AddSingleton<IJobQueue, InMemoryJobQueue>();
+        services.AddSingleton<IJobProcessor, MockJobProcessor>();
+
+        services.AddSingleton<IReportExporter, CsvReportExporter>();
+        services.AddSingleton<IReportExporter, XlsxReportExporter>();
+        services.AddSingleton<IReportExporter, PdfReportExporter>();
+
+        return services;
+    }
+
+    private static void RegisterAuditAdapter(IServiceCollection services, IConfiguration configuration)
+    {
         var auditEnabled = configuration.GetValue<bool>("AuditService:Enabled");
         var auditBaseUrl = configuration["AuditService:BaseUrl"];
 
@@ -56,27 +88,105 @@ public static class DependencyInjection
         {
             services.AddSingleton<IAuditAdapter, MockAuditAdapter>();
         }
+    }
 
-        services.AddSingleton<IIdentityAdapter, MockIdentityAdapter>();
-        services.AddSingleton<ITenantAdapter, MockTenantAdapter>();
-        services.AddSingleton<IEntitlementAdapter, MockEntitlementAdapter>();
-        services.AddSingleton<IDocumentAdapter, MockDocumentAdapter>();
-        services.AddSingleton<INotificationAdapter, MockNotificationAdapter>();
-        services.AddSingleton<IProductDataAdapter, MockProductDataAdapter>();
-        services.AddSingleton<IReportDataQueryAdapter, MockReportDataQueryAdapter>();
+    private static void RegisterDataQueryAdapters(IServiceCollection services, IConfiguration configuration)
+    {
+        var liensSettings = configuration.GetSection(LiensDataSettings.SectionName).Get<LiensDataSettings>();
+        var liensConnectionString = configuration.GetConnectionString("LiensDb");
 
-        services.AddSingleton<IJobQueue, InMemoryJobQueue>();
-        services.AddSingleton<IJobProcessor, MockJobProcessor>();
+        services.Configure<LiensDataSettings>(configuration.GetSection(LiensDataSettings.SectionName));
 
-        services.AddSingleton<IReportExporter, CsvReportExporter>();
-        services.AddSingleton<IReportExporter, XlsxReportExporter>();
-        services.AddSingleton<IReportExporter, PdfReportExporter>();
+        if (liensSettings?.Enabled == true && !string.IsNullOrWhiteSpace(liensConnectionString))
+        {
+            services.AddSingleton<LiensReportDataQueryAdapter>();
+            services.AddSingleton<MockReportDataQueryAdapter>();
+            services.AddSingleton<IReportDataQueryAdapter>(sp =>
+            {
+                var adapters = new List<IReportDataQueryAdapter>
+                {
+                    sp.GetRequiredService<LiensReportDataQueryAdapter>(),
+                    sp.GetRequiredService<MockReportDataQueryAdapter>(),
+                };
+                return new CompositeReportDataQueryAdapter(
+                    adapters,
+                    sp.GetRequiredService<ILogger<CompositeReportDataQueryAdapter>>());
+            });
+        }
+        else
+        {
+            services.AddSingleton<IReportDataQueryAdapter, MockReportDataQueryAdapter>();
+        }
+    }
+
+    private static void RegisterDeliveryAdapters(IServiceCollection services, IConfiguration configuration)
+    {
+        var emailSettings = configuration.GetSection(EmailDeliverySettings.SectionName).Get<EmailDeliverySettings>();
+        var sftpSettings = configuration.GetSection(SftpDeliverySettings.SectionName).Get<SftpDeliverySettings>();
+
+        services.Configure<EmailDeliverySettings>(configuration.GetSection(EmailDeliverySettings.SectionName));
+        services.Configure<SftpDeliverySettings>(configuration.GetSection(SftpDeliverySettings.SectionName));
 
         services.AddSingleton<IReportDeliveryAdapter, OnScreenReportDeliveryAdapter>();
-        services.AddSingleton<IReportDeliveryAdapter, EmailReportDeliveryAdapter>();
-        services.AddSingleton<IReportDeliveryAdapter, SftpReportDeliveryAdapter>();
 
-        return services;
+        if (emailSettings?.Enabled == true && !string.IsNullOrWhiteSpace(emailSettings.NotificationsBaseUrl))
+        {
+            services.AddHttpClient("EmailDelivery", client =>
+            {
+                client.BaseAddress = new Uri(emailSettings.NotificationsBaseUrl);
+                client.Timeout = TimeSpan.FromSeconds(emailSettings.TimeoutSeconds);
+                client.DefaultRequestHeaders.Add("Accept", "application/json");
+            });
+            services.AddSingleton<IReportDeliveryAdapter, HttpEmailReportDeliveryAdapter>();
+        }
+        else
+        {
+            services.AddSingleton<IReportDeliveryAdapter, EmailReportDeliveryAdapter>();
+        }
+
+        if (sftpSettings?.Enabled == true && !string.IsNullOrWhiteSpace(sftpSettings.Host))
+        {
+            services.AddSingleton<IReportDeliveryAdapter, RealSftpReportDeliveryAdapter>();
+        }
+        else
+        {
+            services.AddSingleton<IReportDeliveryAdapter, SftpReportDeliveryAdapter>();
+        }
+    }
+
+    private static void RegisterFileStorage(IServiceCollection services, IConfiguration configuration)
+    {
+        var storageSettings = configuration.GetSection(StorageSettings.SectionName).Get<StorageSettings>();
+        services.Configure<StorageSettings>(configuration.GetSection(StorageSettings.SectionName));
+
+        if (storageSettings?.Enabled == true && !string.IsNullOrWhiteSpace(storageSettings.BucketName))
+        {
+            var s3Config = new AmazonS3Config
+            {
+                RegionEndpoint = RegionEndpoint.GetBySystemName(storageSettings.Region),
+            };
+
+            if (!string.IsNullOrEmpty(storageSettings.AccessKeyId) && !string.IsNullOrEmpty(storageSettings.SecretAccessKey))
+            {
+                var credentials = new Amazon.Runtime.BasicAWSCredentials(storageSettings.AccessKeyId, storageSettings.SecretAccessKey);
+                services.AddSingleton<IAmazonS3>(new AmazonS3Client(credentials, s3Config));
+            }
+            else
+            {
+                services.AddSingleton<IAmazonS3>(new AmazonS3Client(s3Config));
+            }
+
+            services.AddSingleton<IFileStorageAdapter, S3FileStorageAdapter>();
+        }
+        else
+        {
+            services.AddSingleton<IFileStorageAdapter, NullFileStorageAdapter>();
+        }
+    }
+
+    private static void RegisterMetrics(IServiceCollection services)
+    {
+        services.AddSingleton<IReportsMetrics, ReportsMetrics>();
     }
 
     private static void AddAuditEventClient(

@@ -2,6 +2,7 @@ using Reports.Api.Configuration;
 using Reports.Api.Endpoints;
 using Reports.Api.Middleware;
 using Reports.Application;
+using Reports.Contracts.Configuration;
 using Reports.Infrastructure;
 using Reports.Worker.Services;
 
@@ -15,6 +16,14 @@ builder.Services.Configure<AdapterSettings>(
     builder.Configuration.GetSection(AdapterSettings.SectionName));
 builder.Services.Configure<AuditServiceSettings>(
     builder.Configuration.GetSection(AuditServiceSettings.SectionName));
+builder.Services.Configure<EmailDeliverySettings>(
+    builder.Configuration.GetSection(EmailDeliverySettings.SectionName));
+builder.Services.Configure<SftpDeliverySettings>(
+    builder.Configuration.GetSection(SftpDeliverySettings.SectionName));
+builder.Services.Configure<StorageSettings>(
+    builder.Configuration.GetSection(StorageSettings.SectionName));
+builder.Services.Configure<LiensDataSettings>(
+    builder.Configuration.GetSection(LiensDataSettings.SectionName));
 
 builder.Services.AddReportsApplication();
 builder.Services.AddReportsInfrastructure(builder.Configuration);
@@ -33,6 +42,7 @@ app.MapOverrideEndpoints();
 app.MapExecutionEndpoints();
 app.MapExportEndpoints();
 app.MapScheduleEndpoints();
+app.MapMetricsEndpoints();
 
 app.MapGet("/health", () => Results.Redirect("/api/v1/health", permanent: true))
     .ExcludeFromDescription();

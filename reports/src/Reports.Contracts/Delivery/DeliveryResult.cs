@@ -7,4 +7,7 @@ public sealed class DeliveryResult
     public string? Message { get; init; }
     public DateTimeOffset DeliveredAtUtc { get; init; } = DateTimeOffset.UtcNow;
     public string? DetailJson { get; init; }
+    public string? ExternalReferenceId { get; init; }
+    public long? DurationMs { get; init; }
+    public bool IsRetryable { get; init; }
 }
