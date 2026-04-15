@@ -3,10 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Reports.Application\Reports.Application.csproj" />
     <ProjectReference Include="..\Reports.Infrastructure\Reports.Infrastructure.csproj" />
-    <ProjectReference Include="..\Reports.Domain\Reports.Domain.csproj" />
     <ProjectReference Include="..\Reports.Contracts\Reports.Contracts.csproj" />
     <ProjectReference Include="..\Reports.Worker\Reports.Worker.csproj" />
-    <ProjectReference Include="..\Reports.Shared\Reports.Shared.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

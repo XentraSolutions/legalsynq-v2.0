@@ -4164,3 +4164,18 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 
 ### Store Usage
 - `useLienStore` only for `currentRole`, `addToast` — all BOS data from API
+
+## Reports Service (reports/)
+- **Story**: LS-REPORTS-00-001 — Service Bootstrap
+- **Framework**: .NET 8 ASP.NET Core Web API, clean layered architecture
+- **Structure**: `Reports.sln` with 7 source projects (Api, Application, Domain, Infrastructure, Worker, Contracts, Shared) + 3 test projects
+- **Design**: Standalone, platform-agnostic microservice. No LegalSynq-specific logic. Adapter-based integration pattern.
+- **Adapters**: 7 adapter interfaces (`IIdentityAdapter`, `ITenantAdapter`, `IEntitlementAdapter`, `IAuditAdapter`, `IDocumentAdapter`, `INotificationAdapter`, `IProductDataAdapter`) with mock implementations in Infrastructure
+- **Endpoints**: `GET /health` (basic health), `GET /ready` (component readiness with 9 checks)
+- **Middleware**: `RequestLoggingMiddleware` with X-Correlation-Id support
+- **Worker**: `ReportWorkerService` (BackgroundService) polls `IJobQueue` every 10s
+- **Guardrails**: `IGuardrailValidator` with `ValidateExecutionLimits()` and `ValidateReportDefinition()` stubs
+- **Persistence**: MySQL-ready scaffolding (config placeholder, `IReportRepository` interface, mock implementation). No real DB connection yet.
+- **Domain**: `ReportDefinition`, `ReportExecution` entity POCOs
+- **Utility**: `ReportWriter` in Shared — writes implementation reports to `/analysis`
+- **Analysis**: Implementation report at `analysis/LS-REPORTS-00-001-report.md`

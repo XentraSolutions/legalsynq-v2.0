@@ -1,6 +1,7 @@
 using Reports.Api.Configuration;
 using Reports.Api.Endpoints;
 using Reports.Api.Middleware;
+using Reports.Application;
 using Reports.Infrastructure;
 using Reports.Worker.Services;
 
@@ -13,6 +14,7 @@ builder.Services.Configure<MySqlSettings>(
 builder.Services.Configure<AdapterSettings>(
     builder.Configuration.GetSection(AdapterSettings.SectionName));
 
+builder.Services.AddReportsApplication();
 builder.Services.AddReportsInfrastructure();
 
 builder.Services.AddHostedService<ReportWorkerService>();
