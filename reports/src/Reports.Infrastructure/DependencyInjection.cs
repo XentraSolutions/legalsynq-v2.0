@@ -27,11 +27,13 @@ public static class DependencyInjection
 
             services.AddScoped<IReportRepository, EfReportRepository>();
             services.AddScoped<ITemplateRepository, EfTemplateRepository>();
+            services.AddScoped<ITemplateAssignmentRepository, EfTemplateAssignmentRepository>();
         }
         else
         {
             services.AddSingleton<IReportRepository, MockReportRepository>();
             services.AddSingleton<ITemplateRepository, MockTemplateRepository>();
+            services.AddSingleton<ITemplateAssignmentRepository, MockTemplateAssignmentRepository>();
         }
 
         services.AddSingleton<IIdentityAdapter, MockIdentityAdapter>();

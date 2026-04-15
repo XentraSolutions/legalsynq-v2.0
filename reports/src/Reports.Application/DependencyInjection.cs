@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Reports.Application.Assignments;
 using Reports.Application.Guardrails;
 using Reports.Application.Templates;
 using Reports.Contracts.Guardrails;
@@ -11,6 +12,7 @@ public static class DependencyInjection
     {
         services.AddSingleton<IGuardrailValidator, GuardrailValidator>();
         services.AddScoped<ITemplateManagementService, TemplateManagementService>();
+        services.AddScoped<ITemplateAssignmentService, TemplateAssignmentService>();
 
         return services;
     }

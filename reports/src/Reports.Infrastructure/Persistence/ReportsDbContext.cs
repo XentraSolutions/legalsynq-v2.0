@@ -49,6 +49,26 @@ public class ReportsDbContext : DbContext
                 entry.Entity.CreatedAtUtc = now;
         }
 
+        foreach (var entry in ChangeTracker.Entries<ReportTemplateAssignment>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                if (entry.Entity.CreatedAtUtc == default)
+                    entry.Entity.CreatedAtUtc = now;
+                entry.Entity.UpdatedAtUtc = now;
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.UpdatedAtUtc = now;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<ReportTemplateAssignmentTenant>())
+        {
+            if (entry.State == EntityState.Added && entry.Entity.CreatedAtUtc == default)
+                entry.Entity.CreatedAtUtc = now;
+        }
+
         return base.SaveChangesAsync(cancellationToken);
     }
 }

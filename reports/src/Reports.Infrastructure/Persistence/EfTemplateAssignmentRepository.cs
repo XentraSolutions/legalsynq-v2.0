@@ -29,7 +29,14 @@ public sealed class EfTemplateAssignmentRepository : ITemplateAssignmentReposito
     public async Task<ReportTemplateAssignment> CreateAsync(ReportTemplateAssignment assignment, CancellationToken ct)
     {
         _db.ReportTemplateAssignments.Add(assignment);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("Duplicate entry", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            throw new InvalidOperationException("A conflicting assignment or tenant target already exists.", ex);
+        }
         return assignment;
     }
 
@@ -42,7 +49,14 @@ public sealed class EfTemplateAssignmentRepository : ITemplateAssignmentReposito
         _db.ReportTemplateAssignmentTenants.RemoveRange(existingTenants);
 
         _db.ReportTemplateAssignments.Update(assignment);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("Duplicate entry", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            throw new InvalidOperationException("A conflicting assignment or tenant target already exists.", ex);
+        }
         return assignment;
     }
 

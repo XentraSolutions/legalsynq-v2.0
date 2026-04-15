@@ -25,6 +25,7 @@ app.UseMiddleware<RequestLoggingMiddleware>();
 
 app.MapHealthEndpoints();
 app.MapTemplateEndpoints();
+app.MapAssignmentEndpoints();
 
 app.MapGet("/health", () => Results.Redirect("/api/v1/health", permanent: true))
     .ExcludeFromDescription();

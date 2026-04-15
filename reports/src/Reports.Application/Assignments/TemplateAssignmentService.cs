@@ -49,6 +49,28 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
         if (!isGlobal && (request.TenantIds is null || request.TenantIds.Count == 0))
             return ServiceResult<TemplateAssignmentResponse>.BadRequest("Tenant assignment must include at least one tenant ID.");
 
+        if (!isGlobal && request.TenantIds is not null)
+        {
+            var normalized = request.TenantIds
+                .Select(t => t?.Trim() ?? string.Empty)
+                .Where(t => t.Length > 0)
+                .ToList();
+
+            if (normalized.Count == 0)
+                return ServiceResult<TemplateAssignmentResponse>.BadRequest("Tenant assignment must include at least one non-blank tenant ID.");
+
+            var duplicates = normalized.GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicates.Count > 0)
+                return ServiceResult<TemplateAssignmentResponse>.BadRequest(
+                    $"Duplicate tenant IDs: {string.Join(", ", duplicates)}");
+
+            request.TenantIds = normalized;
+        }
+
         if (isGlobal)
         {
             var hasDuplicate = await _assignmentRepo.HasActiveGlobalAssignmentAsync(templateId, null, ct);
@@ -94,7 +116,15 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
             }
         }
 
-        var created = await _assignmentRepo.CreateAsync(assignment, ct);
+        ReportTemplateAssignment created;
+        try
+        {
+            created = await _assignmentRepo.CreateAsync(assignment, ct);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("conflicting", StringComparison.OrdinalIgnoreCase))
+        {
+            return ServiceResult<TemplateAssignmentResponse>.Conflict(ex.Message);
+        }
 
         await TryAuditAsync("template.assignment.created",
             $"Assignment '{created.Id}' created for template '{templateId}' (scope: {created.AssignmentScope})");
@@ -126,6 +156,28 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
 
         if (isGlobal && request.TenantIds is { Count: > 0 })
             return ServiceResult<TemplateAssignmentResponse>.BadRequest("Global assignment must not include tenant IDs.");
+
+        if (!isGlobal && request.TenantIds is not null)
+        {
+            var normalized = request.TenantIds
+                .Select(t => t?.Trim() ?? string.Empty)
+                .Where(t => t.Length > 0)
+                .ToList();
+
+            if (normalized.Count == 0)
+                return ServiceResult<TemplateAssignmentResponse>.BadRequest("Tenant assignment must include at least one non-blank tenant ID.");
+
+            var duplicates = normalized.GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicates.Count > 0)
+                return ServiceResult<TemplateAssignmentResponse>.BadRequest(
+                    $"Duplicate tenant IDs: {string.Join(", ", duplicates)}");
+
+            request.TenantIds = normalized;
+        }
 
         if (isGlobal && request.IsActive)
         {
@@ -166,7 +218,15 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
             }
         }
 
-        var updated = await _assignmentRepo.UpdateAsync(assignment, ct);
+        ReportTemplateAssignment updated;
+        try
+        {
+            updated = await _assignmentRepo.UpdateAsync(assignment, ct);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("conflicting", StringComparison.OrdinalIgnoreCase))
+        {
+            return ServiceResult<TemplateAssignmentResponse>.Conflict(ex.Message);
+        }
 
         await TryAuditAsync("template.assignment.updated",
             $"Assignment '{updated.Id}' updated for template '{templateId}'");
