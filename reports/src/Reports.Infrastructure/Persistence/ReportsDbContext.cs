@@ -15,6 +15,7 @@ public class ReportsDbContext : DbContext
     public DbSet<TenantReportOverride> TenantReportOverrides => Set<TenantReportOverride>();
     public DbSet<ReportSchedule> ReportSchedules => Set<ReportSchedule>();
     public DbSet<ReportScheduleRun> ReportScheduleRuns => Set<ReportScheduleRun>();
+    public DbSet<TenantReportView> TenantReportViews => Set<TenantReportView>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -104,6 +105,20 @@ public class ReportsDbContext : DbContext
         {
             if (entry.State == EntityState.Added && entry.Entity.CreatedAtUtc == default)
                 entry.Entity.CreatedAtUtc = now;
+        }
+
+        foreach (var entry in ChangeTracker.Entries<TenantReportView>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                if (entry.Entity.CreatedAtUtc == default)
+                    entry.Entity.CreatedAtUtc = now;
+                entry.Entity.UpdatedAtUtc = now;
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.UpdatedAtUtc = now;
+            }
         }
 
         return base.SaveChangesAsync(cancellationToken);
