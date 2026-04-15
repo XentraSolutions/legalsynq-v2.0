@@ -4171,6 +4171,7 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 - **Story**: LS-REPORTS-01-001 — Template Data Model & Persistence Foundation
 - **Story**: LS-REPORTS-01-001-01 — Persistence Model Alignment (`ReportDefinition` → `ReportTemplate`)
 - **Story**: LS-REPORTS-01-002 — Template Management API (CRUD + versioning + publish)
+- **Story**: LS-REPORTS-01-003 — Persistence Finalization & Integration Readiness (migration applied to AWS RDS MySQL, 37/37 API assertions pass against live DB, concurrency validated)
 - **Framework**: .NET 8 ASP.NET Core Web API, clean layered architecture
 - **Structure**: `Reports.sln` with 7 source projects (Api, Application, Domain, Infrastructure, Worker, Contracts, Shared) + 3 test projects
 - **Design**: Standalone, platform-agnostic microservice. No LegalSynq-specific logic. Adapter-based integration pattern.
@@ -4189,4 +4190,5 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 - **EF Configurations**: Fluent API in `Infrastructure/Persistence/Configurations/` — `ReportTemplateConfiguration`, `ReportTemplateVersionConfiguration`, `ReportExecutionConfiguration`. Unique indexes on template Code and (templateId, versionNumber), cascade delete on versions, restrict delete on executions. FK columns mapped via `HasColumnName("ReportDefinitionId")` for schema stability.
 - **Design-Time Factory**: `DesignTimeDbContextFactory` in Api project for `dotnet ef migrations` tooling
 - **Utility**: `ReportWriter` in Shared — writes implementation reports to `/analysis`
-- **Analysis**: Reports at `analysis/LS-REPORTS-00-001-report.md`, `analysis/LS-REPORTS-00-002-report.md`, `analysis/LS-REPORTS-01-001-report.md`, `analysis/LS-REPORTS-01-001-01-results.md`, `analysis/LS-REPORTS-01-002-report.md`
+- **Integration Test**: In-process test harness at `reports/scripts/IntegrationTest/` — 37 assertions covering all 9 endpoints, concurrency, validation, and error handling
+- **Analysis**: Reports at `analysis/LS-REPORTS-00-001-report.md`, `analysis/LS-REPORTS-00-002-report.md`, `analysis/LS-REPORTS-01-001-report.md`, `analysis/LS-REPORTS-01-001-01-results.md`, `analysis/LS-REPORTS-01-002-report.md`, `analysis/LS-REPORTS-01-003-report.md`
