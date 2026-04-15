@@ -55,8 +55,9 @@ if command -v dotnet &>/dev/null; then
     export ASPNETCORE_ENVIRONMENT=Production
     GATEWAY_DLL="$ROOT/apps/gateway/Gateway.Api/bin/Release/net8.0/Gateway.Api.dll"
     IDENTITY_DLL="$ROOT/apps/services/identity/Identity.Api/bin/Release/net8.0/Identity.Api.dll"
+    LIENS_DLL="$ROOT/apps/services/liens/Liens.Api/bin/Release/net8.0/Liens.Api.dll"
 
-    if [ ! -f "$GATEWAY_DLL" ] || [ ! -f "$IDENTITY_DLL" ]; then
+    if [ ! -f "$GATEWAY_DLL" ] || [ ! -f "$IDENTITY_DLL" ] || [ ! -f "$LIENS_DLL" ]; then
       echo "[dotnet] Critical binaries missing — building now..."
       dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal 2>&1 || true
       dotnet build "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true

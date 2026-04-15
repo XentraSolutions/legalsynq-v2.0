@@ -100,7 +100,7 @@ export default async function NotificationsPage() {
   ]);
 
   if (statsResult.status === 'fulfilled') {
-    stats = statsResult.value.data;
+    stats = statsResult.value?.data ?? null;
   } else {
     statsError = statsResult.reason instanceof Error
       ? statsResult.reason.message
@@ -108,7 +108,7 @@ export default async function NotificationsPage() {
   }
 
   if (listResult.status === 'fulfilled') {
-    recent = listResult.value.data;
+    recent = listResult.value?.data ?? [];
   } else {
     listError = listResult.reason instanceof Error
       ? listResult.reason.message
