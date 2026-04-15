@@ -18,7 +18,7 @@ public static class DependencyInjection
     {
         var connectionString = configuration.GetConnectionString("ReportsDb");
 
-        if (!string.IsNullOrEmpty(connectionString))
+        if (!string.IsNullOrWhiteSpace(connectionString))
         {
             services.AddDbContext<ReportsDbContext>(options =>
                 options.UseMySql(

@@ -4168,6 +4168,7 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 ## Reports Service (reports/)
 - **Story**: LS-REPORTS-00-001 — Service Bootstrap
 - **Story**: LS-REPORTS-00-002 — Adapter Interface Hardening
+- **Story**: LS-REPORTS-01-001 — Template Data Model & Persistence Foundation
 - **Framework**: .NET 8 ASP.NET Core Web API, clean layered architecture
 - **Structure**: `Reports.sln` with 7 source projects (Api, Application, Domain, Infrastructure, Worker, Contracts, Shared) + 3 test projects
 - **Design**: Standalone, platform-agnostic microservice. No LegalSynq-specific logic. Adapter-based integration pattern.
@@ -4179,7 +4180,10 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 - **Middleware**: `RequestLoggingMiddleware` with X-Correlation-Id support
 - **Worker**: `ReportWorkerService` (BackgroundService) polls `IJobQueue` every 10s
 - **Guardrails**: `IGuardrailValidator` with `ValidateExecutionLimits()` and `ValidateReportDefinition()` stubs
-- **Persistence**: MySQL-ready scaffolding (config placeholder, `IReportRepository` interface, mock implementation). No real DB connection yet.
-- **Domain**: `ReportDefinition`, `ReportExecution` entity POCOs
+- **Persistence**: MySQL + EF Core (Pomelo 8.0.2) with conditional fallback — when `ConnectionStrings:ReportsDb` is set, uses `ReportsDbContext` + EF repositories; when empty, falls back to mock repositories. Tables prefixed `rpt_` (ReportDefinitions, ReportTemplateVersions, ReportExecutions).
+- **Domain**: `ReportDefinition` (with versioning), `ReportTemplateVersion` (template body, output format, change tracking), `ReportExecution` (tenant-scoped, FK to definition) — EF-free POCOs
+- **Contracts**: `IReportRepository` (execution CRUD), `ITemplateRepository` (definition + version management) — strongly-typed, replacing bootstrap `object` signatures
+- **EF Configurations**: Fluent API in `Infrastructure/Persistence/Configurations/` — unique indexes on definition Code and (definitionId, versionNumber), cascade delete on versions, restrict delete on executions
+- **Design-Time Factory**: `DesignTimeDbContextFactory` in Api project for `dotnet ef migrations` tooling
 - **Utility**: `ReportWriter` in Shared — writes implementation reports to `/analysis`
-- **Analysis**: Reports at `analysis/LS-REPORTS-00-001-report.md` and `analysis/LS-REPORTS-00-002-report.md`
+- **Analysis**: Reports at `analysis/LS-REPORTS-00-001-report.md`, `analysis/LS-REPORTS-00-002-report.md`, `analysis/LS-REPORTS-01-001-report.md`
