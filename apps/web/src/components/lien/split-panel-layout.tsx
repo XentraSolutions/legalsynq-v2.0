@@ -174,6 +174,12 @@ export function MetadataGrid({ children }: { children: ReactNode }) {
   );
 }
 
+const COL_SPAN_MAP: Record<number, string> = {
+  1: 'sm:col-span-1',
+  2: 'sm:col-span-2',
+  3: 'sm:col-span-3',
+};
+
 export function MetadataItem({
   label,
   value,
@@ -184,7 +190,7 @@ export function MetadataItem({
   colSpan?: number;
 }) {
   return (
-    <div className={colSpan ? `sm:col-span-${colSpan}` : ''}>
+    <div className={colSpan ? COL_SPAN_MAP[colSpan] || '' : ''}>
       <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">
         {label}
       </dt>
