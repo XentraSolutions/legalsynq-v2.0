@@ -121,6 +121,18 @@ public static class AuditEventFactory
         => Build("report.file.store.failed", tenantId, userId, "ReportExport", exportId.ToString(), $"File store failed: {reason}", productCode, ctx,
             outcome: "Failure", metadata: new { reason });
 
+    public static AuditEventDto ViewCreated(string tenantId, string userId, Guid viewId, Guid templateId, string viewName, RequestContext? ctx = null)
+        => Build("tenant.view.created", tenantId, userId, "TenantReportView", viewId.ToString(), $"View '{viewName}' created for template '{templateId}'", null, ctx,
+            metadata: new { templateId, viewName });
+
+    public static AuditEventDto ViewUpdated(string tenantId, string userId, Guid viewId, Guid templateId, string viewName, RequestContext? ctx = null)
+        => Build("tenant.view.updated", tenantId, userId, "TenantReportView", viewId.ToString(), $"View '{viewName}' updated for template '{templateId}'", null, ctx,
+            metadata: new { templateId, viewName });
+
+    public static AuditEventDto ViewDeleted(string tenantId, string userId, Guid viewId, Guid templateId, string viewName, RequestContext? ctx = null)
+        => Build("tenant.view.deleted", tenantId, userId, "TenantReportView", viewId.ToString(), $"View '{viewName}' deleted from template '{templateId}'", null, ctx,
+            metadata: new { templateId, viewName });
+
     private static AuditEventDto Build(
         string eventType,
         string tenantId,

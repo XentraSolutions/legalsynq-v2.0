@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { reportsService } from '@/lib/reports/reports.service';
 import { ReportBuilder } from '@/components/reports/report-builder';
-import type { ColumnConfig, FilterRule, EffectiveReportDto } from '@/lib/reports/reports.types';
+import type { ColumnConfig, FilterRule, EffectiveReportDto, FormulaDefinition, ColumnFormattingRule } from '@/lib/reports/reports.types';
 import { useSessionContext } from '@/providers/session-provider';
 
 interface Props {
@@ -46,13 +46,45 @@ export function ReportBuilderClient({ templateId }: Props) {
     ? (reportsService.parseFilterConfig(report.effectiveFilterConfigJson) as unknown as FilterRule[])
     : [];
 
-  async function handleSave(columns: ColumnConfig[], filters: FilterRule[]) {
+  let initialFormulas: FormulaDefinition[] = [];
+  try {
+    if (report?.effectiveFormulaConfigJson) {
+      initialFormulas = JSON.parse(report.effectiveFormulaConfigJson);
+    }
+  } catch { /* ignore */ }
+
+  async function handleSave(columns: ColumnConfig[], filters: FilterRule[], formulas: FormulaDefinition[], formatting: ColumnFormattingRule[]) {
     await reportsService.createOverride({
       tenantId,
       templateId,
       baseTemplateVersionNumber: report?.publishedVersionNumber ?? 1,
       columnConfigJson: JSON.stringify(columns),
       filterConfigJson: JSON.stringify(filters),
+      formulaConfigJson: formulas.length > 0 ? JSON.stringify(formulas) : undefined,
+      createdByUserId: userId,
+    });
+    setSaved(true);
+    setTimeout(() => router.push(`/insights/reports/${templateId}`), 1500);
+  }
+
+  async function handleSaveAsView(
+    viewName: string,
+    columns: ColumnConfig[],
+    filters: FilterRule[],
+    formulas: FormulaDefinition[],
+    formatting: ColumnFormattingRule[],
+    isDefault: boolean,
+  ) {
+    await reportsService.createView(templateId, {
+      tenantId,
+      reportTemplateId: templateId,
+      baseTemplateVersionNumber: report?.publishedVersionNumber ?? 1,
+      name: viewName,
+      isDefault,
+      columnConfigJson: JSON.stringify(columns),
+      filterConfigJson: JSON.stringify(filters),
+      formulaConfigJson: formulas.length > 0 ? JSON.stringify(formulas) : undefined,
+      formattingConfigJson: formatting.length > 0 ? JSON.stringify(formatting) : undefined,
       createdByUserId: userId,
     });
     setSaved(true);
@@ -80,7 +112,7 @@ export function ReportBuilderClient({ templateId }: Props) {
           <div>
             <h1 className="text-xl font-bold text-gray-900">Report Builder</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              {report?.templateName ?? 'Customize report columns and filters'}
+              {report?.templateName ?? 'Customize report columns, filters, formulas, and formatting'}
             </p>
           </div>
         </div>
@@ -104,7 +136,9 @@ export function ReportBuilderClient({ templateId }: Props) {
             availableFields={availableFields}
             initialColumns={availableFields.filter((f) => f.visible !== false)}
             initialFilters={initialFilters}
+            initialFormulas={initialFormulas}
             onSave={handleSave}
+            onSaveAsView={handleSaveAsView}
             onCancel={() => router.push(`/insights/reports/${templateId}`)}
           />
         )}

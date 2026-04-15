@@ -23,6 +23,9 @@ import type {
   CreateAssignmentRequest,
   UpdateAssignmentRequest,
   PaginatedResult,
+  ReportViewDto,
+  CreateViewRequest,
+  UpdateViewRequest,
 } from './reports.types';
 
 const PREFIX = '/reports/api/v1';
@@ -204,6 +207,40 @@ export const overridesApi = {
   getEffective(templateId: string, tenantId: string) {
     return apiClient.get<EffectiveReportDto>(
       `${PREFIX}/tenant-templates/${templateId}/effective${toQs({ tenantId })}`,
+    );
+  },
+};
+
+export const viewsApi = {
+  list(templateId: string, tenantId: string) {
+    return apiClient.get<ReportViewDto[]>(
+      `${PREFIX}/tenant-templates/${templateId}/views${toQs({ tenantId })}`,
+    );
+  },
+
+  getById(templateId: string, viewId: string) {
+    return apiClient.get<ReportViewDto>(
+      `${PREFIX}/tenant-templates/${templateId}/views/${viewId}`,
+    );
+  },
+
+  create(templateId: string, req: CreateViewRequest) {
+    return apiClient.post<ReportViewDto>(
+      `${PREFIX}/tenant-templates/${templateId}/views`,
+      req,
+    );
+  },
+
+  update(templateId: string, viewId: string, req: UpdateViewRequest) {
+    return apiClient.put<ReportViewDto>(
+      `${PREFIX}/tenant-templates/${templateId}/views/${viewId}`,
+      req,
+    );
+  },
+
+  delete(templateId: string, viewId: string) {
+    return apiClient.delete<ReportViewDto>(
+      `${PREFIX}/tenant-templates/${templateId}/views/${viewId}`,
     );
   },
 };

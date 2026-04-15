@@ -16,4 +16,8 @@ public sealed class ExecutionDefinition
     public string? LayoutConfigJson { get; init; }
     public string? ColumnConfigJson { get; init; }
     public string? FilterConfigJson { get; init; }
+    public Guid? ViewId { get; init; }
+    public string? ViewName { get; init; }
+    public string? FormulaConfigJson { get; init; }
+    public string? FormattingConfigJson { get; init; }
 }

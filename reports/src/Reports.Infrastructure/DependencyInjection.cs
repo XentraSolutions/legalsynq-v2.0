@@ -41,6 +41,7 @@ public static class DependencyInjection
             services.AddScoped<ITemplateAssignmentRepository, EfTemplateAssignmentRepository>();
             services.AddScoped<ITenantReportOverrideRepository, EfTenantReportOverrideRepository>();
             services.AddScoped<IReportScheduleRepository, EfReportScheduleRepository>();
+            services.AddScoped<ITenantReportViewRepository, EfTenantReportViewRepository>();
         }
         else
         {
@@ -49,6 +50,7 @@ public static class DependencyInjection
             services.AddSingleton<ITemplateAssignmentRepository, MockTemplateAssignmentRepository>();
             services.AddSingleton<ITenantReportOverrideRepository, MockTenantReportOverrideRepository>();
             services.AddSingleton<IReportScheduleRepository, MockReportScheduleRepository>();
+            services.AddSingleton<ITenantReportViewRepository, MockTenantReportViewRepository>();
         }
 
         RegisterAuditAdapter(services, configuration);

@@ -10,6 +10,8 @@ public sealed class ReportExecutionResponse
     public int PublishedVersionNumber { get; init; }
     public int? BaseTemplateVersionNumber { get; init; }
     public bool HasOverride { get; init; }
+    public Guid? ViewId { get; init; }
+    public string? ViewName { get; init; }
     public List<ReportColumnResponse> Columns { get; init; } = new();
     public List<ReportRowResponse> Rows { get; init; } = new();
     public int RowCount { get; init; }

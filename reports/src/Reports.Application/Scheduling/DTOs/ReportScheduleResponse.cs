@@ -16,6 +16,7 @@ public sealed class ReportScheduleResponse
     public DateTimeOffset? NextRunAtUtc { get; init; }
     public DateTimeOffset? LastRunAtUtc { get; init; }
     public bool UseOverride { get; init; }
+    public Guid? ViewId { get; init; }
     public string ExportFormat { get; init; } = string.Empty;
     public string DeliveryMethod { get; init; } = string.Empty;
     public string? DeliveryConfigJson { get; init; }

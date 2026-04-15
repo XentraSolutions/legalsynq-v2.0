@@ -60,6 +60,7 @@ export interface ExecuteReportRequest {
   versionNumber?: number;
   filterParametersJson?: string;
   requestedByUserId: string;
+  viewId?: string;
 }
 
 export interface ReportExecutionResponse {
@@ -72,6 +73,8 @@ export interface ReportExecutionResponse {
   totalRowCount: number;
   executionDurationMs: number;
   executedAtUtc: string;
+  viewId?: string;
+  viewName?: string;
 }
 
 export interface ReportExecutionSummaryResponse {
@@ -104,6 +107,7 @@ export interface ExportReportRequest {
   format: 'CSV' | 'XLSX' | 'PDF';
   filterParametersJson?: string;
   requestedByUserId: string;
+  viewId?: string;
 }
 
 export interface CreateScheduleRequest {
@@ -117,6 +121,7 @@ export interface CreateScheduleRequest {
   deliveryConfigJson?: string;
   filterParametersJson?: string;
   createdByUserId: string;
+  viewId?: string;
 }
 
 export interface UpdateScheduleRequest {
@@ -128,6 +133,7 @@ export interface UpdateScheduleRequest {
   deliveryConfigJson?: string;
   filterParametersJson?: string;
   updatedByUserId: string;
+  viewId?: string;
 }
 
 export interface ScheduleDto {
@@ -146,6 +152,7 @@ export interface ScheduleDto {
   nextRunAtUtc: string | null;
   createdAtUtc: string;
   updatedAtUtc: string;
+  viewId?: string;
 }
 
 export interface ScheduleRunDto {
@@ -285,7 +292,77 @@ export interface ColumnConfig {
 
 export interface FilterRule {
   field: string;
-  operator: 'equals' | 'contains' | 'greaterThan' | 'lessThan' | 'between' | 'in';
+  operator: 'equals' | 'not_equals' | 'contains' | 'starts_with' | 'ends_with' | 'greaterThan' | 'lessThan' | 'between' | 'in';
   value: string;
   value2?: string;
+}
+
+export interface ReportViewDto {
+  viewId: string;
+  tenantId: string;
+  reportTemplateId: string;
+  baseTemplateVersionNumber: number;
+  name: string;
+  description: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  layoutConfigJson: string | null;
+  columnConfigJson: string | null;
+  filterConfigJson: string | null;
+  formulaConfigJson: string | null;
+  formattingConfigJson: string | null;
+  createdAtUtc: string;
+  createdByUserId: string;
+  updatedAtUtc: string;
+  updatedByUserId: string | null;
+}
+
+export interface CreateViewRequest {
+  tenantId: string;
+  reportTemplateId: string;
+  baseTemplateVersionNumber: number;
+  name: string;
+  description?: string;
+  isDefault?: boolean;
+  layoutConfigJson?: string;
+  columnConfigJson?: string;
+  filterConfigJson?: string;
+  formulaConfigJson?: string;
+  formattingConfigJson?: string;
+  createdByUserId: string;
+}
+
+export interface UpdateViewRequest {
+  name?: string;
+  description?: string;
+  isDefault?: boolean;
+  isActive?: boolean;
+  layoutConfigJson?: string;
+  columnConfigJson?: string;
+  filterConfigJson?: string;
+  formulaConfigJson?: string;
+  formattingConfigJson?: string;
+  updatedByUserId: string;
+}
+
+export interface FormulaDefinition {
+  fieldName: string;
+  label: string;
+  expression: string;
+  dataType: 'number' | 'string' | 'boolean' | 'date';
+  order: number;
+}
+
+export interface ColumnFormattingRule {
+  fieldName: string;
+  formatType: 'currency' | 'number' | 'percentage' | 'date' | 'boolean' | 'text';
+  formatPattern?: string;
+  decimalPlaces?: number;
+  prefix?: string;
+  suffix?: string;
+  trueLabel?: string;
+  falseLabel?: string;
+  nullLabel?: string;
+  dateFormat?: string;
+  textTransform?: 'uppercase' | 'lowercase' | 'capitalize';
 }

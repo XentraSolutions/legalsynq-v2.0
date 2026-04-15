@@ -97,6 +97,7 @@ app.MapOverrideEndpoints();
 app.MapExecutionEndpoints();
 app.MapExportEndpoints();
 app.MapScheduleEndpoints();
+app.MapViewEndpoints();
 app.MapMetricsEndpoints();
 
 app.MapGet("/health", () => Results.Redirect("/api/v1/health", permanent: true))

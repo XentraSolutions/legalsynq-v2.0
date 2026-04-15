@@ -6,6 +6,7 @@ import {
   schedulesApi,
   overridesApi,
   assignmentsApi,
+  viewsApi,
 } from './reports.api';
 import type {
   TenantCatalogItemDto,
@@ -30,6 +31,9 @@ import type {
   CreateAssignmentRequest,
   TemplateAssignmentDto,
   ColumnConfig,
+  ReportViewDto,
+  CreateViewRequest,
+  UpdateViewRequest,
 } from './reports.types';
 
 export interface CatalogGroup {
@@ -200,6 +204,30 @@ export const reportsService = {
     } catch {
       return [];
     }
+  },
+
+  async getViews(templateId: string, tenantId: string): Promise<ReportViewDto[]> {
+    const { data } = await viewsApi.list(templateId, tenantId);
+    return data;
+  },
+
+  async getView(templateId: string, viewId: string): Promise<ReportViewDto> {
+    const { data } = await viewsApi.getById(templateId, viewId);
+    return data;
+  },
+
+  async createView(templateId: string, req: CreateViewRequest): Promise<ReportViewDto> {
+    const { data } = await viewsApi.create(templateId, req);
+    return data;
+  },
+
+  async updateView(templateId: string, viewId: string, req: UpdateViewRequest): Promise<ReportViewDto> {
+    const { data } = await viewsApi.update(templateId, viewId, req);
+    return data;
+  },
+
+  async deleteView(templateId: string, viewId: string): Promise<void> {
+    await viewsApi.delete(templateId, viewId);
   },
 
   cronToHuman(cron: string): string {

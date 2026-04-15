@@ -67,7 +67,8 @@ public sealed class ReportExportService : IReportExportService
             OrganizationType = request.OrganizationType,
             ParametersJson = request.ParametersJson,
             RequestedByUserId = request.RequestedByUserId,
-            UseOverride = request.UseOverride
+            UseOverride = request.UseOverride,
+            ViewId = request.ViewId
         };
 
         var executionResult = await _executionService.ExecuteReportAsync(executeRequest, ct);

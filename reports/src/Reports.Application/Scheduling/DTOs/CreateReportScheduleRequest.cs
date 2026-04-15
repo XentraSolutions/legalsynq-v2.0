@@ -13,6 +13,7 @@ public sealed class CreateReportScheduleRequest
     public string? FrequencyConfigJson { get; init; }
     public string Timezone { get; init; } = "UTC";
     public bool UseOverride { get; init; }
+    public Guid? ViewId { get; init; }
     public string ExportFormat { get; init; } = "CSV";
     public string DeliveryMethod { get; init; } = "OnScreen";
     public string? DeliveryConfigJson { get; init; }

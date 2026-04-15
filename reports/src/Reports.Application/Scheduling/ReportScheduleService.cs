@@ -104,6 +104,7 @@ public sealed class ReportScheduleService : IReportScheduleService
             Timezone = request.Timezone.Trim(),
             NextRunAtUtc = request.IsActive ? nextRun : null,
             UseOverride = request.UseOverride,
+            ViewId = request.ViewId,
             ExportFormat = request.ExportFormat.Trim().ToUpperInvariant(),
             DeliveryMethod = request.DeliveryMethod.Trim(),
             DeliveryConfigJson = request.DeliveryConfigJson,
@@ -147,6 +148,7 @@ public sealed class ReportScheduleService : IReportScheduleService
         schedule.FrequencyConfigJson = request.FrequencyConfigJson;
         schedule.Timezone = request.Timezone.Trim();
         schedule.UseOverride = request.UseOverride;
+        schedule.ViewId = request.ViewId;
         schedule.ExportFormat = request.ExportFormat.Trim().ToUpperInvariant();
         schedule.DeliveryMethod = request.DeliveryMethod.Trim();
         schedule.DeliveryConfigJson = request.DeliveryConfigJson;
@@ -301,7 +303,8 @@ public sealed class ReportScheduleService : IReportScheduleService
             Format = format,
             ParametersJson = schedule.ParametersJson,
             RequestedByUserId = actorUserId,
-            UseOverride = schedule.UseOverride
+            UseOverride = schedule.UseOverride,
+            ViewId = schedule.ViewId
         };
 
         var exportResult = await _exportService.ExportReportAsync(exportRequest, ct);
@@ -632,6 +635,7 @@ public sealed class ReportScheduleService : IReportScheduleService
         NextRunAtUtc = s.NextRunAtUtc,
         LastRunAtUtc = s.LastRunAtUtc,
         UseOverride = s.UseOverride,
+        ViewId = s.ViewId,
         ExportFormat = s.ExportFormat,
         DeliveryMethod = s.DeliveryMethod,
         DeliveryConfigJson = s.DeliveryConfigJson,

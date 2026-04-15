@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Reports.Application.Audit;
 using Reports.Application.Execution.DTOs;
+using Reports.Application.Formulas;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
 using Reports.Contracts.Context;
@@ -19,6 +20,7 @@ public sealed class ReportExecutionService : IReportExecutionService
     private readonly ITemplateRepository _templateRepo;
     private readonly ITemplateAssignmentRepository _assignmentRepo;
     private readonly ITenantReportOverrideRepository _overrideRepo;
+    private readonly ITenantReportViewRepository _viewRepo;
     private readonly IReportDataQueryAdapter _queryAdapter;
     private readonly IAuditAdapter _audit;
     private readonly IReportsMetrics _metrics;
@@ -29,6 +31,7 @@ public sealed class ReportExecutionService : IReportExecutionService
         ITemplateRepository templateRepo,
         ITemplateAssignmentRepository assignmentRepo,
         ITenantReportOverrideRepository overrideRepo,
+        ITenantReportViewRepository viewRepo,
         IReportDataQueryAdapter queryAdapter,
         IAuditAdapter audit,
         IReportsMetrics metrics,
@@ -38,6 +41,7 @@ public sealed class ReportExecutionService : IReportExecutionService
         _templateRepo = templateRepo;
         _assignmentRepo = assignmentRepo;
         _overrideRepo = overrideRepo;
+        _viewRepo = viewRepo;
         _queryAdapter = queryAdapter;
         _audit = audit;
         _metrics = metrics;
@@ -85,7 +89,17 @@ public sealed class ReportExecutionService : IReportExecutionService
             activeOverride = await _overrideRepo.GetByTenantAndTemplateAsync(tenantId, templateId, ct);
         }
 
-        var definition = BuildExecutionDefinition(template, publishedVersion, activeOverride);
+        TenantReportView? activeView = null;
+        if (request.ViewId.HasValue && request.ViewId.Value != Guid.Empty)
+        {
+            activeView = await _viewRepo.GetByIdAsync(request.ViewId.Value, ct);
+            if (activeView is null || activeView.ReportTemplateId != templateId)
+                return ServiceResult<ReportExecutionResponse>.NotFound($"View '{request.ViewId}' not found for template '{templateId}'.");
+            if (!activeView.IsActive)
+                return ServiceResult<ReportExecutionResponse>.BadRequest($"View '{request.ViewId}' is not active.");
+        }
+
+        var definition = BuildExecutionDefinition(template, publishedVersion, activeOverride, activeView);
 
         var execution = new ReportExecution
         {
@@ -180,6 +194,17 @@ public sealed class ReportExecutionService : IReportExecutionService
                 "Execution completed: {ExecutionId} tenant={TenantId} template={TemplateCode} rows={RowCount} durationMs={DurationMs}",
                 execution.Id, tenantId, template.Code, resultSet.TotalRowCount, execSw.ElapsedMilliseconds);
 
+            var columns = resultSet.Columns.ToList();
+            var rows = resultSet.Rows;
+
+            var formulas = FormulaEvaluator.ParseConfig(definition.FormulaConfigJson);
+            if (formulas is not null && formulas.Count > 0)
+            {
+                FormulaEvaluator.ApplyFormulas(formulas, rows, columns);
+                _log.LogInformation("Applied {FormulaCount} calculated fields for execution {ExecutionId}",
+                    formulas.Count, execution.Id);
+            }
+
             var response = new ReportExecutionResponse
             {
                 ExecutionId = execution.Id,
@@ -190,14 +215,16 @@ public sealed class ReportExecutionService : IReportExecutionService
                 PublishedVersionNumber = publishedVersion.VersionNumber,
                 BaseTemplateVersionNumber = definition.BaseTemplateVersionNumber,
                 HasOverride = definition.HasOverride,
-                Columns = resultSet.Columns.Select(c => new ReportColumnResponse
+                ViewId = definition.ViewId,
+                ViewName = definition.ViewName,
+                Columns = columns.Select(c => new ReportColumnResponse
                 {
                     Key = c.Key,
                     Label = c.Label,
                     DataType = c.DataType,
                     Order = c.Order
                 }).ToList(),
-                Rows = resultSet.Rows.Select(r => new ReportRowResponse { Values = r }).ToList(),
+                Rows = rows.Select(r => new ReportRowResponse { Values = r }).ToList(),
                 RowCount = resultSet.TotalRowCount,
                 ExecutedAtUtc = execution.CompletedAtUtc!.Value,
                 ExecutedByUserId = execution.UserId,
@@ -255,14 +282,15 @@ public sealed class ReportExecutionService : IReportExecutionService
     private static ExecutionDefinition BuildExecutionDefinition(
         ReportTemplate template,
         ReportTemplateVersion publishedVersion,
-        TenantReportOverride? activeOverride)
+        TenantReportOverride? activeOverride,
+        TenantReportView? activeView = null)
     {
         return new ExecutionDefinition
         {
             TemplateId = template.Id,
             TemplateCode = template.Code,
-            EffectiveName = activeOverride?.NameOverride ?? template.Name,
-            EffectiveDescription = activeOverride?.DescriptionOverride ?? template.Description,
+            EffectiveName = activeView?.Name ?? activeOverride?.NameOverride ?? template.Name,
+            EffectiveDescription = activeView?.Description ?? activeOverride?.DescriptionOverride ?? template.Description,
             ProductCode = template.ProductCode,
             OrganizationType = template.OrganizationType,
             PublishedVersionNumber = publishedVersion.VersionNumber,
@@ -270,9 +298,13 @@ public sealed class ReportExecutionService : IReportExecutionService
             HasOverride = activeOverride is not null,
             BaseTemplateVersionNumber = activeOverride?.BaseTemplateVersionNumber,
             OverrideId = activeOverride?.Id,
-            LayoutConfigJson = activeOverride?.LayoutConfigJson,
-            ColumnConfigJson = activeOverride?.ColumnConfigJson,
-            FilterConfigJson = activeOverride?.FilterConfigJson
+            LayoutConfigJson = activeView?.LayoutConfigJson ?? activeOverride?.LayoutConfigJson,
+            ColumnConfigJson = activeView?.ColumnConfigJson ?? activeOverride?.ColumnConfigJson,
+            FilterConfigJson = activeView?.FilterConfigJson ?? activeOverride?.FilterConfigJson,
+            ViewId = activeView?.Id,
+            ViewName = activeView?.Name,
+            FormulaConfigJson = activeView?.FormulaConfigJson,
+            FormattingConfigJson = activeView?.FormattingConfigJson
         };
     }
 
