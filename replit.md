@@ -47,6 +47,10 @@ apps/web/
     types/index.ts              ← PlatformSession, TenantBranding, OrgType, ProductRole, NavGroup
     lib/
       api-client.ts             ← apiClient + ApiError (correlationId-aware)
+      reports/
+        reports.types.ts        ← LS-REPORTS-07-001: TypeScript DTOs matching all Reports service endpoints (templates, versions, assignments, execution, export, schedules, overrides, builder)
+        reports.api.ts          ← LS-REPORTS-07-001: API client layer — templatesApi, assignmentsApi, tenantCatalogApi, executionApi, exportApi (blob download), schedulesApi, overridesApi. Prefix: /reports/api/v1
+        reports.service.ts      ← LS-REPORTS-07-001: Service layer — getCatalog (grouped by product), executeReport, exportReport (browser download), schedule CRUD, override CRUD, template admin, cronToHuman, parseColumnConfig
       session.ts                ← getServerSession() — calls /auth/me (server-side)
       auth-guards.ts            ← requireAuthenticated/Org/ProductRole/Admin (server components)
       tenant-auth-guard.ts      ← requireTenantAdmin() — redirects non-admins to /tenant/access-denied
@@ -193,6 +197,7 @@ apps/web/
           referrals/[id]/page.tsx                   ← referral detail + "Book Appointment" link for referrers
           appointments/page.tsx                     ← appointment list (both roles; UX label adapts; status filter chips)
           appointments/[id]/page.tsx                ← appointment detail; back-links to referral; Phase-2 status actions placeholder
+        fund/reports/page.tsx                    ← Redirects to /insights/reports
         fund/applications/page.tsx
         lien/marketplace/page.tsx
         lien/layout.tsx                           ← LienProviders wrapper (ToastContainer + RoleSwitcher)
@@ -214,6 +219,18 @@ apps/web/
         lien/document-handling/[id]/page.tsx       ← LS-LIENS-UI-005: real API-backed document detail, preview/download via opaque tokens, version history table, scan threat display
         lien/user-management/page.tsx              ← V2 UX: AddUserForm, ActionMenu (activate/deactivate/unlock), admin-only, ConfirmDialog
         lien/user-management/[id]/page.tsx         ← V2 UX: store-backed detail, activate/deactivate/unlock actions
+      insights/
+        dashboard/page.tsx                        ← Redirects to /insights/reports
+        reports/page.tsx                          ← LS-REPORTS-07-001: Report catalog (tenant portal) — grouped by product, search, Run/Export/Customize/Schedule actions per report
+        reports/reports-catalog-client.tsx         ← Client component for catalog — fetches tenant template catalog, export modal integration
+        reports/[id]/page.tsx                     ← LS-REPORTS-07-001: Report viewer — effective report loading, dynamic filter inputs, Run Report button, DataGrid results
+        reports/[id]/report-viewer-client.tsx      ← Client component for viewer — execution, export modal, results table
+        reports/[id]/builder/page.tsx              ← LS-REPORTS-07-001: Report builder — field selection (add/remove/reorder/rename), filter rules, save as override
+        reports/[id]/builder/report-builder-client.tsx ← Client component for builder
+        schedules/page.tsx                         ← LS-REPORTS-07-001: Schedule list — table with name/frequency/format/delivery/next-run/status, deactivate, run-now
+        schedules/schedules-list-client.tsx         ← Client component for schedule list
+        schedules/[id]/page.tsx                    ← LS-REPORTS-07-001: Schedule create/edit — ScheduleForm with frequency/time/timezone/format/delivery config, run history tab
+        schedules/[id]/schedule-detail-client.tsx   ← Client component for schedule detail
       tenant/
         access-denied/page.tsx                    ← access denied page for non-admin users
         authorization/

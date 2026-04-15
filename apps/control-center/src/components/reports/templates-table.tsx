@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { ReportTemplate } from '@/types/control-center';
 
 interface TemplatesTableProps {
@@ -16,9 +17,18 @@ export function TemplatesTable({ templates }: TemplatesTableProps) {
             Managed report definitions and their current versions
           </p>
         </div>
-        <span className="text-xs text-gray-400 tabular-nums">
-          {templates.length} template{templates.length !== 1 ? 's' : ''}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400 tabular-nums">
+            {templates.length} template{templates.length !== 1 ? 's' : ''}
+          </span>
+          <Link
+            href="/reports/templates/new"
+            className="text-xs font-medium text-blue-600 hover:text-blue-800 inline-flex items-center gap-1"
+          >
+            <i className="ri-add-line" />
+            Create
+          </Link>
+        </div>
       </div>
 
       {templates.length === 0 ? (
@@ -40,6 +50,7 @@ export function TemplatesTable({ templates }: TemplatesTableProps) {
                 <th className="px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">Version</th>
                 <th className="px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-center">Status</th>
                 <th className="px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Updated</th>
+                <th className="px-5 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -61,6 +72,14 @@ export function TemplatesTable({ templates }: TemplatesTableProps) {
                   </td>
                   <td className="px-5 py-3 text-right text-xs text-gray-400 tabular-nums">
                     {formatDate(t.updatedAtUtc)}
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    <Link
+                      href={`/reports/templates/${t.id}`}
+                      className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                    >
+                      Edit
+                    </Link>
                   </td>
                 </tr>
               ))}

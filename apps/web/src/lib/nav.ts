@@ -68,7 +68,13 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
   ],
 
   insights: [
-    { items: [{ href: '/insights/dashboard', label: 'Dashboard', icon: 'ri-dashboard-line' }] },
+    {
+      items: [
+        { href: '/insights/dashboard', label: 'Dashboard', icon: 'ri-dashboard-line' },
+        { href: '/insights/reports',   label: 'Reports',   icon: 'ri-file-chart-line' },
+        { href: '/insights/schedules', label: 'Schedules', icon: 'ri-calendar-schedule-line' },
+      ],
+    },
   ],
 };
 
