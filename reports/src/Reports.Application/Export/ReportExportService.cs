@@ -86,6 +86,26 @@ public sealed class ReportExportService : IReportExportService
 
         var execData = executionResult.Data;
 
+        var hasFormatting = execData.Rows.Any(r => r.FormattedValues is not null && r.FormattedValues.Count > 0);
+
+        var exportRows = new List<Dictionary<string, object?>>(execData.Rows.Count);
+        foreach (var row in execData.Rows)
+        {
+            if (hasFormatting && row.FormattedValues is not null && row.FormattedValues.Count > 0)
+            {
+                var merged = new Dictionary<string, object?>(row.Values, StringComparer.OrdinalIgnoreCase);
+                foreach (var fv in row.FormattedValues)
+                {
+                    merged[fv.Key] = fv.Value;
+                }
+                exportRows.Add(merged);
+            }
+            else
+            {
+                exportRows.Add(row.Values);
+            }
+        }
+
         var resultSet = new TabularResultSet
         {
             Columns = execData.Columns.Select(c => new TabularColumn
@@ -95,7 +115,7 @@ public sealed class ReportExportService : IReportExportService
                 DataType = c.DataType,
                 Order = c.Order
             }).ToList(),
-            Rows = execData.Rows.Select(r => r.Values).ToList(),
+            Rows = exportRows,
             TotalRowCount = execData.RowCount,
             WasTruncated = false
         };

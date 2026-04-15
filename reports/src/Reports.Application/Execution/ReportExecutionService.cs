@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Reports.Application.Audit;
 using Reports.Application.Execution.DTOs;
+using Reports.Application.Formatting;
 using Reports.Application.Formulas;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
@@ -205,6 +206,25 @@ public sealed class ReportExecutionService : IReportExecutionService
                     formulas.Count, execution.Id);
             }
 
+            var formattingRules = FormattingConfigParser.Parse(definition.FormattingConfigJson);
+            List<Dictionary<string, string>>? formattedRows = null;
+            if (formattingRules is not null && formattingRules.Count > 0)
+            {
+                formattedRows = ReportFormattingService.FormatRows(rows, formattingRules, _log);
+                _log.LogInformation("Applied {FormattingRuleCount} formatting rules for execution {ExecutionId}",
+                    formattingRules.Count, execution.Id);
+            }
+
+            var responseRows = new List<ReportRowResponse>(rows.Count);
+            for (var i = 0; i < rows.Count; i++)
+            {
+                responseRows.Add(new ReportRowResponse
+                {
+                    Values = rows[i],
+                    FormattedValues = formattedRows?[i]
+                });
+            }
+
             var response = new ReportExecutionResponse
             {
                 ExecutionId = execution.Id,
@@ -224,7 +244,7 @@ public sealed class ReportExecutionService : IReportExecutionService
                     DataType = c.DataType,
                     Order = c.Order
                 }).ToList(),
-                Rows = rows.Select(r => new ReportRowResponse { Values = r }).ToList(),
+                Rows = responseRows,
                 RowCount = resultSet.TotalRowCount,
                 ExecutedAtUtc = execution.CompletedAtUtc!.Value,
                 ExecutedByUserId = execution.UserId,

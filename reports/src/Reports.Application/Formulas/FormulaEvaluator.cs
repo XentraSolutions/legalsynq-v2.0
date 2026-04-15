@@ -37,13 +37,13 @@ public static partial class FormulaEvaluator
     public static void ApplyFormulas(
         List<FormulaDefinition> formulas,
         List<Dictionary<string, object?>> rows,
-        List<Reports.Contracts.Adapters.ColumnDefinition> columns)
+        List<Reports.Contracts.Adapters.TabularColumn> columns)
     {
         foreach (var formula in formulas)
         {
             if (!columns.Any(c => string.Equals(c.Key, formula.FieldName, StringComparison.OrdinalIgnoreCase)))
             {
-                columns.Add(new Reports.Contracts.Adapters.ColumnDefinition
+                columns.Add(new Reports.Contracts.Adapters.TabularColumn
                 {
                     Key = formula.FieldName,
                     Label = formula.Label,

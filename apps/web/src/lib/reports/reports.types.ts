@@ -99,6 +99,7 @@ export interface ReportColumnDto {
 export interface ReportRowDto {
   rowNumber: number;
   values: Record<string, unknown>;
+  formattedValues?: Record<string, string>;
 }
 
 export interface ExportReportRequest {

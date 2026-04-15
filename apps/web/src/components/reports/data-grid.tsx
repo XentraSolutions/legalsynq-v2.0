@@ -89,7 +89,7 @@ export function DataGrid({ columns, rows, maxHeight = '500px' }: DataGridProps) 
                   <td className="px-3 py-2 text-xs text-gray-400">{row.rowNumber}</td>
                   {orderedCols.map((col) => (
                     <td key={col.name} className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                      {formatCell(row.values[col.name], col.dataType)}
+                      {row.formattedValues?.[col.name] ?? formatCell(row.values[col.name], col.dataType)}
                     </td>
                   ))}
                 </tr>
