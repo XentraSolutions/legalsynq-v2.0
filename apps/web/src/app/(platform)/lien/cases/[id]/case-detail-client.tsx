@@ -159,7 +159,7 @@ export function CaseDetailClient({ id }: { id: string }) {
         </div>
 
         <div className="border-t border-gray-100 px-6">
-          <nav className="flex gap-1 -mb-px">
+          <nav className="flex gap-4 -mb-px">
             {TABS.map((tab) => (
               <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                 className={[
