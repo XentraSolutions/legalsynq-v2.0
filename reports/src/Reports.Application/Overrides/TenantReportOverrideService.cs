@@ -53,51 +53,76 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
             return ServiceResult<TenantReportOverrideResponse>.BadRequest(
                 $"Template '{templateId}' is not assigned to tenant '{tenantId}'. Assignment is required before creating an override.");
 
-        if (request.IsActive)
+        var existingOverride = await _overrideRepo.GetAnyByTenantAndTemplateAsync(tenantId, templateId, ct);
+        if (existingOverride is not null && existingOverride.IsActive)
+            return ServiceResult<TenantReportOverrideResponse>.Conflict(
+                $"An active override already exists for tenant '{tenantId}' and template '{templateId}'.");
+
+        TenantReportOverride result;
+
+        if (existingOverride is not null && !existingOverride.IsActive)
         {
-            var hasActive = await _overrideRepo.HasActiveOverrideAsync(tenantId, templateId, null, ct);
-            if (hasActive)
-                return ServiceResult<TenantReportOverrideResponse>.Conflict(
-                    $"An active override already exists for tenant '{tenantId}' and template '{templateId}'.");
+            existingOverride.BaseTemplateVersionNumber = publishedVersion.VersionNumber;
+            existingOverride.NameOverride = request.NameOverride?.Trim();
+            existingOverride.DescriptionOverride = request.DescriptionOverride?.Trim();
+            existingOverride.LayoutConfigJson = request.LayoutConfigJson;
+            existingOverride.ColumnConfigJson = request.ColumnConfigJson;
+            existingOverride.FilterConfigJson = request.FilterConfigJson;
+            existingOverride.FormulaConfigJson = request.FormulaConfigJson;
+            existingOverride.HeaderConfigJson = request.HeaderConfigJson;
+            existingOverride.FooterConfigJson = request.FooterConfigJson;
+            existingOverride.IsActive = request.IsActive;
+            existingOverride.RequiredFeatureCode = request.RequiredFeatureCode?.Trim();
+            existingOverride.MinimumTierCode = request.MinimumTierCode?.Trim();
+            existingOverride.UpdatedByUserId = request.CreatedByUserId.Trim();
+
+            result = await _overrideRepo.UpdateAsync(existingOverride, ct);
+
+            await TryAuditAsync("tenant.override.reactivated",
+                $"Override '{result.Id}' reactivated for tenant '{tenantId}' template '{templateId}' (base version: {result.BaseTemplateVersionNumber})");
+
+            _log.LogInformation("Override reactivated: {OverrideId} tenant={TenantId} template={TemplateId} baseVersion={BaseVersion}",
+                result.Id, tenantId, templateId, result.BaseTemplateVersionNumber);
+        }
+        else
+        {
+            var entity = new TenantReportOverride
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                ReportTemplateId = templateId,
+                BaseTemplateVersionNumber = publishedVersion.VersionNumber,
+                NameOverride = request.NameOverride?.Trim(),
+                DescriptionOverride = request.DescriptionOverride?.Trim(),
+                LayoutConfigJson = request.LayoutConfigJson,
+                ColumnConfigJson = request.ColumnConfigJson,
+                FilterConfigJson = request.FilterConfigJson,
+                FormulaConfigJson = request.FormulaConfigJson,
+                HeaderConfigJson = request.HeaderConfigJson,
+                FooterConfigJson = request.FooterConfigJson,
+                IsActive = request.IsActive,
+                RequiredFeatureCode = request.RequiredFeatureCode?.Trim(),
+                MinimumTierCode = request.MinimumTierCode?.Trim(),
+                CreatedByUserId = request.CreatedByUserId.Trim()
+            };
+
+            try
+            {
+                result = await _overrideRepo.CreateAsync(entity, ct);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("conflicting", StringComparison.OrdinalIgnoreCase))
+            {
+                return ServiceResult<TenantReportOverrideResponse>.Conflict(ex.Message);
+            }
+
+            await TryAuditAsync("tenant.override.created",
+                $"Override '{result.Id}' created for tenant '{tenantId}' template '{templateId}' (base version: {result.BaseTemplateVersionNumber})");
+
+            _log.LogInformation("Override created: {OverrideId} tenant={TenantId} template={TemplateId} baseVersion={BaseVersion}",
+                result.Id, tenantId, templateId, result.BaseTemplateVersionNumber);
         }
 
-        var entity = new TenantReportOverride
-        {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            ReportTemplateId = templateId,
-            BaseTemplateVersionNumber = publishedVersion.VersionNumber,
-            NameOverride = request.NameOverride?.Trim(),
-            DescriptionOverride = request.DescriptionOverride?.Trim(),
-            LayoutConfigJson = request.LayoutConfigJson,
-            ColumnConfigJson = request.ColumnConfigJson,
-            FilterConfigJson = request.FilterConfigJson,
-            FormulaConfigJson = request.FormulaConfigJson,
-            HeaderConfigJson = request.HeaderConfigJson,
-            FooterConfigJson = request.FooterConfigJson,
-            IsActive = request.IsActive,
-            RequiredFeatureCode = request.RequiredFeatureCode?.Trim(),
-            MinimumTierCode = request.MinimumTierCode?.Trim(),
-            CreatedByUserId = request.CreatedByUserId.Trim()
-        };
-
-        TenantReportOverride created;
-        try
-        {
-            created = await _overrideRepo.CreateAsync(entity, ct);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("conflicting", StringComparison.OrdinalIgnoreCase))
-        {
-            return ServiceResult<TenantReportOverrideResponse>.Conflict(ex.Message);
-        }
-
-        await TryAuditAsync("tenant.override.created",
-            $"Override '{created.Id}' created for tenant '{tenantId}' template '{templateId}' (base version: {created.BaseTemplateVersionNumber})");
-
-        _log.LogInformation("Override created: {OverrideId} tenant={TenantId} template={TemplateId} baseVersion={BaseVersion}",
-            created.Id, tenantId, templateId, created.BaseTemplateVersionNumber);
-
-        return ServiceResult<TenantReportOverrideResponse>.Created(MapToResponse(created));
+        return ServiceResult<TenantReportOverrideResponse>.Created(MapToResponse(result));
     }
 
     public async Task<ServiceResult<TenantReportOverrideResponse>> UpdateOverrideAsync(

@@ -70,7 +70,8 @@ public class TenantReportOverrideConfiguration : IEntityTypeConfiguration<Tenant
 
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.ReportTemplateId);
-        builder.HasIndex(e => new { e.TenantId, e.ReportTemplateId });
+        builder.HasIndex(e => new { e.TenantId, e.ReportTemplateId })
+            .IsUnique();
         builder.HasIndex(e => new { e.TenantId, e.ReportTemplateId, e.IsActive });
 
         builder.HasOne(e => e.ReportTemplate)

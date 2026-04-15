@@ -23,6 +23,13 @@ public sealed class EfTenantReportOverrideRepository : ITenantReportOverrideRepo
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<TenantReportOverride?> GetAnyByTenantAndTemplateAsync(string tenantId, Guid templateId, CancellationToken ct)
+    {
+        return await _db.TenantReportOverrides
+            .Where(o => o.TenantId == tenantId && o.ReportTemplateId == templateId)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<IReadOnlyList<TenantReportOverride>> ListByTenantAsync(string tenantId, CancellationToken ct)
     {
         return await _db.TenantReportOverrides

@@ -20,6 +20,13 @@ public sealed class MockTenantReportOverrideRepository : ITenantReportOverrideRe
         return Task.FromResult(entity);
     }
 
+    public Task<TenantReportOverride?> GetAnyByTenantAndTemplateAsync(string tenantId, Guid templateId, CancellationToken ct)
+    {
+        var entity = _overrides.FirstOrDefault(o =>
+            o.TenantId == tenantId && o.ReportTemplateId == templateId);
+        return Task.FromResult(entity);
+    }
+
     public Task<IReadOnlyList<TenantReportOverride>> ListByTenantAsync(string tenantId, CancellationToken ct)
     {
         var list = _overrides
