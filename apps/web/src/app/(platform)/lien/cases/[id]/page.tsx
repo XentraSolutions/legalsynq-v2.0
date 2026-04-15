@@ -9,7 +9,7 @@ import { ApiError } from '@/lib/api-client';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { NotesPanel } from '@/components/lien/notes-panel';
 import { ConfirmDialog } from '@/components/lien/modal';
-import { EntityTimeline } from '@/components/lien/entity-timeline';
+
 
 const STATUS_LABELS: Record<string, string> = { PreDemand: 'Pre-demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Case Settled', Closed: 'Closed' };
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
