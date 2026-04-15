@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { useSession } from '@/hooks/use-session';
 import { casesService, type CaseDetail, type CaseLienItem } from '@/lib/cases';
 import { ApiError } from '@/lib/api-client';
 import { StatusBadge } from '@/components/lien/status-badge';
@@ -1602,6 +1603,7 @@ interface TaskItem {
   status: TaskStatus;
   priority: TaskPriority;
   assignee: string;
+  assigneeEmail?: string;
   dueDate: string;
   updatedAt: string;
   description: string;
@@ -1641,8 +1643,128 @@ const TEMP_TASKS: TaskItem[] = [
 ];
 
 type TaskViewMode = 'kanban' | 'list';
+type TaskAssignmentFilter = 'all' | 'me' | 'others' | 'unassigned';
+type TaskSortOption = 'updatedAt' | 'dueDate' | 'priority' | 'name';
+
+const TASK_SORT_LABELS: Record<TaskSortOption, string> = {
+  updatedAt: 'Recently Updated',
+  dueDate: 'Due Date',
+  priority: 'Priority',
+  name: 'Task Name',
+};
+
+const PRIORITY_ORDER: Record<TaskPriority, number> = { High: 0, Medium: 1, Low: 2 };
+
+interface TaskQueryState {
+  search: string;
+  assignment: TaskAssignmentFilter;
+  statuses: TaskStatus[];
+  priorities: TaskPriority[];
+  sort: TaskSortOption;
+}
+
+const DEFAULT_QUERY: TaskQueryState = {
+  search: '',
+  assignment: 'all',
+  statuses: [],
+  priorities: [],
+  sort: 'updatedAt',
+};
+
+function useTaskQuery(allTasks: TaskItem[], currentUserEmail: string | undefined) {
+  const [query, setQuery] = useState<TaskQueryState>(DEFAULT_QUERY);
+
+  const filteredTasks = useMemo(() => {
+    let result = [...allTasks];
+
+    if (query.search.trim()) {
+      const q = query.search.trim().toLowerCase();
+      result = result.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.description.toLowerCase().includes(q) ||
+          t.assignee.toLowerCase().includes(q) ||
+          t.id.toLowerCase().includes(q),
+      );
+    }
+
+    if (query.assignment === 'unassigned') {
+      result = result.filter((t) => !t.assignee || t.assignee.trim() === '');
+    } else if (query.assignment === 'me') {
+      const email = currentUserEmail?.trim().toLowerCase();
+      result = email
+        ? result.filter((t) => t.assigneeEmail?.trim().toLowerCase() === email)
+        : [];
+    } else if (query.assignment === 'others') {
+      const email = currentUserEmail?.trim().toLowerCase();
+      result = email
+        ? result.filter((t) => t.assignee.trim() !== '' && t.assigneeEmail?.trim().toLowerCase() !== email)
+        : result.filter((t) => t.assignee.trim() !== '');
+    }
+
+    if (query.statuses.length > 0) {
+      result = result.filter((t) => query.statuses.includes(t.status));
+    }
+
+    if (query.priorities.length > 0) {
+      result = result.filter((t) => query.priorities.includes(t.priority));
+    }
+
+    result.sort((a, b) => {
+      switch (query.sort) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'priority':
+          return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+        case 'dueDate':
+          return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        case 'updatedAt':
+        default:
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      }
+    });
+
+    return result;
+  }, [allTasks, query, currentUserEmail]);
+
+  const hasActiveFilters =
+    query.search.trim() !== '' ||
+    query.assignment !== 'all' ||
+    query.statuses.length > 0 ||
+    query.priorities.length > 0 ||
+    query.sort !== 'updatedAt';
+
+  const activeChips = useMemo(() => {
+    const chips: { key: string; label: string; clear: () => void }[] = [];
+    if (query.search.trim()) {
+      chips.push({ key: 'search', label: `Search: "${query.search.trim()}"`, clear: () => setQuery((q) => ({ ...q, search: '' })) });
+    }
+    if (query.assignment !== 'all') {
+      const aLabel = query.assignment === 'me' ? 'Assigned to Me' : query.assignment === 'others' ? 'Assigned to Others' : 'Unassigned';
+      chips.push({ key: 'assignment', label: aLabel, clear: () => setQuery((q) => ({ ...q, assignment: 'all' })) });
+    }
+    for (const s of query.statuses) {
+      chips.push({ key: `status-${s}`, label: `Status: ${TASK_STATUS_LABELS[s]}`, clear: () => setQuery((q) => ({ ...q, statuses: q.statuses.filter((x) => x !== s) })) });
+    }
+    for (const p of query.priorities) {
+      chips.push({ key: `priority-${p}`, label: `Priority: ${p}`, clear: () => setQuery((q) => ({ ...q, priorities: q.priorities.filter((x) => x !== p) })) });
+    }
+    if (query.sort !== 'updatedAt') {
+      chips.push({ key: 'sort', label: `Sort: ${TASK_SORT_LABELS[query.sort]}`, clear: () => setQuery((q) => ({ ...q, sort: 'updatedAt' })) });
+    }
+    return chips;
+  }, [query]);
+
+  const clearAll = useCallback(() => setQuery(DEFAULT_QUERY), []);
+
+  return { query, setQuery, filteredTasks, hasActiveFilters, activeChips, clearAll };
+}
+
+const filterSelectCls = 'px-2.5 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none appearance-none cursor-pointer pr-7';
 
 function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
+  const { session } = useSession();
+  const currentUserEmail = session?.email;
   const [viewMode, setViewMode] = useState<TaskViewMode>('kanban');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTaskName, setNewTaskName] = useState('');
@@ -1650,7 +1772,20 @@ function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
   const [newTaskAssignee, setNewTaskAssignee] = useState('');
   const [newTaskDueDate, setNewTaskDueDate] = useState('');
 
-  const tasks = TEMP_TASKS;
+  const allTasks = TEMP_TASKS;
+  const { query, setQuery, filteredTasks, hasActiveFilters, activeChips, clearAll } = useTaskQuery(allTasks, currentUserEmail);
+
+  const toggleStatus = (s: TaskStatus) =>
+    setQuery((q) => ({
+      ...q,
+      statuses: q.statuses.includes(s) ? q.statuses.filter((x) => x !== s) : [...q.statuses, s],
+    }));
+
+  const togglePriority = (p: TaskPriority) =>
+    setQuery((q) => ({
+      ...q,
+      priorities: q.priorities.includes(p) ? q.priorities.filter((x) => x !== p) : [...q.priorities, p],
+    }));
 
   return (
     <div className="space-y-4">
@@ -1660,7 +1795,7 @@ function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
             <i className="ri-task-line text-sm text-gray-500" />
             <h3 className="text-sm font-semibold text-gray-800">Task Manager</h3>
             <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
-              {tasks.length}
+              {filteredTasks.length}{hasActiveFilters ? `/${allTasks.length}` : ''}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1694,6 +1829,85 @@ function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
               Add Task
             </button>
           </div>
+        </div>
+
+        <div className="px-5 py-2.5 border-b border-gray-100 bg-gray-50/30">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[180px] max-w-[280px]">
+              <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+              <input
+                type="text"
+                value={query.search}
+                onChange={(e) => setQuery((q) => ({ ...q, search: e.target.value }))}
+                placeholder="Search tasks..."
+                className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+              />
+              {query.search && (
+                <button onClick={() => setQuery((q) => ({ ...q, search: '' }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <i className="ri-close-line text-xs" />
+                </button>
+              )}
+            </div>
+
+            <div className="relative">
+              <select
+                value={query.assignment}
+                onChange={(e) => setQuery((q) => ({ ...q, assignment: e.target.value as TaskAssignmentFilter }))}
+                className={filterSelectCls}
+              >
+                <option value="all">All Tasks</option>
+                <option value="me">Assigned to Me</option>
+                <option value="others">Assigned to Others</option>
+                <option value="unassigned">Unassigned</option>
+              </select>
+              <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs" />
+            </div>
+
+            <TaskFilterDropdown
+              label="Status"
+              icon="ri-checkbox-circle-line"
+              options={TASK_COLUMNS.map((s) => ({ value: s, label: TASK_STATUS_LABELS[s] }))}
+              selected={query.statuses}
+              onToggle={toggleStatus}
+            />
+
+            <TaskFilterDropdown
+              label="Priority"
+              icon="ri-flag-line"
+              options={(['High', 'Medium', 'Low'] as TaskPriority[]).map((p) => ({ value: p, label: p }))}
+              selected={query.priorities}
+              onToggle={togglePriority}
+            />
+
+            <div className="relative">
+              <select
+                value={query.sort}
+                onChange={(e) => setQuery((q) => ({ ...q, sort: e.target.value as TaskSortOption }))}
+                className={filterSelectCls}
+              >
+                {(Object.entries(TASK_SORT_LABELS) as [TaskSortOption, string][]).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+              <i className="ri-arrow-down-s-line absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs" />
+            </div>
+          </div>
+
+          {activeChips.length > 0 && (
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              {activeChips.map((chip) => (
+                <span key={chip.key} className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium bg-primary/8 text-primary border border-primary/15 rounded-full">
+                  {chip.label}
+                  <button onClick={chip.clear} className="hover:text-primary/70 transition-colors">
+                    <i className="ri-close-line text-xs" />
+                  </button>
+                </span>
+              ))}
+              <button onClick={clearAll} className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors ml-1">
+                Clear all
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
@@ -1774,7 +1988,7 @@ function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
           <div className="p-4">
             <div className="grid grid-cols-4 gap-3">
               {TASK_COLUMNS.map((col) => {
-                const colTasks = tasks.filter((t) => t.status === col);
+                const colTasks = filteredTasks.filter((t) => t.status === col);
                 const colors = TASK_STATUS_COLORS[col];
                 return (
                   <div key={col} className={`rounded-lg border ${colors.border} ${colors.bg} min-h-[200px]`}>
@@ -1792,7 +2006,7 @@ function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
                     <div className="p-2 space-y-2">
                       {colTasks.length === 0 ? (
                         <div className="text-center py-6">
-                          <p className="text-xs text-gray-400">No tasks</p>
+                          <p className="text-xs text-gray-400">{hasActiveFilters ? 'No matching tasks' : 'No tasks'}</p>
                         </div>
                       ) : (
                         colTasks.map((task) => (
@@ -1829,67 +2043,138 @@ function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
 
         {viewMode === 'list' && (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/50">
-                  <th className="px-5 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Task Name</th>
-                  <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Status</th>
-                  <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Priority</th>
-                  <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Assignee</th>
-                  <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Due Date</th>
-                  <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Updated At</th>
-                  <th className="px-5 py-2.5 text-center text-[11px] font-medium text-gray-400 uppercase tracking-wide w-[80px]">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {tasks.map((task) => (
-                  <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-5 py-2.5">
-                      <div>
-                        <p className="text-sm font-medium text-gray-700">{task.name}</p>
-                        <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[300px]">{task.description}</p>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded border ${TASK_STATUS_COLORS[task.status].text} ${TASK_STATUS_COLORS[task.status].bg} ${TASK_STATUS_COLORS[task.status].border}`}>
-                        {TASK_STATUS_LABELS[task.status]}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded border ${TASK_PRIORITY_COLORS[task.priority]}`}>
-                        {task.priority}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                          <i className="ri-user-line text-[10px] text-primary" />
-                        </div>
-                        <span className="text-sm text-gray-600 whitespace-nowrap">{task.assignee}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{task.dueDate}</td>
-                    <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{task.updatedAt}</td>
-                    <td className="px-5 py-2.5 text-center">
-                      <div className="inline-flex items-center gap-1">
-                        <button className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors" title="View">
-                          <i className="ri-eye-line text-sm" />
-                        </button>
-                        <button className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="Edit">
-                          <i className="ri-pencil-line text-sm" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-              <p className="text-xs text-gray-400">{tasks.length} task{tasks.length !== 1 ? 's' : ''}</p>
-            </div>
+            {filteredTasks.length === 0 ? (
+              <div className="text-center py-10">
+                <i className={`${hasActiveFilters ? 'ri-filter-off-line' : 'ri-task-line'} text-2xl text-gray-300`} />
+                <p className="text-sm text-gray-400 mt-2">{hasActiveFilters ? 'No tasks match the current filters' : 'No tasks yet'}</p>
+                {hasActiveFilters && <button onClick={clearAll} className="text-xs text-primary hover:text-primary/80 mt-1 transition-colors">Clear all filters</button>}
+              </div>
+            ) : (
+              <>
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/50">
+                      <th className="px-5 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Task Name</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Status</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Priority</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Assignee</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Due Date</th>
+                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Updated At</th>
+                      <th className="px-5 py-2.5 text-center text-[11px] font-medium text-gray-400 uppercase tracking-wide w-[80px]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filteredTasks.map((task) => (
+                      <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-5 py-2.5">
+                          <div>
+                            <p className="text-sm font-medium text-gray-700">{task.name}</p>
+                            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[300px]">{task.description}</p>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded border ${TASK_STATUS_COLORS[task.status].text} ${TASK_STATUS_COLORS[task.status].bg} ${TASK_STATUS_COLORS[task.status].border}`}>
+                            {TASK_STATUS_LABELS[task.status]}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded border ${TASK_PRIORITY_COLORS[task.priority]}`}>
+                            {task.priority}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                              <i className="ri-user-line text-[10px] text-primary" />
+                            </div>
+                            <span className="text-sm text-gray-600 whitespace-nowrap">{task.assignee}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{task.dueDate}</td>
+                        <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{task.updatedAt}</td>
+                        <td className="px-5 py-2.5 text-center">
+                          <div className="inline-flex items-center gap-1">
+                            <button className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors" title="View">
+                              <i className="ri-eye-line text-sm" />
+                            </button>
+                            <button className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors" title="Edit">
+                              <i className="ri-pencil-line text-sm" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+                  <p className="text-xs text-gray-400">
+                    {filteredTasks.length} task{filteredTasks.length !== 1 ? 's' : ''}
+                    {hasActiveFilters ? ` (filtered from ${allTasks.length})` : ''}
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function TaskFilterDropdown<T extends string>({
+  label,
+  icon,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  icon: string;
+  options: { value: T; label: string }[];
+  selected: T[];
+  onToggle: (value: T) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className={[
+          'px-2.5 py-1.5 text-xs border rounded-lg inline-flex items-center gap-1.5 transition-colors',
+          selected.length > 0
+            ? 'border-primary/30 bg-primary/5 text-primary'
+            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300',
+        ].join(' ')}
+      >
+        <i className={`${icon} text-xs`} />
+        {label}
+        {selected.length > 0 && (
+          <span className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 text-[10px] font-semibold rounded-full bg-primary/15 text-primary">
+            {selected.length}
+          </span>
+        )}
+        <i className={`ri-arrow-${open ? 'up' : 'down'}-s-line text-xs`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[160px]">
+            {options.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => onToggle(opt.value)}
+                className="w-full px-3 py-1.5 text-xs text-left hover:bg-gray-50 flex items-center gap-2 transition-colors"
+              >
+                <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${selected.includes(opt.value) ? 'bg-primary border-primary' : 'border-gray-300'}`}>
+                  {selected.includes(opt.value) && <i className="ri-check-line text-[10px] text-white" />}
+                </span>
+                <span className="text-gray-700">{opt.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
