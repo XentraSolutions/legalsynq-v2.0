@@ -185,7 +185,7 @@ export function CaseDetailClient({ id }: { id: string }) {
           <DetailsTab d={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />
         )}
         {activeTab === 'liens' && <LiensTab liens={relatedLiens} caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
-        {activeTab === 'documents' && <EmptyTab icon="ri-file-copy-2-line" label="Documents" />}
+        {activeTab === 'documents' && <DocumentsTab caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
         {activeTab === 'servicing' && <EmptyTab icon="ri-tools-line" label="Servicing" />}
         {activeTab === 'notes' && <NotesPanel notes={caseNotes} onAddNote={() => {}} readOnly />}
         {activeTab === 'taskmanager' && <EmptyTab icon="ri-task-line" label="Task Manager" />}
@@ -643,6 +643,294 @@ function LiensTab({ liens, caseDetail, panelMode, onPanelModeChange }: { liens: 
   );
 
   return <LayoutSplit left={leftContent} right={rightContent} mode={panelMode} onModeChange={onPanelModeChange} />;
+}
+
+/* TEMP: visual fallback data for UI review only */
+const TEMP_DOCUMENT_TYPES = [
+  'Medical Records',
+  'Billing Statement',
+  'Lien Agreement',
+  'Demand Letter',
+  'Settlement Agreement',
+  'Insurance Correspondence',
+  'Legal Filing',
+  'Other',
+];
+
+/* TEMP: visual fallback data for UI review only */
+const TEMP_CASE_DOCUMENTS = [
+  { id: 'doc-1', name: 'Medical_Records_Regional_Hospital.pdf', documentType: 'Medical Records', lastUpdate: '04/12/2026', size: '2.4 MB' },
+  { id: 'doc-2', name: 'Billing_Statement_March_2026.pdf', documentType: 'Billing Statement', lastUpdate: '04/10/2026', size: '840 KB' },
+  { id: 'doc-3', name: 'Demand_Letter_v2.docx', documentType: 'Demand Letter', lastUpdate: '04/08/2026', size: '156 KB' },
+  { id: 'doc-4', name: 'Insurance_Response_StateFarm.pdf', documentType: 'Insurance Correspondence', lastUpdate: '04/05/2026', size: '1.1 MB' },
+];
+
+/* TEMP: visual fallback data for UI review only */
+const TEMP_LIEN_DOCUMENTS = [
+  { id: 'ldoc-1', name: 'Lien_Agreement_LN-2026-0451.pdf', documentType: 'Lien Agreement', lastUpdate: '04/11/2026', lienNumber: 'LN-2026-0451', size: '320 KB' },
+  { id: 'ldoc-2', name: 'Medical_Records_Sunrise_Imaging.pdf', documentType: 'Medical Records', lastUpdate: '04/09/2026', lienNumber: 'LN-2026-0452', size: '5.2 MB' },
+  { id: 'ldoc-3', name: 'Billing_Summary_PhysioPlus.xlsx', documentType: 'Billing Statement', lastUpdate: '04/07/2026', lienNumber: 'LN-2026-0453', size: '92 KB' },
+];
+
+function DocumentsTab({ caseDetail, panelMode, onPanelModeChange }: { caseDetail: CaseDetail; panelMode: PanelMode; onPanelModeChange: (m: PanelMode) => void }) {
+  const [selectedDocType, setSelectedDocType] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragOver(true); }, []);
+  const handleDragLeave = useCallback(() => setDragOver(false), []);
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) setSelectedFile(file);
+  }, []);
+
+  const handleFileSelect = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) setSelectedFile(file);
+    };
+    input.click();
+  }, []);
+
+  const leftContent = (
+    <div className="space-y-4">
+      <CollapsibleSection title="Upload Document" icon="ri-upload-cloud-2-line">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">Document Type</label>
+            <div className="relative">
+              <select
+                value={selectedDocType}
+                onChange={(e) => setSelectedDocType(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
+              >
+                <option value="">Select document type...</option>
+                {TEMP_DOCUMENT_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+              <i className="ri-arrow-down-s-line absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={[
+              'border-2 border-dashed rounded-lg p-6 text-center transition-colors',
+              dragOver ? 'border-primary bg-primary/5' : 'border-gray-200 bg-gray-50/30',
+            ].join(' ')}
+          >
+            <i className="ri-upload-cloud-2-line text-2xl text-gray-300" />
+            <p className="text-sm text-gray-500 mt-2">
+              {selectedFile ? (
+                <span className="text-gray-700 font-medium">{selectedFile.name}</span>
+              ) : (
+                <>Drag and drop your file here</>
+              )}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">or</p>
+            <button
+              onClick={handleFileSelect}
+              className="mt-2 px-4 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5"
+            >
+              <i className="ri-folder-open-line text-sm" />
+              Choose File
+            </button>
+          </div>
+
+          <button
+            disabled={!selectedFile || !selectedDocType}
+            className={[
+              'w-full px-4 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2',
+              selectedFile && selectedDocType
+                ? 'bg-primary text-white hover:bg-primary/90'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed',
+            ].join(' ')}
+          >
+            <i className="ri-add-line text-sm" />
+            Add Document
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Case Documents" icon="ri-file-copy-2-line">
+        {TEMP_CASE_DOCUMENTS.length === 0 ? (
+          <div className="text-center py-8">
+            <i className="ri-file-copy-2-line text-2xl text-gray-300" />
+            <p className="text-sm text-gray-400 mt-2">No case documents uploaded</p>
+          </div>
+        ) : (
+          <>
+            <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
+              <p className="text-xs text-amber-700"><i className="ri-information-line mr-1" />Sample data shown for UI review. Real documents will load from the API.</p>
+            </div>
+            <div className="overflow-x-auto -mx-5 px-5">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Name</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Document Type</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Last Update</th>
+                    <th className="pl-3 py-2 text-center text-[11px] font-medium text-gray-400 uppercase tracking-wide w-[80px]">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {TEMP_CASE_DOCUMENTS.map((doc) => (
+                    <tr key={doc.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="pr-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <i className={`${getFileIcon(doc.name)} text-sm text-gray-400`} />
+                          <span className="text-sm text-gray-700 truncate max-w-[200px]">{doc.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">{doc.documentType}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{doc.lastUpdate}</td>
+                      <td className="pl-3 py-2.5 text-center">
+                        <div className="inline-flex items-center gap-1">
+                          <button className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors" title="Download">
+                            <i className="ri-download-2-line text-sm" />
+                          </button>
+                          <button className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors" title="Delete">
+                            <i className="ri-delete-bin-6-line text-sm" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+              <p className="text-xs text-gray-400">{TEMP_CASE_DOCUMENTS.length} document{TEMP_CASE_DOCUMENTS.length !== 1 ? 's' : ''}</p>
+            </div>
+          </>
+        )}
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Lien Documents" icon="ri-attachment-2">
+        {TEMP_LIEN_DOCUMENTS.length === 0 ? (
+          <div className="text-center py-8">
+            <i className="ri-attachment-2 text-2xl text-gray-300" />
+            <p className="text-sm text-gray-400 mt-2">No lien documents available</p>
+          </div>
+        ) : (
+          <>
+            <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
+              <p className="text-xs text-amber-700"><i className="ri-information-line mr-1" />Sample data shown for UI review. Real documents will load from the API.</p>
+            </div>
+            <div className="overflow-x-auto -mx-5 px-5">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Name</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Document Type</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Lien</th>
+                    <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Last Update</th>
+                    <th className="pl-3 py-2 text-center text-[11px] font-medium text-gray-400 uppercase tracking-wide w-[80px]">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {TEMP_LIEN_DOCUMENTS.map((doc) => (
+                    <tr key={doc.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="pr-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <i className={`${getFileIcon(doc.name)} text-sm text-gray-400`} />
+                          <span className="text-sm text-gray-700 truncate max-w-[200px]">{doc.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">{doc.documentType}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-xs font-mono text-primary">{doc.lienNumber}</td>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{doc.lastUpdate}</td>
+                      <td className="pl-3 py-2.5 text-center">
+                        <div className="inline-flex items-center gap-1">
+                          <button className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors" title="Download">
+                            <i className="ri-download-2-line text-sm" />
+                          </button>
+                          <button className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors" title="View Lien">
+                            <i className="ri-eye-line text-sm" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+              <p className="text-xs text-gray-400">{TEMP_LIEN_DOCUMENTS.length} document{TEMP_LIEN_DOCUMENTS.length !== 1 ? 's' : ''}</p>
+            </div>
+          </>
+        )}
+      </CollapsibleSection>
+    </div>
+  );
+
+  const rightContent = (
+    <div className="space-y-4">
+      <CollapsibleSection title="Email" icon="ri-mail-send-line">
+        <div className="flex justify-center py-2">
+          <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+            <i className="ri-mail-send-line text-sm" />
+            Compose New Email
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="SMS" icon="ri-message-2-line">
+        <div className="flex justify-center py-2">
+          <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+            <i className="ri-message-2-line text-sm" />
+            Send SMS
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Contacts" icon="ri-contacts-line">
+        {/* TEMP: visual fallback data for UI review only */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <i className="ri-user-line text-sm text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm text-gray-700 font-medium truncate">Sarah Mitchell</p>
+              <p className="text-xs text-gray-400">Case Manager</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+              <i className="ri-building-line text-sm text-blue-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm text-gray-700 font-medium truncate">{caseDetail.insuranceCarrier || 'Smith & Associates'}</p>
+              <p className="text-xs text-gray-400">Law Firm</p>
+            </div>
+          </div>
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+
+  return <LayoutSplit left={leftContent} right={rightContent} mode={panelMode} onModeChange={onPanelModeChange} />;
+}
+
+function getFileIcon(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'pdf') return 'ri-file-pdf-2-line';
+  if (['doc', 'docx'].includes(ext)) return 'ri-file-word-2-line';
+  if (['xls', 'xlsx'].includes(ext)) return 'ri-file-excel-2-line';
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'ri-image-line';
+  return 'ri-file-text-line';
 }
 
 function EmptyTab({ icon, label, message }: { icon: string; label: string; message?: string }) {
