@@ -70,7 +70,7 @@ function PanelDivider({
   if (mode !== 'split') return null;
 
   return (
-    <div className="flex flex-col items-center justify-center gap-1 shrink-0">
+    <div className="flex flex-col items-center justify-center gap-1.5 shrink-0">
       <button
         onClick={() => setMode('left-expanded')}
         title="Expand left panel"
@@ -149,7 +149,7 @@ export function SectionCard({
   className?: string;
 }) {
   return (
-    <div className={`border border-gray-100 rounded-lg ${className}`}>
+    <div className={`border border-gray-100 rounded-lg bg-white ${className}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
         <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
           <span

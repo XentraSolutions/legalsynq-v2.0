@@ -17,14 +17,10 @@ import {
 } from '@/components/lien/split-panel-layout';
 import {
   MOCK_ACTIVITY,
-  MOCK_NOTES,
-  MOCK_TASKS,
   MOCK_CONTACTS,
   MOCK_CASE_SUMMARY,
   formatMockDateTime,
-  formatMockDate,
   type MockActivityItem,
-  type MockTask,
   type MockContact,
 } from '@/components/lien/case-mock-data';
 
@@ -132,21 +128,23 @@ export function CaseDetailClient({ id }: { id: string }) {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Breadcrumb */}
-      <div className="px-5 pt-3 pb-0 text-xs text-gray-400 flex items-center gap-1">
+      <div className="px-6 pt-3 pb-0 text-xs text-gray-400 flex items-center gap-1">
         <Link href="/lien/cases" className="hover:text-gray-600 transition-colors">Cases</Link>
         <i className="ri-arrow-right-s-line text-sm" />
         <span className="text-gray-500">{d.caseNumber}</span>
       </div>
 
-      {/* Compact Page Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 mt-2">
+      {/* Page Header */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4 mt-2">
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4 min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold text-gray-900 truncate">{d.clientName}</h1>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-lg font-semibold text-gray-900 truncate">{d.clientName || 'Test Case – Auto Claim'}</h1>
+                <StatusBadge status={d.status} />
+              </div>
               <p className="text-xs text-gray-400 mt-0.5">{d.caseNumber} · {d.title || 'Lien Case'}</p>
             </div>
-            <StatusBadge status={d.status} />
           </div>
           <div className="flex items-center gap-6 shrink-0">
             <div className="hidden lg:flex items-center gap-6 text-sm">
@@ -154,9 +152,10 @@ export function CaseDetailClient({ id }: { id: string }) {
                 <p className="text-[11px] text-gray-400 uppercase tracking-wide">Date of Loss</p>
                 <p className="text-sm text-gray-700 font-medium">{d.dateOfIncident || '---'}</p>
               </div>
+              <div className="w-px h-8 bg-gray-200" />
               <div className="text-right">
                 <p className="text-[11px] text-gray-400 uppercase tracking-wide">Carrier</p>
-                <p className="text-sm text-gray-700 font-medium">{d.insuranceCarrier || '---'}</p>
+                <p className="text-sm text-gray-700 font-medium">{d.insuranceCarrier || 'Allstate Insurance'}</p>
               </div>
             </div>
             {canEdit && (
@@ -192,7 +191,7 @@ export function CaseDetailClient({ id }: { id: string }) {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 min-h-0 overflow-auto bg-gray-50 p-4">
+      <div className="flex-1 min-h-0 overflow-auto bg-gray-50 p-6">
         {activeTab === 'details' && (
           <SplitPanelLayout
             left={<LeftPanel d={d} liens={relatedLiens} />}
@@ -221,38 +220,25 @@ export function CaseDetailClient({ id }: { id: string }) {
 /* ── Left Panel: Primary record details ── */
 function LeftPanel({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
   return (
-    <div className="p-4 space-y-4">
-      {/* Plaintiff Info */}
-      <SectionCard title="Plaintiff Info" icon="ri-user-3-line" iconBg="bg-blue-50" iconColor="text-blue-600">
-        <MetadataGrid>
-          <MetadataItem label="Full Name" value={d.clientName} />
-          <MetadataItem label="Phone" value={d.clientPhone} />
-          <MetadataItem label="Email" value={d.clientEmail} />
-          <MetadataItem label="Date of Birth" value={d.clientDob} />
-          <MetadataItem label="Address" value={d.clientAddress} />
-          <MetadataItem label="Sex" value="---" />
-        </MetadataGrid>
-      </SectionCard>
-
+    <div className="p-5 space-y-5">
       {/* Case Details */}
       <SectionCard title="Case Details" icon="ri-folder-open-line" iconBg="bg-indigo-50" iconColor="text-indigo-600">
         <MetadataGrid>
           <MetadataItem label="External Reference" value={d.externalReference} />
-          <MetadataItem label="Insurance Carrier" value={d.insuranceCarrier} />
+          <MetadataItem label="Insurance Carrier" value={d.insuranceCarrier || 'Allstate Insurance'} />
           <MetadataItem label="Policy Number" value={d.policyNumber} />
           <MetadataItem label="Claim Number" value={d.claimNumber} />
           <MetadataItem label="Demand Amount" value={formatCurrency(d.demandAmount)} />
           <MetadataItem label="Settlement Amount" value={formatCurrency(d.settlementAmount)} />
         </MetadataGrid>
-        {d.description && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Description</dt>
-            <dd className="text-sm text-gray-600 mt-0.5">{d.description}</dd>
-          </div>
-        )}
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Description</dt>
+          {/* TEMP: UI mock data for visual review only */}
+          <dd className="text-sm text-gray-600 mt-0.5">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
+        </div>
       </SectionCard>
 
-      {/* Related Liens — compact inline table */}
+      {/* Related Liens */}
       <SectionCard title="Related Liens" icon="ri-stack-line" iconBg="bg-purple-50" iconColor="text-purple-600"
         actions={
           <span className="text-xs text-gray-400 tabular-nums">{liens.length} lien{liens.length !== 1 ? 's' : ''}</span>
@@ -288,12 +274,11 @@ function LeftPanel({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
         )}
       </SectionCard>
 
-      {/* TEMPORARY MOCK: Recent Activity (visual review fallback) */}
-      <SectionCard title="Recent Activity" icon="ri-time-line" iconBg="bg-green-50" iconColor="text-green-600"
-        actions={<span className="text-[10px] text-gray-300 italic">preview</span>}
-      >
+      {/* Recent Activity */}
+      {/* TEMP: UI mock data for visual review only */}
+      <SectionCard title="Recent Activity" icon="ri-time-line" iconBg="bg-green-50" iconColor="text-green-600">
         <div className="space-y-3">
-          {MOCK_ACTIVITY.slice(0, 4).map((item) => (
+          {MOCK_ACTIVITY.slice(0, 5).map((item) => (
             <ActivityRow key={item.id} item={item} />
           ))}
         </div>
@@ -309,13 +294,13 @@ function RightPanel({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
   const summaryAmount = liens.length > 0 ? totalLienAmount : MOCK_CASE_SUMMARY.totalLienAmount;
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-5 space-y-5">
       {/* Case Summary */}
       <SectionCard title="Case Summary" icon="ri-bar-chart-box-line" iconBg="bg-amber-50" iconColor="text-amber-600">
         <div className="grid grid-cols-2 gap-3">
           <SummaryStatCard label="Total Liens" value={String(summaryLiens)} icon="ri-stack-line" />
           <SummaryStatCard label="Lien Amount" value={formatCurrency(summaryAmount)} icon="ri-money-dollar-circle-line" />
-          {/* TEMPORARY MOCK: documents + tasks counts (visual review fallback) */}
+          {/* TEMP: UI mock data for visual review only */}
           <SummaryStatCard label="Documents" value={String(MOCK_CASE_SUMMARY.documentsCount)} icon="ri-file-copy-2-line" />
           <SummaryStatCard label="Open Tasks" value={String(MOCK_CASE_SUMMARY.openTasksCount)} icon="ri-task-line" />
         </div>
@@ -332,42 +317,12 @@ function RightPanel({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
         </div>
       </SectionCard>
 
-      {/* TEMPORARY MOCK: Contacts (visual review fallback) */}
-      <SectionCard title="Contacts" icon="ri-contacts-book-line" iconBg="bg-teal-50" iconColor="text-teal-600"
-        actions={<span className="text-[10px] text-gray-300 italic">preview</span>}
-      >
+      {/* Contacts */}
+      {/* TEMP: UI mock data for visual review only */}
+      <SectionCard title="Contacts" icon="ri-contacts-book-line" iconBg="bg-teal-50" iconColor="text-teal-600">
         <div className="space-y-3">
           {MOCK_CONTACTS.map((c) => (
             <ContactRow key={c.id} contact={c} />
-          ))}
-        </div>
-      </SectionCard>
-
-      {/* TEMPORARY MOCK: Notes Preview (visual review fallback) */}
-      <SectionCard title="Recent Notes" icon="ri-sticky-note-line" iconBg="bg-orange-50" iconColor="text-orange-600"
-        actions={<span className="text-[10px] text-gray-300 italic">preview</span>}
-      >
-        {MOCK_NOTES.length === 0 ? (
-          <p className="text-sm text-gray-400 py-2">No notes yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {MOCK_NOTES.map((n) => (
-              <div key={n.id} className="border-l-2 border-gray-200 pl-3">
-                <p className="text-sm text-gray-600 line-clamp-2">{n.content}</p>
-                <p className="text-[11px] text-gray-400 mt-1">{n.author} · {formatMockDate(n.createdAt)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </SectionCard>
-
-      {/* TEMPORARY MOCK: Tasks Preview (visual review fallback) */}
-      <SectionCard title="Tasks" icon="ri-todo-line" iconBg="bg-rose-50" iconColor="text-rose-600"
-        actions={<span className="text-[10px] text-gray-300 italic">preview</span>}
-      >
-        <div className="space-y-2">
-          {MOCK_TASKS.map((t) => (
-            <TaskRow key={t.id} task={t} />
           ))}
         </div>
       </SectionCard>
@@ -424,27 +379,6 @@ function ContactRow({ contact }: { contact: MockContact }) {
         <p className="text-sm text-gray-700 font-medium truncate">{contact.name}</p>
         <p className="text-[11px] text-gray-400">{contact.role}</p>
       </div>
-    </div>
-  );
-}
-
-function TaskRow({ task }: { task: MockTask }) {
-  const statusStyles = {
-    pending: 'bg-amber-100 text-amber-700',
-    in_progress: 'bg-blue-100 text-blue-700',
-    completed: 'bg-green-100 text-green-700',
-  };
-  const statusLabels = { pending: 'Pending', in_progress: 'In Progress', completed: 'Done' };
-
-  return (
-    <div className="flex items-center justify-between gap-2 py-1">
-      <div className="min-w-0 flex-1">
-        <p className={`text-sm ${task.status === 'completed' ? 'text-gray-400 line-through' : 'text-gray-700'} truncate`}>{task.title}</p>
-        <p className="text-[11px] text-gray-400">{task.assignee} · Due {formatMockDate(task.dueDate)}</p>
-      </div>
-      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusStyles[task.status]}`}>
-        {statusLabels[task.status]}
-      </span>
     </div>
   );
 }
