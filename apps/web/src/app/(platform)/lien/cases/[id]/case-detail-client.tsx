@@ -182,7 +182,7 @@ export function CaseDetailClient({ id }: { id: string }) {
 
       <div className="flex-1 min-h-0 overflow-auto bg-gray-50 px-6 py-5">
         {activeTab === 'details' && (
-          <DetailsTab d={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />
+          <DetailsTab d={d} panelMode={panelMode} onPanelModeChange={setPanelMode} canEdit={canEdit} onCaseUpdated={setCaseDetail} />
         )}
         {activeTab === 'liens' && <LiensTab liens={relatedLiens} caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
         {activeTab === 'documents' && <DocumentsTab caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
@@ -293,67 +293,283 @@ const TEMP_UPDATES = [
   { id: '4', timestamp: '04/01/2026 9:00 AM', action: 'Case Created', description: 'New lien case opened for plaintiff', updatedBy: 'System' },
 ];
 
-function DetailsTab({ d, panelMode, onPanelModeChange }: { d: CaseDetail; panelMode: PanelMode; onPanelModeChange: (m: PanelMode) => void }) {
-  /* TEMP: visual fallback data for UI review only */
-  const [shareWithLawFirm, setShareWithLawFirm] = useState(false);
-  const [uccFiled, setUccFiled] = useState(false);
-  const [caseDropped, setCaseDropped] = useState(false);
-  const [childSupport, setChildSupport] = useState(false);
-  const [minorComp, setMinorComp] = useState(false);
+function DetailsTab({ d, panelMode, onPanelModeChange, canEdit, onCaseUpdated }: {
+  d: CaseDetail; panelMode: PanelMode; onPanelModeChange: (m: PanelMode) => void;
+  canEdit: boolean; onCaseUpdated: (updated: CaseDetail) => void;
+}) {
+  const addToast = useLienStore((s) => s.addToast);
+
+  const [editingPlaintiff, setEditingPlaintiff] = useState(false);
+  const [editingTracking, setEditingTracking] = useState(false);
+
+  const [pFirstName, setPFirstName] = useState(d.clientFirstName);
+  const [pLastName, setPLastName] = useState(d.clientLastName);
+  const [pPhone, setPPhone] = useState(d.clientPhone);
+  const [pEmail, setPEmail] = useState(d.clientEmail);
+  const [pDob, setPDob] = useState(d.clientDob);
+  const [pAddress, setPAddress] = useState(d.clientAddress);
+  const [pSaving, setPSaving] = useState(false);
+  const [pErrors, setPErrors] = useState<Record<string, string>>({});
+
+  const [tTitle, setTTitle] = useState(d.title);
+  const [tDescription, setTDescription] = useState(d.description);
+  const [tDateOfIncident, setTDateOfIncident] = useState(d.dateOfIncident);
+  const [tStatus, setTStatus] = useState(d.status);
+  const [tSaving, setTSaving] = useState(false);
+  const [tErrors, setTErrors] = useState<Record<string, string>>({});
+
+  const resetPlaintiffForm = useCallback(() => {
+    setPFirstName(d.clientFirstName); setPLastName(d.clientLastName);
+    setPPhone(d.clientPhone); setPEmail(d.clientEmail);
+    setPDob(d.clientDob); setPAddress(d.clientAddress);
+    setPErrors({});
+  }, [d]);
+
+  const resetTrackingForm = useCallback(() => {
+    setTTitle(d.title); setTDescription(d.description);
+    setTDateOfIncident(d.dateOfIncident); setTStatus(d.status);
+    setTErrors({});
+  }, [d]);
+
+  const validatePlaintiff = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!pFirstName.trim()) errs.firstName = 'First name is required';
+    if (!pLastName.trim()) errs.lastName = 'Last name is required';
+    if (pEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pEmail.trim())) errs.email = 'Invalid email format';
+    if (pPhone.trim() && !/^[\d\s()+-]{7,20}$/.test(pPhone.trim())) errs.phone = 'Invalid phone format';
+    setPErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const validateTracking = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (tDateOfIncident.trim() && !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(tDateOfIncident.trim()) && !/^\w{3}\s\d{1,2},\s\d{4}$/.test(tDateOfIncident.trim())) {
+      errs.dateOfIncident = 'Invalid date format (use MM/DD/YYYY)';
+    }
+    setTErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handlePlaintiffSave = useCallback(async () => {
+    if (!validatePlaintiff()) return;
+    setPSaving(true);
+    try {
+      const updated = await casesService.updateCase(d.id, {
+        clientFirstName: pFirstName.trim(),
+        clientLastName: pLastName.trim(),
+        clientPhone: pPhone.trim() || undefined,
+        clientEmail: pEmail.trim() || undefined,
+        clientDob: pDob || undefined,
+        clientAddress: pAddress.trim() || undefined,
+        status: d.status,
+        title: d.title || undefined,
+        description: d.description || undefined,
+        dateOfIncident: d.dateOfIncident || undefined,
+        externalReference: d.externalReference || undefined,
+        insuranceCarrier: d.insuranceCarrier || undefined,
+        policyNumber: d.policyNumber || undefined,
+        claimNumber: d.claimNumber || undefined,
+        notes: d.notes || undefined,
+        demandAmount: d.demandAmount ?? undefined,
+        settlementAmount: d.settlementAmount ?? undefined,
+      });
+      onCaseUpdated(updated);
+      setEditingPlaintiff(false);
+      addToast({ type: 'success', title: 'Plaintiff Updated', description: 'Plaintiff information saved successfully.' });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to save plaintiff info';
+      addToast({ type: 'error', title: 'Save Failed', description: message });
+    } finally {
+      setPSaving(false);
+    }
+  }, [d, pFirstName, pLastName, pPhone, pEmail, pDob, pAddress, onCaseUpdated, addToast]);
+
+  const handleTrackingSave = useCallback(async () => {
+    if (!validateTracking()) return;
+    setTSaving(true);
+    try {
+      const updated = await casesService.updateCase(d.id, {
+        clientFirstName: d.clientFirstName,
+        clientLastName: d.clientLastName,
+        clientPhone: d.clientPhone || undefined,
+        clientEmail: d.clientEmail || undefined,
+        clientDob: d.clientDob || undefined,
+        clientAddress: d.clientAddress || undefined,
+        status: tStatus,
+        title: tTitle.trim() || undefined,
+        description: tDescription.trim() || undefined,
+        dateOfIncident: tDateOfIncident || undefined,
+        externalReference: d.externalReference || undefined,
+        insuranceCarrier: d.insuranceCarrier || undefined,
+        policyNumber: d.policyNumber || undefined,
+        claimNumber: d.claimNumber || undefined,
+        notes: d.notes || undefined,
+        demandAmount: d.demandAmount ?? undefined,
+        settlementAmount: d.settlementAmount ?? undefined,
+      });
+      onCaseUpdated(updated);
+      setEditingTracking(false);
+      addToast({ type: 'success', title: 'Case Tracking Updated', description: 'Case tracking information saved successfully.' });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to save case tracking';
+      addToast({ type: 'error', title: 'Save Failed', description: message });
+    } finally {
+      setTSaving(false);
+    }
+  }, [d, tStatus, tTitle, tDescription, tDateOfIncident, onCaseUpdated, addToast]);
+
+  const inputCls = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all';
+  const errCls = 'text-[11px] text-red-500 mt-0.5';
 
   const leftContent = (
     <div className="space-y-4">
-      <CollapsibleSection title="Plaintiff" icon="ri-user-line" onEdit={() => {}}>
+      <CollapsibleSection title="Plaintiff" icon="ri-user-line" onEdit={canEdit && !editingPlaintiff ? () => { resetPlaintiffForm(); setEditingPlaintiff(true); } : undefined}>
         <div className="mb-3">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Plaintiff Info</p>
         </div>
-        <FieldGrid>
-          {/* TEMP: UI mock data for visual review only */}
-          <FieldItem label="Full Name" value={d.clientName || 'Maj Test'} />
-          <FieldItem label="Phone Number" value={d.clientPhone} />
-          <FieldItem label="Email" value={d.clientEmail} />
-          <FieldItem label="Birthdate" value={d.clientDob} />
-          {/* TEMP: UI mock data for visual review only */}
-          <FieldItem label="Sex" value="Male" />
-          <FieldItem label="Address" value={d.clientAddress} />
-        </FieldGrid>
+
+        {editingPlaintiff ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">First Name *</label>
+                <input type="text" value={pFirstName} onChange={(e) => setPFirstName(e.target.value)} className={inputCls} />
+                {pErrors.firstName && <p className={errCls}>{pErrors.firstName}</p>}
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Last Name *</label>
+                <input type="text" value={pLastName} onChange={(e) => setPLastName(e.target.value)} className={inputCls} />
+                {pErrors.lastName && <p className={errCls}>{pErrors.lastName}</p>}
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Phone Number</label>
+                <input type="tel" value={pPhone} onChange={(e) => setPPhone(e.target.value)} placeholder="(555) 123-4567" className={inputCls} />
+                {pErrors.phone && <p className={errCls}>{pErrors.phone}</p>}
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Email</label>
+                <input type="email" value={pEmail} onChange={(e) => setPEmail(e.target.value)} placeholder="name@example.com" className={inputCls} />
+                {pErrors.email && <p className={errCls}>{pErrors.email}</p>}
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Birthdate</label>
+                <input type="text" value={pDob} onChange={(e) => setPDob(e.target.value)} placeholder="MM/DD/YYYY" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Address</label>
+                <input type="text" value={pAddress} onChange={(e) => setPAddress(e.target.value)} className={inputCls} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <button onClick={handlePlaintiffSave} disabled={pSaving}
+                className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60">
+                {pSaving ? <><i className="ri-loader-4-line text-sm animate-spin" />Saving...</> : <><i className="ri-save-line text-sm" />Save</>}
+              </button>
+              <button onClick={() => { setEditingPlaintiff(false); setPErrors({}); }} disabled={pSaving}
+                className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <FieldGrid>
+            <FieldItem label="Full Name" value={d.clientName} />
+            <FieldItem label="Phone Number" value={d.clientPhone} />
+            <FieldItem label="Email" value={d.clientEmail} />
+            <FieldItem label="Birthdate" value={d.clientDob} />
+            {/* TEMP: Sex field not supported by API */}
+            <FieldItem label="Sex" value="---" />
+            <FieldItem label="Address" value={d.clientAddress} />
+          </FieldGrid>
+        )}
       </CollapsibleSection>
 
-      <CollapsibleSection title="Case Tracking" icon="ri-compass-3-line" onEdit={() => {}}>
+      <CollapsibleSection title="Case Tracking" icon="ri-compass-3-line" onEdit={canEdit && !editingTracking ? () => { resetTrackingForm(); setEditingTracking(true); } : undefined}>
         <div className="mb-3">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Case Details</p>
         </div>
-        <FieldGrid>
-          {/* TEMP: UI mock data for visual review only */}
-          <FieldItem label="Tracking Follow Up" value="04/20/2026" />
-          <div>
-            <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Current Status</dt>
-            <dd className="mt-1"><StatusBadge status={d.status} /></dd>
+
+        {editingTracking ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Case Status</label>
+                <div className="relative">
+                  <select value={tStatus} onChange={(e) => setTStatus(e.target.value)}
+                    className={`${inputCls} appearance-none cursor-pointer`}>
+                    {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
+                  </select>
+                  <i className="ri-arrow-down-s-line absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Case Type</label>
+                <input type="text" value={tTitle} onChange={(e) => setTTitle(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Date of Incident</label>
+                <input type="text" value={tDateOfIncident} onChange={(e) => setTDateOfIncident(e.target.value)} placeholder="MM/DD/YYYY" className={inputCls} />
+                {tErrors.dateOfIncident && <p className={errCls}>{tErrors.dateOfIncident}</p>}
+              </div>
+              {/* TEMP: fields below not supported by API */}
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 text-gray-300">Tracking Follow Up</label>
+                <input type="text" disabled value="" placeholder="Not yet supported" className={`${inputCls} opacity-50 cursor-not-allowed`} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Case Tracking Note</label>
+              <textarea value={tDescription} onChange={(e) => setTDescription(e.target.value)} rows={3}
+                className={`${inputCls} resize-none`} />
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <button onClick={handleTrackingSave} disabled={tSaving}
+                className="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5 disabled:opacity-60">
+                {tSaving ? <><i className="ri-loader-4-line text-sm animate-spin" />Saving...</> : <><i className="ri-save-line text-sm" />Save</>}
+              </button>
+              <button onClick={() => { setEditingTracking(false); setTErrors({}); }} disabled={tSaving}
+                className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+            </div>
           </div>
-          {/* TEMP: UI mock data for visual review only */}
-          <FieldItem label="Current Medical Status" value="Active Treatment" />
-          <FieldItem label="Case Type" value={d.title || 'Lien Case'} />
-          {/* TEMP: UI mock data for visual review only */}
-          <FieldItem label="State of Incident" value="FL" />
-          {/* TEMP: UI mock data for visual review only */}
-          <FieldItem label="Lead" value="Sarah Mitchell" />
-        </FieldGrid>
+        ) : (
+          <>
+            <FieldGrid>
+              {/* TEMP: Tracking Follow Up not supported by API */}
+              <FieldItem label="Tracking Follow Up" value="---" />
+              <div>
+                <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Current Status</dt>
+                <dd className="mt-1"><StatusBadge status={d.status} /></dd>
+              </div>
+              {/* TEMP: Current Medical Status not supported by API */}
+              <FieldItem label="Current Medical Status" value="---" />
+              <FieldItem label="Case Type" value={d.title || '---'} />
+              <FieldItem label="Date of Incident" value={d.dateOfIncident || '---'} />
+              {/* TEMP: Lead not supported by API */}
+              <FieldItem label="Lead" value="---" />
+            </FieldGrid>
 
-        <div className="mt-4 pt-4 border-t border-gray-100">
-          <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Case Tracking Note</dt>
-          {/* TEMP: UI mock data for visual review only */}
-          <dd className="text-sm text-gray-600 mt-1.5 leading-relaxed">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
-        </div>
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Case Tracking Note</dt>
+              <dd className="text-sm text-gray-600 mt-1.5 leading-relaxed">{d.description || '---'}</dd>
+            </div>
+          </>
+        )}
 
-        {/* TEMP: visual fallback data for UI review only */}
+        {/* Case Flags — not API-backed, read-only placeholders */}
         <div className="mt-4 pt-4 border-t border-gray-100">
-          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight mb-3">Case Flags</p>
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Case Flags</p>
+            <span className="text-[10px] text-gray-300 italic">Not yet supported</span>
+          </div>
           <div className="grid grid-cols-3 gap-x-6 gap-y-2.5">
-            <CheckboxField label="Share this case with Associated Law Firm" checked={shareWithLawFirm} onChange={setShareWithLawFirm} />
-            <CheckboxField label="UCC Filed" checked={uccFiled} onChange={setUccFiled} />
-            <CheckboxField label="Case Dropped" checked={caseDropped} onChange={setCaseDropped} />
-            <CheckboxField label="Child Support" checked={childSupport} onChange={setChildSupport} />
-            <CheckboxField label="Minor Comp" checked={minorComp} onChange={setMinorComp} />
+            {['Share with Law Firm', 'UCC Filed', 'Case Dropped', 'Child Support', 'Minor Comp'].map((flag) => (
+              <label key={flag} className="flex items-center gap-2.5 opacity-50 cursor-not-allowed">
+                <input type="checkbox" checked={false} disabled className="w-4 h-4 rounded border-gray-300 cursor-not-allowed" />
+                <span className="text-sm text-gray-400 select-none">{flag}</span>
+              </label>
+            ))}
           </div>
         </div>
       </CollapsibleSection>
