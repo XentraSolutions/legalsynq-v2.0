@@ -93,14 +93,13 @@ public sealed class ReportExecutionService : IReportExecutionService
 
         await _executionRepo.SaveAsync(execution, ct);
 
-        await TryAuditAsync("report.execution.started",
-            $"Execution '{execution.Id}' started for tenant '{tenantId}' template '{template.Code}' v{publishedVersion.VersionNumber}");
-
-        execution.Status = "Running";
-        await _executionRepo.UpdateAsync(execution, ct);
-
         try
         {
+            await TryAuditAsync("report.execution.started",
+                $"Execution '{execution.Id}' started for tenant '{tenantId}' template '{template.Code}' v{publishedVersion.VersionNumber}");
+
+            execution.Status = "Running";
+            await _executionRepo.UpdateAsync(execution, ct);
             var queryContext = new ReportQueryContext
             {
                 TenantId = tenantId,
@@ -135,6 +134,22 @@ public sealed class ReportExecutionService : IReportExecutionService
             }
 
             var resultSet = queryResult.Data;
+
+            var wasTruncated = resultSet.WasTruncated;
+            if (resultSet.Rows.Count > MaxRowCap)
+            {
+                resultSet = new TabularResultSet
+                {
+                    Columns = resultSet.Columns,
+                    Rows = resultSet.Rows.Take(MaxRowCap).ToList(),
+                    TotalRowCount = resultSet.TotalRowCount,
+                    WasTruncated = true
+                };
+                wasTruncated = true;
+                _log.LogWarning(
+                    "Execution {ExecutionId}: result truncated from {OriginalCount} to {MaxRows} rows",
+                    execution.Id, queryResult.Data.Rows.Count, MaxRowCap);
+            }
 
             execution.Status = "Completed";
             execution.CompletedAtUtc = DateTimeOffset.UtcNow;
