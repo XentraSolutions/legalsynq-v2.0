@@ -3,6 +3,14 @@ using Reports.Contracts.Persistence;
 
 namespace Reports.Infrastructure.Persistence;
 
+/// <summary>
+/// Bootstrap placeholder — in-memory mock of <see cref="IReportRepository"/>.
+/// <para>
+/// Returns empty/generated data for all operations. Exists solely to
+/// satisfy the DI graph during Epic 00 bootstrap. Will be replaced by a
+/// real MySQL-backed implementation in LS-REPORTS-00-002+.
+/// </para>
+/// </summary>
 public sealed class MockReportRepository : IReportRepository
 {
     private readonly ILogger<MockReportRepository> _log;

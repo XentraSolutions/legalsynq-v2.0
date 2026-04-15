@@ -25,4 +25,9 @@ app.UseMiddleware<RequestLoggingMiddleware>();
 
 app.MapHealthEndpoints();
 
+app.MapGet("/health", () => Results.Redirect("/api/v1/health", permanent: true))
+    .ExcludeFromDescription();
+app.MapGet("/ready", () => Results.Redirect("/api/v1/ready", permanent: true))
+    .ExcludeFromDescription();
+
 app.Run();

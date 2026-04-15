@@ -1,5 +1,39 @@
 namespace Reports.Shared.Utilities;
 
+/// <summary>
+/// Utility for creating and appending to markdown-formatted implementation
+/// reports on the local filesystem.
+/// <para>
+/// <b>Intended usage:</b> The ReportWriter is a developer/operational tool
+/// for recording implementation progress, analysis results, and iteration
+/// reports during development. It is NOT part of the business report
+/// generation pipeline. Business reports flow through the job queue
+/// (<see cref="Reports.Contracts.Queue.IJobQueue"/>) and adapters.
+/// </para>
+/// <example>
+/// <code>
+/// // Typical usage — create an iteration report and append steps as work progresses:
+/// var writer = new ReportWriter("analysis");
+///
+/// writer.CreateReport(
+///     fileName:  "LS-REPORTS-00-002-results.md",
+///     title:     "MySQL Integration",
+///     storyId:   "LS-REPORTS-00-002",
+///     objective: "Integrate MySQL persistence layer",
+///     scope:     "Connection, schema, repository implementation");
+///
+/// writer.AppendStep(
+///     fileName: "LS-REPORTS-00-002-results.md",
+///     stepName: "Step 1 — Schema design",
+///     status:   "Complete",
+///     notes:    "Created tables for report_definitions and report_executions");
+///
+/// writer.WriteFinalSummary(
+///     fileName: "LS-REPORTS-00-002-results.md",
+///     summary:  "All acceptance criteria met. Service builds and passes tests.");
+/// </code>
+/// </example>
+/// </summary>
 public sealed class ReportWriter
 {
     private readonly string _basePath;

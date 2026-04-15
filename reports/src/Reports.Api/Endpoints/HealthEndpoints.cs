@@ -6,18 +6,20 @@ namespace Reports.Api.Endpoints;
 
 public static class HealthEndpoints
 {
-    public static void MapHealthEndpoints(this WebApplication app)
+    public static void MapHealthEndpoints(this IEndpointRouteBuilder routes)
     {
-        app.MapGet("/health", () => Results.Ok(new
+        var group = routes.MapGroup("/api/v1")
+            .WithTags("Health")
+            .AllowAnonymous();
+
+        group.MapGet("/health", () => Results.Ok(new
         {
             status    = "healthy",
             service   = "Reports Service",
             timestamp = DateTimeOffset.UtcNow,
-        }))
-        .WithTags("Health")
-        .AllowAnonymous();
+        }));
 
-        app.MapGet("/ready", async (
+        group.MapGet("/ready", async (
             IIdentityAdapter identity,
             ITenantAdapter tenant,
             IEntitlementAdapter entitlement,
@@ -54,9 +56,7 @@ public static class HealthEndpoints
             };
 
             return allOk ? Results.Ok(response) : Results.Json(response, statusCode: 503);
-        })
-        .WithTags("Health")
-        .AllowAnonymous();
+        });
     }
 
     private static async Task<bool> ProbeAdapter(Func<Task> probe)
