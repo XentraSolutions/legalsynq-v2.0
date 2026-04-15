@@ -483,7 +483,20 @@ shared/
 | `Route53__RecordValue` | Identity.Api | CNAME target for tenant subdomains |
 | `Route53__AccessKeyId` | Identity.Api | AWS access key (optional; falls back to instance role) |
 | `Route53__SecretAccessKey` | Identity.Api | AWS secret key (optional; falls back to instance role) |
-| `ConnectionStrings__AuditEventDb` | Audit Service | MySQL connection string for audit_db on RDS. Production: `MigrateOnStartup=true` runs 3 migrations (InitialSchema, LegalHolds/Outbox, AddTablePrefixes). AddTablePrefixes handles both fresh DB (creates `aud_AuditEvents`) and existing DB (renames unprefixed tables). **Fallback:** If MySQL connection string is absent, Program.cs auto-falls back to SQLite (`audit_dev.db`). Migration failures are non-fatal (logged, service continues). |
+| `ConnectionStrings__AuditEventDb` | Audit Service | MySQL connection string for audit_db on RDS. `MigrateOnStartup=true` in both dev and prod. 3 migrations (InitialSchema, LegalHolds/Outbox, AddTablePrefixes). |
+| `ConnectionStrings__DocsDb` | Documents.Api | MySQL, documents_db on RDS |
+| `ConnectionStrings__LiensDb` | Liens.Api | MySQL, liens_db on RDS |
+| `NOTIF_DB_PASSWORD` | Notifications.Api | MySQL password for notifications_db (host/port/name/user via shared env vars) |
+| `ConnectionStrings__ReportsDb` | Reports.Api | MySQL, reports_db on RDS (shared env var) |
+
+## Database (AWS RDS MySQL)
+- **Host:** `legalsynqplatform.cpq48wc2krn5.us-east-2.rds.amazonaws.com` (MySQL 8.0, us-east-2)
+- **All services connected:** Identity, Fund, CareConnect, Liens, Audit, Notifications, Documents, Reports
+- **Auto-migration:** All services run `Database.Migrate()` or `MigrateOnStartup` on startup — no manual migration steps needed
+- **Databases:** `identity_db`, `fund_db`, `careconnect_db`, `documents_db`, `liens_db`, `notifications_db`, `reports_db`, `audit_db`, `audit_event_db`
+- **Notifications uses individual env vars:** `NOTIF_DB_HOST`, `NOTIF_DB_PORT`, `NOTIF_DB_NAME`, `NOTIF_DB_USER` (shared), `NOTIF_DB_PASSWORD` (secret)
+- **Audit service config:** `Database:Provider=MySQL` in both `appsettings.json` and `appsettings.Development.json`, reads connection via `ConnectionStrings:AuditEventDb`
+- **Setup utility:** `scripts/DbSetup/` — `dotnet run` checks/creates databases; `dotnet run -- reset-audit` drops and recreates audit schema
 
 ## JWT
 
