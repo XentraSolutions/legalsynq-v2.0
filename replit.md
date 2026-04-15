@@ -49,7 +49,7 @@ apps/web/
       role-access/              ← Centralized role-access service (LS-LIENS-UI-012): buildRoleAccess() maps productRoles + mode → RoleAccessInfo with can(LienAction) and canViewModule(LienModule). Replaces legacy AppRole/canPerformAction from lien-store.
       bulk-operations/          ← Bulk operations framework (LS-LIENS-UI-013): executeBulk(ids, handler) processes items sequentially, returns BulkOperationResult with succeeded/failed counts. Types: BulkActionConfig, BulkOperationResult, BulkItemResult, BulkExecutor.
     providers/
-      session-provider.tsx      ← SessionProvider — fetches BFF /api/auth/me client-side on mount
+      session-provider.tsx      ← SessionProvider — fetches BFF /api/auth/me client-side on mount; idle timer uses showWarningRef to avoid callback cascade; context value memoized
       tenant-branding-provider.tsx ← TenantBrandingProvider — anonymous branding fetch + CSS vars + X-Tenant-Code header
     hooks/
       use-session.ts            ← useSession() / useRequiredSession()
@@ -60,7 +60,7 @@ apps/web/
       use-nav-badges.ts         ← useNavBadges() — polls new referral count for Provider/CareConnectReceiver users (30s interval)
     contexts/
       settings-context.tsx        ← SettingsProvider + useSettings() — resolves AppSettings (appearance, careConnect)
-      product-context.tsx         ← ProductProvider + useProduct() — infers activeProductId from pathname
+      product-context.tsx         ← ProductProvider + useProduct() — infers activeProductId from pathname; context value memoized with useMemo
     config/
       app-settings.ts             ← AppSettings interface, GLOBAL_DEFAULTS, TENANT_OVERRIDES, resolveSettings()
                                      Includes CareConnectSettings.requireAvailabilityCheck (default: false)

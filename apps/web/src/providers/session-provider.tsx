@@ -6,6 +6,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useMemo,
   useRef,
   type ReactNode,
 } from 'react';
@@ -65,8 +66,8 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
 
   const idleTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warningTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Seed the ref too so idle-timer callbacks see the correct session immediately.
   const sessionRef      = useRef<PlatformSession | null>(seeded);
+  const showWarningRef  = useRef(false);
 
   const fetchSession = useCallback(async () => {
     // Only show the loading spinner when we have no session at all yet.
@@ -131,6 +132,7 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
   // ── Idle timeout ────────────────────────────────────────────────────────────
 
   const doLogout = useCallback(async () => {
+    showWarningRef.current = false;
     setShowWarning(false);
     if (warningTimerRef.current) clearInterval(warningTimerRef.current);
     if (idleTimerRef.current)    clearTimeout(idleTimerRef.current);
@@ -141,6 +143,7 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
 
   const startWarningCountdown = useCallback(() => {
     setCountdown(WARNING_LEAD_SECONDS);
+    showWarningRef.current = true;
     setShowWarning(true);
     warningTimerRef.current = setInterval(() => {
       setCountdown(prev => {
@@ -158,7 +161,7 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     const s = sessionRef.current;
     if (!s) return;
 
-    if (showWarning) return;
+    if (showWarningRef.current) return;
 
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
 
@@ -168,10 +171,11 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     idleTimerRef.current = setTimeout(() => {
       startWarningCountdown();
     }, Math.max(warningMs, 0));
-  }, [showWarning, startWarningCountdown]);
+  }, [startWarningCountdown]);
 
   const stayActive = useCallback(() => {
     if (warningTimerRef.current) clearInterval(warningTimerRef.current);
+    showWarningRef.current = false;
     setShowWarning(false);
     setCountdown(WARNING_LEAD_SECONDS);
     resetIdleTimer();
@@ -193,8 +197,13 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     };
   }, [session, resetIdleTimer]);
 
+  const ctxValue = useMemo(
+    () => ({ session, isLoading, refresh: fetchSession, clearSession }),
+    [session, isLoading, fetchSession, clearSession],
+  );
+
   return (
-    <SessionContext.Provider value={{ session, isLoading, refresh: fetchSession, clearSession }}>
+    <SessionContext.Provider value={ctxValue}>
       {children}
       {showWarning && (
         <IdleWarningDialog countdown={countdown} onStay={stayActive} onLogout={doLogout} />

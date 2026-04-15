@@ -47,10 +47,12 @@ function formatCurrency(amount: number | null): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
+const EMPTY_NOTES: { id: string; text: string; author: string; timestamp: string }[] = [];
+
 export function CaseDetailClient({ id }: { id: string }) {
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
-  const caseNotes = useLienStore((s) => s.caseNotes[id] || []);
+  const caseNotes = useLienStore((s) => s.caseNotes[id] ?? EMPTY_NOTES);
 
   const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
   const [relatedLiens, setRelatedLiens] = useState<CaseLienItem[]>([]);

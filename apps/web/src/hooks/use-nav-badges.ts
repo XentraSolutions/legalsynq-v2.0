@@ -7,11 +7,12 @@ import { careConnectApi } from '@/lib/careconnect-api';
 import { OrgType, ProductRole } from '@/types';
 
 const POLL_INTERVAL_MS = 30_000;
+const EMPTY_BADGES: Record<string, number> = {};
 
 export function useNavBadges(): Record<string, number> {
   const { session } = useSession();
   const pathname = usePathname();
-  const [badges, setBadges] = useState<Record<string, number>>({});
+  const [badges, setBadges] = useState<Record<string, number>>(EMPTY_BADGES);
 
   const isProvider =
     session?.orgType === OrgType.Provider &&
@@ -37,7 +38,7 @@ export function useNavBadges(): Record<string, number> {
 
   useEffect(() => {
     if (!isProvider) {
-      setBadges({});
+      setBadges(EMPTY_BADGES);
       return;
     }
 
