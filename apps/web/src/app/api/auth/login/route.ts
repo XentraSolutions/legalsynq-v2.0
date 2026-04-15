@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   const rawHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? '';
   const rawSubdomain = extractRawSubdomain(rawHost);
-  const tenantCode = rawSubdomain || explicitTenantCode?.trim() || null;
+  const tenantCode = explicitTenantCode?.trim() || rawSubdomain || null;
 
   console.log(`[login] host=${rawHost}, subdomain=${rawSubdomain}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, email=${email}`);
 
