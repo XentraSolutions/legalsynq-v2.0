@@ -23,6 +23,7 @@ const TABS = [
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
+type PanelMode = 'split' | 'left' | 'right';
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return '---';
@@ -43,6 +44,7 @@ export function CaseDetailClient({ id }: { id: string }) {
   const [confirmStatus, setConfirmStatus] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<TabKey>('details');
+  const [panelMode, setPanelMode] = useState<PanelMode>('split');
 
   const fetchCase = useCallback(async () => {
     setLoading(true);
@@ -121,30 +123,37 @@ export function CaseDetailClient({ id }: { id: string }) {
 
       <div className="mx-6 mt-2 bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="px-6 py-4">
-          <div className="flex items-start justify-between gap-6">
-            <div className="min-w-0 shrink-0">
+          <div className="flex items-center gap-8">
+            <div className="shrink-0 min-w-[160px]">
               {/* TEMP: UI mock data for visual review only */}
-              <h1 className="text-lg font-semibold text-gray-900">{d.clientName || 'Maj Test'}</h1>
-              <p className="text-xs text-gray-400 mt-0.5">{d.caseNumber}</p>
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">{d.clientName || 'Maj Test'}</h1>
+              <p className="text-xs text-gray-400 mt-1.5 font-medium">{d.caseNumber}</p>
             </div>
-            <div className="flex items-center gap-5 flex-wrap text-sm">
-              <HeaderMeta label="Case Type" value={d.title || 'Lien Case'} />
-              <HeaderMeta label="Case Status">
-                <StatusBadge status={d.status} />
-              </HeaderMeta>
-              <HeaderMeta label="Date of Loss" value={d.dateOfIncident || '---'} />
-              <HeaderMeta label="Date of Birth" value={d.clientDob || '---'} />
-              {/* TEMP: UI mock data for visual review only */}
-              <HeaderMeta label="State of Incident" value="FL" />
-              <HeaderMeta label="Law Firm" value={d.insuranceCarrier || 'Smith & Associates'} />
-              {/* TEMP: UI mock data for visual review only */}
-              <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
-              {canEdit && (
-                <button onClick={advanceStatus} disabled={d.status === 'Closed'}
-                  className="text-sm font-medium px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors whitespace-nowrap">
-                  Actions
-                </button>
-              )}
+
+            <div className="flex-1 min-w-0">
+              <div className="grid grid-cols-4 gap-x-6 gap-y-3">
+                <HeaderMeta label="Case Type" value={d.title || 'Lien Case'} />
+                <HeaderMeta label="Case Status">
+                  <StatusBadge status={d.status} />
+                </HeaderMeta>
+                <HeaderMeta label="Date of Loss" value={d.dateOfIncident || '---'} />
+                <HeaderMeta label="Date of Birth" value={d.clientDob || '---'} />
+                {/* TEMP: UI mock data for visual review only */}
+                <HeaderMeta label="State of Incident" value="FL" />
+                <HeaderMeta label="Law Firm" value={d.insuranceCarrier || 'Smith & Associates'} />
+                {/* TEMP: UI mock data for visual review only */}
+                <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
+                {canEdit ? (
+                  <div className="flex items-end">
+                    <button onClick={advanceStatus} disabled={d.status === 'Closed'}
+                      className="text-sm font-medium px-4 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors whitespace-nowrap">
+                      Actions
+                    </button>
+                  </div>
+                ) : (
+                  <div />
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -172,7 +181,14 @@ export function CaseDetailClient({ id }: { id: string }) {
       </div>
 
       <div className="flex-1 min-h-0 overflow-auto bg-gray-50 px-6 py-5">
-        {activeTab === 'details' && <DetailsTab d={d} liens={relatedLiens} />}
+        {activeTab === 'details' && (
+          <DetailsTab
+            d={d}
+            liens={relatedLiens}
+            panelMode={panelMode}
+            setPanelMode={setPanelMode}
+          />
+        )}
         {activeTab === 'liens' && <LiensTab liens={relatedLiens} />}
         {activeTab === 'documents' && <EmptyTab icon="ri-file-copy-2-line" label="Documents" />}
         {activeTab === 'servicing' && <EmptyTab icon="ri-tools-line" label="Servicing" />}
@@ -192,7 +208,7 @@ export function CaseDetailClient({ id }: { id: string }) {
 
 function HeaderMeta({ label, value, children }: { label: string; value?: string; children?: ReactNode }) {
   return (
-    <div className="text-center min-w-0">
+    <div className="min-w-0">
       <p className="text-[11px] text-gray-400 uppercase tracking-wide leading-tight">{label}</p>
       {children ? (
         <div className="mt-1">{children}</div>
@@ -260,62 +276,118 @@ function FieldItem({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-function DetailsTab({ d, liens }: { d: CaseDetail; liens: CaseLienItem[] }) {
+function PanelDivider({ mode, onChangeMode }: { mode: PanelMode; onChangeMode: (m: PanelMode) => void }) {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-5">
-      <div className="space-y-4">
-        <CollapsibleSection title="Plaintiff" icon="ri-user-line" onEdit={() => {}}>
-          <div className="mb-3">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Plaintiff Info</p>
-          </div>
-          <FieldGrid>
-            {/* TEMP: UI mock data for visual review only */}
-            <FieldItem label="Full Name" value={d.clientName || 'Maj Test'} />
-            <FieldItem label="Phone Number" value={d.clientPhone} />
-            <FieldItem label="Email" value={d.clientEmail} />
-            <FieldItem label="Birthdate" value={d.clientDob} />
-            {/* TEMP: UI mock data for visual review only */}
-            <FieldItem label="Sex" value="Male" />
-            <FieldItem label="Address" value={d.clientAddress} />
-          </FieldGrid>
-        </CollapsibleSection>
+    <div className="flex flex-col items-center justify-center gap-1 self-stretch shrink-0 mx-1">
+      <button
+        onClick={() => onChangeMode(mode === 'left' ? 'split' : 'left')}
+        title={mode === 'left' ? 'Restore split view' : 'Expand left panel'}
+        className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
+          mode === 'left'
+            ? 'border-primary bg-primary/10 text-primary'
+            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+        }`}
+      >
+        <i className={`ri-arrow-${mode === 'left' ? 'right' : 'left'}-s-line text-sm`} />
+      </button>
+      <div className="w-px h-6 bg-gray-200" />
+      <button
+        onClick={() => onChangeMode(mode === 'right' ? 'split' : 'right')}
+        title={mode === 'right' ? 'Restore split view' : 'Expand right panel'}
+        className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
+          mode === 'right'
+            ? 'border-primary bg-primary/10 text-primary'
+            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+        }`}
+      >
+        <i className={`ri-arrow-${mode === 'right' ? 'left' : 'right'}-s-line text-sm`} />
+      </button>
+    </div>
+  );
+}
 
-        <CollapsibleSection title="Case Tracking" icon="ri-compass-3-line" onEdit={() => {}}>
-          <div className="mb-3">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Case Details</p>
-          </div>
-          <FieldGrid>
-            {/* TEMP: UI mock data for visual review only */}
-            <FieldItem label="Tracking Follow Up" value="04/20/2026" />
-            <div>
-              <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Current Status</dt>
-              <dd className="mt-1"><StatusBadge status={d.status} /></dd>
+function DetailsTab({
+  d,
+  liens,
+  panelMode,
+  setPanelMode,
+}: {
+  d: CaseDetail;
+  liens: CaseLienItem[];
+  panelMode: PanelMode;
+  setPanelMode: (m: PanelMode) => void;
+}) {
+  const showLeft = panelMode !== 'right';
+  const showRight = panelMode !== 'left';
+
+  const gridClass =
+    panelMode === 'split'
+      ? 'grid-cols-[1fr_auto_minmax(0,0.42fr)]'
+      : panelMode === 'left'
+        ? 'grid-cols-[1fr_auto]'
+        : 'grid-cols-[auto_1fr]';
+
+  return (
+    <div className={`grid ${gridClass} gap-0 items-start`}>
+      {showLeft && (
+        <div className="space-y-4 min-w-0">
+          <CollapsibleSection title="Plaintiff" icon="ri-user-line" onEdit={() => {}}>
+            <div className="mb-3">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Plaintiff Info</p>
             </div>
-            {/* TEMP: UI mock data for visual review only */}
-            <FieldItem label="Current Medical Status" value="Active Treatment" />
-            <FieldItem label="Case Type" value={d.title || 'Lien Case'} />
-            {/* TEMP: UI mock data for visual review only */}
-            <FieldItem label="State of Incident" value="FL" />
-            {/* TEMP: UI mock data for visual review only */}
-            <FieldItem label="Lead" value="Sarah Mitchell" />
-          </FieldGrid>
-          <div className="mt-4 pt-4 border-t border-gray-100">
-            <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Case Tracking Note</dt>
-            {/* TEMP: UI mock data for visual review only */}
-            <dd className="text-sm text-gray-600 mt-1">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
-          </div>
-        </CollapsibleSection>
-      </div>
+            <FieldGrid>
+              {/* TEMP: UI mock data for visual review only */}
+              <FieldItem label="Full Name" value={d.clientName || 'Maj Test'} />
+              <FieldItem label="Phone Number" value={d.clientPhone} />
+              <FieldItem label="Email" value={d.clientEmail} />
+              <FieldItem label="Birthdate" value={d.clientDob} />
+              {/* TEMP: UI mock data for visual review only */}
+              <FieldItem label="Sex" value="Male" />
+              <FieldItem label="Address" value={d.clientAddress} />
+            </FieldGrid>
+          </CollapsibleSection>
 
-      <div className="space-y-4">
-        <CollapsibleSection title="Email" icon="ri-mail-line">
-          <div className="flex justify-center py-2">
-            <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
-              Compose New Email
-            </button>
-          </div>
-        </CollapsibleSection>
-      </div>
+          <CollapsibleSection title="Case Tracking" icon="ri-compass-3-line" onEdit={() => {}}>
+            <div className="mb-3">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Case Details</p>
+            </div>
+            <FieldGrid>
+              {/* TEMP: UI mock data for visual review only */}
+              <FieldItem label="Tracking Follow Up" value="04/20/2026" />
+              <div>
+                <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Current Status</dt>
+                <dd className="mt-1"><StatusBadge status={d.status} /></dd>
+              </div>
+              {/* TEMP: UI mock data for visual review only */}
+              <FieldItem label="Current Medical Status" value="Active Treatment" />
+              <FieldItem label="Case Type" value={d.title || 'Lien Case'} />
+              {/* TEMP: UI mock data for visual review only */}
+              <FieldItem label="State of Incident" value="FL" />
+              {/* TEMP: UI mock data for visual review only */}
+              <FieldItem label="Lead" value="Sarah Mitchell" />
+            </FieldGrid>
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Case Tracking Note</dt>
+              {/* TEMP: UI mock data for visual review only */}
+              <dd className="text-sm text-gray-600 mt-1">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
+            </div>
+          </CollapsibleSection>
+        </div>
+      )}
+
+      <PanelDivider mode={panelMode} onChangeMode={setPanelMode} />
+
+      {showRight && (
+        <div className="space-y-4 min-w-0">
+          <CollapsibleSection title="Email" icon="ri-mail-line">
+            <div className="flex justify-center py-2">
+              <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+                Compose New Email
+              </button>
+            </div>
+          </CollapsibleSection>
+        </div>
+      )}
     </div>
   );
 }

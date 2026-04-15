@@ -167,30 +167,37 @@ export function LienDetailClient({ id }: { id: string }) {
 
       <div className="mx-6 mt-2 bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="px-6 py-4">
-          <div className="flex items-start justify-between gap-6">
-            <div className="min-w-0 shrink-0">
+          <div className="flex items-center gap-8">
+            <div className="shrink-0 min-w-[160px]">
               {/* TEMP: UI mock data for visual review only — personName fallback */}
-              <h1 className="text-lg font-semibold text-gray-900">{personName || 'John Doe'}</h1>
-              <p className="text-xs text-gray-400 mt-0.5">{d.lienNumber}</p>
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">{personName || 'John Doe'}</h1>
+              <p className="text-xs text-gray-400 mt-1.5 font-medium">{d.lienNumber}</p>
             </div>
-            <div className="flex items-center gap-5 flex-wrap text-sm">
-              <HeaderMeta label="Lien Type" value={d.lienTypeLabel} />
-              <HeaderMeta label="Status">
-                <StatusBadge status={d.status} size="md" />
-              </HeaderMeta>
-              <HeaderMeta label="Incident Date" value={d.incidentDate || '---'} />
-              <HeaderMeta label="Jurisdiction" value={d.jurisdiction || '---'} />
-              <HeaderMeta label="Case" value={linkedCase ? linkedCase.caseNumber : d.caseId || '---'} />
-              {/* TEMP: UI mock data for visual review only */}
-              <HeaderMeta label="Law Firm" value={linkedCase?.insuranceCarrier || 'Smith & Associates'} />
-              {/* TEMP: UI mock data for visual review only */}
-              <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
-              {canEdit && isSellMode && d.status === 'Offered' && (
-                <button onClick={() => setShowOfferModal(true)}
-                  className="text-sm font-medium px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors whitespace-nowrap">
-                  Submit Offer
-                </button>
-              )}
+
+            <div className="flex-1 min-w-0">
+              <div className="grid grid-cols-4 gap-x-6 gap-y-3">
+                <HeaderMeta label="Lien Type" value={d.lienTypeLabel} />
+                <HeaderMeta label="Status">
+                  <StatusBadge status={d.status} size="md" />
+                </HeaderMeta>
+                <HeaderMeta label="Incident Date" value={d.incidentDate || '---'} />
+                <HeaderMeta label="Jurisdiction" value={d.jurisdiction || '---'} />
+                <HeaderMeta label="Case" value={linkedCase ? linkedCase.caseNumber : d.caseId || '---'} />
+                {/* TEMP: UI mock data for visual review only */}
+                <HeaderMeta label="Law Firm" value={linkedCase?.insuranceCarrier || 'Smith & Associates'} />
+                {/* TEMP: UI mock data for visual review only */}
+                <HeaderMeta label="Case Manager" value="Sarah Mitchell" />
+                {canEdit && isSellMode && d.status === 'Offered' ? (
+                  <div className="flex items-end">
+                    <button onClick={() => setShowOfferModal(true)}
+                      className="text-sm font-medium px-4 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors whitespace-nowrap">
+                      Submit Offer
+                    </button>
+                  </div>
+                ) : (
+                  <div />
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -270,7 +277,7 @@ export function LienDetailClient({ id }: { id: string }) {
 
 function HeaderMeta({ label, value, children }: { label: string; value?: string; children?: ReactNode }) {
   return (
-    <div className="text-center min-w-0">
+    <div className="min-w-0">
       <p className="text-[11px] text-gray-400 uppercase tracking-wide leading-tight">{label}</p>
       {children ? (
         <div className="mt-1">{children}</div>
@@ -340,7 +347,7 @@ function FieldItem({ label, value }: { label: string; value?: string | ReactNode
 
 function PanelDivider({ mode, onChangeMode }: { mode: PanelMode; onChangeMode: (m: PanelMode) => void }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-1 self-stretch shrink-0">
+    <div className="flex flex-col items-center justify-center gap-1 self-stretch shrink-0 mx-1">
       <button
         onClick={() => onChangeMode(mode === 'left' ? 'split' : 'left')}
         title={mode === 'left' ? 'Restore split view' : 'Expand left panel'}
