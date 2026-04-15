@@ -27,6 +27,10 @@ public class ReportTemplateConfiguration : IEntityTypeConfiguration<ReportTempla
             .IsRequired()
             .HasMaxLength(50);
 
+        builder.Property(e => e.OrganizationType)
+            .IsRequired()
+            .HasMaxLength(50);
+
         builder.Property(e => e.IsActive)
             .IsRequired();
 
@@ -41,6 +45,8 @@ public class ReportTemplateConfiguration : IEntityTypeConfiguration<ReportTempla
 
         builder.HasIndex(e => e.Code).IsUnique();
         builder.HasIndex(e => e.ProductCode);
+        builder.HasIndex(e => e.OrganizationType);
+        builder.HasIndex(e => new { e.ProductCode, e.OrganizationType });
         builder.HasIndex(e => e.IsActive);
 
         builder.HasMany(e => e.Versions)

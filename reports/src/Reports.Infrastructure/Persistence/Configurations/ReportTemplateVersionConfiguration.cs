@@ -32,6 +32,15 @@ public class ReportTemplateVersionConfiguration : IEntityTypeConfiguration<Repor
             .IsRequired()
             .HasMaxLength(100);
 
+        builder.Property(e => e.IsPublished)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(e => e.PublishedAtUtc);
+
+        builder.Property(e => e.PublishedByUserId)
+            .HasMaxLength(100);
+
         builder.Property(e => e.CreatedAtUtc)
             .IsRequired();
 

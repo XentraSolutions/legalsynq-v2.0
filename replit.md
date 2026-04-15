@@ -4170,6 +4170,7 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 - **Story**: LS-REPORTS-00-002 — Adapter Interface Hardening
 - **Story**: LS-REPORTS-01-001 — Template Data Model & Persistence Foundation
 - **Story**: LS-REPORTS-01-001-01 — Persistence Model Alignment (`ReportDefinition` → `ReportTemplate`)
+- **Story**: LS-REPORTS-01-002 — Template Management API (CRUD + versioning + publish)
 - **Framework**: .NET 8 ASP.NET Core Web API, clean layered architecture
 - **Structure**: `Reports.sln` with 7 source projects (Api, Application, Domain, Infrastructure, Worker, Contracts, Shared) + 3 test projects
 - **Design**: Standalone, platform-agnostic microservice. No LegalSynq-specific logic. Adapter-based integration pattern.
@@ -4177,14 +4178,15 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 - **Adapter Result**: `AdapterResult<T>` generic wrapper (Success/Fail with error codes, retryability, metadata). `AdapterErrors` static class with standard error codes (NOT_FOUND, UNAUTHORIZED, FORBIDDEN, UNAVAILABLE, TIMEOUT, etc.)
 - **Adapters**: 7 adapter interfaces in `Reports.Contracts/Adapters/` — all accept `RequestContext` as first param, use typed context models, return `AdapterResult<T>`. Mock implementations in `Reports.Infrastructure/Adapters/`
 - **Typed DTOs**: `StoreReportRequest`, `StoredDocumentInfo`, `ReportContent`, `ReportNotification`, `ProductDataQuery`, `ProductDataResult`
-- **Endpoints**: `GET /api/v1/health` (basic health), `GET /api/v1/ready` (component readiness with 9 checks, semantic probe evaluation)
+- **Endpoints**: `GET /api/v1/health` (basic health), `GET /api/v1/ready` (component readiness with 9 checks, semantic probe evaluation). Template Management: `POST /api/v1/templates`, `PUT /api/v1/templates/{id}`, `GET /api/v1/templates/{id}`, `GET /api/v1/templates?productCode&organizationType&page&pageSize`, `POST /api/v1/templates/{id}/versions`, `GET /api/v1/templates/{id}/versions`, `GET /api/v1/templates/{id}/versions/latest`, `GET /api/v1/templates/{id}/versions/published`, `POST /api/v1/templates/{id}/versions/{versionNumber}/publish`
 - **Middleware**: `RequestLoggingMiddleware` with X-Correlation-Id support
 - **Worker**: `ReportWorkerService` (BackgroundService) polls `IJobQueue` every 10s
 - **Guardrails**: `IGuardrailValidator` with `ValidateExecutionLimits()` and `ValidateReportTemplate()` stubs
 - **Persistence**: MySQL + EF Core (Pomelo 8.0.2) with conditional fallback — when `ConnectionStrings:ReportsDb` is set, uses `ReportsDbContext` + EF repositories; when empty, falls back to mock repositories. Physical tables prefixed `rpt_` (rpt_ReportDefinitions, rpt_ReportTemplateVersions, rpt_ReportExecutions). Physical table/column names kept stable; code uses `ReportTemplate` terminology with explicit `ToTable()`/`HasColumnName()` mappings.
-- **Domain**: `ReportTemplate` (with versioning), `ReportTemplateVersion` (template body, output format, change tracking), `ReportExecution` (tenant-scoped, FK to template via `ReportTemplateId`) — EF-free POCOs
-- **Contracts**: `IReportRepository` (execution CRUD), `ITemplateRepository` (template + version management) — strongly-typed, using `ReportTemplate` naming
+- **Domain**: `ReportTemplate` (Code, Name, Description, ProductCode, OrganizationType, IsActive, CurrentVersion, timestamps, Versions collection), `ReportTemplateVersion` (template body, output format, change tracking, publish state via IsPublished/PublishedAtUtc/PublishedByUserId), `ReportExecution` (tenant-scoped, FK to template via `ReportTemplateId`) — EF-free POCOs
+- **Contracts**: `IReportRepository` (execution CRUD), `ITemplateRepository` (template + version management + publish queries) — strongly-typed, using `ReportTemplate` naming
+- **Service Layer**: `ITemplateManagementService` / `TemplateManagementService` in Application/Templates — CRUD orchestration, validation, sequential versioning, single-published-version governance, audit hooks. Request/Response DTOs in Application/Templates/DTOs/. `ServiceResult<T>` generic wrapper for consistent error propagation.
 - **EF Configurations**: Fluent API in `Infrastructure/Persistence/Configurations/` — `ReportTemplateConfiguration`, `ReportTemplateVersionConfiguration`, `ReportExecutionConfiguration`. Unique indexes on template Code and (templateId, versionNumber), cascade delete on versions, restrict delete on executions. FK columns mapped via `HasColumnName("ReportDefinitionId")` for schema stability.
 - **Design-Time Factory**: `DesignTimeDbContextFactory` in Api project for `dotnet ef migrations` tooling
 - **Utility**: `ReportWriter` in Shared — writes implementation reports to `/analysis`
-- **Analysis**: Reports at `analysis/LS-REPORTS-00-001-report.md`, `analysis/LS-REPORTS-00-002-report.md`, `analysis/LS-REPORTS-01-001-report.md`, `analysis/LS-REPORTS-01-001-01-results.md`
+- **Analysis**: Reports at `analysis/LS-REPORTS-00-001-report.md`, `analysis/LS-REPORTS-00-002-report.md`, `analysis/LS-REPORTS-01-001-report.md`, `analysis/LS-REPORTS-01-001-01-results.md`, `analysis/LS-REPORTS-01-002-report.md`

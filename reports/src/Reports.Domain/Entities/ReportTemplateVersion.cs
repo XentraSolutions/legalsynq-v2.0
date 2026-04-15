@@ -9,6 +9,9 @@ public sealed class ReportTemplateVersion
     public string OutputFormat { get; set; } = "PDF";
     public string? ChangeNotes { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool IsPublished { get; set; }
+    public DateTimeOffset? PublishedAtUtc { get; set; }
+    public string? PublishedByUserId { get; set; }
     public string CreatedByUserId { get; set; } = string.Empty;
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 
