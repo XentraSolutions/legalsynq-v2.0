@@ -9,7 +9,8 @@ public static class ScheduleEndpoints
     public static void MapScheduleEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/v1/report-schedules")
-            .WithTags("Report Schedules");
+            .WithTags("Report Schedules")
+            .RequireAuthorization();
 
         group.MapPost("/", CreateSchedule)
             .WithName("CreateSchedule")

@@ -5,9 +5,7 @@ import { useRouter } from 'next/navigation';
 import { reportsService } from '@/lib/reports/reports.service';
 import { ReportBuilder } from '@/components/reports/report-builder';
 import type { ColumnConfig, FilterRule, EffectiveReportDto } from '@/lib/reports/reports.types';
-
-const MOCK_TENANT_ID = 'tenant-001';
-const MOCK_USER_ID = 'user-001';
+import { useSessionContext } from '@/providers/session-provider';
 
 interface Props {
   templateId: string;
@@ -15,23 +13,28 @@ interface Props {
 
 export function ReportBuilderClient({ templateId }: Props) {
   const router = useRouter();
+  const { session } = useSessionContext();
   const [report, setReport] = useState<EffectiveReportDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  const tenantId = session?.tenantId ?? '';
+  const userId = session?.userId ?? '';
+
   const load = useCallback(async () => {
+    if (!tenantId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await reportsService.getEffectiveReport(templateId, MOCK_TENANT_ID);
+      const data = await reportsService.getEffectiveReport(templateId, tenantId);
       setReport(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load report');
     } finally {
       setLoading(false);
     }
-  }, [templateId]);
+  }, [templateId, tenantId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -45,12 +48,12 @@ export function ReportBuilderClient({ templateId }: Props) {
 
   async function handleSave(columns: ColumnConfig[], filters: FilterRule[]) {
     await reportsService.createOverride({
-      tenantId: MOCK_TENANT_ID,
+      tenantId,
       templateId,
       baseTemplateVersionNumber: report?.publishedVersionNumber ?? 1,
       columnConfigJson: JSON.stringify(columns),
       filterConfigJson: JSON.stringify(filters),
-      createdByUserId: MOCK_USER_ID,
+      createdByUserId: userId,
     });
     setSaved(true);
     setTimeout(() => router.push(`/insights/reports/${templateId}`), 1500);

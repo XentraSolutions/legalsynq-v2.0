@@ -9,7 +9,8 @@ public static class OverrideEndpoints
     public static void MapOverrideEndpoints(this IEndpointRouteBuilder routes)
     {
         var overrideGroup = routes.MapGroup("/api/v1/tenant-templates/{templateId:guid}/overrides")
-            .WithTags("Tenant Report Overrides");
+            .WithTags("Tenant Report Overrides")
+            .RequireAuthorization();
 
         overrideGroup.MapPost("/", CreateOverride)
             .WithName("CreateTenantReportOverride")
@@ -41,7 +42,8 @@ public static class OverrideEndpoints
             .Produces(StatusCodes.Status404NotFound);
 
         var effectiveGroup = routes.MapGroup("/api/v1/tenant-templates/{templateId:guid}")
-            .WithTags("Tenant Effective Report");
+            .WithTags("Tenant Effective Report")
+            .RequireAuthorization();
 
         effectiveGroup.MapGet("/effective", ResolveEffectiveReport)
             .WithName("ResolveEffectiveReport")

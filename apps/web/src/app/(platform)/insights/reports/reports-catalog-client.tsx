@@ -7,30 +7,33 @@ import type { CatalogGroup } from '@/lib/reports/reports.service';
 import { reportsService } from '@/lib/reports/reports.service';
 import { ExportModal } from '@/components/reports/export-modal';
 import type { ExportFormat } from '@/lib/reports/reports.types';
-
-const MOCK_TENANT_ID = 'tenant-001';
-const MOCK_USER_ID = 'user-001';
+import { useSessionContext } from '@/providers/session-provider';
 
 export function ReportsCatalogClient() {
   const router = useRouter();
+  const { session } = useSessionContext();
   const [groups, setGroups] = useState<CatalogGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [exportTarget, setExportTarget] = useState<TenantCatalogItemDto | null>(null);
 
+  const tenantId = session?.tenantId ?? '';
+  const userId = session?.userId ?? '';
+
   const load = useCallback(async () => {
+    if (!tenantId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await reportsService.getCatalog(MOCK_TENANT_ID);
+      const data = await reportsService.getCatalog(tenantId);
       setGroups(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load report catalog');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -38,9 +41,9 @@ export function ReportsCatalogClient() {
     if (!exportTarget) return;
     await reportsService.exportReport({
       templateId: exportTarget.templateId,
-      tenantId: MOCK_TENANT_ID,
+      tenantId,
       format,
-      requestedByUserId: MOCK_USER_ID,
+      requestedByUserId: userId,
     });
   }
 

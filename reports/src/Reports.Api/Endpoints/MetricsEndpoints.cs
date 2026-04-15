@@ -6,7 +6,8 @@ public static class MetricsEndpoints
 {
     public static void MapMetricsEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/v1/metrics");
+        var group = app.MapGroup("/api/v1/metrics")
+            .RequireAuthorization();
 
         group.MapGet("/", (IReportsMetrics metrics) =>
         {

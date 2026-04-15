@@ -1,3 +1,7 @@
+using System.Security.Claims;
+using System.Text;
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Context;
 using Reports.Api.Configuration;
 using Reports.Api.Endpoints;
 using Reports.Api.Middleware;
@@ -5,6 +9,8 @@ using Reports.Application;
 using Reports.Contracts.Configuration;
 using Reports.Infrastructure;
 using Reports.Worker.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +31,52 @@ builder.Services.Configure<StorageSettings>(
 builder.Services.Configure<LiensDataSettings>(
     builder.Configuration.GetSection(LiensDataSettings.SectionName));
 
+var jwtSection = builder.Configuration.GetSection("Jwt");
+var signingKey = jwtSection["SigningKey"] ?? string.Empty;
+
+if (!string.IsNullOrWhiteSpace(signingKey))
+{
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            options.MapInboundClaims = false;
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer           = true,
+                ValidateAudience         = true,
+                ValidateLifetime         = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer              = jwtSection["Issuer"],
+                ValidAudience            = jwtSection["Audience"],
+                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                RoleClaimType            = ClaimTypes.Role,
+                ClockSkew                = TimeSpan.Zero
+            };
+        });
+}
+else
+{
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, _ => { });
+}
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(Policies.AuthenticatedUser, policy =>
+        policy.RequireAuthenticatedUser());
+
+    options.AddPolicy(Policies.AdminOnly, policy =>
+        policy.RequireRole(Roles.PlatformAdmin));
+
+    options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
+        policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
+});
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
+
 builder.Services.AddReportsApplication();
 builder.Services.AddReportsInfrastructure(builder.Configuration);
 
@@ -34,6 +86,9 @@ builder.Services.AddHostedService<ScheduleWorkerService>();
 var app = builder.Build();
 
 app.UseMiddleware<RequestLoggingMiddleware>();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseMiddleware<TenantValidationMiddleware>();
 
 app.MapHealthEndpoints();
 app.MapTemplateEndpoints();

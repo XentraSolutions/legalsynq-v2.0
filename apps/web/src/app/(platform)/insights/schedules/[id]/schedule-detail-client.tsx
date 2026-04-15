@@ -5,9 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { reportsService } from '@/lib/reports/reports.service';
 import { ScheduleForm } from '@/components/reports/schedule-form';
 import type { ScheduleDto, ScheduleRunDto } from '@/lib/reports/reports.types';
-
-const MOCK_TENANT_ID = 'tenant-001';
-const MOCK_USER_ID = 'user-001';
+import { useSessionContext } from '@/providers/session-provider';
 
 function parseCronToFormData(schedule: ScheduleDto) {
   const parts = schedule.cronExpression.split(' ');
@@ -66,6 +64,9 @@ interface Props {
 export function ScheduleDetailClient({ scheduleId }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { session } = useSessionContext();
+  const tenantId = session?.tenantId ?? '';
+  const userId = session?.userId ?? '';
   const isNew = scheduleId === 'new';
   const templateIdParam = searchParams.get('templateId');
 
@@ -126,14 +127,14 @@ export function ScheduleDetailClient({ scheduleId }: Props) {
       }
       await reportsService.createSchedule({
         templateId: templateIdParam,
-        tenantId: MOCK_TENANT_ID,
+        tenantId,
         scheduleName: data.scheduleName,
         cronExpression,
         timezoneId: data.timezone,
         exportFormat: data.exportFormat,
         deliveryMethod: data.deliveryMethod,
         deliveryConfigJson: Object.keys(deliveryConfig).length > 0 ? JSON.stringify(deliveryConfig) : undefined,
-        createdByUserId: MOCK_USER_ID,
+        createdByUserId: userId,
       });
     } else {
       await reportsService.updateSchedule(scheduleId, {
@@ -143,7 +144,7 @@ export function ScheduleDetailClient({ scheduleId }: Props) {
         exportFormat: data.exportFormat,
         deliveryMethod: data.deliveryMethod,
         deliveryConfigJson: Object.keys(deliveryConfig).length > 0 ? JSON.stringify(deliveryConfig) : undefined,
-        updatedByUserId: MOCK_USER_ID,
+        updatedByUserId: userId,
       });
     }
     router.push('/insights/schedules');

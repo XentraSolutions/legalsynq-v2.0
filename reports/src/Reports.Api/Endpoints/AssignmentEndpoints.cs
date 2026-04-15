@@ -1,3 +1,4 @@
+using BuildingBlocks.Authorization;
 using Reports.Application.Assignments;
 using Reports.Application.Assignments.DTOs;
 using Reports.Application.Templates.DTOs;
@@ -9,7 +10,8 @@ public static class AssignmentEndpoints
     public static void MapAssignmentEndpoints(this IEndpointRouteBuilder routes)
     {
         var assignmentGroup = routes.MapGroup("/api/v1/templates/{templateId:guid}/assignments")
-            .WithTags("Template Assignments");
+            .WithTags("Template Assignments")
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
 
         assignmentGroup.MapPost("/", CreateAssignment)
             .WithName("CreateTemplateAssignment")
@@ -36,7 +38,8 @@ public static class AssignmentEndpoints
             .Produces(StatusCodes.Status404NotFound);
 
         var catalogGroup = routes.MapGroup("/api/v1/tenant-templates")
-            .WithTags("Tenant Template Catalog");
+            .WithTags("Tenant Template Catalog")
+            .RequireAuthorization();
 
         catalogGroup.MapGet("/", ResolveTenantCatalog)
             .WithName("ResolveTenantCatalog")

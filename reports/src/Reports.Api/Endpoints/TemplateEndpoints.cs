@@ -1,3 +1,4 @@
+using BuildingBlocks.Authorization;
 using Reports.Application.Templates;
 using Reports.Application.Templates.DTOs;
 
@@ -8,7 +9,8 @@ public static class TemplateEndpoints
     public static void MapTemplateEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/v1/templates")
-            .WithTags("Templates");
+            .WithTags("Templates")
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
 
         group.MapPost("/", CreateTemplate)
             .WithName("CreateTemplate")

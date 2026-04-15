@@ -11,9 +11,7 @@ import type {
   ExportFormat,
   ColumnConfig,
 } from '@/lib/reports/reports.types';
-
-const MOCK_TENANT_ID = 'tenant-001';
-const MOCK_USER_ID = 'user-001';
+import { useSessionContext } from '@/providers/session-provider';
 
 interface Props {
   templateId: string;
@@ -21,6 +19,7 @@ interface Props {
 
 export function ReportViewerClient({ templateId }: Props) {
   const router = useRouter();
+  const { session } = useSessionContext();
   const [report, setReport] = useState<EffectiveReportDto | null>(null);
   const [execution, setExecution] = useState<ReportExecutionResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,11 +28,15 @@ export function ReportViewerClient({ templateId }: Props) {
   const [exportOpen, setExportOpen] = useState(false);
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
 
+  const tenantId = session?.tenantId ?? '';
+  const userId = session?.userId ?? '';
+
   const loadReport = useCallback(async () => {
+    if (!tenantId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await reportsService.getEffectiveReport(templateId, MOCK_TENANT_ID);
+      const data = await reportsService.getEffectiveReport(templateId, tenantId);
       setReport(data);
 
       const filterConfig = reportsService.parseFilterConfig(data.effectiveFilterConfigJson);
@@ -50,7 +53,7 @@ export function ReportViewerClient({ templateId }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [templateId]);
+  }, [templateId, tenantId]);
 
   useEffect(() => { loadReport(); }, [loadReport]);
 
@@ -61,8 +64,8 @@ export function ReportViewerClient({ templateId }: Props) {
       const params = Object.entries(filterValues).filter(([, v]) => v !== '');
       const result = await reportsService.executeReport({
         templateId,
-        tenantId: MOCK_TENANT_ID,
-        requestedByUserId: MOCK_USER_ID,
+        tenantId,
+        requestedByUserId: userId,
         filterParametersJson: params.length > 0 ? JSON.stringify(Object.fromEntries(params)) : undefined,
       });
       setExecution(result);
@@ -76,9 +79,9 @@ export function ReportViewerClient({ templateId }: Props) {
   async function handleExport(format: ExportFormat) {
     await reportsService.exportReport({
       templateId,
-      tenantId: MOCK_TENANT_ID,
+      tenantId,
       format,
-      requestedByUserId: MOCK_USER_ID,
+      requestedByUserId: userId,
       filterParametersJson: Object.keys(filterValues).length > 0 ? JSON.stringify(filterValues) : undefined,
     });
   }

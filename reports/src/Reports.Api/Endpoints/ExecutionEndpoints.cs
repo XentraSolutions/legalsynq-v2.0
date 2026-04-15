@@ -9,7 +9,8 @@ public static class ExecutionEndpoints
     public static void MapExecutionEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/v1/report-executions")
-            .WithTags("Report Executions");
+            .WithTags("Report Executions")
+            .RequireAuthorization();
 
         group.MapPost("/", ExecuteReport)
             .WithName("ExecuteReport")

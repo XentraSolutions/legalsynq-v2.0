@@ -57,9 +57,8 @@ public static class DependencyInjection
         RegisterFileStorage(services, configuration);
         RegisterMetrics(services);
 
-        services.AddSingleton<IIdentityAdapter, MockIdentityAdapter>();
-        services.AddSingleton<ITenantAdapter, MockTenantAdapter>();
-        services.AddSingleton<IEntitlementAdapter, MockEntitlementAdapter>();
+        RegisterIdentityAdapters(services, configuration);
+
         services.AddSingleton<IDocumentAdapter, MockDocumentAdapter>();
         services.AddSingleton<INotificationAdapter, MockNotificationAdapter>();
         services.AddSingleton<IProductDataAdapter, MockProductDataAdapter>();
@@ -195,6 +194,25 @@ public static class DependencyInjection
         else
         {
             services.AddSingleton<IFileStorageAdapter, NullFileStorageAdapter>();
+        }
+    }
+
+    private static void RegisterIdentityAdapters(IServiceCollection services, IConfiguration configuration)
+    {
+        var jwtSigningKey = configuration["Jwt:SigningKey"];
+        var useRealIdentity = !string.IsNullOrWhiteSpace(jwtSigningKey);
+
+        if (useRealIdentity)
+        {
+            services.AddScoped<IIdentityAdapter, ClaimsIdentityAdapter>();
+            services.AddScoped<ITenantAdapter, ClaimsTenantAdapter>();
+            services.AddScoped<IEntitlementAdapter, ClaimsEntitlementAdapter>();
+        }
+        else
+        {
+            services.AddSingleton<IIdentityAdapter, MockIdentityAdapter>();
+            services.AddSingleton<ITenantAdapter, MockTenantAdapter>();
+            services.AddSingleton<IEntitlementAdapter, MockEntitlementAdapter>();
         }
     }
 

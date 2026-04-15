@@ -9,7 +9,8 @@ public static class ExportEndpoints
     public static void MapExportEndpoints(this IEndpointRouteBuilder routes)
     {
         var group = routes.MapGroup("/api/v1/report-exports")
-            .WithTags("Report Exports");
+            .WithTags("Report Exports")
+            .RequireAuthorization();
 
         group.MapPost("/", ExportReport)
             .WithName("ExportReport")

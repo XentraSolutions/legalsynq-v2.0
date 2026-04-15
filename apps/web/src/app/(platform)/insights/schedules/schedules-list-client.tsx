@@ -4,27 +4,30 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ScheduleDto } from '@/lib/reports/reports.types';
 import { reportsService } from '@/lib/reports/reports.service';
-
-const MOCK_TENANT_ID = 'tenant-001';
+import { useSessionContext } from '@/providers/session-provider';
 
 export function SchedulesListClient() {
   const router = useRouter();
+  const { session } = useSessionContext();
   const [schedules, setSchedules] = useState<ScheduleDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const tenantId = session?.tenantId ?? '';
+
   const load = useCallback(async () => {
+    if (!tenantId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await reportsService.getSchedules(MOCK_TENANT_ID);
+      const data = await reportsService.getSchedules(tenantId);
       setSchedules(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load schedules');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => { load(); }, [load]);
 
