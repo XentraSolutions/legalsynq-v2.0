@@ -459,7 +459,8 @@ function LiensTab({ liens, caseDetail, panelMode, onPanelModeChange }: { liens: 
   const [search, setSearch] = useState('');
 
   /* TEMP: visual fallback data for UI review only */
-  const displayLiens = liens.length > 0
+  const usingFallback = liens.length === 0;
+  const displayLiens = !usingFallback
     ? liens.map((l) => {
         const extras = TEMP_LIEN_EXTRAS[l.id] || { facility: '---', serviceDate: '---', purchaseDate: '---', purchaseAmount: 0 };
         return { ...l, facility: extras.facility, serviceDate: extras.serviceDate, purchaseDate: extras.purchaseDate, purchaseAmount: extras.purchaseAmount };
@@ -483,6 +484,11 @@ function LiensTab({ liens, caseDetail, panelMode, onPanelModeChange }: { liens: 
   const leftContent = (
     <div className="space-y-4">
       <CollapsibleSection title="Liens" icon="ri-stack-line">
+        {usingFallback && (
+          <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
+            <p className="text-xs text-amber-700"><i className="ri-information-line mr-1" />Sample data shown for UI review. No liens are linked to this case yet.</p>
+          </div>
+        )}
         <div className="flex items-center gap-3 mb-4">
           <div className="relative flex-1">
             <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
