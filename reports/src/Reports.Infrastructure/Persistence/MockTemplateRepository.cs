@@ -10,53 +10,53 @@ public sealed class MockTemplateRepository : ITemplateRepository
 
     public MockTemplateRepository(ILogger<MockTemplateRepository> log) => _log = log;
 
-    public Task<ReportDefinition?> GetByIdAsync(Guid id, CancellationToken ct)
+    public Task<ReportTemplate?> GetByIdAsync(Guid id, CancellationToken ct)
     {
         _log.LogDebug("MockTemplateRepository: GetById {Id}", id);
-        return Task.FromResult<ReportDefinition?>(null);
+        return Task.FromResult<ReportTemplate?>(null);
     }
 
-    public Task<ReportDefinition?> GetByCodeAsync(string code, CancellationToken ct)
+    public Task<ReportTemplate?> GetByCodeAsync(string code, CancellationToken ct)
     {
         _log.LogDebug("MockTemplateRepository: GetByCode {Code}", code);
-        return Task.FromResult<ReportDefinition?>(null);
+        return Task.FromResult<ReportTemplate?>(null);
     }
 
-    public Task<IReadOnlyList<ReportDefinition>> ListAsync(string? productCode, bool? activeOnly, int page, int pageSize, CancellationToken ct)
+    public Task<IReadOnlyList<ReportTemplate>> ListAsync(string? productCode, bool? activeOnly, int page, int pageSize, CancellationToken ct)
     {
         _log.LogDebug("MockTemplateRepository: List productCode={ProductCode}", productCode);
-        return Task.FromResult<IReadOnlyList<ReportDefinition>>(Array.Empty<ReportDefinition>());
+        return Task.FromResult<IReadOnlyList<ReportTemplate>>(Array.Empty<ReportTemplate>());
     }
 
-    public Task<ReportDefinition> CreateAsync(ReportDefinition definition, CancellationToken ct)
+    public Task<ReportTemplate> CreateAsync(ReportTemplate template, CancellationToken ct)
     {
-        if (definition.Id == Guid.Empty)
-            definition.Id = Guid.NewGuid();
-        _log.LogDebug("MockTemplateRepository: Created {Id}", definition.Id);
-        return Task.FromResult(definition);
+        if (template.Id == Guid.Empty)
+            template.Id = Guid.NewGuid();
+        _log.LogDebug("MockTemplateRepository: Created {Id}", template.Id);
+        return Task.FromResult(template);
     }
 
-    public Task<ReportDefinition> UpdateAsync(ReportDefinition definition, CancellationToken ct)
+    public Task<ReportTemplate> UpdateAsync(ReportTemplate template, CancellationToken ct)
     {
-        _log.LogDebug("MockTemplateRepository: Updated {Id}", definition.Id);
-        return Task.FromResult(definition);
+        _log.LogDebug("MockTemplateRepository: Updated {Id}", template.Id);
+        return Task.FromResult(template);
     }
 
-    public Task<ReportTemplateVersion?> GetVersionAsync(Guid definitionId, int versionNumber, CancellationToken ct)
+    public Task<ReportTemplateVersion?> GetVersionAsync(Guid templateId, int versionNumber, CancellationToken ct)
     {
-        _log.LogDebug("MockTemplateRepository: GetVersion {Id} v{Version}", definitionId, versionNumber);
+        _log.LogDebug("MockTemplateRepository: GetVersion {Id} v{Version}", templateId, versionNumber);
         return Task.FromResult<ReportTemplateVersion?>(null);
     }
 
-    public Task<ReportTemplateVersion?> GetActiveVersionAsync(Guid definitionId, CancellationToken ct)
+    public Task<ReportTemplateVersion?> GetActiveVersionAsync(Guid templateId, CancellationToken ct)
     {
-        _log.LogDebug("MockTemplateRepository: GetActiveVersion {Id}", definitionId);
+        _log.LogDebug("MockTemplateRepository: GetActiveVersion {Id}", templateId);
         return Task.FromResult<ReportTemplateVersion?>(null);
     }
 
-    public Task<IReadOnlyList<ReportTemplateVersion>> ListVersionsAsync(Guid definitionId, CancellationToken ct)
+    public Task<IReadOnlyList<ReportTemplateVersion>> ListVersionsAsync(Guid templateId, CancellationToken ct)
     {
-        _log.LogDebug("MockTemplateRepository: ListVersions {Id}", definitionId);
+        _log.LogDebug("MockTemplateRepository: ListVersions {Id}", templateId);
         return Task.FromResult<IReadOnlyList<ReportTemplateVersion>>(Array.Empty<ReportTemplateVersion>());
     }
 

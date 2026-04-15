@@ -15,9 +15,9 @@ public sealed class GuardrailValidator : IGuardrailValidator
         return GuardrailResult.Pass();
     }
 
-    public GuardrailResult ValidateReportDefinition(string reportTypeCode, IDictionary<string, string>? parameters = null)
+    public GuardrailResult ValidateReportTemplate(string reportTypeCode, IDictionary<string, string>? parameters = null)
     {
-        _log.LogDebug("GuardrailValidator: ValidateReportDefinition for {ReportType}", reportTypeCode);
+        _log.LogDebug("GuardrailValidator: ValidateReportTemplate for {ReportType}", reportTypeCode);
 
         if (string.IsNullOrWhiteSpace(reportTypeCode))
             return GuardrailResult.Fail("Report type code is required.");

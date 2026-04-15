@@ -36,13 +36,16 @@ public class ReportExecutionConfiguration : IEntityTypeConfiguration<ReportExecu
         builder.Property(e => e.CreatedAtUtc)
             .IsRequired();
 
+        builder.Property(e => e.ReportTemplateId)
+            .HasColumnName("ReportDefinitionId");
+
         builder.HasIndex(e => e.TenantId);
         builder.HasIndex(e => e.Status);
         builder.HasIndex(e => new { e.TenantId, e.CreatedAtUtc });
 
-        builder.HasOne(e => e.ReportDefinition)
+        builder.HasOne(e => e.ReportTemplate)
             .WithMany()
-            .HasForeignKey(e => e.ReportDefinitionId)
+            .HasForeignKey(e => e.ReportTemplateId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -7,7 +7,7 @@ public class ReportsDbContext : DbContext
 {
     public ReportsDbContext(DbContextOptions<ReportsDbContext> options) : base(options) { }
 
-    public DbSet<ReportDefinition> ReportDefinitions => Set<ReportDefinition>();
+    public DbSet<ReportTemplate> ReportTemplates => Set<ReportTemplate>();
     public DbSet<ReportTemplateVersion> ReportTemplateVersions => Set<ReportTemplateVersion>();
     public DbSet<ReportExecution> ReportExecutions => Set<ReportExecution>();
 
@@ -21,7 +21,7 @@ public class ReportsDbContext : DbContext
     {
         var now = DateTimeOffset.UtcNow;
 
-        foreach (var entry in ChangeTracker.Entries<ReportDefinition>())
+        foreach (var entry in ChangeTracker.Entries<ReportTemplate>())
         {
             if (entry.State == EntityState.Added)
             {

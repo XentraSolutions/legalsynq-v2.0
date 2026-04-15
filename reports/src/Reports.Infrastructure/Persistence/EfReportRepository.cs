@@ -23,7 +23,7 @@ public sealed class EfReportRepository : IReportRepository
     public async Task<ReportExecution?> GetByIdAsync(Guid id, CancellationToken ct)
     {
         return await _db.ReportExecutions
-            .Include(e => e.ReportDefinition)
+            .Include(e => e.ReportTemplate)
             .FirstOrDefaultAsync(e => e.Id == id, ct);
     }
 

@@ -1,6 +1,6 @@
 namespace Reports.Domain.Entities;
 
-public sealed class ReportDefinition
+public sealed class ReportTemplate
 {
     public Guid Id { get; set; }
     public string Code { get; set; } = string.Empty;

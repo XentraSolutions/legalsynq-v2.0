@@ -4,9 +4,9 @@ using Reports.Domain.Entities;
 
 namespace Reports.Infrastructure.Persistence.Configurations;
 
-public class ReportDefinitionConfiguration : IEntityTypeConfiguration<ReportDefinition>
+public class ReportTemplateConfiguration : IEntityTypeConfiguration<ReportTemplate>
 {
-    public void Configure(EntityTypeBuilder<ReportDefinition> builder)
+    public void Configure(EntityTypeBuilder<ReportTemplate> builder)
     {
         builder.ToTable("rpt_ReportDefinitions");
 
@@ -44,8 +44,8 @@ public class ReportDefinitionConfiguration : IEntityTypeConfiguration<ReportDefi
         builder.HasIndex(e => e.IsActive);
 
         builder.HasMany(e => e.Versions)
-            .WithOne(v => v.ReportDefinition)
-            .HasForeignKey(v => v.ReportDefinitionId)
+            .WithOne(v => v.ReportTemplate)
+            .HasForeignKey(v => v.ReportTemplateId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

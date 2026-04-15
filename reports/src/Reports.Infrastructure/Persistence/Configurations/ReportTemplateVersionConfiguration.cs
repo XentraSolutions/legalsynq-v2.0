@@ -35,7 +35,10 @@ public class ReportTemplateVersionConfiguration : IEntityTypeConfiguration<Repor
         builder.Property(e => e.CreatedAtUtc)
             .IsRequired();
 
-        builder.HasIndex(e => new { e.ReportDefinitionId, e.VersionNumber }).IsUnique();
+        builder.Property(e => e.ReportTemplateId)
+            .HasColumnName("ReportDefinitionId");
+
+        builder.HasIndex(e => new { e.ReportTemplateId, e.VersionNumber }).IsUnique();
         builder.HasIndex(e => e.IsActive);
     }
 }

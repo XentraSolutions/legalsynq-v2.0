@@ -71,7 +71,8 @@ public static class HealthEndpoints
             checks["notification_adapter"] = (await ProbeAdapter(() => notification.NotifyReportReadyAsync(ctx, mockTenant, "probe", mockNotification))).Success ? "ok" : "fail";
             checks["product_data_adapter"] = (await ProbeAdapter(() => productData.GetAvailableProductsAsync(ctx, mockTenant))).Success ? "ok" : "fail";
             checks["job_queue"] = await ProbeAdapterSimple(() => queue.GetPendingCountAsync()) ? "ok" : "fail";
-            checks["guardrails"] = guardrails.ValidateExecutionLimits("probe", "probe").IsValid ? "ok" : "fail";
+            checks["guardrails"] = guardrails.ValidateExecutionLimits("probe", "probe").IsValid
+                && guardrails.ValidateReportTemplate("probe").IsValid ? "ok" : "fail";
 
             var allOk = checks.Values.All(v => v == "ok" || v == "mock");
 

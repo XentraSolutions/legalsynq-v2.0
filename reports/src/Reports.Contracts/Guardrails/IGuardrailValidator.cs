@@ -3,7 +3,7 @@ namespace Reports.Contracts.Guardrails;
 public interface IGuardrailValidator
 {
     GuardrailResult ValidateExecutionLimits(string tenantId, string reportTypeCode);
-    GuardrailResult ValidateReportDefinition(string reportTypeCode, IDictionary<string, string>? parameters = null);
+    GuardrailResult ValidateReportTemplate(string reportTypeCode, IDictionary<string, string>? parameters = null);
 }
 
 public sealed class GuardrailResult

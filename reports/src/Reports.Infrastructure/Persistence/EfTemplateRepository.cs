@@ -10,72 +10,72 @@ public sealed class EfTemplateRepository : ITemplateRepository
 
     public EfTemplateRepository(ReportsDbContext db) => _db = db;
 
-    public async Task<ReportDefinition?> GetByIdAsync(Guid id, CancellationToken ct)
+    public async Task<ReportTemplate?> GetByIdAsync(Guid id, CancellationToken ct)
     {
-        return await _db.ReportDefinitions
-            .Include(d => d.Versions.Where(v => v.IsActive))
-            .FirstOrDefaultAsync(d => d.Id == id, ct);
+        return await _db.ReportTemplates
+            .Include(t => t.Versions.Where(v => v.IsActive))
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
     }
 
-    public async Task<ReportDefinition?> GetByCodeAsync(string code, CancellationToken ct)
+    public async Task<ReportTemplate?> GetByCodeAsync(string code, CancellationToken ct)
     {
-        return await _db.ReportDefinitions
-            .Include(d => d.Versions.Where(v => v.IsActive))
-            .FirstOrDefaultAsync(d => d.Code == code, ct);
+        return await _db.ReportTemplates
+            .Include(t => t.Versions.Where(v => v.IsActive))
+            .FirstOrDefaultAsync(t => t.Code == code, ct);
     }
 
-    public async Task<IReadOnlyList<ReportDefinition>> ListAsync(string? productCode, bool? activeOnly, int page, int pageSize, CancellationToken ct)
+    public async Task<IReadOnlyList<ReportTemplate>> ListAsync(string? productCode, bool? activeOnly, int page, int pageSize, CancellationToken ct)
     {
-        var query = _db.ReportDefinitions.AsQueryable();
+        var query = _db.ReportTemplates.AsQueryable();
 
         if (!string.IsNullOrEmpty(productCode))
-            query = query.Where(d => d.ProductCode == productCode);
+            query = query.Where(t => t.ProductCode == productCode);
 
         if (activeOnly == true)
-            query = query.Where(d => d.IsActive);
+            query = query.Where(t => t.IsActive);
 
         return await query
-            .OrderBy(d => d.Name)
+            .OrderBy(t => t.Name)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
     }
 
-    public async Task<ReportDefinition> CreateAsync(ReportDefinition definition, CancellationToken ct)
+    public async Task<ReportTemplate> CreateAsync(ReportTemplate template, CancellationToken ct)
     {
-        if (definition.Id == Guid.Empty)
-            definition.Id = Guid.NewGuid();
+        if (template.Id == Guid.Empty)
+            template.Id = Guid.NewGuid();
 
-        _db.ReportDefinitions.Add(definition);
+        _db.ReportTemplates.Add(template);
         await _db.SaveChangesAsync(ct);
-        return definition;
+        return template;
     }
 
-    public async Task<ReportDefinition> UpdateAsync(ReportDefinition definition, CancellationToken ct)
+    public async Task<ReportTemplate> UpdateAsync(ReportTemplate template, CancellationToken ct)
     {
-        _db.ReportDefinitions.Update(definition);
+        _db.ReportTemplates.Update(template);
         await _db.SaveChangesAsync(ct);
-        return definition;
+        return template;
     }
 
-    public async Task<ReportTemplateVersion?> GetVersionAsync(Guid definitionId, int versionNumber, CancellationToken ct)
+    public async Task<ReportTemplateVersion?> GetVersionAsync(Guid templateId, int versionNumber, CancellationToken ct)
     {
         return await _db.ReportTemplateVersions
-            .FirstOrDefaultAsync(v => v.ReportDefinitionId == definitionId && v.VersionNumber == versionNumber, ct);
+            .FirstOrDefaultAsync(v => v.ReportTemplateId == templateId && v.VersionNumber == versionNumber, ct);
     }
 
-    public async Task<ReportTemplateVersion?> GetActiveVersionAsync(Guid definitionId, CancellationToken ct)
+    public async Task<ReportTemplateVersion?> GetActiveVersionAsync(Guid templateId, CancellationToken ct)
     {
         return await _db.ReportTemplateVersions
-            .Where(v => v.ReportDefinitionId == definitionId && v.IsActive)
+            .Where(v => v.ReportTemplateId == templateId && v.IsActive)
             .OrderByDescending(v => v.VersionNumber)
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task<IReadOnlyList<ReportTemplateVersion>> ListVersionsAsync(Guid definitionId, CancellationToken ct)
+    public async Task<IReadOnlyList<ReportTemplateVersion>> ListVersionsAsync(Guid templateId, CancellationToken ct)
     {
         return await _db.ReportTemplateVersions
-            .Where(v => v.ReportDefinitionId == definitionId)
+            .Where(v => v.ReportTemplateId == templateId)
             .OrderByDescending(v => v.VersionNumber)
             .ToListAsync(ct);
     }
