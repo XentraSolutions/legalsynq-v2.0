@@ -336,6 +336,7 @@ function DetailsTab({ d, panelMode, onPanelModeChange, canEdit, onCaseUpdated }:
     if (!pLastName.trim()) errs.lastName = 'Last name is required';
     if (pEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pEmail.trim())) errs.email = 'Invalid email format';
     if (pPhone.trim() && !/^[\d\s()+-]{7,20}$/.test(pPhone.trim())) errs.phone = 'Invalid phone format';
+    if (pDob.trim() && !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(pDob.trim()) && !/^\w{3}\s\d{1,2},\s\d{4}$/.test(pDob.trim())) errs.dob = 'Invalid date format (use MM/DD/YYYY)';
     setPErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -453,6 +454,11 @@ function DetailsTab({ d, panelMode, onPanelModeChange, canEdit, onCaseUpdated }:
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Birthdate</label>
                 <input type="text" value={pDob} onChange={(e) => setPDob(e.target.value)} placeholder="MM/DD/YYYY" className={inputCls} />
+                {pErrors.dob && <p className={errCls}>{pErrors.dob}</p>}
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">Sex</label>
+                <input type="text" disabled value="" placeholder="Not yet supported" className={`${inputCls} opacity-50 cursor-not-allowed`} />
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1">Address</label>
@@ -510,9 +516,21 @@ function DetailsTab({ d, panelMode, onPanelModeChange, canEdit, onCaseUpdated }:
                 <input type="text" value={tDateOfIncident} onChange={(e) => setTDateOfIncident(e.target.value)} placeholder="MM/DD/YYYY" className={inputCls} />
                 {tErrors.dateOfIncident && <p className={errCls}>{tErrors.dateOfIncident}</p>}
               </div>
-              {/* TEMP: fields below not supported by API */}
+              {/* Fields below not supported by current API */}
               <div>
-                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1 text-gray-300">Tracking Follow Up</label>
+                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">Tracking Follow Up</label>
+                <input type="text" disabled value="" placeholder="Not yet supported" className={`${inputCls} opacity-50 cursor-not-allowed`} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">Current Medical Status</label>
+                <input type="text" disabled value="" placeholder="Not yet supported" className={`${inputCls} opacity-50 cursor-not-allowed`} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">State of Incident</label>
+                <input type="text" disabled value="" placeholder="Not yet supported" className={`${inputCls} opacity-50 cursor-not-allowed`} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-300 uppercase tracking-wide mb-1">Lead</label>
                 <input type="text" disabled value="" placeholder="Not yet supported" className={`${inputCls} opacity-50 cursor-not-allowed`} />
               </div>
             </div>
@@ -545,7 +563,7 @@ function DetailsTab({ d, panelMode, onPanelModeChange, canEdit, onCaseUpdated }:
               <FieldItem label="Current Medical Status" value="---" />
               <FieldItem label="Case Type" value={d.title || '---'} />
               <FieldItem label="Date of Incident" value={d.dateOfIncident || '---'} />
-              {/* TEMP: Lead not supported by API */}
+              <FieldItem label="State of Incident" value="---" />
               <FieldItem label="Lead" value="---" />
             </FieldGrid>
 
