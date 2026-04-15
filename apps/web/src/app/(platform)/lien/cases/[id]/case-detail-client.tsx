@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/api-client';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { NotesPanel } from '@/components/lien/notes-panel';
 import { ConfirmDialog } from '@/components/lien/modal';
+import { LayoutSplit, type PanelMode } from '@/components/lien/layout-split';
 
 const STATUS_LABELS: Record<string, string> = { PreDemand: 'Pre-demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Case Settled', Closed: 'Closed' };
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
@@ -23,7 +24,6 @@ const TABS = [
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
-type PanelMode = 'split' | 'left' | 'right';
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return '---';
@@ -182,12 +182,7 @@ export function CaseDetailClient({ id }: { id: string }) {
 
       <div className="flex-1 min-h-0 overflow-auto bg-gray-50 px-6 py-5">
         {activeTab === 'details' && (
-          <DetailsTab
-            d={d}
-            liens={relatedLiens}
-            panelMode={panelMode}
-            setPanelMode={setPanelMode}
-          />
+          <DetailsTab d={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />
         )}
         {activeTab === 'liens' && <LiensTab liens={relatedLiens} />}
         {activeTab === 'documents' && <EmptyTab icon="ri-file-copy-2-line" label="Documents" />}
@@ -276,120 +271,66 @@ function FieldItem({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-function PanelDivider({ mode, onChangeMode }: { mode: PanelMode; onChangeMode: (m: PanelMode) => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-1 self-stretch shrink-0 mx-1">
-      <button
-        onClick={() => onChangeMode(mode === 'left' ? 'split' : 'left')}
-        title={mode === 'left' ? 'Restore split view' : 'Expand left panel'}
-        className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
-          mode === 'left'
-            ? 'border-primary bg-primary/10 text-primary'
-            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-        }`}
-      >
-        <i className={`ri-arrow-${mode === 'left' ? 'right' : 'left'}-s-line text-sm`} />
-      </button>
-      <div className="w-px h-6 bg-gray-200" />
-      <button
-        onClick={() => onChangeMode(mode === 'right' ? 'split' : 'right')}
-        title={mode === 'right' ? 'Restore split view' : 'Expand right panel'}
-        className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
-          mode === 'right'
-            ? 'border-primary bg-primary/10 text-primary'
-            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-        }`}
-      >
-        <i className={`ri-arrow-${mode === 'right' ? 'left' : 'right'}-s-line text-sm`} />
-      </button>
+function DetailsTab({ d, panelMode, onPanelModeChange }: { d: CaseDetail; panelMode: PanelMode; onPanelModeChange: (m: PanelMode) => void }) {
+  const leftContent = (
+    <div className="space-y-4">
+      <CollapsibleSection title="Plaintiff" icon="ri-user-line" onEdit={() => {}}>
+        <div className="mb-3">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Plaintiff Info</p>
+        </div>
+        <FieldGrid>
+          {/* TEMP: UI mock data for visual review only */}
+          <FieldItem label="Full Name" value={d.clientName || 'Maj Test'} />
+          <FieldItem label="Phone Number" value={d.clientPhone} />
+          <FieldItem label="Email" value={d.clientEmail} />
+          <FieldItem label="Birthdate" value={d.clientDob} />
+          {/* TEMP: UI mock data for visual review only */}
+          <FieldItem label="Sex" value="Male" />
+          <FieldItem label="Address" value={d.clientAddress} />
+        </FieldGrid>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Case Tracking" icon="ri-compass-3-line" onEdit={() => {}}>
+        <div className="mb-3">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Case Details</p>
+        </div>
+        <FieldGrid>
+          {/* TEMP: UI mock data for visual review only */}
+          <FieldItem label="Tracking Follow Up" value="04/20/2026" />
+          <div>
+            <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Current Status</dt>
+            <dd className="mt-1"><StatusBadge status={d.status} /></dd>
+          </div>
+          {/* TEMP: UI mock data for visual review only */}
+          <FieldItem label="Current Medical Status" value="Active Treatment" />
+          <FieldItem label="Case Type" value={d.title || 'Lien Case'} />
+          {/* TEMP: UI mock data for visual review only */}
+          <FieldItem label="State of Incident" value="FL" />
+          {/* TEMP: UI mock data for visual review only */}
+          <FieldItem label="Lead" value="Sarah Mitchell" />
+        </FieldGrid>
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Case Tracking Note</dt>
+          {/* TEMP: UI mock data for visual review only */}
+          <dd className="text-sm text-gray-600 mt-1">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
+        </div>
+      </CollapsibleSection>
     </div>
   );
-}
 
-function DetailsTab({
-  d,
-  liens,
-  panelMode,
-  setPanelMode,
-}: {
-  d: CaseDetail;
-  liens: CaseLienItem[];
-  panelMode: PanelMode;
-  setPanelMode: (m: PanelMode) => void;
-}) {
-  const showLeft = panelMode !== 'right';
-  const showRight = panelMode !== 'left';
-
-  const gridClass =
-    panelMode === 'split'
-      ? 'grid-cols-[1fr_auto_minmax(0,0.42fr)]'
-      : panelMode === 'left'
-        ? 'grid-cols-[1fr_auto]'
-        : 'grid-cols-[auto_1fr]';
-
-  return (
-    <div className={`grid ${gridClass} gap-0 items-start`}>
-      {showLeft && (
-        <div className="space-y-4 min-w-0">
-          <CollapsibleSection title="Plaintiff" icon="ri-user-line" onEdit={() => {}}>
-            <div className="mb-3">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Plaintiff Info</p>
-            </div>
-            <FieldGrid>
-              {/* TEMP: UI mock data for visual review only */}
-              <FieldItem label="Full Name" value={d.clientName || 'Maj Test'} />
-              <FieldItem label="Phone Number" value={d.clientPhone} />
-              <FieldItem label="Email" value={d.clientEmail} />
-              <FieldItem label="Birthdate" value={d.clientDob} />
-              {/* TEMP: UI mock data for visual review only */}
-              <FieldItem label="Sex" value="Male" />
-              <FieldItem label="Address" value={d.clientAddress} />
-            </FieldGrid>
-          </CollapsibleSection>
-
-          <CollapsibleSection title="Case Tracking" icon="ri-compass-3-line" onEdit={() => {}}>
-            <div className="mb-3">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Case Details</p>
-            </div>
-            <FieldGrid>
-              {/* TEMP: UI mock data for visual review only */}
-              <FieldItem label="Tracking Follow Up" value="04/20/2026" />
-              <div>
-                <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Current Status</dt>
-                <dd className="mt-1"><StatusBadge status={d.status} /></dd>
-              </div>
-              {/* TEMP: UI mock data for visual review only */}
-              <FieldItem label="Current Medical Status" value="Active Treatment" />
-              <FieldItem label="Case Type" value={d.title || 'Lien Case'} />
-              {/* TEMP: UI mock data for visual review only */}
-              <FieldItem label="State of Incident" value="FL" />
-              {/* TEMP: UI mock data for visual review only */}
-              <FieldItem label="Lead" value="Sarah Mitchell" />
-            </FieldGrid>
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Case Tracking Note</dt>
-              {/* TEMP: UI mock data for visual review only */}
-              <dd className="text-sm text-gray-600 mt-1">{d.description || 'Auto accident personal injury case involving multiple medical liens and ongoing treatment coordination with insurance carrier.'}</dd>
-            </div>
-          </CollapsibleSection>
+  const rightContent = (
+    <div className="space-y-4">
+      <CollapsibleSection title="Email" icon="ri-mail-line">
+        <div className="flex justify-center py-2">
+          <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+            Compose New Email
+          </button>
         </div>
-      )}
-
-      <PanelDivider mode={panelMode} onChangeMode={setPanelMode} />
-
-      {showRight && (
-        <div className="space-y-4 min-w-0">
-          <CollapsibleSection title="Email" icon="ri-mail-line">
-            <div className="flex justify-center py-2">
-              <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
-                Compose New Email
-              </button>
-            </div>
-          </CollapsibleSection>
-        </div>
-      )}
+      </CollapsibleSection>
     </div>
   );
+
+  return <LayoutSplit left={leftContent} right={rightContent} mode={panelMode} onModeChange={onPanelModeChange} />;
 }
 
 function LiensTab({ liens }: { liens: CaseLienItem[] }) {

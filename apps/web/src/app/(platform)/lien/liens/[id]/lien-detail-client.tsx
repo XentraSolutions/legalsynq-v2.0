@@ -13,6 +13,7 @@ import { ConfirmDialog, FormModal } from '@/components/lien/modal';
 import { EntityTimeline } from '@/components/lien/entity-timeline';
 import { NotesPanel } from '@/components/lien/notes-panel';
 import { useProviderMode } from '@/hooks/use-provider-mode';
+import { LayoutSplit, type PanelMode } from '@/components/lien/layout-split';
 
 const SELL_LIEN_STEPS = ['Draft', 'Active', 'Negotiation', 'Sold', 'Closed'];
 const MANAGE_LIEN_STEPS = ['Draft', 'Active', 'Closed'];
@@ -35,8 +36,6 @@ function formatCurrency(amount: number | null): string {
 }
 
 const EMPTY_NOTES: { id: string; text: string; author: string; timestamp: string }[] = [];
-
-type PanelMode = 'split' | 'left' | 'right';
 
 export function LienDetailClient({ id }: { id: string }) {
   const addToast = useLienStore((s) => s.addToast);
@@ -234,7 +233,7 @@ export function LienDetailClient({ id }: { id: string }) {
             isSellMode={isSellMode}
             canEdit={canEdit}
             panelMode={panelMode}
-            setPanelMode={setPanelMode}
+            onPanelModeChange={setPanelMode}
             onAcceptOffer={(offerId) => setConfirmAction({ type: 'accept', offerId })}
           />
         )}
@@ -345,36 +344,6 @@ function FieldItem({ label, value }: { label: string; value?: string | ReactNode
   );
 }
 
-function PanelDivider({ mode, onChangeMode }: { mode: PanelMode; onChangeMode: (m: PanelMode) => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-1 self-stretch shrink-0 mx-1">
-      <button
-        onClick={() => onChangeMode(mode === 'left' ? 'split' : 'left')}
-        title={mode === 'left' ? 'Restore split view' : 'Expand left panel'}
-        className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
-          mode === 'left'
-            ? 'border-primary bg-primary/10 text-primary'
-            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-        }`}
-      >
-        <i className={`ri-arrow-${mode === 'left' ? 'right' : 'left'}-s-line text-sm`} />
-      </button>
-      <div className="w-px h-6 bg-gray-200" />
-      <button
-        onClick={() => onChangeMode(mode === 'right' ? 'split' : 'right')}
-        title={mode === 'right' ? 'Restore split view' : 'Expand right panel'}
-        className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
-          mode === 'right'
-            ? 'border-primary bg-primary/10 text-primary'
-            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-        }`}
-      >
-        <i className={`ri-arrow-${mode === 'right' ? 'left' : 'right'}-s-line text-sm`} />
-      </button>
-    </div>
-  );
-}
-
 function DetailsTab({
   d,
   linkedCase,
@@ -383,7 +352,7 @@ function DetailsTab({
   isSellMode,
   canEdit,
   panelMode,
-  setPanelMode,
+  onPanelModeChange,
   onAcceptOffer,
 }: {
   d: LienDetail;
@@ -393,185 +362,171 @@ function DetailsTab({
   isSellMode: boolean;
   canEdit: boolean;
   panelMode: PanelMode;
-  setPanelMode: (m: PanelMode) => void;
+  onPanelModeChange: (m: PanelMode) => void;
   onAcceptOffer: (offerId: string) => void;
 }) {
-  const showLeft = panelMode !== 'right';
-  const showRight = panelMode !== 'left';
-
-  const gridClass =
-    panelMode === 'split'
-      ? 'grid-cols-[1fr_auto_minmax(0,0.42fr)]'
-      : panelMode === 'left'
-        ? 'grid-cols-[1fr_auto]'
-        : 'grid-cols-[auto_1fr]';
-
-  return (
-    <div className={`grid ${gridClass} gap-0 items-start`}>
-      {showLeft && (
-        <div className="space-y-4 min-w-0">
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-5 py-4">
-              <h3 className="text-sm font-semibold text-gray-800 mb-4">Lien Lifecycle</h3>
-              <StatusProgress steps={isSellMode ? SELL_LIEN_STEPS : MANAGE_LIEN_STEPS} currentStep={STATUS_MAP[d.status] || 'Draft'} />
-            </div>
-          </div>
-
-          <CollapsibleSection title="Lien Information" icon="ri-stack-line">
-            <FieldGrid>
-              <FieldItem label="Lien Number" value={d.lienNumber} />
-              <FieldItem label="Lien Type" value={d.lienTypeLabel} />
-              <FieldItem label="Jurisdiction" value={d.jurisdiction} />
-              <FieldItem label="Incident Date" value={d.incidentDate} />
-              <FieldItem label="Confidential" value={d.isConfidential ? 'Yes' : 'No'} />
-              <FieldItem label="External Reference" value={d.externalReference} />
-              <FieldItem label="Linked Case" value={
-                linkedCase ? (
-                  <Link href={`/lien/cases/${d.caseId}`} className="text-primary hover:underline text-sm">{linkedCase.caseNumber} — {linkedCase.clientName}</Link>
-                ) : d.caseId ? 'Linked (details unavailable)' : undefined
-              } />
-            </FieldGrid>
-            {d.description && (
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Description</dt>
-                <dd className="text-sm text-gray-600 mt-1">{d.description}</dd>
-              </div>
-            )}
-          </CollapsibleSection>
-
-          <CollapsibleSection title="Subject Information" icon="ri-group-line">
-            <FieldGrid>
-              <FieldItem label="Full Name" value={d.isConfidential ? 'Confidential' : (d.subjectName || `${d.subjectFirstName} ${d.subjectLastName}`.trim() || undefined)} />
-              <FieldItem label="First Name" value={d.isConfidential ? 'Confidential' : d.subjectFirstName} />
-              <FieldItem label="Last Name" value={d.isConfidential ? 'Confidential' : d.subjectLastName} />
-            </FieldGrid>
-          </CollapsibleSection>
-
-          {isSellMode && offers.length > 0 && (
-            <CollapsibleSection title={`Offers (${offers.length})`} icon="ri-hand-coin-line">
-              <div className="divide-y divide-gray-100 -mx-5 -mb-4">
-                {offers.map((offer) => (
-                  <div key={offer.id} className="px-5 py-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-700 font-medium">Offer from Org {offer.buyerOrgId.slice(0, 8)}...</p>
-                      <p className="text-xs text-gray-400">{offer.notes || 'No notes'} &middot; {offer.offeredAt}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium text-gray-900 tabular-nums">{formatCurrency(offer.offerAmount)}</span>
-                      <StatusBadge status={offer.status} />
-                      {canEdit && offer.status === 'Pending' && (
-                        <button onClick={() => onAcceptOffer(offer.id)} className="text-xs px-2.5 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors">Accept</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CollapsibleSection>
-          )}
-
-          {isSellMode && pendingOffers.length > 0 && (
-            <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <i className="ri-alert-line text-amber-600" />
-              <p className="text-xs text-amber-700"><span className="font-medium">Action Required:</span> This lien has {pendingOffers.length} pending offer(s) requiring review.</p>
-            </div>
-          )}
+  const leftContent = (
+    <div className="space-y-4">
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="px-5 py-4">
+          <h3 className="text-sm font-semibold text-gray-800 mb-4">Lien Lifecycle</h3>
+          <StatusProgress steps={isSellMode ? SELL_LIEN_STEPS : MANAGE_LIEN_STEPS} currentStep={STATUS_MAP[d.status] || 'Draft'} />
         </div>
+      </div>
+
+      <CollapsibleSection title="Lien Information" icon="ri-stack-line">
+        <FieldGrid>
+          <FieldItem label="Lien Number" value={d.lienNumber} />
+          <FieldItem label="Lien Type" value={d.lienTypeLabel} />
+          <FieldItem label="Jurisdiction" value={d.jurisdiction} />
+          <FieldItem label="Incident Date" value={d.incidentDate} />
+          <FieldItem label="Confidential" value={d.isConfidential ? 'Yes' : 'No'} />
+          <FieldItem label="External Reference" value={d.externalReference} />
+          <FieldItem label="Linked Case" value={
+            linkedCase ? (
+              <Link href={`/lien/cases/${d.caseId}`} className="text-primary hover:underline text-sm">{linkedCase.caseNumber} — {linkedCase.clientName}</Link>
+            ) : d.caseId ? 'Linked (details unavailable)' : undefined
+          } />
+        </FieldGrid>
+        {d.description && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">Description</dt>
+            <dd className="text-sm text-gray-600 mt-1">{d.description}</dd>
+          </div>
+        )}
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Subject Information" icon="ri-group-line">
+        <FieldGrid>
+          <FieldItem label="Full Name" value={d.isConfidential ? 'Confidential' : (d.subjectName || `${d.subjectFirstName} ${d.subjectLastName}`.trim() || undefined)} />
+          <FieldItem label="First Name" value={d.isConfidential ? 'Confidential' : d.subjectFirstName} />
+          <FieldItem label="Last Name" value={d.isConfidential ? 'Confidential' : d.subjectLastName} />
+        </FieldGrid>
+      </CollapsibleSection>
+
+      {isSellMode && offers.length > 0 && (
+        <CollapsibleSection title={`Offers (${offers.length})`} icon="ri-hand-coin-line">
+          <div className="divide-y divide-gray-100 -mx-5 -mb-4">
+            {offers.map((offer) => (
+              <div key={offer.id} className="px-5 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-700 font-medium">Offer from Org {offer.buyerOrgId.slice(0, 8)}...</p>
+                  <p className="text-xs text-gray-400">{offer.notes || 'No notes'} &middot; {offer.offeredAt}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-900 tabular-nums">{formatCurrency(offer.offerAmount)}</span>
+                  <StatusBadge status={offer.status} />
+                  {canEdit && offer.status === 'Pending' && (
+                    <button onClick={() => onAcceptOffer(offer.id)} className="text-xs px-2.5 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors">Accept</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
       )}
 
-      <PanelDivider mode={panelMode} onChangeMode={setPanelMode} />
-
-      {showRight && (
-        <div className="space-y-4 min-w-0">
-          <CollapsibleSection title="Financial Summary" icon="ri-money-dollar-circle-line">
-            <div className="space-y-0">
-              <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
-                <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Original Amount</span>
-                <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.originalAmount)}</span>
-              </div>
-              <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
-                <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Current Balance</span>
-                <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.currentBalance)}</span>
-              </div>
-              {isSellMode && (
-                <>
-                  <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
-                    <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Offer Price</span>
-                    <span className="text-sm font-bold text-blue-600 tabular-nums">{formatCurrency(d.offerPrice)}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
-                    <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Purchase Price</span>
-                    <span className="text-sm font-bold text-emerald-600 tabular-nums">{formatCurrency(d.purchasePrice)}</span>
-                  </div>
-                </>
-              )}
-              {d.payoffAmount !== null && (
-                <div className="flex items-center justify-between py-2.5">
-                  <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Payoff Amount</span>
-                  <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.payoffAmount)}</span>
-                </div>
-              )}
-            </div>
-          </CollapsibleSection>
-
-          <CollapsibleSection title="Important Dates" icon="ri-calendar-event-line">
-            <div className="space-y-0">
-              <DateRow label="Incident Date" value={d.incidentDate} />
-              <DateRow label="Opened" value={d.openedAt} />
-              <DateRow label="Created" value={d.createdAt} />
-              <DateRow label="Last Updated" value={d.updatedAt} />
-              {d.closedAt && <DateRow label="Closed" value={d.closedAt} />}
-            </div>
-          </CollapsibleSection>
-
-          <CollapsibleSection title="Communications" icon="ri-mail-line">
-            {/* TEMP: UI mock data for visual review only */}
-            <div className="space-y-4">
-              <div>
-                <div className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight mb-2.5">Contacts</div>
-                <div className="space-y-2">
-                  {/* TEMP: UI mock data for visual review only */}
-                  <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <i className="ri-user-line text-sm text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm text-gray-700 font-medium truncate">Sarah Mitchell</p>
-                      <p className="text-xs text-gray-400">Case Manager</p>
-                    </div>
-                  </div>
-                  {/* TEMP: UI mock data for visual review only */}
-                  <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
-                    <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-                      <i className="ri-building-line text-sm text-blue-500" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm text-gray-700 font-medium truncate">Smith & Associates</p>
-                      <p className="text-xs text-gray-400">Law Firm</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="pt-3 border-t border-gray-100">
-                <button className="w-full px-4 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
-                  Compose New Email
-                </button>
-              </div>
-            </div>
-          </CollapsibleSection>
-
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden px-5 py-3.5">
-            <div className="flex items-center gap-2">
-              <i className="ri-information-line text-sm text-gray-400" />
-              <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Current Status</span>
-            </div>
-            <div className="mt-2">
-              <StatusBadge status={d.status} size="md" />
-            </div>
-          </div>
+      {isSellMode && pendingOffers.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <i className="ri-alert-line text-amber-600" />
+          <p className="text-xs text-amber-700"><span className="font-medium">Action Required:</span> This lien has {pendingOffers.length} pending offer(s) requiring review.</p>
         </div>
       )}
     </div>
   );
+
+  const rightContent = (
+    <div className="space-y-4">
+      <CollapsibleSection title="Financial Summary" icon="ri-money-dollar-circle-line">
+        <div className="space-y-0">
+          <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
+            <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Original Amount</span>
+            <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.originalAmount)}</span>
+          </div>
+          <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
+            <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Current Balance</span>
+            <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.currentBalance)}</span>
+          </div>
+          {isSellMode && (
+            <>
+              <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
+                <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Offer Price</span>
+                <span className="text-sm font-bold text-blue-600 tabular-nums">{formatCurrency(d.offerPrice)}</span>
+              </div>
+              <div className="flex items-center justify-between py-2.5 border-b border-gray-100">
+                <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Purchase Price</span>
+                <span className="text-sm font-bold text-emerald-600 tabular-nums">{formatCurrency(d.purchasePrice)}</span>
+              </div>
+            </>
+          )}
+          {d.payoffAmount !== null && (
+            <div className="flex items-center justify-between py-2.5">
+              <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Payoff Amount</span>
+              <span className="text-sm font-bold text-gray-900 tabular-nums">{formatCurrency(d.payoffAmount)}</span>
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Important Dates" icon="ri-calendar-event-line">
+        <div className="space-y-0">
+          <DateRow label="Incident Date" value={d.incidentDate} />
+          <DateRow label="Opened" value={d.openedAt} />
+          <DateRow label="Created" value={d.createdAt} />
+          <DateRow label="Last Updated" value={d.updatedAt} />
+          {d.closedAt && <DateRow label="Closed" value={d.closedAt} />}
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Communications" icon="ri-mail-line">
+        {/* TEMP: UI mock data for visual review only */}
+        <div className="space-y-4">
+          <div>
+            <div className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight mb-2.5">Contacts</div>
+            <div className="space-y-2">
+              {/* TEMP: UI mock data for visual review only */}
+              <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <i className="ri-user-line text-sm text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm text-gray-700 font-medium truncate">Sarah Mitchell</p>
+                  <p className="text-xs text-gray-400">Case Manager</p>
+                </div>
+              </div>
+              {/* TEMP: UI mock data for visual review only */}
+              <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                  <i className="ri-building-line text-sm text-blue-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm text-gray-700 font-medium truncate">Smith & Associates</p>
+                  <p className="text-xs text-gray-400">Law Firm</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="pt-3 border-t border-gray-100">
+            <button className="w-full px-4 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors">
+              Compose New Email
+            </button>
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden px-5 py-3.5">
+        <div className="flex items-center gap-2">
+          <i className="ri-information-line text-sm text-gray-400" />
+          <span className="text-[11px] text-gray-400 font-medium uppercase tracking-wide leading-tight">Current Status</span>
+        </div>
+        <div className="mt-2">
+          <StatusBadge status={d.status} size="md" />
+        </div>
+      </div>
+    </div>
+  );
+
+  return <LayoutSplit left={leftContent} right={rightContent} mode={panelMode} onModeChange={onPanelModeChange} />;
 }
 
 function DateRow({ label, value }: { label: string; value?: string | null }) {
