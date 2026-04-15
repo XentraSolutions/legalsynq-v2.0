@@ -186,7 +186,7 @@ export function CaseDetailClient({ id }: { id: string }) {
         )}
         {activeTab === 'liens' && <LiensTab liens={relatedLiens} caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
         {activeTab === 'documents' && <DocumentsTab caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
-        {activeTab === 'servicing' && <EmptyTab icon="ri-tools-line" label="Servicing" />}
+        {activeTab === 'servicing' && <ServicingTab caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
         {activeTab === 'notes' && <NotesPanel notes={caseNotes} onAddNote={() => {}} readOnly />}
         {activeTab === 'taskmanager' && <EmptyTab icon="ri-task-line" label="Task Manager" />}
       </div>
@@ -931,6 +931,449 @@ function getFileIcon(filename: string): string {
   if (['xls', 'xlsx'].includes(ext)) return 'ri-file-excel-2-line';
   if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'ri-image-line';
   return 'ri-file-text-line';
+}
+
+/* TEMP: visual fallback data for UI review only */
+const TEMP_SERVICING_OPEN_LIENS = [
+  { id: 'ol-1', lienNumber: 'LN-2026-0041', facility: 'Tampa General Hospital', billingAmount: 12500, reductionAmount: null as number | null, paymentAmount: null as number | null, balance: 12500, status: 'Open' },
+  { id: 'ol-2', lienNumber: 'LN-2026-0042', facility: 'Clearwater Radiology', billingAmount: 4200, reductionAmount: null as number | null, paymentAmount: null as number | null, balance: 4200, status: 'Open' },
+  { id: 'ol-3', lienNumber: 'LN-2026-0043', facility: 'Bay Area Physical Therapy', billingAmount: 8900, reductionAmount: null as number | null, paymentAmount: null as number | null, balance: 8900, status: 'Open' },
+];
+
+/* TEMP: visual fallback data for UI review only */
+const TEMP_SERVICING_CLOSED_LIENS = [
+  { id: 'cl-1', lienNumber: 'LN-2025-0891', facility: 'Sunshine MRI Center', billingAmount: 3200, reductionAmount: 800, paymentAmount: 2400, balance: 0, status: 'Closed' },
+];
+
+/* TEMP: visual fallback data for UI review only */
+const TEMP_PAYMENT_HISTORY = [
+  { id: 'ph-1', date: '03/28/2026', lienNumber: 'LN-2025-0891', facility: 'Sunshine MRI Center', amount: 2400, method: 'ACH', reference: 'PAY-2026-0312', processedBy: 'Sarah Mitchell' },
+];
+
+/* TEMP: visual fallback data for UI review only */
+const TEMP_SERVICING_HISTORY = [
+  { id: 'sh-1', timestamp: '04/14/2026 3:20 PM', description: 'Case status updated to Pre-demand', updatedBy: 'Sarah Mitchell' },
+  { id: 'sh-2', timestamp: '04/10/2026 11:00 AM', description: 'Law firm switched from Prior & Associates to AZ Injury Care', updatedBy: 'James Rivera' },
+  { id: 'sh-3', timestamp: '04/05/2026 4:15 PM', description: 'Settlement negotiation initiated with carrier', updatedBy: 'Sarah Mitchell' },
+  { id: 'sh-4', timestamp: '03/28/2026 2:30 PM', description: 'Payment of $2,400.00 applied to LN-2025-0891', updatedBy: 'System' },
+  { id: 'sh-5', timestamp: '03/20/2026 10:00 AM', description: 'Reduction of $800.00 approved for LN-2025-0891', updatedBy: 'Sarah Mitchell' },
+  { id: 'sh-6', timestamp: '03/01/2026 9:00 AM', description: 'Case servicing record created', updatedBy: 'System' },
+];
+
+type ServicingSubTab = 'servicing-details' | 'settlement-details' | 'history';
+
+const SERVICING_SUB_TABS: { key: ServicingSubTab; label: string; icon: string }[] = [
+  { key: 'servicing-details', label: 'Servicing Details', icon: 'ri-settings-3-line' },
+  { key: 'settlement-details', label: 'Settlement Details', icon: 'ri-money-dollar-circle-line' },
+  { key: 'history', label: 'History', icon: 'ri-history-line' },
+];
+
+function ServicingTab({ caseDetail, panelMode, onPanelModeChange }: { caseDetail: CaseDetail; panelMode: PanelMode; onPanelModeChange: (m: PanelMode) => void }) {
+  const [subTab, setSubTab] = useState<ServicingSubTab>('servicing-details');
+
+  /* TEMP: visual fallback data for UI review only */
+  const [caseStatus, setCaseStatus] = useState(caseDetail.status || 'PreDemand');
+  const [switchedLawFirm, setSwitchedLawFirm] = useState(false);
+  const [switchedDate, setSwitchedDate] = useState('');
+  const [currentLawFirm, setCurrentLawFirm] = useState('AZ Injury Care - Law Firm');
+  const [currentLawyer, setCurrentLawyer] = useState('Robert Chen');
+  const [currentCaseManager, setCurrentCaseManager] = useState('Sarah Mitchell');
+  const saveDisabled = true;
+
+  const openLiensTotalBilling = TEMP_SERVICING_OPEN_LIENS.reduce((s, l) => s + l.billingAmount, 0);
+  const openLiensTotalBalance = TEMP_SERVICING_OPEN_LIENS.reduce((s, l) => s + l.balance, 0);
+  const closedLiensTotalBilling = TEMP_SERVICING_CLOSED_LIENS.reduce((s, l) => s + l.billingAmount, 0);
+  const closedLiensTotalReduction = TEMP_SERVICING_CLOSED_LIENS.reduce((s, l) => s + (l.reductionAmount ?? 0), 0);
+  const closedLiensTotalPayment = TEMP_SERVICING_CLOSED_LIENS.reduce((s, l) => s + (l.paymentAmount ?? 0), 0);
+
+  const leftContent = (
+    <div className="space-y-4">
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="flex border-b border-gray-100">
+          {SERVICING_SUB_TABS.map((st) => (
+            <button
+              key={st.key}
+              onClick={() => setSubTab(st.key)}
+              className={[
+                'flex-1 px-4 py-2.5 text-xs font-medium transition-colors flex items-center justify-center gap-1.5',
+                subTab === st.key
+                  ? 'text-primary border-b-2 border-primary bg-primary/5'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50',
+              ].join(' ')}
+            >
+              <i className={`${st.icon} text-sm`} />
+              {st.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md">
+        <p className="text-xs text-amber-700"><i className="ri-information-line mr-1" />Sample data shown for UI review. Real data will load from the API.</p>
+      </div>
+
+      {subTab === 'servicing-details' && (
+        <CollapsibleSection title="Servicing Details" icon="ri-settings-3-line">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">Case Status</label>
+              <div className="relative">
+                <select
+                  value={caseStatus}
+                  onChange={(e) => setCaseStatus(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all appearance-none cursor-pointer"
+                >
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
+                  ))}
+                </select>
+                <i className="ri-arrow-down-s-line absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={switchedLawFirm}
+                    onChange={(e) => setSwitchedLawFirm(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30 cursor-pointer"
+                  />
+                  <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Switched Law Firm</span>
+                </label>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">Switched Date</label>
+                <input
+                  type="date"
+                  value={switchedDate}
+                  onChange={(e) => setSwitchedDate(e.target.value)}
+                  disabled={!switchedLawFirm}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">Current Law Firm</label>
+              <input
+                type="text"
+                value={currentLawFirm}
+                onChange={(e) => setCurrentLawFirm(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">Current Lawyer</label>
+                <input
+                  type="text"
+                  value={currentLawyer}
+                  onChange={(e) => setCurrentLawyer(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">Current Case Manager</label>
+                <input
+                  type="text"
+                  value={currentCaseManager}
+                  onChange={(e) => setCurrentCaseManager(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center gap-3">
+              <button
+                disabled={saveDisabled}
+                className="px-6 py-2.5 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={saveDisabled ? 'Save is not yet connected to the API' : undefined}
+              >
+                <i className="ri-save-line text-sm" />
+                Save
+              </button>
+              {saveDisabled && (
+                <span className="text-xs text-gray-400 italic">Not yet connected to API</span>
+              )}
+            </div>
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {subTab === 'settlement-details' && (
+        <div className="space-y-4">
+          <CollapsibleSection title="Reduction" icon="ri-percent-line">
+            <div className="text-center py-4">
+              <p className="text-sm text-gray-500 mb-3">No reductions have been configured for open liens.</p>
+              <button className="px-4 py-2 text-sm font-medium text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors inline-flex items-center gap-1.5">
+                <i className="ri-add-line text-sm" />
+                Setup Reduction
+              </button>
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Payments" icon="ri-bank-card-line">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-gray-500">{TEMP_PAYMENT_HISTORY.length} payment{TEMP_PAYMENT_HISTORY.length !== 1 ? 's' : ''} recorded</p>
+              <button className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1">
+                <i className="ri-add-line text-sm" />
+                Add Payment
+              </button>
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Open Liens" icon="ri-stack-line">
+            {TEMP_SERVICING_OPEN_LIENS.length === 0 ? (
+              <div className="text-center py-8">
+                <i className="ri-stack-line text-2xl text-gray-300" />
+                <p className="text-sm text-gray-400 mt-2">No open liens</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto -mx-5 px-5">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Lien ID</th>
+                        <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Facility</th>
+                        <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Billing Amt</th>
+                        <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Reduction</th>
+                        <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Payment</th>
+                        <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Balance</th>
+                        <th className="pl-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {TEMP_SERVICING_OPEN_LIENS.map((l) => (
+                        <tr key={l.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="pr-3 py-2.5 text-xs font-mono text-primary">{l.lienNumber}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[160px]">{l.facility}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">{formatCurrency(l.billingAmount)}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-500 tabular-nums text-right">{l.reductionAmount !== null ? formatCurrency(l.reductionAmount) : '---'}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-500 tabular-nums text-right">{l.paymentAmount !== null ? formatCurrency(l.paymentAmount) : '---'}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">{formatCurrency(l.balance)}</td>
+                          <td className="pl-3 py-2.5"><StatusBadge status={l.status} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-gray-200 bg-gray-50/50">
+                        <td colSpan={2} className="pr-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                          Totals ({TEMP_SERVICING_OPEN_LIENS.length} lien{TEMP_SERVICING_OPEN_LIENS.length !== 1 ? 's' : ''})
+                        </td>
+                        <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">{formatCurrency(openLiensTotalBilling)}</td>
+                        <td className="px-3 py-2.5 text-sm text-gray-400 text-right">---</td>
+                        <td className="px-3 py-2.5 text-sm text-gray-400 text-right">---</td>
+                        <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">{formatCurrency(openLiensTotalBalance)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+                  <button className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1">
+                    <i className="ri-percent-line text-sm" />
+                    Setup Reduction
+                  </button>
+                  <button className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors inline-flex items-center gap-1">
+                    <i className="ri-close-circle-line text-sm" />
+                    No Recovery
+                  </button>
+                  <button className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 border border-primary/20 rounded-md hover:bg-primary/10 transition-colors inline-flex items-center gap-1">
+                    <i className="ri-money-dollar-circle-line text-sm" />
+                    Add Payment
+                  </button>
+                </div>
+              </>
+            )}
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Closed Liens" icon="ri-checkbox-circle-line">
+            {TEMP_SERVICING_CLOSED_LIENS.length === 0 ? (
+              <div className="text-center py-8">
+                <i className="ri-checkbox-circle-line text-2xl text-gray-300" />
+                <p className="text-sm text-gray-400 mt-2">No closed liens</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto -mx-5 px-5">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Lien ID</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Facility</th>
+                      <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Billing Amt</th>
+                      <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Reduction</th>
+                      <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Payment</th>
+                      <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Balance</th>
+                      <th className="pl-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {TEMP_SERVICING_CLOSED_LIENS.map((l) => (
+                      <tr key={l.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="pr-3 py-2.5 text-xs font-mono text-gray-500">{l.lienNumber}</td>
+                        <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[160px]">{l.facility}</td>
+                        <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">{formatCurrency(l.billingAmount)}</td>
+                        <td className="px-3 py-2.5 text-sm text-green-600 tabular-nums text-right">{formatCurrency(l.reductionAmount)}</td>
+                        <td className="px-3 py-2.5 text-sm text-gray-700 tabular-nums text-right">{formatCurrency(l.paymentAmount)}</td>
+                        <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">{formatCurrency(l.balance)}</td>
+                        <td className="pl-3 py-2.5"><StatusBadge status={l.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-gray-200 bg-gray-50/50">
+                      <td colSpan={2} className="pr-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        Totals ({TEMP_SERVICING_CLOSED_LIENS.length} lien{TEMP_SERVICING_CLOSED_LIENS.length !== 1 ? 's' : ''})
+                      </td>
+                      <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">{formatCurrency(closedLiensTotalBilling)}</td>
+                      <td className="px-3 py-2.5 text-sm font-semibold text-green-600 tabular-nums text-right">{formatCurrency(closedLiensTotalReduction)}</td>
+                      <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">{formatCurrency(closedLiensTotalPayment)}</td>
+                      <td className="px-3 py-2.5 text-sm font-semibold text-gray-700 tabular-nums text-right">{formatCurrency(0)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </CollapsibleSection>
+
+          <CollapsibleSection title="Payment History" icon="ri-exchange-dollar-line">
+            {TEMP_PAYMENT_HISTORY.length === 0 ? (
+              <div className="text-center py-8">
+                <i className="ri-exchange-dollar-line text-2xl text-gray-300" />
+                <p className="text-sm text-gray-400 mt-2">No payment history</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto -mx-5 px-5">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Date</th>
+                        <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Lien ID</th>
+                        <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Facility</th>
+                        <th className="px-3 py-2 text-right text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Amount</th>
+                        <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Method</th>
+                        <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Reference</th>
+                        <th className="pl-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Processed By</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {TEMP_PAYMENT_HISTORY.map((p) => (
+                        <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{p.date}</td>
+                          <td className="px-3 py-2.5 text-xs font-mono text-primary">{p.lienNumber}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-600 truncate max-w-[140px]">{p.facility}</td>
+                          <td className="px-3 py-2.5 text-sm text-gray-700 font-medium tabular-nums text-right">{formatCurrency(p.amount)}</td>
+                          <td className="px-3 py-2.5">
+                            <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-600">{p.method}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-xs font-mono text-gray-500">{p.reference}</td>
+                          <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">{p.processedBy}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                  <p className="text-xs text-gray-400">{TEMP_PAYMENT_HISTORY.length} payment{TEMP_PAYMENT_HISTORY.length !== 1 ? 's' : ''}</p>
+                </div>
+              </>
+            )}
+          </CollapsibleSection>
+        </div>
+      )}
+
+      {subTab === 'history' && (
+        <CollapsibleSection title="Servicing History" icon="ri-history-line">
+          {TEMP_SERVICING_HISTORY.length === 0 ? (
+            <div className="text-center py-8">
+              <i className="ri-history-line text-2xl text-gray-300" />
+              <p className="text-sm text-gray-400 mt-2">No history records</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto -mx-5 px-5">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="pr-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Timestamp</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Description</th>
+                      <th className="pl-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Updated By</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {TEMP_SERVICING_HISTORY.map((h) => (
+                      <tr key={h.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="pr-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">{h.timestamp}</td>
+                        <td className="px-3 py-2.5 text-sm text-gray-600">{h.description}</td>
+                        <td className="pl-3 py-2.5 text-sm text-gray-500 whitespace-nowrap">{h.updatedBy}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                <p className="text-xs text-gray-400">Showing {TEMP_SERVICING_HISTORY.length} entries</p>
+              </div>
+            </>
+          )}
+        </CollapsibleSection>
+      )}
+    </div>
+  );
+
+  const rightContent = (
+    <div className="space-y-4">
+      <CollapsibleSection title="Email" icon="ri-mail-send-line">
+        <div className="flex justify-center py-2">
+          <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+            <i className="ri-mail-send-line text-sm" />
+            Compose New Email
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="SMS" icon="ri-message-2-line">
+        <div className="flex justify-center py-2">
+          <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+            <i className="ri-message-2-line text-sm" />
+            Send SMS
+          </button>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Contacts" icon="ri-contacts-line">
+        {/* TEMP: visual fallback data for UI review only */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <i className="ri-user-line text-sm text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm text-gray-700 font-medium truncate">Sarah Mitchell</p>
+              <p className="text-xs text-gray-400">Case Manager</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+              <i className="ri-building-line text-sm text-blue-500" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm text-gray-700 font-medium truncate">{caseDetail.insuranceCarrier || 'Smith & Associates'}</p>
+              <p className="text-xs text-gray-400">Law Firm</p>
+            </div>
+          </div>
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+
+  return <LayoutSplit left={leftContent} right={rightContent} mode={panelMode} onModeChange={onPanelModeChange} />;
 }
 
 function EmptyTab({ icon, label, message }: { icon: string; label: string; message?: string }) {
