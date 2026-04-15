@@ -487,7 +487,7 @@ shared/
 | `ConnectionStrings__DocsDb` | Documents.Api | MySQL, documents_db on RDS |
 | `ConnectionStrings__LiensDb` | Liens.Api | MySQL, liens_db on RDS |
 | `NOTIF_DB_PASSWORD` | Notifications.Api | MySQL password for notifications_db (host/port/name/user via shared env vars) |
-| `ConnectionStrings__ReportsDb` | Reports.Api | MySQL, reports_db on RDS (shared env var) |
+| `ConnectionStrings__ReportsDb` | Reports.Api | MySQL, reports_db on RDS |
 
 ## Database (AWS RDS MySQL)
 - **Host:** `legalsynqplatform.cpq48wc2krn5.us-east-2.rds.amazonaws.com` (MySQL 8.0, us-east-2)
