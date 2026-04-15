@@ -1,4 +1,5 @@
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Context;
 using Reports.Contracts.Guardrails;
 using Reports.Contracts.Queue;
 
@@ -31,18 +32,23 @@ public static class HealthEndpoints
             IGuardrailValidator guardrails,
             IConfiguration config) =>
         {
+            var ctx = RequestContext.Default();
+            var mockTenant = new TenantContext { TenantId = "probe", IsActive = true };
+            var mockUser = new UserContext { UserId = "probe" };
+            var mockNotification = new ReportNotification { ReportId = "probe", ReportName = "probe" };
+
             var checks = new Dictionary<string, string>();
 
             checks["config_loaded"] = !string.IsNullOrEmpty(config["ReportsService:ServiceName"]) ? "ok" : "fail";
 
-            checks["identity_adapter"] = await ProbeAdapter(() => identity.ValidateTokenAsync("probe")) ? "ok" : "fail";
-            checks["tenant_adapter"] = await ProbeAdapter(() => tenant.IsTenantActiveAsync("probe")) ? "ok" : "fail";
-            checks["entitlement_adapter"] = await ProbeAdapter(() => entitlement.CanAccessReportsAsync("probe", "probe")) ? "ok" : "fail";
-            checks["audit_adapter"] = await ProbeAdapter(() => audit.RecordEventAsync("probe", "probe", "readiness", "probe")) ? "ok" : "fail";
-            checks["document_adapter"] = await ProbeAdapter(() => document.RetrieveReportAsync("probe")) ? "ok" : "fail";
-            checks["notification_adapter"] = await ProbeAdapter(() => notification.NotifyReportReadyAsync("probe", "probe", "probe", "probe")) ? "ok" : "fail";
-            checks["product_data_adapter"] = await ProbeAdapter(() => productData.GetAvailableProductsAsync("probe")) ? "ok" : "fail";
-            checks["job_queue"] = await ProbeAdapter(() => queue.GetPendingCountAsync()) ? "ok" : "fail";
+            checks["identity_adapter"] = (await ProbeAdapter(() => identity.ValidateTokenAsync(ctx, "probe"))).Success ? "ok" : "fail";
+            checks["tenant_adapter"] = (await ProbeAdapter(() => tenant.IsTenantActiveAsync(ctx, "probe"))).Success ? "ok" : "fail";
+            checks["entitlement_adapter"] = (await ProbeAdapter(() => entitlement.CanAccessReportsAsync(ctx, mockTenant, mockUser))).Success ? "ok" : "fail";
+            checks["audit_adapter"] = (await ProbeAdapter(() => audit.RecordEventAsync(ctx, mockTenant, "probe", "readiness", "probe"))).Success ? "ok" : "fail";
+            checks["document_adapter"] = (await ProbeAdapter(() => document.RetrieveReportAsync(ctx, "probe"))).Called ? "ok" : "fail";
+            checks["notification_adapter"] = (await ProbeAdapter(() => notification.NotifyReportReadyAsync(ctx, mockTenant, "probe", mockNotification))).Success ? "ok" : "fail";
+            checks["product_data_adapter"] = (await ProbeAdapter(() => productData.GetAvailableProductsAsync(ctx, mockTenant))).Success ? "ok" : "fail";
+            checks["job_queue"] = await ProbeAdapterSimple(() => queue.GetPendingCountAsync()) ? "ok" : "fail";
             checks["guardrails"] = guardrails.ValidateExecutionLimits("probe", "probe").IsValid ? "ok" : "fail";
 
             var allOk = checks.Values.All(v => v == "ok");
@@ -59,13 +65,20 @@ public static class HealthEndpoints
         });
     }
 
-    private static async Task<bool> ProbeAdapter(Func<Task> probe)
+    private static async Task<(bool Success, bool Called)> ProbeAdapter<T>(Func<Task<AdapterResult<T>>> probe)
     {
-        try { await probe(); return true; }
-        catch { return false; }
+        try
+        {
+            var result = await probe();
+            return (result.Success, true);
+        }
+        catch
+        {
+            return (false, false);
+        }
     }
 
-    private static async Task<bool> ProbeAdapter<T>(Func<Task<T>> probe)
+    private static async Task<bool> ProbeAdapterSimple<T>(Func<Task<T>> probe)
     {
         try { await probe(); return true; }
         catch { return false; }

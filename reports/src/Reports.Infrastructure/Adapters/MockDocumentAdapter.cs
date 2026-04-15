@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Context;
 
 namespace Reports.Infrastructure.Adapters;
 
@@ -9,15 +10,22 @@ public sealed class MockDocumentAdapter : IDocumentAdapter
 
     public MockDocumentAdapter(ILogger<MockDocumentAdapter> log) => _log = log;
 
-    public Task<string> StoreReportAsync(string tenantId, string fileName, byte[] content, string mimeType, CancellationToken ct)
+    public Task<AdapterResult<StoredDocumentInfo>> StoreReportAsync(RequestContext ctx, TenantContext tenant, StoreReportRequest request, CancellationToken ct)
     {
-        _log.LogDebug("MockDocumentAdapter: StoreReport {FileName} ({Bytes} bytes)", fileName, content.Length);
-        return Task.FromResult($"mock-doc-{Guid.NewGuid():N}");
+        _log.LogDebug("MockDocumentAdapter: StoreReport {FileName} ({Bytes} bytes) [Correlation={CorrelationId}]",
+            request.FileName, request.Content.Length, ctx.CorrelationId);
+        var info = new StoredDocumentInfo
+        {
+            DocumentId = $"mock-doc-{Guid.NewGuid():N}",
+            FileName = request.FileName,
+            SizeBytes = request.Content.Length,
+        };
+        return Task.FromResult(AdapterResult<StoredDocumentInfo>.Ok(info));
     }
 
-    public Task<byte[]?> RetrieveReportAsync(string documentId, CancellationToken ct)
+    public Task<AdapterResult<ReportContent>> RetrieveReportAsync(RequestContext ctx, string documentId, CancellationToken ct)
     {
-        _log.LogDebug("MockDocumentAdapter: RetrieveReport {DocumentId}", documentId);
-        return Task.FromResult<byte[]?>(null);
+        _log.LogDebug("MockDocumentAdapter: RetrieveReport {DocumentId} [Correlation={CorrelationId}]", documentId, ctx.CorrelationId);
+        return Task.FromResult(AdapterErrors.NotFoundResult<ReportContent>($"Document {documentId} not found (mock)"));
     }
 }

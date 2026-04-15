@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Context;
 
 namespace Reports.Infrastructure.Adapters;
 
@@ -9,21 +10,30 @@ public sealed class MockIdentityAdapter : IIdentityAdapter
 
     public MockIdentityAdapter(ILogger<MockIdentityAdapter> log) => _log = log;
 
-    public Task<bool> ValidateTokenAsync(string token, CancellationToken ct)
+    public Task<AdapterResult<bool>> ValidateTokenAsync(RequestContext ctx, string token, CancellationToken ct)
     {
-        _log.LogDebug("MockIdentityAdapter: ValidateToken called");
-        return Task.FromResult(!string.IsNullOrWhiteSpace(token));
+        _log.LogDebug("MockIdentityAdapter: ValidateToken [Correlation={CorrelationId}]", ctx.CorrelationId);
+        var valid = !string.IsNullOrWhiteSpace(token);
+        return Task.FromResult(AdapterResult<bool>.Ok(valid));
     }
 
-    public Task<string?> GetUserIdFromTokenAsync(string token, CancellationToken ct)
+    public Task<AdapterResult<UserContext>> GetUserFromTokenAsync(RequestContext ctx, string token, CancellationToken ct)
     {
-        _log.LogDebug("MockIdentityAdapter: GetUserIdFromToken called");
-        return Task.FromResult<string?>("mock-user-id");
+        _log.LogDebug("MockIdentityAdapter: GetUserFromToken [Correlation={CorrelationId}]", ctx.CorrelationId);
+        var user = new UserContext
+        {
+            UserId = "mock-user-id",
+            Email = "mock@example.com",
+            Roles = new[] { "reports-viewer", "reports-executor" },
+            IsPlatformAdmin = false,
+        };
+        return Task.FromResult(AdapterResult<UserContext>.Ok(user));
     }
 
-    public Task<IReadOnlyList<string>> GetUserRolesAsync(string userId, CancellationToken ct)
+    public Task<AdapterResult<IReadOnlyList<string>>> GetUserRolesAsync(RequestContext ctx, string userId, CancellationToken ct)
     {
-        _log.LogDebug("MockIdentityAdapter: GetUserRoles called for {UserId}", userId);
-        return Task.FromResult<IReadOnlyList<string>>(new[] { "reports-viewer", "reports-executor" });
+        _log.LogDebug("MockIdentityAdapter: GetUserRoles for {UserId} [Correlation={CorrelationId}]", userId, ctx.CorrelationId);
+        IReadOnlyList<string> roles = new[] { "reports-viewer", "reports-executor" };
+        return Task.FromResult(AdapterResult<IReadOnlyList<string>>.Ok(roles));
     }
 }

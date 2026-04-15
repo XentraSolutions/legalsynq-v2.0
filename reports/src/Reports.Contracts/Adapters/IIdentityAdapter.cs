@@ -1,8 +1,10 @@
+using Reports.Contracts.Context;
+
 namespace Reports.Contracts.Adapters;
 
 public interface IIdentityAdapter
 {
-    Task<bool> ValidateTokenAsync(string token, CancellationToken ct = default);
-    Task<string?> GetUserIdFromTokenAsync(string token, CancellationToken ct = default);
-    Task<IReadOnlyList<string>> GetUserRolesAsync(string userId, CancellationToken ct = default);
+    Task<AdapterResult<bool>> ValidateTokenAsync(RequestContext ctx, string token, CancellationToken ct = default);
+    Task<AdapterResult<UserContext>> GetUserFromTokenAsync(RequestContext ctx, string token, CancellationToken ct = default);
+    Task<AdapterResult<IReadOnlyList<string>>> GetUserRolesAsync(RequestContext ctx, string userId, CancellationToken ct = default);
 }

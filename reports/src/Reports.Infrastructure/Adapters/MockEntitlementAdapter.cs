@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Context;
 
 namespace Reports.Infrastructure.Adapters;
 
@@ -9,15 +10,16 @@ public sealed class MockEntitlementAdapter : IEntitlementAdapter
 
     public MockEntitlementAdapter(ILogger<MockEntitlementAdapter> log) => _log = log;
 
-    public Task<bool> CanAccessReportsAsync(string tenantId, string userId, CancellationToken ct)
+    public Task<AdapterResult<bool>> CanAccessReportsAsync(RequestContext ctx, TenantContext tenant, UserContext user, CancellationToken ct)
     {
-        _log.LogDebug("MockEntitlementAdapter: CanAccessReports for {TenantId}/{UserId}", tenantId, userId);
-        return Task.FromResult(true);
+        _log.LogDebug("MockEntitlementAdapter: CanAccessReports for {TenantId}/{UserId} [Correlation={CorrelationId}]",
+            tenant.TenantId, user.UserId, ctx.CorrelationId);
+        return Task.FromResult(AdapterResult<bool>.Ok(true));
     }
 
-    public Task<bool> CanExecuteReportAsync(string tenantId, string userId, string reportTypeCode, CancellationToken ct)
+    public Task<AdapterResult<bool>> CanExecuteReportAsync(RequestContext ctx, TenantContext tenant, UserContext user, string reportTypeCode, CancellationToken ct)
     {
-        _log.LogDebug("MockEntitlementAdapter: CanExecuteReport for {ReportType}", reportTypeCode);
-        return Task.FromResult(true);
+        _log.LogDebug("MockEntitlementAdapter: CanExecuteReport {ReportType} [Correlation={CorrelationId}]", reportTypeCode, ctx.CorrelationId);
+        return Task.FromResult(AdapterResult<bool>.Ok(true));
     }
 }

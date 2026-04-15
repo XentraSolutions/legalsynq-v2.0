@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Context;
 
 namespace Reports.Infrastructure.Adapters;
 
@@ -9,15 +10,17 @@ public sealed class MockNotificationAdapter : INotificationAdapter
 
     public MockNotificationAdapter(ILogger<MockNotificationAdapter> log) => _log = log;
 
-    public Task NotifyReportReadyAsync(string tenantId, string userId, string reportId, string reportName, CancellationToken ct)
+    public Task<AdapterResult<bool>> NotifyReportReadyAsync(RequestContext ctx, TenantContext tenant, string userId, ReportNotification notification, CancellationToken ct)
     {
-        _log.LogInformation("MockNotificationAdapter: Report ready — {ReportName} ({ReportId})", reportName, reportId);
-        return Task.CompletedTask;
+        _log.LogInformation("MockNotificationAdapter: Report ready — {ReportName} ({ReportId}) [Correlation={CorrelationId}]",
+            notification.ReportName, notification.ReportId, ctx.CorrelationId);
+        return Task.FromResult(AdapterResult<bool>.Ok(true));
     }
 
-    public Task NotifyReportFailedAsync(string tenantId, string userId, string reportId, string reason, CancellationToken ct)
+    public Task<AdapterResult<bool>> NotifyReportFailedAsync(RequestContext ctx, TenantContext tenant, string userId, ReportNotification notification, CancellationToken ct)
     {
-        _log.LogWarning("MockNotificationAdapter: Report failed — {ReportId}: {Reason}", reportId, reason);
-        return Task.CompletedTask;
+        _log.LogWarning("MockNotificationAdapter: Report failed — {ReportId}: {Reason} [Correlation={CorrelationId}]",
+            notification.ReportId, notification.Reason, ctx.CorrelationId);
+        return Task.FromResult(AdapterResult<bool>.Ok(true));
     }
 }
