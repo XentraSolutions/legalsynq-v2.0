@@ -75,8 +75,8 @@ interface LienStore {
   activity: ActivityEntry[];
   addActivity: (entry: Omit<ActivityEntry, 'id'>) => void;
 
-  caseNotes: Record<string, { id: string; text: string; author: string; timestamp: string }[]>;
-  addCaseNote: (caseId: string, text: string) => void;
+  caseNotes: Record<string, { id: string; text: string; author: string; timestamp: string; category?: string }[]>;
+  addCaseNote: (caseId: string, text: string, opts?: { category?: string; author?: string }) => void;
 }
 
 let toastCounter = 0;
@@ -269,8 +269,8 @@ export const useLienStore = create<LienStore>((set, get) => ({
   },
 
   caseNotes: {},
-  addCaseNote: (caseId, text) => {
-    const note = { id: genId('note'), text, author: 'Current User', timestamp: new Date().toISOString() };
+  addCaseNote: (caseId, text, opts) => {
+    const note = { id: genId('note'), text, author: opts?.author || 'Current User', timestamp: new Date().toISOString(), category: opts?.category || 'general' };
     set((s) => ({
       caseNotes: { ...s.caseNotes, [caseId]: [...(s.caseNotes[caseId] || []), note] },
     }));

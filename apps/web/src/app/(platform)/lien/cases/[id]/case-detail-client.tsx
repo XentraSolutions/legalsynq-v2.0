@@ -8,7 +8,7 @@ import { useSession } from '@/hooks/use-session';
 import { casesService, type CaseDetail, type CaseLienItem } from '@/lib/cases';
 import { ApiError } from '@/lib/api-client';
 import { StatusBadge } from '@/components/lien/status-badge';
-import { NotesPanel } from '@/components/lien/notes-panel';
+
 import { ConfirmDialog } from '@/components/lien/modal';
 import { LayoutSplit, type PanelMode } from '@/components/lien/layout-split';
 
@@ -31,12 +31,10 @@ function formatCurrency(amount: number | null): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
-const EMPTY_NOTES: { id: string; text: string; author: string; timestamp: string }[] = [];
 
 export function CaseDetailClient({ id }: { id: string }) {
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
-  const caseNotes = useLienStore((s) => s.caseNotes[id] ?? EMPTY_NOTES);
 
   const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
   const [relatedLiens, setRelatedLiens] = useState<CaseLienItem[]>([]);
@@ -188,7 +186,7 @@ export function CaseDetailClient({ id }: { id: string }) {
         {activeTab === 'liens' && <LiensTab liens={relatedLiens} caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
         {activeTab === 'documents' && <DocumentsTab caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
         {activeTab === 'servicing' && <ServicingTab caseDetail={d} panelMode={panelMode} onPanelModeChange={setPanelMode} />}
-        {activeTab === 'notes' && <NotesPanel notes={caseNotes} onAddNote={() => {}} readOnly />}
+        {activeTab === 'notes' && <NotesTab caseId={id} />}
         {activeTab === 'taskmanager' && <TaskManagerTab caseDetail={d} />}
       </div>
 
@@ -1594,6 +1592,346 @@ function ServicingTab({ caseDetail, panelMode, onPanelModeChange }: { caseDetail
 }
 
 /* TEMP: visual fallback data for UI review only */
+interface CaseNote {
+  id: string;
+  text: string;
+  author: string;
+  timestamp: string;
+  category?: 'general' | 'internal' | 'follow-up';
+  pinned?: boolean;
+}
+
+const NOTE_CATEGORY_LABELS: Record<string, string> = {
+  general: 'General',
+  internal: 'Internal',
+  'follow-up': 'Follow-Up',
+};
+
+const NOTE_CATEGORY_COLORS: Record<string, string> = {
+  general: 'bg-blue-50 text-blue-600 border-blue-200',
+  internal: 'bg-purple-50 text-purple-600 border-purple-200',
+  'follow-up': 'bg-amber-50 text-amber-600 border-amber-200',
+};
+
+const TEMP_NOTES: CaseNote[] = [
+  { id: 'n-1', text: 'Spoke with plaintiff\'s attorney regarding updated medical documentation. They confirmed records from Tampa General will be sent by end of week. Need to follow up if not received by Friday.', author: 'Sarah Mitchell', timestamp: '2026-04-14T16:30:00Z', category: 'general', pinned: true },
+  { id: 'n-2', text: 'Insurance adjuster from State Farm called to discuss the claim valuation. They are requesting an itemized breakdown of all medical expenses. Preparing summary for submission.', author: 'James Rivera', timestamp: '2026-04-13T14:15:00Z', category: 'general' },
+  { id: 'n-3', text: 'Internal review: lien purchase terms for Bay Area PT need supervisor approval before proceeding. Flagged for management review in Monday standup.', author: 'Robert Chen', timestamp: '2026-04-12T11:00:00Z', category: 'internal' },
+  { id: 'n-4', text: 'Follow up with Clearwater Radiology on outstanding billing discrepancy — their invoice shows $2,400 but records indicate $1,850 for the MRI series. Awaiting corrected statement.', author: 'Sarah Mitchell', timestamp: '2026-04-11T09:45:00Z', category: 'follow-up' },
+  { id: 'n-5', text: 'Demand letter draft reviewed and approved by supervising attorney. Ready to send once final medical totals are confirmed. Target send date: April 25.', author: 'James Rivera', timestamp: '2026-04-10T17:20:00Z', category: 'general' },
+  { id: 'n-6', text: 'HIPAA authorization form collected from plaintiff — original signed copy scanned and uploaded to Documents tab. Verified all provider names are listed correctly.', author: 'Sarah Mitchell', timestamp: '2026-04-08T10:30:00Z', category: 'general' },
+];
+
+function formatNoteDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHrs = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatNoteTimestamp(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function getInitials(name: string): string {
+  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+}
+
+const AVATAR_COLORS = [
+  'bg-blue-100 text-blue-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-purple-100 text-purple-700',
+  'bg-amber-100 text-amber-700',
+  'bg-rose-100 text-rose-700',
+  'bg-cyan-100 text-cyan-700',
+];
+
+function avatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+type NoteSortOption = 'newest' | 'oldest';
+type NoteCategoryFilter = 'all' | 'general' | 'internal' | 'follow-up';
+
+function NotesTab({ caseId }: { caseId: string }) {
+  const addToast = useLienStore((s) => s.addToast);
+  const storeNotes = useLienStore((s) => s.caseNotes[caseId] ?? []);
+  const addCaseNote = useLienStore((s) => s.addCaseNote);
+  const { session } = useSession();
+
+  const [composerText, setComposerText] = useState('');
+  const [composerCategory, setComposerCategory] = useState<'general' | 'internal' | 'follow-up'>('general');
+  const [composerExpanded, setComposerExpanded] = useState(false);
+  const [sortOrder, setSortOrder] = useState<NoteSortOption>('newest');
+  const [categoryFilter, setCategoryFilter] = useState<NoteCategoryFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const allNotes: CaseNote[] = useMemo(() => {
+    const userNotes: CaseNote[] = storeNotes.map((n) => ({
+      ...n,
+      category: (n.category as CaseNote['category']) || 'general',
+    }));
+    return [...TEMP_NOTES, ...userNotes];
+  }, [storeNotes]);
+
+  const filteredNotes = useMemo(() => {
+    let result = [...allNotes];
+
+    if (categoryFilter !== 'all') {
+      result = result.filter((n) => n.category === categoryFilter);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(
+        (n) => n.text.toLowerCase().includes(q) || n.author.toLowerCase().includes(q),
+      );
+    }
+
+    result.sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime();
+      const tb = new Date(b.timestamp).getTime();
+      return sortOrder === 'newest' ? tb - ta : ta - tb;
+    });
+
+    const pinned = result.filter((n) => n.pinned);
+    const unpinned = result.filter((n) => !n.pinned);
+    return [...pinned, ...unpinned];
+  }, [allNotes, categoryFilter, searchQuery, sortOrder]);
+
+  const handleSubmit = () => {
+    const text = composerText.trim();
+    if (!text) return;
+    addCaseNote(caseId, text, { category: composerCategory, author: authorName });
+    setComposerText('');
+    setComposerCategory('general');
+    setComposerExpanded(false);
+  };
+
+  const authorName = session?.email?.split('@')[0]?.replace(/[._]/g, ' ')?.replace(/\b\w/g, (c) => c.toUpperCase()) || 'Current User';
+
+  const hasActiveFilters = categoryFilter !== 'all' || searchQuery.trim() !== '';
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="px-5 py-3 flex items-center justify-between border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <i className="ri-chat-quote-line text-sm text-gray-500" />
+            <h3 className="text-sm font-semibold text-gray-800">Case Notes</h3>
+            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
+              {filteredNotes.length}{hasActiveFilters ? `/${allNotes.length}` : ''}
+            </span>
+          </div>
+          <p className="text-[11px] text-gray-400">Internal case commentary and collaboration</p>
+        </div>
+
+        <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/30">
+          <div
+            className={[
+              'border rounded-lg bg-white transition-all',
+              composerExpanded ? 'border-primary/30 shadow-sm ring-1 ring-primary/10' : 'border-gray-200',
+            ].join(' ')}
+          >
+            <div className="flex items-start gap-3 p-3">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold ${avatarColor(authorName)}`}>
+                {getInitials(authorName)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <textarea
+                  value={composerText}
+                  onChange={(e) => setComposerText(e.target.value)}
+                  onFocus={() => setComposerExpanded(true)}
+                  placeholder="Add a note to this case..."
+                  rows={composerExpanded ? 4 : 2}
+                  className="w-full text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none resize-none bg-transparent"
+                />
+              </div>
+            </div>
+            {composerExpanded && (
+              <div className="px-3 pb-3 flex items-center justify-between border-t border-gray-100 pt-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <select
+                      value={composerCategory}
+                      onChange={(e) => setComposerCategory(e.target.value as 'general' | 'internal' | 'follow-up')}
+                      className="pl-2 pr-6 py-1 text-[11px] font-medium border border-gray-200 rounded-md bg-white appearance-none cursor-pointer focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none"
+                    >
+                      <option value="general">General</option>
+                      <option value="internal">Internal</option>
+                      <option value="follow-up">Follow-Up</option>
+                    </select>
+                    <i className="ri-arrow-down-s-line absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[10px]" />
+                  </div>
+                  <span className="text-[10px] text-gray-300 italic">Not yet connected to API</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setComposerExpanded(false); setComposerText(''); }}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!composerText.trim()}
+                    className="px-4 py-1.5 text-xs font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
+                  >
+                    <i className="ri-send-plane-line text-xs" />
+                    Add Note
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="px-5 py-2.5 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[160px] max-w-[240px]">
+            <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search notes..."
+              className="w-full pl-7 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <i className="ri-close-line text-xs" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+            {(['all', 'general', 'internal', 'follow-up'] as const).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className={[
+                  'px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors',
+                  categoryFilter === cat ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                ].join(' ')}
+              >
+                {cat === 'all' ? 'All' : NOTE_CATEGORY_LABELS[cat]}
+              </button>
+            ))}
+          </div>
+
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+              className="px-2.5 py-1.5 text-[11px] font-medium text-gray-500 border border-gray-200 rounded-lg bg-white hover:border-gray-300 inline-flex items-center gap-1 transition-colors"
+            >
+              <i className={`ri-sort-${sortOrder === 'newest' ? 'desc' : 'asc'} text-xs`} />
+              {sortOrder === 'newest' ? 'Newest First' : 'Oldest First'}
+            </button>
+          </div>
+        </div>
+
+        <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
+          <p className="text-xs text-amber-700"><i className="ri-information-line mr-1" />Sample notes shown for UI review. Real notes will load from the API.</p>
+        </div>
+
+        <div className="px-5 py-4">
+          {filteredNotes.length === 0 ? (
+            <div className="text-center py-12">
+              <i className={`${hasActiveFilters ? 'ri-filter-off-line' : 'ri-chat-quote-line'} text-3xl text-gray-300`} />
+              <p className="text-sm text-gray-400 mt-2">{hasActiveFilters ? 'No notes match the current filters' : 'No notes yet'}</p>
+              {hasActiveFilters && (
+                <button
+                  onClick={() => { setCategoryFilter('all'); setSearchQuery(''); }}
+                  className="text-xs text-primary hover:text-primary/80 mt-1 transition-colors"
+                >
+                  Clear filters
+                </button>
+              )}
+              {!hasActiveFilters && (
+                <p className="text-xs text-gray-300 mt-1">Use the composer above to add the first note</p>
+              )}
+            </div>
+          ) : (
+            <div className="relative">
+              <div className="absolute left-[19px] top-4 bottom-4 w-px bg-gray-100" />
+
+              <div className="space-y-0">
+                {filteredNotes.map((note, idx) => {
+                  const showDateSeparator = idx === 0 || (
+                    new Date(filteredNotes[idx - 1].timestamp).toDateString() !== new Date(note.timestamp).toDateString()
+                  );
+
+                  return (
+                    <div key={note.id}>
+                      {showDateSeparator && (
+                        <div className="flex items-center gap-3 py-2 pl-[30px]">
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                            {new Date(note.timestamp).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                          </span>
+                          <div className="flex-1 h-px bg-gray-100" />
+                        </div>
+                      )}
+
+                      <div className="flex gap-3 py-2.5 group relative">
+                        <div className="relative z-10 shrink-0">
+                          <div className={`w-[38px] h-[38px] rounded-full flex items-center justify-center text-[11px] font-semibold ${avatarColor(note.author)}`}>
+                            {getInitials(note.author)}
+                          </div>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-100 hover:border-gray-200 transition-colors">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className="text-xs font-semibold text-gray-700">{note.author}</span>
+                              {note.category && note.category !== 'general' && (
+                                <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${NOTE_CATEGORY_COLORS[note.category]}`}>
+                                  {NOTE_CATEGORY_LABELS[note.category]}
+                                </span>
+                              )}
+                              {note.pinned && (
+                                <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
+                                  <i className="ri-pushpin-2-fill text-[10px]" />
+                                  Pinned
+                                </span>
+                              )}
+                              <span className="text-[11px] text-gray-400 ml-auto" title={formatNoteTimestamp(note.timestamp)}>
+                                {formatNoteDate(note.timestamp)}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{note.text}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+          <p className="text-xs text-gray-400">
+            {filteredNotes.length} note{filteredNotes.length !== 1 ? 's' : ''}
+            {hasActiveFilters ? ` (filtered from ${allNotes.length})` : ''}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type TaskPriority = 'High' | 'Medium' | 'Low';
 type TaskStatus = 'Upcoming' | 'InProgress' | 'InReview' | 'Completed';
 
