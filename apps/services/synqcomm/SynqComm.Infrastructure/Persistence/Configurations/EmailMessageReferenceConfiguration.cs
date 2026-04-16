@@ -58,5 +58,8 @@ public class EmailMessageReferenceConfiguration : IEntityTypeConfiguration<Email
 
         builder.HasIndex(e => new { e.TenantId, e.ProviderThreadId })
             .HasDatabaseName("IX_EmailRefs_TenantId_ProviderThreadId");
+
+        builder.HasIndex(e => new { e.TenantId, e.MessageId })
+            .HasDatabaseName("IX_EmailRefs_TenantId_MessageId");
     }
 }

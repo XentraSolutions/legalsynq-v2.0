@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SynqComm.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using SynqComm.Infrastructure.Persistence;
 namespace SynqComm.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SynqCommDbContext))]
-    partial class SynqCommDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260416060135_HardenE2ENotificationsIntegration")]
+    partial class HardenE2ENotificationsIntegration
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

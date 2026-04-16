@@ -9,4 +9,5 @@ public record DeliveryStatusUpdateRequest(
     string? ErrorCode = null,
     string? ErrorMessage = null,
     int? RetryCount = null,
-    string? ProviderPayloadReference = null);
+    string? ProviderPayloadReference = null,
+    string? NotificationsRequestId = null);

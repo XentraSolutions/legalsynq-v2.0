@@ -78,6 +78,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseMiddleware<InternalServiceTokenMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 

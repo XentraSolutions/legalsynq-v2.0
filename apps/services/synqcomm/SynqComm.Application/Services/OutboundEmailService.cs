@@ -278,23 +278,47 @@ public class OutboundEmailService : IOutboundEmailService
         DeliveryStatusUpdateRequest request, Guid tenantId,
         CancellationToken ct = default)
     {
+        _logger.LogInformation(
+            "Processing delivery status callback: Provider={Provider} Status={Status} ProviderMessageId={ProviderMessageId} InternetMessageId={InternetMessageId} NotificationsRequestId={NotificationsRequestId}",
+            request.Provider, request.Status, request.ProviderMessageId, request.InternetMessageId, request.NotificationsRequestId);
+
         EmailDeliveryState? deliveryState = null;
+        string correlatedBy = "none";
 
         if (!string.IsNullOrWhiteSpace(request.ProviderMessageId))
+        {
             deliveryState = await _deliveryRepo.FindByProviderMessageIdAsync(tenantId, request.ProviderMessageId, ct);
+            if (deliveryState is not null) correlatedBy = "providerMessageId";
+        }
+
+        if (deliveryState is null && !string.IsNullOrWhiteSpace(request.NotificationsRequestId)
+            && Guid.TryParse(request.NotificationsRequestId, out var notifReqId))
+        {
+            deliveryState = await _deliveryRepo.FindByNotificationsRequestIdAsync(tenantId, notifReqId, ct);
+            if (deliveryState is not null) correlatedBy = "notificationsRequestId";
+        }
 
         if (deliveryState is null && !string.IsNullOrWhiteSpace(request.InternetMessageId))
         {
             var emailRef = await _emailRefRepo.FindByInternetMessageIdAsync(tenantId, request.InternetMessageId, ct);
             if (emailRef is not null)
+            {
                 deliveryState = await _deliveryRepo.FindByEmailReferenceIdAsync(tenantId, emailRef.Id, ct);
+                if (deliveryState is not null) correlatedBy = "internetMessageId";
+            }
         }
 
         if (deliveryState is null)
         {
             _logger.LogWarning(
-                "Delivery status update could not be matched: ProviderMessageId={ProviderMessageId} InternetMessageId={InternetMessageId}",
-                request.ProviderMessageId, request.InternetMessageId);
+                "Delivery status callback unmatched: Provider={Provider} ProviderMessageId={ProviderMessageId} InternetMessageId={InternetMessageId} NotificationsRequestId={NotificationsRequestId}",
+                request.Provider, request.ProviderMessageId, request.InternetMessageId, request.NotificationsRequestId);
+
+            _audit.Publish("DeliveryCallbackUnmatched", "Rejected",
+                "Delivery status callback could not be matched to any known delivery record",
+                tenantId, null, "EmailDeliveryState", null,
+                metadata: $"{{\"provider\":\"{request.Provider}\",\"providerMessageId\":\"{request.ProviderMessageId}\",\"internetMessageId\":\"{request.InternetMessageId}\",\"notificationsRequestId\":\"{request.NotificationsRequestId}\",\"status\":\"{request.Status}\"}}");
+
             return false;
         }
 
@@ -308,8 +332,14 @@ public class OutboundEmailService : IOutboundEmailService
         if (!updated)
         {
             _logger.LogInformation(
-                "Delivery status update ignored (already terminal): DeliveryStateId={Id} Status={Status}",
-                deliveryState.Id, deliveryState.DeliveryStatus);
+                "Delivery status callback ignored (terminal or stale): DeliveryStateId={Id} CurrentStatus={CurrentStatus} IncomingStatus={IncomingStatus} CorrelatedBy={CorrelatedBy}",
+                deliveryState.Id, deliveryState.DeliveryStatus, normalizedStatus, correlatedBy);
+
+            _audit.Publish("DeliveryCallbackIgnored", "Ignored",
+                $"Delivery callback ignored: current status is {deliveryState.DeliveryStatus} (terminal or stale timestamp)",
+                tenantId, null, "EmailDeliveryState", deliveryState.Id.ToString(),
+                metadata: $"{{\"currentStatus\":\"{deliveryState.DeliveryStatus}\",\"incomingStatus\":\"{normalizedStatus}\",\"correlatedBy\":\"{correlatedBy}\",\"provider\":\"{request.Provider}\"}}");
+
             return true;
         }
 
@@ -328,11 +358,11 @@ public class OutboundEmailService : IOutboundEmailService
         _audit.Publish("OutboundEmailDeliveryUpdate", "Updated",
             $"Delivery status updated to {normalizedStatus}",
             tenantId, null, "EmailDeliveryState", deliveryState.Id.ToString(),
-            metadata: $"{{\"deliveryStatus\":\"{normalizedStatus}\",\"providerMessageId\":\"{request.ProviderMessageId}\",\"provider\":\"{request.Provider}\",\"emailMessageReferenceId\":\"{deliveryState.EmailMessageReferenceId}\"}}");
+            metadata: $"{{\"deliveryStatus\":\"{normalizedStatus}\",\"providerMessageId\":\"{request.ProviderMessageId}\",\"provider\":\"{request.Provider}\",\"emailMessageReferenceId\":\"{deliveryState.EmailMessageReferenceId}\",\"correlatedBy\":\"{correlatedBy}\"}}");
 
         _logger.LogInformation(
-            "Delivery status updated: DeliveryStateId={Id} Status={Status} Provider={Provider}",
-            deliveryState.Id, normalizedStatus, request.Provider);
+            "Delivery status updated: DeliveryStateId={Id} Status={Status} Provider={Provider} CorrelatedBy={CorrelatedBy}",
+            deliveryState.Id, normalizedStatus, request.Provider, correlatedBy);
 
         return true;
     }

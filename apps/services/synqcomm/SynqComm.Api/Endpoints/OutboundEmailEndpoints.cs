@@ -16,6 +16,9 @@ public static class OutboundEmailEndpoints
             .RequireProductAccess(SynqCommPermissions.ProductCode)
             .RequirePermission(SynqCommPermissions.EmailSend);
 
+        app.MapPost("/api/synqcomm/internal/delivery-status", ProcessInternalDeliveryStatus)
+            .AllowAnonymous();
+
         app.MapPost("/api/synqcomm/email/delivery-status", ProcessDeliveryStatus)
             .RequireAuthorization(Policies.AuthenticatedUser)
             .RequireProductAccess(SynqCommPermissions.ProductCode)
@@ -44,6 +47,30 @@ public static class OutboundEmailEndpoints
 
         var result = await service.SendOutboundAsync(request, tenantId, orgId, userId, ct);
         return Results.Ok(result);
+    }
+
+    private static async Task<IResult> ProcessInternalDeliveryStatus(
+        DeliveryStatusUpdateRequest request,
+        IOutboundEmailService service,
+        HttpContext httpContext,
+        CancellationToken ct = default)
+    {
+        if (httpContext.Items["InternalServiceAuth"] is not true)
+            return Results.Unauthorized();
+
+        if (!Guid.TryParse(request.NotificationsRequestId, out _) &&
+            string.IsNullOrWhiteSpace(request.ProviderMessageId) &&
+            string.IsNullOrWhiteSpace(request.InternetMessageId))
+        {
+            return Results.BadRequest(new { error = new { code = "bad_request", message = "At least one correlation identifier (ProviderMessageId, InternetMessageId, or NotificationsRequestId) is required." } });
+        }
+
+        var tenantIdHeader = httpContext.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        if (!Guid.TryParse(tenantIdHeader, out var tenantId))
+            return Results.BadRequest(new { error = new { code = "bad_request", message = "X-Tenant-Id header is required." } });
+
+        var matched = await service.ProcessDeliveryStatusAsync(request, tenantId, ct);
+        return matched ? Results.Ok(new { status = "updated" }) : Results.NotFound(new { status = "not_matched" });
     }
 
     private static async Task<IResult> ProcessDeliveryStatus(

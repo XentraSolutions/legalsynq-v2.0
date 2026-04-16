@@ -403,11 +403,13 @@ apps/
       SynqComm.Infrastructure/
         DependencyInjection.cs            ← AddSynqCommServices() extension (includes all repos/services + HTTP clients + sender/template config repos/services)
         Notifications/NotificationsServiceClient.cs ← HTTP client for Notifications service outbound email submission (incl. BCC, sender block, replyTo, templateKey, templateData)
-        Persistence/                      ← SynqCommDbContext (11 DbSets), EF configurations, migrations (InitialCreateWithBLK002, AddMessageAttachments, AddEmailIntakeTables, AddOutboundEmailDelivery, AddEmailRecipientRecords, AddSenderConfigsAndTemplates)
+        Persistence/                      ← SynqCommDbContext (11 DbSets), EF configurations, migrations (InitialCreateWithBLK002, AddMessageAttachments, AddEmailIntakeTables, AddOutboundEmailDelivery, AddEmailRecipientRecords, AddSenderConfigsAndTemplates, HardenE2ENotificationsIntegration)
         Repositories/                     ← ConversationRepository, MessageRepository, ParticipantRepository, ConversationReadStateRepository, MessageAttachmentRepository, TenantEmailSenderConfigRepository, EmailTemplateConfigRepository
         Audit/AuditPublisher.cs           ← fire-and-forget audit via shared AuditClient
         Documents/DocumentServiceClient.cs ← HTTP client validating doc existence + tenant ownership via Documents service
-      SynqComm.Tests/                     ← xUnit test project (88 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests, 13 sender/template tests)
+      SynqComm.Api/
+        Middleware/InternalServiceTokenMiddleware.cs ← path-scoped internal service token auth for /api/synqcomm/internal/* (BLK-005)
+      SynqComm.Tests/                     ← xUnit test project (102 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests, 13 sender/template tests, 14 E2E integration tests)
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/
