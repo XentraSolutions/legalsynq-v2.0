@@ -31,7 +31,6 @@ function formatCurrency(amount: number | null): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
-
 export function CaseDetailClient({ id }: { id: string }) {
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
@@ -267,20 +266,6 @@ function FieldItem({ label, value }: { label: string; value?: string | null }) {
       <dt className="text-[11px] font-medium text-gray-400 uppercase tracking-wide leading-tight">{label}</dt>
       <dd className="text-sm text-gray-700 mt-1">{value || '---'}</dd>
     </div>
-  );
-}
-
-function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="flex items-center gap-2.5 cursor-pointer group">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary/30 cursor-pointer"
-      />
-      <span className="text-sm text-gray-600 group-hover:text-gray-800 transition-colors select-none">{label}</span>
-    </label>
   );
 }
 
@@ -1865,8 +1850,8 @@ function NotesTab({ caseId }: { caseId: string }) {
 
         <div className="px-5 py-4">
           {filteredNotes.length === 0 ? (
-            <div className="text-center py-12">
-              <i className={`${hasActiveFilters ? 'ri-filter-off-line' : 'ri-chat-quote-line'} text-3xl text-gray-300`} />
+            <div className="text-center py-8">
+              <i className={`${hasActiveFilters ? 'ri-filter-off-line' : 'ri-chat-quote-line'} text-2xl text-gray-300`} />
               <p className="text-sm text-gray-400 mt-2">{hasActiveFilters ? 'No notes match the current filters' : 'No notes yet'}</p>
               {hasActiveFilters && (
                 <button
@@ -2361,8 +2346,9 @@ function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
                     </div>
                     <div className="p-2 space-y-2">
                       {colTasks.length === 0 ? (
-                        <div className="text-center py-6">
-                          <p className="text-xs text-gray-400">{hasActiveFilters ? 'No matching tasks' : 'No tasks'}</p>
+                        <div className="text-center py-8">
+                          <i className="ri-task-line text-2xl text-gray-300" />
+                          <p className="text-xs text-gray-400 mt-2">{hasActiveFilters ? 'No matching tasks' : 'No tasks'}</p>
                         </div>
                       ) : (
                         colTasks.map((task) => (
@@ -2400,7 +2386,7 @@ function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
         {viewMode === 'list' && (
           <div className="overflow-x-auto">
             {filteredTasks.length === 0 ? (
-              <div className="text-center py-10">
+              <div className="text-center py-8">
                 <i className={`${hasActiveFilters ? 'ri-filter-off-line' : 'ri-task-line'} text-2xl text-gray-300`} />
                 <p className="text-sm text-gray-400 mt-2">{hasActiveFilters ? 'No tasks match the current filters' : 'No tasks yet'}</p>
                 {hasActiveFilters && <button onClick={clearAll} className="text-xs text-primary hover:text-primary/80 mt-1 transition-colors">Clear all filters</button>}
@@ -2409,14 +2395,14 @@ function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
               <>
                 <table className="min-w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/50">
-                      <th className="px-5 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Task Name</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Status</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Priority</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Assignee</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Due Date</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Updated At</th>
-                      <th className="px-5 py-2.5 text-center text-[11px] font-medium text-gray-400 uppercase tracking-wide w-[80px]">Actions</th>
+                    <tr className="border-b border-gray-100">
+                      <th className="px-5 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide">Task Name</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Status</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Priority</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Assignee</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Due Date</th>
+                      <th className="px-3 py-2 text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide whitespace-nowrap">Updated At</th>
+                      <th className="px-5 py-2 text-center text-[11px] font-medium text-gray-400 uppercase tracking-wide w-[80px]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -2535,11 +2521,3 @@ function TaskFilterDropdown<T extends string>({
   );
 }
 
-function EmptyTab({ icon, label, message }: { icon: string; label: string; message?: string }) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">
-      <i className={`${icon} text-3xl text-gray-300`} />
-      <p className="text-sm text-gray-400 mt-2">{message || `No ${label.toLowerCase()} data available`}</p>
-    </div>
-  );
-}
