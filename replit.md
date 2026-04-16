@@ -381,6 +381,29 @@ apps/
         DependencyInjection.cs            ← AddLiensServices() extension (repos, services, UnitOfWork, ICurrentRequestContext)
         Persistence/                      ← LiensDbContext, UnitOfWork, migrations
         Repositories/                     ← LienRepository, CaseRepository, FacilityRepository, ContactRepository, etc.
+    synqcomm/
+      SynqComm.Api/                       → ASP.NET Core Web API (port 5011)
+        Endpoints/
+          ConversationEndpoints.cs        ← GET/POST /api/synqcomm/conversations, PATCH status
+          MessageEndpoints.cs             ← GET/POST /api/synqcomm/conversations/{id}/messages
+          ParticipantEndpoints.cs         ← GET/POST/DELETE /api/synqcomm/conversations/{id}/participants
+        Middleware/ExceptionHandlingMiddleware.cs
+        DesignTimeDbContextFactory.cs
+        appsettings.json                  ← port 5011 + ConnectionStrings:SynqCommDb
+      SynqComm.Application/
+        DTOs/                             ← CreateConversationRequest, AddMessageRequest, AddParticipantRequest, responses
+        Interfaces/                       ← IConversationService, IMessageService, IParticipantService, IAuditPublisher
+        Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository
+        Services/                         ← ConversationService, MessageService, ParticipantService
+      SynqComm.Domain/
+        Entities/                         ← Conversation, Message, ConversationParticipant (AuditableEntity)
+        Enums/                            ← ConversationStatus, VisibilityType, Channel, Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType
+      SynqComm.Infrastructure/
+        DependencyInjection.cs            ← AddSynqCommServices() extension
+        Persistence/                      ← SynqCommDbContext, EF configurations, migrations
+        Repositories/                     ← ConversationRepository, MessageRepository, ParticipantRepository
+        Audit/AuditPublisher.cs           ← fire-and-forget audit via shared AuditClient
+      SynqComm.Tests/                     ← xUnit test project
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/
@@ -561,6 +584,9 @@ shared/
 | `/liens/health` | Anonymous | Liens :5009 |
 | `/liens/info` | Anonymous | Liens :5009 |
 | `/liens/**` | Bearer JWT required | Liens :5009 |
+| `/synqcomm/health` | Anonymous | SynqComm :5011 |
+| `/synqcomm/info` | Anonymous | SynqComm :5011 |
+| `/synqcomm/**` | Bearer JWT required | SynqComm :5011 |
 
 ## Identity Domain Model
 

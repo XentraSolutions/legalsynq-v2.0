@@ -34,6 +34,7 @@ PID_CC=$!
   ASPNETCORE_ENVIRONMENT=Development ASPNETCORE_URLS=http://0.0.0.0:5007 dotnet run --no-build --project "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" &
+  dotnet run --no-build --project "$ROOT/apps/services/synqcomm/SynqComm.Api/SynqComm.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
   wait
 ) &
