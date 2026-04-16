@@ -6,6 +6,7 @@ public record OutboundEmailPayload(
     string FromDisplayName,
     string ToAddresses,
     string? CcAddresses,
+    string? BccAddresses,
     string Subject,
     string? BodyText,
     string? BodyHtml,

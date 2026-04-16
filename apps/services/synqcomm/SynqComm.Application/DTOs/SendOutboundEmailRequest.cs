@@ -5,6 +5,7 @@ public record SendOutboundEmailRequest(
     Guid MessageId,
     string ToAddresses,
     string? CcAddresses = null,
+    string? BccAddresses = null,
     string? SubjectOverride = null,
     string? BodyTextOverride = null,
     string? BodyHtmlOverride = null,

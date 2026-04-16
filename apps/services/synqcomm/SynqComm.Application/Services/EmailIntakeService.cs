@@ -16,6 +16,7 @@ public partial class EmailIntakeService : IEmailIntakeService
     private readonly IMessageRepository _messageRepo;
     private readonly IParticipantRepository _participantRepo;
     private readonly IMessageAttachmentRepository _attachmentRepo;
+    private readonly IEmailRecipientRecordRepository _recipientRepo;
     private readonly IDocumentServiceClient _documentClient;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<EmailIntakeService> _logger;
@@ -30,6 +31,7 @@ public partial class EmailIntakeService : IEmailIntakeService
         IMessageRepository messageRepo,
         IParticipantRepository participantRepo,
         IMessageAttachmentRepository attachmentRepo,
+        IEmailRecipientRecordRepository recipientRepo,
         IDocumentServiceClient documentClient,
         IAuditPublisher audit,
         ILogger<EmailIntakeService> logger)
@@ -40,6 +42,7 @@ public partial class EmailIntakeService : IEmailIntakeService
         _messageRepo = messageRepo;
         _participantRepo = participantRepo;
         _attachmentRepo = attachmentRepo;
+        _recipientRepo = recipientRepo;
         _documentClient = documentClient;
         _audit = audit;
         _logger = logger;
@@ -140,6 +143,9 @@ public partial class EmailIntakeService : IEmailIntakeService
 
         await _emailRefRepo.AddAsync(emailRef, ct);
 
+        var recipientExpansionCount = await ProcessInboundRecipientsAsync(
+            request, emailRef, conversation, effectiveOrgId, normalizedFrom, ct);
+
         int attachmentCount = 0;
         if (request.Attachments is { Count: > 0 })
         {
@@ -170,7 +176,7 @@ public partial class EmailIntakeService : IEmailIntakeService
         _audit.Publish("InboundEmailReceived", "Created",
             $"Inbound email processed: {request.Subject}",
             request.TenantId, null, "EmailMessageReference", emailRef.Id.ToString(),
-            metadata: $"{{\"internetMessageId\":\"{request.InternetMessageId}\",\"fromEmail\":\"{normalizedFrom}\",\"conversationId\":\"{conversation.Id}\",\"messageId\":\"{message.Id}\",\"matchedBy\":\"{matchStrategy}\",\"createdNewConversation\":{createdNewConversation.ToString().ToLower()},\"attachmentCount\":{attachmentCount}}}");
+            metadata: $"{{\"internetMessageId\":\"{request.InternetMessageId}\",\"fromEmail\":\"{normalizedFrom}\",\"conversationId\":\"{conversation.Id}\",\"messageId\":\"{message.Id}\",\"matchedBy\":\"{matchStrategy}\",\"createdNewConversation\":{createdNewConversation.ToString().ToLower()},\"attachmentCount\":{attachmentCount},\"recipientExpansionCount\":{recipientExpansionCount}}}");
 
         if (!createdNewConversation)
         {
@@ -205,6 +211,103 @@ public partial class EmailIntakeService : IEmailIntakeService
 
         var refs = await _emailRefRepo.ListByConversationAsync(tenantId, conversationId, ct);
         return refs.Select(ToResponse).ToList();
+    }
+
+    private async Task<int> ProcessInboundRecipientsAsync(
+        InboundEmailIntakeRequest request,
+        EmailMessageReference emailRef,
+        Conversation conversation,
+        Guid effectiveOrgId,
+        string normalizedFrom,
+        CancellationToken ct)
+    {
+        var recipientRecords = new List<EmailRecipientRecord>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        seen.Add(normalizedFrom);
+
+        if (!string.IsNullOrWhiteSpace(request.ToAddresses))
+        {
+            foreach (var raw in request.ToAddresses.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var email = raw.Trim();
+                if (string.IsNullOrWhiteSpace(email)) continue;
+                var normalized = EmailMessageReference.NormalizeEmail(email);
+                if (!seen.Add(normalized)) continue;
+
+                recipientRecords.Add(EmailRecipientRecord.Create(
+                    request.TenantId, conversation.Id, emailRef.Id,
+                    normalized, RecipientType.To, null,
+                    SystemUserId, "INBOUND_TO"));
+            }
+        }
+
+        int participantExpansionCount = 0;
+
+        if (!string.IsNullOrWhiteSpace(request.CcAddresses))
+        {
+            foreach (var raw in request.CcAddresses.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var email = raw.Trim();
+                if (string.IsNullOrWhiteSpace(email)) continue;
+                var normalized = EmailMessageReference.NormalizeEmail(email);
+                if (!seen.Add(normalized)) continue;
+
+                var record = EmailRecipientRecord.Create(
+                    request.TenantId, conversation.Id, emailRef.Id,
+                    normalized, RecipientType.Cc, null,
+                    SystemUserId, "INBOUND_CC");
+
+                Guid participantId;
+                bool isNew;
+                try
+                {
+                    (participantId, isNew) = await ResolveExternalParticipantAsync(
+                        request.TenantId, effectiveOrgId, conversation.Id,
+                        normalized, null, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex,
+                        "CC participant resolution failed for {Email} in conversation {ConversationId}, skipping expansion",
+                        normalized, conversation.Id);
+                    recipientRecords.Add(record);
+                    continue;
+                }
+
+                record.LinkParticipant(participantId, SystemUserId);
+
+                if (isNew)
+                {
+                    participantExpansionCount++;
+                    _audit.Publish("ExternalParticipantExpandedFromCc", "Created",
+                        $"External participant auto-created from CC: {normalized}",
+                        request.TenantId, null, "ConversationParticipant", participantId.ToString(),
+                        metadata: $"{{\"normalizedEmail\":\"{normalized}\",\"conversationId\":\"{conversation.Id}\",\"source\":\"INBOUND_CC\"}}");
+                }
+                else
+                {
+                    _audit.Publish("ExternalIdentityReusedFromCc", "Updated",
+                        $"External identity reused from CC: {normalized}",
+                        request.TenantId, null, "ConversationParticipant", participantId.ToString(),
+                        metadata: $"{{\"normalizedEmail\":\"{normalized}\",\"conversationId\":\"{conversation.Id}\",\"source\":\"INBOUND_CC\"}}");
+                }
+
+                recipientRecords.Add(record);
+            }
+        }
+
+        if (recipientRecords.Count > 0)
+            await _recipientRepo.AddRangeAsync(recipientRecords, ct);
+
+        if (recipientRecords.Count > 0)
+        {
+            _audit.Publish("InboundRecipientRecordsCreated", "Created",
+                $"Inbound recipient records created: {recipientRecords.Count}",
+                request.TenantId, null, "EmailMessageReference", emailRef.Id.ToString(),
+                metadata: $"{{\"conversationId\":\"{conversation.Id}\",\"toCount\":{recipientRecords.Count(r => r.RecipientType == RecipientType.To)},\"ccCount\":{recipientRecords.Count(r => r.RecipientType == RecipientType.Cc)},\"participantExpansionCount\":{participantExpansionCount}}}");
+        }
+
+        return participantExpansionCount;
     }
 
     private async Task<(Guid? ConversationId, string MatchStrategy)> ResolveConversationAsync(

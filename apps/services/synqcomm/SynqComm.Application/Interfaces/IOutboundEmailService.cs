@@ -15,4 +15,8 @@ public interface IOutboundEmailService
     Task<List<EmailDeliveryStateResponse>> ListDeliveryStatesAsync(
         Guid tenantId, Guid conversationId, Guid userId,
         CancellationToken ct = default);
+
+    Task<ReplyAllPreviewResponse> GetReplyAllPreviewAsync(
+        Guid tenantId, Guid conversationId, Guid userId,
+        CancellationToken ct = default);
 }

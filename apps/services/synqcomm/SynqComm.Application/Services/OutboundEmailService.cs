@@ -15,6 +15,7 @@ public class OutboundEmailService : IOutboundEmailService
     private readonly IMessageAttachmentRepository _attachmentRepo;
     private readonly IEmailMessageReferenceRepository _emailRefRepo;
     private readonly IEmailDeliveryStateRepository _deliveryRepo;
+    private readonly IEmailRecipientRecordRepository _recipientRepo;
     private readonly INotificationsServiceClient _notificationsClient;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<OutboundEmailService> _logger;
@@ -28,6 +29,7 @@ public class OutboundEmailService : IOutboundEmailService
         IMessageAttachmentRepository attachmentRepo,
         IEmailMessageReferenceRepository emailRefRepo,
         IEmailDeliveryStateRepository deliveryRepo,
+        IEmailRecipientRecordRepository recipientRepo,
         INotificationsServiceClient notificationsClient,
         IAuditPublisher audit,
         ILogger<OutboundEmailService> logger)
@@ -38,6 +40,7 @@ public class OutboundEmailService : IOutboundEmailService
         _attachmentRepo = attachmentRepo;
         _emailRefRepo = emailRefRepo;
         _deliveryRepo = deliveryRepo;
+        _recipientRepo = recipientRepo;
         _notificationsClient = notificationsClient;
         _audit = audit;
         _logger = logger;
@@ -154,6 +157,7 @@ public class OutboundEmailService : IOutboundEmailService
             FromDisplayName: fromDisplayName,
             ToAddresses: request.ToAddresses,
             CcAddresses: request.CcAddresses,
+            BccAddresses: request.BccAddresses,
             Subject: subject,
             BodyText: bodyText,
             BodyHtml: bodyHtml,
@@ -191,6 +195,23 @@ public class OutboundEmailService : IOutboundEmailService
             fromDisplayName: fromDisplayName);
 
         await _emailRefRepo.AddAsync(emailRef, ct);
+
+        var recipientRecords = BuildRecipientRecords(
+            tenantId, conversation.Id, emailRef.Id,
+            request.ToAddresses, request.CcAddresses, request.BccAddresses,
+            userId);
+        if (recipientRecords.Count > 0)
+        {
+            await _recipientRepo.AddRangeAsync(recipientRecords, ct);
+
+            var visibleCount = recipientRecords.Count(r => r.RecipientVisibility == RecipientVisibility.Visible);
+            var hiddenCount = recipientRecords.Count(r => r.RecipientVisibility == RecipientVisibility.Hidden);
+
+            _audit.Publish("OutboundRecipientRecordsCreated", "Created",
+                $"Outbound recipient records created: {visibleCount} visible, {hiddenCount} hidden",
+                tenantId, userId, "EmailMessageReference", emailRef.Id.ToString(),
+                metadata: $"{{\"conversationId\":\"{conversation.Id}\",\"visibleCount\":{visibleCount},\"hiddenCount\":{hiddenCount},\"toCount\":{recipientRecords.Count(r => r.RecipientType == RecipientType.To)},\"ccCount\":{recipientRecords.Count(r => r.RecipientType == RecipientType.Cc)},\"bccCount\":{recipientRecords.Count(r => r.RecipientType == RecipientType.Bcc)}}}");
+        }
 
         var deliveryState = EmailDeliveryState.Create(
             tenantId, conversation.Id, message.Id, emailRef.Id,
@@ -303,6 +324,116 @@ public class OutboundEmailService : IOutboundEmailService
 
         var states = await _deliveryRepo.ListByConversationAsync(tenantId, conversationId, ct);
         return states.Select(ToResponse).ToList();
+    }
+
+    public async Task<ReplyAllPreviewResponse> GetReplyAllPreviewAsync(
+        Guid tenantId, Guid conversationId, Guid userId,
+        CancellationToken ct = default)
+    {
+        var participant = await _participantRepo.GetActiveByUserIdAsync(tenantId, conversationId, userId, ct)
+            ?? throw new UnauthorizedAccessException("You are not an active participant in this conversation.");
+
+        var conversation = await _conversationRepo.GetByIdAsync(tenantId, conversationId, ct)
+            ?? throw new KeyNotFoundException($"Conversation '{conversationId}' not found.");
+
+        var latestRef = await _emailRefRepo.GetLatestByConversationAsync(tenantId, conversationId, ct);
+        if (latestRef is null)
+        {
+            return new ReplyAllPreviewResponse(conversationId, null,
+                new List<ReplyAllRecipient>(), new List<ReplyAllRecipient>(),
+                conversation.Subject);
+        }
+
+        var visibleRecipients = await _recipientRepo.ListVisibleByEmailReferenceAsync(
+            tenantId, latestRef.Id, ct);
+
+        var currentSenderEmail = latestRef.FromEmail?.Trim().ToLowerInvariant();
+
+        var toRecipients = new List<ReplyAllRecipient>();
+        var ccRecipients = new List<ReplyAllRecipient>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(currentSenderEmail))
+            seen.Add(currentSenderEmail);
+
+        if (!string.IsNullOrWhiteSpace(latestRef.FromEmail) &&
+            !IsSystemSenderAddress(currentSenderEmail))
+        {
+            toRecipients.Add(new ReplyAllRecipient(
+                EmailMessageReference.NormalizeEmail(latestRef.FromEmail),
+                latestRef.FromDisplayName));
+        }
+
+        foreach (var r in visibleRecipients)
+        {
+            if (seen.Contains(r.NormalizedEmail))
+                continue;
+            seen.Add(r.NormalizedEmail);
+
+            if (r.RecipientType == RecipientType.To)
+                toRecipients.Add(new ReplyAllRecipient(r.NormalizedEmail, r.DisplayName));
+            else if (r.RecipientType == RecipientType.Cc)
+                ccRecipients.Add(new ReplyAllRecipient(r.NormalizedEmail, r.DisplayName));
+        }
+
+        _audit.Publish("ReplyAllRecipientsResolved", "Read",
+            $"Reply-all recipients resolved: {toRecipients.Count} to, {ccRecipients.Count} cc",
+            tenantId, userId, "Conversation", conversationId.ToString(),
+            metadata: $"{{\"sourceEmailReferenceId\":\"{latestRef.Id}\",\"toCount\":{toRecipients.Count},\"ccCount\":{ccRecipients.Count}}}");
+
+        return new ReplyAllPreviewResponse(
+            conversationId, latestRef.Id, toRecipients, ccRecipients,
+            conversation.Subject);
+    }
+
+    private static List<EmailRecipientRecord> BuildRecipientRecords(
+        Guid tenantId, Guid conversationId, Guid emailRefId,
+        string? toAddresses, string? ccAddresses, string? bccAddresses,
+        Guid? createdByUserId)
+    {
+        var records = new List<EmailRecipientRecord>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddRecipients(records, seen, tenantId, conversationId, emailRefId,
+            toAddresses, RecipientType.To, "OUTBOUND_TO", createdByUserId);
+        AddRecipients(records, seen, tenantId, conversationId, emailRefId,
+            ccAddresses, RecipientType.Cc, "OUTBOUND_CC", createdByUserId);
+        AddRecipients(records, seen, tenantId, conversationId, emailRefId,
+            bccAddresses, RecipientType.Bcc, "OUTBOUND_BCC", createdByUserId);
+
+        return records;
+    }
+
+    private static void AddRecipients(
+        List<EmailRecipientRecord> records,
+        HashSet<string> seen,
+        Guid tenantId, Guid conversationId, Guid emailRefId,
+        string? addresses, string recipientType, string source,
+        Guid? createdByUserId)
+    {
+        if (string.IsNullOrWhiteSpace(addresses)) return;
+
+        foreach (var raw in addresses.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var email = raw.Trim();
+            if (string.IsNullOrWhiteSpace(email)) continue;
+
+            var normalized = EmailMessageReference.NormalizeEmail(email);
+            if (!seen.Add(normalized)) continue;
+
+            records.Add(EmailRecipientRecord.Create(
+                tenantId, conversationId, emailRefId,
+                normalized, recipientType, null,
+                createdByUserId, source));
+        }
+    }
+
+    private static bool IsSystemSenderAddress(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return false;
+        var normalized = email.Trim().ToLowerInvariant();
+        return normalized.EndsWith("@legalsynq.com") ||
+               normalized.StartsWith("noreply@");
     }
 
     private static string NormalizeDeliveryStatus(string status)

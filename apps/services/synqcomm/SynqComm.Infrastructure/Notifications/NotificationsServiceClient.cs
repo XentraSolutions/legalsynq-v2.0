@@ -53,6 +53,7 @@ public sealed class NotificationsServiceClient : INotificationsServiceClient
                     tenantId = payload.TenantId.ToString(),
                     email = payload.ToAddresses,
                     cc = payload.CcAddresses,
+                    bcc = payload.BccAddresses,
                 },
                 message = new
                 {

@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailMessageReferenceRepository, EmailMessageReferenceRepository>();
         services.AddScoped<IExternalParticipantIdentityRepository, ExternalParticipantIdentityRepository>();
         services.AddScoped<IEmailDeliveryStateRepository, EmailDeliveryStateRepository>();
+        services.AddScoped<IEmailRecipientRecordRepository, EmailRecipientRecordRepository>();
 
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IMessageService, MessageService>();

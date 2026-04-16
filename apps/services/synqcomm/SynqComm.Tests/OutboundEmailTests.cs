@@ -21,6 +21,7 @@ public class OutboundEmailTests
             TestHelpers.CreateAttachmentRepo(db),
             TestHelpers.CreateEmailRefRepo(db),
             TestHelpers.CreateDeliveryStateRepo(db),
+            TestHelpers.CreateRecipientRepo(db),
             notifClient ?? new MockNotificationsServiceClient(),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<OutboundEmailService>());
@@ -278,6 +279,7 @@ public class OutboundEmailTests
             TestHelpers.CreateMessageRepo(db),
             TestHelpers.CreateParticipantRepo(db),
             TestHelpers.CreateAttachmentRepo(db),
+            TestHelpers.CreateRecipientRepo(db),
             new MockDocumentServiceClient(),
             new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<EmailIntakeService>());

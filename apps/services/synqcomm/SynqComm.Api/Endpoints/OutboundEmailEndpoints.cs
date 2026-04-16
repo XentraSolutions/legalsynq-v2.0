@@ -25,6 +25,11 @@ public static class OutboundEmailEndpoints
             .RequireAuthorization(Policies.AuthenticatedUser)
             .RequireProductAccess(SynqCommPermissions.ProductCode)
             .RequirePermission(SynqCommPermissions.ConversationRead);
+
+        app.MapGet("/api/synqcomm/conversations/{conversationId:guid}/reply-all-preview", GetReplyAllPreview)
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(SynqCommPermissions.ProductCode)
+            .RequirePermission(SynqCommPermissions.ConversationRead);
     }
 
     private static async Task<IResult> SendOutbound(
@@ -63,6 +68,19 @@ public static class OutboundEmailEndpoints
         var userId = ctx.UserId ?? throw new UnauthorizedAccessException("User context is required.");
 
         var result = await service.ListDeliveryStatesAsync(tenantId, conversationId, userId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetReplyAllPreview(
+        Guid conversationId,
+        IOutboundEmailService service,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = ctx.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required.");
+        var userId = ctx.UserId ?? throw new UnauthorizedAccessException("User context is required.");
+
+        var result = await service.GetReplyAllPreviewAsync(tenantId, conversationId, userId, ct);
         return Results.Ok(result);
     }
 }
