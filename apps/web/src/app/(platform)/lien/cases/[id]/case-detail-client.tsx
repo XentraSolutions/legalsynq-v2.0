@@ -1627,6 +1627,7 @@ const TEMP_NOTES: CaseNote[] = [
 
 function formatNoteDate(iso: string): string {
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffMins = Math.floor(diffMs / 60000);
@@ -1643,6 +1644,7 @@ function formatNoteDate(iso: string): string {
 
 function formatNoteTimestamp(iso: string): string {
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
@@ -1681,12 +1683,16 @@ function NotesTab({ caseId }: { caseId: string }) {
   const [categoryFilter, setCategoryFilter] = useState<NoteCategoryFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const authorName = session?.email?.split('@')[0]?.replace(/[._]/g, ' ')?.replace(/\b\w/g, (c) => c.toUpperCase()) || 'Current User';
+
   const allNotes: CaseNote[] = useMemo(() => {
     const userNotes: CaseNote[] = storeNotes.map((n) => ({
       ...n,
       category: (n.category as CaseNote['category']) || 'general',
     }));
-    return [...TEMP_NOTES, ...userNotes];
+    const tempIds = new Set(TEMP_NOTES.map((n) => n.id));
+    const dedupedUser = userNotes.filter((n) => !tempIds.has(n.id));
+    return [...dedupedUser, ...TEMP_NOTES];
   }, [storeNotes]);
 
   const filteredNotes = useMemo(() => {
@@ -1704,8 +1710,8 @@ function NotesTab({ caseId }: { caseId: string }) {
     }
 
     result.sort((a, b) => {
-      const ta = new Date(a.timestamp).getTime();
-      const tb = new Date(b.timestamp).getTime();
+      const ta = new Date(a.timestamp).getTime() || 0;
+      const tb = new Date(b.timestamp).getTime() || 0;
       return sortOrder === 'newest' ? tb - ta : ta - tb;
     });
 
@@ -1722,8 +1728,6 @@ function NotesTab({ caseId }: { caseId: string }) {
     setComposerCategory('general');
     setComposerExpanded(false);
   };
-
-  const authorName = session?.email?.split('@')[0]?.replace(/[._]/g, ' ')?.replace(/\b\w/g, (c) => c.toUpperCase()) || 'Current User';
 
   const hasActiveFilters = categoryFilter !== 'all' || searchQuery.trim() !== '';
 
@@ -1871,16 +1875,18 @@ function NotesTab({ caseId }: { caseId: string }) {
 
               <div className="space-y-0">
                 {filteredNotes.map((note, idx) => {
-                  const showDateSeparator = idx === 0 || (
-                    new Date(filteredNotes[idx - 1].timestamp).toDateString() !== new Date(note.timestamp).toDateString()
-                  );
+                  const noteDate = new Date(note.timestamp);
+                  const noteDateStr = isNaN(noteDate.getTime()) ? '' : noteDate.toDateString();
+                  const prevDate = idx > 0 ? new Date(filteredNotes[idx - 1].timestamp) : null;
+                  const prevDateStr = prevDate && !isNaN(prevDate.getTime()) ? prevDate.toDateString() : '';
+                  const showDateSeparator = idx === 0 || noteDateStr !== prevDateStr;
 
                   return (
                     <div key={note.id}>
-                      {showDateSeparator && (
+                      {showDateSeparator && noteDateStr && (
                         <div className="flex items-center gap-3 py-2 pl-[30px]">
                           <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
-                            {new Date(note.timestamp).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                            {noteDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
                           </span>
                           <div className="flex-1 h-px bg-gray-100" />
                         </div>

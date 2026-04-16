@@ -270,9 +270,10 @@ export const useLienStore = create<LienStore>((set, get) => ({
 
   caseNotes: {},
   addCaseNote: (caseId, text, opts) => {
-    const note = { id: genId('note'), text, author: opts?.author || 'Current User', timestamp: new Date().toISOString(), category: opts?.category || 'general' };
+    if (!text.trim()) return;
+    const note = { id: genId('note'), text: text.trim(), author: opts?.author || 'Current User', timestamp: new Date().toISOString(), category: opts?.category || 'general' };
     set((s) => ({
-      caseNotes: { ...s.caseNotes, [caseId]: [...(s.caseNotes[caseId] || []), note] },
+      caseNotes: { ...s.caseNotes, [caseId]: [note, ...(s.caseNotes[caseId] || [])] },
     }));
     get().addToast({ type: 'success', title: 'Note Added' });
   },
