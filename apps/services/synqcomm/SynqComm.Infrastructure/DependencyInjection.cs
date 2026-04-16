@@ -42,6 +42,9 @@ public static class DependencyInjection
         services.AddScoped<IEmailRecipientRecordRepository, EmailRecipientRecordRepository>();
         services.AddScoped<ITenantEmailSenderConfigRepository, TenantEmailSenderConfigRepository>();
         services.AddScoped<IEmailTemplateConfigRepository, EmailTemplateConfigRepository>();
+        services.AddScoped<IConversationQueueRepository, ConversationQueueRepository>();
+        services.AddScoped<IConversationAssignmentRepository, ConversationAssignmentRepository>();
+        services.AddScoped<IConversationSlaStateRepository, ConversationSlaStateRepository>();
 
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IMessageService, MessageService>();
@@ -52,6 +55,9 @@ public static class DependencyInjection
         services.AddScoped<IOutboundEmailService, OutboundEmailService>();
         services.AddScoped<ISenderConfigService, SenderConfigService>();
         services.AddScoped<IEmailTemplateService, EmailTemplateService>();
+        services.AddScoped<IQueueService, QueueService>();
+        services.AddScoped<IAssignmentService, AssignmentService>();
+        services.AddScoped<IOperationalService, OperationalService>();
 
         var notifBaseUrl = configuration["Services:NotificationsUrl"] ?? "http://localhost:5008";
         services.AddHttpClient("NotificationsService", client =>

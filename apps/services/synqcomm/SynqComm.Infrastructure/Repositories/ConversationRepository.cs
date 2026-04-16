@@ -29,6 +29,14 @@ public class ConversationRepository : IConversationRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<Conversation>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        return await _db.Conversations
+            .Where(c => c.TenantId == tenantId)
+            .OrderByDescending(c => c.LastActivityAtUtc)
+            .ToListAsync(ct);
+    }
+
     public async Task AddAsync(Conversation entity, CancellationToken ct = default)
     {
         await _db.Conversations.AddAsync(entity, ct);

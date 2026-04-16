@@ -25,6 +25,7 @@ public class OutboundEmailTests
             TestHelpers.CreateSenderConfigRepo(db),
             TestHelpers.CreateTemplateConfigRepo(db),
             notifClient ?? new MockNotificationsServiceClient(),
+            TestHelpers.CreateOperationalService(db, audit),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<OutboundEmailService>());
     }
@@ -274,6 +275,7 @@ public class OutboundEmailTests
     public async Task PriorInboundThreading_StillWorks()
     {
         var db = TestHelpers.CreateDbContext();
+        var audit = new NoOpAuditPublisher();
         var intakeService = new EmailIntakeService(
             TestHelpers.CreateEmailRefRepo(db),
             TestHelpers.CreateIdentityRepo(db),
@@ -283,7 +285,10 @@ public class OutboundEmailTests
             TestHelpers.CreateAttachmentRepo(db),
             TestHelpers.CreateRecipientRepo(db),
             new MockDocumentServiceClient(),
-            new NoOpAuditPublisher(),
+            TestHelpers.CreateOperationalService(db, audit),
+            TestHelpers.CreateQueueRepo(db),
+            TestHelpers.CreateAssignmentRepo(db),
+            audit,
             TestHelpers.CreateLogger<EmailIntakeService>());
 
         var firstResult = await intakeService.ProcessInboundAsync(

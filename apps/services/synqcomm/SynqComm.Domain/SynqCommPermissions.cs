@@ -20,4 +20,9 @@ public static class SynqCommPermissions
     public const string EmailSend = "SYNQ_COMMS.email:send";
     public const string EmailDeliveryUpdate = "SYNQ_COMMS.email:delivery-update";
     public const string EmailConfigManage = "SYNQ_COMMS.email:config-manage";
+
+    public const string QueueManage = "SYNQ_COMMS.queue:manage";
+    public const string QueueRead = "SYNQ_COMMS.queue:read";
+    public const string AssignmentManage = "SYNQ_COMMS.assignment:manage";
+    public const string OperationalRead = "SYNQ_COMMS.operational:read";
 }

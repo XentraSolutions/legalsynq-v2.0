@@ -25,6 +25,7 @@ public class E2ENotificationsIntegrationTests
             TestHelpers.CreateSenderConfigRepo(db),
             TestHelpers.CreateTemplateConfigRepo(db),
             notifClient ?? new MockNotificationsServiceClient(),
+            TestHelpers.CreateOperationalService(db, audit),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<OutboundEmailService>());
     }
@@ -479,6 +480,7 @@ public class E2ENotificationsIntegrationTests
         var notifClient = new MockNotificationsServiceClient();
         var service = CreateService(db, notifClient);
 
+        var e2eAudit = new NoOpAuditPublisher();
         var intakeService = new EmailIntakeService(
             TestHelpers.CreateEmailRefRepo(db),
             TestHelpers.CreateIdentityRepo(db),
@@ -488,7 +490,10 @@ public class E2ENotificationsIntegrationTests
             TestHelpers.CreateAttachmentRepo(db),
             TestHelpers.CreateRecipientRepo(db),
             new MockDocumentServiceClient(),
-            new NoOpAuditPublisher(),
+            TestHelpers.CreateOperationalService(db, e2eAudit),
+            TestHelpers.CreateQueueRepo(db),
+            TestHelpers.CreateAssignmentRepo(db),
+            e2eAudit,
             TestHelpers.CreateLogger<EmailIntakeService>());
 
         var inboundResult = await intakeService.ProcessInboundAsync(

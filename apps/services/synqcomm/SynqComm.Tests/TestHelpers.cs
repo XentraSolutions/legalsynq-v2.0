@@ -102,6 +102,24 @@ public static class TestHelpers
     public static IEmailTemplateConfigRepository CreateTemplateConfigRepo(SynqCommDbContext db) =>
         new EmailTemplateConfigRepository(db);
 
+    public static IConversationQueueRepository CreateQueueRepo(SynqCommDbContext db) =>
+        new ConversationQueueRepository(db);
+
+    public static IConversationAssignmentRepository CreateAssignmentRepo(SynqCommDbContext db) =>
+        new ConversationAssignmentRepository(db);
+
+    public static IConversationSlaStateRepository CreateSlaStateRepo(SynqCommDbContext db) =>
+        new ConversationSlaStateRepository(db);
+
+    public static IOperationalService CreateOperationalService(SynqCommDbContext db, NoOpAuditPublisher? audit = null) =>
+        new OperationalService(
+            CreateSlaStateRepo(db),
+            CreateAssignmentRepo(db),
+            CreateQueueRepo(db),
+            CreateConversationRepo(db),
+            audit ?? new NoOpAuditPublisher(),
+            CreateLogger<OperationalService>());
+
     public static ILogger<T> CreateLogger<T>() =>
         LoggerFactory.Create(b => { }).CreateLogger<T>();
 }

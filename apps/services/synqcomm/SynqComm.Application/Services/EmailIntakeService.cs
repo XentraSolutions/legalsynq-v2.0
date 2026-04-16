@@ -18,6 +18,9 @@ public partial class EmailIntakeService : IEmailIntakeService
     private readonly IMessageAttachmentRepository _attachmentRepo;
     private readonly IEmailRecipientRecordRepository _recipientRepo;
     private readonly IDocumentServiceClient _documentClient;
+    private readonly IOperationalService _operationalService;
+    private readonly IConversationQueueRepository _queueRepo;
+    private readonly IConversationAssignmentRepository _assignmentRepo;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<EmailIntakeService> _logger;
 
@@ -33,6 +36,9 @@ public partial class EmailIntakeService : IEmailIntakeService
         IMessageAttachmentRepository attachmentRepo,
         IEmailRecipientRecordRepository recipientRepo,
         IDocumentServiceClient documentClient,
+        IOperationalService operationalService,
+        IConversationQueueRepository queueRepo,
+        IConversationAssignmentRepository assignmentRepo,
         IAuditPublisher audit,
         ILogger<EmailIntakeService> logger)
     {
@@ -44,6 +50,9 @@ public partial class EmailIntakeService : IEmailIntakeService
         _attachmentRepo = attachmentRepo;
         _recipientRepo = recipientRepo;
         _documentClient = documentClient;
+        _operationalService = operationalService;
+        _queueRepo = queueRepo;
+        _assignmentRepo = assignmentRepo;
         _audit = audit;
         _logger = logger;
     }
@@ -198,9 +207,47 @@ public partial class EmailIntakeService : IEmailIntakeService
             "Inbound email processed: InternetMessageId={InternetMessageId} ConversationId={ConversationId} MessageId={MessageId} MatchedBy={MatchedBy}",
             request.InternetMessageId, conversation.Id, message.Id, matchStrategy);
 
+        try
+        {
+            await InitializeOperationalStateAsync(request.TenantId, conversation, createdNewConversation, ct);
+            await _operationalService.UpdateWaitingStateAsync(
+                request.TenantId, conversation.Id, WaitingState.WaitingInternal, SystemUserId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to initialize operational state for conversation {ConversationId}", conversation.Id);
+        }
+
         return new InboundEmailIntakeResponse(
             conversation.Id, createdNewConversation, createdNewParticipant,
             message.Id, matchStrategy, attachmentCount, emailRef.Id);
+    }
+
+    private async Task InitializeOperationalStateAsync(
+        Guid tenantId, Conversation conversation, bool isNew, CancellationToken ct)
+    {
+        await _operationalService.InitializeSlaAsync(
+            tenantId, conversation.Id, ConversationPriority.Normal,
+            DateTime.UtcNow, SystemUserId, ct);
+
+        if (isNew)
+        {
+            var defaultQueue = await _queueRepo.GetDefaultAsync(tenantId, ct);
+            if (defaultQueue is not null)
+            {
+                var existingAssignment = await _assignmentRepo.GetByConversationAsync(tenantId, conversation.Id, ct);
+                if (existingAssignment is null)
+                {
+                    var assignment = ConversationAssignment.Create(
+                        tenantId, conversation.Id, defaultQueue.Id, null, null, SystemUserId);
+                    await _assignmentRepo.AddAsync(assignment, ct);
+
+                    _logger.LogInformation(
+                        "Conversation {ConversationId} auto-assigned to default queue {QueueId}",
+                        conversation.Id, defaultQueue.Id);
+                }
+            }
+        }
     }
 
     public async Task<List<EmailReferenceResponse>> ListEmailReferencesAsync(

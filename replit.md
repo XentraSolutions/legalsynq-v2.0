@@ -388,28 +388,31 @@ apps/
           MessageEndpoints.cs             ← GET/POST /api/synqcomm/conversations/{id}/messages (visibility-filtered)
           ParticipantEndpoints.cs         ← GET/POST/DELETE /api/synqcomm/conversations/{id}/participants
           AttachmentEndpoints.cs          ← GET/POST/DELETE /api/synqcomm/conversations/{id}/messages/{msgId}/attachments (BLK-003)
+          QueueEndpoints.cs              ← CRUD /api/synqcomm/queues (BLK-001)
+          OperationalEndpoints.cs        ← assign/reassign/unassign/accept/priority/summary/list /api/synqcomm/operational (BLK-001)
         Middleware/ExceptionHandlingMiddleware.cs
         DesignTimeDbContextFactory.cs
         appsettings.json                  ← port 5011 + ConnectionStrings:SynqCommDb + Services:DocumentsUrl
       SynqComm.Application/
-        DTOs/                             ← CreateConversationRequest, AddMessageRequest, AddParticipantRequest, MarkConversationReadRequest, ConversationThreadResponse, ReadStateResponse, AddMessageAttachmentRequest, AttachmentResponse, TenantEmailSenderConfigDtos, EmailTemplateConfigDtos, responses
-        Interfaces/                       ← IConversationService, IMessageService, IParticipantService, IReadTrackingService, IAuditPublisher, IDocumentServiceClient, IMessageAttachmentService, ISenderConfigService, IEmailTemplateService
-        Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository, IConversationReadStateRepository, IMessageAttachmentRepository, ITenantEmailSenderConfigRepository, IEmailTemplateConfigRepository
-        Services/                         ← ConversationService, MessageService, ParticipantService, ReadTrackingService, MessageAttachmentService, SenderConfigService (BLK-004), EmailTemplateService (BLK-004)
+        DTOs/                             ← CreateConversationRequest, AddMessageRequest, AddParticipantRequest, MarkConversationReadRequest, ConversationThreadResponse, ReadStateResponse, AddMessageAttachmentRequest, AttachmentResponse, TenantEmailSenderConfigDtos, EmailTemplateConfigDtos, QueueDtos, AssignmentDtos, SlaDtos (BLK-001), responses
+        Interfaces/                       ← IConversationService, IMessageService, IParticipantService, IReadTrackingService, IAuditPublisher, IDocumentServiceClient, IMessageAttachmentService, ISenderConfigService, IEmailTemplateService, IQueueService, IAssignmentService, IOperationalService (BLK-001)
+        Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository, IConversationReadStateRepository, IMessageAttachmentRepository, ITenantEmailSenderConfigRepository, IEmailTemplateConfigRepository, IConversationQueueRepository, IConversationAssignmentRepository, IConversationSlaStateRepository (BLK-001)
+        Services/                         ← ConversationService, MessageService, ParticipantService, ReadTrackingService, MessageAttachmentService, SenderConfigService (BLK-004), EmailTemplateService (BLK-004), QueueService, AssignmentService, OperationalService (BLK-001)
       SynqComm.Domain/
-        Entities/                         ← Conversation, Message, ConversationParticipant, ConversationReadState, MessageAttachment, EmailMessageReference (+ sender/template linkage BLK-004), ExternalParticipantIdentity, EmailDeliveryState, EmailRecipientRecord, TenantEmailSenderConfig (BLK-004), EmailTemplateConfig (BLK-004)
-        Enums/                            ← ConversationStatus, VisibilityType, Channel, Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType, EmailDirection, MatchStrategy, DeliveryStatus, RecipientType, RecipientVisibility, SenderType (BLK-004), VerificationStatus (BLK-004), TemplateScope (BLK-004)
-        SynqCommPermissions.cs            ← Product code + permission constants (incl. AttachmentManage, EmailIntake, EmailSend, EmailDeliveryUpdate, EmailConfigManage)
+        Entities/                         ← Conversation, Message, ConversationParticipant, ConversationReadState, MessageAttachment, EmailMessageReference (+ sender/template linkage BLK-004), ExternalParticipantIdentity, EmailDeliveryState, EmailRecipientRecord, TenantEmailSenderConfig (BLK-004), EmailTemplateConfig (BLK-004), ConversationQueue, ConversationAssignment, ConversationSlaState (BLK-001)
+        Enums/                            ← ConversationStatus, VisibilityType, Channel, Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType, EmailDirection, MatchStrategy, DeliveryStatus, RecipientType, RecipientVisibility, SenderType (BLK-004), VerificationStatus (BLK-004), TemplateScope (BLK-004), AssignmentStatus, ConversationPriority, WaitingState (BLK-001)
+        Constants/SlaDefaults.cs          ← SLA duration constants per priority level (BLK-001)
+        SynqCommPermissions.cs            ← Product code + permission constants (incl. AttachmentManage, EmailIntake, EmailSend, EmailDeliveryUpdate, EmailConfigManage, QueueManage, QueueRead, AssignmentManage, OperationalRead — BLK-001)
       SynqComm.Infrastructure/
-        DependencyInjection.cs            ← AddSynqCommServices() extension (includes all repos/services + HTTP clients + sender/template config repos/services)
+        DependencyInjection.cs            ← AddSynqCommServices() extension (includes all repos/services + HTTP clients + sender/template config repos/services + queue/assignment/SLA repos/services — BLK-001)
         Notifications/NotificationsServiceClient.cs ← HTTP client for Notifications service outbound email submission (incl. BCC, sender block, replyTo, templateKey, templateData)
-        Persistence/                      ← SynqCommDbContext (11 DbSets), EF configurations, migrations (InitialCreateWithBLK002, AddMessageAttachments, AddEmailIntakeTables, AddOutboundEmailDelivery, AddEmailRecipientRecords, AddSenderConfigsAndTemplates, HardenE2ENotificationsIntegration)
-        Repositories/                     ← ConversationRepository, MessageRepository, ParticipantRepository, ConversationReadStateRepository, MessageAttachmentRepository, TenantEmailSenderConfigRepository, EmailTemplateConfigRepository
+        Persistence/                      ← SynqCommDbContext (14 DbSets), EF configurations, migrations (InitialCreateWithBLK002, AddMessageAttachments, AddEmailIntakeTables, AddOutboundEmailDelivery, AddEmailRecipientRecords, AddSenderConfigsAndTemplates, HardenE2ENotificationsIntegration, AddOperationalQueuesAndSLA — BLK-001)
+        Repositories/                     ← ConversationRepository, MessageRepository, ParticipantRepository, ConversationReadStateRepository, MessageAttachmentRepository, TenantEmailSenderConfigRepository, EmailTemplateConfigRepository, ConversationQueueRepository, ConversationAssignmentRepository, ConversationSlaStateRepository (BLK-001)
         Audit/AuditPublisher.cs           ← fire-and-forget audit via shared AuditClient
         Documents/DocumentServiceClient.cs ← HTTP client validating doc existence + tenant ownership via Documents service
       SynqComm.Api/
         Middleware/InternalServiceTokenMiddleware.cs ← path-scoped internal service token auth for /api/synqcomm/internal/* (BLK-005)
-      SynqComm.Tests/                     ← xUnit test project (102 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests, 13 sender/template tests, 14 E2E integration tests)
+      SynqComm.Tests/                     ← xUnit test project (118 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests, 13 sender/template tests, 14 E2E integration tests, 15 operational workflow tests — BLK-001)
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/

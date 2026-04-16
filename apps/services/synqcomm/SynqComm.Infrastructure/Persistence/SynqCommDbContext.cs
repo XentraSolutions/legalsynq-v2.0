@@ -19,6 +19,9 @@ public class SynqCommDbContext : DbContext
     public DbSet<EmailRecipientRecord> EmailRecipientRecords => Set<EmailRecipientRecord>();
     public DbSet<TenantEmailSenderConfig> TenantEmailSenderConfigs => Set<TenantEmailSenderConfig>();
     public DbSet<EmailTemplateConfig> EmailTemplateConfigs => Set<EmailTemplateConfig>();
+    public DbSet<ConversationQueue> ConversationQueues => Set<ConversationQueue>();
+    public DbSet<ConversationAssignment> ConversationAssignments => Set<ConversationAssignment>();
+    public DbSet<ConversationSlaState> ConversationSlaStates => Set<ConversationSlaState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

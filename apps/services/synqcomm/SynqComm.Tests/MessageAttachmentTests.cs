@@ -341,9 +341,11 @@ public class MessageAttachmentTests
         await attachmentService.LinkAttachmentAsync(
             TestHelpers.TenantId, TestHelpers.UserId1, conversation.Id, msg.Id, request);
 
+        var csAudit = new NoOpAuditPublisher();
         var conversationService = new ConversationService(
             conversationRepo, participantRepo, messageRepo, readStateRepo, attachmentRepo,
-            new NoOpAuditPublisher(),
+            TestHelpers.CreateOperationalService(db, csAudit),
+            csAudit,
             TestHelpers.CreateLogger<ConversationService>());
 
         var thread = await conversationService.GetThreadAsync(

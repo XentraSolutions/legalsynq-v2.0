@@ -14,6 +14,7 @@ public class ConversationService : IConversationService
     private readonly IMessageRepository _messageRepo;
     private readonly IConversationReadStateRepository _readStateRepo;
     private readonly IMessageAttachmentRepository _attachmentRepo;
+    private readonly IOperationalService _operationalService;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<ConversationService> _logger;
 
@@ -23,6 +24,7 @@ public class ConversationService : IConversationService
         IMessageRepository messageRepo,
         IConversationReadStateRepository readStateRepo,
         IMessageAttachmentRepository attachmentRepo,
+        IOperationalService operationalService,
         IAuditPublisher audit,
         ILogger<ConversationService> logger)
     {
@@ -31,6 +33,7 @@ public class ConversationService : IConversationService
         _messageRepo = messageRepo;
         _readStateRepo = readStateRepo;
         _attachmentRepo = attachmentRepo;
+        _operationalService = operationalService;
         _audit = audit;
         _logger = logger;
     }
@@ -136,6 +139,19 @@ public class ConversationService : IConversationService
             $"Status changed from {oldStatus} to {request.Status}",
             tenantId, userId, "Conversation", conversation.Id.ToString(),
             metadata: $"{{\"previousStatus\":\"{oldStatus}\",\"newStatus\":\"{request.Status}\"}}");
+
+        try
+        {
+            if (request.Status == ConversationStatus.Resolved || request.Status == ConversationStatus.Closed)
+            {
+                await _operationalService.SatisfyResolutionAsync(
+                    tenantId, conversation.Id, DateTime.UtcNow, userId, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update SLA resolution for conversation {ConversationId}", conversation.Id);
+        }
 
         return ToResponse(conversation);
     }

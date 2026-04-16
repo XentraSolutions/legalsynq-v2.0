@@ -121,5 +121,7 @@ app.MapEmailIntakeEndpoints();
 app.MapOutboundEmailEndpoints();
 app.MapSenderConfigEndpoints();
 app.MapEmailTemplateEndpoints();
+app.MapQueueEndpoints();
+app.MapOperationalEndpoints();
 
 app.Run();

@@ -22,6 +22,9 @@ public class EmailIntakeTests
             TestHelpers.CreateAttachmentRepo(db),
             TestHelpers.CreateRecipientRepo(db),
             docClient ?? new MockDocumentServiceClient(),
+            TestHelpers.CreateOperationalService(db, audit),
+            TestHelpers.CreateQueueRepo(db),
+            TestHelpers.CreateAssignmentRepo(db),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<EmailIntakeService>());
     }

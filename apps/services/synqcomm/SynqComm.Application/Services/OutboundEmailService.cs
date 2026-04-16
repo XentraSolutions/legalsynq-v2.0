@@ -19,6 +19,7 @@ public class OutboundEmailService : IOutboundEmailService
     private readonly ITenantEmailSenderConfigRepository _senderConfigRepo;
     private readonly IEmailTemplateConfigRepository _templateConfigRepo;
     private readonly INotificationsServiceClient _notificationsClient;
+    private readonly IOperationalService _operationalService;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<OutboundEmailService> _logger;
 
@@ -35,6 +36,7 @@ public class OutboundEmailService : IOutboundEmailService
         ITenantEmailSenderConfigRepository senderConfigRepo,
         IEmailTemplateConfigRepository templateConfigRepo,
         INotificationsServiceClient notificationsClient,
+        IOperationalService operationalService,
         IAuditPublisher audit,
         ILogger<OutboundEmailService> logger)
     {
@@ -48,6 +50,7 @@ public class OutboundEmailService : IOutboundEmailService
         _senderConfigRepo = senderConfigRepo;
         _templateConfigRepo = templateConfigRepo;
         _notificationsClient = notificationsClient;
+        _operationalService = operationalService;
         _audit = audit;
         _logger = logger;
     }
@@ -258,6 +261,21 @@ public class OutboundEmailService : IOutboundEmailService
         _logger.LogInformation(
             "Outbound email queued: ConversationId={ConversationId} MessageId={MessageId} InternetMessageId={InternetMessageId}",
             conversation.Id, message.Id, internetMessageId);
+
+        try
+        {
+            if (message.VisibilityType == VisibilityType.SharedExternal)
+            {
+                await _operationalService.SatisfyFirstResponseAsync(
+                    tenantId, conversation.Id, DateTime.UtcNow, userId, ct);
+                await _operationalService.UpdateWaitingStateAsync(
+                    tenantId, conversation.Id, WaitingState.WaitingExternal, userId, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update operational state after outbound email for conversation {ConversationId}", conversation.Id);
+        }
 
         return new SendOutboundEmailResponse(
             conversation.Id, message.Id, emailRef.Id,

@@ -25,6 +25,7 @@ public class SenderTemplateTests
             TestHelpers.CreateSenderConfigRepo(db),
             TestHelpers.CreateTemplateConfigRepo(db),
             notifClient ?? new MockNotificationsServiceClient(),
+            TestHelpers.CreateOperationalService(db, audit),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<OutboundEmailService>());
     }
