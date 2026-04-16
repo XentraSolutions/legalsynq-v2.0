@@ -15,8 +15,8 @@ Enable internal collaboration via mentions, participant linking, and notificatio
 - [x] Step 6: Notification integration (`SendOperationalAlertAsync` with `synqcomm_internal_mention` trigger)
 - [x] Step 7: Timeline integration (`TimelineEventTypes.Mentioned` constant, timeline recording per mention)
 - [x] Step 8: API updates (`MessageResponse.Mentions`, `MentionDtos`, DI wiring)
-- [x] Step 9: Tests (15 new tests — 161 total, all passing)
-- [x] Step 10: Final review and migration
+- [x] Step 9: Tests (17 new tests — 163 total, all passing)
+- [x] Step 10: Final review, migration, and code review fixes
 
 ## Architecture
 
@@ -98,5 +98,10 @@ Enable internal collaboration via mentions, participant linking, and notificatio
 14. `MentionService_MultipleMentions_AllProcessed` — multiple users, multiple notifications/timeline entries
 15. `MessageService_IntegratesMentions_ViaAddAsync` — integration test verifying MessageService calls mention processing
 
+## Code Review Fixes Applied
+1. **`MessageResponse.Mentions` population** — `ToResponse()` now uses `MentionParser.ExtractMentionedUserIds()` to populate the `Mentions` field from the message body. Returns `null` when no mentions are present.
+2. **Non-participant notification guard** — `MentionService` now skips sending operational alerts for mentioned users who are not active participants in the conversation. Mentions are still persisted with `IsMentionedUserParticipant = false` and timeline entries are still recorded, but no notification payload is sent to unvalidated recipients.
+3. **Additional tests** — Added `MessageResponse_PopulatesMentions_FromBody` and `MessageResponse_NullMentions_WhenNoMentionsInBody` to verify response DTO population, and updated `MentionService_MarksNonParticipantCorrectly_SkipsNotification` to assert no notification is sent for non-participants.
+
 ## Total Test Count
-**161 tests — all passing**
+**163 tests — all passing**
