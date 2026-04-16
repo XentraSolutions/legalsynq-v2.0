@@ -96,6 +96,12 @@ public static class TestHelpers
     public static IEmailRecipientRecordRepository CreateRecipientRepo(SynqCommDbContext db) =>
         new EmailRecipientRecordRepository(db);
 
+    public static ITenantEmailSenderConfigRepository CreateSenderConfigRepo(SynqCommDbContext db) =>
+        new TenantEmailSenderConfigRepository(db);
+
+    public static IEmailTemplateConfigRepository CreateTemplateConfigRepo(SynqCommDbContext db) =>
+        new EmailTemplateConfigRepository(db);
+
     public static ILogger<T> CreateLogger<T>() =>
         LoggerFactory.Create(b => { }).CreateLogger<T>();
 }

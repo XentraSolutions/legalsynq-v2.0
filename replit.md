@@ -392,22 +392,22 @@ apps/
         DesignTimeDbContextFactory.cs
         appsettings.json                  ← port 5011 + ConnectionStrings:SynqCommDb + Services:DocumentsUrl
       SynqComm.Application/
-        DTOs/                             ← CreateConversationRequest, AddMessageRequest, AddParticipantRequest, MarkConversationReadRequest, ConversationThreadResponse, ReadStateResponse, AddMessageAttachmentRequest, AttachmentResponse, responses
-        Interfaces/                       ← IConversationService, IMessageService, IParticipantService, IReadTrackingService, IAuditPublisher, IDocumentServiceClient, IMessageAttachmentService
-        Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository, IConversationReadStateRepository, IMessageAttachmentRepository
-        Services/                         ← ConversationService (participant access, visibility-aware unread, attachment-enriched threads), MessageService, ParticipantService, ReadTrackingService, MessageAttachmentService (link/list/remove with doc validation + audit)
+        DTOs/                             ← CreateConversationRequest, AddMessageRequest, AddParticipantRequest, MarkConversationReadRequest, ConversationThreadResponse, ReadStateResponse, AddMessageAttachmentRequest, AttachmentResponse, TenantEmailSenderConfigDtos, EmailTemplateConfigDtos, responses
+        Interfaces/                       ← IConversationService, IMessageService, IParticipantService, IReadTrackingService, IAuditPublisher, IDocumentServiceClient, IMessageAttachmentService, ISenderConfigService, IEmailTemplateService
+        Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository, IConversationReadStateRepository, IMessageAttachmentRepository, ITenantEmailSenderConfigRepository, IEmailTemplateConfigRepository
+        Services/                         ← ConversationService, MessageService, ParticipantService, ReadTrackingService, MessageAttachmentService, SenderConfigService (BLK-004), EmailTemplateService (BLK-004)
       SynqComm.Domain/
-        Entities/                         ← Conversation, Message, ConversationParticipant, ConversationReadState, MessageAttachment (BLK-003), EmailMessageReference, ExternalParticipantIdentity (BLK-001 Epic 02), EmailDeliveryState (BLK-002 Epic 02), EmailRecipientRecord (BLK-003 Epic 02)
-        Enums/                            ← ConversationStatus (ValidTransitions map), VisibilityType, Channel (incl. Email), Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType, EmailDirection, MatchStrategy, DeliveryStatus, RecipientType, RecipientVisibility
-        SynqCommPermissions.cs            ← Product code + permission constants (incl. AttachmentManage, EmailIntake, EmailSend, EmailDeliveryUpdate)
+        Entities/                         ← Conversation, Message, ConversationParticipant, ConversationReadState, MessageAttachment, EmailMessageReference (+ sender/template linkage BLK-004), ExternalParticipantIdentity, EmailDeliveryState, EmailRecipientRecord, TenantEmailSenderConfig (BLK-004), EmailTemplateConfig (BLK-004)
+        Enums/                            ← ConversationStatus, VisibilityType, Channel, Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType, EmailDirection, MatchStrategy, DeliveryStatus, RecipientType, RecipientVisibility, SenderType (BLK-004), VerificationStatus (BLK-004), TemplateScope (BLK-004)
+        SynqCommPermissions.cs            ← Product code + permission constants (incl. AttachmentManage, EmailIntake, EmailSend, EmailDeliveryUpdate, EmailConfigManage)
       SynqComm.Infrastructure/
-        DependencyInjection.cs            ← AddSynqCommServices() extension (includes attachment repo/service + DocumentsService HTTP client + email intake repos/service + NotificationsService HTTP client + outbound email service + recipient repo)
-        Notifications/NotificationsServiceClient.cs ← HTTP client for Notifications service outbound email submission (incl. BCC support)
-        Persistence/                      ← SynqCommDbContext (9 DbSets), EF configurations (incl. MessageAttachmentConfiguration, EmailMessageReferenceConfiguration, ExternalParticipantIdentityConfiguration, EmailDeliveryStateConfiguration, EmailRecipientRecordConfiguration), migrations (InitialCreateWithBLK002, AddMessageAttachments, AddEmailIntakeTables, AddOutboundEmailDelivery, AddEmailRecipientRecords)
-        Repositories/                     ← ConversationRepository, MessageRepository, ParticipantRepository, ConversationReadStateRepository, MessageAttachmentRepository
+        DependencyInjection.cs            ← AddSynqCommServices() extension (includes all repos/services + HTTP clients + sender/template config repos/services)
+        Notifications/NotificationsServiceClient.cs ← HTTP client for Notifications service outbound email submission (incl. BCC, sender block, replyTo, templateKey, templateData)
+        Persistence/                      ← SynqCommDbContext (11 DbSets), EF configurations, migrations (InitialCreateWithBLK002, AddMessageAttachments, AddEmailIntakeTables, AddOutboundEmailDelivery, AddEmailRecipientRecords, AddSenderConfigsAndTemplates)
+        Repositories/                     ← ConversationRepository, MessageRepository, ParticipantRepository, ConversationReadStateRepository, MessageAttachmentRepository, TenantEmailSenderConfigRepository, EmailTemplateConfigRepository
         Audit/AuditPublisher.cs           ← fire-and-forget audit via shared AuditClient
-        Documents/DocumentServiceClient.cs ← HTTP client validating doc existence + tenant ownership via Documents service (BLK-003)
-      SynqComm.Tests/                     ← xUnit test project (75 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests)
+        Documents/DocumentServiceClient.cs ← HTTP client validating doc existence + tenant ownership via Documents service
+      SynqComm.Tests/                     ← xUnit test project (88 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests, 13 sender/template tests)
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/

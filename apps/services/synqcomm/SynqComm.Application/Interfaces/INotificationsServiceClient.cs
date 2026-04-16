@@ -14,7 +14,10 @@ public record OutboundEmailPayload(
     string? InReplyToMessageId,
     string? ReferencesHeader,
     string IdempotencyKey,
-    List<OutboundAttachmentDescriptor>? Attachments);
+    List<OutboundAttachmentDescriptor>? Attachments,
+    string? ReplyToEmail = null,
+    string? TemplateKey = null,
+    Dictionary<string, string>? TemplateData = null);
 
 public record OutboundAttachmentDescriptor(
     Guid DocumentId,

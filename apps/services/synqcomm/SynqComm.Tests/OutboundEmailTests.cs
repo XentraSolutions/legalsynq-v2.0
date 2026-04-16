@@ -22,6 +22,8 @@ public class OutboundEmailTests
             TestHelpers.CreateEmailRefRepo(db),
             TestHelpers.CreateDeliveryStateRepo(db),
             TestHelpers.CreateRecipientRepo(db),
+            TestHelpers.CreateSenderConfigRepo(db),
+            TestHelpers.CreateTemplateConfigRepo(db),
             notifClient ?? new MockNotificationsServiceClient(),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<OutboundEmailService>());

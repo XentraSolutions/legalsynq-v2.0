@@ -17,6 +17,8 @@ public class SynqCommDbContext : DbContext
     public DbSet<ExternalParticipantIdentity> ExternalParticipantIdentities => Set<ExternalParticipantIdentity>();
     public DbSet<EmailDeliveryState> EmailDeliveryStates => Set<EmailDeliveryState>();
     public DbSet<EmailRecipientRecord> EmailRecipientRecords => Set<EmailRecipientRecord>();
+    public DbSet<TenantEmailSenderConfig> TenantEmailSenderConfigs => Set<TenantEmailSenderConfig>();
+    public DbSet<EmailTemplateConfig> EmailTemplateConfigs => Set<EmailTemplateConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

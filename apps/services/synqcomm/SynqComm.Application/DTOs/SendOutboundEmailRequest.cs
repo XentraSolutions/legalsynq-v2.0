@@ -10,4 +10,9 @@ public record SendOutboundEmailRequest(
     string? BodyTextOverride = null,
     string? BodyHtmlOverride = null,
     Guid? ReplyToEmailReferenceId = null,
-    List<Guid>? AttachmentDocumentIds = null);
+    List<Guid>? AttachmentDocumentIds = null,
+    Guid? SenderConfigId = null,
+    string? TemplateKey = null,
+    Guid? TemplateConfigId = null,
+    Dictionary<string, string>? TemplateVariables = null,
+    string? ReplyToOverride = null);

@@ -16,6 +16,8 @@ public class OutboundEmailService : IOutboundEmailService
     private readonly IEmailMessageReferenceRepository _emailRefRepo;
     private readonly IEmailDeliveryStateRepository _deliveryRepo;
     private readonly IEmailRecipientRecordRepository _recipientRepo;
+    private readonly ITenantEmailSenderConfigRepository _senderConfigRepo;
+    private readonly IEmailTemplateConfigRepository _templateConfigRepo;
     private readonly INotificationsServiceClient _notificationsClient;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<OutboundEmailService> _logger;
@@ -30,6 +32,8 @@ public class OutboundEmailService : IOutboundEmailService
         IEmailMessageReferenceRepository emailRefRepo,
         IEmailDeliveryStateRepository deliveryRepo,
         IEmailRecipientRecordRepository recipientRepo,
+        ITenantEmailSenderConfigRepository senderConfigRepo,
+        IEmailTemplateConfigRepository templateConfigRepo,
         INotificationsServiceClient notificationsClient,
         IAuditPublisher audit,
         ILogger<OutboundEmailService> logger)
@@ -41,6 +45,8 @@ public class OutboundEmailService : IOutboundEmailService
         _emailRefRepo = emailRefRepo;
         _deliveryRepo = deliveryRepo;
         _recipientRepo = recipientRepo;
+        _senderConfigRepo = senderConfigRepo;
+        _templateConfigRepo = templateConfigRepo;
         _notificationsClient = notificationsClient;
         _audit = audit;
         _logger = logger;
@@ -90,9 +96,14 @@ public class OutboundEmailService : IOutboundEmailService
             throw new InvalidOperationException("An outbound email has already been sent for this message.");
 
         var internetMessageId = EmailMessageReference.GenerateInternetMessageId(conversation.Id);
-        var subject = request.SubjectOverride ?? conversation.Subject;
-        var bodyText = request.BodyTextOverride ?? message.BodyPlainText ?? message.Body;
-        var bodyHtml = request.BodyHtmlOverride ?? message.Body;
+
+        var (fromEmail, fromDisplayName, replyToEmail, senderConfigId, senderConfigEmail) =
+            await ResolveSenderAsync(tenantId, userId, request.SenderConfigId, ct);
+
+        var (subject, bodyText, bodyHtml, templateConfigId, templateKey, compositionMode) =
+            await ResolveCompositionAsync(
+                tenantId, userId, request, conversation.Subject,
+                message.BodyPlainText ?? message.Body, message.Body, ct);
 
         string? inReplyToMessageId = null;
         string? referencesHeader = null;
@@ -146,9 +157,6 @@ public class OutboundEmailService : IOutboundEmailService
             }
         }
 
-        var fromEmail = "noreply@legalsynq.com";
-        var fromDisplayName = "LegalSynq Communications";
-
         var sendAttemptId = Guid.NewGuid();
         var idempotencyKey = $"synqcomm-outbound-{sendAttemptId}";
         var payload = new OutboundEmailPayload(
@@ -165,7 +173,10 @@ public class OutboundEmailService : IOutboundEmailService
             InReplyToMessageId: inReplyToMessageId,
             ReferencesHeader: referencesHeader,
             IdempotencyKey: idempotencyKey,
-            Attachments: attachments.Count > 0 ? attachments : null);
+            Attachments: attachments.Count > 0 ? attachments : null,
+            ReplyToEmail: request.ReplyToOverride ?? replyToEmail,
+            TemplateKey: templateKey,
+            TemplateData: request.TemplateVariables);
 
         var sendResult = await _notificationsClient.SendEmailAsync(payload, ct);
 
@@ -193,6 +204,11 @@ public class OutboundEmailService : IOutboundEmailService
             referencesHeader: referencesHeader,
             ccAddresses: request.CcAddresses,
             fromDisplayName: fromDisplayName);
+
+        emailRef.SetCompositionMetadata(
+            senderConfigId, senderConfigEmail,
+            templateConfigId, templateKey,
+            compositionMode, userId);
 
         await _emailRefRepo.AddAsync(emailRef, ct);
 
@@ -249,7 +265,13 @@ public class OutboundEmailService : IOutboundEmailService
             sendResult.NotificationsRequestId,
             internetMessageId,
             matchedReplyReferenceId,
-            attachments.Count);
+            attachments.Count,
+            senderConfigId,
+            senderConfigEmail ?? fromEmail,
+            templateKey,
+            templateConfigId,
+            subject,
+            compositionMode);
     }
 
     public async Task<bool> ProcessDeliveryStatusAsync(
@@ -426,6 +448,136 @@ public class OutboundEmailService : IOutboundEmailService
                 normalized, recipientType, null,
                 createdByUserId, source));
         }
+    }
+
+    private async Task<(string fromEmail, string fromDisplayName, string? replyToEmail, Guid? senderConfigId, string? senderConfigEmail)>
+        ResolveSenderAsync(Guid tenantId, Guid userId, Guid? requestedSenderConfigId, CancellationToken ct)
+    {
+        TenantEmailSenderConfig? senderConfig = null;
+
+        if (requestedSenderConfigId.HasValue)
+        {
+            senderConfig = await _senderConfigRepo.GetByIdAsync(tenantId, requestedSenderConfigId.Value, ct);
+            if (senderConfig is null)
+            {
+                _audit.Publish("OutboundEmailRejected", "Rejected",
+                    $"Sender config {requestedSenderConfigId.Value} not found",
+                    tenantId, userId, "TenantEmailSenderConfig", requestedSenderConfigId.Value.ToString(),
+                    metadata: $"{{\"reason\":\"sender_config_not_found\"}}");
+                throw new InvalidOperationException($"Sender configuration '{requestedSenderConfigId.Value}' not found for this tenant.");
+            }
+        }
+        else
+        {
+            senderConfig = await _senderConfigRepo.GetDefaultAsync(tenantId, ct);
+        }
+
+        if (senderConfig is not null)
+        {
+            if (!senderConfig.CanSend())
+            {
+                _audit.Publish("OutboundEmailRejected", "Rejected",
+                    $"Sender config {senderConfig.Id} is not usable (active={senderConfig.IsActive}, verification={senderConfig.VerificationStatus})",
+                    tenantId, userId, "TenantEmailSenderConfig", senderConfig.Id.ToString(),
+                    metadata: $"{{\"reason\":\"sender_config_unusable\",\"isActive\":{senderConfig.IsActive.ToString().ToLower()},\"verificationStatus\":\"{senderConfig.VerificationStatus}\"}}");
+                throw new InvalidOperationException(
+                    $"Sender configuration '{senderConfig.Id}' cannot be used: it must be active and verified.");
+            }
+
+            _audit.Publish("OutboundEmailSenderResolved", "Resolved",
+                $"Sender resolved: {senderConfig.DisplayName} <{senderConfig.FromEmail}>",
+                tenantId, userId, "TenantEmailSenderConfig", senderConfig.Id.ToString(),
+                metadata: $"{{\"fromEmail\":\"{senderConfig.FromEmail}\",\"senderType\":\"{senderConfig.SenderType}\"}}");
+
+            return (senderConfig.FromEmail, senderConfig.DisplayName,
+                senderConfig.ReplyToEmail, senderConfig.Id, senderConfig.FromEmail);
+        }
+
+        return ("noreply@legalsynq.com", "LegalSynq Communications", null, null, null);
+    }
+
+    private async Task<(string subject, string bodyText, string bodyHtml, Guid? templateConfigId, string? templateKey, string compositionMode)>
+        ResolveCompositionAsync(
+            Guid tenantId, Guid userId, SendOutboundEmailRequest request,
+            string conversationSubject, string messageBodyText, string messageBodyHtml,
+            CancellationToken ct)
+    {
+        EmailTemplateConfig? template = null;
+        string? resolvedTemplateKey = null;
+        Guid? resolvedTemplateId = null;
+
+        if (request.TemplateConfigId.HasValue)
+        {
+            template = await _templateConfigRepo.GetByIdAsync(request.TemplateConfigId.Value, ct);
+            if (template is null)
+            {
+                _audit.Publish("OutboundEmailRejected", "Rejected",
+                    $"Template config {request.TemplateConfigId.Value} not found",
+                    tenantId, userId, "EmailTemplateConfig", request.TemplateConfigId.Value.ToString());
+                throw new InvalidOperationException($"Email template '{request.TemplateConfigId.Value}' not found.");
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(request.TemplateKey))
+        {
+            template = await _templateConfigRepo.GetByKeyAsync(tenantId, request.TemplateKey, ct);
+            if (template is null)
+                template = await _templateConfigRepo.GetGlobalByKeyAsync(request.TemplateKey, ct);
+
+            if (template is null)
+            {
+                _audit.Publish("OutboundEmailRejected", "Rejected",
+                    $"Template key '{request.TemplateKey}' not found",
+                    tenantId, userId, "EmailTemplateConfig", request.TemplateKey);
+                throw new InvalidOperationException($"Email template with key '{request.TemplateKey}' not found.");
+            }
+        }
+
+        if (template is not null)
+        {
+            if (!template.IsActive)
+            {
+                _audit.Publish("OutboundEmailRejected", "Rejected",
+                    $"Template {template.Id} is inactive",
+                    tenantId, userId, "EmailTemplateConfig", template.Id.ToString());
+                throw new InvalidOperationException($"Email template '{template.Id}' is inactive.");
+            }
+
+            if (template.TenantId.HasValue && template.TenantId.Value != tenantId)
+            {
+                throw new UnauthorizedAccessException("Cannot use templates belonging to another tenant.");
+            }
+
+            resolvedTemplateKey = template.TemplateKey;
+            resolvedTemplateId = template.Id;
+
+            _audit.Publish("OutboundEmailTemplateResolved", "Resolved",
+                $"Template resolved: {template.DisplayName} (key: {template.TemplateKey}, v{template.Version})",
+                tenantId, userId, "EmailTemplateConfig", template.Id.ToString(),
+                metadata: $"{{\"templateKey\":\"{template.TemplateKey}\",\"version\":{template.Version},\"templateScope\":\"{template.TemplateScope}\"}}");
+        }
+
+        if (request.SubjectOverride is not null || request.BodyTextOverride is not null || request.BodyHtmlOverride is not null)
+        {
+            var subject = request.SubjectOverride ?? conversationSubject;
+            var bodyText = request.BodyTextOverride ?? messageBodyText;
+            var bodyHtml = request.BodyHtmlOverride ?? messageBodyHtml;
+            return (subject, bodyText, bodyHtml, resolvedTemplateId, resolvedTemplateKey, "EXPLICIT_OVERRIDE");
+        }
+
+        if (template is not null)
+        {
+            var renderedSubject = template.RenderSubject(request.TemplateVariables);
+            var renderedBodyText = template.RenderBodyText(request.TemplateVariables);
+            var renderedBodyHtml = template.RenderBodyHtml(request.TemplateVariables);
+
+            var subject = !string.IsNullOrWhiteSpace(renderedSubject) ? renderedSubject : conversationSubject;
+            var bodyText = !string.IsNullOrWhiteSpace(renderedBodyText) ? renderedBodyText : messageBodyText;
+            var bodyHtml = !string.IsNullOrWhiteSpace(renderedBodyHtml) ? renderedBodyHtml : messageBodyHtml;
+
+            return (subject, bodyText, bodyHtml, resolvedTemplateId, resolvedTemplateKey, "TEMPLATE");
+        }
+
+        return (conversationSubject, messageBodyText, messageBodyHtml, null, null, "MESSAGE_CONTENT");
     }
 
     private static bool IsSystemSenderAddress(string? email)

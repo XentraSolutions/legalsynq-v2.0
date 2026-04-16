@@ -32,21 +32,40 @@ public sealed class NotificationsServiceClient : INotificationsServiceClient
         {
             var client = _httpClientFactory.CreateClient("NotificationsService");
 
+            var templateData = new Dictionary<string, string>
+            {
+                ["subject"] = payload.Subject,
+                ["bodyText"] = payload.BodyText ?? string.Empty,
+                ["bodyHtml"] = payload.BodyHtml ?? string.Empty,
+                ["fromEmail"] = payload.FromEmail,
+                ["fromDisplayName"] = payload.FromDisplayName,
+                ["internetMessageId"] = payload.InternetMessageId,
+                ["inReplyToMessageId"] = payload.InReplyToMessageId ?? string.Empty,
+                ["referencesHeader"] = payload.ReferencesHeader ?? string.Empty,
+            };
+            if (!string.IsNullOrWhiteSpace(payload.ReplyToEmail))
+                templateData["replyToEmail"] = payload.ReplyToEmail;
+
+            if (payload.TemplateData is not null)
+            {
+                foreach (var kvp in payload.TemplateData)
+                    templateData[kvp.Key] = kvp.Value;
+            }
+
+            var metadata = new Dictionary<string, string>
+            {
+                ["source"] = "synqcomm-service",
+                ["internetMessageId"] = payload.InternetMessageId,
+                ["tenantId"] = payload.TenantId.ToString(),
+            };
+            if (!string.IsNullOrWhiteSpace(payload.TemplateKey))
+                metadata["templateKey"] = payload.TemplateKey;
+
             var notificationPayload = new
             {
                 channel = "email",
-                templateKey = "synqcomm_outbound_email",
-                templateData = new Dictionary<string, string>
-                {
-                    ["subject"] = payload.Subject,
-                    ["bodyText"] = payload.BodyText ?? string.Empty,
-                    ["bodyHtml"] = payload.BodyHtml ?? string.Empty,
-                    ["fromEmail"] = payload.FromEmail,
-                    ["fromDisplayName"] = payload.FromDisplayName,
-                    ["internetMessageId"] = payload.InternetMessageId,
-                    ["inReplyToMessageId"] = payload.InReplyToMessageId ?? string.Empty,
-                    ["referencesHeader"] = payload.ReferencesHeader ?? string.Empty,
-                },
+                templateKey = payload.TemplateKey ?? "synqcomm_outbound_email",
+                templateData,
                 productType = "synqcomms",
                 recipient = new
                 {
@@ -54,6 +73,12 @@ public sealed class NotificationsServiceClient : INotificationsServiceClient
                     email = payload.ToAddresses,
                     cc = payload.CcAddresses,
                     bcc = payload.BccAddresses,
+                },
+                sender = new
+                {
+                    email = payload.FromEmail,
+                    displayName = payload.FromDisplayName,
+                    replyTo = payload.ReplyToEmail,
                 },
                 message = new
                 {
@@ -69,12 +94,7 @@ public sealed class NotificationsServiceClient : INotificationsServiceClient
                     contentType = a.ContentType,
                     fileSizeBytes = a.FileSizeBytes,
                 }).ToArray(),
-                metadata = new Dictionary<string, string>
-                {
-                    ["source"] = "synqcomm-service",
-                    ["internetMessageId"] = payload.InternetMessageId,
-                    ["tenantId"] = payload.TenantId.ToString(),
-                },
+                metadata,
                 idempotencyKey = payload.IdempotencyKey,
             };
 

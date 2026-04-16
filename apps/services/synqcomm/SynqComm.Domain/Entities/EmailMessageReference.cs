@@ -23,6 +23,12 @@ public class EmailMessageReference : AuditableEntity
     public string? CcAddresses { get; private set; }
     public string Subject { get; private set; } = string.Empty;
 
+    public Guid? SenderConfigId { get; private set; }
+    public string? SenderConfigEmail { get; private set; }
+    public Guid? TemplateConfigId { get; private set; }
+    public string? TemplateKey { get; private set; }
+    public string? CompositionMode { get; private set; }
+
     public DateTime? ReceivedAtUtc { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
 
@@ -78,6 +84,20 @@ public class EmailMessageReference : AuditableEntity
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
+    }
+
+    public void SetCompositionMetadata(
+        Guid? senderConfigId, string? senderConfigEmail,
+        Guid? templateConfigId, string? templateKey,
+        string compositionMode, Guid? updatedByUserId)
+    {
+        SenderConfigId = senderConfigId;
+        SenderConfigEmail = senderConfigEmail?.Trim().ToLowerInvariant();
+        TemplateConfigId = templateConfigId;
+        TemplateKey = templateKey?.Trim().ToLowerInvariant();
+        CompositionMode = compositionMode;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
     }
 
     public void SetProviderMessageId(string providerMessageId, Guid? updatedByUserId)
