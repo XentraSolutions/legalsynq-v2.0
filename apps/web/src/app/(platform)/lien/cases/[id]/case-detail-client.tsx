@@ -1670,9 +1670,11 @@ function avatarColor(name: string): string {
 type NoteSortOption = 'newest' | 'oldest';
 type NoteCategoryFilter = 'all' | 'general' | 'internal' | 'follow-up';
 
+const EMPTY_STORE_NOTES: { id: string; text: string; author: string; timestamp: string; category?: string }[] = [];
+
 function NotesTab({ caseId }: { caseId: string }) {
   const addToast = useLienStore((s) => s.addToast);
-  const storeNotes = useLienStore((s) => s.caseNotes[caseId] ?? []);
+  const storeNotes = useLienStore((s) => s.caseNotes[caseId] ?? EMPTY_STORE_NOTES);
   const addCaseNote = useLienStore((s) => s.addCaseNote);
   const { session } = useSession();
 
