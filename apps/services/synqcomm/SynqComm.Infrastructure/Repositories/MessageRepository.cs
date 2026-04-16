@@ -14,6 +14,13 @@ public class MessageRepository : IMessageRepository
         _db = db;
     }
 
+    public async Task<Message?> GetByIdAsync(Guid tenantId, Guid conversationId, Guid messageId, CancellationToken ct = default)
+    {
+        return await _db.Messages
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId && m.Id == messageId)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<List<Message>> ListByConversationOrderedAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default)
     {
         return await _db.Messages

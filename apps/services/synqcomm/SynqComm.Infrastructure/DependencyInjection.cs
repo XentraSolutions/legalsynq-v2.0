@@ -5,6 +5,7 @@ using SynqComm.Application.Repositories;
 using SynqComm.Application.Services;
 using SynqComm.Infrastructure.Audit;
 using SynqComm.Infrastructure.Documents;
+using SynqComm.Infrastructure.Notifications;
 using SynqComm.Infrastructure.Persistence;
 using SynqComm.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +38,7 @@ public static class DependencyInjection
         services.AddScoped<IMessageAttachmentRepository, MessageAttachmentRepository>();
         services.AddScoped<IEmailMessageReferenceRepository, EmailMessageReferenceRepository>();
         services.AddScoped<IExternalParticipantIdentityRepository, ExternalParticipantIdentityRepository>();
+        services.AddScoped<IEmailDeliveryStateRepository, EmailDeliveryStateRepository>();
 
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IMessageService, MessageService>();
@@ -44,6 +46,15 @@ public static class DependencyInjection
         services.AddScoped<IReadTrackingService, ReadTrackingService>();
         services.AddScoped<IMessageAttachmentService, MessageAttachmentService>();
         services.AddScoped<IEmailIntakeService, EmailIntakeService>();
+        services.AddScoped<IOutboundEmailService, OutboundEmailService>();
+
+        var notifBaseUrl = configuration["Services:NotificationsUrl"] ?? "http://localhost:5008";
+        services.AddHttpClient("NotificationsService", client =>
+        {
+            client.BaseAddress = new Uri(notifBaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddScoped<INotificationsServiceClient, NotificationsServiceClient>();
 
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
         services.AddHttpClient("DocumentsService", client =>

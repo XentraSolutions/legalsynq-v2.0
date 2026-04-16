@@ -90,6 +90,9 @@ public static class TestHelpers
     public static IExternalParticipantIdentityRepository CreateIdentityRepo(SynqCommDbContext db) =>
         new ExternalParticipantIdentityRepository(db);
 
+    public static IEmailDeliveryStateRepository CreateDeliveryStateRepo(SynqCommDbContext db) =>
+        new EmailDeliveryStateRepository(db);
+
     public static ILogger<T> CreateLogger<T>() =>
         LoggerFactory.Create(b => { }).CreateLogger<T>();
 }
@@ -106,6 +109,24 @@ public class NoOpAuditPublisher : IAuditPublisher
         string? metadata = null)
     {
         Events.Add((eventType, action, description));
+    }
+}
+
+public class MockNotificationsServiceClient : INotificationsServiceClient
+{
+    public List<OutboundEmailPayload> SentPayloads { get; } = new();
+    public NotificationsSendResult NextResult { get; set; } = new(
+        Success: true,
+        NotificationsRequestId: Guid.NewGuid(),
+        ProviderUsed: "test-provider",
+        ProviderMessageId: null,
+        Status: "queued",
+        ErrorMessage: null);
+
+    public Task<NotificationsSendResult> SendEmailAsync(OutboundEmailPayload payload, CancellationToken ct = default)
+    {
+        SentPayloads.Add(payload);
+        return Task.FromResult(NextResult);
     }
 }
 

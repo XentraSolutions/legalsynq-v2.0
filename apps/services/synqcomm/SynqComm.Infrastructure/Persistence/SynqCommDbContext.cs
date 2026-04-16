@@ -15,6 +15,7 @@ public class SynqCommDbContext : DbContext
     public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
     public DbSet<EmailMessageReference> EmailMessageReferences => Set<EmailMessageReference>();
     public DbSet<ExternalParticipantIdentity> ExternalParticipantIdentities => Set<ExternalParticipantIdentity>();
+    public DbSet<EmailDeliveryState> EmailDeliveryStates => Set<EmailDeliveryState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

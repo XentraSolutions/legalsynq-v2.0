@@ -80,8 +80,27 @@ public class EmailMessageReference : AuditableEntity
         };
     }
 
+    public void SetProviderMessageId(string providerMessageId, Guid? updatedByUserId)
+    {
+        ProviderMessageId = providerMessageId?.Trim();
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetSentAtUtc(DateTime sentAt, Guid? updatedByUserId)
+    {
+        SentAtUtc = sentAt;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public static string NormalizeEmail(string email)
     {
         return email.Trim().ToLowerInvariant();
+    }
+
+    public static string GenerateInternetMessageId(Guid conversationId, string domain = "synqcomm.legalsynq.com")
+    {
+        return $"<{conversationId:N}.{Guid.NewGuid():N}@{domain}>";
     }
 }

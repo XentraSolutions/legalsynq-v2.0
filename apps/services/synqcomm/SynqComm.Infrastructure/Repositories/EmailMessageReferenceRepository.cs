@@ -70,9 +70,30 @@ public class EmailMessageReferenceRepository : IEmailMessageReferenceRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<EmailMessageReference?> GetLatestByConversationAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default)
+    {
+        return await _db.EmailMessageReferences
+            .Where(e => e.TenantId == tenantId && e.ConversationId == conversationId)
+            .OrderByDescending(e => e.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<EmailMessageReference?> FindByMessageIdAsync(Guid tenantId, Guid messageId, CancellationToken ct = default)
+    {
+        return await _db.EmailMessageReferences
+            .Where(e => e.TenantId == tenantId && e.MessageId == messageId)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task AddAsync(EmailMessageReference entity, CancellationToken ct = default)
     {
         await _db.EmailMessageReferences.AddAsync(entity, ct);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task UpdateAsync(EmailMessageReference entity, CancellationToken ct = default)
+    {
+        _db.EmailMessageReferences.Update(entity);
         await _db.SaveChangesAsync(ct);
     }
 }

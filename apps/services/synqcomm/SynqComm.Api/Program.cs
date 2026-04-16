@@ -117,5 +117,6 @@ app.MapMessageEndpoints();
 app.MapParticipantEndpoints();
 app.MapAttachmentEndpoints();
 app.MapEmailIntakeEndpoints();
+app.MapOutboundEmailEndpoints();
 
 app.Run();

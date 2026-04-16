@@ -11,5 +11,8 @@ public interface IEmailMessageReferenceRepository
     Task<List<EmailMessageReference>> FindByProviderThreadIdAsync(Guid tenantId, string providerThreadId, CancellationToken ct = default);
     Task<List<EmailMessageReference>> ListByConversationAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default);
     Task<EmailMessageReference?> FindConversationByReferencesAsync(Guid tenantId, IEnumerable<string> internetMessageIds, CancellationToken ct = default);
+    Task<EmailMessageReference?> GetLatestByConversationAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default);
+    Task<EmailMessageReference?> FindByMessageIdAsync(Guid tenantId, Guid messageId, CancellationToken ct = default);
     Task AddAsync(EmailMessageReference entity, CancellationToken ct = default);
+    Task UpdateAsync(EmailMessageReference entity, CancellationToken ct = default);
 }
