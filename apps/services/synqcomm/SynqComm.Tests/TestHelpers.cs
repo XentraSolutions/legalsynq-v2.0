@@ -111,6 +111,12 @@ public static class TestHelpers
     public static IConversationSlaStateRepository CreateSlaStateRepo(SynqCommDbContext db) =>
         new ConversationSlaStateRepository(db);
 
+    public static IConversationSlaTriggerStateRepository CreateTriggerStateRepo(SynqCommDbContext db) =>
+        new ConversationSlaTriggerStateRepository(db);
+
+    public static IQueueEscalationConfigRepository CreateEscalationConfigRepo(SynqCommDbContext db) =>
+        new QueueEscalationConfigRepository(db);
+
     public static IOperationalService CreateOperationalService(SynqCommDbContext db, NoOpAuditPublisher? audit = null) =>
         new OperationalService(
             CreateSlaStateRepo(db),
@@ -119,6 +125,36 @@ public static class TestHelpers
             CreateConversationRepo(db),
             audit ?? new NoOpAuditPublisher(),
             CreateLogger<OperationalService>());
+
+    public static IEscalationTargetResolver CreateEscalationTargetResolver(
+        SynqCommDbContext db, NoOpAuditPublisher? audit = null) =>
+        new EscalationTargetResolver(
+            CreateAssignmentRepo(db),
+            CreateEscalationConfigRepo(db),
+            audit ?? new NoOpAuditPublisher(),
+            CreateLogger<EscalationTargetResolver>());
+
+    public static ISlaNotificationService CreateSlaNotificationService(
+        SynqCommDbContext db, MockNotificationsServiceClient? notif = null, NoOpAuditPublisher? audit = null)
+    {
+        var auditPub = audit ?? new NoOpAuditPublisher();
+        return new SlaNotificationService(
+            CreateSlaStateRepo(db),
+            CreateTriggerStateRepo(db),
+            CreateConversationRepo(db),
+            CreateEscalationTargetResolver(db, auditPub),
+            notif ?? new MockNotificationsServiceClient(),
+            auditPub,
+            CreateLogger<SlaNotificationService>());
+    }
+
+    public static IQueueEscalationConfigService CreateQueueEscalationConfigService(
+        SynqCommDbContext db, NoOpAuditPublisher? audit = null) =>
+        new QueueEscalationConfigService(
+            CreateEscalationConfigRepo(db),
+            CreateQueueRepo(db),
+            audit ?? new NoOpAuditPublisher(),
+            CreateLogger<QueueEscalationConfigService>());
 
     public static ILogger<T> CreateLogger<T>() =>
         LoggerFactory.Create(b => { }).CreateLogger<T>();
@@ -142,6 +178,7 @@ public class NoOpAuditPublisher : IAuditPublisher
 public class MockNotificationsServiceClient : INotificationsServiceClient
 {
     public List<OutboundEmailPayload> SentPayloads { get; } = new();
+    public List<Application.DTOs.OperationalAlertPayload> SentAlerts { get; } = new();
     public NotificationsSendResult NextResult { get; set; } = new(
         Success: true,
         NotificationsRequestId: Guid.NewGuid(),
@@ -153,6 +190,12 @@ public class MockNotificationsServiceClient : INotificationsServiceClient
     public Task<NotificationsSendResult> SendEmailAsync(OutboundEmailPayload payload, CancellationToken ct = default)
     {
         SentPayloads.Add(payload);
+        return Task.FromResult(NextResult);
+    }
+
+    public Task<NotificationsSendResult> SendOperationalAlertAsync(Application.DTOs.OperationalAlertPayload payload, CancellationToken ct = default)
+    {
+        SentAlerts.Add(payload);
         return Task.FromResult(NextResult);
     }
 }

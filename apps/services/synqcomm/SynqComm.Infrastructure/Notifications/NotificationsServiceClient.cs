@@ -150,6 +150,106 @@ public sealed class NotificationsServiceClient : INotificationsServiceClient
         }
     }
 
+    public async Task<NotificationsSendResult> SendOperationalAlertAsync(
+        Application.DTOs.OperationalAlertPayload payload, CancellationToken ct = default)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("NotificationsService");
+
+            var templateData = new Dictionary<string, string>
+            {
+                ["triggerType"] = payload.TriggerType,
+                ["conversationId"] = payload.ConversationId.ToString(),
+                ["priority"] = payload.Priority,
+                ["dueAtUtc"] = payload.DueAtUtc.ToString("O"),
+                ["conversationSubject"] = payload.ConversationSubject ?? string.Empty,
+            };
+
+            if (payload.QueueId.HasValue)
+                templateData["queueId"] = payload.QueueId.Value.ToString();
+
+            var metadata = new Dictionary<string, string>
+            {
+                ["source"] = "synqcomm-service",
+                ["tenantId"] = payload.TenantId.ToString(),
+                ["triggerType"] = payload.TriggerType,
+                ["conversationId"] = payload.ConversationId.ToString(),
+            };
+
+            var notificationPayload = new
+            {
+                channel = "internal",
+                templateKey = payload.TriggerType,
+                templateData,
+                productType = "synqcomms",
+                recipient = new
+                {
+                    tenantId = payload.TenantId.ToString(),
+                    userId = payload.TargetUserId.ToString(),
+                },
+                message = new
+                {
+                    type = "operational_alert",
+                    subject = $"SLA Alert: {payload.TriggerType}",
+                    body = $"SLA {payload.TriggerType} for conversation {payload.ConversationSubject ?? payload.ConversationId.ToString()}. Priority: {payload.Priority}. Due: {payload.DueAtUtc:O}",
+                },
+                metadata,
+                idempotencyKey = payload.IdempotencyKey,
+            };
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/notifications");
+            request.Headers.Add("X-Tenant-Id", payload.TenantId.ToString());
+            request.Content = JsonContent.Create(notificationPayload, options: JsonOpts);
+
+            var response = await client.SendAsync(request, ct);
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = JsonSerializer.Deserialize<NotificationsApiResult>(responseBody, JsonOpts);
+
+                _logger.LogInformation(
+                    "Operational alert submitted to Notifications: RequestId={RequestId} TriggerType={TriggerType}",
+                    result?.Id, payload.TriggerType);
+
+                return new NotificationsSendResult(
+                    Success: true,
+                    NotificationsRequestId: result?.Id,
+                    ProviderUsed: result?.ProviderUsed,
+                    ProviderMessageId: null,
+                    Status: result?.Status ?? "queued",
+                    ErrorMessage: null);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "Notifications service returned {StatusCode} for operational alert: {Body}",
+                    (int)response.StatusCode, responseBody);
+
+                return new NotificationsSendResult(
+                    Success: false,
+                    NotificationsRequestId: null,
+                    ProviderUsed: null,
+                    ProviderMessageId: null,
+                    Status: "failed",
+                    ErrorMessage: $"Notifications service returned {(int)response.StatusCode}: {responseBody}");
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to send operational alert via Notifications service");
+
+            return new NotificationsSendResult(
+                Success: false,
+                NotificationsRequestId: null,
+                ProviderUsed: null,
+                ProviderMessageId: null,
+                Status: "failed",
+                ErrorMessage: $"Notifications service call failed: {ex.Message}");
+        }
+    }
+
     private class NotificationsApiResult
     {
         public Guid? Id { get; set; }

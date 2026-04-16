@@ -25,4 +25,5 @@ public static class SynqCommPermissions
     public const string QueueRead = "SYNQ_COMMS.queue:read";
     public const string AssignmentManage = "SYNQ_COMMS.assignment:manage";
     public const string OperationalRead = "SYNQ_COMMS.operational:read";
+    public const string EscalationConfigManage = "SYNQ_COMMS.escalation-config:manage";
 }

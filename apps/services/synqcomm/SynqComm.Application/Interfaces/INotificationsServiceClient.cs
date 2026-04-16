@@ -36,4 +36,5 @@ public record NotificationsSendResult(
 public interface INotificationsServiceClient
 {
     Task<NotificationsSendResult> SendEmailAsync(OutboundEmailPayload payload, CancellationToken ct = default);
+    Task<NotificationsSendResult> SendOperationalAlertAsync(DTOs.OperationalAlertPayload payload, CancellationToken ct = default);
 }
