@@ -124,5 +124,6 @@ app.MapEmailTemplateEndpoints();
 app.MapQueueEndpoints();
 app.MapOperationalEndpoints();
 app.MapSlaTriggersEndpoints();
+app.MapTimelineEndpoints();
 
 app.Run();

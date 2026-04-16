@@ -12,8 +12,8 @@ using SynqComm.Infrastructure.Persistence;
 namespace SynqComm.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SynqCommDbContext))]
-    [Migration("20260416072000_AddSlaTriggerStatesAndEscalationConfig")]
-    partial class AddSlaTriggerStatesAndEscalationConfig
+    [Migration("20260416132304_AddSlaTriggerStatesEscalationAndTimeline")]
+    partial class AddSlaTriggerStatesEscalationAndTimeline
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -424,6 +424,7 @@ namespace SynqComm.Infrastructure.Persistence.Migrations
                         .HasColumnType("char(36)");
 
                     b.Property<int?>("EvaluationVersion")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("FirstResponseBreachSentAtUtc")
@@ -475,6 +476,82 @@ namespace SynqComm.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_SlaTriggerState_TenantId_ResolutionBreachSentAtUtc");
 
                     b.ToTable("comms_ConversationSlaTriggerStates", (string)null);
+                });
+
+            modelBuilder.Entity("SynqComm.Domain.Entities.ConversationTimelineEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ActorDisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<Guid?>("ActorId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EventSubType")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("MetadataJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("RelatedAssignmentId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("RelatedMessageId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("RelatedSlaId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Visibility")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ConversationId", "EventType")
+                        .HasDatabaseName("IX_Timeline_TenantId_ConversationId_EventType");
+
+                    b.HasIndex("TenantId", "ConversationId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_Timeline_TenantId_ConversationId_OccurredAtUtc");
+
+                    b.HasIndex("TenantId", "ConversationId", "Visibility")
+                        .HasDatabaseName("IX_Timeline_TenantId_ConversationId_Visibility");
+
+                    b.ToTable("comms_ConversationTimelineEntries", (string)null);
                 });
 
             modelBuilder.Entity("SynqComm.Domain.Entities.EmailDeliveryState", b =>

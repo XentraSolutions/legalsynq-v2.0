@@ -15,6 +15,7 @@ public class ConversationService : IConversationService
     private readonly IConversationReadStateRepository _readStateRepo;
     private readonly IMessageAttachmentRepository _attachmentRepo;
     private readonly IOperationalService _operationalService;
+    private readonly IConversationTimelineService _timeline;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<ConversationService> _logger;
 
@@ -25,6 +26,7 @@ public class ConversationService : IConversationService
         IConversationReadStateRepository readStateRepo,
         IMessageAttachmentRepository attachmentRepo,
         IOperationalService operationalService,
+        IConversationTimelineService timeline,
         IAuditPublisher audit,
         ILogger<ConversationService> logger)
     {
@@ -34,6 +36,7 @@ public class ConversationService : IConversationService
         _readStateRepo = readStateRepo;
         _attachmentRepo = attachmentRepo;
         _operationalService = operationalService;
+        _timeline = timeline;
         _audit = audit;
         _logger = logger;
     }
@@ -139,6 +142,21 @@ public class ConversationService : IConversationService
             $"Status changed from {oldStatus} to {request.Status}",
             tenantId, userId, "Conversation", conversation.Id.ToString(),
             metadata: $"{{\"previousStatus\":\"{oldStatus}\",\"newStatus\":\"{request.Status}\"}}");
+
+        try
+        {
+            await _timeline.RecordAsync(
+                tenantId, id,
+                Domain.Constants.TimelineEventTypes.StatusChanged,
+                Domain.Constants.TimelineActorType.User,
+                $"Status changed from {oldStatus} to {request.Status}",
+                Domain.Constants.TimelineVisibility.InternalOnly,
+                DateTime.UtcNow,
+                actorId: userId,
+                metadataJson: $"{{\"previousStatus\":\"{oldStatus}\",\"newStatus\":\"{request.Status}\"}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for status change on {ConversationId}", id); }
 
         try
         {

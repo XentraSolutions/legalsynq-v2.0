@@ -26,6 +26,7 @@ public class OutboundEmailTests
             TestHelpers.CreateTemplateConfigRepo(db),
             notifClient ?? new MockNotificationsServiceClient(),
             TestHelpers.CreateOperationalService(db, audit),
+            new NoOpTimelineService(),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<OutboundEmailService>());
     }
@@ -288,6 +289,7 @@ public class OutboundEmailTests
             TestHelpers.CreateOperationalService(db, audit),
             TestHelpers.CreateQueueRepo(db),
             TestHelpers.CreateAssignmentRepo(db),
+            new NoOpTimelineService(),
             audit,
             TestHelpers.CreateLogger<EmailIntakeService>());
 

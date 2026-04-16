@@ -36,7 +36,7 @@ public class OrderedThreadRetrievalTests
         var service = new ConversationService(
             conversationRepo, participantRepo, messageRepo, readStateRepo, attachmentRepo,
             TestHelpers.CreateOperationalService(db, audit),
-            audit, TestHelpers.CreateLogger<ConversationService>());
+            new NoOpTimelineService(), audit, TestHelpers.CreateLogger<ConversationService>());
 
         var thread = await service.GetThreadAsync(
             TestHelpers.TenantId, conversation.Id, TestHelpers.UserId1);

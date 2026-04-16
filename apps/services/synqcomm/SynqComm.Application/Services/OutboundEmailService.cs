@@ -20,6 +20,7 @@ public class OutboundEmailService : IOutboundEmailService
     private readonly IEmailTemplateConfigRepository _templateConfigRepo;
     private readonly INotificationsServiceClient _notificationsClient;
     private readonly IOperationalService _operationalService;
+    private readonly IConversationTimelineService _timeline;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<OutboundEmailService> _logger;
 
@@ -37,6 +38,7 @@ public class OutboundEmailService : IOutboundEmailService
         IEmailTemplateConfigRepository templateConfigRepo,
         INotificationsServiceClient notificationsClient,
         IOperationalService operationalService,
+        IConversationTimelineService timeline,
         IAuditPublisher audit,
         ILogger<OutboundEmailService> logger)
     {
@@ -51,6 +53,7 @@ public class OutboundEmailService : IOutboundEmailService
         _templateConfigRepo = templateConfigRepo;
         _notificationsClient = notificationsClient;
         _operationalService = operationalService;
+        _timeline = timeline;
         _audit = audit;
         _logger = logger;
     }
@@ -261,6 +264,22 @@ public class OutboundEmailService : IOutboundEmailService
         _logger.LogInformation(
             "Outbound email queued: ConversationId={ConversationId} MessageId={MessageId} InternetMessageId={InternetMessageId}",
             conversation.Id, message.Id, internetMessageId);
+
+        try
+        {
+            await _timeline.RecordAsync(
+                tenantId, conversation.Id,
+                Domain.Constants.TimelineEventTypes.EmailSent,
+                Domain.Constants.TimelineActorType.User,
+                $"Email sent to {request.ToAddresses}",
+                Domain.Constants.TimelineVisibility.SharedExternalSafe,
+                DateTime.UtcNow,
+                actorId: userId,
+                relatedMessageId: message.Id,
+                metadataJson: $"{{\"toAddresses\":\"{request.ToAddresses}\",\"subject\":\"{subject}\",\"attachmentCount\":{attachments.Count}}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for outbound email on {ConversationId}", conversation.Id); }
 
         try
         {

@@ -26,6 +26,7 @@ public class OperationalWorkflowTests
             TestHelpers.CreateQueueRepo(db),
             TestHelpers.CreateConversationRepo(db),
             TestHelpers.CreateSlaStateRepo(db),
+            new NoOpTimelineService(),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<AssignmentService>());
     }
@@ -39,6 +40,7 @@ public class OperationalWorkflowTests
             TestHelpers.CreateAssignmentRepo(db),
             TestHelpers.CreateQueueRepo(db),
             TestHelpers.CreateConversationRepo(db),
+            new NoOpTimelineService(),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<OperationalService>());
     }

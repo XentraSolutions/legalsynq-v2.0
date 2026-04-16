@@ -25,6 +25,7 @@ public class CcBccRecipientTests
             TestHelpers.CreateOperationalService(db, audit),
             TestHelpers.CreateQueueRepo(db),
             TestHelpers.CreateAssignmentRepo(db),
+            new NoOpTimelineService(),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<EmailIntakeService>());
     }
@@ -46,6 +47,7 @@ public class CcBccRecipientTests
             TestHelpers.CreateTemplateConfigRepo(db),
             notifClient ?? new MockNotificationsServiceClient(),
             TestHelpers.CreateOperationalService(db, audit),
+            new NoOpTimelineService(),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<OutboundEmailService>());
     }

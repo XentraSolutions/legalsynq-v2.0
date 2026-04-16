@@ -25,6 +25,7 @@ public class EmailIntakeTests
             TestHelpers.CreateOperationalService(db, audit),
             TestHelpers.CreateQueueRepo(db),
             TestHelpers.CreateAssignmentRepo(db),
+            new NoOpTimelineService(),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<EmailIntakeService>());
     }
@@ -315,7 +316,7 @@ public class EmailIntakeTests
 
         var msgService = new MessageService(
             messageRepo, conversationRepo, participantRepo,
-            audit, TestHelpers.CreateLogger<MessageService>());
+            new NoOpTimelineService(), audit, TestHelpers.CreateLogger<MessageService>());
 
         var externalMessages = await msgService.ListByConversationAsync(
             TestHelpers.TenantId, conversation.Id, externalUserId);

@@ -13,6 +13,7 @@ public class OperationalService : IOperationalService
     private readonly IConversationAssignmentRepository _assignmentRepo;
     private readonly IConversationQueueRepository _queueRepo;
     private readonly IConversationRepository _conversationRepo;
+    private readonly IConversationTimelineService _timeline;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<OperationalService> _logger;
 
@@ -21,6 +22,7 @@ public class OperationalService : IOperationalService
         IConversationAssignmentRepository assignmentRepo,
         IConversationQueueRepository queueRepo,
         IConversationRepository conversationRepo,
+        IConversationTimelineService timeline,
         IAuditPublisher audit,
         ILogger<OperationalService> logger)
     {
@@ -28,6 +30,7 @@ public class OperationalService : IOperationalService
         _assignmentRepo = assignmentRepo;
         _queueRepo = queueRepo;
         _conversationRepo = conversationRepo;
+        _timeline = timeline;
         _audit = audit;
         _logger = logger;
     }
@@ -63,6 +66,22 @@ public class OperationalService : IOperationalService
             $"Priority changed from {oldPriority} to {request.Priority}",
             tenantId, userId, "ConversationSlaState", sla.Id.ToString(),
             metadata: $"{{\"conversationId\":\"{conversationId}\",\"oldPriority\":\"{oldPriority}\",\"newPriority\":\"{request.Priority}\",\"firstResponseDueAtUtc\":\"{sla.FirstResponseDueAtUtc:O}\",\"resolutionDueAtUtc\":\"{sla.ResolutionDueAtUtc:O}\"}}");
+
+        try
+        {
+            await _timeline.RecordAsync(
+                tenantId, conversationId,
+                Domain.Constants.TimelineEventTypes.PriorityChanged,
+                Domain.Constants.TimelineActorType.User,
+                $"Priority changed from {oldPriority} to {request.Priority}",
+                Domain.Constants.TimelineVisibility.InternalOnly,
+                now,
+                actorId: userId,
+                relatedSlaId: sla.Id,
+                metadataJson: $"{{\"oldPriority\":\"{oldPriority}\",\"newPriority\":\"{request.Priority}\"}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for priority change on {ConversationId}", conversationId); }
 
         return ToSlaResponse(sla);
     }
@@ -184,6 +203,21 @@ public class OperationalService : IOperationalService
             $"SLA initialized with priority {priority}",
             tenantId, userId, "ConversationSlaState", sla.Id.ToString(),
             metadata: $"{{\"conversationId\":\"{conversationId}\",\"priority\":\"{priority}\",\"firstResponseDueAtUtc\":\"{sla.FirstResponseDueAtUtc:O}\",\"resolutionDueAtUtc\":\"{sla.ResolutionDueAtUtc:O}\"}}");
+
+        try
+        {
+            await _timeline.RecordAsync(
+                tenantId, conversationId,
+                Domain.Constants.TimelineEventTypes.SlaStarted,
+                Domain.Constants.TimelineActorType.System,
+                $"SLA started with priority {priority}",
+                Domain.Constants.TimelineVisibility.InternalOnly,
+                startAtUtc,
+                relatedSlaId: sla.Id,
+                metadataJson: $"{{\"priority\":\"{priority}\",\"firstResponseDueAtUtc\":\"{sla.FirstResponseDueAtUtc:O}\",\"resolutionDueAtUtc\":\"{sla.ResolutionDueAtUtc:O}\"}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for SLA initialization on {ConversationId}", conversationId); }
     }
 
     public async Task SatisfyFirstResponseAsync(
@@ -202,6 +236,22 @@ public class OperationalService : IOperationalService
             "First response SLA satisfied",
             tenantId, userId, "ConversationSlaState", sla.Id.ToString(),
             metadata: $"{{\"conversationId\":\"{conversationId}\",\"respondedAtUtc\":\"{respondedAtUtc:O}\",\"breached\":{sla.BreachedFirstResponse.ToString().ToLower()}}}");
+
+        try
+        {
+            await _timeline.RecordAsync(
+                tenantId, conversationId,
+                Domain.Constants.TimelineEventTypes.FirstResponseSatisfied,
+                Domain.Constants.TimelineActorType.User,
+                $"First response SLA satisfied{(sla.BreachedFirstResponse ? " (after breach)" : "")}",
+                Domain.Constants.TimelineVisibility.InternalOnly,
+                respondedAtUtc,
+                actorId: userId,
+                relatedSlaId: sla.Id,
+                metadataJson: $"{{\"breached\":{sla.BreachedFirstResponse.ToString().ToLower()}}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for first response satisfaction on {ConversationId}", conversationId); }
     }
 
     public async Task SatisfyResolutionAsync(
@@ -220,6 +270,22 @@ public class OperationalService : IOperationalService
             "Resolution SLA satisfied",
             tenantId, userId, "ConversationSlaState", sla.Id.ToString(),
             metadata: $"{{\"conversationId\":\"{conversationId}\",\"resolvedAtUtc\":\"{resolvedAtUtc:O}\",\"breached\":{sla.BreachedResolution.ToString().ToLower()}}}");
+
+        try
+        {
+            await _timeline.RecordAsync(
+                tenantId, conversationId,
+                Domain.Constants.TimelineEventTypes.Resolved,
+                Domain.Constants.TimelineActorType.User,
+                $"Resolution SLA satisfied{(sla.BreachedResolution ? " (after breach)" : "")}",
+                Domain.Constants.TimelineVisibility.InternalOnly,
+                resolvedAtUtc,
+                actorId: userId,
+                relatedSlaId: sla.Id,
+                metadataJson: $"{{\"breached\":{sla.BreachedResolution.ToString().ToLower()}}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for resolution satisfaction on {ConversationId}", conversationId); }
     }
 
     public async Task UpdateWaitingStateAsync(

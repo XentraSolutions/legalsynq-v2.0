@@ -12,6 +12,7 @@ public class MessageService : IMessageService
     private readonly IMessageRepository _messageRepo;
     private readonly IConversationRepository _conversationRepo;
     private readonly IParticipantRepository _participantRepo;
+    private readonly IConversationTimelineService _timeline;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<MessageService> _logger;
 
@@ -19,12 +20,14 @@ public class MessageService : IMessageService
         IMessageRepository messageRepo,
         IConversationRepository conversationRepo,
         IParticipantRepository participantRepo,
+        IConversationTimelineService timeline,
         IAuditPublisher audit,
         ILogger<MessageService> logger)
     {
         _messageRepo = messageRepo;
         _conversationRepo = conversationRepo;
         _participantRepo = participantRepo;
+        _timeline = timeline;
         _audit = audit;
         _logger = logger;
     }
@@ -74,6 +77,26 @@ public class MessageService : IMessageService
 
         _audit.Publish("MessageAdded", "Created", $"Message added to conversation {conversationId}",
             tenantId, userId, "Message", message.Id.ToString());
+
+        var visibility = message.VisibilityType == VisibilityType.SharedExternal
+            ? Domain.Constants.TimelineVisibility.SharedExternalSafe
+            : Domain.Constants.TimelineVisibility.InternalOnly;
+
+        try
+        {
+            await _timeline.RecordAsync(
+                tenantId, conversationId,
+                Domain.Constants.TimelineEventTypes.MessageSent,
+                Domain.Constants.TimelineActorType.User,
+                "Message sent",
+                visibility,
+                message.SentAtUtc,
+                actorId: userId,
+                relatedMessageId: message.Id,
+                metadataJson: $"{{\"channel\":\"{message.Channel}\",\"direction\":\"{message.Direction}\",\"visibility\":\"{message.VisibilityType}\"}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline entry for message {MessageId}", message.Id); }
 
         return ToResponse(message);
     }

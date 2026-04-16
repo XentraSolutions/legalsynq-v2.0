@@ -26,6 +26,7 @@ public class E2ENotificationsIntegrationTests
             TestHelpers.CreateTemplateConfigRepo(db),
             notifClient ?? new MockNotificationsServiceClient(),
             TestHelpers.CreateOperationalService(db, audit),
+            new NoOpTimelineService(),
             audit ?? new NoOpAuditPublisher(),
             TestHelpers.CreateLogger<OutboundEmailService>());
     }
@@ -493,6 +494,7 @@ public class E2ENotificationsIntegrationTests
             TestHelpers.CreateOperationalService(db, e2eAudit),
             TestHelpers.CreateQueueRepo(db),
             TestHelpers.CreateAssignmentRepo(db),
+            new NoOpTimelineService(),
             e2eAudit,
             TestHelpers.CreateLogger<EmailIntakeService>());
 

@@ -21,6 +21,7 @@ public partial class EmailIntakeService : IEmailIntakeService
     private readonly IOperationalService _operationalService;
     private readonly IConversationQueueRepository _queueRepo;
     private readonly IConversationAssignmentRepository _assignmentRepo;
+    private readonly IConversationTimelineService _timeline;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<EmailIntakeService> _logger;
 
@@ -39,6 +40,7 @@ public partial class EmailIntakeService : IEmailIntakeService
         IOperationalService operationalService,
         IConversationQueueRepository queueRepo,
         IConversationAssignmentRepository assignmentRepo,
+        IConversationTimelineService timeline,
         IAuditPublisher audit,
         ILogger<EmailIntakeService> logger)
     {
@@ -53,6 +55,7 @@ public partial class EmailIntakeService : IEmailIntakeService
         _operationalService = operationalService;
         _queueRepo = queueRepo;
         _assignmentRepo = assignmentRepo;
+        _timeline = timeline;
         _audit = audit;
         _logger = logger;
     }
@@ -206,6 +209,22 @@ public partial class EmailIntakeService : IEmailIntakeService
         _logger.LogInformation(
             "Inbound email processed: InternetMessageId={InternetMessageId} ConversationId={ConversationId} MessageId={MessageId} MatchedBy={MatchedBy}",
             request.InternetMessageId, conversation.Id, message.Id, matchStrategy);
+
+        try
+        {
+            await _timeline.RecordAsync(
+                request.TenantId, conversation.Id,
+                Domain.Constants.TimelineEventTypes.EmailReceived,
+                Domain.Constants.TimelineActorType.System,
+                $"Email received from {request.FromDisplayName ?? normalizedFrom}",
+                Domain.Constants.TimelineVisibility.SharedExternalSafe,
+                request.ReceivedAtUtc,
+                actorDisplayName: request.FromDisplayName,
+                relatedMessageId: message.Id,
+                metadataJson: $"{{\"fromEmail\":\"{normalizedFrom}\",\"subject\":\"{request.Subject}\",\"matchedBy\":\"{matchStrategy}\",\"attachmentCount\":{attachmentCount}}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for inbound email on {ConversationId}", conversation.Id); }
 
         try
         {

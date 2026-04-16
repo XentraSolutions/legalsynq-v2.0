@@ -117,12 +117,23 @@ public static class TestHelpers
     public static IQueueEscalationConfigRepository CreateEscalationConfigRepo(SynqCommDbContext db) =>
         new QueueEscalationConfigRepository(db);
 
-    public static IOperationalService CreateOperationalService(SynqCommDbContext db, NoOpAuditPublisher? audit = null) =>
+    public static IConversationTimelineRepository CreateTimelineRepo(SynqCommDbContext db) =>
+        new ConversationTimelineRepository(db);
+
+    public static IConversationTimelineService CreateTimelineService(SynqCommDbContext db) =>
+        new ConversationTimelineService(
+            CreateTimelineRepo(db),
+            CreateLogger<ConversationTimelineService>());
+
+    public static NoOpTimelineService CreateNoOpTimelineService() => new();
+
+    public static IOperationalService CreateOperationalService(SynqCommDbContext db, NoOpAuditPublisher? audit = null, NoOpTimelineService? timeline = null) =>
         new OperationalService(
             CreateSlaStateRepo(db),
             CreateAssignmentRepo(db),
             CreateQueueRepo(db),
             CreateConversationRepo(db),
+            timeline ?? new NoOpTimelineService(),
             audit ?? new NoOpAuditPublisher(),
             CreateLogger<OperationalService>());
 
@@ -135,7 +146,7 @@ public static class TestHelpers
             CreateLogger<EscalationTargetResolver>());
 
     public static ISlaNotificationService CreateSlaNotificationService(
-        SynqCommDbContext db, MockNotificationsServiceClient? notif = null, NoOpAuditPublisher? audit = null)
+        SynqCommDbContext db, MockNotificationsServiceClient? notif = null, NoOpAuditPublisher? audit = null, NoOpTimelineService? timeline = null)
     {
         var auditPub = audit ?? new NoOpAuditPublisher();
         return new SlaNotificationService(
@@ -144,6 +155,7 @@ public static class TestHelpers
             CreateConversationRepo(db),
             CreateEscalationTargetResolver(db, auditPub),
             notif ?? new MockNotificationsServiceClient(),
+            timeline ?? new NoOpTimelineService(),
             auditPub,
             CreateLogger<SlaNotificationService>());
     }
@@ -158,6 +170,37 @@ public static class TestHelpers
 
     public static ILogger<T> CreateLogger<T>() =>
         LoggerFactory.Create(b => { }).CreateLogger<T>();
+}
+
+public class NoOpTimelineService : IConversationTimelineService
+{
+    public List<(Guid ConversationId, string EventType, string Summary)> Entries { get; } = new();
+
+    public Task RecordAsync(
+        Guid tenantId, Guid conversationId,
+        string eventType, string actorType, string summary, string visibility,
+        DateTime occurredAtUtc,
+        string? eventSubType = null,
+        Guid? actorId = null,
+        string? actorDisplayName = null,
+        string? metadataJson = null,
+        Guid? relatedMessageId = null,
+        Guid? relatedAssignmentId = null,
+        Guid? relatedSlaId = null,
+        CancellationToken ct = default)
+    {
+        Entries.Add((conversationId, eventType, summary));
+        return Task.CompletedTask;
+    }
+
+    public Task<SynqComm.Application.DTOs.TimelinePageResponse> GetTimelineAsync(
+        Guid tenantId, Guid conversationId,
+        SynqComm.Application.DTOs.TimelineQuery query,
+        CancellationToken ct = default)
+    {
+        return Task.FromResult(new SynqComm.Application.DTOs.TimelinePageResponse(
+            new List<SynqComm.Application.DTOs.TimelineEntryResponse>(), 0, 1, 50, false));
+    }
 }
 
 public class NoOpAuditPublisher : IAuditPublisher

@@ -13,6 +13,7 @@ public class AssignmentService : IAssignmentService
     private readonly IConversationQueueRepository _queueRepo;
     private readonly IConversationRepository _conversationRepo;
     private readonly IConversationSlaStateRepository _slaRepo;
+    private readonly IConversationTimelineService _timeline;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<AssignmentService> _logger;
 
@@ -21,6 +22,7 @@ public class AssignmentService : IAssignmentService
         IConversationQueueRepository queueRepo,
         IConversationRepository conversationRepo,
         IConversationSlaStateRepository slaRepo,
+        IConversationTimelineService timeline,
         IAuditPublisher audit,
         ILogger<AssignmentService> logger)
     {
@@ -28,6 +30,7 @@ public class AssignmentService : IAssignmentService
         _queueRepo = queueRepo;
         _conversationRepo = conversationRepo;
         _slaRepo = slaRepo;
+        _timeline = timeline;
         _audit = audit;
         _logger = logger;
     }
@@ -80,6 +83,22 @@ public class AssignmentService : IAssignmentService
             tenantId, userId, "ConversationAssignment", assignment.Id.ToString(),
             metadata: $"{{\"conversationId\":\"{conversationId}\",\"queueId\":\"{request.QueueId}\",\"assignedUserId\":\"{request.AssignedUserId}\",\"status\":\"{assignment.AssignmentStatus}\"}}");
 
+        try
+        {
+            await _timeline.RecordAsync(
+                tenantId, conversationId,
+                Domain.Constants.TimelineEventTypes.Assigned,
+                Domain.Constants.TimelineActorType.User,
+                $"Case assigned{(queueName != null ? $" to queue {queueName}" : "")}",
+                Domain.Constants.TimelineVisibility.InternalOnly,
+                DateTime.UtcNow,
+                actorId: userId,
+                relatedAssignmentId: assignment.Id,
+                metadataJson: $"{{\"queueId\":\"{request.QueueId}\",\"assignedUserId\":\"{request.AssignedUserId}\",\"queueName\":\"{queueName}\"}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for assignment on {ConversationId}", conversationId); }
+
         return ToResponse(assignment, queueName);
     }
 
@@ -113,6 +132,22 @@ public class AssignmentService : IAssignmentService
             tenantId, userId, "ConversationAssignment", assignment.Id.ToString(),
             metadata: $"{{\"conversationId\":\"{conversationId}\",\"oldQueueId\":\"{oldQueueId}\",\"newQueueId\":\"{request.QueueId}\",\"oldAssignedUserId\":\"{oldUserId}\",\"newAssignedUserId\":\"{request.AssignedUserId}\"}}");
 
+        try
+        {
+            await _timeline.RecordAsync(
+                tenantId, conversationId,
+                Domain.Constants.TimelineEventTypes.Reassigned,
+                Domain.Constants.TimelineActorType.User,
+                $"Case reassigned{(queueName != null ? $" to queue {queueName}" : "")}",
+                Domain.Constants.TimelineVisibility.InternalOnly,
+                DateTime.UtcNow,
+                actorId: userId,
+                relatedAssignmentId: assignment.Id,
+                metadataJson: $"{{\"oldQueueId\":\"{oldQueueId}\",\"newQueueId\":\"{request.QueueId}\",\"oldAssignedUserId\":\"{oldUserId}\",\"newAssignedUserId\":\"{request.AssignedUserId}\"}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for reassignment on {ConversationId}", conversationId); }
+
         return ToResponse(assignment, queueName);
     }
 
@@ -139,6 +174,22 @@ public class AssignmentService : IAssignmentService
             $"Conversation user unassigned",
             tenantId, userId, "ConversationAssignment", assignment.Id.ToString(),
             metadata: $"{{\"conversationId\":\"{conversationId}\",\"previousAssignedUserId\":\"{oldUserId}\"}}");
+
+        try
+        {
+            await _timeline.RecordAsync(
+                tenantId, conversationId,
+                Domain.Constants.TimelineEventTypes.Unassigned,
+                Domain.Constants.TimelineActorType.User,
+                "Case unassigned",
+                Domain.Constants.TimelineVisibility.InternalOnly,
+                DateTime.UtcNow,
+                actorId: userId,
+                relatedAssignmentId: assignment.Id,
+                metadataJson: $"{{\"previousAssignedUserId\":\"{oldUserId}\"}}",
+                ct: ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for unassignment on {ConversationId}", conversationId); }
 
         return ToResponse(assignment, queueName);
     }

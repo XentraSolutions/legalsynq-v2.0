@@ -15,6 +15,7 @@ public class SlaNotificationService : ISlaNotificationService
     private readonly IConversationRepository _conversationRepo;
     private readonly IEscalationTargetResolver _targetResolver;
     private readonly INotificationsServiceClient _notificationsClient;
+    private readonly IConversationTimelineService _timeline;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<SlaNotificationService> _logger;
 
@@ -24,6 +25,7 @@ public class SlaNotificationService : ISlaNotificationService
         IConversationRepository conversationRepo,
         IEscalationTargetResolver targetResolver,
         INotificationsServiceClient notificationsClient,
+        IConversationTimelineService timeline,
         IAuditPublisher audit,
         ILogger<SlaNotificationService> logger)
     {
@@ -32,6 +34,7 @@ public class SlaNotificationService : ISlaNotificationService
         _conversationRepo = conversationRepo;
         _targetResolver = targetResolver;
         _notificationsClient = notificationsClient;
+        _timeline = timeline;
         _audit = audit;
         _logger = logger;
     }
@@ -200,6 +203,30 @@ public class SlaNotificationService : ISlaNotificationService
             _logger.LogInformation(
                 "SLA trigger {TriggerType} sent for conversation {ConversationId} to user {UserId}",
                 triggerType, conv.Id, target.UserId);
+
+            var timelineEventType = triggerType switch
+            {
+                SlaTriggerType.FirstResponseWarning => TimelineEventTypes.FirstResponseWarning,
+                SlaTriggerType.FirstResponseBreach => TimelineEventTypes.FirstResponseBreach,
+                SlaTriggerType.ResolutionWarning => TimelineEventTypes.ResolutionWarning,
+                SlaTriggerType.ResolutionBreach => TimelineEventTypes.ResolutionBreach,
+                _ => TimelineEventTypes.EscalationTriggered
+            };
+
+            try
+            {
+                await _timeline.RecordAsync(
+                    tenantId, conv.Id,
+                    timelineEventType,
+                    TimelineActorType.System,
+                    $"{triggerType} — escalated to user {target.UserId}",
+                    TimelineVisibility.InternalOnly,
+                    nowUtc,
+                    relatedSlaId: sla.Id,
+                    metadataJson: $"{{\"triggerType\":\"{triggerType}\",\"targetUserId\":\"{target.UserId}\",\"queueId\":\"{target.QueueId}\",\"priority\":\"{sla.Priority}\",\"dueAtUtc\":\"{dueAtUtc:O}\"}}",
+                    ct: ct);
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline for SLA trigger {TriggerType} on {ConversationId}", triggerType, conv.Id); }
 
             return true;
         }

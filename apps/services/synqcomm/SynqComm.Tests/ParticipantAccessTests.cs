@@ -26,7 +26,7 @@ public class ParticipantAccessTests
         var service = new ConversationService(
             conversationRepo, participantRepo, messageRepo, readStateRepo, attachmentRepo,
             TestHelpers.CreateOperationalService(db, audit),
-            audit, TestHelpers.CreateLogger<ConversationService>());
+            new NoOpTimelineService(), audit, TestHelpers.CreateLogger<ConversationService>());
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>
             await service.GetThreadAsync(TestHelpers.TenantId, conversation.Id, nonParticipantUserId));
@@ -51,7 +51,7 @@ public class ParticipantAccessTests
 
         var msgService = new MessageService(
             messageRepo, conversationRepo, participantRepo,
-            audit, TestHelpers.CreateLogger<MessageService>());
+            new NoOpTimelineService(), audit, TestHelpers.CreateLogger<MessageService>());
 
         var request = new AddMessageRequest("Hello", Channel.InApp, Direction.Internal, VisibilityType.InternalOnly);
 
@@ -76,7 +76,7 @@ public class ParticipantAccessTests
 
         var msgService = new MessageService(
             messageRepo, conversationRepo, participantRepo,
-            audit, TestHelpers.CreateLogger<MessageService>());
+            new NoOpTimelineService(), audit, TestHelpers.CreateLogger<MessageService>());
 
         var request = new AddMessageRequest("Hello", Channel.InApp, Direction.Internal, VisibilityType.InternalOnly);
 

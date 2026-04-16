@@ -345,7 +345,7 @@ public class MessageAttachmentTests
         var conversationService = new ConversationService(
             conversationRepo, participantRepo, messageRepo, readStateRepo, attachmentRepo,
             TestHelpers.CreateOperationalService(db, csAudit),
-            csAudit,
+            new NoOpTimelineService(), csAudit,
             TestHelpers.CreateLogger<ConversationService>());
 
         var thread = await conversationService.GetThreadAsync(

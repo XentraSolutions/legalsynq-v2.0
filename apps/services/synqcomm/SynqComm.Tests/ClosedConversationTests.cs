@@ -25,7 +25,7 @@ public class ClosedConversationTests
 
         var msgService = new MessageService(
             messageRepo, conversationRepo, participantRepo,
-            audit, TestHelpers.CreateLogger<MessageService>());
+            new NoOpTimelineService(), audit, TestHelpers.CreateLogger<MessageService>());
 
         var request = new AddMessageRequest("First message", Channel.InApp, Direction.Internal, VisibilityType.InternalOnly);
         await msgService.AddAsync(TestHelpers.TenantId, TestHelpers.OrgId, TestHelpers.UserId1, conversation.Id, request);
