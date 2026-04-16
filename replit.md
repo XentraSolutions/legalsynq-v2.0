@@ -397,16 +397,16 @@ apps/
         Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository, IConversationReadStateRepository, IMessageAttachmentRepository
         Services/                         ← ConversationService (participant access, visibility-aware unread, attachment-enriched threads), MessageService, ParticipantService, ReadTrackingService, MessageAttachmentService (link/list/remove with doc validation + audit)
       SynqComm.Domain/
-        Entities/                         ← Conversation, Message, ConversationParticipant, ConversationReadState, MessageAttachment (BLK-003)
-        Enums/                            ← ConversationStatus (ValidTransitions map), VisibilityType, Channel, Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType
-        SynqCommPermissions.cs            ← Product code + permission constants (incl. AttachmentManage)
+        Entities/                         ← Conversation, Message, ConversationParticipant, ConversationReadState, MessageAttachment (BLK-003), EmailMessageReference, ExternalParticipantIdentity (BLK-001 Epic 02)
+        Enums/                            ← ConversationStatus (ValidTransitions map), VisibilityType, Channel (incl. Email), Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType, EmailDirection, MatchStrategy
+        SynqCommPermissions.cs            ← Product code + permission constants (incl. AttachmentManage, EmailIntake)
       SynqComm.Infrastructure/
-        DependencyInjection.cs            ← AddSynqCommServices() extension (includes attachment repo/service + DocumentsService HTTP client)
-        Persistence/                      ← SynqCommDbContext (5 DbSets), EF configurations (incl. MessageAttachmentConfiguration), migrations (InitialCreateWithBLK002, AddMessageAttachments)
+        DependencyInjection.cs            ← AddSynqCommServices() extension (includes attachment repo/service + DocumentsService HTTP client + email intake repos/service)
+        Persistence/                      ← SynqCommDbContext (7 DbSets), EF configurations (incl. MessageAttachmentConfiguration, EmailMessageReferenceConfiguration, ExternalParticipantIdentityConfiguration), migrations (InitialCreateWithBLK002, AddMessageAttachments, AddEmailIntakeTables)
         Repositories/                     ← ConversationRepository, MessageRepository, ParticipantRepository, ConversationReadStateRepository, MessageAttachmentRepository
         Audit/AuditPublisher.cs           ← fire-and-forget audit via shared AuditClient
         Documents/DocumentServiceClient.cs ← HTTP client validating doc existence + tenant ownership via Documents service (BLK-003)
-      SynqComm.Tests/                     ← xUnit test project (41 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests)
+      SynqComm.Tests/                     ← xUnit test project (53 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests)
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/

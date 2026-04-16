@@ -84,19 +84,29 @@ public static class TestHelpers
     public static IMessageAttachmentRepository CreateAttachmentRepo(SynqCommDbContext db) =>
         new MessageAttachmentRepository(db);
 
+    public static IEmailMessageReferenceRepository CreateEmailRefRepo(SynqCommDbContext db) =>
+        new EmailMessageReferenceRepository(db);
+
+    public static IExternalParticipantIdentityRepository CreateIdentityRepo(SynqCommDbContext db) =>
+        new ExternalParticipantIdentityRepository(db);
+
     public static ILogger<T> CreateLogger<T>() =>
         LoggerFactory.Create(b => { }).CreateLogger<T>();
 }
 
 public class NoOpAuditPublisher : IAuditPublisher
 {
+    public List<(string EventType, string Action, string Description)> Events { get; } = new();
+
     public void Publish(
         string eventType, string action, string description,
         Guid tenantId, Guid? actorUserId = null,
         string? entityType = null, string? entityId = null,
         string? before = null, string? after = null,
         string? metadata = null)
-    { }
+    {
+        Events.Add((eventType, action, description));
+    }
 }
 
 public class MockDocumentServiceClient : IDocumentServiceClient

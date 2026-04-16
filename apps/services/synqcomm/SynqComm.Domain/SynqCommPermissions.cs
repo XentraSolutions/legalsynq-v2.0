@@ -15,4 +15,6 @@ public static class SynqCommPermissions
     public const string ParticipantManage = "SYNQ_COMMS.participant:manage";
 
     public const string AttachmentManage = "SYNQ_COMMS.attachment:manage";
+
+    public const string EmailIntake = "SYNQ_COMMS.email:intake";
 }

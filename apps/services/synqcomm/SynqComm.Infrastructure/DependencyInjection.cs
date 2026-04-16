@@ -35,12 +35,15 @@ public static class DependencyInjection
         services.AddScoped<IParticipantRepository, ParticipantRepository>();
         services.AddScoped<IConversationReadStateRepository, ConversationReadStateRepository>();
         services.AddScoped<IMessageAttachmentRepository, MessageAttachmentRepository>();
+        services.AddScoped<IEmailMessageReferenceRepository, EmailMessageReferenceRepository>();
+        services.AddScoped<IExternalParticipantIdentityRepository, ExternalParticipantIdentityRepository>();
 
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IMessageService, MessageService>();
         services.AddScoped<IParticipantService, ParticipantService>();
         services.AddScoped<IReadTrackingService, ReadTrackingService>();
         services.AddScoped<IMessageAttachmentService, MessageAttachmentService>();
+        services.AddScoped<IEmailIntakeService, EmailIntakeService>();
 
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
         services.AddHttpClient("DocumentsService", client =>
