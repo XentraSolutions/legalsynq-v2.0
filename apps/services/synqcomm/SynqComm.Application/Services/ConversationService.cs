@@ -13,6 +13,7 @@ public class ConversationService : IConversationService
     private readonly IParticipantRepository _participantRepo;
     private readonly IMessageRepository _messageRepo;
     private readonly IConversationReadStateRepository _readStateRepo;
+    private readonly IMessageAttachmentRepository _attachmentRepo;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<ConversationService> _logger;
 
@@ -21,6 +22,7 @@ public class ConversationService : IConversationService
         IParticipantRepository participantRepo,
         IMessageRepository messageRepo,
         IConversationReadStateRepository readStateRepo,
+        IMessageAttachmentRepository attachmentRepo,
         IAuditPublisher audit,
         ILogger<ConversationService> logger)
     {
@@ -28,6 +30,7 @@ public class ConversationService : IConversationService
         _participantRepo = participantRepo;
         _messageRepo = messageRepo;
         _readStateRepo = readStateRepo;
+        _attachmentRepo = attachmentRepo;
         _audit = audit;
         _logger = logger;
     }
@@ -48,7 +51,8 @@ public class ConversationService : IConversationService
             conversation.Id, conversation.ContextType, conversation.ContextId);
 
         _audit.Publish("ConversationCreated", "Created", $"Conversation created: {request.Subject}",
-            tenantId, userId, "Conversation", conversation.Id.ToString());
+            tenantId, userId, "Conversation", conversation.Id.ToString(),
+            metadata: $"{{\"contextType\":\"{request.ContextType}\",\"contextId\":\"{request.ContextId}\",\"visibility\":\"{request.VisibilityType}\"}}");
 
         return ToResponse(conversation);
     }
@@ -130,7 +134,8 @@ public class ConversationService : IConversationService
 
         _audit.Publish("ConversationStatusChanged", "StatusChanged",
             $"Status changed from {oldStatus} to {request.Status}",
-            tenantId, userId, "Conversation", conversation.Id.ToString());
+            tenantId, userId, "Conversation", conversation.Id.ToString(),
+            metadata: $"{{\"previousStatus\":\"{oldStatus}\",\"newStatus\":\"{request.Status}\"}}");
 
         return ToResponse(conversation);
     }
@@ -147,11 +152,22 @@ public class ConversationService : IConversationService
         var allMessages = await _messageRepo.ListByConversationOrderedAsync(tenantId, id, ct);
         var visibleMessages = FilterMessagesByVisibility(allMessages, participant);
 
+        var allAttachments = await _attachmentRepo.ListByConversationAsync(tenantId, id, ct);
+        var attachmentsByMessage = allAttachments
+            .GroupBy(a => a.MessageId)
+            .ToDictionary(g => g.Key, g => g.Select(ToAttachmentResponse).ToList());
+
         var participants = await _participantRepo.ListByConversationAsync(tenantId, id, ct);
 
         var readState = await _readStateRepo.GetAsync(tenantId, id, userId, ct);
         var latestVisible = visibleMessages.LastOrDefault();
         var isUnread = ComputeUnread(readState, latestVisible);
+
+        var messageResponses = visibleMessages.Select(m =>
+        {
+            attachmentsByMessage.TryGetValue(m.Id, out var msgAttachments);
+            return ToMessageResponse(m, msgAttachments);
+        }).ToList();
 
         return new ConversationThreadResponse(
             conversation.Id, conversation.TenantId, conversation.OrgId,
@@ -160,7 +176,7 @@ public class ConversationService : IConversationService
             conversation.LastActivityAtUtc, conversation.CreatedAtUtc, conversation.UpdatedAtUtc,
             conversation.CreatedByUserId,
             isUnread, readState?.LastReadAtUtc, readState?.LastReadMessageId,
-            visibleMessages.Select(ToMessageResponse).ToList(),
+            messageResponses,
             participants.Select(ToParticipantResponse).ToList());
     }
 
@@ -189,12 +205,17 @@ public class ConversationService : IConversationService
         c.LastActivityAtUtc, c.CreatedAtUtc, c.UpdatedAtUtc, c.CreatedByUserId,
         isUnread, lastReadAtUtc);
 
-    private static MessageResponse ToMessageResponse(Message m) => new(
+    private static MessageResponse ToMessageResponse(Message m, List<AttachmentResponse>? attachments = null) => new(
         m.Id, m.ConversationId,
         m.Channel, m.Direction, m.Body, m.VisibilityType,
         m.SentAtUtc, m.SenderUserId, m.SenderParticipantType,
         m.ExternalSenderName, m.ExternalSenderEmail,
-        m.Status, m.CreatedAtUtc);
+        m.Status, m.CreatedAtUtc, attachments);
+
+    private static AttachmentResponse ToAttachmentResponse(MessageAttachment a) => new(
+        a.Id, a.MessageId, a.DocumentId,
+        a.FileName, a.ContentType, a.FileSizeBytes,
+        a.IsActive, a.CreatedAtUtc, a.CreatedByUserId);
 
     private static ParticipantResponse ToParticipantResponse(ConversationParticipant p) => new(
         p.Id, p.ConversationId,

@@ -4,6 +4,7 @@ using SynqComm.Application.Interfaces;
 using SynqComm.Application.Repositories;
 using SynqComm.Application.Services;
 using SynqComm.Infrastructure.Audit;
+using SynqComm.Infrastructure.Documents;
 using SynqComm.Infrastructure.Persistence;
 using SynqComm.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -33,11 +34,21 @@ public static class DependencyInjection
         services.AddScoped<IMessageRepository, MessageRepository>();
         services.AddScoped<IParticipantRepository, ParticipantRepository>();
         services.AddScoped<IConversationReadStateRepository, ConversationReadStateRepository>();
+        services.AddScoped<IMessageAttachmentRepository, MessageAttachmentRepository>();
 
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IMessageService, MessageService>();
         services.AddScoped<IParticipantService, ParticipantService>();
         services.AddScoped<IReadTrackingService, ReadTrackingService>();
+        services.AddScoped<IMessageAttachmentService, MessageAttachmentService>();
+
+        var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
+        services.AddHttpClient("DocumentsService", client =>
+        {
+            client.BaseAddress = new Uri(docsBaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddScoped<IDocumentServiceClient, DocumentServiceClient>();
 
         services.AddAuditEventClient(configuration);
         services.AddScoped<IAuditPublisher, AuditPublisher>();

@@ -12,6 +12,7 @@ public class SynqCommDbContext : DbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<ConversationParticipant> ConversationParticipants => Set<ConversationParticipant>();
     public DbSet<ConversationReadState> ConversationReadStates => Set<ConversationReadState>();
+    public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

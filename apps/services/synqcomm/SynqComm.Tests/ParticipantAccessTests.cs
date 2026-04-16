@@ -22,8 +22,9 @@ public class ParticipantAccessTests
 
         var nonParticipantUserId = Guid.NewGuid();
 
+        var attachmentRepo = TestHelpers.CreateAttachmentRepo(db);
         var service = new ConversationService(
-            conversationRepo, participantRepo, messageRepo, readStateRepo,
+            conversationRepo, participantRepo, messageRepo, readStateRepo, attachmentRepo,
             audit, TestHelpers.CreateLogger<ConversationService>());
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(async () =>

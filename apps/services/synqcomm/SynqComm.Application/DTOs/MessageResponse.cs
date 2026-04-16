@@ -13,4 +13,5 @@ public record MessageResponse(
     string? ExternalSenderName,
     string? ExternalSenderEmail,
     string Status,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    List<AttachmentResponse>? Attachments = null);

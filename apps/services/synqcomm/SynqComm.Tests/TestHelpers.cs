@@ -81,6 +81,9 @@ public static class TestHelpers
     public static IConversationReadStateRepository CreateReadStateRepo(SynqCommDbContext db) =>
         new ConversationReadStateRepository(db);
 
+    public static IMessageAttachmentRepository CreateAttachmentRepo(SynqCommDbContext db) =>
+        new MessageAttachmentRepository(db);
+
     public static ILogger<T> CreateLogger<T>() =>
         LoggerFactory.Create(b => { }).CreateLogger<T>();
 }
@@ -94,4 +97,21 @@ public class NoOpAuditPublisher : IAuditPublisher
         string? before = null, string? after = null,
         string? metadata = null)
     { }
+}
+
+public class MockDocumentServiceClient : IDocumentServiceClient
+{
+    private readonly Dictionary<Guid, DocumentValidationResult> _results = new();
+
+    public void SetResult(Guid documentId, DocumentValidationResult result) =>
+        _results[documentId] = result;
+
+    public Task<DocumentValidationResult> ValidateDocumentAsync(
+        Guid documentId, Guid expectedTenantId, CancellationToken ct = default)
+    {
+        if (_results.TryGetValue(documentId, out var result))
+            return Task.FromResult(result);
+
+        return Task.FromResult(new DocumentValidationResult(false, null));
+    }
 }

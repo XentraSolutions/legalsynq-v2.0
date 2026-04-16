@@ -387,23 +387,26 @@ apps/
           ConversationEndpoints.cs        ← GET/POST /api/synqcomm/conversations, PATCH status, GET thread, POST read/unread
           MessageEndpoints.cs             ← GET/POST /api/synqcomm/conversations/{id}/messages (visibility-filtered)
           ParticipantEndpoints.cs         ← GET/POST/DELETE /api/synqcomm/conversations/{id}/participants
+          AttachmentEndpoints.cs          ← GET/POST/DELETE /api/synqcomm/conversations/{id}/messages/{msgId}/attachments (BLK-003)
         Middleware/ExceptionHandlingMiddleware.cs
         DesignTimeDbContextFactory.cs
-        appsettings.json                  ← port 5011 + ConnectionStrings:SynqCommDb
+        appsettings.json                  ← port 5011 + ConnectionStrings:SynqCommDb + Services:DocumentsUrl
       SynqComm.Application/
-        DTOs/                             ← CreateConversationRequest, AddMessageRequest, AddParticipantRequest, MarkConversationReadRequest, ConversationThreadResponse, ReadStateResponse, responses
-        Interfaces/                       ← IConversationService, IMessageService, IParticipantService, IReadTrackingService, IAuditPublisher
-        Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository, IConversationReadStateRepository
-        Services/                         ← ConversationService (participant access, visibility-aware unread), MessageService (access/reply/visibility enforcement, auto-transition), ParticipantService, ReadTrackingService
+        DTOs/                             ← CreateConversationRequest, AddMessageRequest, AddParticipantRequest, MarkConversationReadRequest, ConversationThreadResponse, ReadStateResponse, AddMessageAttachmentRequest, AttachmentResponse, responses
+        Interfaces/                       ← IConversationService, IMessageService, IParticipantService, IReadTrackingService, IAuditPublisher, IDocumentServiceClient, IMessageAttachmentService
+        Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository, IConversationReadStateRepository, IMessageAttachmentRepository
+        Services/                         ← ConversationService (participant access, visibility-aware unread, attachment-enriched threads), MessageService, ParticipantService, ReadTrackingService, MessageAttachmentService (link/list/remove with doc validation + audit)
       SynqComm.Domain/
-        Entities/                         ← Conversation (status transitions, auto-open, reopen), Message, ConversationParticipant, ConversationReadState (AuditableEntity)
+        Entities/                         ← Conversation, Message, ConversationParticipant, ConversationReadState, MessageAttachment (BLK-003)
         Enums/                            ← ConversationStatus (ValidTransitions map), VisibilityType, Channel, Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType
+        SynqCommPermissions.cs            ← Product code + permission constants (incl. AttachmentManage)
       SynqComm.Infrastructure/
-        DependencyInjection.cs            ← AddSynqCommServices() extension (includes ReadStateRepo + ReadTrackingService)
-        Persistence/                      ← SynqCommDbContext (4 DbSets), EF configurations (incl. ConversationReadStateConfiguration), migrations
-        Repositories/                     ← ConversationRepository, MessageRepository (ordered + latest), ParticipantRepository (GetActiveByUserIdAsync), ConversationReadStateRepository
+        DependencyInjection.cs            ← AddSynqCommServices() extension (includes attachment repo/service + DocumentsService HTTP client)
+        Persistence/                      ← SynqCommDbContext (5 DbSets), EF configurations (incl. MessageAttachmentConfiguration), migrations (InitialCreateWithBLK002, AddMessageAttachments)
+        Repositories/                     ← ConversationRepository, MessageRepository, ParticipantRepository, ConversationReadStateRepository, MessageAttachmentRepository
         Audit/AuditPublisher.cs           ← fire-and-forget audit via shared AuditClient
-      SynqComm.Tests/                     ← xUnit test project (31 tests: ordered thread, participant access, visibility, read tracking, unread after new message, status transitions, closed conversation behavior)
+        Documents/DocumentServiceClient.cs ← HTTP client validating doc existence + tenant ownership via Documents service (BLK-003)
+      SynqComm.Tests/                     ← xUnit test project (41 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests)
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/

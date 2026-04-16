@@ -115,5 +115,6 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
 app.MapConversationEndpoints();
 app.MapMessageEndpoints();
 app.MapParticipantEndpoints();
+app.MapAttachmentEndpoints();
 
 app.Run();
