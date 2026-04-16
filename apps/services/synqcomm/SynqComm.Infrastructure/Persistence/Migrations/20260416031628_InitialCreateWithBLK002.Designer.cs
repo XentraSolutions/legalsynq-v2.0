@@ -12,8 +12,8 @@ using SynqComm.Infrastructure.Persistence;
 namespace SynqComm.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SynqCommDbContext))]
-    [Migration("20260416025702_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20260416031628_InitialCreateWithBLK002")]
+    partial class InitialCreateWithBLK002
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -157,7 +157,8 @@ namespace SynqComm.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ConversationId");
+                    b.HasIndex("ConversationId", "UserId", "IsActive")
+                        .HasDatabaseName("IX_Participants_ConversationId_UserId_IsActive");
 
                     b.HasIndex("TenantId", "ConversationId", "IsActive")
                         .HasDatabaseName("IX_Participants_TenantId_ConversationId_Active");
@@ -166,6 +167,51 @@ namespace SynqComm.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_Participants_TenantId_UserId_Active");
 
                     b.ToTable("comms_ConversationParticipants", (string)null);
+                });
+
+            modelBuilder.Entity("SynqComm.Domain.Entities.ConversationReadState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("LastReadAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("LastReadMessageId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("TenantId", "ConversationId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ReadStates_TenantId_ConversationId_UserId");
+
+                    b.ToTable("comms_ConversationReadStates", (string)null);
                 });
 
             modelBuilder.Entity("SynqComm.Domain.Entities.Message", b =>
@@ -258,6 +304,15 @@ namespace SynqComm.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("SynqComm.Domain.Entities.ConversationParticipant", b =>
+                {
+                    b.HasOne("SynqComm.Domain.Entities.Conversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SynqComm.Domain.Entities.ConversationReadState", b =>
                 {
                     b.HasOne("SynqComm.Domain.Entities.Conversation", null)
                         .WithMany()

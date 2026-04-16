@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace SynqComm.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class InitialCreateWithBLK002 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -83,6 +83,33 @@ namespace SynqComm.Infrastructure.Persistence.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateTable(
+                name: "comms_ConversationReadStates",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    ConversationId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    UserId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    LastReadMessageId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci"),
+                    LastReadAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: true),
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    CreatedByUserId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    UpdatedByUserId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_comms_ConversationReadStates", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_comms_ConversationReadStates_comms_Conversations_Conversatio~",
+                        column: x => x.ConversationId,
+                        principalTable: "comms_Conversations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
+
+            migrationBuilder.CreateTable(
                 name: "comms_Messages",
                 columns: table => new
                 {
@@ -128,9 +155,9 @@ namespace SynqComm.Infrastructure.Persistence.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateIndex(
-                name: "IX_comms_ConversationParticipants_ConversationId",
+                name: "IX_Participants_ConversationId_UserId_IsActive",
                 table: "comms_ConversationParticipants",
-                column: "ConversationId");
+                columns: new[] { "ConversationId", "UserId", "IsActive" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Participants_TenantId_ConversationId_Active",
@@ -141,6 +168,17 @@ namespace SynqComm.Infrastructure.Persistence.Migrations
                 name: "IX_Participants_TenantId_UserId_Active",
                 table: "comms_ConversationParticipants",
                 columns: new[] { "TenantId", "UserId", "IsActive" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_comms_ConversationReadStates_ConversationId",
+                table: "comms_ConversationReadStates",
+                column: "ConversationId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReadStates_TenantId_ConversationId_UserId",
+                table: "comms_ConversationReadStates",
+                columns: new[] { "TenantId", "ConversationId", "UserId" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Conversations_TenantId_Context",
@@ -178,6 +216,9 @@ namespace SynqComm.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropTable(
                 name: "comms_ConversationParticipants");
+
+            migrationBuilder.DropTable(
+                name: "comms_ConversationReadStates");
 
             migrationBuilder.DropTable(
                 name: "comms_Messages");

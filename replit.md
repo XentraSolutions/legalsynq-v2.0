@@ -384,26 +384,26 @@ apps/
     synqcomm/
       SynqComm.Api/                       → ASP.NET Core Web API (port 5011)
         Endpoints/
-          ConversationEndpoints.cs        ← GET/POST /api/synqcomm/conversations, PATCH status
-          MessageEndpoints.cs             ← GET/POST /api/synqcomm/conversations/{id}/messages
+          ConversationEndpoints.cs        ← GET/POST /api/synqcomm/conversations, PATCH status, GET thread, POST read/unread
+          MessageEndpoints.cs             ← GET/POST /api/synqcomm/conversations/{id}/messages (visibility-filtered)
           ParticipantEndpoints.cs         ← GET/POST/DELETE /api/synqcomm/conversations/{id}/participants
         Middleware/ExceptionHandlingMiddleware.cs
         DesignTimeDbContextFactory.cs
         appsettings.json                  ← port 5011 + ConnectionStrings:SynqCommDb
       SynqComm.Application/
-        DTOs/                             ← CreateConversationRequest, AddMessageRequest, AddParticipantRequest, responses
-        Interfaces/                       ← IConversationService, IMessageService, IParticipantService, IAuditPublisher
-        Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository
-        Services/                         ← ConversationService, MessageService, ParticipantService
+        DTOs/                             ← CreateConversationRequest, AddMessageRequest, AddParticipantRequest, MarkConversationReadRequest, ConversationThreadResponse, ReadStateResponse, responses
+        Interfaces/                       ← IConversationService, IMessageService, IParticipantService, IReadTrackingService, IAuditPublisher
+        Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository, IConversationReadStateRepository
+        Services/                         ← ConversationService (participant access, visibility-aware unread), MessageService (access/reply/visibility enforcement, auto-transition), ParticipantService, ReadTrackingService
       SynqComm.Domain/
-        Entities/                         ← Conversation, Message, ConversationParticipant (AuditableEntity)
-        Enums/                            ← ConversationStatus, VisibilityType, Channel, Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType
+        Entities/                         ← Conversation (status transitions, auto-open, reopen), Message, ConversationParticipant, ConversationReadState (AuditableEntity)
+        Enums/                            ← ConversationStatus (ValidTransitions map), VisibilityType, Channel, Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType
       SynqComm.Infrastructure/
-        DependencyInjection.cs            ← AddSynqCommServices() extension
-        Persistence/                      ← SynqCommDbContext, EF configurations, migrations
-        Repositories/                     ← ConversationRepository, MessageRepository, ParticipantRepository
+        DependencyInjection.cs            ← AddSynqCommServices() extension (includes ReadStateRepo + ReadTrackingService)
+        Persistence/                      ← SynqCommDbContext (4 DbSets), EF configurations (incl. ConversationReadStateConfiguration), migrations
+        Repositories/                     ← ConversationRepository, MessageRepository (ordered + latest), ParticipantRepository (GetActiveByUserIdAsync), ConversationReadStateRepository
         Audit/AuditPublisher.cs           ← fire-and-forget audit via shared AuditClient
-      SynqComm.Tests/                     ← xUnit test project
+      SynqComm.Tests/                     ← xUnit test project (31 tests: ordered thread, participant access, visibility, read tracking, unread after new message, status transitions, closed conversation behavior)
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/

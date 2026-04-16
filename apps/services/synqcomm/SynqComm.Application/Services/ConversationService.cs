@@ -59,20 +59,22 @@ public class ConversationService : IConversationService
         var conversation = await _repo.GetByIdAsync(tenantId, id, ct);
         if (conversation is null) return null;
 
+        ConversationParticipant? participant = null;
         if (currentUserId.HasValue)
         {
-            var participant = await _participantRepo.GetActiveByUserIdAsync(tenantId, id, currentUserId.Value, ct);
+            participant = await _participantRepo.GetActiveByUserIdAsync(tenantId, id, currentUserId.Value, ct);
             if (participant is null)
                 throw new UnauthorizedAccessException("You are not a participant in this conversation.");
         }
 
         bool? isUnread = null;
         DateTime? lastReadAtUtc = null;
-        if (currentUserId.HasValue)
+        if (currentUserId.HasValue && participant is not null)
         {
             var readState = await _readStateRepo.GetAsync(tenantId, id, currentUserId.Value, ct);
-            var latestMessage = await _messageRepo.GetLatestByConversationAsync(tenantId, id, ct);
-            isUnread = ComputeUnread(readState, latestMessage);
+            var allMessages = await _messageRepo.ListByConversationOrderedAsync(tenantId, id, ct);
+            var latestVisible = FilterMessagesByVisibility(allMessages, participant).LastOrDefault();
+            isUnread = ComputeUnread(readState, latestVisible);
             lastReadAtUtc = readState?.LastReadAtUtc;
         }
 
@@ -98,8 +100,9 @@ public class ConversationService : IConversationService
                 if (participant is null) continue;
 
                 var readState = await _readStateRepo.GetAsync(tenantId, c.Id, currentUserId.Value, ct);
-                var latestMessage = await _messageRepo.GetLatestByConversationAsync(tenantId, c.Id, ct);
-                isUnread = ComputeUnread(readState, latestMessage);
+                var allMessages = await _messageRepo.ListByConversationOrderedAsync(tenantId, c.Id, ct);
+                var latestVisible = FilterMessagesByVisibility(allMessages, participant).LastOrDefault();
+                isUnread = ComputeUnread(readState, latestVisible);
                 lastReadAtUtc = readState?.LastReadAtUtc;
             }
             results.Add(ToResponse(c, isUnread, lastReadAtUtc));
