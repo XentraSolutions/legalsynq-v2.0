@@ -32,10 +32,12 @@ public static class DependencyInjection
         services.AddScoped<IConversationRepository, ConversationRepository>();
         services.AddScoped<IMessageRepository, MessageRepository>();
         services.AddScoped<IParticipantRepository, ParticipantRepository>();
+        services.AddScoped<IConversationReadStateRepository, ConversationReadStateRepository>();
 
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IMessageService, MessageService>();
         services.AddScoped<IParticipantService, ParticipantService>();
+        services.AddScoped<IReadTrackingService, ReadTrackingService>();
 
         services.AddAuditEventClient(configuration);
         services.AddScoped<IAuditPublisher, AuditPublisher>();

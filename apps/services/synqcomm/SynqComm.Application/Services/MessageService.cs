@@ -11,17 +11,20 @@ public class MessageService : IMessageService
 {
     private readonly IMessageRepository _messageRepo;
     private readonly IConversationRepository _conversationRepo;
+    private readonly IParticipantRepository _participantRepo;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<MessageService> _logger;
 
     public MessageService(
         IMessageRepository messageRepo,
         IConversationRepository conversationRepo,
+        IParticipantRepository participantRepo,
         IAuditPublisher audit,
         ILogger<MessageService> logger)
     {
         _messageRepo = messageRepo;
         _conversationRepo = conversationRepo;
+        _participantRepo = participantRepo;
         _audit = audit;
         _logger = logger;
     }
@@ -33,17 +36,37 @@ public class MessageService : IMessageService
         var conversation = await _conversationRepo.GetByIdAsync(tenantId, conversationId, ct)
             ?? throw new KeyNotFoundException($"Conversation '{conversationId}' not found.");
 
+        var participant = await _participantRepo.GetActiveByUserIdAsync(tenantId, conversationId, userId, ct)
+            ?? throw new UnauthorizedAccessException("You are not an active participant in this conversation.");
+
+        if (!participant.CanReply)
+            throw new UnauthorizedAccessException("You do not have reply permission in this conversation.");
+
+        if (participant.ParticipantType == ParticipantType.ExternalContact)
+            throw new UnauthorizedAccessException("External contacts cannot post in-app messages in this version.");
+
+        if (participant.ParticipantType == ParticipantType.System)
+            throw new UnauthorizedAccessException("System participants cannot post interactive user messages.");
+
+        if (request.Channel == Channel.SystemNote && request.VisibilityType == VisibilityType.SharedExternal)
+            throw new InvalidOperationException("System notes cannot have SharedExternal visibility.");
+
         var message = Message.Create(
             conversationId, tenantId, orgId,
             request.Channel, request.Direction,
             request.Body, request.VisibilityType,
             userId,
             senderUserId: userId,
-            senderParticipantType: ParticipantType.InternalUser);
+            senderParticipantType: participant.ParticipantType);
 
         await _messageRepo.AddAsync(message, ct);
 
         conversation.TouchActivity();
+        conversation.AutoTransitionToOpen(userId);
+
+        if (conversation.Status == ConversationStatus.Closed)
+            conversation.ReopenFromClosed(userId);
+
         await _conversationRepo.UpdateAsync(conversation, ct);
 
         _logger.LogInformation("Message {MessageId} added to conversation {ConversationId}",
@@ -56,9 +79,20 @@ public class MessageService : IMessageService
     }
 
     public async Task<List<MessageResponse>> ListByConversationAsync(
-        Guid tenantId, Guid conversationId, CancellationToken ct = default)
+        Guid tenantId, Guid conversationId, Guid userId, CancellationToken ct = default)
     {
-        var messages = await _messageRepo.ListByConversationAsync(tenantId, conversationId, ct);
+        var participant = await _participantRepo.GetActiveByUserIdAsync(tenantId, conversationId, userId, ct)
+            ?? throw new UnauthorizedAccessException("You are not an active participant in this conversation.");
+
+        var messages = await _messageRepo.ListByConversationOrderedAsync(tenantId, conversationId, ct);
+
+        if (participant.ParticipantType != ParticipantType.InternalUser)
+        {
+            messages = messages
+                .Where(m => m.VisibilityType == VisibilityType.SharedExternal)
+                .ToList();
+        }
+
         return messages.Select(ToResponse).ToList();
     }
 

@@ -36,6 +36,16 @@ public class ParticipantRepository : IParticipantRepository
         return null;
     }
 
+    public async Task<ConversationParticipant?> GetActiveByUserIdAsync(Guid tenantId, Guid conversationId, Guid userId, CancellationToken ct = default)
+    {
+        return await _db.ConversationParticipants
+            .Where(p => p.TenantId == tenantId
+                && p.ConversationId == conversationId
+                && p.UserId == userId
+                && p.IsActive)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task AddAsync(ConversationParticipant entity, CancellationToken ct = default)
     {
         await _db.ConversationParticipants.AddAsync(entity, ct);

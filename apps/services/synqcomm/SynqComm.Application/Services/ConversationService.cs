@@ -10,15 +10,24 @@ namespace SynqComm.Application.Services;
 public class ConversationService : IConversationService
 {
     private readonly IConversationRepository _repo;
+    private readonly IParticipantRepository _participantRepo;
+    private readonly IMessageRepository _messageRepo;
+    private readonly IConversationReadStateRepository _readStateRepo;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<ConversationService> _logger;
 
     public ConversationService(
         IConversationRepository repo,
+        IParticipantRepository participantRepo,
+        IMessageRepository messageRepo,
+        IConversationReadStateRepository readStateRepo,
         IAuditPublisher audit,
         ILogger<ConversationService> logger)
     {
         _repo = repo;
+        _participantRepo = participantRepo;
+        _messageRepo = messageRepo;
+        _readStateRepo = readStateRepo;
         _audit = audit;
         _logger = logger;
     }
@@ -45,20 +54,58 @@ public class ConversationService : IConversationService
     }
 
     public async Task<ConversationResponse?> GetByIdAsync(
-        Guid tenantId, Guid id, CancellationToken ct = default)
+        Guid tenantId, Guid id, Guid? currentUserId = null, CancellationToken ct = default)
     {
         var conversation = await _repo.GetByIdAsync(tenantId, id, ct);
-        return conversation is null ? null : ToResponse(conversation);
+        if (conversation is null) return null;
+
+        if (currentUserId.HasValue)
+        {
+            var participant = await _participantRepo.GetActiveByUserIdAsync(tenantId, id, currentUserId.Value, ct);
+            if (participant is null)
+                throw new UnauthorizedAccessException("You are not a participant in this conversation.");
+        }
+
+        bool? isUnread = null;
+        DateTime? lastReadAtUtc = null;
+        if (currentUserId.HasValue)
+        {
+            var readState = await _readStateRepo.GetAsync(tenantId, id, currentUserId.Value, ct);
+            var latestMessage = await _messageRepo.GetLatestByConversationAsync(tenantId, id, ct);
+            isUnread = ComputeUnread(readState, latestMessage);
+            lastReadAtUtc = readState?.LastReadAtUtc;
+        }
+
+        return ToResponse(conversation, isUnread, lastReadAtUtc);
     }
 
     public async Task<List<ConversationResponse>> ListByContextAsync(
-        Guid tenantId, string contextType, string contextId, CancellationToken ct = default)
+        Guid tenantId, string contextType, string contextId, Guid? currentUserId = null, CancellationToken ct = default)
     {
         if (!ContextType.All.Contains(contextType))
             throw new ArgumentException($"Invalid context type: '{contextType}'.");
 
         var conversations = await _repo.ListByContextAsync(tenantId, contextType, contextId, ct);
-        return conversations.Select(ToResponse).ToList();
+        var results = new List<ConversationResponse>();
+
+        foreach (var c in conversations)
+        {
+            bool? isUnread = null;
+            DateTime? lastReadAtUtc = null;
+            if (currentUserId.HasValue)
+            {
+                var participant = await _participantRepo.GetActiveByUserIdAsync(tenantId, c.Id, currentUserId.Value, ct);
+                if (participant is null) continue;
+
+                var readState = await _readStateRepo.GetAsync(tenantId, c.Id, currentUserId.Value, ct);
+                var latestMessage = await _messageRepo.GetLatestByConversationAsync(tenantId, c.Id, ct);
+                isUnread = ComputeUnread(readState, latestMessage);
+                lastReadAtUtc = readState?.LastReadAtUtc;
+            }
+            results.Add(ToResponse(c, isUnread, lastReadAtUtc));
+        }
+
+        return results;
     }
 
     public async Task<ConversationResponse> UpdateStatusAsync(
@@ -68,21 +115,86 @@ public class ConversationService : IConversationService
         var conversation = await _repo.GetByIdAsync(tenantId, id, ct)
             ?? throw new KeyNotFoundException($"Conversation '{id}' not found.");
 
+        var participant = await _participantRepo.GetActiveByUserIdAsync(tenantId, id, userId, ct)
+            ?? throw new UnauthorizedAccessException("You are not an active participant in this conversation.");
+
+        var oldStatus = conversation.Status;
         conversation.UpdateStatus(request.Status, userId);
         await _repo.UpdateAsync(conversation, ct);
 
-        _logger.LogInformation("Conversation {ConversationId} status changed to {Status}",
-            conversation.Id, request.Status);
+        _logger.LogInformation("Conversation {ConversationId} status changed from {OldStatus} to {NewStatus}",
+            conversation.Id, oldStatus, request.Status);
 
-        _audit.Publish("ConversationStatusChanged", "StatusChanged", $"Status changed to {request.Status}",
+        _audit.Publish("ConversationStatusChanged", "StatusChanged",
+            $"Status changed from {oldStatus} to {request.Status}",
             tenantId, userId, "Conversation", conversation.Id.ToString());
 
         return ToResponse(conversation);
     }
 
-    private static ConversationResponse ToResponse(Conversation c) => new(
+    public async Task<ConversationThreadResponse> GetThreadAsync(
+        Guid tenantId, Guid id, Guid userId, CancellationToken ct = default)
+    {
+        var conversation = await _repo.GetByIdAsync(tenantId, id, ct)
+            ?? throw new KeyNotFoundException($"Conversation '{id}' not found.");
+
+        var participant = await _participantRepo.GetActiveByUserIdAsync(tenantId, id, userId, ct)
+            ?? throw new UnauthorizedAccessException("You are not an active participant in this conversation.");
+
+        var allMessages = await _messageRepo.ListByConversationOrderedAsync(tenantId, id, ct);
+        var visibleMessages = FilterMessagesByVisibility(allMessages, participant);
+
+        var participants = await _participantRepo.ListByConversationAsync(tenantId, id, ct);
+
+        var readState = await _readStateRepo.GetAsync(tenantId, id, userId, ct);
+        var latestVisible = visibleMessages.LastOrDefault();
+        var isUnread = ComputeUnread(readState, latestVisible);
+
+        return new ConversationThreadResponse(
+            conversation.Id, conversation.TenantId, conversation.OrgId,
+            conversation.ProductKey, conversation.ContextType, conversation.ContextId,
+            conversation.Subject, conversation.Status, conversation.VisibilityType,
+            conversation.LastActivityAtUtc, conversation.CreatedAtUtc, conversation.UpdatedAtUtc,
+            conversation.CreatedByUserId,
+            isUnread, readState?.LastReadAtUtc, readState?.LastReadMessageId,
+            visibleMessages.Select(ToMessageResponse).ToList(),
+            participants.Select(ToParticipantResponse).ToList());
+    }
+
+    private static List<Message> FilterMessagesByVisibility(
+        List<Message> messages, ConversationParticipant participant)
+    {
+        if (participant.ParticipantType == ParticipantType.InternalUser)
+            return messages;
+
+        return messages
+            .Where(m => m.VisibilityType == VisibilityType.SharedExternal)
+            .ToList();
+    }
+
+    private static bool ComputeUnread(ConversationReadState? readState, Message? latestMessage)
+    {
+        if (latestMessage is null) return false;
+        if (readState?.LastReadAtUtc is null) return true;
+        return latestMessage.SentAtUtc > readState.LastReadAtUtc;
+    }
+
+    private static ConversationResponse ToResponse(Conversation c, bool? isUnread = null, DateTime? lastReadAtUtc = null) => new(
         c.Id, c.TenantId, c.OrgId,
         c.ProductKey, c.ContextType, c.ContextId,
         c.Subject, c.Status, c.VisibilityType,
-        c.LastActivityAtUtc, c.CreatedAtUtc, c.UpdatedAtUtc, c.CreatedByUserId);
+        c.LastActivityAtUtc, c.CreatedAtUtc, c.UpdatedAtUtc, c.CreatedByUserId,
+        isUnread, lastReadAtUtc);
+
+    private static MessageResponse ToMessageResponse(Message m) => new(
+        m.Id, m.ConversationId,
+        m.Channel, m.Direction, m.Body, m.VisibilityType,
+        m.SentAtUtc, m.SenderUserId, m.SenderParticipantType,
+        m.ExternalSenderName, m.ExternalSenderEmail,
+        m.Status, m.CreatedAtUtc);
+
+    private static ParticipantResponse ToParticipantResponse(ConversationParticipant p) => new(
+        p.Id, p.ConversationId,
+        p.ParticipantType, p.UserId, p.ExternalName, p.ExternalEmail,
+        p.Role, p.CanReply, p.IsActive, p.JoinedAtUtc, p.CreatedAtUtc);
 }

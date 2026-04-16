@@ -70,6 +70,10 @@ public class Conversation : AuditableEntity
         if (!ConversationStatus.All.Contains(newStatus))
             throw new ArgumentException($"Invalid conversation status: '{newStatus}'.");
 
+        if (!ConversationStatus.IsValidTransition(Status, newStatus))
+            throw new InvalidOperationException(
+                $"Invalid status transition from '{Status}' to '{newStatus}'.");
+
         Status = newStatus;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
@@ -79,5 +83,25 @@ public class Conversation : AuditableEntity
     {
         LastActivityAtUtc = DateTime.UtcNow;
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void AutoTransitionToOpen(Guid updatedByUserId)
+    {
+        if (Status == ConversationStatus.New)
+        {
+            Status = ConversationStatus.Open;
+            UpdatedByUserId = updatedByUserId;
+            UpdatedAtUtc = DateTime.UtcNow;
+        }
+    }
+
+    public void ReopenFromClosed(Guid updatedByUserId)
+    {
+        if (Status == ConversationStatus.Closed)
+        {
+            Status = ConversationStatus.Open;
+            UpdatedByUserId = updatedByUserId;
+            UpdatedAtUtc = DateTime.UtcNow;
+        }
     }
 }

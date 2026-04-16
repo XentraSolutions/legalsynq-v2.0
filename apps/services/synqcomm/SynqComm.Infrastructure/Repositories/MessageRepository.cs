@@ -14,12 +14,22 @@ public class MessageRepository : IMessageRepository
         _db = db;
     }
 
-    public async Task<List<Message>> ListByConversationAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default)
+    public async Task<List<Message>> ListByConversationOrderedAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default)
     {
         return await _db.Messages
             .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId)
             .OrderBy(m => m.SentAtUtc)
+            .ThenBy(m => m.Id)
             .ToListAsync(ct);
+    }
+
+    public async Task<Message?> GetLatestByConversationAsync(Guid tenantId, Guid conversationId, CancellationToken ct = default)
+    {
+        return await _db.Messages
+            .Where(m => m.TenantId == tenantId && m.ConversationId == conversationId)
+            .OrderByDescending(m => m.SentAtUtc)
+            .ThenByDescending(m => m.Id)
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task AddAsync(Message entity, CancellationToken ct = default)

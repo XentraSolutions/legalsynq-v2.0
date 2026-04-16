@@ -19,4 +19,20 @@ public static class ConversationStatus
     {
         Closed, Archived
     };
+
+    private static readonly Dictionary<string, HashSet<string>> ValidTransitions = new()
+    {
+        { New, new HashSet<string> { Open } },
+        { Open, new HashSet<string> { PendingInternal, PendingExternal, Resolved, Closed } },
+        { PendingInternal, new HashSet<string> { Open } },
+        { PendingExternal, new HashSet<string> { Open } },
+        { Resolved, new HashSet<string> { Closed, Open } },
+        { Closed, new HashSet<string> { Open, Archived } },
+        { Archived, new HashSet<string>() },
+    };
+
+    public static bool IsValidTransition(string from, string to)
+    {
+        return ValidTransitions.TryGetValue(from, out var allowed) && allowed.Contains(to);
+    }
 }

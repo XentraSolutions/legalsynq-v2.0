@@ -1,6 +1,6 @@
 namespace SynqComm.Application.DTOs;
 
-public record ConversationResponse(
+public record ConversationThreadResponse(
     Guid Id,
     Guid TenantId,
     Guid OrgId,
@@ -14,5 +14,8 @@ public record ConversationResponse(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     Guid? CreatedByUserId,
-    bool? IsUnread = null,
-    DateTime? LastReadAtUtc = null);
+    bool IsUnread,
+    DateTime? LastReadAtUtc,
+    Guid? LastReadMessageId,
+    List<MessageResponse> Messages,
+    List<ParticipantResponse> Participants);

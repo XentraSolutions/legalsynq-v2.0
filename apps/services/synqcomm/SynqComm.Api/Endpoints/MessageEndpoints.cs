@@ -38,7 +38,8 @@ public static class MessageEndpoints
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
-        var result = await service.ListByConversationAsync(tenantId, conversationId, ct);
+        var userId = RequireUserId(ctx);
+        var result = await service.ListByConversationAsync(tenantId, conversationId, userId, ct);
         return Results.Ok(result);
     }
 

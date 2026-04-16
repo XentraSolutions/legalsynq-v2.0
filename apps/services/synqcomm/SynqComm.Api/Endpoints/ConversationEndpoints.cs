@@ -21,11 +21,20 @@ public static class ConversationEndpoints
         group.MapGet("/{id:guid}", GetById)
             .RequirePermission(SynqCommPermissions.ConversationRead);
 
+        group.MapGet("/{id:guid}/thread", GetThread)
+            .RequirePermission(SynqCommPermissions.ConversationRead);
+
         group.MapPost("/", Create)
             .RequirePermission(SynqCommPermissions.ConversationCreate);
 
         group.MapPatch("/{id:guid}/status", UpdateStatus)
             .RequirePermission(SynqCommPermissions.ConversationUpdate);
+
+        group.MapPost("/{id:guid}/read", MarkRead)
+            .RequirePermission(SynqCommPermissions.ConversationRead);
+
+        group.MapPost("/{id:guid}/unread", MarkUnread)
+            .RequirePermission(SynqCommPermissions.ConversationRead);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -45,7 +54,8 @@ public static class ConversationEndpoints
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
-        var result = await service.ListByContextAsync(tenantId, contextType, contextId, ct);
+        var userId = RequireUserId(ctx);
+        var result = await service.ListByContextAsync(tenantId, contextType, contextId, userId, ct);
         return Results.Ok(result);
     }
 
@@ -56,10 +66,23 @@ public static class ConversationEndpoints
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
-        var result = await service.GetByIdAsync(tenantId, id, ct);
+        var userId = RequireUserId(ctx);
+        var result = await service.GetByIdAsync(tenantId, id, userId, ct);
         return result is null
             ? Results.NotFound(new { error = new { code = "not_found", message = $"Conversation '{id}' not found." } })
             : Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetThread(
+        Guid id,
+        IConversationService service,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await service.GetThreadAsync(tenantId, id, userId, ct);
+        return Results.Ok(result);
     }
 
     private static async Task<IResult> Create(
@@ -85,6 +108,30 @@ public static class ConversationEndpoints
         var tenantId = RequireTenantId(ctx);
         var userId = RequireUserId(ctx);
         var result = await service.UpdateStatusAsync(tenantId, id, userId, request, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> MarkRead(
+        Guid id,
+        IReadTrackingService readService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await readService.MarkReadAsync(tenantId, id, userId, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> MarkUnread(
+        Guid id,
+        IReadTrackingService readService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var result = await readService.MarkUnreadAsync(tenantId, id, userId, ct);
         return Results.Ok(result);
     }
 }

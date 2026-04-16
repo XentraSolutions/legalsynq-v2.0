@@ -53,5 +53,8 @@ public class ConversationParticipantConfiguration : IEntityTypeConfiguration<Con
 
         builder.HasIndex(p => new { p.TenantId, p.UserId, p.IsActive })
             .HasDatabaseName("IX_Participants_TenantId_UserId_Active");
+
+        builder.HasIndex(p => new { p.ConversationId, p.UserId, p.IsActive })
+            .HasDatabaseName("IX_Participants_ConversationId_UserId_IsActive");
     }
 }
