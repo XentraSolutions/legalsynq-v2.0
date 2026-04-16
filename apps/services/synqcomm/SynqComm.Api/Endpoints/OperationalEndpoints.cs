@@ -39,6 +39,13 @@ public static class OperationalEndpoints
 
         opsGroup.MapGet("/", ListOperational)
             .RequirePermission(SynqCommPermissions.OperationalRead);
+
+        var inboxGroup = app.MapGroup("/api/synqcomm/operational")
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(SynqCommPermissions.ProductCode);
+
+        inboxGroup.MapGet("/conversations", QueryConversations)
+            .RequirePermission(SynqCommPermissions.OperationalRead);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -141,6 +148,43 @@ public static class OperationalEndpoints
             priority, breachedFirstResponse, breachedResolution,
             conversationStatus);
         var result = await service.ListOperationalAsync(tenantId, query, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> QueryConversations(
+        IOperationalViewService service,
+        ICurrentRequestContext ctx,
+        Guid? queueId = null,
+        Guid? assignedUserId = null,
+        string? assignmentStatus = null,
+        string? priority = null,
+        string? operationalStatus = null,
+        string? waitingState = null,
+        bool? breachedFirstResponse = null,
+        bool? breachedResolution = null,
+        bool? hasWarnings = null,
+        Guid? mentionedUserId = null,
+        bool? unreadOnly = null,
+        DateTime? updatedSince = null,
+        DateTime? createdSince = null,
+        int page = 1,
+        int pageSize = 50,
+        string sortBy = "lastActivityAtUtc",
+        string sortDirection = "desc",
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        var request = new OperationalQueryRequest(
+            queueId, assignedUserId, assignmentStatus,
+            priority, operationalStatus, waitingState,
+            breachedFirstResponse, breachedResolution, hasWarnings,
+            mentionedUserId, unreadOnly,
+            updatedSince, createdSince,
+            page, pageSize, sortBy, sortDirection);
+
+        var result = await service.QueryConversationsAsync(tenantId, userId, request, ct);
         return Results.Ok(result);
     }
 }

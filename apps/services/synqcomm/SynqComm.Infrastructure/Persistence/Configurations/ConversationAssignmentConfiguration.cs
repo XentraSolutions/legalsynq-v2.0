@@ -42,5 +42,8 @@ public class ConversationAssignmentConfiguration : IEntityTypeConfiguration<Conv
 
         builder.HasIndex(a => new { a.TenantId, a.QueueId })
             .HasDatabaseName("IX_Assignments_TenantId_QueueId");
+
+        builder.HasIndex(a => new { a.TenantId, a.AssignmentStatus })
+            .HasDatabaseName("IX_Assignments_TenantId_AssignmentStatus");
     }
 }

@@ -48,5 +48,8 @@ public class ConversationSlaStateConfiguration : IEntityTypeConfiguration<Conver
 
         builder.HasIndex(s => new { s.TenantId, s.BreachedResolution })
             .HasDatabaseName("IX_SlaState_TenantId_BreachedResolution");
+
+        builder.HasIndex(s => new { s.TenantId, s.Priority })
+            .HasDatabaseName("IX_SlaState_TenantId_Priority");
     }
 }
