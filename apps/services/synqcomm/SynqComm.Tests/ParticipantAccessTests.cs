@@ -51,7 +51,7 @@ public class ParticipantAccessTests
 
         var msgService = new MessageService(
             messageRepo, conversationRepo, participantRepo,
-            new NoOpTimelineService(), audit, TestHelpers.CreateLogger<MessageService>());
+            new NoOpTimelineService(), new NoOpMentionService(), audit, TestHelpers.CreateLogger<MessageService>());
 
         var request = new AddMessageRequest("Hello", Channel.InApp, Direction.Internal, VisibilityType.InternalOnly);
 
@@ -76,7 +76,7 @@ public class ParticipantAccessTests
 
         var msgService = new MessageService(
             messageRepo, conversationRepo, participantRepo,
-            new NoOpTimelineService(), audit, TestHelpers.CreateLogger<MessageService>());
+            new NoOpTimelineService(), new NoOpMentionService(), audit, TestHelpers.CreateLogger<MessageService>());
 
         var request = new AddMessageRequest("Hello", Channel.InApp, Direction.Internal, VisibilityType.InternalOnly);
 

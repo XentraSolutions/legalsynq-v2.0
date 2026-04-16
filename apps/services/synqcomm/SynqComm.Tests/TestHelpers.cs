@@ -120,6 +120,9 @@ public static class TestHelpers
     public static IConversationTimelineRepository CreateTimelineRepo(SynqCommDbContext db) =>
         new ConversationTimelineRepository(db);
 
+    public static IMessageMentionRepository CreateMentionRepo(SynqCommDbContext db) =>
+        new MessageMentionRepository(db);
+
     public static IConversationTimelineService CreateTimelineService(SynqCommDbContext db) =>
         new ConversationTimelineService(
             CreateTimelineRepo(db),
@@ -215,6 +218,26 @@ public class NoOpAuditPublisher : IAuditPublisher
         string? metadata = null)
     {
         Events.Add((eventType, action, description));
+    }
+}
+
+public class NoOpMentionService : IMentionService
+{
+    public List<(Guid ConversationId, Guid MessageId, Guid SenderUserId)> ProcessedMentions { get; } = new();
+
+    public Task ProcessMentionsAsync(
+        Guid tenantId, Guid conversationId, Guid messageId,
+        Guid senderUserId, string messageBody,
+        CancellationToken ct = default)
+    {
+        ProcessedMentions.Add((conversationId, messageId, senderUserId));
+        return Task.CompletedTask;
+    }
+
+    public Task<List<SynqComm.Application.DTOs.MentionResponse>> GetMentionsByMessageAsync(
+        Guid tenantId, Guid messageId, CancellationToken ct = default)
+    {
+        return Task.FromResult(new List<SynqComm.Application.DTOs.MentionResponse>());
     }
 }
 

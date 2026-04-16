@@ -25,6 +25,7 @@ public class SynqCommDbContext : DbContext
     public DbSet<ConversationSlaTriggerState> ConversationSlaTriggerStates => Set<ConversationSlaTriggerState>();
     public DbSet<QueueEscalationConfig> QueueEscalationConfigs => Set<QueueEscalationConfig>();
     public DbSet<ConversationTimelineEntry> ConversationTimelineEntries => Set<ConversationTimelineEntry>();
+    public DbSet<MessageMention> MessageMentions => Set<MessageMention>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

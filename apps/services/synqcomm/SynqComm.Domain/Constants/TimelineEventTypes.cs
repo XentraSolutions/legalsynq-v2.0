@@ -21,6 +21,8 @@ public static class TimelineEventTypes
     public const string Resolved = "RESOLVED";
 
     public const string EscalationTriggered = "ESCALATION_TRIGGERED";
+
+    public const string Mentioned = "MENTIONED";
 }
 
 public static class TimelineActorType

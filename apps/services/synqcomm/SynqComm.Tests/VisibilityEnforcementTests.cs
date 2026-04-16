@@ -37,7 +37,7 @@ public class VisibilityEnforcementTests
 
         var service = new MessageService(
             messageRepo, conversationRepo, participantRepo,
-            new NoOpTimelineService(), audit, TestHelpers.CreateLogger<MessageService>());
+            new NoOpTimelineService(), new NoOpMentionService(), audit, TestHelpers.CreateLogger<MessageService>());
 
         var externalMessages = await service.ListByConversationAsync(
             TestHelpers.TenantId, conversation.Id, externalUserId);

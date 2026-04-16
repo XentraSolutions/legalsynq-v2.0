@@ -48,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IConversationSlaTriggerStateRepository, ConversationSlaTriggerStateRepository>();
         services.AddScoped<IQueueEscalationConfigRepository, QueueEscalationConfigRepository>();
         services.AddScoped<IConversationTimelineRepository, ConversationTimelineRepository>();
+        services.AddScoped<IMessageMentionRepository, MessageMentionRepository>();
 
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IMessageService, MessageService>();
@@ -65,6 +66,7 @@ public static class DependencyInjection
         services.AddScoped<ISlaNotificationService, SlaNotificationService>();
         services.AddScoped<IQueueEscalationConfigService, QueueEscalationConfigService>();
         services.AddScoped<IConversationTimelineService, ConversationTimelineService>();
+        services.AddScoped<IMentionService, MentionService>();
 
         var notifBaseUrl = configuration["Services:NotificationsUrl"] ?? "http://localhost:5008";
         services.AddHttpClient("NotificationsService", client =>

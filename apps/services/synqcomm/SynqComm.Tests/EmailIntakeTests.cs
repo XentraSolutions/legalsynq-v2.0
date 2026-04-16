@@ -316,7 +316,7 @@ public class EmailIntakeTests
 
         var msgService = new MessageService(
             messageRepo, conversationRepo, participantRepo,
-            new NoOpTimelineService(), audit, TestHelpers.CreateLogger<MessageService>());
+            new NoOpTimelineService(), new NoOpMentionService(), audit, TestHelpers.CreateLogger<MessageService>());
 
         var externalMessages = await msgService.ListByConversationAsync(
             TestHelpers.TenantId, conversation.Id, externalUserId);

@@ -268,7 +268,7 @@ public class ConversationTimelineTests
 
         var msgService = new MessageService(
             messageRepo, conversationRepo, participantRepo,
-            timeline, audit, TestHelpers.CreateLogger<MessageService>());
+            timeline, new NoOpMentionService(), audit, TestHelpers.CreateLogger<MessageService>());
 
         var request = new AddMessageRequest("Test message", Channel.InApp, Direction.Internal, VisibilityType.InternalOnly);
         await msgService.AddAsync(TestHelpers.TenantId, TestHelpers.OrgId, TestHelpers.UserId1, conversation.Id, request);

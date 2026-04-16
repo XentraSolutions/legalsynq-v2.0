@@ -13,6 +13,7 @@ public class MessageService : IMessageService
     private readonly IConversationRepository _conversationRepo;
     private readonly IParticipantRepository _participantRepo;
     private readonly IConversationTimelineService _timeline;
+    private readonly IMentionService _mentions;
     private readonly IAuditPublisher _audit;
     private readonly ILogger<MessageService> _logger;
 
@@ -21,6 +22,7 @@ public class MessageService : IMessageService
         IConversationRepository conversationRepo,
         IParticipantRepository participantRepo,
         IConversationTimelineService timeline,
+        IMentionService mentions,
         IAuditPublisher audit,
         ILogger<MessageService> logger)
     {
@@ -28,6 +30,7 @@ public class MessageService : IMessageService
         _conversationRepo = conversationRepo;
         _participantRepo = participantRepo;
         _timeline = timeline;
+        _mentions = mentions;
         _audit = audit;
         _logger = logger;
     }
@@ -98,6 +101,12 @@ public class MessageService : IMessageService
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Failed to record timeline entry for message {MessageId}", message.Id); }
 
+        try
+        {
+            await _mentions.ProcessMentionsAsync(tenantId, conversationId, message.Id, userId, request.Body, ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to process mentions for message {MessageId}", message.Id); }
+
         return ToResponse(message);
     }
 
@@ -119,10 +128,15 @@ public class MessageService : IMessageService
         return messages.Select(ToResponse).ToList();
     }
 
-    private static MessageResponse ToResponse(Message m) => new(
-        m.Id, m.ConversationId,
-        m.Channel, m.Direction, m.Body, m.VisibilityType,
-        m.SentAtUtc, m.SenderUserId, m.SenderParticipantType,
-        m.ExternalSenderName, m.ExternalSenderEmail,
-        m.Status, m.CreatedAtUtc);
+    private static MessageResponse ToResponse(Message m)
+    {
+        var mentions = MentionParser.ExtractMentionedUserIds(m.Body);
+        return new MessageResponse(
+            m.Id, m.ConversationId,
+            m.Channel, m.Direction, m.Body, m.VisibilityType,
+            m.SentAtUtc, m.SenderUserId, m.SenderParticipantType,
+            m.ExternalSenderName, m.ExternalSenderEmail,
+            m.Status, m.CreatedAtUtc,
+            Mentions: mentions.Count > 0 ? mentions : null);
+    }
 }
