@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 
-const SERVICES: ServiceDef[] = [
+interface ServiceDef {
+  name:     string;
+  url:      string;
+  category: 'infrastructure' | 'product';
+}
+
+const DEFAULT_SERVICES: ServiceDef[] = [
   { name: 'Gateway',       url: 'http://127.0.0.1:5010/health', category: 'infrastructure' },
   { name: 'Identity',      url: 'http://127.0.0.1:5001/health', category: 'infrastructure' },
   { name: 'Documents',     url: 'http://127.0.0.1:5006/health', category: 'infrastructure' },
@@ -13,11 +19,39 @@ const SERVICES: ServiceDef[] = [
   { name: 'Synq Liens',       url: 'http://127.0.0.1:5009/health', category: 'product' },
 ];
 
-interface ServiceDef {
-  name:     string;
-  url:      string;
-  category: 'infrastructure' | 'product';
+function isServiceDef(v: unknown): v is ServiceDef {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.name === 'string'
+    && typeof o.url === 'string'
+    && (o.category === 'infrastructure' || o.category === 'product');
 }
+
+function loadServicesFromEnv(): ServiceDef[] | null {
+  const raw = process.env.SYSTEM_HEALTH_SERVICES;
+  if (!raw || !raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      console.warn('[monitoring/summary] SYSTEM_HEALTH_SERVICES must be a JSON array; falling back to defaults');
+      return null;
+    }
+    const valid: ServiceDef[] = [];
+    for (const item of parsed) {
+      if (isServiceDef(item)) {
+        valid.push({ name: item.name, url: item.url, category: item.category });
+      } else {
+        console.warn('[monitoring/summary] Skipping invalid service entry in SYSTEM_HEALTH_SERVICES:', item);
+      }
+    }
+    return valid.length > 0 ? valid : null;
+  } catch (err) {
+    console.warn('[monitoring/summary] Failed to parse SYSTEM_HEALTH_SERVICES JSON; falling back to defaults', err);
+    return null;
+  }
+}
+
+const SERVICES: ServiceDef[] = loadServicesFromEnv() ?? DEFAULT_SERVICES;
 
 type Status = 'Healthy' | 'Degraded' | 'Down';
 
