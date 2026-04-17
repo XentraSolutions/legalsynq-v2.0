@@ -7,6 +7,7 @@ import type {
   WorkflowInstanceDetail,
   WorkflowTimelineEvent,
   WorkflowTimelineResponse,
+  WorkflowTimelineSeverity,
 } from '@/types/control-center';
 
 interface WorkflowDetailDrawerProps {
@@ -177,13 +178,19 @@ const REASON_MAX = 1000;
 //
 // The timeline section is its own component so the parent stays
 // focused on routing/admin-action state. All formatting is local.
+//
+// E13.3 extends the baseline timeline with two polish features:
+//   • events are grouped under date headings ("Today", "Yesterday",
+//     older formatted dates) so long histories scan quickly
+//   • each row shows a severity indicator (info / warning / critical)
+//     driven by the Flow audit `severity` field
 
-const TIMELINE_CATEGORY_STYLES: Record<string, { dot: string; label: string }> = {
-  AdminAction:      { dot: 'bg-indigo-500', label: 'Admin action'      },
-  EngineTransition: { dot: 'bg-blue-500',   label: 'Engine transition' },
-  Lifecycle:        { dot: 'bg-emerald-500', label: 'Lifecycle'        },
-  Task:             { dot: 'bg-amber-500',  label: 'Task'              },
-  Other:            { dot: 'bg-gray-400',   label: 'Other'             },
+const TIMELINE_CATEGORY_STYLES: Record<string, { icon: string; dot: string; label: string }> = {
+  AdminAction:      { icon: 'ri-shield-user-line',     dot: 'bg-indigo-500',  label: 'Admin action'      },
+  EngineTransition: { icon: 'ri-arrow-right-up-line',  dot: 'bg-blue-500',    label: 'Engine transition' },
+  Lifecycle:        { icon: 'ri-flag-line',            dot: 'bg-emerald-500', label: 'Lifecycle'         },
+  Task:             { icon: 'ri-checkbox-circle-line', dot: 'bg-amber-500',   label: 'Task'              },
+  Other:            { icon: 'ri-circle-line',          dot: 'bg-gray-400',    label: 'Other'             },
 };
 
 /**
@@ -218,27 +225,133 @@ function formatTimelineTimestamp(iso: string): string {
   });
 }
 
+/**
+ * E13.3 — severity-driven visual overrides. Info events keep the
+ * category dot tint unchanged (no visual noise on the common case).
+ * Warning and critical add amber/red rings around the dot; critical
+ * additionally gives the whole row a subtle tinted background so it
+ * pops in long histories.
+ */
+function severityDotRing(severity: WorkflowTimelineSeverity): string {
+  switch (severity) {
+    case 'critical': return 'ring-2 ring-red-300';
+    case 'warning':  return 'ring-2 ring-amber-300';
+    case 'info':
+    default:         return '';
+  }
+}
+
+function severityRowClass(severity: WorkflowTimelineSeverity): string {
+  switch (severity) {
+    case 'critical': return 'bg-red-50/60 border-l-2 border-red-200 pl-2 -ml-2 rounded-sm';
+    case 'warning':  return '';
+    case 'info':
+    default:         return '';
+  }
+}
+
+const SEVERITY_BADGE: Record<WorkflowTimelineSeverity, { label: string; cls: string } | null> = {
+  info:     null,
+  warning:  { label: 'Warning',  cls: 'bg-amber-100 text-amber-800 border-amber-200' },
+  critical: { label: 'Critical', cls: 'bg-red-100   text-red-700   border-red-200'   },
+};
+
+/**
+ * E13.3 — group events under date headings ("Today", "Yesterday",
+ * formatted older dates). Operates on the event list as returned by
+ * the server; we emit groups from most-recent date to oldest and
+ * reverse within each group so the newest event of the day sits at
+ * the top.
+ *
+ * The "today / yesterday" calculation uses the operator's local time
+ * zone since the drawer is operator-facing and operators reason about
+ * events in their own day boundary.
+ */
+interface TimelineGroup {
+  key:     string;
+  label:   string;
+  events:  WorkflowTimelineEvent[];
+}
+
+function localDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function groupEventsByDate(events: readonly WorkflowTimelineEvent[]): TimelineGroup[] {
+  const today        = new Date();
+  const todayKey     = localDateKey(today);
+  const yesterday    = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const yesterdayKey = localDateKey(yesterday);
+
+  const buckets = new Map<string, { label: string; events: WorkflowTimelineEvent[] }>();
+  for (const ev of events) {
+    const d = new Date(ev.occurredAtUtc);
+    const key = Number.isNaN(d.getTime()) ? '0000-00-00' : localDateKey(d);
+    let label: string;
+    if (key === todayKey)          label = 'Today';
+    else if (key === yesterdayKey) label = 'Yesterday';
+    else if (key === '0000-00-00') label = 'Unknown date';
+    else                           label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { label, events: [] };
+      buckets.set(key, bucket);
+    }
+    bucket.events.push(ev);
+  }
+
+  const sortedKeys = Array.from(buckets.keys()).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+  return sortedKeys.map(key => {
+    const b = buckets.get(key)!;
+    return { key, label: b.label, events: [...b.events].reverse() };
+  });
+}
+
+function formatTimeOfDay(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
 function TimelineRow({ event }: { event: WorkflowTimelineEvent }) {
-  const meta = categoryMeta(event.category);
-  const showTransition = !!(event.previousStatus && event.newStatus);
-  const summary = event.summary && event.summary.length > 0
+  const meta            = categoryMeta(event.category);
+  const showTransition  = !!(event.previousStatus && event.newStatus);
+  const summary         = event.summary && event.summary.length > 0
     ? event.summary
     : (showTransition ? `Status ${event.previousStatus} → ${event.newStatus}` : event.action);
+  const rowCls          = severityRowClass(event.severity);
+  const dotRing         = severityDotRing(event.severity);
+  const badge           = SEVERITY_BADGE[event.severity];
+
   return (
-    <li className="relative pl-5">
+    <li
+      className={`relative pl-5 py-1 ${rowCls}`}
+      data-severity={event.severity}
+      data-category={event.category}
+    >
       <span
-        className={`absolute left-0 top-1.5 h-2 w-2 rounded-full ${meta.dot}`}
+        className={`absolute left-0 top-2 h-2 w-2 rounded-full ${meta.dot} ${dotRing}`}
         aria-hidden="true"
       />
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-sm text-gray-800 break-words">{summary}</p>
-        <time className="shrink-0 text-[11px] text-gray-400 font-mono whitespace-nowrap">
-          {formatTimelineTimestamp(event.occurredAtUtc)}
+        <time
+          className="shrink-0 text-[11px] text-gray-400 font-mono whitespace-nowrap"
+          dateTime={event.occurredAtUtc}
+          title={event.occurredAtUtc}
+        >
+          {formatTimeOfDay(event.occurredAtUtc)}
         </time>
       </div>
       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500">
         <span className="inline-flex items-center gap-1">
-          <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} aria-hidden="true" />
+          <i className={`${meta.icon} text-[11px]`} aria-hidden="true" />
           {meta.label}
         </span>
         <span className="font-mono text-gray-400">{event.action}</span>
@@ -251,6 +364,11 @@ function TimelineRow({ event }: { event: WorkflowTimelineEvent }) {
           <span className="inline-flex items-center gap-1 text-gray-500">
             <i className="ri-user-line text-[11px]" aria-hidden="true" />
             <span className="font-mono">{event.performedBy}</span>
+          </span>
+        )}
+        {badge && (
+          <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold ${badge.cls}`}>
+            {badge.label}
           </span>
         )}
       </div>
@@ -269,19 +387,27 @@ function TimelineSection({
   timeline: WorkflowTimelineResponse | null;
   onRetry:  () => void;
 }) {
+  const groups = timeline ? groupEventsByDate(timeline.events) : [];
   return (
     <section className="space-y-3" data-testid="workflow-timeline">
       <div className="flex items-center justify-between">
         <h3 className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Timeline</h3>
-        {!loading && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="text-[11px] text-gray-400 hover:text-gray-700 hover:underline"
-          >
-            Refresh
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {timeline && timeline.events.length > 0 && (
+            <span className="text-[11px] text-gray-400">
+              {timeline.events.length}{timeline.truncated ? '+' : ''} event{timeline.events.length === 1 ? '' : 's'}
+            </span>
+          )}
+          {!loading && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="text-[11px] text-gray-400 hover:text-gray-700 hover:underline"
+            >
+              Refresh
+            </button>
+          )}
+        </div>
       </div>
 
       {loading && (
@@ -303,18 +429,31 @@ function TimelineSection({
       )}
 
       {!loading && !error && timeline && timeline.events.length > 0 && (
-        <>
+        <div className="space-y-4">
           {timeline.truncated && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
               Showing the most recent events only — open the audit service for the full record.
             </div>
           )}
-          <ol className="relative space-y-3 border-l border-gray-200 pl-3 ml-1">
-            {timeline.events.map((ev, idx) => (
-              <TimelineRow key={ev.eventId || `${ev.occurredAtUtc}-${ev.action}-${idx}`} event={ev} />
-            ))}
-          </ol>
-        </>
+          {groups.map(group => (
+            <div key={group.key} className="space-y-2">
+              <div className="sticky top-0 bg-white pt-1 pb-1 z-[1]">
+                <h4 className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                  {group.label}
+                  <span className="flex-1 border-t border-gray-100" />
+                  <span className="text-[10px] font-normal normal-case text-gray-300">
+                    {group.events.length} event{group.events.length === 1 ? '' : 's'}
+                  </span>
+                </h4>
+              </div>
+              <ol className="relative space-y-1 border-l border-gray-200 pl-3 ml-1">
+                {group.events.map((ev, idx) => (
+                  <TimelineRow key={ev.eventId || `${ev.occurredAtUtc}-${ev.action}-${idx}`} event={ev} />
+                ))}
+              </ol>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -548,7 +687,7 @@ export function WorkflowDetailDrawer({
                 </dl>
               </section>
 
-              {/* Timeline */}
+              {/* E13.1 / E13.2 / E13.3 — Workflow Timeline */}
               <TimelineSection
                 loading={timelineLoading}
                 error={timelineError}

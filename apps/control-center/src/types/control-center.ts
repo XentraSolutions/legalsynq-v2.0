@@ -1125,6 +1125,50 @@ export interface WorkflowInstanceDetail extends WorkflowInstanceListItem {
 }
 
 /**
+ * E13.1 / E13.2 — one normalized event from the Flow workflow timeline
+ * endpoint (`GET /flow/api/v1/admin/workflow-instances/{id}/timeline`).
+ *
+ * Shape mirrors the DTO produced by `AuditTimelineNormalizer` on the
+ * Flow side. Every optional field tolerates missing data so the UI
+ * never breaks on a partially-populated record.
+ *
+ * `severity` is consumed by the E13.3 visual indicator. The Flow
+ * normalizer surfaces the upstream audit `severity` inside the
+ * metadata bag; we lift it to a top-level field with a constrained
+ * vocabulary and fall back to `'info'` when missing or unrecognised.
+ */
+export type WorkflowTimelineSeverity = 'info' | 'warning' | 'critical';
+
+export interface WorkflowTimelineActor {
+  id:   string | null;
+  name: string | null;
+  type: string | null;
+}
+
+export interface WorkflowTimelineEvent {
+  eventId:        string;
+  occurredAtUtc:  string;
+  category:       string;
+  action:         string;
+  source:         string;
+  severity:       WorkflowTimelineSeverity;
+  actor:          WorkflowTimelineActor;
+  performedBy:    string | null;
+  summary:        string | null;
+  previousStatus: string | null;
+  newStatus:      string | null;
+  metadata:       Record<string, string>;
+}
+
+export interface WorkflowTimelineResponse {
+  workflowInstanceId: string;
+  tenantId:           string;
+  totalCount:         number;
+  truncated:          boolean;
+  events:             WorkflowTimelineEvent[];
+}
+
+/**
  * E10.1 — admin action verbs supported by the Control Center drawer
  * and the matching Flow admin endpoints.
  */
@@ -1146,11 +1190,9 @@ export interface WorkflowAdminActionResult {
 }
 
 /**
- * One row in the audit timeline rendered in the Control Center
- * workflow detail drawer. Mirrors `WorkflowTimelineEvent` returned by
- * Flow's `GET /api/v1/admin/workflow-instances/{id}/timeline`.
- *
- * `category` buckets the event for color/iconography:
+ * Bucketed category used by the timeline UI for color/iconography.
+ * Derived at render time from the raw `category` string via the
+ * drawer's `bucketFromCategory()` helper.
  *   'AdminAction'      — operator-initiated (retry/force-complete/cancel)
  *   'EngineTransition' — workflow.state_changed
  *   'Lifecycle'        — workflow.created / workflow.completed / etc.
@@ -1163,35 +1205,3 @@ export type WorkflowTimelineEventCategory =
   | 'Lifecycle'
   | 'Task'
   | 'Other';
-
-export interface WorkflowTimelineEvent {
-  eventId:        string;
-  occurredAtUtc:  string;
-  /**
-   * Raw upstream category string from the audit normalizer (e.g.
-   * `workflow.state_changed`, `workflow.admin.retry`, `task.assigned`,
-   * `notification`, `other`). The drawer derives a high-level UI
-   * bucket from this via `bucketFromCategory()`.
-   */
-  category:       string;
-  action:         string;
-  source:         string;
-  performedBy:    string | null;
-  summary:        string | null;
-  previousStatus: string | null;
-  newStatus:      string | null;
-}
-
-export interface WorkflowTimelineResponse {
-  workflowInstanceId: string;
-  tenantId:           string;
-  totalCount:         number;
-  /**
-   * True when the upstream audit query was capped by the adapter's
-   * hard ceiling. The drawer surfaces this as a small notice so
-   * operators know to drill into the audit service for the full
-   * record.
-   */
-  truncated:          boolean;
-  events:             WorkflowTimelineEvent[];
-}

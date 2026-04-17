@@ -147,6 +147,8 @@ import type {
   WorkflowAdminActionResult,
   WorkflowTimelineEvent,
   WorkflowTimelineResponse,
+  WorkflowTimelineSeverity,
+  WorkflowTimelineActor,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -216,6 +218,82 @@ function mapWorkflowInstanceDetail(raw: unknown): WorkflowInstanceDetail {
     currentStageId:   s(r.currentStageId),
     currentStepName:  s(r.currentStepName),
     lastErrorMessage: s(r.lastErrorMessage),
+  };
+}
+
+/**
+ * E13.2 / E13.3 — normalise a single timeline event from the Flow
+ * `/timeline` response. Tolerates missing optional fields and lifts
+ * `severity` out of the metadata bag (where the Flow normalizer
+ * places the upstream audit value) into a top-level field with a
+ * constrained vocabulary. Anything unexpected falls back to `'info'`
+ * so the drawer never crashes on a partial record.
+ */
+function mapWorkflowTimelineEvent(raw: unknown): WorkflowTimelineEvent {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const s = (v: unknown): string | null => {
+    if (v === undefined || v === null) return null;
+    const str = String(v);
+    return str.length === 0 ? null : str;
+  };
+
+  const rawActor   = (r.actor ?? {}) as Record<string, unknown>;
+  const actor: WorkflowTimelineActor = {
+    id:   s(rawActor.id),
+    name: s(rawActor.name),
+    type: s(rawActor.type),
+  };
+
+  const rawMeta = (r.metadata ?? {}) as Record<string, unknown>;
+  const metadata: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawMeta)) {
+    if (v === undefined || v === null) continue;
+    metadata[k] = String(v);
+  }
+
+  // Severity may come either as a top-level field (future-proof) or
+  // inside the metadata bag (current Flow normalizer behaviour). Map
+  // common synonyms onto the constrained vocabulary.
+  const rawSeverity = String(
+    r.severity ?? metadata.severity ?? metadata.Severity ?? 'info',
+  ).toLowerCase();
+  let severity: WorkflowTimelineSeverity = 'info';
+  if (rawSeverity === 'warning' || rawSeverity === 'warn') {
+    severity = 'warning';
+  } else if (rawSeverity === 'critical' || rawSeverity === 'error' || rawSeverity === 'fatal') {
+    severity = 'critical';
+  }
+
+  return {
+    eventId:        String(r.eventId ?? ''),
+    occurredAtUtc:  String(r.occurredAtUtc ?? ''),
+    category:       String(r.category ?? 'other'),
+    action:         String(r.action ?? ''),
+    source:         String(r.source ?? 'flow'),
+    severity,
+    actor,
+    performedBy:    s(r.performedBy) ?? actor.name ?? actor.id,
+    summary:        s(r.summary),
+    previousStatus: s(r.previousStatus),
+    newStatus:      s(r.newStatus),
+    metadata,
+  };
+}
+
+function mapWorkflowTimelineResponse(
+  raw: unknown,
+  fallbackId: string,
+): WorkflowTimelineResponse {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const events = Array.isArray(r.events)
+    ? (r.events as unknown[]).map(mapWorkflowTimelineEvent)
+    : [];
+  return {
+    workflowInstanceId: String(r.workflowInstanceId ?? fallbackId),
+    tenantId:           String(r.tenantId ?? '').toLowerCase(),
+    totalCount:         Number(r.totalCount ?? events.length) || 0,
+    truncated:          Boolean(r.truncated ?? false),
+    events,
   };
 }
 
@@ -2120,57 +2198,24 @@ export const controlCenterServerApi = {
     },
 
     /**
-     * Fetch the normalized audit timeline for a single workflow
-     * instance. Returns null on 404 so the drawer can show its compact
-     * "not available" state without breaking the parent list page.
+     * E13.1 / E13.2 / E13.3 — fetch the normalized audit timeline for a
+     * single workflow instance. Backed by Flow's
+     * `GET /api/v1/admin/workflow-instances/{id}/timeline`. Returns
+     * null on 404 so the drawer can render an empty / not-available
+     * state without breaking the parent list page.
      *
-     * Cached very briefly (5 s) and tagged with cc:workflows so admin
-     * actions trigger an automatic refresh of any open timeline panel
-     * after the parent list is invalidated.
+     * Cache: 5 s on `cc:workflows` — matches `getById` lifecycle, so a
+     *   single `revalidateTag('cc:workflows')` after an admin action
+     *   refreshes both the list row and any open timeline panel.
      */
     getTimeline: async (id: string): Promise<WorkflowTimelineResponse | null> => {
       try {
-        const raw = await apiClient.get<{
-          workflowInstanceId?: string;
-          tenantId?:           string;
-          totalCount?:         number;
-          truncated?:          boolean;
-          events?:             unknown[];
-        }>(
+        const raw = await apiClient.get<unknown>(
           `/flow/api/v1/admin/workflow-instances/${encodeURIComponent(id)}/timeline`,
           5,
           [CACHE_TAGS.workflows],
         );
-        const s = (v: unknown): string | null => {
-          if (v === undefined || v === null) return null;
-          const str = String(v);
-          return str.length === 0 ? null : str;
-        };
-        const events: WorkflowTimelineEvent[] = (raw?.events ?? []).map((row) => {
-          const r       = (row   ?? {}) as Record<string, unknown>;
-          const actor   = (r.actor ?? null) as Record<string, unknown> | null;
-          // Prefer the structured actor identity, fall back to the
-          // upstream-resolved `performedBy` (sub/email/etc).
-          const actorId = actor ? s(actor.id) ?? s(actor.name) : null;
-          return {
-            eventId:        String(r.eventId ?? ''),
-            occurredAtUtc:  String(r.occurredAtUtc ?? ''),
-            category:       String(r.category ?? 'other'),
-            action:         String(r.action ?? 'unknown'),
-            source:         String(r.source ?? 'flow'),
-            performedBy:    actorId ?? s(r.performedBy),
-            summary:        s(r.summary),
-            previousStatus: s(r.previousStatus),
-            newStatus:      s(r.newStatus),
-          };
-        });
-        return {
-          workflowInstanceId: String(raw?.workflowInstanceId ?? id),
-          tenantId:           String(raw?.tenantId ?? ''),
-          totalCount:         typeof raw?.totalCount === 'number' ? raw.totalCount : events.length,
-          truncated:          Boolean(raw?.truncated),
-          events,
-        };
+        return mapWorkflowTimelineResponse(raw, id);
       } catch (err) {
         if (isNotFound(err)) return null;
         throw err;
