@@ -43,6 +43,14 @@ public class ExceptionHandlingMiddleware
                 HttpStatusCode.UnprocessableEntity,
                 new ErrorResponse { Error = transition.Message }
             ),
+            // LS-FLOW-E11.4 — task lifecycle CAS race. Map to 409 so
+            // callers can safely re-read and retry; aligns with the
+            // standard "concurrent modification" REST convention and is
+            // the contract the lifecycle service documents.
+            WorkflowTaskConcurrencyException concurrency => (
+                HttpStatusCode.Conflict,
+                new ErrorResponse { Error = concurrency.Message }
+            ),
             _ => (
                 HttpStatusCode.InternalServerError,
                 new ErrorResponse { Error = "An unexpected error occurred." }

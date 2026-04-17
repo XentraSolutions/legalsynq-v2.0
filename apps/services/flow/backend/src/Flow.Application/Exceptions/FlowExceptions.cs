@@ -44,3 +44,24 @@ public class InvalidWorkflowTransitionException : Exception
         Code = code;
     }
 }
+
+/// <summary>
+/// LS-FLOW-E11.4 — raised by
+/// <see cref="Interfaces.IWorkflowTaskLifecycleService"/> when an atomic
+/// status compare-and-swap fails because the row was modified between
+/// the pre-check read and the conditional UPDATE. Callers may safely
+/// re-read the task and retry. Mapped to HTTP 409 by the API surface.
+/// </summary>
+public class WorkflowTaskConcurrencyException : Exception
+{
+    public Guid TaskId { get; }
+    public string ExpectedStatus { get; }
+
+    public WorkflowTaskConcurrencyException(Guid taskId, string expectedStatus)
+        : base($"WorkflowTask '{taskId}' status changed concurrently (expected '{expectedStatus}'). " +
+               "Re-read the task and retry the transition.")
+    {
+        TaskId = taskId;
+        ExpectedStatus = expectedStatus;
+    }
+}

@@ -53,6 +53,12 @@ public static class DependencyInjection
         // registered scoped to match the rest of Flow.Application
         // services and keep the lifetime story uniform.
         services.AddScoped<IWorkflowTaskAssignmentResolver, StaticRuleWorkflowTaskAssignmentResolver>();
+        // LS-FLOW-E11.4 — task lifecycle (start / complete / cancel).
+        // Stateless service; uses the scoped IFlowDbContext for the
+        // atomic compare-and-swap UPDATE. Lifetime intentionally aligns
+        // with the rest of Flow.Application so a single DI scope per
+        // request is the unit of work.
+        services.AddScoped<IWorkflowTaskLifecycleService, WorkflowTaskLifecycleService>();
 
         return services;
     }

@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.*" />
+    <!-- LS-FLOW-E11.4 — needed for ExecuteUpdateAsync (relational bulk-update extension). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.*" />
   </ItemGroup>
 
   <PropertyGroup>
