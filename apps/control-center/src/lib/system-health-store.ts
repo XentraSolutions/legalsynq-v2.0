@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import mysql, { type Pool, type PoolOptions, type RowDataPacket } from 'mysql2/promise';
+import { recordAudit, type AuditActor, type AuditAction } from './system-health-audit';
 
 export type ServiceCategory = 'infrastructure' | 'product';
 
@@ -277,8 +278,28 @@ function validateInput(input: Partial<ServiceInput>): string | null {
   return null;
 }
 
+async function safeRecordAudit(input: {
+  action:    AuditAction;
+  serviceId: string;
+  actor:     AuditActor;
+  before:    ServiceDef | null;
+  after:     ServiceDef | null;
+}): Promise<void> {
+  try {
+    await recordAudit(input);
+  } catch (err) {
+    console.warn('[system-health-store] Failed to record audit entry', {
+      action:    input.action,
+      serviceId: input.serviceId,
+      actor:     input.actor.email,
+      err,
+    });
+  }
+}
+
 export async function addService(
   input: ServiceInput,
+  actor: AuditActor,
 ): Promise<{ ok: true; service: ServiceDef } | { ok: false; error: string }> {
   const err = validateInput(input);
   if (err) return { ok: false, error: err };
@@ -296,18 +317,31 @@ export async function addService(
     `INSERT INTO ${TABLE_NAME} (id, name, url, category, position) VALUES (?, ?, ?, ?, ?)`,
     [svc.id, svc.name, svc.url, svc.category, position],
   );
+  await safeRecordAudit({ action: 'add', serviceId: svc.id, actor, before: null, after: svc });
   return { ok: true, service: svc };
 }
 
 export async function updateService(
   id: string,
   input: ServiceInput,
+  actor: AuditActor,
 ): Promise<{ ok: true; service: ServiceDef } | { ok: false; error: string; status: number }> {
   const err = validateInput(input);
   if (err) return { ok: false, error: err, status: 400 };
 
   await ensureSchemaAndSeed();
   const pool = await getPool();
+  const [existingRows] = await pool.query<RowDataPacket[]>(
+    `SELECT id, name, url, category FROM ${TABLE_NAME} WHERE id = ?`,
+    [id],
+  );
+  if (existingRows.length === 0) return { ok: false, error: 'Service not found', status: 404 };
+  const previous: ServiceDef = {
+    id:       String(existingRows[0].id),
+    name:     String(existingRows[0].name),
+    url:      String(existingRows[0].url),
+    category: existingRows[0].category as ServiceCategory,
+  };
   const updated: ServiceDef = {
     id,
     name:     input.name.trim(),
@@ -320,19 +354,32 @@ export async function updateService(
   );
   const affected = (result as { affectedRows?: number }).affectedRows ?? 0;
   if (affected === 0) return { ok: false, error: 'Service not found', status: 404 };
+  await safeRecordAudit({ action: 'update', serviceId: id, actor, before: previous, after: updated });
   return { ok: true, service: updated };
 }
 
 export async function removeService(
   id: string,
+  actor: AuditActor,
 ): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
   await ensureSchemaAndSeed();
   const pool = await getPool();
+  const [existingRows] = await pool.query<RowDataPacket[]>(
+    `SELECT id, name, url, category FROM ${TABLE_NAME} WHERE id = ?`,
+    [id],
+  );
+  const previous: ServiceDef | null = existingRows.length > 0 ? {
+    id:       String(existingRows[0].id),
+    name:     String(existingRows[0].name),
+    url:      String(existingRows[0].url),
+    category: existingRows[0].category as ServiceCategory,
+  } : null;
   const [result] = await pool.query(
     `DELETE FROM ${TABLE_NAME} WHERE id = ?`,
     [id],
   );
   const affected = (result as { affectedRows?: number }).affectedRows ?? 0;
   if (affected === 0) return { ok: false, error: 'Service not found', status: 404 };
+  await safeRecordAudit({ action: 'remove', serviceId: id, actor, before: previous, after: null });
   return { ok: true };
 }

@@ -1,14 +1,19 @@
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { CCShell } from '@/components/shell/cc-shell';
 import { listServices } from '@/lib/system-health-store';
+import { listAudit } from '@/lib/system-health-audit';
 import { ServicesEditor } from '@/components/monitoring/services-editor';
+import { ServicesAuditList } from '@/components/monitoring/services-audit-list';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
 export default async function MonitoringServicesPage() {
   const session = await requirePlatformAdmin();
-  const services = await listServices();
+  const [services, auditEntries] = await Promise.all([
+    listServices(),
+    listAudit(20),
+  ]);
 
   return (
     <CCShell userEmail={session.email}>
@@ -30,6 +35,10 @@ export default async function MonitoringServicesPage() {
           </div>
 
           <ServicesEditor initialServices={services} />
+
+          <div className="mt-8">
+            <ServicesAuditList entries={auditEntries} />
+          </div>
 
         </div>
       </div>

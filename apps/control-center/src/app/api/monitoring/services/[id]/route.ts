@@ -8,8 +8,9 @@ export async function PUT(
   request: NextRequest,
   context:  { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  let session;
   try {
-    await requirePlatformAdmin();
+    session = await requirePlatformAdmin();
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -27,7 +28,7 @@ export async function PUT(
     name:     String(body.name ?? ''),
     url:      String(body.url ?? ''),
     category: body.category as 'infrastructure' | 'product',
-  });
+  }, { userId: session.userId, email: session.email });
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
@@ -39,14 +40,15 @@ export async function DELETE(
   _request: NextRequest,
   context:  { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
+  let session;
   try {
-    await requirePlatformAdmin();
+    session = await requirePlatformAdmin();
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const { id } = await context.params;
-  const result = await removeService(id);
+  const result = await removeService(id, { userId: session.userId, email: session.email });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

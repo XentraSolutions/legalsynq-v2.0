@@ -17,8 +17,9 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  let session;
   try {
-    await requirePlatformAdmin();
+    session = await requirePlatformAdmin();
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     name:     String(body.name ?? ''),
     url:      String(body.url ?? ''),
     category: body.category as 'infrastructure' | 'product',
-  });
+  }, { userId: session.userId, email: session.email });
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
