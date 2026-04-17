@@ -60,7 +60,7 @@ export interface NavItem {
   href:   string;
   label:  string;
   icon?:  string;
-  badge?: 'LIVE' | 'MOCKUP' | 'IN PROGRESS';
+  badge?: 'LIVE' | 'MOCKUP' | 'IN PROGRESS' | 'NEW';
 }
 
 export interface NavSection {
