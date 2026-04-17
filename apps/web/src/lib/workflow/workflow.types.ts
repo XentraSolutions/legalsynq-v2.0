@@ -71,3 +71,20 @@ export interface StartWorkflowRequest {
   assignedToOrgId?: string;
   dueDate?: string;
 }
+
+/**
+ * E8.4 — body accepted by
+ * `POST .../cases/{id}/workflows/{workflowInstanceId}/advance`.
+ *
+ * `expectedCurrentStepKey` is required for optimistic concurrency: Flow
+ * compares it against the engine's current step before transitioning and
+ * returns `409 Conflict` (`expected_step_mismatch`) on drift.
+ *
+ * `toStepKey` is optional — when omitted Flow advances to the next step
+ * defined by the workflow definition's transitions.
+ */
+export interface AdvanceWorkflowRequest {
+  expectedCurrentStepKey: string;
+  toStepKey?: string;
+  payload?: Record<string, string>;
+}

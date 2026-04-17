@@ -72,6 +72,11 @@ export function buildRoleAccess(
       case 'workflow:view':
         return hasAnyLienRole;
       case 'workflow:start':
+      case 'workflow:advance':
+      case 'workflow:complete':
+        // E8.4 — progression is allowed for the same SynqLien roles that
+        // can drive workflow creation. Backend authorisation (Liens.Api +
+        // hardened Flow ownership endpoints) remains authoritative.
         return isSeller || isHolder;
 
       default:

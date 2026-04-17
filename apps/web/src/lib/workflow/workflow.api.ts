@@ -14,6 +14,7 @@
 import { apiClient } from '@/lib/api-client';
 import type { ApiResponse } from '@/types';
 import type {
+  AdvanceWorkflowRequest,
   ProductWorkflowRow,
   StartWorkflowRequest,
   WorkflowDefinitionRow,
@@ -30,6 +31,25 @@ export interface WorkflowApiAdapter {
    */
   getDetail(caseId: string, workflowInstanceId: string): Promise<ApiResponse<WorkflowInstanceDetail>>;
   listDefinitions(productKey: string): Promise<ApiResponse<WorkflowDefinitionRow[]>>;
+  /**
+   * E8.4 — advance an active workflow one step. The atomic
+   * ownership-aware POST validates tenant + product + parent + workflow
+   * ownership and step-key concurrency in a single backend transaction.
+   * Returns the post-transition workflow detail.
+   */
+  advance(
+    caseId: string,
+    workflowInstanceId: string,
+    body: AdvanceWorkflowRequest,
+  ): Promise<ApiResponse<WorkflowInstanceDetail>>;
+  /**
+   * E8.4 — complete an active workflow. Returns the post-completion
+   * workflow detail with `status = "Completed"`.
+   */
+  complete(
+    caseId: string,
+    workflowInstanceId: string,
+  ): Promise<ApiResponse<WorkflowInstanceDetail>>;
 }
 
 export interface CreateWorkflowApiOptions {
@@ -63,6 +83,18 @@ export function createWorkflowApi(opts: CreateWorkflowApiOptions): WorkflowApiAd
     listDefinitions(productKey) {
       return apiClient.get<WorkflowDefinitionRow[]>(
         `${opts.basePath}${defsSeg}?productKey=${encodeURIComponent(productKey)}`,
+      );
+    },
+    advance(caseId, workflowInstanceId, body) {
+      return apiClient.post<WorkflowInstanceDetail>(
+        `${caseBase(caseId)}/${encodeURIComponent(workflowInstanceId)}/advance`,
+        body,
+      );
+    },
+    complete(caseId, workflowInstanceId) {
+      return apiClient.post<WorkflowInstanceDetail>(
+        `${caseBase(caseId)}/${encodeURIComponent(workflowInstanceId)}/complete`,
+        {},
       );
     },
   };

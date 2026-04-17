@@ -14,10 +14,12 @@ import { ApiError } from '@/lib/api-client';
 import {
   workflowApi,
   pickActive,
+  type AdvanceWorkflowRequest,
   type ProductWorkflowRow,
   type StartWorkflowRequest,
   type WorkflowApiAdapter,
   type WorkflowDefinitionRow,
+  type WorkflowInstanceDetail,
 } from '@/lib/workflow';
 
 export interface UseCaseWorkflowsResult {
@@ -112,6 +114,80 @@ export interface UseWorkflowDefinitionsResult {
   error: ApiError | Error | null;
   definitions: WorkflowDefinitionRow[];
   refresh: () => Promise<void>;
+}
+
+// ── E8.4 mutation hooks ──────────────────────────────────────────────
+
+interface UseWorkflowMutationResult<TBody> {
+  submitting: boolean;
+  error: ApiError | Error | null;
+  submit: (body: TBody) => Promise<WorkflowInstanceDetail | null>;
+  reset: () => void;
+}
+
+export type UseAdvanceCaseWorkflowResult = UseWorkflowMutationResult<AdvanceWorkflowRequest>;
+export type UseCompleteCaseWorkflowResult = UseWorkflowMutationResult<void>;
+
+export function useAdvanceCaseWorkflow(
+  caseId: string | undefined,
+  workflowInstanceId: string | undefined | null,
+  onSuccess?: (detail: WorkflowInstanceDetail) => void | Promise<void>,
+  api: WorkflowApiAdapter = workflowApi,
+): UseAdvanceCaseWorkflowResult {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<ApiError | Error | null>(null);
+
+  const submit = useCallback(async (body: AdvanceWorkflowRequest) => {
+    if (!caseId || !workflowInstanceId) return null;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await api.advance(caseId, workflowInstanceId, body);
+      const detail = res.data;
+      if (detail && onSuccess) await onSuccess(detail);
+      return detail ?? null;
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setError(err);
+      return null;
+    } finally {
+      setSubmitting(false);
+    }
+  }, [caseId, workflowInstanceId, onSuccess, api]);
+
+  const reset = useCallback(() => setError(null), []);
+  return { submitting, error, submit, reset };
+}
+
+export function useCompleteCaseWorkflow(
+  caseId: string | undefined,
+  workflowInstanceId: string | undefined | null,
+  onSuccess?: (detail: WorkflowInstanceDetail) => void | Promise<void>,
+  api: WorkflowApiAdapter = workflowApi,
+): UseCompleteCaseWorkflowResult {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<ApiError | Error | null>(null);
+
+  const submit = useCallback(async () => {
+    if (!caseId || !workflowInstanceId) return null;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await api.complete(caseId, workflowInstanceId);
+      const detail = res.data;
+      if (detail && onSuccess) await onSuccess(detail);
+      return detail ?? null;
+    } catch (e) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setError(err);
+      return null;
+    } finally {
+      setSubmitting(false);
+    }
+  }, [caseId, workflowInstanceId, onSuccess, api]);
+
+  const reset = useCallback(() => setError(null), []);
+  return { submitting, error, submit, reset };
 }
 
 export function useWorkflowDefinitions(
