@@ -141,6 +141,7 @@ import type {
   PermissionPolicySummary,
   SupportedFieldsResponse,
   WorkflowInstanceListItem,
+  WorkflowInstanceDetail,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -184,6 +185,26 @@ function mapWorkflowInstanceListItem(raw: unknown): WorkflowInstanceListItem {
     completedAt:          s(r.completedAt),
     updatedAt:            s(r.updatedAt),
     createdAt:            String(r.createdAt ?? ''),
+  };
+}
+
+/**
+ * E9.2 — normalise the single-instance detail. Reuses the list-row
+ * mapper for shared fields and tacks on the three detail-only fields.
+ */
+function mapWorkflowInstanceDetail(raw: unknown): WorkflowInstanceDetail {
+  const base = mapWorkflowInstanceListItem(raw);
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const s = (v: unknown): string | null => {
+    if (v === undefined || v === null) return null;
+    const str = String(v);
+    return str.length === 0 ? null : str;
+  };
+  return {
+    ...base,
+    currentStageId:   s(r.currentStageId),
+    currentStepName:  s(r.currentStepName),
+    lastErrorMessage: s(r.lastErrorMessage),
   };
 }
 
@@ -1983,6 +2004,26 @@ export const controlCenterServerApi = {
         page:       raw?.page       ?? (params.page     ?? 1),
         pageSize:   raw?.pageSize   ?? (params.pageSize ?? 20),
       };
+    },
+
+    /**
+     * E9.2 — fetch a single workflow instance by id for the read-only
+     * detail drawer. Returns null on 404 (forbidden / unknown / scoped
+     * out) so the drawer can render a compact "not available" state
+     * instead of breaking the parent list page.
+     */
+    getById: async (id: string): Promise<WorkflowInstanceDetail | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/flow/api/v1/admin/workflow-instances/${encodeURIComponent(id)}`,
+          10,
+          [CACHE_TAGS.workflows],
+        );
+        return mapWorkflowInstanceDetail(raw);
+      } catch (err) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
     },
   },
 

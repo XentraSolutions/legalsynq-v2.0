@@ -3,7 +3,12 @@ import { getTenantContext } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { WorkflowOperationsTable } from '@/components/workflows/workflow-operations-table';
-import type { PagedResponse, WorkflowInstanceListItem } from '@/types/control-center';
+import { WorkflowDetailDrawer } from '@/components/workflows/workflow-detail-drawer';
+import type {
+  PagedResponse,
+  WorkflowInstanceListItem,
+  WorkflowInstanceDetail,
+} from '@/types/control-center';
 
 interface WorkflowsPageProps {
   searchParams: Promise<{
@@ -12,6 +17,7 @@ interface WorkflowsPageProps {
     status?:     string;
     tenantId?:   string;
     search?:     string;
+    selected?:   string;
   }>;
 }
 
@@ -61,6 +67,7 @@ export default async function WorkflowsPage({ searchParams }: WorkflowsPageProps
   // overrides.
   const tenantId   = sp.tenantId   ?? tenantCtx?.tenantId ?? '';
   const search     = sp.search     ?? '';
+  const selected   = (sp.selected ?? '').trim() || null;
 
   let result: PagedResponse<WorkflowInstanceListItem> | null = null;
   let fetchError: string | null = null;
@@ -76,6 +83,19 @@ export default async function WorkflowsPage({ searchParams }: WorkflowsPageProps
     });
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load workflow instances.';
+  }
+
+  // E9.2 — when the URL carries `?selected=<id>`, hydrate the detail
+  // drawer server-side. Failures here must NOT break the list page; we
+  // surface a compact error inside the drawer instead.
+  let detail: WorkflowInstanceDetail | null = null;
+  let detailError: string | null = null;
+  if (selected) {
+    try {
+      detail = await controlCenterServerApi.workflows.getById(selected);
+    } catch (err) {
+      detailError = err instanceof Error ? err.message : 'Failed to load workflow detail.';
+    }
   }
 
   const baseQuery = { productKey, status, tenantId, search };
@@ -167,9 +187,16 @@ export default async function WorkflowsPage({ searchParams }: WorkflowsPageProps
             page={result.page}
             pageSize={result.pageSize}
             baseQuery={baseQuery}
+            selectedId={selected}
           />
         )}
       </div>
+
+      <WorkflowDetailDrawer
+        selectedId={selected}
+        detail={detail}
+        errorMessage={detailError}
+      />
     </CCShell>
   );
 }

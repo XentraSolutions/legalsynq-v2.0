@@ -2,12 +2,34 @@ import Link from 'next/link';
 import type { WorkflowInstanceListItem } from '@/types/control-center';
 
 interface WorkflowOperationsTableProps {
-  rows:        WorkflowInstanceListItem[];
-  totalCount:  number;
-  page:        number;
-  pageSize:    number;
-  /** Preserve current filters when paginating. */
-  baseQuery:   Record<string, string | undefined>;
+  rows:         WorkflowInstanceListItem[];
+  totalCount:   number;
+  page:         number;
+  pageSize:     number;
+  /** Preserve current filters when paginating or opening the drawer. */
+  baseQuery:    Record<string, string | undefined>;
+  /** Currently-selected workflow id (driven by `?selected=`). */
+  selectedId?:  string | null;
+}
+
+/**
+ * Build an `?selected=<id>&page=N&...` href that opens the detail
+ * drawer while preserving every other filter the operator has applied.
+ * The current page number is preserved so closing the drawer returns to
+ * the same paginated slice.
+ */
+function buildSelectHref(
+  base: Record<string, string | undefined>,
+  page: number,
+  id: string,
+): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(base)) {
+    if (v !== undefined && v !== '') params.set(k, v);
+  }
+  if (page > 1) params.set('page', String(page));
+  params.set('selected', id);
+  return `?${params.toString()}`;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -77,6 +99,7 @@ export function WorkflowOperationsTable({
   page,
   pageSize,
   baseQuery,
+  selectedId,
 }: WorkflowOperationsTableProps) {
   if (rows.length === 0) {
     return (
@@ -101,11 +124,19 @@ export function WorkflowOperationsTable({
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Assigned</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Started</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Updated</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide w-20">
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.map(row => (
-              <tr key={row.id} className="hover:bg-gray-50 transition-colors">
+              <tr
+                key={row.id}
+                className={`transition-colors ${
+                  selectedId === row.id ? 'bg-indigo-50/60' : 'hover:bg-gray-50'
+                }`}
+              >
                 <td className="px-4 py-3">
                   <p className="text-sm font-medium text-gray-900">{row.workflowName ?? '—'}</p>
                   <p className="text-[11px] text-gray-400 mt-0.5 font-mono">{shortId(row.id)}</p>
@@ -140,6 +171,16 @@ export function WorkflowOperationsTable({
                 </td>
                 <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
                   {formatTimestamp(row.updatedAt ?? row.createdAt)}
+                </td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">
+                  <Link
+                    href={buildSelectHref(baseQuery, page, row.id)}
+                    scroll={false}
+                    className="text-xs text-indigo-600 hover:underline"
+                    aria-label={`Open workflow ${row.workflowName ?? row.id}`}
+                  >
+                    Open →
+                  </Link>
                 </td>
               </tr>
             ))}

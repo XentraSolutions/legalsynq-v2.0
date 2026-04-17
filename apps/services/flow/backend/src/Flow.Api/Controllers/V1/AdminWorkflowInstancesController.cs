@@ -187,6 +187,123 @@ public class AdminWorkflowInstancesController : ControllerBase
             PageSize  = ps,
         });
     }
+
+    /// <summary>
+    /// E9.2 — read-only single-instance detail for the Control Center
+    /// workflow detail drawer. Mirrors the same admin scoping rules as
+    /// <see cref="List"/>: PlatformAdmin can read across tenants;
+    /// TenantAdmin can read only rows in their own tenant. Returns 404
+    /// (rather than 403) when a TenantAdmin requests a row that exists
+    /// in another tenant — the row is intentionally invisible to them.
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+    {
+        var isPlatformAdmin = User.IsInRole(Roles.PlatformAdmin);
+
+        string? scopeTenantId = null;
+        if (!isPlatformAdmin)
+        {
+            try { scopeTenantId = _tenantProvider.GetTenantId(); }
+            catch { return Forbid(); }
+            if (string.IsNullOrEmpty(scopeTenantId)) return Forbid();
+        }
+
+        var instance = await _db.WorkflowInstances
+            .AsNoTracking()
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(w => w.Id == id, ct);
+
+        if (instance is null) return NotFound();
+
+        // For TenantAdmin, hide rows belonging to other tenants.
+        if (!isPlatformAdmin && instance.TenantId != scopeTenantId)
+        {
+            return NotFound();
+        }
+
+        // Definition + mapping joins re-apply explicit `TenantId == w.TenantId`
+        // for the same defence-in-depth reason as the list endpoint.
+        var definitionName = await _db.FlowDefinitions
+            .AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(d => d.Id == instance.WorkflowDefinitionId && d.TenantId == instance.TenantId)
+            .Select(d => d.Name)
+            .FirstOrDefaultAsync(ct);
+
+        var mapping = await _db.ProductWorkflowMappings
+            .AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(m => m.WorkflowInstanceId == instance.Id && m.TenantId == instance.TenantId)
+            .OrderByDescending(m => m.Status == "Active" ? 1 : 0)
+            .ThenByDescending(m => m.UpdatedAt ?? m.CreatedAt)
+            .Select(m => new { m.SourceEntityType, m.SourceEntityId, m.CorrelationKey })
+            .FirstOrDefaultAsync(ct);
+
+        // Resolve the current step's display name when possible.
+        string? currentStepName = null;
+        if (instance.CurrentStageId.HasValue)
+        {
+            currentStepName = await _db.WorkflowStages
+                .AsNoTracking()
+                .IgnoreQueryFilters()
+                .Where(s => s.Id == instance.CurrentStageId.Value
+                         && s.WorkflowDefinitionId == instance.WorkflowDefinitionId
+                         && s.TenantId == instance.TenantId)
+                .Select(s => s.Name)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        var dto = new AdminWorkflowInstanceDetail
+        {
+            Id                   = instance.Id,
+            TenantId             = instance.TenantId,
+            ProductKey           = instance.ProductKey,
+            WorkflowDefinitionId = instance.WorkflowDefinitionId,
+            WorkflowName         = definitionName,
+            Status               = instance.Status,
+            CurrentStageId       = instance.CurrentStageId,
+            CurrentStepKey       = instance.CurrentStepKey,
+            CurrentStepName      = currentStepName,
+            AssignedToUserId     = instance.AssignedToUserId,
+            CorrelationKey       = instance.CorrelationKey ?? mapping?.CorrelationKey,
+            SourceEntityType     = mapping?.SourceEntityType,
+            SourceEntityId       = mapping?.SourceEntityId,
+            StartedAt            = instance.StartedAt,
+            CompletedAt          = instance.CompletedAt,
+            UpdatedAt            = instance.UpdatedAt,
+            CreatedAt            = instance.CreatedAt,
+            LastErrorMessage     = instance.LastErrorMessage,
+        };
+
+        _logger.LogInformation(
+            "AdminWorkflowInstances.GetById id={InstanceId} platformAdmin={IsPlatformAdmin} tenant={TenantId}",
+            id, isPlatformAdmin, instance.TenantId);
+
+        return Ok(dto);
+    }
+}
+
+public sealed record AdminWorkflowInstanceDetail
+{
+    public Guid Id { get; init; }
+    public string TenantId { get; init; } = string.Empty;
+    public string ProductKey { get; init; } = string.Empty;
+    public Guid WorkflowDefinitionId { get; init; }
+    public string? WorkflowName { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public Guid? CurrentStageId { get; init; }
+    public string? CurrentStepKey { get; init; }
+    public string? CurrentStepName { get; init; }
+    public string? AssignedToUserId { get; init; }
+    public string? CorrelationKey { get; init; }
+    public string? SourceEntityType { get; init; }
+    public string? SourceEntityId { get; init; }
+    public DateTime? StartedAt { get; init; }
+    public DateTime? CompletedAt { get; init; }
+    public DateTime? UpdatedAt { get; init; }
+    public DateTime CreatedAt { get; init; }
+    public string? LastErrorMessage { get; init; }
 }
 
 public sealed record AdminWorkflowInstanceListItem

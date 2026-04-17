@@ -1075,3 +1075,15 @@ export interface WorkflowInstanceListItem {
   updatedAt:            string | null;
   createdAt:            string;
 }
+
+/**
+ * E9.2 — single-workflow detail returned by Flow's
+ * `GET /api/v1/admin/workflow-instances/{id}` admin endpoint. Superset
+ * of `WorkflowInstanceListItem` plus the current step's display name and
+ * the engine's `lastErrorMessage` for diagnostics.
+ */
+export interface WorkflowInstanceDetail extends WorkflowInstanceListItem {
+  currentStageId:   string | null;
+  currentStepName:  string | null;
+  lastErrorMessage: string | null;
+}
