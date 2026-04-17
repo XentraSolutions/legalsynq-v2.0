@@ -1120,3 +1120,17 @@ Source of truth: `flow/frontend/src/lib/productKeys.ts`.
 - Cluster `flow-cluster` → `http://localhost:5012`
 - Routes: `/flow/health`, `/flow/info`, `/flow/api/v1/status` (anonymous),
   `/flow/{**catch-all}` (protected).
+
+### Product consumption (Phase 3)
+- `IFlowUserContext` (Flow.Domain) — small abstraction giving the application
+  layer access to the current tenant + user id without referencing
+  BuildingBlocks. Implemented in `Flow.Api/Services/FlowUserContext.cs`.
+- `ProductWorkflowMapping` — explicit link between a product-side entity and a
+  Flow workflow instance (table `flow_product_workflow_mappings`, tenant query
+  filter applied).
+- `IProductWorkflowService` — product-facing service that creates a Flow task
+  (workflow-instance grain) plus a mapping row, validating that the workflow's
+  `ProductKey` matches the route's product.
+- `ProductWorkflowsController` — `/api/v1/product-workflows/{product}` with
+  per-product `[Authorize(Policy=...)]` (`CanSellLien` / `CanReferCareConnect`
+  / `CanReferFund`).

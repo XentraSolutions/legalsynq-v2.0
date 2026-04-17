@@ -27,6 +27,7 @@ public class FlowDbContext : DbContext, IFlowDbContext
     public DbSet<AutomationAction> AutomationActions => Set<AutomationAction>();
     public DbSet<AutomationExecutionLog> AutomationExecutionLogs => Set<AutomationExecutionLog>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<ProductWorkflowMapping> ProductWorkflowMappings => Set<ProductWorkflowMapping>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -193,6 +194,34 @@ public class FlowDbContext : DbContext, IFlowDbContext
             entity.HasOne(e => e.WorkflowDefinition)
                 .WithMany()
                 .HasForeignKey(e => e.WorkflowDefinitionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasQueryFilter(e => _tenantProvider == null || e.TenantId == _tenantProvider.GetTenantId());
+        });
+
+        modelBuilder.Entity<ProductWorkflowMapping>(entity =>
+        {
+            entity.ToTable("flow_product_workflow_mappings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TenantId).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.ProductKey).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.SourceEntityType).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.SourceEntityId).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.CorrelationKey).HasMaxLength(256);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(32).HasDefaultValue("Active");
+            entity.Property(e => e.CreatedBy).HasMaxLength(256);
+            entity.Property(e => e.UpdatedBy).HasMaxLength(256);
+            entity.HasIndex(e => new { e.TenantId, e.ProductKey });
+            entity.HasIndex(e => new { e.TenantId, e.ProductKey, e.SourceEntityType, e.SourceEntityId })
+                .HasDatabaseName("ix_pwm_product_entity");
+            entity.HasIndex(e => e.WorkflowDefinitionId);
+            entity.HasIndex(e => e.WorkflowInstanceTaskId);
+            entity.HasOne(e => e.WorkflowDefinition)
+                .WithMany()
+                .HasForeignKey(e => e.WorkflowDefinitionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.WorkflowInstanceTask)
+                .WithMany()
+                .HasForeignKey(e => e.WorkflowInstanceTaskId)
                 .OnDelete(DeleteBehavior.SetNull);
             entity.HasQueryFilter(e => _tenantProvider == null || e.TenantId == _tenantProvider.GetTenantId());
         });

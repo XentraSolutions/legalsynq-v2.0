@@ -67,3 +67,15 @@ Flow is now a first-class LegalSynq platform service. Key changes:
 - **Internal events:** `IFlowEventDispatcher` + `Flow.Application/Events/*` (in-process only).
 
 See `merge-phase-2-notes.md` for the full Phase 2 changelog and deferrals.
+
+## Phase 3 — product consumption (LS-FLOW-MERGE-P3, 2026-04-17)
+
+Flow is now product-consumable for **SynqLien**, **CareConnect**, and **SynqFund**:
+
+- **Real event emission.** Workflow create / state-change / complete and task assign / complete now publish via `IFlowEventDispatcher`.
+- **Product↔workflow correlation.** New `ProductWorkflowMapping` entity + table `flow_product_workflow_mappings` (migration `20260417030704_AddProductWorkflowMappings`).
+- **Product-facing API.** `/api/v1/product-workflows/{synqlien|careconnect|synqfund}` gated by `CanSellLien` / `CanReferCareConnect` / `CanReferFund` policies.
+- **Legacy cleanup.** `backend/sql/cleanup-default-tenant.sql` (manual review).
+- **UI.** `/product-workflows` page lists mappings grouped by product.
+
+See `merge-phase-3-notes.md` for the full Phase 3 changelog.

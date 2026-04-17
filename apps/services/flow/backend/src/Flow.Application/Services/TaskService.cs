@@ -1,9 +1,11 @@
 using Flow.Application.DTOs;
+using Flow.Application.Events;
 using Flow.Application.Exceptions;
 using Flow.Application.Interfaces;
 using Flow.Domain.Common;
 using Flow.Domain.Entities;
 using Flow.Domain.Enums;
+using Flow.Domain.Interfaces;
 using Flow.Domain.Rules;
 using Microsoft.EntityFrameworkCore;
 using ProductKeys = Flow.Domain.Common.ProductKeys;
@@ -15,17 +17,26 @@ public class TaskService : ITaskService
     private readonly IFlowDbContext _db;
     private readonly IAutomationExecutor _automationExecutor;
     private readonly INotificationService _notificationService;
+    private readonly IFlowEventDispatcher _events;
+    private readonly IFlowUserContext _user;
 
     private static readonly HashSet<string> AllowedSortFields = new(StringComparer.OrdinalIgnoreCase)
     {
         "createdAt", "dueDate", "title", "status", "updatedAt"
     };
 
-    public TaskService(IFlowDbContext db, IAutomationExecutor automationExecutor, INotificationService notificationService)
+    public TaskService(
+        IFlowDbContext db,
+        IAutomationExecutor automationExecutor,
+        INotificationService notificationService,
+        IFlowEventDispatcher events,
+        IFlowUserContext user)
     {
         _db = db;
         _automationExecutor = automationExecutor;
         _notificationService = notificationService;
+        _events = events;
+        _user = user;
     }
 
     public async Task<TaskResponse> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -157,6 +168,18 @@ public class TaskService : ITaskService
 
         _db.TaskItems.Add(entity);
         await _db.SaveChangesAsync(cancellationToken);
+
+        // LS-FLOW-MERGE-P3 — if the task was created already-assigned, fan out
+        // a TaskAssigned event (audit + notification).
+        var hasAssignment = !string.IsNullOrWhiteSpace(entity.AssignedToUserId)
+            || !string.IsNullOrWhiteSpace(entity.AssignedToRoleKey)
+            || !string.IsNullOrWhiteSpace(entity.AssignedToOrgId);
+        if (hasAssignment)
+        {
+            await _events.PublishAsync(new TaskAssignedEvent(
+                entity.Id, entity.AssignedToUserId, entity.AssignedToRoleKey, entity.AssignedToOrgId,
+                _user.TenantId, _user.UserId, DateTime.UtcNow), cancellationToken);
+        }
 
         return await GetByIdAsync(entity.Id, cancellationToken);
     }
@@ -298,6 +321,16 @@ public class TaskService : ITaskService
                 entity.WorkflowStageId = validTransition.ToStageId;
                 await _db.SaveChangesAsync(cancellationToken);
 
+                // LS-FLOW-MERGE-P3 — also emit TaskCompleted on the workflow-
+                // transition path when the resulting status is terminal. The
+                // non-workflow branch below covers the same emit for tasks
+                // not bound to a workflow stage.
+                if (request.Status == TaskItemStatus.Done)
+                {
+                    await _events.PublishAsync(new TaskCompletedEvent(
+                        entity.Id, _user.TenantId, _user.UserId, DateTime.UtcNow), cancellationToken);
+                }
+
                 var automationResults = await _automationExecutor.ExecuteTransitionHooksAsync(
                     validTransition.Id, entity, cancellationToken);
 
@@ -345,6 +378,14 @@ public class TaskService : ITaskService
 
         entity.Status = request.Status;
         await _db.SaveChangesAsync(cancellationToken);
+
+        // LS-FLOW-MERGE-P3 — emit TaskCompleted on terminal status.
+        if (request.Status == TaskItemStatus.Done)
+        {
+            await _events.PublishAsync(new TaskCompletedEvent(
+                entity.Id, _user.TenantId, _user.UserId, DateTime.UtcNow), cancellationToken);
+        }
+
         return await GetByIdAsync(entity.Id, cancellationToken);
     }
 
@@ -370,6 +411,11 @@ public class TaskService : ITaskService
 
         if (hasNewAssignment)
         {
+            // LS-FLOW-MERGE-P3 — fan out via dispatcher (audit + notification).
+            await _events.PublishAsync(new TaskAssignedEvent(
+                entity.Id, entity.AssignedToUserId, entity.AssignedToRoleKey, entity.AssignedToOrgId,
+                _user.TenantId, _user.UserId, DateTime.UtcNow), cancellationToken);
+
             var notifType = hadPriorAssignment
                 ? Domain.Entities.NotificationType.TaskReassigned
                 : Domain.Entities.NotificationType.TaskAssigned;

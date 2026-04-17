@@ -90,6 +90,36 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
         policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
+
+    // LS-FLOW-MERGE-P3 — product-capability policies for the product-facing
+    // workflow endpoints. Each policy requires an authenticated user PLUS
+    // either the corresponding permission claim OR product-role access on
+    // the matching ProductCode. The "no permissions at all" fallback is
+    // restricted to the Development environment so production tokens that
+    // legitimately lack a capability claim cannot pass — see
+    // merge-phase-3-notes.md.
+    var allowMissingPermissions = builder.Environment.IsDevelopment();
+
+    options.AddPolicy(Policies.CanSellLien, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  ctx.User.HasPermission("SYNQ_LIENS.lien:sell") ||
+                  ctx.User.HasProductAccess(ProductCodes.SynqLiens) ||
+                  (allowMissingPermissions && !ctx.User.GetPermissions().Any())));
+
+    options.AddPolicy(Policies.CanReferCareConnect, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  ctx.User.HasPermission(PermissionCodes.ReferralCreate) ||
+                  ctx.User.HasProductAccess(ProductCodes.SynqCareConnect) ||
+                  (allowMissingPermissions && !ctx.User.GetPermissions().Any())));
+
+    options.AddPolicy(Policies.CanReferFund, policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx =>
+                  ctx.User.HasPermission("SYNQ_FUND.application:refer") ||
+                  ctx.User.HasProductAccess(ProductCodes.SynqFund) ||
+                  (allowMissingPermissions && !ctx.User.GetPermissions().Any())));
 });
 
 // ---------------------------------------------------------------------------
@@ -97,6 +127,8 @@ builder.Services.AddAuthorization(options =>
 // ---------------------------------------------------------------------------
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
+// LS-FLOW-MERGE-P3 — adapt platform request context into Flow.Domain abstraction.
+builder.Services.AddScoped<Flow.Domain.Interfaces.IFlowUserContext, Flow.Api.Services.FlowUserContext>();
 
 builder.Services.AddHealthChecks();
 builder.Services.AddInfrastructure(builder.Configuration);

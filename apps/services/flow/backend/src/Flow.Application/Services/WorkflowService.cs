@@ -1,9 +1,11 @@
 using Flow.Application.DTOs;
+using Flow.Application.Events;
 using Flow.Application.Exceptions;
 using Flow.Application.Interfaces;
 using Flow.Domain.Common;
 using Flow.Domain.Entities;
 using Flow.Domain.Enums;
+using Flow.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Flow.Application.Services;
@@ -11,10 +13,14 @@ namespace Flow.Application.Services;
 public class WorkflowService : IWorkflowService
 {
     private readonly IFlowDbContext _db;
+    private readonly IFlowEventDispatcher _events;
+    private readonly IFlowUserContext _user;
 
-    public WorkflowService(IFlowDbContext db)
+    public WorkflowService(IFlowDbContext db, IFlowEventDispatcher events, IFlowUserContext user)
     {
         _db = db;
+        _events = events;
+        _user = user;
     }
 
     public async Task<List<WorkflowDefinitionSummaryResponse>> ListAsync(string? productKey = null, CancellationToken cancellationToken = default)
@@ -83,6 +89,11 @@ public class WorkflowService : IWorkflowService
         _db.FlowDefinitions.Add(entity);
         await _db.SaveChangesAsync(cancellationToken);
 
+        // LS-FLOW-MERGE-P3 — emit creation event for audit/notifications fan-out.
+        await _events.PublishAsync(new WorkflowCreatedEvent(
+            entity.Id, entity.Name, entity.ProductKey,
+            _user.TenantId, _user.UserId, DateTime.UtcNow), cancellationToken);
+
         return MapToResponse(entity);
     }
 
@@ -98,6 +109,8 @@ public class WorkflowService : IWorkflowService
 
         if (workflow is null)
             throw new NotFoundException("WorkflowDefinition", id);
+
+        var previousStatus = workflow.Status;
 
         workflow.Name = request.Name.Trim();
         workflow.Description = request.Description?.Trim();
@@ -130,6 +143,21 @@ public class WorkflowService : IWorkflowService
         workflow.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        // LS-FLOW-MERGE-P3 — emit state change + completion events when status moved.
+        if (request.Status.HasValue && previousStatus != workflow.Status)
+        {
+            await _events.PublishAsync(new WorkflowStateChangedEvent(
+                workflow.Id, previousStatus.ToString(), workflow.Status.ToString(),
+                _user.TenantId, _user.UserId, DateTime.UtcNow), cancellationToken);
+
+            if (workflow.Status == FlowStatus.Completed)
+            {
+                await _events.PublishAsync(new WorkflowCompletedEvent(
+                    workflow.Id, _user.TenantId, _user.UserId, DateTime.UtcNow),
+                    cancellationToken);
+            }
+        }
 
         return MapToResponse(workflow);
     }

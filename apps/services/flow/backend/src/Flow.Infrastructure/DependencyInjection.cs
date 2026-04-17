@@ -40,6 +40,8 @@ public static class DependencyInjection
         services.AddScoped<IWorkflowService, WorkflowService>();
         services.AddScoped<IAutomationExecutor, AutomationExecutor>();
         services.AddScoped<INotificationService, NotificationService>();
+        // LS-FLOW-MERGE-P3 — product-facing service for SynqLien/CareConnect/SynqFund.
+        services.AddScoped<IProductWorkflowService, ProductWorkflowService>();
 
         return services;
     }

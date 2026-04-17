@@ -14,6 +14,7 @@ public interface IFlowDbContext
     DbSet<AutomationAction> AutomationActions { get; }
     DbSet<AutomationExecutionLog> AutomationExecutionLogs { get; }
     DbSet<Notification> Notifications { get; }
+    DbSet<ProductWorkflowMapping> ProductWorkflowMappings { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
     Microsoft.EntityFrameworkCore.Storage.IExecutionStrategy CreateExecutionStrategy();
