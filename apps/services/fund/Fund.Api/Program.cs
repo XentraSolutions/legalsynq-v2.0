@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.FlowClient;
 using Contracts;
 using Fund.Api.Endpoints;
 using Fund.Api.Middleware;
@@ -66,6 +67,8 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddInfrastructure(builder.Configuration);
+// LS-FLOW-MERGE-P4 — shared Flow HTTP adapter (bearer pass-through, retry, 503 mapping).
+builder.Services.AddFlowClient(builder.Configuration);
 
 var app = builder.Build();
 
@@ -100,5 +103,7 @@ app.MapGet("/info", () =>
     .AllowAnonymous();
 
 app.MapApplicationEndpoints();
+// LS-FLOW-MERGE-P4 — product → Flow integration endpoints.
+app.MapWorkflowEndpoints();
 
 app.Run();

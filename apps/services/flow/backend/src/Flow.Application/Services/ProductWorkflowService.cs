@@ -41,11 +41,10 @@ public sealed class ProductWorkflowService : IProductWorkflowService
                 $"Workflow {workflow.Id} belongs to product {workflow.ProductKey}, not {productKey}.");
         }
 
-        // LS-FLOW-MERGE-P3 — task + mapping must be one atomic unit so a
-        // mapping-save failure cannot orphan a Flow TaskItem. We use the
-        // EF execution strategy (it owns retry semantics; manually opening
-        // a transaction outside the strategy would be incompatible with
-        // MySqlRetryingExecutionStrategy).
+        // LS-FLOW-MERGE-P3/P4 — task + workflow-instance + mapping must be
+        // one atomic unit so a partial failure cannot orphan a Flow
+        // TaskItem or leave a mapping pointing nowhere. EF's execution
+        // strategy owns retry; the explicit transaction lives inside it.
         ProductWorkflowMapping? mapping = null;
         var strategy = _db.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async ct =>
@@ -70,14 +69,28 @@ public sealed class ProductWorkflowService : IProductWorkflowService
                 }
             }, ct);
 
+            // LS-FLOW-MERGE-P4 — create the canonical WorkflowInstance row
+            // alongside the bootstrapping task.
+            var instance = new WorkflowInstance
+            {
+                WorkflowDefinitionId = request.WorkflowDefinitionId,
+                ProductKey = productKey,
+                CorrelationKey = string.IsNullOrWhiteSpace(request.CorrelationKey) ? null : request.CorrelationKey.Trim(),
+                InitialTaskId = task.Id,
+                Status = "Active"
+            };
+            _db.WorkflowInstances.Add(instance);
+            await _db.SaveChangesAsync(ct);
+
             mapping = new ProductWorkflowMapping
             {
                 ProductKey = productKey,
                 SourceEntityType = request.SourceEntityType.Trim(),
                 SourceEntityId = request.SourceEntityId.Trim(),
                 WorkflowDefinitionId = request.WorkflowDefinitionId,
-                WorkflowInstanceTaskId = task.Id,
-                CorrelationKey = string.IsNullOrWhiteSpace(request.CorrelationKey) ? null : request.CorrelationKey.Trim(),
+                WorkflowInstanceId = instance.Id,
+                WorkflowInstanceTaskId = task.Id, // legacy back-compat
+                CorrelationKey = instance.CorrelationKey,
                 Status = "Active"
             };
 
@@ -166,6 +179,7 @@ public sealed class ProductWorkflowService : IProductWorkflowService
         SourceEntityType = m.SourceEntityType,
         SourceEntityId = m.SourceEntityId,
         WorkflowDefinitionId = m.WorkflowDefinitionId,
+        WorkflowInstanceId = m.WorkflowInstanceId,
         WorkflowInstanceTaskId = m.WorkflowInstanceTaskId,
         CorrelationKey = m.CorrelationKey,
         Status = m.Status,

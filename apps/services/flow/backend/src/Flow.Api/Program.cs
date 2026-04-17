@@ -103,7 +103,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(Policies.CanSellLien, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx =>
-                  ctx.User.HasPermission("SYNQ_LIENS.lien:sell") ||
+                  ctx.User.HasPermission(PermissionCodes.LienSell) ||
                   ctx.User.HasProductAccess(ProductCodes.SynqLiens) ||
                   (allowMissingPermissions && !ctx.User.GetPermissions().Any())));
 
@@ -117,7 +117,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(Policies.CanReferFund, policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx =>
-                  ctx.User.HasPermission("SYNQ_FUND.application:refer") ||
+                  ctx.User.HasPermission(PermissionCodes.ApplicationRefer) ||
                   ctx.User.HasProductAccess(ProductCodes.SynqFund) ||
                   (allowMissingPermissions && !ctx.User.GetPermissions().Any())));
 });
@@ -183,5 +183,6 @@ app.UseMiddleware<TenantValidationMiddleware>();
 
 app.MapControllers();
 app.MapHealthChecks("/healthz");
+app.MapHealthChecks("/health"); // LS-FLOW-MERGE-P4: alias for unified product smoke checks
 
 app.Run();

@@ -29,9 +29,19 @@ public static class PermissionCodes
     public const string LienReadHeld  = "SYNQ_LIENS.lien:read:held";
     public const string LienService   = "SYNQ_LIENS.lien:service";
     public const string LienSettle    = "SYNQ_LIENS.lien:settle";
+    /// <summary>
+    /// LS-FLOW-MERGE-P4 — capability claim required to start a Flow workflow
+    /// for a SynqLien sale path (mapped to the <c>CanSellLien</c> policy).
+    /// </summary>
+    public const string LienSell      = "SYNQ_LIENS.lien:sell";
 
     // ── SynqFund ─────────────────────────────────────────────────────────────
     public const string ApplicationCreate          = "SYNQ_FUND.application:create";
+    /// <summary>
+    /// LS-FLOW-MERGE-P4 — capability claim required to start a Flow workflow
+    /// for a SynqFund referral path (mapped to the <c>CanReferFund</c> policy).
+    /// </summary>
+    public const string ApplicationRefer           = "SYNQ_FUND.application:refer";
     public const string ApplicationReadOwn         = "SYNQ_FUND.application:read:own";
     public const string ApplicationCancel          = "SYNQ_FUND.application:cancel";
     public const string ApplicationReadAddressed   = "SYNQ_FUND.application:read:addressed";

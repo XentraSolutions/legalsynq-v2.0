@@ -15,6 +15,8 @@ public interface IFlowDbContext
     DbSet<AutomationExecutionLog> AutomationExecutionLogs { get; }
     DbSet<Notification> Notifications { get; }
     DbSet<ProductWorkflowMapping> ProductWorkflowMappings { get; }
+    // LS-FLOW-MERGE-P4 — dedicated workflow-instance grain.
+    DbSet<WorkflowInstance> WorkflowInstances { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
     Microsoft.EntityFrameworkCore.Storage.IExecutionStrategy CreateExecutionStrategy();

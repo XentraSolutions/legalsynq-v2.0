@@ -1134,3 +1134,22 @@ Source of truth: `flow/frontend/src/lib/productKeys.ts`.
 - `ProductWorkflowsController` — `/api/v1/product-workflows/{product}` with
   per-product `[Authorize(Policy=...)]` (`CanSellLien` / `CanReferCareConnect`
   / `CanReferFund`).
+
+### Operational hardening (Phase 4)
+- `WorkflowInstance` (Flow.Domain) — first-class workflow-instance grain
+  (table `flow_workflow_instances`, tenant query filter applied). Replaces
+  the Phase-3 use of `TaskItem` as the instance grain.
+- `ProductWorkflowMapping.WorkflowInstanceId` — canonical FK to the new
+  instance row; `WorkflowInstanceTaskId` is kept for back-compat.
+- `BuildingBlocks/FlowClient/IFlowClient` — typed `HttpClient` consumed by
+  product services. Retries, timeouts, structured logging, and bearer
+  pass-through via `IHttpContextAccessor`. Registered with
+  `services.AddFlowClient(configuration)` (binds `Flow:BaseUrl`).
+- Each product (`Liens.Api`, `CareConnect.Api`, `Fund.Api`) exposes a
+  minimal `POST/GET .../workflows` endpoint pair that calls Flow on behalf
+  of the user and returns **HTTP 503** with `{ error, code: "flow_unavailable" }`
+  if Flow is unreachable, instead of bubbling exceptions.
+- Capability policies in `Flow.Api/Program.cs` now reference
+  `BuildingBlocks.Authorization.PermissionCodes` constants
+  (`LienSell` / `ReferralCreate` / `ApplicationRefer`) instead of inline
+  strings, keeping permission codes single-sourced.

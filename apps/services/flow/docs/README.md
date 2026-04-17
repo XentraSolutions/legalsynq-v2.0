@@ -79,3 +79,15 @@ Flow is now product-consumable for **SynqLien**, **CareConnect**, and **SynqFund
 - **UI.** `/product-workflows` page lists mappings grouped by product.
 
 See `merge-phase-3-notes.md` for the full Phase 3 changelog.
+
+## Phase 4 — operational hardening (LS-FLOW-MERGE-P4, 2026-04-17)
+
+Phase 4 hardens the Flow ↔ product integration:
+
+- **Dedicated `WorkflowInstance` entity.** New `flow_workflow_instances` table replaces the Phase-3 stop-gap of using a `TaskItem` as the workflow-instance grain. Mapping rows now carry both `WorkflowInstanceId` (canonical) and `WorkflowInstanceTaskId` (deprecated, kept for back-compat). Migration `20260417034039_AddWorkflowInstancesP4`.
+- **Centralized capability codes.** `BuildingBlocks/Authorization/PermissionCodes.cs` now defines `LienSell` / `ReferralCreate` / `ApplicationRefer`; Flow.Api policies reference the constants.
+- **Shared `IFlowClient` (BuildingBlocks).** Typed `HttpClient` with retry, timeout, structured logging, and bearer pass-through. Single-call registration via `services.AddFlowClient(configuration)`.
+- **Product-side `/workflows` endpoints.** `Liens.Api`, `CareConnect.Api`, `Fund.Api` each expose `POST/GET /api/{liens/cases|referrals|applications}/{id}/workflows`, returning **HTTP 503** on Flow downtime.
+- **Frontend.** `/product-workflows` page now ships a per-product **Start workflow** form and shows `workflowInstanceId` in the mapping table.
+
+See `merge-phase-4-notes.md` for the full Phase 4 changelog.

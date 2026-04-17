@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using BuildingBlocks.FlowClient;
 using CareConnect.Api.Endpoints;
 using CareConnect.Api.Middleware;
 using CareConnect.Infrastructure;
@@ -46,6 +47,8 @@ builder.Services.AddAuthorization(options =>
 
 // Infrastructure (DbContext + repositories + services)
 builder.Services.AddInfrastructure(builder.Configuration);
+// LS-FLOW-MERGE-P4 — shared Flow HTTP adapter (bearer pass-through, retry, 503 mapping).
+builder.Services.AddFlowClient(builder.Configuration);
 
 // Request context
 builder.Services.AddHttpContextAccessor();
@@ -121,6 +124,8 @@ app.MapPerformanceEndpoints();      // LSCC-01-005: referral performance metrics
 app.MapAdminBackfillEndpoints();
 app.MapActivationAdminEndpoints(); // LSCC-009
 app.MapAnalyticsEndpoints();      // LSCC-011
+// LS-FLOW-MERGE-P4 — product → Flow integration endpoints.
+app.MapWorkflowEndpoints();
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
 app.MapCategoryEndpoints();

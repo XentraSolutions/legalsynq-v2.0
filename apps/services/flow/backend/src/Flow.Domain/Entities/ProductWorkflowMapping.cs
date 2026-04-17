@@ -28,8 +28,17 @@ public class ProductWorkflowMapping : AuditableEntity
     public Guid WorkflowDefinitionId { get; set; }
 
     /// <summary>
-    /// Optional workflow-instance id. Today this is a Flow TaskItem id; future
-    /// workflow-instance entities will replace this without breaking the API.
+    /// LS-FLOW-MERGE-P4 — canonical workflow-instance pointer. Phase-4 moved
+    /// the instance grain from <see cref="TaskItem"/> to <see cref="WorkflowInstance"/>.
+    /// New rows always populate this; legacy rows may be null until backfilled.
+    /// </summary>
+    public Guid? WorkflowInstanceId { get; set; }
+
+    /// <summary>
+    /// LEGACY (Phase-3) — id of the initial Flow TaskItem that the mapping
+    /// originally pointed at. Retained read-only for back-compat with
+    /// existing API consumers and for debugging. Prefer
+    /// <see cref="WorkflowInstanceId"/> for all new logic.
     /// </summary>
     public Guid? WorkflowInstanceTaskId { get; set; }
 
@@ -40,5 +49,6 @@ public class ProductWorkflowMapping : AuditableEntity
     public string Status { get; set; } = "Active";
 
     public FlowDefinition? WorkflowDefinition { get; set; }
+    public WorkflowInstance? WorkflowInstance { get; set; }
     public TaskItem? WorkflowInstanceTask { get; set; }
 }

@@ -41,7 +41,16 @@ public class ProductWorkflowResponse
     public string SourceEntityType { get; set; } = string.Empty;
     public string SourceEntityId { get; set; } = string.Empty;
     public Guid WorkflowDefinitionId { get; set; }
+
+    /// <summary>LS-FLOW-MERGE-P4 — canonical workflow instance id.</summary>
+    public Guid? WorkflowInstanceId { get; set; }
+
+    /// <summary>
+    /// LEGACY (Phase-3) — initial-task id retained for back-compat. New
+    /// consumers should rely on <see cref="WorkflowInstanceId"/>.
+    /// </summary>
     public Guid? WorkflowInstanceTaskId { get; set; }
+
     public string? CorrelationKey { get; set; }
     public string Status { get; set; } = "Active";
     public DateTime CreatedAt { get; set; }
