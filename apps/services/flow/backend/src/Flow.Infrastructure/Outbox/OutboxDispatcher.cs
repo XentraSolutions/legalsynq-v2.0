@@ -306,6 +306,14 @@ public sealed class OutboxDispatcher
         var p = JsonSerializer.Deserialize<AdminActionPayload>(row.PayloadJson, JsonOpts)
                 ?? throw new InvalidOperationException("Admin payload deserialised to null.");
 
+        // Load the workflow instance once: used both as the recipient
+        // resolver for the notification envelope and (in the redrive
+        // branch) as the consistency check for the re-drive nudge.
+        var instance = await _db.WorkflowInstances
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(w => w.Id == p.WorkflowInstanceId, ct);
+
         // Always emit the audit row first so the operator action is durably recorded.
         await _audit.WriteEventAsync(new AuditEvent(
             Action:      row.EventType,
@@ -327,6 +335,70 @@ public sealed class OutboxDispatcher
             },
             OccurredAtUtc: p.OccurredAtUtc), ct);
 
+        // E12.2 — emit a notification envelope for the admin override
+        // when we have a recipient. We address the current workflow
+        // assignee (loaded above) so the operator who owns the work
+        // sees the override land. The audit row above is the durable
+        // forensic trail; the notification is the user-facing signal.
+        var assignee = instance?.AssignedToUserId;
+        if (!string.IsNullOrEmpty(assignee))
+        {
+            var (templateKey, severity) = row.EventType switch
+            {
+                OutboxEventTypes.AdminRetry =>
+                    (NotificationTemplateKeys.WorkflowAdminRetry, NotificationSeverity.Info),
+                OutboxEventTypes.AdminForceComplete =>
+                    (NotificationTemplateKeys.WorkflowAdminForceComplete, NotificationSeverity.Warning),
+                OutboxEventTypes.AdminCancel =>
+                    (NotificationTemplateKeys.WorkflowAdminCancel, NotificationSeverity.Warning),
+                _ => (row.EventType, NotificationSeverity.Info),
+            };
+
+            var (subject, summary) = row.EventType switch
+            {
+                OutboxEventTypes.AdminRetry =>
+                    ("Workflow re-drive issued",
+                     $"An operator re-drove workflow {p.WorkflowInstanceId}: {p.PreviousStatus} → {p.NewStatus}."),
+                OutboxEventTypes.AdminForceComplete =>
+                    ("Workflow force-completed",
+                     $"An operator force-completed workflow {p.WorkflowInstanceId} (was {p.PreviousStatus})."),
+                OutboxEventTypes.AdminCancel =>
+                    ("Workflow cancelled by operator",
+                     $"An operator cancelled workflow {p.WorkflowInstanceId} (was {p.PreviousStatus})."),
+                _ => (row.EventType, row.EventType),
+            };
+
+            var envelope = new NotificationEnvelope
+            {
+                TemplateKey   = templateKey,
+                TenantId      = row.TenantId,
+                ProductKey    = p.ProductKey,
+                EntityType    = "WorkflowInstance",
+                EntityId      = p.WorkflowInstanceId.ToString(),
+                Recipient     = NotificationRecipient.ForUser(assignee!),
+                Subject       = subject,
+                Body          = summary,
+                BodyVariables = new Dictionary<string, string?>
+                {
+                    ["workflowInstanceId"] = p.WorkflowInstanceId.ToString(),
+                    ["productKey"]         = p.ProductKey,
+                    ["action"]             = p.Action,
+                    ["previousStatus"]     = p.PreviousStatus,
+                    ["newStatus"]          = p.NewStatus,
+                    ["reason"]             = p.Reason,
+                    ["performedBy"]        = p.PerformedBy,
+                    ["isPlatformAdmin"]    = p.IsPlatformAdmin ? "true" : "false",
+                },
+                Severity      = severity,
+                Category      = NotificationCategory.Workflow,
+                CorrelationId = p.WorkflowInstanceId.ToString(),
+                OutboxId      = row.Id.ToString(),
+                ChannelHints  = new[] { "system" },
+            };
+
+            await _notifications.SendAsync(ToNotificationMessage(envelope, row.EventType), ct);
+        }
+
         if (!redrive) return;
 
         // ------- re-drive nudge (idempotent, read-only verification) ---
@@ -340,11 +412,6 @@ public sealed class OutboxDispatcher
         // command path. This handler exists to prove the re-drive event
         // was processed, and to surface anomalies (e.g. status flipped
         // back to Failed by another writer between commit and pickup).
-        var instance = await _db.WorkflowInstances
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .FirstOrDefaultAsync(w => w.Id == p.WorkflowInstanceId, ct);
-
         if (instance is null)
         {
             _log.LogWarning(
