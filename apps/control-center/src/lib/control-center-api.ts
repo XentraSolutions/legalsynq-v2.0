@@ -2033,7 +2033,7 @@ export const controlCenterServerApi = {
       classification?:      string;
       staleThresholdHours?: number;
     }): Promise<WorkflowInstancePagedResponse> => {
-      const qs = buildQuery({
+      const qs = toQs({
         page:                params.page,
         pageSize:            params.pageSize,
         productKey:          params.productKey,
