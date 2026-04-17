@@ -1189,3 +1189,10 @@ Source of truth: `flow/frontend/src/lib/productKeys.ts`.
 - Capability policies (`CanSellLien` / `CanReferCareConnect` / `CanReferFund`) are checked only for end-user callers. Service tokens skip per-product capability (the originating product service has already enforced it) but cannot bypass tenant scoping or parent ownership.
 - `BuildingBlocks/FlowClient` now ships `FlowErrorCodes` (machine-readable codes used by Flow, the passthrough layer, and tests) and `ICallerContextAccessor` (per-request projection of the principal into `{ Type, TenantId, Subject, Actor }`).
 - `AddServiceTokenBearer` is hardened (signed-tokens required, semantic claims required) and gains `failFastIfMissingSecret`, which Flow.Api uses to crash-on-startup outside Development if the shared HS256 secret is missing or shorter than 32 chars.
+
+
+## Phase A1.1 — Validation Track
+
+- A1.1 adds no runtime behaviour; the only production-tree change is `public partial class Program { }` appended to `Flow.Api/Program.cs` so `WebApplicationFactory<Program>` can host the real entry point.
+- The integration suite (`Flow.IntegrationTests`) replaces only the auth scheme (header-driven `TestAuth`) and the EF provider (SQLite in-memory with a shared keep-alive connection). `ClaimsTenantProvider`, `CallerContextAccessor`, `TenantValidationMiddleware`, the capability policies, and `WorkflowEngine` all run unmodified.
+- The factory runs the host as `Development` so the service-token startup guard (already covered by `Flow.UnitTests.ServiceTokenStartupGuardTests`) does not require a real secret. Capability tests rely on the explicit permission / product-role claims they carry; the "no permissions at all" dev-fallback never engages because every authenticated test caller carries at least one permission claim.

@@ -234,3 +234,7 @@ app.MapHealthChecks("/healthz");
 app.MapHealthChecks("/health"); // LS-FLOW-MERGE-P4: alias for unified product smoke checks
 
 app.Run();
+
+// LS-FLOW-HARDEN-A1.1 — top-level Program needs an explicit partial class so
+// WebApplicationFactory<Program> in Flow.IntegrationTests can reach it.
+public partial class Program { }

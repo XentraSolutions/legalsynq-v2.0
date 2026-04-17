@@ -111,3 +111,13 @@ See `merge-phase-5-notes.md` for the full Phase 5 changelog.
 - **Tests.** `apps/services/flow/backend/tests/Flow.UnitTests` (xUnit). 9 cases, 9 pass — caller classification + service-token startup guard.
 
 See `merge-phase-A1-notes.md` for the full A1 changelog and the deferred Phase A1.1 integration matrix.
+
+## Phase A1.1 — Hardening Validation Track (LS-FLOW-HARDEN-A1.1)
+
+- **Real Flow.Api integration host.** `apps/services/flow/backend/tests/Flow.IntegrationTests` boots the actual API via `WebApplicationFactory<Program>` against an in-memory SQLite database and a header-driven `TestAuth` scheme. Every controller, middleware, capability policy, and the real `WorkflowEngine` execute under test — only auth and DB are substituted.
+- **Security/integrity matrix (28 tests, all green).** Ownership IDOR, tenant isolation, cross-product correlation, transition integrity, auth (anonymous / capability / product-role / service-token), and error-contract code stability — all asserted from the wire against the real pipeline.
+- **Per-product happy-path proof.** `HappyPathExecutionTests` exercises GET → advance → complete for SynqLien, CareConnect, and SynqFund.
+- **Live-stack probe.** `apps/services/flow/backend/scripts/harden-a1-e2e.sh` mirrors `p5-e2e.sh` against the new atomic A1 endpoints and supports two optional negative probes (other-tenant, wrong-parent).
+- **Tests.** `dotnet test tests/Flow.IntegrationTests/Flow.IntegrationTests.csproj` (28/28 pass) alongside the existing `Flow.UnitTests` (9/9 pass).
+
+See `merge-phase-A1.1-notes.md` for the full A1.1 changelog.
