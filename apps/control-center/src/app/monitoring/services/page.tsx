@@ -37,6 +37,17 @@ export default async function MonitoringServicesPage() {
           <ServicesEditor initialServices={services} />
 
           <div className="mt-8">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-gray-500">
+                Service-config changes are also forwarded to the central audit log.
+              </p>
+              <Link
+                href="/audit-logs?eventType=monitoring.service.changed"
+                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+              >
+                View in Audit Logs <span aria-hidden>→</span>
+              </Link>
+            </div>
             <ServicesAuditList entries={auditEntries} />
           </div>
 

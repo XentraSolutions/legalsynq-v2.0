@@ -328,6 +328,9 @@ export default async function AuditLogsPage({ searchParams }: AuditLogsPageProps
             <a href="/audit-logs?eventType=product.access" className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors">
               Product Access
             </a>
+            <a href="/audit-logs?eventType=monitoring.service.changed" className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors">
+              Monitoring Config
+            </a>
           </div>
         )}
 

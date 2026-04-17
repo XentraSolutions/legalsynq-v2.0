@@ -2,7 +2,60 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import mysql, { type Pool, type PoolOptions, type RowDataPacket } from 'mysql2/promise';
-import { recordAudit, type AuditActor, type AuditAction } from './system-health-audit';
+import { recordAudit, type AuditActor, type AuditAction, type AuditEntry } from './system-health-audit';
+import { controlCenterServerApi } from './control-center-api';
+
+const ACTION_PAST_TENSE: Record<AuditAction, string> = {
+  add:    'added',
+  update: 'updated',
+  remove: 'removed',
+};
+
+const ACTION_PASCAL: Record<AuditAction, string> = {
+  add:    'MonitoringServiceAdded',
+  update: 'MonitoringServiceUpdated',
+  remove: 'MonitoringServiceRemoved',
+};
+
+function describeChange(action: AuditAction, actor: AuditActor, svc: ServiceDef | null): string {
+  const label = svc ? `"${svc.name}" (${svc.url})` : 'unknown service';
+  return `${actor.email} ${ACTION_PAST_TENSE[action]} probed service ${label}.`;
+}
+
+async function emitCanonicalAudit(entry: AuditEntry): Promise<void> {
+  try {
+    const snapshot = entry.after ?? entry.before;
+    await controlCenterServerApi.auditIngest.emit({
+      // Single, stable eventType per architect guidance — audit service does
+      // exact-match on eventType, so emitting one type per action would force
+      // the central Audit Logs filter to know all three. The action field
+      // (MonitoringServiceAdded / …Updated / …Removed) carries the variant.
+      eventType:     'monitoring.service.changed',
+      eventCategory: 'Administrative',
+      sourceSystem:  'control-center',
+      sourceService: 'monitoring-services',
+      visibility:    'Platform',
+      severity:      'Info',
+      occurredAtUtc: entry.timestamp,
+      scope:  { scopeType: 'Platform' },
+      actor:  { id: entry.actor.userId, type: 'User', label: entry.actor.email },
+      entity: { type: 'MonitoringService', id: entry.serviceId },
+      action: ACTION_PASCAL[entry.action],
+      description: describeChange(entry.action, entry.actor, snapshot),
+      before: entry.before ? JSON.stringify(entry.before) : undefined,
+      after:  entry.after  ? JSON.stringify(entry.after)  : undefined,
+      idempotencyKey: entry.id,
+      tags: ['monitoring', 'configuration', 'system-health'],
+    });
+  } catch (err) {
+    console.warn('[system-health-store] Failed to emit canonical audit event', {
+      action:    entry.action,
+      serviceId: entry.serviceId,
+      actor:     entry.actor.email,
+      err,
+    });
+  }
+}
 
 export type ServiceCategory = 'infrastructure' | 'product';
 
@@ -285,8 +338,9 @@ async function safeRecordAudit(input: {
   before:    ServiceDef | null;
   after:     ServiceDef | null;
 }): Promise<void> {
+  let entry: AuditEntry | null = null;
   try {
-    await recordAudit(input);
+    entry = await recordAudit(input);
   } catch (err) {
     console.warn('[system-health-store] Failed to record audit entry', {
       action:    input.action,
@@ -295,6 +349,20 @@ async function safeRecordAudit(input: {
       err,
     });
   }
+
+  // Mirror the entry to the canonical audit pipeline so it shows up in the
+  // central Audit Logs page alongside other platform events. Fire-and-observe:
+  // a failure here must not gate the underlying service-config change.
+  const canonicalSource: AuditEntry = entry ?? {
+    id:        crypto.randomUUID(),
+    action:    input.action,
+    serviceId: input.serviceId,
+    actor:     input.actor,
+    timestamp: new Date().toISOString(),
+    before:    input.before,
+    after:     input.after,
+  };
+  void emitCanonicalAudit(canonicalSource);
 }
 
 export async function addService(
