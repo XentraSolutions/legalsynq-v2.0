@@ -72,6 +72,7 @@ public class AdminWorkflowInstancesController : ControllerBase
     private readonly IFlowDbContext _db;
     private readonly ITenantProvider _tenantProvider;
     private readonly IAuditAdapter _audit;
+    private readonly IAuditQueryAdapter _auditQuery;
     private readonly IOutboxWriter _outbox;
     private readonly ILogger<AdminWorkflowInstancesController> _logger;
 
@@ -79,12 +80,14 @@ public class AdminWorkflowInstancesController : ControllerBase
         IFlowDbContext db,
         ITenantProvider tenantProvider,
         IAuditAdapter audit,
+        IAuditQueryAdapter auditQuery,
         IOutboxWriter outbox,
         ILogger<AdminWorkflowInstancesController> logger)
     {
         _db = db;
         _tenantProvider = tenantProvider;
         _audit = audit;
+        _auditQuery = auditQuery;
         _outbox = outbox;
         _logger = logger;
     }
@@ -426,6 +429,75 @@ public class AdminWorkflowInstancesController : ControllerBase
         return Ok(dto);
     }
 
+    /// <summary>
+    /// E13.1 — read-only audit timeline for a single workflow instance.
+    /// Returns a normalized, deterministically-ordered (ascending by
+    /// occurredAt, tie-broken by event id) list of audit events the
+    /// audit service has recorded against
+    /// <c>EntityType=WorkflowInstance</c> with the given id.
+    ///
+    /// <para>
+    /// Authorization mirrors <see cref="GetById"/>: PlatformAdmin can
+    /// read across tenants; TenantAdmin only within their own tenant;
+    /// out-of-scope rows return 404 (no existence leakage). Once the
+    /// workflow row's visibility is confirmed, the audit query adapter
+    /// is invoked with the workflow's TenantId.
+    /// </para>
+    ///
+    /// <para>
+    /// This endpoint is strictly read-only: no DB writes, no outbox
+    /// enqueues, no audit emits. When the audit service is not
+    /// configured (Audit:BaseUrl empty) the registered adapter is the
+    /// empty baseline, and the response is 200 OK with an empty list.
+    /// </para>
+    /// </summary>
+    [HttpGet("{id:guid}/timeline")]
+    public async Task<IActionResult> Timeline(Guid id, CancellationToken ct)
+    {
+        var isPlatformAdmin = User.IsInRole(Roles.PlatformAdmin);
+
+        string? scopeTenantId = null;
+        if (!isPlatformAdmin)
+        {
+            try { scopeTenantId = _tenantProvider.GetTenantId(); }
+            catch { return Forbid(); }
+            if (string.IsNullOrEmpty(scopeTenantId)) return Forbid();
+        }
+
+        // Confirm the workflow exists and is visible to this caller
+        // BEFORE making the audit call, so an out-of-scope id never
+        // causes any cross-tenant probe upstream.
+        var instance = await _db.WorkflowInstances
+            .AsNoTracking()
+            .IgnoreQueryFilters()
+            .Select(w => new { w.Id, w.TenantId })
+            .FirstOrDefaultAsync(w => w.Id == id, ct);
+
+        if (instance is null) return NotFound();
+        if (!isPlatformAdmin && instance.TenantId != scopeTenantId) return NotFound();
+
+        var fetch = await _auditQuery.GetEventsForEntityAsync(
+            entityType: "WorkflowInstance",
+            entityId:   id.ToString(),
+            tenantId:   instance.TenantId,
+            cancellationToken: ct);
+
+        var events = AuditTimelineNormalizer.Normalize(fetch.Events);
+
+        _logger.LogInformation(
+            "AdminWorkflowInstances.Timeline id={InstanceId} platformAdmin={IsPlatformAdmin} tenant={TenantId} count={Count} truncated={Truncated}",
+            id, isPlatformAdmin, instance.TenantId, events.Count, fetch.Truncated);
+
+        return Ok(new AdminWorkflowInstanceTimelineResponse
+        {
+            WorkflowInstanceId = id,
+            TenantId           = instance.TenantId,
+            TotalCount         = events.Count,
+            Truncated          = fetch.Truncated,
+            Events             = events,
+        });
+    }
+
     // ── E10.1 — admin actions (Retry / Force Complete / Cancel) ──────────
     //
     // Shared rules across all three:
@@ -726,6 +798,32 @@ public sealed record AdminWorkflowActionResult
     public string   PerformedBy        { get; init; } = string.Empty;
     public DateTime Timestamp          { get; init; }
     public string   Reason             { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// E13.1 — read-only audit timeline response for a single workflow
+/// instance. Events are returned in ascending occurred-at order
+/// (tie-broken by event id) by <see cref="AuditTimelineNormalizer"/>.
+/// </summary>
+public sealed record AdminWorkflowInstanceTimelineResponse
+{
+    public Guid Id => WorkflowInstanceId;
+    public Guid WorkflowInstanceId { get; init; }
+    public string TenantId { get; init; } = string.Empty;
+
+    /// <summary>Number of events returned in <see cref="Events"/>.</summary>
+    public int TotalCount { get; init; }
+
+    /// <summary>
+    /// True when the upstream audit query was capped by the adapter's
+    /// hard ceiling (1000 events). The Control Center timeline is
+    /// expected to be a single-page view; if this ever flips true on
+    /// real traffic, the UI should consider linking through to the
+    /// audit service for the full record.
+    /// </summary>
+    public bool Truncated { get; init; }
+
+    public IReadOnlyList<TimelineEvent> Events { get; init; } = Array.Empty<TimelineEvent>();
 }
 
 public sealed record AdminWorkflowInstanceListResponse

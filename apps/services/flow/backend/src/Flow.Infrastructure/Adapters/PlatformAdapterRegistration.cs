@@ -44,6 +44,31 @@ public static class PlatformAdapterRegistration
             services.AddScoped<IAuditAdapter>(sp => sp.GetRequiredService<LoggingAuditAdapter>());
         }
 
+        // ----- Audit query (E13.1, read-only) ---------------------------
+        // Parallel to the write seam above. Same Audit:BaseUrl toggle:
+        // when configured, route through the HTTP adapter with the
+        // empty baseline as a graceful fallback; when not, callers see
+        // an empty timeline rather than an exception.
+        services.AddSingleton<EmptyAuditQueryAdapter>();
+
+        if (!string.IsNullOrWhiteSpace(auditBaseUrl))
+        {
+            services.AddHttpClient<HttpAuditQueryAdapter>(client =>
+            {
+                client.BaseAddress = new Uri(EnsureTrailingSlash(auditBaseUrl));
+                client.Timeout     = TimeSpan.FromSeconds(10);
+            });
+
+            services.AddScoped<IAuditQueryAdapter>(sp => new HttpAuditQueryAdapter(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(HttpAuditQueryAdapter)),
+                sp.GetRequiredService<EmptyAuditQueryAdapter>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<HttpAuditQueryAdapter>>()));
+        }
+        else
+        {
+            services.AddScoped<IAuditQueryAdapter>(sp => sp.GetRequiredService<EmptyAuditQueryAdapter>());
+        }
+
         // ----- Notifications --------------------------------------------
         services.AddSingleton<LoggingNotificationAdapter>();
         var notifBaseUrl = configuration["Notifications:BaseUrl"];
