@@ -14,12 +14,18 @@ public sealed class HttpAuditAdapter : IAuditAdapter
 {
     private readonly HttpClient _http;
     private readonly IAuditAdapter _fallback;
+    private readonly AuditAuthHeaderProvider _auth;
     private readonly ILogger<HttpAuditAdapter> _log;
 
-    public HttpAuditAdapter(HttpClient http, IAuditAdapter fallback, ILogger<HttpAuditAdapter> log)
+    public HttpAuditAdapter(
+        HttpClient http,
+        IAuditAdapter fallback,
+        AuditAuthHeaderProvider auth,
+        ILogger<HttpAuditAdapter> log)
     {
         _http = http;
         _fallback = fallback;
+        _auth = auth;
         _log = log;
     }
 
@@ -27,7 +33,20 @@ public sealed class HttpAuditAdapter : IAuditAdapter
     {
         try
         {
-            using var resp = await _http.PostAsJsonAsync("audit/events", auditEvent, cancellationToken);
+            using var req = new HttpRequestMessage(HttpMethod.Post, "audit/events")
+            {
+                Content = JsonContent.Create(auditEvent),
+            };
+            // Forward the operator's bearer when present so the audit
+            // service applies its per-caller scope rules; fall back to a
+            // minted service token (or to anonymous, when the audit
+            // service runs in QueryAuth:Mode=None) for background outbox
+            // writes that have no HttpContext.
+            req.Headers.Authorization = _auth.GetHeader(
+                fallbackTenantId: auditEvent.TenantId,
+                fallbackUserId:   auditEvent.UserId);
+
+            using var resp = await _http.SendAsync(req, cancellationToken);
             if (!resp.IsSuccessStatusCode)
             {
                 _log.LogWarning(

@@ -36,15 +36,18 @@ public sealed class HttpAuditQueryAdapter : IAuditQueryAdapter
 
     private readonly HttpClient _http;
     private readonly IAuditQueryAdapter _fallback;
+    private readonly AuditAuthHeaderProvider _auth;
     private readonly ILogger<HttpAuditQueryAdapter> _log;
 
     public HttpAuditQueryAdapter(
         HttpClient http,
         IAuditQueryAdapter fallback,
+        AuditAuthHeaderProvider auth,
         ILogger<HttpAuditQueryAdapter> log)
     {
         _http     = http;
         _fallback = fallback;
+        _auth     = auth;
         _log      = log;
     }
 
@@ -74,7 +77,17 @@ public sealed class HttpAuditQueryAdapter : IAuditQueryAdapter
                     url += $"&tenantId={Uri.EscapeDataString(tenantId)}";
                 }
 
-                using var resp = await _http.GetAsync(url, cancellationToken);
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                // Forward the operator's bearer when present so the
+                // audit service's QueryAuthorizer treats this read as
+                // the originating user (tenant/org/visibility floors are
+                // enforced upstream); fall back to a minted service
+                // token, or to anonymous when the audit service runs in
+                // QueryAuth:Mode=None.
+                req.Headers.Authorization = _auth.GetHeader(
+                    fallbackTenantId: tenantId);
+
+                using var resp = await _http.SendAsync(req, cancellationToken);
                 if (!resp.IsSuccessStatusCode)
                 {
                     _log.LogWarning(

@@ -121,6 +121,14 @@ authBuilder.AddServiceTokenBearer(
     builder.Configuration,
     failFastIfMissingSecret: !builder.Environment.IsDevelopment());
 
+// LS-FLOW-E13.1 — register the service-token ISSUER too. Flow needs to
+// mint M2M tokens when it calls the audit service from background work
+// (e.g. the outbox processor) where no caller bearer exists. When the
+// signing secret is unconfigured the issuer self-disables and the audit
+// adapters fall back to anonymous calls, which keeps local dev working
+// against an audit service running in QueryAuth:Mode=None.
+builder.Services.AddServiceTokenIssuer(builder.Configuration, "flow");
+
 // LS-FLOW-HARDEN-A1 — caller-context accessor used by the atomic
 // ownership controller to distinguish user vs service callers.
 builder.Services.AddHttpContextAccessor();

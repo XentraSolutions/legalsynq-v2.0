@@ -26,6 +26,17 @@ public static class PlatformAdapterRegistration
         services.AddSingleton<LoggingAuditAdapter>();
         var auditBaseUrl = configuration["Audit:BaseUrl"];
 
+        // LS-FLOW-E13.1 — shared header provider used by BOTH the write
+        // and the query adapter so Flow → Audit hops carry the operator's
+        // bearer (or a minted service token) instead of being anonymous.
+        // IHttpContextAccessor is registered upstream in Flow.Api;
+        // IServiceTokenIssuer is optional so DI doesn't fail when the
+        // issuer is not registered (e.g. unit tests without auth).
+        services.AddHttpContextAccessor();
+        services.AddSingleton<AuditAuthHeaderProvider>(sp => new AuditAuthHeaderProvider(
+            sp.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>(),
+            sp.GetService<BuildingBlocks.Authentication.ServiceTokens.IServiceTokenIssuer>()));
+
         if (!string.IsNullOrWhiteSpace(auditBaseUrl))
         {
             services.AddHttpClient<HttpAuditAdapter>(client =>
@@ -37,6 +48,7 @@ public static class PlatformAdapterRegistration
             services.AddScoped<IAuditAdapter>(sp => new HttpAuditAdapter(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(HttpAuditAdapter)),
                 sp.GetRequiredService<LoggingAuditAdapter>(),
+                sp.GetRequiredService<AuditAuthHeaderProvider>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<HttpAuditAdapter>>()));
         }
         else
@@ -62,6 +74,7 @@ public static class PlatformAdapterRegistration
             services.AddScoped<IAuditQueryAdapter>(sp => new HttpAuditQueryAdapter(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(HttpAuditQueryAdapter)),
                 sp.GetRequiredService<EmptyAuditQueryAdapter>(),
+                sp.GetRequiredService<AuditAuthHeaderProvider>(),
                 sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<HttpAuditQueryAdapter>>()));
         }
         else
