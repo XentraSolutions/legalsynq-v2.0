@@ -381,42 +381,42 @@ apps/
         DependencyInjection.cs            ← AddLiensServices() extension (repos, services, UnitOfWork, ICurrentRequestContext)
         Persistence/                      ← LiensDbContext, UnitOfWork, migrations
         Repositories/                     ← LienRepository, CaseRepository, FacilityRepository, ContactRepository, etc.
-    synqcomm/
-      SynqComm.Api/                       → ASP.NET Core Web API (port 5011)
+    comms/
+      Comms.Api/                       → ASP.NET Core Web API (port 5011)
         Endpoints/
-          ConversationEndpoints.cs        ← GET/POST /api/synqcomm/conversations, PATCH status, GET thread, POST read/unread
-          MessageEndpoints.cs             ← GET/POST /api/synqcomm/conversations/{id}/messages (visibility-filtered)
-          ParticipantEndpoints.cs         ← GET/POST/DELETE /api/synqcomm/conversations/{id}/participants
-          AttachmentEndpoints.cs          ← GET/POST/DELETE /api/synqcomm/conversations/{id}/messages/{msgId}/attachments (BLK-003)
-          TimelineEndpoints.cs           ← GET /api/synqcomm/conversations/{id}/timeline (BLK-003, conversation-scoped auth, visibility gating)
-          QueueEndpoints.cs              ← CRUD /api/synqcomm/queues (BLK-001)
-          OperationalEndpoints.cs        ← assign/reassign/unassign/accept/priority/summary/list /api/synqcomm/operational (BLK-001)
+          ConversationEndpoints.cs        ← GET/POST /api/comms/conversations, PATCH status, GET thread, POST read/unread
+          MessageEndpoints.cs             ← GET/POST /api/comms/conversations/{id}/messages (visibility-filtered)
+          ParticipantEndpoints.cs         ← GET/POST/DELETE /api/comms/conversations/{id}/participants
+          AttachmentEndpoints.cs          ← GET/POST/DELETE /api/comms/conversations/{id}/messages/{msgId}/attachments (BLK-003)
+          TimelineEndpoints.cs           ← GET /api/comms/conversations/{id}/timeline (BLK-003, conversation-scoped auth, visibility gating)
+          QueueEndpoints.cs              ← CRUD /api/comms/queues (BLK-001)
+          OperationalEndpoints.cs        ← assign/reassign/unassign/accept/priority/summary/list /api/comms/operational (BLK-001)
           SlaTriggersEndpoints.cs        ← POST /internal/sla/evaluate, GET /operational/conversations/{id}/sla-triggers, queue escalation config CRUD (BLK-002)
         Middleware/ExceptionHandlingMiddleware.cs
         DesignTimeDbContextFactory.cs
         appsettings.json                  ← port 5011 + ConnectionStrings:SynqCommDb + Services:DocumentsUrl
-      SynqComm.Application/
+      Comms.Application/
         DTOs/                             ← CreateConversationRequest, AddMessageRequest, AddParticipantRequest, MarkConversationReadRequest, ConversationThreadResponse, ReadStateResponse, AddMessageAttachmentRequest, AttachmentResponse, TenantEmailSenderConfigDtos, EmailTemplateConfigDtos, QueueDtos, AssignmentDtos, SlaDtos (BLK-001), SlaTriggerDtos (BLK-002), TimelineDtos (BLK-003), responses
         Interfaces/                       ← IConversationService, IMessageService, IParticipantService, IReadTrackingService, IAuditPublisher, IDocumentServiceClient, IMessageAttachmentService, ISenderConfigService, IEmailTemplateService, IQueueService, IAssignmentService, IOperationalService (BLK-001), IEscalationTargetResolver, ISlaNotificationService, IQueueEscalationConfigService (BLK-002), IConversationTimelineService (BLK-003)
         Repositories/                     ← IConversationRepository, IMessageRepository, IParticipantRepository, IConversationReadStateRepository, IMessageAttachmentRepository, ITenantEmailSenderConfigRepository, IEmailTemplateConfigRepository, IConversationQueueRepository, IConversationAssignmentRepository, IConversationSlaStateRepository (BLK-001), IConversationSlaTriggerStateRepository, IQueueEscalationConfigRepository (BLK-002), IConversationTimelineRepository (BLK-003)
         Services/                         ← ConversationService, MessageService, ParticipantService, ReadTrackingService, MessageAttachmentService, SenderConfigService (BLK-004), EmailTemplateService (BLK-004), QueueService, AssignmentService, OperationalService (BLK-001), EscalationTargetResolver, SlaNotificationService, QueueEscalationConfigService (BLK-002), ConversationTimelineService (BLK-003)
-      SynqComm.Domain/
+      Comms.Domain/
         Entities/                         ← Conversation, Message, ConversationParticipant, ConversationReadState, MessageAttachment, EmailMessageReference (+ sender/template linkage BLK-004), ExternalParticipantIdentity, EmailDeliveryState, EmailRecipientRecord, TenantEmailSenderConfig (BLK-004), EmailTemplateConfig (BLK-004), ConversationQueue, ConversationAssignment, ConversationSlaState (BLK-001), ConversationSlaTriggerState, QueueEscalationConfig (BLK-002), ConversationTimelineEntry (BLK-003)
         Enums/                            ← ConversationStatus, VisibilityType, Channel, Direction, MessageStatus, ParticipantType, ParticipantRole, ContextType, EmailDirection, MatchStrategy, DeliveryStatus, RecipientType, RecipientVisibility, SenderType (BLK-004), VerificationStatus (BLK-004), TemplateScope (BLK-004), AssignmentStatus, ConversationPriority, WaitingState (BLK-001), SlaTriggerType (BLK-002)
         Constants/SlaDefaults.cs          ← SLA duration constants per priority level (BLK-001)
         Constants/SlaWarningThresholds.cs  ← Warning threshold logic (25% remaining or fixed minimum) (BLK-002)
         Constants/TimelineEventTypes.cs   ← Event type, actor type, visibility constants (BLK-003)
-        SynqCommPermissions.cs            ← Product code + permission constants (incl. AttachmentManage, EmailIntake, EmailSend, EmailDeliveryUpdate, EmailConfigManage, QueueManage, QueueRead, AssignmentManage, OperationalRead — BLK-001, EscalationConfigManage — BLK-002)
-      SynqComm.Infrastructure/
-        DependencyInjection.cs            ← AddSynqCommServices() extension (includes all repos/services + HTTP clients + sender/template config repos/services + queue/assignment/SLA repos/services — BLK-001 + trigger/escalation repos/services — BLK-002 + timeline repo/service — BLK-003 + mention service — BLK-004 + operational view query repo/service — LS-COMMS-04-BLK-001)
+        CommsPermissions.cs            ← Product code + permission constants (incl. AttachmentManage, EmailIntake, EmailSend, EmailDeliveryUpdate, EmailConfigManage, QueueManage, QueueRead, AssignmentManage, OperationalRead — BLK-001, EscalationConfigManage — BLK-002)
+      Comms.Infrastructure/
+        DependencyInjection.cs            ← AddCommsServices() extension (includes all repos/services + HTTP clients + sender/template config repos/services + queue/assignment/SLA repos/services — BLK-001 + trigger/escalation repos/services — BLK-002 + timeline repo/service — BLK-003 + mention service — BLK-004 + operational view query repo/service — LS-COMMS-04-BLK-001)
         Notifications/NotificationsServiceClient.cs ← HTTP client for Notifications service: outbound email (SendEmailAsync) + operational alerts (SendOperationalAlertAsync — BLK-002)
-        Persistence/                      ← SynqCommDbContext (17 DbSets), EF configurations, migrations (InitialCreateWithBLK002, AddMessageAttachments, AddEmailIntakeTables, AddOutboundEmailDelivery, AddEmailRecipientRecords, AddSenderConfigsAndTemplates, HardenE2ENotificationsIntegration, AddOperationalQueuesAndSLA — BLK-001, AddSlaTriggerStatesEscalationAndTimeline — BLK-002/BLK-003 consolidated, AddMessageMentions — BLK-004, AddOperationalViewIndexes — LS-COMMS-04-BLK-001)
+        Persistence/                      ← CommsDbContext (17 DbSets), EF configurations, migrations (InitialCreateWithBLK002, AddMessageAttachments, AddEmailIntakeTables, AddOutboundEmailDelivery, AddEmailRecipientRecords, AddSenderConfigsAndTemplates, HardenE2ENotificationsIntegration, AddOperationalQueuesAndSLA — BLK-001, AddSlaTriggerStatesEscalationAndTimeline — BLK-002/BLK-003 consolidated, AddMessageMentions — BLK-004, AddOperationalViewIndexes — LS-COMMS-04-BLK-001)
         Repositories/                     ← ConversationRepository, MessageRepository, ParticipantRepository, ConversationReadStateRepository, MessageAttachmentRepository, TenantEmailSenderConfigRepository, EmailTemplateConfigRepository, ConversationQueueRepository, ConversationAssignmentRepository, ConversationSlaStateRepository (BLK-001), ConversationSlaTriggerStateRepository, QueueEscalationConfigRepository (BLK-002), ConversationTimelineRepository (BLK-003), OperationalConversationQueryRepository (LS-COMMS-04-BLK-001 — IQueryable composition for inbox views)
         Audit/AuditPublisher.cs           ← fire-and-forget audit via shared AuditClient
         Documents/DocumentServiceClient.cs ← HTTP client validating doc existence + tenant ownership via Documents service
-      SynqComm.Api/
-        Middleware/InternalServiceTokenMiddleware.cs ← path-scoped internal service token auth for /api/synqcomm/internal/* (BLK-005)
-      SynqComm.Tests/                     ← xUnit test project (181 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests, 13 sender/template tests, 14 E2E integration tests, 15 operational workflow tests — BLK-001, 11 SLA notification tests — BLK-002, 18 timeline tests — BLK-003, 18 mention tests — BLK-004, 18 operational view tests — LS-COMMS-04-BLK-001)
+      Comms.Api/
+        Middleware/InternalServiceTokenMiddleware.cs ← path-scoped internal service token auth for /api/comms/internal/* (BLK-005)
+      Comms.Tests/                     ← xUnit test project (181 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests, 13 sender/template tests, 14 E2E integration tests, 15 operational workflow tests — BLK-001, 11 SLA notification tests — BLK-002, 18 timeline tests — BLK-003, 18 mention tests — BLK-004, 18 operational view tests — LS-COMMS-04-BLK-001)
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/
@@ -597,9 +597,9 @@ shared/
 | `/liens/health` | Anonymous | Liens :5009 |
 | `/liens/info` | Anonymous | Liens :5009 |
 | `/liens/**` | Bearer JWT required | Liens :5009 |
-| `/synqcomm/health` | Anonymous | SynqComm :5011 |
-| `/synqcomm/info` | Anonymous | SynqComm :5011 |
-| `/synqcomm/**` | Bearer JWT required | SynqComm :5011 |
+| `/comms/health` | Anonymous | Comms :5011 |
+| `/comms/info` | Anonymous | Comms :5011 |
+| `/comms/**` | Bearer JWT required | Comms :5011 |
 
 ## Identity Domain Model
 

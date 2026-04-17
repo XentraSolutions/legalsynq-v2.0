@@ -75,17 +75,17 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Notifications.Infrastructur
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Notifications.Api", "apps\services\notifications\Notifications.Api\Notifications.Api.csproj", "{C2458B56-6727-4552-BE62-8BD7CD623F60}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "synqcomm", "synqcomm", "{D9B8CBEC-1679-4EC4-BBA4-233A3207103F}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "comms", "comms", "{D9B8CBEC-1679-4EC4-BBA4-233A3207103F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SynqComm.Domain", "apps\services\synqcomm\SynqComm.Domain\SynqComm.Domain.csproj", "{8F0F14D9-404D-4284-9243-DBB9E84962A2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Comms.Domain", "apps\services\comms\Comms.Domain\Comms.Domain.csproj", "{8F0F14D9-404D-4284-9243-DBB9E84962A2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SynqComm.Application", "apps\services\synqcomm\SynqComm.Application\SynqComm.Application.csproj", "{CDE524BB-DDFB-4EBF-ACB6-E77A45BC7CB3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Comms.Application", "apps\services\comms\Comms.Application\Comms.Application.csproj", "{CDE524BB-DDFB-4EBF-ACB6-E77A45BC7CB3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SynqComm.Infrastructure", "apps\services\synqcomm\SynqComm.Infrastructure\SynqComm.Infrastructure.csproj", "{D406158D-E603-4296-B66B-892E5EEE6335}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Comms.Infrastructure", "apps\services\comms\Comms.Infrastructure\Comms.Infrastructure.csproj", "{D406158D-E603-4296-B66B-892E5EEE6335}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SynqComm.Api", "apps\services\synqcomm\SynqComm.Api\SynqComm.Api.csproj", "{EA634260-D9F9-4C7D-8DDF-B24377BCFCCA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Comms.Api", "apps\services\comms\Comms.Api\Comms.Api.csproj", "{EA634260-D9F9-4C7D-8DDF-B24377BCFCCA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SynqComm.Tests", "apps\services\synqcomm\SynqComm.Tests\SynqComm.Tests.csproj", "{94AAC6CA-BEDE-4A58-B77C-580A9DA9D429}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Comms.Tests", "apps\services\comms\Comms.Tests\Comms.Tests.csproj", "{94AAC6CA-BEDE-4A58-B77C-580A9DA9D429}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
