@@ -434,6 +434,12 @@ apps/
         architecture.md                   ← Service architecture (purpose, detachable principle, stack, integration model)
         README.md                         ← Service overview + local-run commands
         merge-phase-1-notes.md            ← What Phase 1 did vs. deferred to Phase 2 (Identity/Notifications/Audit/gateway/sln integration)
+    reports/                              ← Standalone Reports microservice (relocated from /reports; not in LegalSynq.sln; own DB reports_db; runs independently on port 5029). Detailed in "Reports Service" section near end of this doc.
+      Reports.sln
+      src/{Reports.Api,Reports.Application,Reports.Domain,Reports.Infrastructure,Reports.Worker,Reports.Contracts,Reports.Shared}/
+      tests/{Reports.Api.Tests,Reports.Application.Tests,Reports.Infrastructure.Tests}/
+      scripts/IntegrationTest/            ← In-process test harness (37 assertions across all 9 endpoints)
+      migrations/                         ← Forward-only SQL migrations
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/
@@ -4260,7 +4266,7 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 ### Store Usage
 - `useLienStore` only for `currentRole`, `addToast` — all BOS data from API
 
-## Reports Service (reports/)
+## Reports Service (apps/services/reports/)
 - **Story**: LS-REPORTS-00-001 — Service Bootstrap
 - **Story**: LS-REPORTS-00-002 — Adapter Interface Hardening
 - **Story**: LS-REPORTS-01-001 — Template Data Model & Persistence Foundation
@@ -4285,7 +4291,7 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 - **EF Configurations**: Fluent API in `Infrastructure/Persistence/Configurations/` — `ReportTemplateConfiguration`, `ReportTemplateVersionConfiguration`, `ReportExecutionConfiguration`. Unique indexes on template Code and (templateId, versionNumber), cascade delete on versions, restrict delete on executions. FK columns mapped via `HasColumnName("ReportDefinitionId")` for schema stability.
 - **Design-Time Factory**: `DesignTimeDbContextFactory` in Api project for `dotnet ef migrations` tooling
 - **Utility**: `ReportWriter` in Shared — writes implementation reports to `/analysis`
-- **Integration Test**: In-process test harness at `reports/scripts/IntegrationTest/` — 37 assertions covering all 9 endpoints, concurrency, validation, and error handling
+- **Integration Test**: In-process test harness at `apps/services/reports/scripts/IntegrationTest/` — 37 assertions covering all 9 endpoints, concurrency, validation, and error handling
 - **Production Hardening (LS-REPORTS-06-001)**: Config-driven real integrations replacing mock/stub adapters. Email delivery via Notifications service HTTP API (`HttpEmailReportDeliveryAdapter`), SFTP via SSH.NET (`RealSftpReportDeliveryAdapter`), S3 file storage (`S3FileStorageAdapter`), Liens data queries via direct MySQL (`LiensReportDataQueryAdapter`), composite data routing (`CompositeReportDataQueryAdapter`). Observability: `IReportsMetrics` with thread-safe counters, `GET /api/v1/metrics/` endpoint, enhanced middleware with TenantId extraction. Config sections: `EmailDelivery`, `SftpDelivery`, `Storage`, `LiensData` — all default disabled (safe mock fallback). Resilience: configurable retries + timeouts on email/SFTP, non-fatal storage failures. Audit: 30+ event types, enhanced metadata with delivery channel, externalReferenceId, durationMs, storageKey. NuGet: SSH.NET 2024.1.0, AWSSDK.S3 3.7.305.22, MySqlConnector 2.3.7. Report: `/analysis/LS-REPORTS-06-001-report.md`.
 - **Launch Readiness & Platform Integration (LS-REPORTS-08-000)**: Full identity integration replacing mock context. Frontend: all 5 report/schedule client components use `useSessionContext()` for real `tenantId`/`userId` (no more MOCK_TENANT_ID/MOCK_USER_ID). Backend: JWT auth added to Reports.Api/Program.cs (same pattern as gateway/liens/fund services), `ICurrentRequestContext` from BuildingBlocks registered, `UseAuthentication()`/`UseAuthorization()` in pipeline. All 7 non-health endpoint groups require auth (`.RequireAuthorization()`). Template/Assignment admin endpoints require `PlatformOrTenantAdmin` policy. Identity adapters: `ClaimsIdentityAdapter`, `ClaimsTenantAdapter`, `ClaimsEntitlementAdapter` derive context from JWT claims — conditionally registered when `Jwt:SigningKey` configured (mock fallback for local dev). `TenantValidationMiddleware` enforces tenant isolation on both query params and mutation request bodies (compares supplied tenantId against JWT `tenant_id` claim, returns 403 on mismatch). Report: `/analysis/LS-REPORTS-08-000-report.md`.
 - **Analysis**: Reports at `analysis/LS-REPORTS-00-001-report.md`, `analysis/LS-REPORTS-00-002-report.md`, `analysis/LS-REPORTS-01-001-report.md`, `analysis/LS-REPORTS-01-001-01-results.md`, `analysis/LS-REPORTS-01-002-report.md`, `analysis/LS-REPORTS-01-003-report.md`, `analysis/LS-REPORTS-06-001-report.md`, `analysis/LS-REPORTS-08-000-report.md`
