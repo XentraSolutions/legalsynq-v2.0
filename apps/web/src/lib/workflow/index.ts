@@ -1,5 +1,4 @@
 export * from './workflow.types';
-export { isTerminal } from './workflow.service';
 export {
   workflowApi,
   createWorkflowApi,

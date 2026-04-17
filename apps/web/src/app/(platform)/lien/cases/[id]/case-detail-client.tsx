@@ -620,6 +620,8 @@ function DetailsTab({ d, panelMode, onPanelModeChange, canEdit, onCaseUpdated }:
           productLabel="workflow"
           canView={ra.can('workflow:view')}
           canStart={ra.can('workflow:start')}
+          canAdvance={ra.can('workflow:advance')}
+          canComplete={ra.can('workflow:complete')}
         />
       </CollapsibleSection>
 

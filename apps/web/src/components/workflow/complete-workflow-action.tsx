@@ -70,9 +70,7 @@ export function CompleteWorkflowAction({
           type="button"
           disabled={submitting}
           onClick={async () => {
-            // The hook's `submit(body)` signature ignores body for complete;
-            // pass `undefined` cast through `void` for type-correctness.
-            const detail = await submit(undefined as unknown as void);
+            const detail = await submit();
             if (detail) setConfirming(false);
           }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

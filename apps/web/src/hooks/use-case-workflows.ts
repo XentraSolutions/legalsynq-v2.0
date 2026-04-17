@@ -118,15 +118,19 @@ export interface UseWorkflowDefinitionsResult {
 
 // ── E8.4 mutation hooks ──────────────────────────────────────────────
 
-interface UseWorkflowMutationResult<TBody> {
+export interface UseAdvanceCaseWorkflowResult {
   submitting: boolean;
   error: ApiError | Error | null;
-  submit: (body: TBody) => Promise<WorkflowInstanceDetail | null>;
+  submit: (body: AdvanceWorkflowRequest) => Promise<WorkflowInstanceDetail | null>;
   reset: () => void;
 }
 
-export type UseAdvanceCaseWorkflowResult = UseWorkflowMutationResult<AdvanceWorkflowRequest>;
-export type UseCompleteCaseWorkflowResult = UseWorkflowMutationResult<void>;
+export interface UseCompleteCaseWorkflowResult {
+  submitting: boolean;
+  error: ApiError | Error | null;
+  submit: () => Promise<WorkflowInstanceDetail | null>;
+  reset: () => void;
+}
 
 export function useAdvanceCaseWorkflow(
   caseId: string | undefined,

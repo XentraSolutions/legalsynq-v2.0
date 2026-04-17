@@ -7,6 +7,7 @@ import {
   type WorkflowApiAdapter,
   type WorkflowInstanceDetail,
 } from '@/lib/workflow';
+import { WorkflowActionBar } from './workflow-action-bar';
 import { WorkflowEmptyState } from './workflow-empty-state';
 import { WorkflowErrorState } from './workflow-error-state';
 import { WorkflowLoadingState } from './workflow-loading-state';
@@ -23,10 +24,15 @@ export interface WorkflowPanelProps {
   /** Frontend authorisation gates (the BFF remains the authoritative gate). */
   canView: boolean;
   canStart: boolean;
+  /** E8.4 — show the Advance Step action when active and non-terminal. */
+  canAdvance?: boolean;
+  /** E8.4 — show the Complete Workflow action when active and non-terminal. */
+  canComplete?: boolean;
   /**
    * If `true` the panel additionally fetches the atomic ownership-aware
-   * detail for the active workflow. Default: false (saves a roundtrip on
-   * the SynqLien Details tab where the row data is enough).
+   * detail for the active workflow. Default: auto — `true` whenever
+   * `canAdvance` or `canComplete` is set (the action bar needs
+   * `currentStepKey`), `false` otherwise.
    */
   loadDetail?: boolean;
   /**
@@ -47,12 +53,21 @@ export function WorkflowPanel({
   productLabel = 'workflow',
   canView,
   canStart,
-  loadDetail = false,
+  canAdvance = false,
+  canComplete = false,
+  loadDetail,
   api = workflowApi,
 }: WorkflowPanelProps) {
   const { loading, error, active, refresh } = useCaseWorkflows(canView ? caseId : undefined, api);
   const [detail, setDetail] = useState<WorkflowInstanceDetail | null>(null);
   const [detailError, setDetailError] = useState<Error | null>(null);
+
+  // Auto-enable the atomic detail fetch when progression actions are
+  // present — Advance needs `currentStepKey` for optimistic concurrency,
+  // and Complete shows it in the confirmation copy. Explicit `loadDetail`
+  // (true|false) always wins over the auto behaviour.
+  const effectiveLoadDetail =
+    typeof loadDetail === 'boolean' ? loadDetail : (canAdvance || canComplete);
 
   // The A1 atomic GET is keyed on the Flow workflow-instance id (not the
   // product-workflow row id). We skip the call when the row hasn't been
@@ -61,7 +76,7 @@ export function WorkflowPanel({
   const detailKey = active?.workflowInstanceId ?? null;
 
   const loadActiveDetail = useCallback(async () => {
-    if (!loadDetail || !detailKey) {
+    if (!effectiveLoadDetail || !detailKey) {
       setDetail(null);
       setDetailError(null);
       return;
@@ -74,7 +89,7 @@ export function WorkflowPanel({
       setDetail(null);
       setDetailError(e instanceof Error ? e : new Error(String(e)));
     }
-  }, [caseId, detailKey, loadDetail, api]);
+  }, [caseId, detailKey, effectiveLoadDetail, api]);
 
   useEffect(() => { void loadActiveDetail(); }, [loadActiveDetail]);
 
@@ -105,10 +120,33 @@ export function WorkflowPanel({
     );
   }
 
+  const onMutated = async () => {
+    // Refresh the row list (status / updatedAt) and the atomic detail
+    // (currentStepKey) so the panel reflects the post-transition state
+    // without requiring a full page reload.
+    await refresh();
+    await loadActiveDetail();
+  };
+
   return (
     <div className="space-y-3">
       <WorkflowSummary row={active} detail={detail} />
       {detailError && <WorkflowErrorState error={detailError} onRetry={() => void loadActiveDetail()} />}
+
+      {(canAdvance || canComplete) && (
+        <div className="pt-2 border-t border-gray-100">
+          <WorkflowActionBar
+            caseId={caseId}
+            row={active}
+            detail={detail}
+            canAdvance={canAdvance}
+            canComplete={canComplete}
+            onMutated={onMutated}
+            api={api}
+          />
+        </div>
+      )}
+
       {canStart && (
         <div className="pt-2 border-t border-gray-100">
           <StartWorkflowAction
