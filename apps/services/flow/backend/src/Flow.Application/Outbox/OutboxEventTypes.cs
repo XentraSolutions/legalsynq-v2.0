@@ -25,4 +25,12 @@ public static class OutboxEventTypes
     public const string AdminRetry         = "workflow.admin.retry";
     public const string AdminForceComplete = "workflow.admin.force_complete";
     public const string AdminCancel        = "workflow.admin.cancel";
+
+    // ----- LS-FLOW-E10.3 — SLA / timer transitions ---------------------
+    // Emitted by WorkflowSlaEvaluator only when the persisted SlaStatus
+    // (or EscalationLevel) actually changes for an instance. See
+    // OutboxDispatcher for the audit/notification fan-out.
+    public const string WorkflowSlaDueSoon   = "workflow.sla.dueSoon";
+    public const string WorkflowSlaOverdue   = "workflow.sla.overdue";
+    public const string WorkflowSlaEscalated = "workflow.sla.escalated";
 }

@@ -255,12 +255,28 @@ public class FlowDbContext : DbContext, IFlowDbContext
             entity.Property(e => e.Status).IsConcurrencyToken();
             entity.Property(e => e.AssignedToUserId).HasMaxLength(256);
             entity.Property(e => e.LastErrorMessage).HasMaxLength(2048);
+            // LS-FLOW-E10.3 — SLA / timer columns. SlaStatus has a
+            // server default so existing rows backfill cleanly to
+            // 'OnTrack' on migration; EscalationLevel defaults to 0.
+            // DueAt is nullable (not all instances carry a deadline).
+            entity.Property(e => e.SlaStatus)
+                .IsRequired()
+                .HasMaxLength(16)
+                .HasDefaultValue(Flow.Domain.Common.WorkflowSlaStatus.OnTrack);
+            entity.Property(e => e.EscalationLevel).IsRequired().HasDefaultValue(0);
             entity.HasIndex(e => new { e.TenantId, e.ProductKey });
             entity.HasIndex(e => e.WorkflowDefinitionId);
             entity.HasIndex(e => e.InitialTaskId);
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.CurrentStageId);
             entity.HasIndex(e => e.AssignedToUserId);
+            // Evaluator scan key: filter by Status (non-terminal) and DueAt
+            // (non-null), then range-scan by DueAt. Composite index keeps
+            // that scan cheap as instance count grows.
+            entity.HasIndex(e => new { e.Status, e.DueAt })
+                .HasDatabaseName("ix_flow_workflow_instances_status_dueat");
+            entity.HasIndex(e => e.SlaStatus)
+                .HasDatabaseName("ix_flow_workflow_instances_slastatus");
             entity.HasOne(e => e.WorkflowDefinition)
                 .WithMany()
                 .HasForeignKey(e => e.WorkflowDefinitionId)

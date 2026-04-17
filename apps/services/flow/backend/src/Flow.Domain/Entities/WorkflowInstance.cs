@@ -60,6 +60,56 @@ public class WorkflowInstance : AuditableEntity
     /// </summary>
     public string? LastErrorMessage { get; set; }
 
+    // ---------------- LS-FLOW-E10.3 — SLA / timer state -----------------
+    //
+    // Persisted SLA columns. Kept on the workflow grain (single UPDATE
+    // covers both execution AND SLA mutations) rather than a side table.
+    //
+    // The evaluator (WorkflowSlaEvaluator) is the only writer; the
+    // engine sets DueAt + initial SlaStatus at start time. All evaluator
+    // writes are gated on (computed != persisted) so repeated polling
+    // never re-emits the same transition — see report §"Timer Evaluator
+    // Notes" / §"Outbox / Event Notes" for the full idempotency story.
+
+    /// <summary>
+    /// UTC deadline for the workflow. Null means "no SLA configured" —
+    /// the evaluator skips these instances entirely. Assigned by
+    /// <see cref="Application.Engines.WorkflowEngine.WorkflowEngine.StartAsync"/>
+    /// using the precedence documented in the E10.3 report.
+    /// </summary>
+    public DateTime? DueAt { get; set; }
+
+    /// <summary>
+    /// One of <see cref="Domain.Common.WorkflowSlaStatus"/>: OnTrack,
+    /// DueSoon, Overdue, Escalated. Default OnTrack so a freshly
+    /// started instance with a future <see cref="DueAt"/> reads correctly
+    /// without an evaluator pass.
+    /// </summary>
+    public string SlaStatus { get; set; } = Domain.Common.WorkflowSlaStatus.OnTrack;
+
+    /// <summary>
+    /// UTC time the instance first crossed into Overdue. Cleared back
+    /// to null only on terminal transitions (operator/admin overrides
+    /// do not roll an instance back from Overdue → OnTrack — that is a
+    /// product decision, not a timer one).
+    /// </summary>
+    public DateTime? OverdueSince { get; set; }
+
+    /// <summary>
+    /// Discrete escalation level. 0 = not escalated. This phase only
+    /// implements a single escalation step (0 → 1). Higher levels are
+    /// reserved for a future phase; documented in the report.
+    /// </summary>
+    public int EscalationLevel { get; set; }
+
+    /// <summary>
+    /// UTC time the evaluator last looked at this instance, regardless
+    /// of whether the look produced a transition. Useful for operator
+    /// triage ("did the evaluator even tick recently?"). Indexed so a
+    /// future evaluator could prioritise stalest-first.
+    /// </summary>
+    public DateTime? LastSlaEvaluatedAt { get; set; }
+
     public FlowDefinition? WorkflowDefinition { get; set; }
     public TaskItem? InitialTask { get; set; }
     public WorkflowStage? CurrentStage { get; set; }
