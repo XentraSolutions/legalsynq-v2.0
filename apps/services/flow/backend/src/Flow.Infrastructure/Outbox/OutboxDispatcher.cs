@@ -274,7 +274,13 @@ public sealed class OutboxDispatcher
         var data = new Dictionary<string, string?>(descriptor.Metadata, StringComparer.Ordinal)
         {
             ["templateKey"] = descriptor.TemplateKey,
+            ["severity"]    = descriptor.Severity,
+            ["category"]    = descriptor.Category,
         };
+        if (!string.IsNullOrEmpty(descriptor.IdempotencyKey))
+        {
+            data["idempotencyKey"] = descriptor.IdempotencyKey;
+        }
         if (descriptor.TemplateData is not null)
         {
             foreach (var kv in descriptor.TemplateData)

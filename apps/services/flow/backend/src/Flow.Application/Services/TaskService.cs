@@ -178,7 +178,7 @@ public class TaskService : ITaskService
         {
             await _events.PublishAsync(new TaskAssignedEvent(
                 entity.Id, entity.AssignedToUserId, entity.AssignedToRoleKey, entity.AssignedToOrgId,
-                _user.TenantId, _user.UserId, DateTime.UtcNow), cancellationToken);
+                _user.TenantId, _user.UserId, DateTime.UtcNow, entity.Title), cancellationToken);
         }
 
         return await GetByIdAsync(entity.Id, cancellationToken);
@@ -328,7 +328,7 @@ public class TaskService : ITaskService
                 if (request.Status == TaskItemStatus.Done)
                 {
                     await _events.PublishAsync(new TaskCompletedEvent(
-                        entity.Id, _user.TenantId, _user.UserId, DateTime.UtcNow), cancellationToken);
+                        entity.Id, _user.TenantId, _user.UserId, DateTime.UtcNow, entity.Title), cancellationToken);
                 }
 
                 var automationResults = await _automationExecutor.ExecuteTransitionHooksAsync(
@@ -383,7 +383,7 @@ public class TaskService : ITaskService
         if (request.Status == TaskItemStatus.Done)
         {
             await _events.PublishAsync(new TaskCompletedEvent(
-                entity.Id, _user.TenantId, _user.UserId, DateTime.UtcNow), cancellationToken);
+                entity.Id, _user.TenantId, _user.UserId, DateTime.UtcNow, entity.Title), cancellationToken);
         }
 
         return await GetByIdAsync(entity.Id, cancellationToken);
@@ -414,7 +414,7 @@ public class TaskService : ITaskService
             // LS-FLOW-MERGE-P3 — fan out via dispatcher (audit + notification).
             await _events.PublishAsync(new TaskAssignedEvent(
                 entity.Id, entity.AssignedToUserId, entity.AssignedToRoleKey, entity.AssignedToOrgId,
-                _user.TenantId, _user.UserId, DateTime.UtcNow), cancellationToken);
+                _user.TenantId, _user.UserId, DateTime.UtcNow, entity.Title), cancellationToken);
 
             var notifType = hadPriorAssignment
                 ? Domain.Entities.NotificationType.TaskReassigned

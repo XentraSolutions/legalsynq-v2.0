@@ -112,11 +112,12 @@ public sealed class FlowEventDispatcher : IFlowEventDispatcher
             EntityType    = "Task",
             EntityId      = t.TaskId.ToString(),
             Recipient     = ResolveRecipient(t),
-            Subject       = "New task assigned",
-            Body          = $"Task {t.TaskId} has been assigned to you.",
+            Subject       = $"Task assigned: {t.TaskTitle ?? t.TaskId.ToString()}",
+            Body          = $"Task '{t.TaskTitle ?? t.TaskId.ToString()}' has been assigned to you.",
             BodyVariables = new Dictionary<string, string?>
             {
                 ["taskId"]            = t.TaskId.ToString(),
+                ["taskTitle"]         = t.TaskTitle ?? t.TaskId.ToString(),
                 ["assignedToUserId"]  = t.AssignedToUserId,
                 ["assignedToRoleKey"] = t.AssignedToRoleKey,
                 ["assignedToOrgId"]   = t.AssignedToOrgId,
@@ -125,6 +126,10 @@ public sealed class FlowEventDispatcher : IFlowEventDispatcher
             Severity      = NotificationSeverity.Info,
             Category      = NotificationCategory.Task,
             CorrelationId = t.TaskId.ToString(),
+            // E12.2 — deterministic idempotency key for the in-process pipe
+            // (no outbox row id is available here). Re-using the OutboxId
+            // slot lets HttpNotificationAdapter dedupe with no shape change.
+            OutboxId      = BuildInProcessIdempotencyKey(t),
             ChannelHints  = new[] { "system" },
         },
 
@@ -135,16 +140,18 @@ public sealed class FlowEventDispatcher : IFlowEventDispatcher
             EntityType    = "Task",
             EntityId      = t.TaskId.ToString(),
             Recipient     = NotificationRecipient.ForUser(t.CompletedByUserId!),
-            Subject       = "Task completed",
-            Body          = $"Task {t.TaskId} was marked complete.",
+            Subject       = $"Task completed: {t.TaskTitle ?? t.TaskId.ToString()}",
+            Body          = $"Task '{t.TaskTitle ?? t.TaskId.ToString()}' has been completed.",
             BodyVariables = new Dictionary<string, string?>
             {
                 ["taskId"]            = t.TaskId.ToString(),
+                ["taskTitle"]         = t.TaskTitle ?? t.TaskId.ToString(),
                 ["completedByUserId"] = t.CompletedByUserId,
             },
             Severity      = NotificationSeverity.Info,
             Category      = NotificationCategory.Task,
             CorrelationId = t.TaskId.ToString(),
+            OutboxId      = BuildInProcessIdempotencyKey(t),
             ChannelHints  = new[] { "system" },
         },
 
@@ -159,17 +166,39 @@ public sealed class FlowEventDispatcher : IFlowEventDispatcher
             Body          = $"Workflow {w.WorkflowId} has completed.",
             BodyVariables = new Dictionary<string, string?>
             {
-                ["workflowId"] = w.WorkflowId.ToString(),
+                // Aligned with E12.1 template token (`workflowInstanceId`).
+                // The in-process WorkflowService event carries this id.
+                ["workflowInstanceId"] = w.WorkflowId.ToString(),
             },
             Severity      = NotificationSeverity.Info,
             Category      = NotificationCategory.Workflow,
             CorrelationId = w.WorkflowId.ToString(),
+            OutboxId      = BuildInProcessIdempotencyKey(w),
             ChannelHints  = new[] { "system" },
         },
 
         // workflow created / state changed → audit only by default
         _ => null,
     };
+
+    // Deterministic dedupe key for the in-process notification pipe.
+    // Format: "{eventKey}:{tenantOrAnon}:{occurredAtUtc:O}:{entityId}"
+    // Stable across retries of the same logical operation; downstream
+    // consumers dedupe on the existing `outboxId`/`idempotencyKey`
+    // metadata keys produced by the translator helper.
+    private static string BuildInProcessIdempotencyKey(IFlowEvent e)
+    {
+        var entityId = e switch
+        {
+            TaskAssignedEvent t      => t.TaskId.ToString(),
+            TaskCompletedEvent t     => t.TaskId.ToString(),
+            WorkflowCompletedEvent w => w.WorkflowId.ToString(),
+            WorkflowCreatedEvent w   => w.WorkflowId.ToString(),
+            WorkflowStateChangedEvent w => w.WorkflowId.ToString(),
+            _ => string.Empty,
+        };
+        return $"{e.EventKey}:{e.TenantId ?? "anon"}:{e.OccurredAtUtc:O}:{entityId}";
+    }
 
     private static bool HasAnyRecipient(TaskAssignedEvent t) =>
         !string.IsNullOrEmpty(t.AssignedToUserId)
@@ -196,7 +225,13 @@ public sealed class FlowEventDispatcher : IFlowEventDispatcher
         var data = new Dictionary<string, string?>(descriptor.Metadata, StringComparer.Ordinal)
         {
             ["templateKey"] = descriptor.TemplateKey,
+            ["severity"]    = descriptor.Severity,
+            ["category"]    = descriptor.Category,
         };
+        if (!string.IsNullOrEmpty(descriptor.IdempotencyKey))
+        {
+            data["idempotencyKey"] = descriptor.IdempotencyKey;
+        }
         if (descriptor.TemplateData is not null)
         {
             foreach (var kv in descriptor.TemplateData)

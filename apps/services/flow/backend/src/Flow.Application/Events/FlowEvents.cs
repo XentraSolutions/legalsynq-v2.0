@@ -56,7 +56,8 @@ public sealed record TaskAssignedEvent(
     string? AssignedToOrgId,
     string? TenantId,
     string? AssignedByUserId,
-    DateTime OccurredAtUtc) : IFlowEvent
+    DateTime OccurredAtUtc,
+    string? TaskTitle = null) : IFlowEvent
 {
     public string EventKey => "flow.task.assigned";
 }
@@ -65,7 +66,8 @@ public sealed record TaskCompletedEvent(
     Guid TaskId,
     string? TenantId,
     string? CompletedByUserId,
-    DateTime OccurredAtUtc) : IFlowEvent
+    DateTime OccurredAtUtc,
+    string? TaskTitle = null) : IFlowEvent
 {
     public string EventKey => "flow.task.completed";
 }
