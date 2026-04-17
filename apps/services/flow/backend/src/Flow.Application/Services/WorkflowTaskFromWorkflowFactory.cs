@@ -45,14 +45,24 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
     /// </summary>
     private const int MaxTitleLength = 512;
 
+    /// <summary>EF column max length for <see cref="WorkflowTask.AssignedUserId"/>.</summary>
+    private const int MaxAssignedUserIdLength = 256;
+    /// <summary>EF column max length for <see cref="WorkflowTask.AssignedRole"/>.</summary>
+    private const int MaxAssignedRoleLength = 128;
+    /// <summary>EF column max length for <see cref="WorkflowTask.AssignedOrgId"/>.</summary>
+    private const int MaxAssignedOrgIdLength = 256;
+
     private readonly IFlowDbContext _db;
+    private readonly IWorkflowTaskAssignmentResolver _assignmentResolver;
     private readonly ILogger<WorkflowTaskFromWorkflowFactory> _logger;
 
     public WorkflowTaskFromWorkflowFactory(
         IFlowDbContext db,
+        IWorkflowTaskAssignmentResolver assignmentResolver,
         ILogger<WorkflowTaskFromWorkflowFactory> logger)
     {
         _db = db;
+        _assignmentResolver = assignmentResolver;
         _logger = logger;
     }
 
@@ -173,12 +183,100 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
             Priority           = WorkflowTaskPriority.Normal,
         };
 
+        // ── Assignment (E11.3) ───────────────────────────────────────
+        // The resolver is pure / local / stateless — no external calls,
+        // no DB reads. It returns a decision with at most one of
+        // (User, Role, Org) set; precedence User > Role > Org is
+        // enforced by the WorkflowTaskAssignment factory methods so we
+        // cannot accidentally emit a multi-target assignment here.
+        //
+        // Failure isolation: a buggy / throwing resolver must NOT
+        // break task creation — assignment is best-effort. We catch,
+        // log, and fall back to leaving the task unassigned.
+        WorkflowTaskAssignment assignment;
+        try
+        {
+            assignment = _assignmentResolver.Resolve(instance, stepKey)
+                         ?? WorkflowTaskAssignment.None;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "AssignmentResolver threw for instance={InstanceId} step={StepKey}; falling back to unassigned.",
+                instanceId, stepKey);
+            assignment = WorkflowTaskAssignment.None;
+        }
+
+        ApplyAssignment(task, assignment);
+
         _db.WorkflowTasks.Add(task);
 
         _logger.LogInformation(
-            "WorkflowTaskFromWorkflowFactory.Ensure created task instance={InstanceId} tenant={TenantId} step={StepKey} title={Title}",
-            instanceId, instance.TenantId, stepKey, title);
+            "WorkflowTaskFromWorkflowFactory.Ensure created task instance={InstanceId} tenant={TenantId} step={StepKey} title={Title} assignedType={AssignedType}",
+            instanceId, instance.TenantId, stepKey, title, AssignmentTypeOf(task));
 
         return task;
     }
+
+    /// <summary>
+    /// Copies the resolver decision onto the staged task with the
+    /// E11.3 invariants applied:
+    ///   <list type="bullet">
+    ///     <item><b>Single-target.</b> Only one of (User, Role, Org)
+    ///       is written; the other two are explicitly nulled. The
+    ///       <see cref="WorkflowTaskAssignment"/> record already
+    ///       guarantees this, but we re-assert here so a future
+    ///       caller cannot bypass it by hand-constructing the
+    ///       record.</item>
+    ///     <item><b>Length-safe.</b> Each field is truncated to its
+    ///       EF column max length so a long external id cannot
+    ///       trigger a "Data too long for column" failure at
+    ///       SaveChanges.</item>
+    ///     <item><b>Whitespace-safe.</b> The record's factory methods
+    ///       already collapse whitespace inputs to
+    ///       <see cref="WorkflowTaskAssignment.None"/>; trimmed values
+    ///       are persisted as-is.</item>
+    ///   </list>
+    /// </summary>
+    private static void ApplyAssignment(WorkflowTask task, WorkflowTaskAssignment assignment)
+    {
+        if (assignment.AssignedUserId is { } userId)
+        {
+            task.AssignedUserId = Truncate(userId, MaxAssignedUserIdLength);
+            task.AssignedRole   = null;
+            task.AssignedOrgId  = null;
+            return;
+        }
+
+        if (assignment.AssignedRole is { } role)
+        {
+            task.AssignedUserId = null;
+            task.AssignedRole   = Truncate(role, MaxAssignedRoleLength);
+            task.AssignedOrgId  = null;
+            return;
+        }
+
+        if (assignment.AssignedOrgId is { } orgId)
+        {
+            task.AssignedUserId = null;
+            task.AssignedRole   = null;
+            task.AssignedOrgId  = Truncate(orgId, MaxAssignedOrgIdLength);
+            return;
+        }
+
+        // No assignment — explicit nulls so a future re-staging path
+        // cannot inherit stale values from the entity initializer.
+        task.AssignedUserId = null;
+        task.AssignedRole   = null;
+        task.AssignedOrgId  = null;
+    }
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength];
+
+    private static string AssignmentTypeOf(WorkflowTask task) =>
+        task.AssignedUserId is not null ? "user"
+      : task.AssignedRole   is not null ? "role"
+      : task.AssignedOrgId  is not null ? "org"
+      : "none";
 }

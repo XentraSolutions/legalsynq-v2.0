@@ -48,6 +48,11 @@ public static class DependencyInjection
         // LS-FLOW-E11.2 — auto-creates WorkflowTask rows from workflow
         // transitions. Stateless service; one per scoped DbContext.
         services.AddScoped<IWorkflowTaskFromWorkflowFactory, WorkflowTaskFromWorkflowFactory>();
+        // LS-FLOW-E11.3 — deterministic assignment resolver. Stateless,
+        // no DB reads, no external calls; safe as a singleton but
+        // registered scoped to match the rest of Flow.Application
+        // services and keep the lifetime story uniform.
+        services.AddScoped<IWorkflowTaskAssignmentResolver, StaticRuleWorkflowTaskAssignmentResolver>();
 
         return services;
     }
