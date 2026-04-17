@@ -35,6 +35,34 @@ public static class WorkflowEndpoints
 
     public static void MapWorkflowEndpoints(this IEndpointRouteBuilder app)
     {
+        // E8.1 — slim definitions list for the tenant-portal "Start workflow"
+        // modal. Read-only passthrough to Flow; product key is fixed to
+        // SynqLien so the endpoint cannot be used to enumerate other products'
+        // definitions from this BFF.
+        app.MapGet("/api/liens/workflow-definitions", async (
+            [FromQuery] string? productKey,
+            IFlowClient flow,
+            CancellationToken ct) =>
+        {
+            var key = string.IsNullOrWhiteSpace(productKey) ? ProductSlug : productKey!;
+            if (!string.Equals(key, ProductSlug, StringComparison.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(new { error = $"productKey must be '{ProductSlug}' on this endpoint." });
+            }
+
+            try
+            {
+                var rows = await flow.ListDefinitionsAsync(ProductSlug, ct);
+                return Results.Ok(rows);
+            }
+            catch (Exception ex) when (ex is FlowClientUnavailableException or HttpRequestException)
+            {
+                return FlowEndpointResults.MapFailure(ex);
+            }
+        })
+        .RequireAuthorization(Policies.AuthenticatedUser)
+        .WithTags("Workflows");
+
         var group = app.MapGroup("/api/liens/cases/{id:guid}/workflows")
             .RequireAuthorization(Policies.AuthenticatedUser)
             .WithTags("Workflows");

@@ -67,6 +67,13 @@ export function buildRoleAccess(
       case 'financial:view':
         return isSeller || isBuyer || isHolder;
 
+      // E8.1 — workflow surface. View mirrors case:view; start mirrors
+      // case:edit so only Sellers/Holders can drive new workflow instances.
+      case 'workflow:view':
+        return hasAnyLienRole;
+      case 'workflow:start':
+        return isSeller || isHolder;
+
       default:
         return false;
     }

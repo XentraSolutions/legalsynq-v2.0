@@ -72,3 +72,19 @@ public sealed class FlowAdvanceWorkflowRequest
     public Dictionary<string, string>? Payload { get; set; }
 }
 
+/// <summary>
+/// E8.1 — slim definition row used by the tenant-portal "Start workflow"
+/// modal. Only the fields the UI needs are surfaced; Flow's full
+/// <c>WorkflowDefinitionResponse</c> additionally carries stages and
+/// transitions which are unused at start time.
+/// </summary>
+public sealed class FlowWorkflowDefinitionResponse
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Version { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string ProductKey { get; set; } = string.Empty;
+}
+

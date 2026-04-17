@@ -11,6 +11,7 @@ import { StatusBadge } from '@/components/lien/status-badge';
 
 import { ConfirmDialog } from '@/components/lien/modal';
 import { LayoutSplit, type PanelMode } from '@/components/lien/layout-split';
+import { WorkflowPanel } from '@/components/workflow';
 
 const STATUS_LABELS: Record<string, string> = { PreDemand: 'Pre-demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Case Settled', Closed: 'Closed' };
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
@@ -282,6 +283,7 @@ function DetailsTab({ d, panelMode, onPanelModeChange, canEdit, onCaseUpdated }:
   canEdit: boolean; onCaseUpdated: (updated: CaseDetail) => void;
 }) {
   const addToast = useLienStore((s) => s.addToast);
+  const ra = useRoleAccess();
 
   const [editingPlaintiff, setEditingPlaintiff] = useState(false);
   const [editingTracking, setEditingTracking] = useState(false);
@@ -611,6 +613,16 @@ function DetailsTab({ d, panelMode, onPanelModeChange, canEdit, onCaseUpdated }:
 
   const rightContent = (
     <div className="space-y-4">
+      <CollapsibleSection title="Workflow" icon="ri-flow-chart">
+        <WorkflowPanel
+          caseId={d.id}
+          productKey="synqlien"
+          productLabel="workflow"
+          canView={ra.can('workflow:view')}
+          canStart={ra.can('workflow:start')}
+        />
+      </CollapsibleSection>
+
       <CollapsibleSection title="Email" icon="ri-mail-send-line">
         <div className="flex justify-center py-2">
           <button className="w-full px-6 py-2.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">

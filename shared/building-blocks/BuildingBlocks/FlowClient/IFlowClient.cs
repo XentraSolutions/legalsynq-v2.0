@@ -31,6 +31,15 @@ public interface IFlowClient
         string sourceEntityId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// E8.1 — list workflow definitions filtered by product key.
+    /// Read-only; used by tenant-portal "Start workflow" UX so the user
+    /// picks from a dropdown instead of pasting a GUID.
+    /// </summary>
+    Task<IReadOnlyList<FlowWorkflowDefinitionResponse>> ListDefinitionsAsync(
+        string productKey,
+        CancellationToken cancellationToken = default);
+
     // ------------------ LS-FLOW-MERGE-P5 — execution surface ------------------
 
     Task<FlowWorkflowInstanceResponse> GetWorkflowInstanceAsync(

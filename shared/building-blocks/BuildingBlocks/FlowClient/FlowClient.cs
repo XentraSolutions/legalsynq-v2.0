@@ -88,6 +88,54 @@ internal sealed class FlowClient : IFlowClient
         return list ?? new List<FlowProductWorkflowResponse>();
     }
 
+    public async Task<IReadOnlyList<FlowWorkflowDefinitionResponse>> ListDefinitionsAsync(
+        string productKey,
+        CancellationToken cancellationToken = default)
+    {
+        var qs = string.IsNullOrWhiteSpace(productKey)
+            ? string.Empty
+            : $"?productKey={Uri.EscapeDataString(productKey)}";
+        var path = $"/api/v1/workflows{qs}";
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, path);
+        ApplyUserBearer(httpRequest);
+
+        _logger.LogInformation("FlowClient → GET {Path} productKey={ProductKey}", path, productKey);
+
+        var response = await SendAsync(httpRequest, cancellationToken);
+        // Flow returns the full WorkflowDefinitionResponse; deserialize loosely
+        // and project to the slim DTO the UI needs.
+        var raw = await ReadJsonAsync<List<FlowDefinitionWire>>(response, cancellationToken);
+        if (raw is null)
+        {
+            return Array.Empty<FlowWorkflowDefinitionResponse>();
+        }
+
+        var slim = new List<FlowWorkflowDefinitionResponse>(raw.Count);
+        foreach (var d in raw)
+        {
+            slim.Add(new FlowWorkflowDefinitionResponse
+            {
+                Id = d.Id,
+                Name = d.Name ?? string.Empty,
+                Description = d.Description,
+                Version = d.Version ?? string.Empty,
+                Status = d.Status?.ToString() ?? string.Empty,
+                ProductKey = d.ProductKey ?? string.Empty,
+            });
+        }
+        return slim;
+    }
+
+    private sealed class FlowDefinitionWire
+    {
+        public Guid Id { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public string? Version { get; set; }
+        public object? Status { get; set; }
+        public string? ProductKey { get; set; }
+    }
+
     public async Task<FlowWorkflowInstanceResponse> GetWorkflowInstanceAsync(
         Guid workflowInstanceId,
         CancellationToken cancellationToken = default)

@@ -24,7 +24,9 @@ export type LienAction =
   | 'document:edit'
   | 'document:view'
   | 'user:manage'
-  | 'financial:view';
+  | 'financial:view'
+  | 'workflow:view'
+  | 'workflow:start';
 
 export type LienModule =
   | 'dashboard'
