@@ -57,6 +57,9 @@ export const Routes = {
 
   // ── Operations ────────────────────────────────────────────────────────────
 
+  /** /workflows — Cross-product workflow operations list (E9.1) */
+  workflows: '/workflows',
+
   /** /support — Support tools */
   support: '/support',
 

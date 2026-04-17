@@ -1034,3 +1034,44 @@ export interface PagedResponse<T> {
   page:       number;
   pageSize:   number;
 }
+
+// ── E9.1: Cross-product workflow operations list ─────────────────────────────
+
+/**
+ * Workflow lifecycle status as exposed by the Flow service. Matches the
+ * canonical engine values (Active / Pending / Completed / Cancelled / Failed).
+ * `Pending` is rare (instance row exists but no current stage yet) and is
+ * treated as actionable for filter/UI purposes.
+ */
+export type WorkflowInstanceStatus =
+  | 'Active'
+  | 'Pending'
+  | 'Completed'
+  | 'Cancelled'
+  | 'Failed';
+
+/**
+ * One row in the Control Center workflow operations list. Mirrors
+ * `AdminWorkflowInstanceListItem` returned by Flow's
+ * `GET /api/v1/admin/workflow-instances`.
+ *
+ * `tenantId` is normalised to lowercase Guid string (matches how
+ * Flow.Infrastructure stores it).
+ */
+export interface WorkflowInstanceListItem {
+  id:                   string;
+  tenantId:             string;
+  productKey:           string;
+  workflowDefinitionId: string;
+  workflowName:         string | null;
+  status:               WorkflowInstanceStatus | string;
+  currentStepKey:       string | null;
+  assignedToUserId:     string | null;
+  correlationKey:       string | null;
+  sourceEntityType:     string | null;
+  sourceEntityId:       string | null;
+  startedAt:            string | null;
+  completedAt:          string | null;
+  updatedAt:            string | null;
+  createdAt:            string;
+}

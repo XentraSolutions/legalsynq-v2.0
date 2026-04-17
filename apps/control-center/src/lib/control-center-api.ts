@@ -140,6 +140,7 @@ import type {
   PolicyDetail,
   PermissionPolicySummary,
   SupportedFieldsResponse,
+  WorkflowInstanceListItem,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -153,6 +154,37 @@ function toQs(params: Record<string, unknown>): string {
     .filter(([, v]) => v !== undefined && v !== null && v !== '')
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
   return pairs.length ? `?${pairs.join('&')}` : '';
+}
+
+/**
+ * E9.1 — normalise a single workflow-instance row from Flow's admin
+ * listing into the Control Center DTO. Tolerates missing optional fields
+ * and never throws on unexpected values (best-effort string coercion).
+ */
+function mapWorkflowInstanceListItem(raw: unknown): WorkflowInstanceListItem {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const s = (v: unknown): string | null => {
+    if (v === undefined || v === null) return null;
+    const str = String(v);
+    return str.length === 0 ? null : str;
+  };
+  return {
+    id:                   String(r.id ?? ''),
+    tenantId:             String(r.tenantId ?? '').toLowerCase(),
+    productKey:           String(r.productKey ?? ''),
+    workflowDefinitionId: String(r.workflowDefinitionId ?? ''),
+    workflowName:         s(r.workflowName),
+    status:               String(r.status ?? ''),
+    currentStepKey:       s(r.currentStepKey),
+    assignedToUserId:     s(r.assignedToUserId),
+    correlationKey:       s(r.correlationKey),
+    sourceEntityType:     s(r.sourceEntityType),
+    sourceEntityId:       s(r.sourceEntityId),
+    startedAt:            s(r.startedAt),
+    completedAt:          s(r.completedAt),
+    updatedAt:            s(r.updatedAt),
+    createdAt:            String(r.createdAt ?? ''),
+  };
 }
 
 // ── Server-side API ───────────────────────────────────────────────────────────
@@ -1904,6 +1936,53 @@ export const controlCenterServerApi = {
       );
       const arr = Array.isArray(raw) ? raw : [];
       return arr.map(mapAccessGroupMember);
+    },
+  },
+
+  // ── Workflows (E9.1) ────────────────────────────────────────────────────
+  //
+  // Read-only cross-product workflow operations list. Backed by Flow's
+  // `GET /api/v1/admin/workflow-instances` admin endpoint, which bypasses
+  // the per-tenant query filter when the caller is a PlatformAdmin and
+  // scopes TenantAdmin callers to their own tenant on the server side.
+  //
+  // Cache: 10 s  Tag: cc:workflows
+  //   Workflow rows change frequently in production; a short TTL keeps the
+  //   page near-real-time without pummelling Flow on every navigation.
+
+  workflows: {
+    list: async (params: {
+      page?:       number;
+      pageSize?:   number;
+      productKey?: string;
+      status?:     string;
+      tenantId?:   string;
+      search?:     string;
+    } = {}): Promise<PagedResponse<WorkflowInstanceListItem>> => {
+      const qs = toQs({
+        page:       params.page     ?? 1,
+        pageSize:   params.pageSize ?? 20,
+        productKey: params.productKey,
+        status:     params.status,
+        tenantId:   params.tenantId,
+        search:     params.search,
+      });
+      const raw = await apiClient.get<{
+        items?:      unknown[];
+        totalCount?: number;
+        page?:       number;
+        pageSize?:   number;
+      }>(
+        `/flow/api/v1/admin/workflow-instances${qs}`,
+        10,
+        [CACHE_TAGS.workflows],
+      );
+      return {
+        items:     (raw?.items ?? []).map(mapWorkflowInstanceListItem),
+        totalCount: raw?.totalCount ?? 0,
+        page:       raw?.page       ?? (params.page     ?? 1),
+        pageSize:   raw?.pageSize   ?? (params.pageSize ?? 20),
+      };
     },
   },
 
