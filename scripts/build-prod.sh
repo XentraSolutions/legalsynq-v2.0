@@ -3,24 +3,31 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-NEXT_BIN="$(command -v next 2>/dev/null || true)"
-if [ -z "$NEXT_BIN" ]; then
-  for candidate in \
-    "$ROOT/node_modules/.bin/next" \
-    "$ROOT/node_modules/next/dist/bin/next" \
-    "$(npm root)/next/dist/bin/next" \
-    "$(npm root -g 2>/dev/null)/next/dist/bin/next"; do
-    if [ -f "$candidate" ]; then
-      NEXT_BIN="$candidate"
-      break
-    fi
-  done
-fi
+# Resolve the Next.js JS entrypoint (NOT the .bin/next shell wrapper —
+# that file is a bash script and `node <bash-script>` blows up with
+# "SyntaxError: missing ) after argument list", which silently failed
+# every production build.
+NEXT_BIN=""
+for candidate in \
+  "$ROOT/node_modules/next/dist/bin/next" \
+  "$(npm root)/next/dist/bin/next" \
+  "$(npm root -g 2>/dev/null)/next/dist/bin/next"; do
+  if [ -f "$candidate" ]; then
+    NEXT_BIN="$candidate"
+    break
+  fi
+done
 
 if [ -z "$NEXT_BIN" ]; then
-  echo "ERROR: Cannot find next binary. Installing next..."
+  echo "ERROR: Cannot find next JS entrypoint. Installing next..."
   npm install next@15.2.9
-  NEXT_BIN="$(npm root)/next/dist/bin/next"
+  NEXT_BIN="$ROOT/node_modules/next/dist/bin/next"
+fi
+
+# Sanity-check: must start with the node shebang, never a bash one.
+if ! head -n 1 "$NEXT_BIN" | grep -q '^#!/usr/bin/env node'; then
+  echo "ERROR: $NEXT_BIN does not look like the Next.js JS entrypoint."
+  exit 1
 fi
 
 echo "Using next binary: $NEXT_BIN"
