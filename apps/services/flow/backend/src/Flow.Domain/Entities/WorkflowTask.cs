@@ -35,14 +35,16 @@ namespace Flow.Domain.Entities;
 /// </para>
 ///
 /// <para>
-/// <b>Domain invariants enforced (minimal):</b>
+/// <b>Domain invariants enforced (E11.1 + E14.1):</b>
 ///   <list type="bullet">
 ///     <item><see cref="WorkflowInstanceId"/>, <see cref="StepKey"/>, <see cref="Status"/>, <c>TenantId</c> are required.</item>
 ///     <item>If <see cref="CompletedAt"/> is set, <see cref="Status"/> must be <see cref="WorkflowTaskStatus.Completed"/>.</item>
 ///     <item>If <see cref="CancelledAt"/> is set, <see cref="Status"/> must be <see cref="WorkflowTaskStatus.Cancelled"/>.</item>
+///     <item>(E14.1) <see cref="AssignmentMode"/> is required and must
+///       be one of <see cref="WorkflowTaskAssignmentMode"/>; the
+///       (user, role, org) triple is governed by the mode and only ONE
+///       mode is valid at a time.</item>
 ///   </list>
-/// Anything richer (open→in-progress only by assignee, no re-open of
-/// terminal, etc.) is intentionally deferred to E11.2.
 /// </para>
 /// </summary>
 public class WorkflowTask : AuditableEntity
@@ -76,15 +78,48 @@ public class WorkflowTask : AuditableEntity
     /// <summary>One of <see cref="WorkflowTaskPriority"/>. Defaults to <c>Normal</c>.</summary>
     public string Priority { get; set; } = WorkflowTaskPriority.Normal;
 
-    // ---------------- Assignment placeholders (no logic yet) -----------------
+    // ---------------- Assignment (E14.1) -----------------
     //
-    // All three are nullable; nothing in this phase routes on them.
-    // E11.2 will introduce the assignment resolver and any uniqueness
-    // / mutual-exclusion rules between user/role/org.
+    // The (user, role, org) triple is now governed by AssignmentMode.
+    // EnsureValid() enforces a single mode per row and rejects every
+    // other combination so the column shape can never be ambiguous.
+
+    /// <summary>
+    /// One of <see cref="WorkflowTaskAssignmentMode"/>. Defaults to
+    /// <see cref="WorkflowTaskAssignmentMode.Unassigned"/>. Required
+    /// at persistence time — see <see cref="EnsureValid"/>. Producers
+    /// that leave it empty get a deterministic derivation from the
+    /// (user, role, org) values via <see cref="NormalizeAssignmentMode"/>.
+    /// </summary>
+    public string AssignmentMode { get; set; } = WorkflowTaskAssignmentMode.Unassigned;
 
     public string? AssignedUserId { get; set; }
     public string? AssignedRole   { get; set; }
     public string? AssignedOrgId  { get; set; }
+
+    /// <summary>
+    /// UTC timestamp of the most recent assignment event. Stamped by
+    /// the producer (engine factory in E14.1; claim / reassign service
+    /// in E14.2). Must be null when <see cref="AssignmentMode"/> is
+    /// <see cref="WorkflowTaskAssignmentMode.Unassigned"/>.
+    /// </summary>
+    public DateTime? AssignedAt { get; set; }
+
+    /// <summary>
+    /// Identifier of the actor responsible for the most recent
+    /// assignment event. Null for system / resolver-routed
+    /// assignments. Must be null when <see cref="AssignmentMode"/> is
+    /// <see cref="WorkflowTaskAssignmentMode.Unassigned"/>.
+    /// </summary>
+    public string? AssignedBy { get; set; }
+
+    /// <summary>
+    /// Optional free-form note describing why the current assignment
+    /// was applied (e.g. "claimed from queue", "reassigned by
+    /// supervisor"). Surfaced for audit only — engine logic does not
+    /// branch on it.
+    /// </summary>
+    public string? AssignmentReason { get; set; }
 
     // ---------------- Lifecycle timestamps -----------------
     //
@@ -120,6 +155,44 @@ public class WorkflowTask : AuditableEntity
     public WorkflowInstance? WorkflowInstance { get; set; }
 
     // ---------------- Domain invariants -----------------
+
+    /// <summary>
+    /// LS-FLOW-E14.1 — backward-compat backstop. Derives
+    /// <see cref="AssignmentMode"/> from the current (user, role, org)
+    /// triple using the same precedence as the E11.3
+    /// <see cref="WorkflowTaskAssignment"/> factory whenever the row is
+    /// <em>not in a state a caller could have set on purpose</em>:
+    ///   <list type="bullet">
+    ///     <item>mode is null or whitespace (legacy hand-constructed
+    ///       row), or</item>
+    ///     <item>mode is the entity's default
+    ///       <see cref="WorkflowTaskAssignmentMode.Unassigned"/> but at
+    ///       least one assignment target is populated (legacy producer
+    ///       that filled targets and ignored the new mode field — the
+    ///       common shape for E11.3 code paths that have not yet
+    ///       picked up the E14.1 wiring).</item>
+    ///   </list>
+    /// The "Unassigned + no targets" case is left alone — it is the
+    /// genuine no-assignment shape and re-deriving would be a no-op.
+    /// Idempotent; safe to call repeatedly.
+    /// </summary>
+    public void NormalizeAssignmentMode()
+    {
+        var hasAnyTarget =
+            !string.IsNullOrWhiteSpace(AssignedUserId) ||
+            !string.IsNullOrWhiteSpace(AssignedRole) ||
+            !string.IsNullOrWhiteSpace(AssignedOrgId);
+
+        var modeIsBlank = string.IsNullOrWhiteSpace(AssignmentMode);
+        var modeIsDefaultButTargetsPresent =
+            string.Equals(AssignmentMode, WorkflowTaskAssignmentMode.Unassigned, StringComparison.Ordinal)
+            && hasAnyTarget;
+
+        if (modeIsBlank || modeIsDefaultButTargetsPresent)
+        {
+            AssignmentMode = WorkflowTaskAssignmentMode.Derive(AssignedUserId, AssignedRole, AssignedOrgId);
+        }
+    }
 
     /// <summary>
     /// Validates the minimal invariants documented on this type. Called
@@ -159,5 +232,60 @@ public class WorkflowTask : AuditableEntity
         if (isCancelled && CancelledAt is null)
             throw new InvalidOperationException(
                 $"WorkflowTask.Status='{WorkflowTaskStatus.Cancelled}' requires CancelledAt to be set.");
+
+        // ---------------- E14.1 — assignment-model invariants ----------------
+        //
+        // Lazy backward-compat mapping FIRST so a row written by older
+        // code (or by a test that constructed a WorkflowTask by hand)
+        // is normalised before we reject it. After normalisation the
+        // mode is non-empty for every legal combination.
+        NormalizeAssignmentMode();
+
+        if (!WorkflowTaskAssignmentMode.IsKnown(AssignmentMode))
+            throw new InvalidOperationException(
+                $"WorkflowTask.AssignmentMode='{AssignmentMode}' is not a known mode. " +
+                $"Allowed: DirectUser, RoleQueue, OrgQueue, Unassigned.");
+
+        switch (AssignmentMode)
+        {
+            case WorkflowTaskAssignmentMode.DirectUser:
+                if (string.IsNullOrWhiteSpace(AssignedUserId))
+                    throw new InvalidOperationException(
+                        "WorkflowTask.AssignmentMode='DirectUser' requires AssignedUserId.");
+                if (AssignedRole is not null)
+                    throw new InvalidOperationException(
+                        "WorkflowTask.AssignmentMode='DirectUser' forbids AssignedRole.");
+                if (AssignedOrgId is not null)
+                    throw new InvalidOperationException(
+                        "WorkflowTask.AssignmentMode='DirectUser' forbids AssignedOrgId.");
+                break;
+
+            case WorkflowTaskAssignmentMode.RoleQueue:
+                if (string.IsNullOrWhiteSpace(AssignedRole))
+                    throw new InvalidOperationException(
+                        "WorkflowTask.AssignmentMode='RoleQueue' requires AssignedRole.");
+                if (AssignedUserId is not null)
+                    throw new InvalidOperationException(
+                        "WorkflowTask.AssignmentMode='RoleQueue' forbids AssignedUserId.");
+                break;
+
+            case WorkflowTaskAssignmentMode.OrgQueue:
+                if (string.IsNullOrWhiteSpace(AssignedOrgId))
+                    throw new InvalidOperationException(
+                        "WorkflowTask.AssignmentMode='OrgQueue' requires AssignedOrgId.");
+                if (AssignedUserId is not null)
+                    throw new InvalidOperationException(
+                        "WorkflowTask.AssignmentMode='OrgQueue' forbids AssignedUserId.");
+                break;
+
+            case WorkflowTaskAssignmentMode.Unassigned:
+                if (AssignedUserId is not null || AssignedRole is not null || AssignedOrgId is not null)
+                    throw new InvalidOperationException(
+                        "WorkflowTask.AssignmentMode='Unassigned' forbids AssignedUserId / AssignedRole / AssignedOrgId.");
+                if (AssignedAt is not null || !string.IsNullOrWhiteSpace(AssignedBy))
+                    throw new InvalidOperationException(
+                        "WorkflowTask.AssignmentMode='Unassigned' forbids AssignedAt / AssignedBy (no assignment event has occurred).");
+                break;
+        }
     }
 }

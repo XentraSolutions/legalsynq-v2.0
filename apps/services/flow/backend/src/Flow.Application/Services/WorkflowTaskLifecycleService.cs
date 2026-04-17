@@ -46,8 +46,25 @@ namespace Flow.Application.Services;
 ///
 /// <para>
 /// <b>Out of scope (intentionally not touched):</b> WorkflowInstance,
-/// WorkflowEngine, outbox, SLA, notifications, assignment columns,
-/// reassignment.
+/// WorkflowEngine, outbox, SLA, notifications, assignment columns
+/// (<c>AssignedUserId</c> / <c>AssignedRole</c> / <c>AssignedOrgId</c> /
+/// <c>AssignmentMode</c> / <c>AssignedAt</c> / <c>AssignedBy</c> /
+/// <c>AssignmentReason</c>), reassignment.
+/// </para>
+///
+/// <para>
+/// <b>E14.1 caveat — bypass of assignment-mode invariants.</b> Because
+/// <c>ExecuteUpdateAsync</c> skips the save-hook, the new single-mode
+/// invariants enforced by <see cref="WorkflowTask.EnsureValid"/>
+/// (<c>DirectUser</c> / <c>RoleQueue</c> / <c>OrgQueue</c> /
+/// <c>Unassigned</c> consistency between <c>AssignmentMode</c> and the
+/// assignment-target columns) are NOT re-checked here. This service is
+/// currently safe because it only mutates status / lifecycle
+/// timestamps and never touches the assignment columns. Any future
+/// helper that uses <c>ExecuteUpdateAsync</c> to mutate assignment
+/// columns MUST either (a) load + track + <c>SaveChangesAsync</c> so
+/// the save-hook fires, or (b) re-apply the same single-mode rule
+/// inline before issuing the UPDATE.
 /// </para>
 /// </summary>
 public sealed class WorkflowTaskLifecycleService : IWorkflowTaskLifecycleService

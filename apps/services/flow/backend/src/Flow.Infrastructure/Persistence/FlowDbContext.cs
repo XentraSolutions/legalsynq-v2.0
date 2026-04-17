@@ -353,6 +353,13 @@ public class FlowDbContext : DbContext, IFlowDbContext
             entity.Property(e => e.AssignedUserId).HasMaxLength(256);
             entity.Property(e => e.AssignedRole).HasMaxLength(128);
             entity.Property(e => e.AssignedOrgId).HasMaxLength(256);
+            // LS-FLOW-E14.1 — explicit assignment model.
+            entity.Property(e => e.AssignmentMode)
+                .IsRequired()
+                .HasMaxLength(32)
+                .HasDefaultValue(Flow.Domain.Common.WorkflowTaskAssignmentMode.Unassigned);
+            entity.Property(e => e.AssignedBy).HasMaxLength(256);
+            entity.Property(e => e.AssignmentReason).HasMaxLength(512);
             entity.Property(e => e.CorrelationKey).HasMaxLength(256);
             entity.Property(e => e.MetadataJson).HasColumnType("longtext");
             entity.Property(e => e.CreatedBy).HasMaxLength(256);
@@ -365,6 +372,12 @@ public class FlowDbContext : DbContext, IFlowDbContext
                 .HasDatabaseName("ix_flow_workflow_tasks_tenant_user_status");
             entity.HasIndex(e => new { e.TenantId, e.AssignedRole, e.Status })
                 .HasDatabaseName("ix_flow_workflow_tasks_tenant_role_status");
+            // LS-FLOW-E14.1 — queue-scan support (Unassigned / RoleQueue
+            // / OrgQueue listings the upcoming claim/reassign surfaces
+            // will hit). Composite leftmost-prefix on TenantId so it
+            // remains tenant-safe.
+            entity.HasIndex(e => new { e.TenantId, e.AssignmentMode, e.Status })
+                .HasDatabaseName("ix_flow_workflow_tasks_tenant_mode_status");
             // Per-instance task list (timeline / control-center detail drawer).
             entity.HasIndex(e => e.WorkflowInstanceId)
                 .HasDatabaseName("ix_flow_workflow_tasks_instance");

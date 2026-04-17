@@ -220,7 +220,7 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
 
     /// <summary>
     /// Copies the resolver decision onto the staged task with the
-    /// E11.3 invariants applied:
+    /// E11.3 + E14.1 invariants applied:
     ///   <list type="bullet">
     ///     <item><b>Single-target.</b> Only one of (User, Role, Org)
     ///       is written; the other two are explicitly nulled. The
@@ -228,6 +228,15 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
     ///       guarantees this, but we re-assert here so a future
     ///       caller cannot bypass it by hand-constructing the
     ///       record.</item>
+    ///     <item><b>Single-mode (E14.1).</b> The matching
+    ///       <see cref="WorkflowTaskAssignmentMode"/> is stamped
+    ///       alongside the chosen target so
+    ///       <see cref="WorkflowTask.EnsureValid"/> can enforce a
+    ///       single ownership mode at SaveChanges time. The
+    ///       no-assignment branch leaves the task in
+    ///       <see cref="WorkflowTaskAssignmentMode.Unassigned"/> with
+    ///       <c>AssignedAt</c> / <c>AssignedBy</c> null — no
+    ///       assignment event has occurred.</item>
     ///     <item><b>Length-safe.</b> Each field is truncated to its
     ///       EF column max length so a long external id cannot
     ///       trigger a "Data too long for column" failure at
@@ -240,11 +249,22 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
     /// </summary>
     private static void ApplyAssignment(WorkflowTask task, WorkflowTaskAssignment assignment)
     {
+        // E14.1 — single timestamp captured per call so the four
+        // branches below stamp identical AssignedAt values regardless
+        // of which target the resolver picked. AssignedBy stays null
+        // for resolver-routed assignments — see report §"Assumptions"
+        // (the factory has no IFlowUserContext; human-driven
+        // claim/reassign in E14.2 will populate it).
+        var now = DateTime.UtcNow;
+
         if (assignment.AssignedUserId is { } userId)
         {
             task.AssignedUserId = Truncate(userId, MaxAssignedUserIdLength);
             task.AssignedRole   = null;
             task.AssignedOrgId  = null;
+            task.AssignmentMode = WorkflowTaskAssignmentMode.DirectUser;
+            task.AssignedAt     = now;
+            task.AssignedBy     = null;
             return;
         }
 
@@ -253,6 +273,9 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
             task.AssignedUserId = null;
             task.AssignedRole   = Truncate(role, MaxAssignedRoleLength);
             task.AssignedOrgId  = null;
+            task.AssignmentMode = WorkflowTaskAssignmentMode.RoleQueue;
+            task.AssignedAt     = now;
+            task.AssignedBy     = null;
             return;
         }
 
@@ -261,14 +284,22 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
             task.AssignedUserId = null;
             task.AssignedRole   = null;
             task.AssignedOrgId  = Truncate(orgId, MaxAssignedOrgIdLength);
+            task.AssignmentMode = WorkflowTaskAssignmentMode.OrgQueue;
+            task.AssignedAt     = now;
+            task.AssignedBy     = null;
             return;
         }
 
         // No assignment — explicit nulls so a future re-staging path
         // cannot inherit stale values from the entity initializer.
-        task.AssignedUserId = null;
-        task.AssignedRole   = null;
-        task.AssignedOrgId  = null;
+        // AssignmentMode + Assigned{At,By} also reset so a re-staged
+        // row never claims an event that never happened.
+        task.AssignedUserId   = null;
+        task.AssignedRole     = null;
+        task.AssignedOrgId    = null;
+        task.AssignmentMode   = WorkflowTaskAssignmentMode.Unassigned;
+        task.AssignedAt       = null;
+        task.AssignedBy       = null;
     }
 
     private static string Truncate(string value, int maxLength) =>
