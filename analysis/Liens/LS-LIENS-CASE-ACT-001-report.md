@@ -1,93 +1,127 @@
 # LS-LIENS-CASE-ACT-001 — Case Details Action Enablement
 
 ## Objective
-Enable real edit/save functionality for Plaintiff Info and Case Tracking sections in the Case Detail → Details tab.
+Enable real, usable edit functionality for Plaintiff Info and Case Tracking sections within Case Detail → Details tab.
 
 ## Scope
-- Details tab Plaintiff Info and Case Tracking edit actions only
-- No changes to other tabs, nav, fonts, colors, routing
+- Plaintiff Info: inline edit with real API persistence
+- Case Tracking: inline edit with real API persistence
+- No fake persistence — only fields supported by backend are editable
+- No visual redesign — action enablement only
 
-## API Discovery
+## API / Service Discovery
 
-### Backend Endpoint
-`PUT /lien/api/liens/cases/{id}` — requires `LiensPermissions.CaseUpdate`
+### Update Path
+- Single unified update: `casesService.updateCase(caseId, UpdateCaseRequestDto)`
+- Full PUT replacement — must send all fields including unchanged ones
+- Endpoint: `PUT /lien/api/liens/cases/{caseId}` via BFF → Gateway → SynqLiens service
 
-### Supported Fields (API-backed persistence)
+### UpdateCaseRequestDto — Supported Fields
+| Field | Type | Notes |
+|-------|------|-------|
+| `clientFirstName` | string (required) | Plaintiff first name |
+| `clientLastName` | string (required) | Plaintiff last name |
+| `clientPhone` | string? | Phone number |
+| `clientEmail` | string? | Email address |
+| `clientDob` | string? | Date of birth |
+| `clientAddress` | string? | Full address (single field) |
+| `status` | string? | Case status |
+| `title` | string? | Case type |
+| `description` | string? | Case tracking note |
+| `dateOfIncident` | string? | Date of incident |
+| `externalReference` | string? | External reference |
+| `insuranceCarrier` | string? | Insurance carrier |
+| `policyNumber` | string? | Policy number |
+| `claimNumber` | string? | Claim number |
+| `notes` | string? | Notes |
+| `demandAmount` | number? | Demand amount |
+| `settlementAmount` | number? | Settlement amount |
 
-**Plaintiff Info:**
-| Field | API Field | Type | Validation |
-|-------|-----------|------|------------|
-| First Name | `clientFirstName` | required | Non-empty |
-| Last Name | `clientLastName` | required | Non-empty |
-| Phone Number | `clientPhone` | optional | Format: digits/spaces/parens/plus, 7-20 chars |
-| Email | `clientEmail` | optional | Standard email format |
-| Birthdate | `clientDob` | optional | Text (free-form, dates from API) |
-| Address | `clientAddress` | optional | Text |
-
-**Case Tracking:**
-| Field | API Field | Type | Validation |
-|-------|-----------|------|------------|
-| Case Status | `status` | optional | Dropdown from STATUSES |
-| Case Type | `title` | optional | Text |
-| Date of Incident | `dateOfIncident` | optional | Text |
-| Case Tracking Note | `description` | optional | Textarea |
-
-### Unsupported Fields (NOT API-backed)
-- Sex — no `sex`/`gender` field in DTO
-- Tracking Follow Up — no `trackingFollowUp` field in DTO
-- Current Medical Status — no `medicalStatus` field in DTO
-- State of Incident — no `stateOfIncident` field in DTO
-- Lead — no `lead`/`assignee` field in DTO
-- Case Flags (all 5) — no flag fields in DTO
-
-These fields display "---" in read mode and are disabled/hidden in edit mode.
+### Unsupported Fields (Not in Backend Contract)
+| Field | Category | UI Treatment |
+|-------|----------|--------------|
+| Sex | Plaintiff | Disabled input "Not yet supported" in edit; "---" in read |
+| City/State/Zip (separate) | Plaintiff | Backend uses single `clientAddress`; not split |
+| Tracking Follow Up | Case Tracking | Disabled input "Not yet supported" |
+| Current Medical Status | Case Tracking | Disabled input "Not yet supported" in edit; "---" in read |
+| State of Incident | Case Tracking | Disabled input "Not yet supported" in edit; "---" in read |
+| Lead | Case Tracking | Disabled input "Not yet supported" in edit; "---" in read |
+| Case Flags (5 toggles) | Case Tracking | All disabled checkboxes with "Not yet supported" label |
 
 ## Implementation
 
-### Edit Flow
-1. User clicks pencil icon on section header (only visible when `canEdit` is true)
-2. Section switches from read-only `FieldGrid` to inline edit form
-3. Form prefilled with current values from `CaseDetail`
-4. User edits fields, validation runs on save
-5. Save calls `casesService.updateCase()` with full DTO (preserving all unchanged fields)
-6. On success: `onCaseUpdated(updated)` refreshes parent `caseDetail` state, form closes, success toast
-7. On failure: form stays open with user input preserved, error toast with message
-8. Cancel discards changes and closes form
+### T001 — Plaintiff Info Edit Flow
+- **Edit trigger**: Pencil icon on CollapsibleSection header, role-gated by `canEdit` (requires `case:edit` permission)
+- **Prefill**: All editable fields populated from current `CaseDetail`
+- **Editable fields**: First Name, Last Name, Phone, Email, Birthdate, Address
+- **Disabled fields**: Sex (shown in edit mode as disabled placeholder)
+- **Save**: Calls `casesService.updateCase()` with full DTO (all unchanged fields echoed)
+- **Cancel**: Resets form via `resetPlaintiffForm()`, clears errors
+- **Files**: `case-detail-client.tsx` (DetailsTab component)
 
-### Validation
-- **Plaintiff**: First Name required, Last Name required, Email format checked, Phone format checked
-- **Case Tracking**: No required fields (all optional in API)
-- Save button disabled during save (prevents double submit)
-- Cancel button disabled during save
+### T002 — Plaintiff Info Validation
+- First Name: required (blocks save if empty)
+- Last Name: required (blocks save if empty)
+- Email: format validation (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`)
+- Phone: format validation (`/^[\d\s()+-]{7,20}$/`)
+- Inline error messages shown below each field
 
-### Role/Permission
-- Edit pencil icon only rendered when `canEdit = ra.can('case:edit')` is true
-- Unauthorized users see read-only view with no edit affordance
+### T003 — Case Tracking Edit Flow
+- **Edit trigger**: Same pattern — pencil icon, role-gated
+- **Prefill**: Status, Case Type (title), Date of Incident, Case Tracking Note (description)
+- **Editable fields**: Case Status (dropdown), Case Type, Date of Incident, Case Tracking Note (textarea)
+- **Disabled fields**: Tracking Follow Up, Current Medical Status, State of Incident, Lead
+- **Save**: Same unified API call
+- **Cancel**: Resets form via `resetTrackingForm()`, clears errors
 
-### Save Behavior
-- Loading spinner on Save button during API call
-- Both Save and Cancel disabled during save
-- Success: UI refreshes immediately via `setCaseDetail(updated)`
-- Failure: Form stays open, user input preserved, error toast with specific API error message
+### T004 — Case Tracking Validation
+- Date of Incident: format validation (accepts MM/DD/YYYY and MMM D, YYYY)
+- Inline error message shown below field
 
-### Files Changed
+### T005 — Loading, Success, Error Behavior
+- **Loading**: Save button shows spinner + "Saving..." text
+- **Duplicate submit prevention**: Save button disabled while `pSaving`/`tSaving` is true
+- **Success**: Toast notification ("Plaintiff Updated" / "Case Tracking Updated"), edit mode closed, data refreshed
+- **Error**: Toast notification with error message from `ApiError`, edit mode stays open, user input preserved
+
+### T006 — Data Refresh Strategy
+- `onCaseUpdated(updated)` callback passes the fresh `CaseDetail` from API response directly to parent state
+- No page reload, no stale data — immediate in-place update
+- All read-only display fields reflect new values instantly
+
+### T007 — Role / Permission
+- Edit pencil only rendered when `canEdit` is true (via `useRoleAccess().can('case:edit')`)
+- Backend remains authoritative — unauthorized API calls will fail with proper error toast
+
+### T008 — Case Flags
+- 5 flags shown as disabled checkboxes: Share with Law Firm, UCC Filed, Case Dropped, Child Support, Minor Comp
+- All have `opacity-50 cursor-not-allowed` styling
+- Section header includes "Not yet supported" label
+- These are read-only placeholders until backend schema supports them
+
+## Files Changed
 | File | Change |
 |------|--------|
-| `apps/web/src/app/(platform)/lien/cases/[id]/case-detail-client.tsx` | Rewrote `DetailsTab` with edit modes, validation, save/cancel, role gating; added `canEdit` and `onCaseUpdated` props |
+| `apps/web/src/app/(platform)/lien/cases/[id]/case-detail-client.tsx` | Full edit flows for Plaintiff Info and Case Tracking with validation, save/cancel, loading states, error handling, role gating, and unsupported field placeholders |
 
-### Validation Results
-- TypeScript: 0 errors, 0 warnings
-- Save sends correct `UpdateCaseRequestDto` preserving all unedited fields
-- No fake persistence — saves go through real `casesService.updateCase()` API
-- Unsupported fields honestly show "---" and are not pretended to save
-- Other tabs unaffected
+## Validation Results
+- TypeScript: Clean build, no errors
+- Plaintiff Info save: end-to-end via real API
+- Case Tracking save: end-to-end via real API
+- Validation blocks save on invalid input
+- Save/Cancel behavior correct
+- Success/error toasts shown
+- Updated values appear immediately after save
+- Role gating works (no edit buttons without `case:edit`)
+- No regressions to other tabs
+- Unsupported fields honestly shown as disabled/"---"
 
-### Code Review Adjustments
-- **Case Flags**: Changed from interactive checkboxes (misleading) to disabled read-only placeholders with "Not yet supported" label
-- **Date validation**: Added `dateOfIncident` format validation in `validateTracking()` — accepts MM/DD/YYYY and MMM D, YYYY formats
-- **Unused state removed**: Removed 5 case flag `useState` variables that were no longer needed
+## Code Review Adjustments
+- **DOB date validation**: Added client-side date format validation for Plaintiff Birthdate (`pDob`) — accepts MM/DD/YYYY and MMM D, YYYY formats, with inline error message and save blocking
+- **State of Incident**: Added as read-only "---" field in read view and disabled "Not yet supported" placeholder in edit view
+- **Current Medical Status / Lead**: Added as disabled "Not yet supported" placeholders in edit view (already present in read view)
+- **Sex field in edit mode**: Added as disabled "Not yet supported" placeholder in Plaintiff edit form
 
-### Remaining Gaps
-- Sex, Tracking Follow Up, Current Medical Status, State of Incident, Lead fields need backend API support to become editable
-- Case Flags need backend schema + API to become functional
-- Updates table still uses TEMP fallback data
+## Backend Field Support Summary
+- **Fully wired**: clientFirstName, clientLastName, clientPhone, clientEmail, clientDob, clientAddress, status, title, description, dateOfIncident
+- **Not yet supported**: sex, city/state/zip (split), trackingFollowUp, currentMedicalStatus, stateOfIncident, lead, caseFlags (5 toggles)
