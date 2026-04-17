@@ -193,6 +193,7 @@ public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider, IMembe
                 {
                     UserId = item.UserId == Guid.Empty ? null : item.UserId.ToString("D"),
                     Email  = item.Email,
+                    Phone  = string.IsNullOrWhiteSpace(item.Phone) ? null : item.Phone!.Trim(),
                     OrgId  = item.OrganizationId?.ToString("D") ?? orgId,
                 });
             }
@@ -232,6 +233,9 @@ public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider, IMembe
 
         [JsonPropertyName("email")]
         public string? Email { get; set; }
+
+        [JsonPropertyName("phone")]
+        public string? Phone { get; set; }
 
         [JsonPropertyName("organizationId")]
         public Guid? OrganizationId { get; set; }

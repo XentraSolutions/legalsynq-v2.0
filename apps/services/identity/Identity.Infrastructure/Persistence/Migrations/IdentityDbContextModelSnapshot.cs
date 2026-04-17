@@ -2042,6 +2042,10 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
+                    b.Property<string>("Phone")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
                     b.Property<int>("SessionVersion")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")

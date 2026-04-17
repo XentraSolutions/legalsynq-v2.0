@@ -44,6 +44,12 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnType("varchar(36)")
             .IsRequired(false);
 
+        // Primary phone number used as the SMS dispatch destination when the
+        // notifications service fans out role/org-addressed notifications.
+        builder.Property(u => u.Phone)
+            .HasMaxLength(32)
+            .IsRequired(false);
+
         // UIX-003-03: security / session fields
         builder.Property(u => u.IsLocked)
             .IsRequired()

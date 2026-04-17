@@ -88,16 +88,10 @@ public class NotificationServiceImpl : INotificationService
                 return MapToResult(existing);
         }
 
-<<<<<<< HEAD
         var fanOutMode = mode ?? (recipientEl.ValueKind == JsonValueKind.Array ? "Batch" : "FanOut");
         var resolved   = await _recipientResolver.ResolveAsync(tenantId, recipientEl);
         var roleKey    = ReadRecipientField(recipientEl, "roleKey");
         var orgId      = ReadRecipientField(recipientEl, "orgId");
-=======
-        var resolved = await _recipientResolver.ResolveAsync(tenantId, recipientEl);
-        var roleKey  = ReadRecipientField(recipientEl, "roleKey");
-        var orgId    = ReadRecipientField(recipientEl, "orgId");
->>>>>>> 5264eabc (Show how role/org notifications fanned out (members reached, blocked, skipped))
 
         var perRecipient = new List<FanOutPerRecipient>(resolved.Count);
         var dispatched   = new List<NotificationResultDto>(resolved.Count);
@@ -156,14 +150,16 @@ public class NotificationServiceImpl : INotificationService
 
     // Skip members that cannot be reached on the requested channel so the
     // fan-out summary records a clear reason instead of a doomed dispatch.
-    // Note: ResolvedRecipient has no phone today, so sms always skips.
+    // SMS now consults the phone surfaced by the membership-lookup so members
+    // with a phone on file are dispatched and only those genuinely missing
+    // one are skipped with reason "no_phone_on_file".
     private static string? ClassifySkipReason(string channel, ResolvedRecipient r)
     {
         var ch = channel?.Trim().ToLowerInvariant();
         return ch switch
         {
             "email"          => string.IsNullOrWhiteSpace(r.Email)  ? "no_email_on_file" : null,
-            "sms"            => "no_phone_on_file",
+            "sms"            => string.IsNullOrWhiteSpace(r.Phone)  ? "no_phone_on_file" : null,
             "push"           => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_push" : null,
             "in-app" or "inapp" => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_inapp" : null,
             _                => null,
@@ -298,6 +294,10 @@ public class NotificationServiceImpl : INotificationService
         };
         if (!string.IsNullOrEmpty(r.UserId)) dict["userId"] = r.UserId;
         if (!string.IsNullOrEmpty(r.Email))  dict["email"]  = r.Email;
+        // Forward the resolved phone so ExtractContactValue can populate the
+        // SMS dispatch destination — without it the per-recipient envelope
+        // would have no phone and Twilio would be invoked with an empty "to".
+        if (!string.IsNullOrEmpty(r.Phone))  dict["phone"]  = r.Phone;
         if (!string.IsNullOrEmpty(r.OrgId))  dict["orgId"]  = r.OrgId;
 
         return new SubmitNotificationDto

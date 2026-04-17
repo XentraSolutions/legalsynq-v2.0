@@ -38,6 +38,16 @@ public sealed class ResolvedRecipient
 {
     public string? UserId { get; init; }
     public string? Email { get; init; }
+
+    /// <summary>
+    /// Primary phone number for the resolved member, surfaced by the
+    /// identity membership-lookup so SMS role/org fan-outs can dispatch
+    /// to a real destination. Null when the member has not provided a
+    /// phone number — the notifications service then records a
+    /// "no_phone_on_file" skip for the SMS channel.
+    /// </summary>
+    public string? Phone { get; init; }
+
     public string? OrgId { get; init; }
 
     /// <summary>Stable key used to suffix idempotency keys when fanning out.</summary>

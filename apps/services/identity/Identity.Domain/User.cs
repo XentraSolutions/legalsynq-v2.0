@@ -56,6 +56,16 @@ public class User
     /// </summary>
     public Guid? AvatarDocumentId { get; private set; }
 
+    /// <summary>
+    /// Primary phone number in E.164 format used as the SMS destination
+    /// when this user is reached through a role- or org-addressed
+    /// notification fan-out. Null when the user has not provided a phone
+    /// number — the notifications service skips SMS dispatch in that case
+    /// with reason "no_phone_on_file" so operators can see why members
+    /// were not reached.
+    /// </summary>
+    public string? Phone { get; private set; }
+
     public Tenant Tenant { get; private set; } = null!;
     public ICollection<UserOrganizationMembership> OrganizationMemberships { get; private set; } = [];
 
@@ -180,6 +190,20 @@ public class User
     {
         AvatarDocumentId = null;
         UpdatedAtUtc     = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Records the user's primary phone number, normalised by trimming
+    /// surrounding whitespace. Pass null or whitespace to clear the field.
+    /// Idempotent — safe to call when the value is unchanged.
+    /// </summary>
+    public bool SetPhone(string? phone)
+    {
+        var normalised = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
+        if (string.Equals(Phone, normalised, StringComparison.Ordinal)) return false;
+        Phone        = normalised;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
     }
 
     public static User Create(

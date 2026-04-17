@@ -1264,6 +1264,7 @@ public static class AdminEndpoints
             {
                 userId         = u.Id,
                 email          = u.Email,
+                phone          = u.Phone,
                 organizationId = oid,
             })
             .ToListAsync(ct);
