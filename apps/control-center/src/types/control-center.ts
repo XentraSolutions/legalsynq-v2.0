@@ -1144,3 +1144,54 @@ export interface WorkflowAdminActionResult {
   timestamp:          string;
   reason:             string;
 }
+
+/**
+ * One row in the audit timeline rendered in the Control Center
+ * workflow detail drawer. Mirrors `WorkflowTimelineEvent` returned by
+ * Flow's `GET /api/v1/admin/workflow-instances/{id}/timeline`.
+ *
+ * `category` buckets the event for color/iconography:
+ *   'AdminAction'      — operator-initiated (retry/force-complete/cancel)
+ *   'EngineTransition' — workflow.state_changed
+ *   'Lifecycle'        — workflow.created / workflow.completed / etc.
+ *   'Task'             — task.assigned / task.completed
+ *   'Other'            — anything not matched above
+ */
+export type WorkflowTimelineEventCategory =
+  | 'AdminAction'
+  | 'EngineTransition'
+  | 'Lifecycle'
+  | 'Task'
+  | 'Other';
+
+export interface WorkflowTimelineEvent {
+  eventId:        string;
+  occurredAtUtc:  string;
+  /**
+   * Raw upstream category string from the audit normalizer (e.g.
+   * `workflow.state_changed`, `workflow.admin.retry`, `task.assigned`,
+   * `notification`, `other`). The drawer derives a high-level UI
+   * bucket from this via `bucketFromCategory()`.
+   */
+  category:       string;
+  action:         string;
+  source:         string;
+  performedBy:    string | null;
+  summary:        string | null;
+  previousStatus: string | null;
+  newStatus:      string | null;
+}
+
+export interface WorkflowTimelineResponse {
+  workflowInstanceId: string;
+  tenantId:           string;
+  totalCount:         number;
+  /**
+   * True when the upstream audit query was capped by the adapter's
+   * hard ceiling. The drawer surfaces this as a small notice so
+   * operators know to drill into the audit service for the full
+   * record.
+   */
+  truncated:          boolean;
+  events:             WorkflowTimelineEvent[];
+}

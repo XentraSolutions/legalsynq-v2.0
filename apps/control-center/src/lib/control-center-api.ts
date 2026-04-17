@@ -145,6 +145,8 @@ import type {
   WorkflowInstancePagedResponse,
   WorkflowAdminAction,
   WorkflowAdminActionResult,
+  WorkflowTimelineEvent,
+  WorkflowTimelineResponse,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2111,6 +2113,64 @@ export const controlCenterServerApi = {
           [CACHE_TAGS.workflows],
         );
         return mapWorkflowInstanceDetail(raw);
+      } catch (err) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
+    },
+
+    /**
+     * Fetch the normalized audit timeline for a single workflow
+     * instance. Returns null on 404 so the drawer can show its compact
+     * "not available" state without breaking the parent list page.
+     *
+     * Cached very briefly (5 s) and tagged with cc:workflows so admin
+     * actions trigger an automatic refresh of any open timeline panel
+     * after the parent list is invalidated.
+     */
+    getTimeline: async (id: string): Promise<WorkflowTimelineResponse | null> => {
+      try {
+        const raw = await apiClient.get<{
+          workflowInstanceId?: string;
+          tenantId?:           string;
+          totalCount?:         number;
+          truncated?:          boolean;
+          events?:             unknown[];
+        }>(
+          `/flow/api/v1/admin/workflow-instances/${encodeURIComponent(id)}/timeline`,
+          5,
+          [CACHE_TAGS.workflows],
+        );
+        const s = (v: unknown): string | null => {
+          if (v === undefined || v === null) return null;
+          const str = String(v);
+          return str.length === 0 ? null : str;
+        };
+        const events: WorkflowTimelineEvent[] = (raw?.events ?? []).map((row) => {
+          const r       = (row   ?? {}) as Record<string, unknown>;
+          const actor   = (r.actor ?? null) as Record<string, unknown> | null;
+          // Prefer the structured actor identity, fall back to the
+          // upstream-resolved `performedBy` (sub/email/etc).
+          const actorId = actor ? s(actor.id) ?? s(actor.name) : null;
+          return {
+            eventId:        String(r.eventId ?? ''),
+            occurredAtUtc:  String(r.occurredAtUtc ?? ''),
+            category:       String(r.category ?? 'other'),
+            action:         String(r.action ?? 'unknown'),
+            source:         String(r.source ?? 'flow'),
+            performedBy:    actorId ?? s(r.performedBy),
+            summary:        s(r.summary),
+            previousStatus: s(r.previousStatus),
+            newStatus:      s(r.newStatus),
+          };
+        });
+        return {
+          workflowInstanceId: String(raw?.workflowInstanceId ?? id),
+          tenantId:           String(raw?.tenantId ?? ''),
+          totalCount:         typeof raw?.totalCount === 'number' ? raw.totalCount : events.length,
+          truncated:          Boolean(raw?.truncated),
+          events,
+        };
       } catch (err) {
         if (isNotFound(err)) return null;
         throw err;
