@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { listWorkflows, deleteWorkflow } from "@/lib/api/workflows";
 import type { WorkflowDefinitionSummary } from "@/types/workflow";
@@ -13,7 +13,7 @@ import { NavLinks } from "@/components/ui/NavLinks";
 import { ProductFilter } from "@/components/ui/ProductFilter";
 import { isValidProductKey, type ProductKey } from "@/lib/productKeys";
 
-export default function WorkflowsPage() {
+function WorkflowsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialProduct = searchParams.get("productKey");
@@ -194,5 +194,13 @@ export default function WorkflowsPage() {
         />
       </div>
     </ErrorBoundary>
+  );
+}
+
+export default function WorkflowsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading…</div>}>
+      <WorkflowsPageInner />
+    </Suspense>
   );
 }

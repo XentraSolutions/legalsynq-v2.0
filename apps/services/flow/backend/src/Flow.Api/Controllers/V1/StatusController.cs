@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Flow.Api.Controllers.V1;
 
 [ApiController]
 [Route("api/v1/[controller]")]
+[AllowAnonymous]
 public class StatusController : ControllerBase
 {
     [HttpGet]

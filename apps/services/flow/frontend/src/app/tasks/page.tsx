@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { listTasks, createTask, updateTaskStatus } from "@/lib/api/tasks";
 import { TaskFilterBar } from "@/components/tasks/TaskFilterBar";
@@ -47,7 +47,7 @@ function generateLocalId(): string {
   return `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export default function TaskListPage() {
+function TaskListPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -449,5 +449,13 @@ export default function TaskListPage() {
       />
     </div>
     </ErrorBoundary>
+  );
+}
+
+export default function TaskListPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading…</div>}>
+      <TaskListPageInner />
+    </Suspense>
   );
 }

@@ -1,12 +1,15 @@
+using BuildingBlocks.Authorization;
 using Flow.Application.DTOs;
 using Flow.Application.Services;
 using Flow.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Flow.Api.Controllers.V1;
 
 [ApiController]
 [Route("api/v1/[controller]")]
+[Authorize(Policy = Policies.AuthenticatedUser)]
 public class TasksController : ControllerBase
 {
     private readonly ITaskService _taskService;

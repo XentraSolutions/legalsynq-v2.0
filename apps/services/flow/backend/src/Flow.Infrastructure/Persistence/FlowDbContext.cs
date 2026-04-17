@@ -242,12 +242,18 @@ public class FlowDbContext : DbContext, IFlowDbContext
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        var tenantId = _tenantProvider?.GetTenantId() ?? "default";
+        var tenantId = _tenantProvider?.GetTenantId();
 
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
         {
             if (entry.State == EntityState.Added && string.IsNullOrEmpty(entry.Entity.TenantId))
             {
+                if (string.IsNullOrEmpty(tenantId))
+                {
+                    throw new InvalidOperationException(
+                        "Cannot persist new Flow entity: no tenant context available. " +
+                        "Authenticated requests must carry a tenant_id claim.");
+                }
                 entry.Entity.TenantId = tenantId;
             }
         }
