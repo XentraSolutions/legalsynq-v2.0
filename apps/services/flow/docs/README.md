@@ -52,3 +52,18 @@ npm run dev
 - DB / sln consolidation decisions
 
 See `merge-phase-1-notes.md` for the full deferral list.
+
+---
+
+## Phase 2 — Platform Integration (2026-04-17)
+
+Flow is now a first-class LegalSynq platform service. Key changes:
+
+- **Auth:** JWT bearer auth using shared `Jwt:*` config; `[Authorize(Policy = AuthenticatedUser)]` on all V1 controllers.
+- **Tenant:** strict claims-based resolution (`tenant_id` JWT claim). No silent default fallback.
+- **CORS:** environment-driven via `Cors:AllowedOrigins`.
+- **Gateway:** `/flow/health`, `/flow/info`, `/flow/api/v1/status` (anonymous) and `/flow/{**catch-all}` (protected) routed to `localhost:5012`.
+- **Adapters:** `IAuditAdapter` and `INotificationAdapter` seams + safe logging baselines + optional HTTP impls (activate via `Audit:BaseUrl` / `Notifications:BaseUrl`).
+- **Internal events:** `IFlowEventDispatcher` + `Flow.Application/Events/*` (in-process only).
+
+See `merge-phase-2-notes.md` for the full Phase 2 changelog and deferrals.

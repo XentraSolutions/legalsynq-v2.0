@@ -417,7 +417,7 @@ apps/
       Comms.Api/
         Middleware/InternalServiceTokenMiddleware.cs ← path-scoped internal service token auth for /api/comms/internal/* (BLK-005)
       Comms.Tests/                     ← xUnit test project (181 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests, 13 sender/template tests, 14 E2E integration tests, 15 operational workflow tests — BLK-001, 11 SLA notification tests — BLK-002, 18 timeline tests — BLK-003, 18 mention tests — BLK-004, 18 operational view tests — LS-COMMS-04-BLK-001)
-    flow/                                 ← LS-FLOW-MERGE-P1: Generic workflow/task orchestration service (detachable, API-first, owns flow_db)
+    flow/                                 ← LS-FLOW-MERGE-P2: Generic workflow/task orchestration service (detachable, API-first, owns flow_db). Phase 2 hardened: JWT auth + BuildingBlocks policies, ClaimsTenantProvider (strict tenant_id claim — no "default" fallback), TenantValidationMiddleware, env-driven CORS, IAuditAdapter/INotificationAdapter seams (logging baseline + optional HTTP impls), IFlowEventDispatcher in-process events. Listens on :5012; gateway routes /flow/health, /flow/info, /flow/api/v1/status (anon) + /flow/{**catch-all} (protected). Started by scripts/run-dev.sh. See analysis/LS-FLOW-MERGE-P2-report.md and apps/services/flow/docs/merge-phase-2-notes.md.
       backend/                            ← .NET 8 Web API; own Flow.sln (NOT in LegalSynq.sln per Phase 1 boundary preservation)
         Flow.sln
         src/

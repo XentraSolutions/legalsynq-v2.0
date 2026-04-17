@@ -1091,3 +1091,32 @@ Source of truth: `flow/frontend/src/lib/productKeys.ts`.
 | `src/app/workflows/page.tsx` | URL-synced product filter |
 | `src/app/workflows/[id]/page.tsx` | Editable product + header badge |
 | `src/app/tasks/page.tsx` | URL-synced product filter, local-mode default |
+
+---
+
+## Phase 2 Update (2026-04-17)
+
+### Authentication & Authorization
+- `Microsoft.AspNetCore.Authentication.JwtBearer` configured against the shared
+  LegalSynq Identity v2 signing key.
+- `BuildingBlocks.Authorization.Policies` registered: `AuthenticatedUser`,
+  `AdminOnly`, `PlatformOrTenantAdmin`.
+- `BuildingBlocks.Context.ICurrentRequestContext` exposes the current user /
+  tenant / org claims to all application code.
+
+### Tenant Model
+- Tenant is **always** derived from the JWT `tenant_id` claim by
+  `ClaimsTenantProvider`. The legacy `X-Tenant-Id` header is no longer trusted.
+- `TenantValidationMiddleware` returns 403 when a request body or query string
+  carries a `tenantId` that disagrees with the JWT claim.
+
+### Platform Adapters
+- `IAuditAdapter` / `LoggingAuditAdapter` / `HttpAuditAdapter`
+- `INotificationAdapter` / `LoggingNotificationAdapter` / `HttpNotificationAdapter`
+- `IFlowEventDispatcher` / `FlowEventDispatcher` — internal in-process fan-out
+  to the audit + notification seams.
+
+### Gateway
+- Cluster `flow-cluster` → `http://localhost:5012`
+- Routes: `/flow/health`, `/flow/info`, `/flow/api/v1/status` (anonymous),
+  `/flow/{**catch-all}` (protected).
