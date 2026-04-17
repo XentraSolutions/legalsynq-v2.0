@@ -7,11 +7,12 @@ namespace Flow.Domain.Entities;
 /// Phase-3 surrogate that overloaded <see cref="TaskItem"/> as the
 /// instance pointer in <see cref="ProductWorkflowMapping"/>.
 ///
-/// A WorkflowInstance is the runtime activation of a <see cref="FlowDefinition"/>
-/// for a specific tenant + product. It owns lifecycle state and (optionally)
-/// references the initial driving task; the underlying TaskItem(s) still
-/// drive day-to-day execution, so this is not a workflow-engine rewrite —
-/// it's the canonical correlation grain that products consume.
+/// LS-FLOW-MERGE-P5 — promoted to the execution authority. Owns
+/// <see cref="CurrentStageId"/> + <see cref="CurrentStepKey"/> (driven by
+/// <see cref="WorkflowStage"/> + <see cref="WorkflowTransition"/>) and
+/// lifecycle timestamps. The <see cref="WorkflowEngine"/> mutates these
+/// under optimistic concurrency (caller must pass the expected current
+/// step key on advance).
 /// </summary>
 public class WorkflowInstance : AuditableEntity
 {
@@ -30,11 +31,36 @@ public class WorkflowInstance : AuditableEntity
     /// </summary>
     public Guid? InitialTaskId { get; set; }
 
-    /// <summary>Lifecycle status — one of "Active", "Completed", "Cancelled".</summary>
+    /// <summary>Lifecycle status — one of "Active", "Completed", "Cancelled", "Failed".</summary>
     public string Status { get; set; } = "Active";
+
+    // ---------------- LS-FLOW-MERGE-P5 — execution state ----------------
+
+    /// <summary>FK to the current <see cref="WorkflowStage"/> (definition's stage table).</summary>
+    public Guid? CurrentStageId { get; set; }
+
+    /// <summary>
+    /// Stable string key of the current step (mirrors <c>WorkflowStage.Key</c>).
+    /// Held alongside <see cref="CurrentStageId"/> so callers can pass an
+    /// expected step name without resolving the stage row first.
+    /// </summary>
+    public string? CurrentStepKey { get; set; }
+
+    /// <summary>UTC time the instance entered its first stage.</summary>
+    public DateTime? StartedAt { get; set; }
 
     public DateTime? CompletedAt { get; set; }
 
+    /// <summary>Optional user the instance is currently assigned to.</summary>
+    public string? AssignedToUserId { get; set; }
+
+    /// <summary>
+    /// Last error message produced by an attempted advance/complete/cancel
+    /// (truncated). Cleared on the next successful transition.
+    /// </summary>
+    public string? LastErrorMessage { get; set; }
+
     public FlowDefinition? WorkflowDefinition { get; set; }
     public TaskItem? InitialTask { get; set; }
+    public WorkflowStage? CurrentStage { get; set; }
 }

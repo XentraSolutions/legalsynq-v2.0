@@ -91,3 +91,13 @@ Phase 4 hardens the Flow ↔ product integration:
 - **Frontend.** `/product-workflows` page now ships a per-product **Start workflow** form and shows `workflowInstanceId` in the mapping table.
 
 See `merge-phase-4-notes.md` for the full Phase 4 changelog.
+
+## Phase 5 (LS-FLOW-MERGE-P5) — execution engine maturity
+
+- **WorkflowInstance is the execution row.** New columns `CurrentStageId`, `CurrentStepKey`, `StartedAt`, `AssignedToUserId`, `LastErrorMessage`. Migration `20260417042541_AddWorkflowInstanceExecutionStateP5`.
+- **Step/state engine.** `Flow.Application/Engines/WorkflowEngine` with `Start/Advance/Complete/Cancel/Fail`. Optimistic concurrency via `expectedCurrentStepKey`; invalid transitions throw `InvalidWorkflowTransitionException` → **HTTP 409** with stable `code` (`expected_step_mismatch`, `terminal_state`, `no_outgoing_transition`, …). Reuses the existing `WorkflowStage`/`WorkflowTransition` graph.
+- **Execution API.** `WorkflowInstancesController` exposes `GET /api/v1/workflow-instances/{id}`, `.../current-step`, and `POST .../advance|complete|cancel`. `ProductWorkflowService.CreateAsync` now calls `engine.StartAsync` after the row is saved.
+- **Service-token auth.** `BuildingBlocks/Authentication/ServiceTokens` mints HS256 JWTs (`aud=flow-service`, `tid`, optional `actor`). Flow.Api uses a `MultiAuth` PolicyScheme that dispatches by audience to the user `Bearer` or the new `ServiceToken` scheme. Shared secret via env `FLOW_SERVICE_TOKEN_SECRET`.
+- **Product passthrough.** `IFlowClient` adds `GetWorkflowInstanceAsync` / `AdvanceWorkflowAsync` / `CompleteWorkflowAsync` (prefers a service token + `actor` claim when configured). Each product calls `group.MapFlowExecutionPassthrough()` to expose `GET/POST .../workflows/{wfId}{,/advance,/complete}`.
+
+See `merge-phase-5-notes.md` for the full Phase 5 changelog.

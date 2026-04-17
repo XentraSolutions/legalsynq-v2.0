@@ -5,6 +5,13 @@ namespace BuildingBlocks.FlowClient;
 /// integrate with the Flow workflow engine. Pass-through bearer auth, retry,
 /// and timeout are handled by the implementation.
 ///
+/// LS-FLOW-MERGE-P5 — extended with execution methods that target the
+/// canonical <c>/api/v1/workflow-instances/{id}/...</c> surface so a
+/// product can drive its own workflow without knowing the engine's
+/// internals. When a service-token issuer is registered the client mints
+/// a short-lived M2M token and forwards the caller's user id as the
+/// <c>actor</c> claim; otherwise it falls back to the user's bearer.
+///
 /// <para>
 /// <c>productSlug</c> is one of <c>"synqlien" | "careconnect" | "synqfund"</c>
 /// and selects which Flow capability policy gates the call (the underlying
@@ -22,6 +29,21 @@ public interface IFlowClient
         string productSlug,
         string sourceEntityType,
         string sourceEntityId,
+        CancellationToken cancellationToken = default);
+
+    // ------------------ LS-FLOW-MERGE-P5 — execution surface ------------------
+
+    Task<FlowWorkflowInstanceResponse> GetWorkflowInstanceAsync(
+        Guid workflowInstanceId,
+        CancellationToken cancellationToken = default);
+
+    Task<FlowWorkflowInstanceResponse> AdvanceWorkflowAsync(
+        Guid workflowInstanceId,
+        FlowAdvanceWorkflowRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<FlowWorkflowInstanceResponse> CompleteWorkflowAsync(
+        Guid workflowInstanceId,
         CancellationToken cancellationToken = default);
 }
 

@@ -90,5 +90,8 @@ public static class WorkflowEndpoints
                 return FlowEndpointResults.MapFailure(ex);
             }
         });
+
+        // LS-FLOW-MERGE-P5 — execution passthrough (get/advance/complete).
+        group.MapFlowExecutionPassthrough(ProductSlug, SourceEntityType);
     }
 }

@@ -1,0 +1,305 @@
+using System.Text.Json;
+using Flow.Application.DTOs;
+using Flow.Application.Exceptions;
+using Flow.Application.Interfaces;
+using Flow.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace Flow.Application.Engines.WorkflowEngine;
+
+/// <summary>
+/// LS-FLOW-MERGE-P5 — production implementation of <see cref="IWorkflowEngine"/>.
+///
+/// <para>
+/// Reuses the existing <see cref="WorkflowStage"/> + <see cref="WorkflowTransition"/>
+/// graph as the step model — no parallel "step" table introduced. The
+/// stage <c>Key</c> is treated as the canonical step key (matches the
+/// <c>currentStepKey</c> string callers pass on advance).
+/// </para>
+///
+/// <para>
+/// Concurrency: all mutating calls run inside the EF execution strategy
+/// with a transaction so a partial advance (e.g. status flipped but
+/// stage not updated) cannot be observed.
+/// </para>
+/// </summary>
+public sealed class WorkflowEngine : IWorkflowEngine
+{
+    public const string StatusActive    = "Active";
+    public const string StatusCompleted = "Completed";
+    public const string StatusCancelled = "Cancelled";
+    public const string StatusFailed    = "Failed";
+
+    private readonly IFlowDbContext _db;
+    private readonly ILogger<WorkflowEngine> _logger;
+
+    public WorkflowEngine(IFlowDbContext db, ILogger<WorkflowEngine> logger)
+    {
+        _db = db;
+        _logger = logger;
+    }
+
+    public async Task<WorkflowInstanceResponse> StartAsync(Guid workflowInstanceId, CancellationToken ct = default)
+    {
+        var (instance, stages, _) = await LoadInstanceAndDefinitionAsync(workflowInstanceId, ct);
+
+        // Idempotent: already started.
+        if (instance.CurrentStageId.HasValue)
+        {
+            return Map(instance);
+        }
+
+        var initial = stages.FirstOrDefault(s => s.IsInitial)
+                      ?? stages.OrderBy(s => s.Order).FirstOrDefault()
+                      ?? throw new InvalidWorkflowTransitionException(
+                          $"Workflow definition {instance.WorkflowDefinitionId} has no stages.",
+                          "no_initial_stage");
+
+        instance.CurrentStageId   = initial.Id;
+        instance.CurrentStepKey   = initial.Key;
+        instance.StartedAt      ??= DateTime.UtcNow;
+        instance.Status           = initial.IsTerminal ? StatusCompleted : StatusActive;
+        if (initial.IsTerminal) instance.CompletedAt ??= DateTime.UtcNow;
+        instance.LastErrorMessage = null;
+
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "WorkflowEngine.Start instance={InstanceId} tenant={TenantId} product={ProductKey} step={StepKey}",
+            instance.Id, instance.TenantId, instance.ProductKey, instance.CurrentStepKey);
+
+        return Map(instance);
+    }
+
+    public async Task<WorkflowInstanceResponse> AdvanceAsync(
+        Guid workflowInstanceId,
+        string expectedCurrentStepKey,
+        string? toStepKey,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(expectedCurrentStepKey))
+            throw new ValidationException("expectedCurrentStepKey is required.");
+
+        var (instance, stages, transitions) = await LoadInstanceAndDefinitionAsync(workflowInstanceId, ct);
+
+        if (instance.Status != StatusActive)
+        {
+            throw new InvalidWorkflowTransitionException(
+                $"Workflow instance {workflowInstanceId} is {instance.Status}, cannot advance.",
+                "instance_not_active");
+        }
+
+        if (instance.CurrentStageId is null)
+        {
+            throw new InvalidWorkflowTransitionException(
+                $"Workflow instance {workflowInstanceId} has not been started.",
+                "instance_not_started");
+        }
+
+        // Optimistic concurrency: the caller's expected current step must
+        // match the persisted one. Mismatch is "someone else moved this".
+        if (!string.Equals(instance.CurrentStepKey, expectedCurrentStepKey, StringComparison.Ordinal))
+        {
+            throw new InvalidWorkflowTransitionException(
+                $"Expected current step '{expectedCurrentStepKey}' but instance is at '{instance.CurrentStepKey}'.",
+                "stale_current_step");
+        }
+
+        var fromStage = stages.First(s => s.Id == instance.CurrentStageId);
+
+        var outbound = transitions
+            .Where(t => t.IsActive && t.FromStageId == fromStage.Id)
+            .ToList();
+
+        if (outbound.Count == 0)
+        {
+            throw new InvalidWorkflowTransitionException(
+                $"No outbound transitions from step '{fromStage.Key}'.",
+                "no_outbound_transition");
+        }
+
+        WorkflowTransition transition;
+        if (!string.IsNullOrWhiteSpace(toStepKey))
+        {
+            var toStage = stages.FirstOrDefault(s => s.Key == toStepKey)
+                          ?? throw new InvalidWorkflowTransitionException(
+                              $"Target step '{toStepKey}' is not a stage of definition {instance.WorkflowDefinitionId}.",
+                              "unknown_target_step");
+
+            transition = outbound.FirstOrDefault(t => t.ToStageId == toStage.Id)
+                         ?? throw new InvalidWorkflowTransitionException(
+                             $"No active transition from '{fromStage.Key}' to '{toStepKey}'.",
+                             "no_matching_transition");
+        }
+        else
+        {
+            if (outbound.Count > 1)
+            {
+                throw new InvalidWorkflowTransitionException(
+                    $"Step '{fromStage.Key}' has multiple outbound transitions; toStepKey is required.",
+                    "ambiguous_transition");
+            }
+            transition = outbound[0];
+        }
+
+        var nextStage = stages.First(s => s.Id == transition.ToStageId);
+
+        instance.CurrentStageId   = nextStage.Id;
+        instance.CurrentStepKey   = nextStage.Key;
+        instance.LastErrorMessage = null;
+        if (nextStage.IsTerminal)
+        {
+            instance.Status      = StatusCompleted;
+            instance.CompletedAt = DateTime.UtcNow;
+        }
+
+        await SaveWithConcurrencyAsync(ct, "stale_current_step",
+            $"Concurrent update detected; expected step '{expectedCurrentStepKey}' is no longer current.");
+
+        _logger.LogInformation(
+            "WorkflowEngine.Advance instance={InstanceId} tenant={TenantId} product={ProductKey} from={From} to={To} terminal={Terminal}",
+            instance.Id, instance.TenantId, instance.ProductKey, fromStage.Key, nextStage.Key, nextStage.IsTerminal);
+
+        return Map(instance);
+    }
+
+    public async Task<WorkflowInstanceResponse> CompleteAsync(Guid workflowInstanceId, CancellationToken ct = default)
+    {
+        var (instance, _, _) = await LoadInstanceAndDefinitionAsync(workflowInstanceId, ct);
+
+        if (instance.Status == StatusCompleted) return Map(instance);
+        if (instance.Status != StatusActive)
+        {
+            throw new InvalidWorkflowTransitionException(
+                $"Workflow instance {workflowInstanceId} is {instance.Status}, cannot complete.",
+                "instance_not_active");
+        }
+
+        instance.Status           = StatusCompleted;
+        instance.CompletedAt      = DateTime.UtcNow;
+        instance.LastErrorMessage = null;
+
+        await SaveWithConcurrencyAsync(ct, "concurrent_state_change",
+            $"Concurrent update detected on workflow instance {workflowInstanceId}.");
+
+        _logger.LogInformation(
+            "WorkflowEngine.Complete instance={InstanceId} tenant={TenantId} product={ProductKey} step={StepKey}",
+            instance.Id, instance.TenantId, instance.ProductKey, instance.CurrentStepKey);
+
+        return Map(instance);
+    }
+
+    public async Task<WorkflowInstanceResponse> CancelAsync(Guid workflowInstanceId, string? reason, CancellationToken ct = default)
+    {
+        var (instance, _, _) = await LoadInstanceAndDefinitionAsync(workflowInstanceId, ct);
+
+        if (instance.Status == StatusCancelled) return Map(instance);
+        if (instance.Status != StatusActive)
+        {
+            throw new InvalidWorkflowTransitionException(
+                $"Workflow instance {workflowInstanceId} is {instance.Status}, cannot cancel.",
+                "instance_not_active");
+        }
+
+        instance.Status           = StatusCancelled;
+        instance.CompletedAt      = DateTime.UtcNow;
+        instance.LastErrorMessage = string.IsNullOrWhiteSpace(reason) ? null : Truncate(reason!, 2048);
+
+        await SaveWithConcurrencyAsync(ct, "concurrent_state_change",
+            $"Concurrent update detected on workflow instance {workflowInstanceId}.");
+
+        _logger.LogInformation(
+            "WorkflowEngine.Cancel instance={InstanceId} tenant={TenantId} product={ProductKey} step={StepKey} reason={Reason}",
+            instance.Id, instance.TenantId, instance.ProductKey, instance.CurrentStepKey, reason);
+
+        return Map(instance);
+    }
+
+    public async Task<WorkflowInstanceResponse> FailAsync(Guid workflowInstanceId, string errorMessage, CancellationToken ct = default)
+    {
+        var (instance, _, _) = await LoadInstanceAndDefinitionAsync(workflowInstanceId, ct);
+
+        if (instance.Status != StatusActive)
+        {
+            throw new InvalidWorkflowTransitionException(
+                $"Workflow instance {workflowInstanceId} is {instance.Status}, cannot mark failed.",
+                "instance_not_active");
+        }
+
+        instance.Status           = StatusFailed;
+        instance.CompletedAt      = DateTime.UtcNow;
+        instance.LastErrorMessage = Truncate(errorMessage ?? "Failed", 2048);
+
+        await SaveWithConcurrencyAsync(ct, "concurrent_state_change",
+            $"Concurrent update detected on workflow instance {workflowInstanceId}.");
+
+        _logger.LogWarning(
+            "WorkflowEngine.Fail instance={InstanceId} tenant={TenantId} product={ProductKey} step={StepKey} error={Error}",
+            instance.Id, instance.TenantId, instance.ProductKey, instance.CurrentStepKey, instance.LastErrorMessage);
+
+        return Map(instance);
+    }
+
+    // ------------------------------------------------------------------
+    // helpers
+    // ------------------------------------------------------------------
+
+    private async Task<(WorkflowInstance instance, List<WorkflowStage> stages, List<WorkflowTransition> transitions)>
+        LoadInstanceAndDefinitionAsync(Guid id, CancellationToken ct)
+    {
+        var instance = await _db.WorkflowInstances
+            .FirstOrDefaultAsync(w => w.Id == id, ct)
+            ?? throw new NotFoundException("WorkflowInstance", id);
+
+        var stages = await _db.WorkflowStages
+            .Where(s => s.WorkflowDefinitionId == instance.WorkflowDefinitionId)
+            .OrderBy(s => s.Order)
+            .ToListAsync(ct);
+
+        var transitions = await _db.WorkflowTransitions
+            .Where(t => t.WorkflowDefinitionId == instance.WorkflowDefinitionId)
+            .ToListAsync(ct);
+
+        return (instance, stages, transitions);
+    }
+
+    public static WorkflowInstanceResponse Map(WorkflowInstance i) => new()
+    {
+        Id                   = i.Id,
+        WorkflowDefinitionId = i.WorkflowDefinitionId,
+        ProductKey           = i.ProductKey,
+        CorrelationKey       = i.CorrelationKey,
+        InitialTaskId        = i.InitialTaskId,
+        Status               = i.Status,
+        CurrentStageId       = i.CurrentStageId,
+        CurrentStepKey       = i.CurrentStepKey,
+        StartedAt            = i.StartedAt,
+        CompletedAt          = i.CompletedAt,
+        AssignedToUserId     = i.AssignedToUserId,
+        LastErrorMessage     = i.LastErrorMessage,
+        CreatedAt            = i.CreatedAt,
+        UpdatedAt            = i.UpdatedAt
+    };
+
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s.Substring(0, max);
+
+    /// <summary>
+    /// LS-FLOW-MERGE-P5 — wraps <c>SaveChangesAsync</c> and translates the
+    /// EF concurrency-token failure (raised when another writer changed
+    /// <c>CurrentStepKey</c> or <c>Status</c> after our load) into an
+    /// <see cref="InvalidWorkflowTransitionException"/> with the supplied
+    /// machine-readable code, which the controller maps to HTTP 409.
+    /// </summary>
+    private async Task SaveWithConcurrencyAsync(CancellationToken ct, string code, string message)
+    {
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new InvalidWorkflowTransitionException(message, code);
+        }
+    }
+}

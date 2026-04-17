@@ -68,7 +68,7 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddInfrastructure(builder.Configuration);
 // LS-FLOW-MERGE-P4 — shared Flow HTTP adapter (bearer pass-through, retry, 503 mapping).
-builder.Services.AddFlowClient(builder.Configuration);
+builder.Services.AddFlowClient(builder.Configuration, serviceName: "synqfund");
 
 var app = builder.Build();
 

@@ -38,3 +38,37 @@ public sealed class FlowProductWorkflowResponse
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// LS-FLOW-MERGE-P5 — response shape for the workflow-instance execution
+/// endpoints. Mirrors <c>Flow.Application.DTOs.WorkflowInstanceResponse</c>.
+/// </summary>
+public sealed class FlowWorkflowInstanceResponse
+{
+    public Guid Id { get; set; }
+    public Guid WorkflowDefinitionId { get; set; }
+    public string ProductKey { get; set; } = string.Empty;
+    public string? CorrelationKey { get; set; }
+    public Guid? InitialTaskId { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public Guid? CurrentStageId { get; set; }
+    public string? CurrentStepKey { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string? AssignedToUserId { get; set; }
+    public string? LastErrorMessage { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// LS-FLOW-MERGE-P5 — body for an advance call. Mirrors
+/// <c>Flow.Application.DTOs.AdvanceWorkflowRequest</c>.
+/// </summary>
+public sealed class FlowAdvanceWorkflowRequest
+{
+    public string ExpectedCurrentStepKey { get; set; } = string.Empty;
+    public string? ToStepKey { get; set; }
+    public Dictionary<string, string>? Payload { get; set; }
+}
+

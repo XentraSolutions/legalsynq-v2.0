@@ -1,4 +1,5 @@
 using Flow.Application.DTOs;
+using Flow.Application.Engines.WorkflowEngine;
 using Flow.Application.Exceptions;
 using Flow.Application.Interfaces;
 using Flow.Domain.Common;
@@ -17,11 +18,13 @@ public sealed class ProductWorkflowService : IProductWorkflowService
 {
     private readonly IFlowDbContext _db;
     private readonly ITaskService _taskService;
+    private readonly IWorkflowEngine _engine;
 
-    public ProductWorkflowService(IFlowDbContext db, ITaskService taskService)
+    public ProductWorkflowService(IFlowDbContext db, ITaskService taskService, IWorkflowEngine engine)
     {
         _db = db;
         _taskService = taskService;
+        _engine = engine;
     }
 
     public async Task<ProductWorkflowResponse> CreateAsync(string productKey, CreateProductWorkflowRequest request, CancellationToken cancellationToken = default)
@@ -77,10 +80,28 @@ public sealed class ProductWorkflowService : IProductWorkflowService
                 ProductKey = productKey,
                 CorrelationKey = string.IsNullOrWhiteSpace(request.CorrelationKey) ? null : request.CorrelationKey.Trim(),
                 InitialTaskId = task.Id,
-                Status = "Active"
+                Status = WorkflowEngine.StatusActive,
+                AssignedToUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId
             };
             _db.WorkflowInstances.Add(instance);
             await _db.SaveChangesAsync(ct);
+
+            // LS-FLOW-MERGE-P5 — position the new instance on its
+            // definition's initial stage. Definitions without stages
+            // remain valid (legacy seeded data); the engine no-ops in
+            // that case rather than throwing, so a Phase-3 product can
+            // still create a "single-step" workflow that completes when
+            // its driving task closes.
+            try
+            {
+                await _engine.StartAsync(instance.Id, ct);
+            }
+            catch (InvalidWorkflowTransitionException ex) when (ex.Code == "no_initial_stage")
+            {
+                // Definition has no stage graph yet — leave the instance
+                // in Active with no CurrentStepKey. Execution APIs will
+                // refuse to advance until stages are configured.
+            }
 
             mapping = new ProductWorkflowMapping
             {

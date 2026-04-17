@@ -10,4 +10,12 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
+  <!-- LS-FLOW-MERGE-P5 — service-token issuer (HS256) for machine-to-machine
+       Flow calls. JwtBearer is referenced so the AddServiceTokenAuthentication
+       extension can wire a second bearer scheme alongside the user token. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.*" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.5.*" />
+  </ItemGroup>
+
 </Project>

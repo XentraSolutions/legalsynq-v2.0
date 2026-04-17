@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using Flow.Api.Middleware;
@@ -50,35 +51,71 @@ builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options 
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var signingKey = jwtSection["SigningKey"] ?? string.Empty;
 
+// LS-FLOW-MERGE-P5 — two JwtBearer schemes coexist:
+//   - "Bearer" (default): user tokens issued by Identity v2.
+//   - "ServiceToken":     HS256 machine-to-machine tokens minted by
+//                         products via BuildingBlocks ServiceTokenIssuer.
+// A policy scheme ("MultiAuth") inspects the inbound token's `aud` claim
+// and forwards to whichever bearer is appropriate. Endpoints stay
+// configured against the default scheme; both token shapes authenticate.
+const string MultiScheme = "MultiAuth";
+
+var serviceTokenSection = builder.Configuration.GetSection(ServiceTokenOptions.SectionName);
+var serviceTokenAudience = serviceTokenSection["Audience"] ?? ServiceTokenAuthenticationDefaults.DefaultAudience;
+
+var authBuilder = builder.Services
+    .AddAuthentication(MultiScheme)
+    .AddPolicyScheme(MultiScheme, MultiScheme, options =>
+    {
+        options.ForwardDefaultSelector = ctx =>
+        {
+            var auth = ctx.Request.Headers.Authorization.ToString();
+            if (string.IsNullOrWhiteSpace(auth) || !auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                return JwtBearerDefaults.AuthenticationScheme;
+            var token = auth.Substring("Bearer ".Length).Trim();
+            try
+            {
+                var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(token);
+                if (jwt.Audiences.Any(a => string.Equals(a, serviceTokenAudience, StringComparison.Ordinal)))
+                    return ServiceTokenAuthenticationDefaults.Scheme;
+            }
+            catch
+            {
+                // Not a parseable JWT — let the user scheme reject it.
+            }
+            return JwtBearerDefaults.AuthenticationScheme;
+        };
+    });
+
 if (!string.IsNullOrWhiteSpace(signingKey))
 {
-    builder.Services
-        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
+    authBuilder.AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
         {
-            options.MapInboundClaims = false;
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer           = true,
-                ValidateAudience         = true,
-                ValidateLifetime         = true,
-                ValidateIssuerSigningKey = true,
-                ValidIssuer              = jwtSection["Issuer"],
-                ValidAudience            = jwtSection["Audience"],
-                IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
-                RoleClaimType            = ClaimTypes.Role,
-                ClockSkew                = TimeSpan.Zero
-            };
-        });
+            ValidateIssuer           = true,
+            ValidateAudience         = true,
+            ValidateLifetime         = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer              = jwtSection["Issuer"],
+            ValidAudience            = jwtSection["Audience"],
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+            RoleClaimType            = ClaimTypes.Role,
+            ClockSkew                = TimeSpan.Zero
+        };
+    });
 }
 else
 {
     // Allow boot in environments without a configured signing key. Protected
     // endpoints will reject requests because no token will validate.
-    builder.Services
-        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, _ => { });
+    authBuilder.AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, _ => { });
 }
+
+// Always register the service-token scheme; it self-disables when no
+// signing secret is configured (no token can validate).
+authBuilder.AddServiceTokenBearer(builder.Configuration);
 
 builder.Services.AddAuthorization(options =>
 {

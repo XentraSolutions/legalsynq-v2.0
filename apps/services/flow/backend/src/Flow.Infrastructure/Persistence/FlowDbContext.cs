@@ -245,10 +245,20 @@ public class FlowDbContext : DbContext, IFlowDbContext
             entity.Property(e => e.CorrelationKey).HasMaxLength(256);
             entity.Property(e => e.CreatedBy).HasMaxLength(256);
             entity.Property(e => e.UpdatedBy).HasMaxLength(256);
+            // LS-FLOW-MERGE-P5 — execution-state columns.
+            // CurrentStepKey + Status are concurrency tokens so WorkflowEngine
+            // mutators (Advance/Complete/Cancel/Fail) issue conditional
+            // UPDATEs and surface DbUpdateConcurrencyException on contention.
+            entity.Property(e => e.CurrentStepKey).HasMaxLength(64).IsConcurrencyToken();
+            entity.Property(e => e.Status).IsConcurrencyToken();
+            entity.Property(e => e.AssignedToUserId).HasMaxLength(256);
+            entity.Property(e => e.LastErrorMessage).HasMaxLength(2048);
             entity.HasIndex(e => new { e.TenantId, e.ProductKey });
             entity.HasIndex(e => e.WorkflowDefinitionId);
             entity.HasIndex(e => e.InitialTaskId);
             entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.CurrentStageId);
+            entity.HasIndex(e => e.AssignedToUserId);
             entity.HasOne(e => e.WorkflowDefinition)
                 .WithMany()
                 .HasForeignKey(e => e.WorkflowDefinitionId)
@@ -256,6 +266,10 @@ public class FlowDbContext : DbContext, IFlowDbContext
             entity.HasOne(e => e.InitialTask)
                 .WithMany()
                 .HasForeignKey(e => e.InitialTaskId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(e => e.CurrentStage)
+                .WithMany()
+                .HasForeignKey(e => e.CurrentStageId)
                 .OnDelete(DeleteBehavior.SetNull);
             entity.HasQueryFilter(e => _tenantProvider == null || e.TenantId == _tenantProvider.GetTenantId());
         });

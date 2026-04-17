@@ -1153,3 +1153,32 @@ Source of truth: `flow/frontend/src/lib/productKeys.ts`.
   `BuildingBlocks.Authorization.PermissionCodes` constants
   (`LienSell` / `ReferralCreate` / `ApplicationRefer`) instead of inline
   strings, keeping permission codes single-sourced.
+
+## Phase 5 (LS-FLOW-MERGE-P5) — execution authority
+
+- `WorkflowInstance` carries execution state directly (`Status`, `CurrentStageId`,
+  `CurrentStepKey`, `StartedAt`, `CompletedAt`, `AssignedToUserId`,
+  `LastErrorMessage`); `CurrentStepKey` mirrors `WorkflowStage.Key`.
+- `Flow.Application/Engines/WorkflowEngine` is the single mutator of execution
+  state. `StartAsync` resolves the initial stage by `Order`; `AdvanceAsync`
+  validates an `expectedCurrentStepKey` (optimistic concurrency) and then
+  follows the existing `WorkflowTransition` graph (or honours an explicit
+  `toStepKey`). `Complete/Cancel/Fail` are terminal. Invalid transitions
+  surface as `InvalidWorkflowTransitionException` (with stable `Code`),
+  mapped by the controller to **HTTP 409**.
+- `WorkflowInstancesController` (`/api/v1/workflow-instances/...`) is the public
+  execution surface; product services call it via `IFlowClient`.
+- Authentication: `Flow.Api` registers two JwtBearer schemes (user `Bearer` and
+  `ServiceToken`) behind a `MultiAuth` PolicyScheme that dispatches by `aud`
+  (`flow-service` ⇒ `ServiceToken`). Service tokens are minted by
+  `BuildingBlocks.Authentication.ServiceTokens.IServiceTokenIssuer` (HS256,
+  5-min TTL, claims `sub=service:<name>`, `tid`, optional `actor=user:<id>`).
+  Shared secret via env `FLOW_SERVICE_TOKEN_SECRET`.
+- Product apps register `AddFlowClient(configuration, serviceName: "...")` so
+  the client prefers an M2M token (with the caller's user as `actor`) and
+  falls back to bearer pass-through when the secret is unconfigured. Each
+  product calls `group.MapFlowExecutionPassthrough()` to expose
+  `GET/POST .../workflows/{wfId}{,/advance,/complete}`.
+- The transactional outbox for transition events is intentionally deferred
+  (Phase 6); today `WorkflowEvent` rows are written in the same DbContext
+  save as the instance update, atomic in MySQL but not yet relayed.

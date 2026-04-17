@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Text.Json;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -12,6 +14,13 @@ namespace BuildingBlocks.FlowClient;
 /// header so Flow's per-product capability policies still apply, logs at
 /// the boundary, and surfaces transport failures as
 /// <see cref="FlowClientUnavailableException"/>.
+///
+/// LS-FLOW-MERGE-P5 — when an <see cref="IServiceTokenIssuer"/> is
+/// registered the client prefers a freshly-minted M2M token (with the
+/// caller's user id forwarded as the <c>actor</c> claim) over the user's
+/// bearer for execution-surface calls. Pass-through bearer remains the
+/// fallback so dev/test environments without a configured secret keep
+/// working.
 /// </summary>
 internal sealed class FlowClient : IFlowClient
 {
@@ -19,12 +28,18 @@ internal sealed class FlowClient : IFlowClient
 
     private readonly HttpClient _http;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IServiceTokenIssuer? _serviceTokens;
     private readonly ILogger<FlowClient> _logger;
 
-    public FlowClient(HttpClient http, IHttpContextAccessor httpContextAccessor, ILogger<FlowClient> logger)
+    public FlowClient(
+        HttpClient http,
+        IHttpContextAccessor httpContextAccessor,
+        ILogger<FlowClient> logger,
+        IServiceTokenIssuer? serviceTokens = null)
     {
         _http = http;
         _httpContextAccessor = httpContextAccessor;
+        _serviceTokens = serviceTokens;
         _logger = logger;
     }
 
@@ -38,7 +53,7 @@ internal sealed class FlowClient : IFlowClient
         {
             Content = JsonContent.Create(request, options: JsonOptions)
         };
-        ApplyBearer(httpRequest);
+        ApplyUserBearer(httpRequest);
 
         _logger.LogInformation(
             "FlowClient → POST {Path} entity={EntityType}/{EntityId} definition={DefinitionId}",
@@ -62,7 +77,7 @@ internal sealed class FlowClient : IFlowClient
         var qs = $"?sourceEntityType={Uri.EscapeDataString(sourceEntityType)}&sourceEntityId={Uri.EscapeDataString(sourceEntityId)}";
         var path = $"/api/v1/product-workflows/{productSlug}{qs}";
         using var httpRequest = new HttpRequestMessage(HttpMethod.Get, path);
-        ApplyBearer(httpRequest);
+        ApplyUserBearer(httpRequest);
 
         _logger.LogInformation(
             "FlowClient → GET {Path} entity={EntityType}/{EntityId}",
@@ -73,7 +88,91 @@ internal sealed class FlowClient : IFlowClient
         return list ?? new List<FlowProductWorkflowResponse>();
     }
 
-    private void ApplyBearer(HttpRequestMessage httpRequest)
+    public async Task<FlowWorkflowInstanceResponse> GetWorkflowInstanceAsync(
+        Guid workflowInstanceId,
+        CancellationToken cancellationToken = default)
+    {
+        var path = $"/api/v1/workflow-instances/{workflowInstanceId}";
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, path);
+        ApplyExecutionAuth(httpRequest);
+
+        _logger.LogInformation("FlowClient → GET {Path}", path);
+
+        var response = await SendAsync(httpRequest, cancellationToken);
+        var dto = await ReadJsonAsync<FlowWorkflowInstanceResponse>(response, cancellationToken)
+                  ?? throw new FlowClientUnavailableException("Flow returned an empty body for GetWorkflowInstance.");
+        return dto;
+    }
+
+    public async Task<FlowWorkflowInstanceResponse> AdvanceWorkflowAsync(
+        Guid workflowInstanceId,
+        FlowAdvanceWorkflowRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var path = $"/api/v1/workflow-instances/{workflowInstanceId}/advance";
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        ApplyExecutionAuth(httpRequest);
+
+        _logger.LogInformation(
+            "FlowClient → POST {Path} from={From} to={To}",
+            path, request.ExpectedCurrentStepKey, request.ToStepKey);
+
+        var response = await SendAsync(httpRequest, cancellationToken);
+        var dto = await ReadJsonAsync<FlowWorkflowInstanceResponse>(response, cancellationToken)
+                  ?? throw new FlowClientUnavailableException("Flow returned an empty body for AdvanceWorkflow.");
+        return dto;
+    }
+
+    public async Task<FlowWorkflowInstanceResponse> CompleteWorkflowAsync(
+        Guid workflowInstanceId,
+        CancellationToken cancellationToken = default)
+    {
+        var path = $"/api/v1/workflow-instances/{workflowInstanceId}/complete";
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, path);
+        ApplyExecutionAuth(httpRequest);
+
+        _logger.LogInformation("FlowClient → POST {Path}", path);
+
+        var response = await SendAsync(httpRequest, cancellationToken);
+        var dto = await ReadJsonAsync<FlowWorkflowInstanceResponse>(response, cancellationToken)
+                  ?? throw new FlowClientUnavailableException("Flow returned an empty body for CompleteWorkflow.");
+        return dto;
+    }
+
+    /// <summary>
+    /// LS-FLOW-MERGE-P5 — auth for the execution surface
+    /// (<c>/api/v1/workflow-instances/...</c>). Prefer a fresh service
+    /// token (with the caller's user id forwarded as <c>actor</c>) when
+    /// the issuer is configured and the caller has a tenant claim; fall
+    /// back to bearer pass-through.
+    /// </summary>
+    private void ApplyExecutionAuth(HttpRequestMessage httpRequest)
+    {
+        var ctx = _httpContextAccessor.HttpContext;
+
+        if (_serviceTokens is not null && _serviceTokens.IsConfigured)
+        {
+            var (tenantId, userId) = ExtractTenantAndUser(ctx);
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                var token = _serviceTokens.IssueToken(tenantId!, userId);
+                httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                return;
+            }
+        }
+        ApplyUserBearer(httpRequest);
+    }
+
+    /// <summary>
+    /// LS-FLOW-MERGE-P4 — auth for product-workflow management calls
+    /// (<c>/api/v1/product-workflows/...</c>). These endpoints enforce
+    /// per-product capability policies that service tokens cannot
+    /// satisfy, so this path always uses the caller's user bearer.
+    /// </summary>
+    private void ApplyUserBearer(HttpRequestMessage httpRequest)
     {
         var ctx = _httpContextAccessor.HttpContext;
         if (ctx is null) return;
@@ -85,6 +184,18 @@ internal sealed class FlowClient : IFlowClient
             httpRequest.Headers.Authorization = new AuthenticationHeaderValue(
                 "Bearer", auth.Substring("Bearer ".Length).Trim());
         }
+    }
+
+    private static (string? TenantId, string? UserId) ExtractTenantAndUser(HttpContext? ctx)
+    {
+        if (ctx?.User is not ClaimsPrincipal user || user.Identity?.IsAuthenticated != true)
+            return (null, null);
+
+        var tenantId = user.FindFirst("tenant_id")?.Value
+                       ?? user.FindFirst("tid")?.Value;
+        var userId   = user.FindFirst("sub")?.Value
+                       ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        return (tenantId, userId);
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -100,7 +211,7 @@ internal sealed class FlowClient : IFlowClient
                     (int)response.StatusCode, request.Method, request.RequestUri, Truncate(body, 512));
 
                 // 4xx propagates the upstream HTTP error so policy denials
-                // (401/403) and validation (400) reach the caller meaningfully.
+                // (401/403) and validation (400/409) reach the caller meaningfully.
                 throw new HttpRequestException(
                     $"Flow returned {(int)response.StatusCode} for {request.Method} {request.RequestUri}: {Truncate(body, 256)}",
                     inner: null,

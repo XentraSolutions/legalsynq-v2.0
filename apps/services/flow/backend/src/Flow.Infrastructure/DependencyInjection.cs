@@ -1,3 +1,4 @@
+using Flow.Application.Engines.WorkflowEngine;
 using Flow.Application.Interfaces;
 using Flow.Application.Services;
 using Flow.Domain.Interfaces;
@@ -42,6 +43,8 @@ public static class DependencyInjection
         services.AddScoped<INotificationService, NotificationService>();
         // LS-FLOW-MERGE-P3 — product-facing service for SynqLien/CareConnect/SynqFund.
         services.AddScoped<IProductWorkflowService, ProductWorkflowService>();
+        // LS-FLOW-MERGE-P5 — execution authority for WorkflowInstance.
+        services.AddScoped<IWorkflowEngine, WorkflowEngine>();
 
         return services;
     }
