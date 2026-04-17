@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import mysql, { type Pool, type PoolOptions, type RowDataPacket } from 'mysql2/promise';
-import { recordAudit, type AuditActor, type AuditAction, type AuditEntry } from './system-health-audit';
+import type { AuditActor, AuditAction, AuditEntry } from './system-health-audit';
 import { controlCenterServerApi } from './control-center-api';
 
 const ACTION_PAST_TENSE: Record<AuditAction, string> = {
@@ -338,22 +338,12 @@ async function safeRecordAudit(input: {
   before:    ServiceDef | null;
   after:     ServiceDef | null;
 }): Promise<void> {
-  let entry: AuditEntry | null = null;
-  try {
-    entry = await recordAudit(input);
-  } catch (err) {
-    console.warn('[system-health-store] Failed to record audit entry', {
-      action:    input.action,
-      serviceId: input.serviceId,
-      actor:     input.actor.email,
-      err,
-    });
-  }
-
-  // Mirror the entry to the canonical audit pipeline so it shows up in the
-  // central Audit Logs page alongside other platform events. Fire-and-observe:
-  // a failure here must not gate the underlying service-config change.
-  const canonicalSource: AuditEntry = entry ?? {
+  // The canonical Platform Audit Event Service is now the sole system of
+  // record for monitoring-config audit events — retention and legal-hold
+  // policies are applied uniformly there alongside other platform events.
+  // Fire-and-observe: a failure here must not gate the underlying
+  // service-config change.
+  const entry: AuditEntry = {
     id:        crypto.randomUUID(),
     action:    input.action,
     serviceId: input.serviceId,
@@ -362,7 +352,7 @@ async function safeRecordAudit(input: {
     before:    input.before,
     after:     input.after,
   };
-  void emitCanonicalAudit(canonicalSource);
+  void emitCanonicalAudit(entry);
 }
 
 export async function addService(
