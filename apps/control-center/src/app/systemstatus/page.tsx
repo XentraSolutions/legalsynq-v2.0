@@ -31,8 +31,27 @@ export default async function SystemStatusPage() {
   const productServices = data?.integrations.filter(i => i.category === 'product') ?? [];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-6 py-8">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+          <a href="/" className="text-sm font-semibold text-gray-900 hover:text-indigo-700">
+            LegalSynq
+          </a>
+          <nav className="flex items-center gap-4 text-sm">
+            <a href="/systemstatus" className="text-gray-600 hover:text-gray-900">
+              Status
+            </a>
+            <a
+              href="/login"
+              className="inline-flex items-center px-3 py-1.5 rounded-md bg-indigo-600 text-white font-medium hover:bg-indigo-700"
+            >
+              Sign in
+            </a>
+          </nav>
+        </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto px-6 py-8 w-full flex-1">
 
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
@@ -88,6 +107,16 @@ export default async function SystemStatusPage() {
         ) : null}
 
       </div>
+
+      <footer className="border-t border-gray-200 bg-white">
+        <div className="max-w-4xl mx-auto px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-500">
+          <span>&copy; {new Date().getFullYear()} LegalSynq</span>
+          <nav className="flex items-center gap-4">
+            <a href="/login" className="hover:text-gray-900">Sign in</a>
+            <a href="/systemstatus" className="hover:text-gray-900">Status</a>
+          </nav>
+        </div>
+      </footer>
     </div>
   );
 }
