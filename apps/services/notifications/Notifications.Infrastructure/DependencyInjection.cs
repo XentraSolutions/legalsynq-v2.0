@@ -76,12 +76,22 @@ public static class DependencyInjection
         var identityBaseUrl = configuration[$"{IdentityServiceOptions.SectionName}:BaseUrl"];
         if (!string.IsNullOrWhiteSpace(identityBaseUrl))
         {
-            services.AddSingleton<IRoleMembershipProvider, HttpRoleMembershipProvider>();
+            // Register the http provider once and resolve it for both
+            // IRoleMembershipProvider (lookup) and IMembershipCacheDiagnostics
+            // (operator status endpoint) so counters reflect the same instance.
+            services.AddSingleton<HttpRoleMembershipProvider>();
+            services.AddSingleton<IRoleMembershipProvider>(sp =>
+                sp.GetRequiredService<HttpRoleMembershipProvider>());
+            services.AddSingleton<IMembershipCacheDiagnostics>(sp =>
+                sp.GetRequiredService<HttpRoleMembershipProvider>());
         }
         else
         {
             services.AddSingleton<IRoleMembershipProvider>(sp =>
                 sp.GetRequiredService<InMemoryRoleMembershipProvider>());
+            // No real cache when running on the in-memory provider; expose a
+            // snapshot that says so rather than leaving the endpoint un-mapped.
+            services.AddSingleton<IMembershipCacheDiagnostics, NoOpMembershipCacheDiagnostics>();
         }
         services.AddScoped<IRecipientResolver, RecipientResolver>();
         services.AddScoped<IWebhookIngestionService, WebhookIngestionServiceImpl>();

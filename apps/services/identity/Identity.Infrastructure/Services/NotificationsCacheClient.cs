@@ -44,7 +44,44 @@ public interface INotificationsCacheClient
     void InvalidateTenant(Guid tenantId, string eventType, string? reason = null);
 }
 
-public sealed class NotificationsCacheClient : INotificationsCacheClient
+/// <summary>
+/// Operator-facing snapshot of identity → notifications invalidation activity.
+/// Surfaced via <c>GET /api/admin/notifications-cache/status</c> so ops can
+/// verify the wiring (base URL + shared token) is healthy without having to
+/// inspect logs on both services.
+/// </summary>
+public sealed record NotificationsCacheClientStatsSnapshot
+{
+    /// <summary>True when identity has a NotificationsService base URL set.
+    /// When false, every invalidation call short-circuits (the no-op client
+    /// is wired) and notifications relies on its TTL for freshness.</summary>
+    public bool   Configured                  { get; init; }
+
+    /// <summary>Total number of invalidation calls dispatched to notifications
+    /// since process start (skipped/empty-tenant calls are not counted).</summary>
+    public long   AttemptedInvalidations      { get; init; }
+
+    /// <summary>Calls that returned a 2xx response.</summary>
+    public long   SucceededInvalidations      { get; init; }
+
+    /// <summary>Calls that failed (non-2xx, timeout, network, parse).</summary>
+    public long   FailedInvalidations         { get; init; }
+
+    /// <summary>UTC timestamp of the most recent failure (null when none).</summary>
+    public DateTime? LastFailureUtc           { get; init; }
+
+    /// <summary>Short human-readable reason for the most recent failure
+    /// (HTTP status or exception type). Null when there have been no failures.</summary>
+    public string?   LastFailureReason       { get; init; }
+}
+
+/// <summary>Snapshot accessor for notifications-cache invalidation counters.</summary>
+public interface INotificationsCacheClientDiagnostics
+{
+    NotificationsCacheClientStatsSnapshot GetSnapshot();
+}
+
+public sealed class NotificationsCacheClient : INotificationsCacheClient, INotificationsCacheClientDiagnostics
 {
     // Matches the header enforced by Notifications.Api InternalTokenMiddleware
     // for every /internal/* route. Without it the call is rejected (401/503)
@@ -54,6 +91,15 @@ public sealed class NotificationsCacheClient : INotificationsCacheClient
     private readonly IHttpClientFactory                 _httpClientFactory;
     private readonly NotificationsServiceOptions        _options;
     private readonly ILogger<NotificationsCacheClient>  _logger;
+
+    // Operator-facing counters. All updates use Interlocked so the snapshot
+    // surfaced via /api/admin/notifications-cache/status stays consistent
+    // under concurrent admin operations.
+    private long    _attempted;
+    private long    _succeeded;
+    private long    _failed;
+    private long    _lastFailureUtcTicks;
+    private string? _lastFailureReason;
 
     public NotificationsCacheClient(
         IHttpClientFactory                 httpClientFactory,
@@ -75,6 +121,8 @@ public sealed class NotificationsCacheClient : INotificationsCacheClient
                 tenantId);
             return;
         }
+
+        Interlocked.Increment(ref _attempted);
 
         // Fire-and-observe: never block the originating admin call. Identity
         // emits the canonical audit event regardless of this side-effect.
@@ -101,27 +149,69 @@ public sealed class NotificationsCacheClient : INotificationsCacheClient
 
                 if (!response.IsSuccessStatusCode)
                 {
+                    RecordFailure($"HTTP {(int)response.StatusCode}");
                     _logger.LogWarning(
-                        "Notifications membership-cache invalidate returned HTTP {Status} for tenant {TenantId} ({EventType}).",
-                        (int)response.StatusCode, tenantId, eventType);
+                        "Notifications membership-cache invalidate returned HTTP {Status} for tenant {TenantId} ({EventType}). " +
+                        "Total invalidation failures: {FailedInvalidations}.",
+                        (int)response.StatusCode, tenantId, eventType, Interlocked.Read(ref _failed));
+                }
+                else
+                {
+                    Interlocked.Increment(ref _succeeded);
                 }
             }
             catch (Exception ex)
             {
+                RecordFailure(ex.GetType().Name);
                 _logger.LogWarning(ex,
                     "Notifications membership-cache invalidate failed for tenant {TenantId} ({EventType}). " +
-                    "Notifications will rely on TTL-based freshness for this change.",
-                    tenantId, eventType);
+                    "Notifications will rely on TTL-based freshness for this change. " +
+                    "Total invalidation failures: {FailedInvalidations}.",
+                    tenantId, eventType, Interlocked.Read(ref _failed));
             }
         });
+    }
+
+    private void RecordFailure(string reason)
+    {
+        Interlocked.Increment(ref _failed);
+        Interlocked.Exchange(ref _lastFailureUtcTicks, DateTime.UtcNow.Ticks);
+        Volatile.Write(ref _lastFailureReason, reason);
+    }
+
+    /// <summary>Snapshot of invalidation counters for the operator status endpoint.</summary>
+    public NotificationsCacheClientStatsSnapshot GetSnapshot()
+    {
+        var lastTicks = Interlocked.Read(ref _lastFailureUtcTicks);
+        return new NotificationsCacheClientStatsSnapshot
+        {
+            Configured             = !string.IsNullOrWhiteSpace(_options.BaseUrl),
+            AttemptedInvalidations = Interlocked.Read(ref _attempted),
+            SucceededInvalidations = Interlocked.Read(ref _succeeded),
+            FailedInvalidations    = Interlocked.Read(ref _failed),
+            LastFailureUtc         = lastTicks == 0 ? null : new DateTime(lastTicks, DateTimeKind.Utc),
+            LastFailureReason      = Volatile.Read(ref _lastFailureReason),
+        };
     }
 }
 
 /// <summary>
 /// No-op fallback used when notifications integration is not configured.
-/// Logs at debug level so test/dev environments stay quiet.
+/// Logs at debug level so test/dev environments stay quiet. Still satisfies
+/// <see cref="INotificationsCacheClientDiagnostics"/> so the operator status
+/// endpoint can clearly report "not configured" instead of 404'ing.
 /// </summary>
-public sealed class NoOpNotificationsCacheClient : INotificationsCacheClient
+public sealed class NoOpNotificationsCacheClient : INotificationsCacheClient, INotificationsCacheClientDiagnostics
 {
     public void InvalidateTenant(Guid tenantId, string eventType, string? reason = null) { }
+
+    public NotificationsCacheClientStatsSnapshot GetSnapshot() => new()
+    {
+        Configured             = false,
+        AttemptedInvalidations = 0,
+        SucceededInvalidations = 0,
+        FailedInvalidations    = 0,
+        LastFailureUtc         = null,
+        LastFailureReason      = null,
+    };
 }

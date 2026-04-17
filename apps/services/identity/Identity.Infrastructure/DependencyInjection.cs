@@ -85,11 +85,21 @@ public static class DependencyInjection
         var notificationsBaseUrl = configuration[$"{NotificationsServiceOptions.SectionName}:BaseUrl"];
         if (!string.IsNullOrWhiteSpace(notificationsBaseUrl))
         {
-            services.AddSingleton<INotificationsCacheClient, NotificationsCacheClient>();
+            // Same singleton serves both interfaces so the diagnostics endpoint
+            // reports counters from the instance that actually issues the calls.
+            services.AddSingleton<NotificationsCacheClient>();
+            services.AddSingleton<INotificationsCacheClient>(sp =>
+                sp.GetRequiredService<NotificationsCacheClient>());
+            services.AddSingleton<INotificationsCacheClientDiagnostics>(sp =>
+                sp.GetRequiredService<NotificationsCacheClient>());
         }
         else
         {
-            services.AddSingleton<INotificationsCacheClient, NoOpNotificationsCacheClient>();
+            services.AddSingleton<NoOpNotificationsCacheClient>();
+            services.AddSingleton<INotificationsCacheClient>(sp =>
+                sp.GetRequiredService<NoOpNotificationsCacheClient>());
+            services.AddSingleton<INotificationsCacheClientDiagnostics>(sp =>
+                sp.GetRequiredService<NoOpNotificationsCacheClient>());
         }
         services.AddScoped<ITenantProductEntitlementService, TenantProductEntitlementService>();
         services.AddScoped<IUserProductAccessService, UserProductAccessService>();

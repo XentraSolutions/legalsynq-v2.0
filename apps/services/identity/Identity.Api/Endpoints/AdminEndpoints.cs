@@ -190,6 +190,15 @@ public static class AdminEndpoints
         // to resolve role- or org-addressed recipients to concrete users.
         routes.MapGet("/api/admin/membership-lookup", MembershipLookup);
 
+        // ── Notifications cache invalidation status ──────────────────────────
+        // Operator-facing snapshot of identity → notifications invalidation
+        // counters (configured?, attempted, succeeded, failed, last failure).
+        // Surfaces obvious mis-configurations (wrong BaseUrl or shared token →
+        // failures climb while succeeded stays 0) without grepping logs.
+        routes.MapGet("/api/admin/notifications-cache/status",
+            (INotificationsCacheClientDiagnostics diagnostics) =>
+                Results.Ok(diagnostics.GetSnapshot()));
+
         return routes;
     }
 

@@ -43,6 +43,17 @@ public static class InternalEndpoints
                 body.TenantId, body.Reason ?? "(none)", body.EventType ?? "(none)");
             return Results.Accepted();
         });
+
+        // ─── Membership cache stats ─────────────────────────────────────────
+        // Operator-facing snapshot of cache hits / misses / invalidations.
+        // Lets ops verify identity → notifications wiring is healthy in a
+        // given environment without grepping logs:
+        //   • identityConfigured=false  → wrong/missing IdentityService:BaseUrl.
+        //   • hits=misses=0             → no role/org fan-outs have happened yet.
+        //   • invalidations=0 with a    → identity isn't reaching this service
+        //     non-zero miss count         (token mismatch, network, etc.).
+        group.MapGet("/membership-cache/stats", (IMembershipCacheDiagnostics diagnostics) =>
+            Results.Ok(diagnostics.GetSnapshot()));
     }
 
     /// <summary>Marker type used as the logger category for the invalidation endpoint.</summary>

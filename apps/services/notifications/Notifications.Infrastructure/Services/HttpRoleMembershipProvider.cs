@@ -23,7 +23,7 @@ namespace Notifications.Infrastructure.Services;
 /// All failures (network, 4xx/5xx, timeout, parse) return an empty member set
 /// — the caller treats that as a blocked envelope and persists the outcome.
 /// </summary>
-public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider
+public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider, IMembershipCacheDiagnostics
 {
     private readonly IHttpClientFactory                       _httpClientFactory;
     private readonly IdentityServiceOptions                   _options;
@@ -36,6 +36,14 @@ public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider
     // because subsequent lookups compute a different key. Old entries fall
     // out naturally when their TTL elapses.
     private readonly ConcurrentDictionary<Guid, long> _tenantVersions = new();
+
+    // Operator-facing counters. All updates use Interlocked so the snapshot
+    // surfaced via /internal/membership-cache/stats stays consistent under
+    // concurrent fan-out without any locking on the hot path.
+    private long      _hits;
+    private long      _misses;
+    private long      _invalidations;
+    private long      _lastInvalidationUtcTicks;
 
     public HttpRoleMembershipProvider(
         IHttpClientFactory                  httpClientFactory,
@@ -69,9 +77,29 @@ public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider
     {
         if (tenantId == Guid.Empty) return;
         var newVersion = _tenantVersions.AddOrUpdate(tenantId, 1L, (_, v) => v + 1);
+        var totalInvalidations = Interlocked.Increment(ref _invalidations);
+        Interlocked.Exchange(ref _lastInvalidationUtcTicks, DateTime.UtcNow.Ticks);
         _logger.LogInformation(
-            "Membership cache invalidated for tenant {TenantId} (version now {Version}).",
-            tenantId, newVersion);
+            "Membership cache invalidated for tenant {TenantId} (version now {Version}, total invalidations {TotalInvalidations}).",
+            tenantId, newVersion, totalInvalidations);
+    }
+
+    /// <summary>
+    /// Snapshot of cache hit / miss / invalidation counters for the operator
+    /// status endpoint. Cheap (only reads volatile counters); safe to poll.
+    /// </summary>
+    public MembershipCacheStatsSnapshot GetSnapshot()
+    {
+        var lastTicks = Interlocked.Read(ref _lastInvalidationUtcTicks);
+        return new MembershipCacheStatsSnapshot
+        {
+            IdentityConfigured  = !string.IsNullOrWhiteSpace(_options.BaseUrl),
+            CacheTtlSeconds     = (int)_cacheTtl.TotalSeconds,
+            Hits                = Interlocked.Read(ref _hits),
+            Misses              = Interlocked.Read(ref _misses),
+            Invalidations       = Interlocked.Read(ref _invalidations),
+            LastInvalidationUtc = lastTicks == 0 ? null : new DateTime(lastTicks, DateTimeKind.Utc),
+        };
     }
 
     private async Task<IReadOnlyList<ResolvedRecipient>> LookupAsync(
@@ -90,8 +118,17 @@ public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider
             _cache.TryGetValue(cacheKey, out IReadOnlyList<ResolvedRecipient>? cached) &&
             cached is not null)
         {
+            Interlocked.Increment(ref _hits);
+            _logger.LogDebug(
+                "Membership cache HIT for tenant {TenantId} (roleKey={RoleKey}, orgId={OrgId}).",
+                tenantId, roleKey ?? "(null)", orgId ?? "(null)");
             return cached;
         }
+
+        Interlocked.Increment(ref _misses);
+        _logger.LogDebug(
+            "Membership cache MISS for tenant {TenantId} (roleKey={RoleKey}, orgId={OrgId}); fetching from identity.",
+            tenantId, roleKey ?? "(null)", orgId ?? "(null)");
 
         var members = await FetchAsync(tenantId, roleKey, orgId);
 
