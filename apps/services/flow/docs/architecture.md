@@ -1182,3 +1182,10 @@ Source of truth: `flow/frontend/src/lib/productKeys.ts`.
 - The transactional outbox for transition events is intentionally deferred
   (Phase 6); today `WorkflowEvent` rows are written in the same DbContext
   save as the instance update, atomic in MySQL but not yet relayed.
+
+## Phase A1 — Atomic Ownership Layer
+
+- The Phase-5 product-side ownership pre-check has moved fully inside Flow. `ProductWorkflowExecutionController` (Flow.Api/Controllers/V1) accepts `/api/v1/product-workflows/{product}/{sourceEntityType}/{sourceEntityId}/{workflowInstanceId:guid}` and resolves the instance through ONE EF join over `ProductWorkflowMappings` and `WorkflowInstances`. The tenant query filter applies to both tables, so cross-tenant access is impossible by construction; mismatch on product / parent / instance produces the uniform `404 workflow_instance_not_owned`.
+- Capability policies (`CanSellLien` / `CanReferCareConnect` / `CanReferFund`) are checked only for end-user callers. Service tokens skip per-product capability (the originating product service has already enforced it) but cannot bypass tenant scoping or parent ownership.
+- `BuildingBlocks/FlowClient` now ships `FlowErrorCodes` (machine-readable codes used by Flow, the passthrough layer, and tests) and `ICallerContextAccessor` (per-request projection of the principal into `{ Type, TenantId, Subject, Actor }`).
+- `AddServiceTokenBearer` is hardened (signed-tokens required, semantic claims required) and gains `failFastIfMissingSecret`, which Flow.Api uses to crash-on-startup outside Development if the shared HS256 secret is missing or shorter than 32 chars.

@@ -101,3 +101,13 @@ See `merge-phase-4-notes.md` for the full Phase 4 changelog.
 - **Product passthrough.** `IFlowClient` adds `GetWorkflowInstanceAsync` / `AdvanceWorkflowAsync` / `CompleteWorkflowAsync` (prefers a service token + `actor` claim when configured). Each product calls `group.MapFlowExecutionPassthrough()` to expose `GET/POST .../workflows/{wfId}{,/advance,/complete}`.
 
 See `merge-phase-5-notes.md` for the full Phase 5 changelog.
+
+## Phase A1 — Hardening (LS-FLOW-HARDEN-A1)
+
+- **Atomic ownership endpoints.** `ProductWorkflowExecutionController` exposes `GET / POST advance / POST complete` under `/api/v1/product-workflows/{product}/{sourceEntityType}/{sourceEntityId}/{workflowInstanceId:guid}`. A single EF join over `ProductWorkflowMappings × WorkflowInstances` (both tenant-filtered) closes the Phase-5 TOCTOU window between the product-side pre-check and the engine call. Mismatch on tenant / product / parent / instance → uniform `404 workflow_instance_not_owned`.
+- **Product passthroughs.** `BuildingBlocks/FlowClient/FlowExecutionEndpoints.MapFlowExecutionPassthrough` now calls the new atomic endpoints directly via `IFlowClient.{Get,Advance,Complete}ProductWorkflowAsync`. The two-call (`ListBySourceEntity` then engine) pattern is gone.
+- **Service-token validation.** `AddServiceTokenBearer` now sets `RequireSignedTokens` and `RequireExpirationTime`, runs `OnTokenValidated` to require a `service:*` subject and a tenant claim, and accepts `failFastIfMissingSecret` (Flow.Api wires `!IsDevelopment()`). `ICallerContextAccessor` distinguishes `User` / `Service` / `ServiceOnBehalfOfUser`.
+- **Diagnostics.** `BuildingBlocks/FlowClient/FlowErrorCodes` is the single source of truth for machine-readable codes (`workflow_instance_not_owned`, `expected_step_mismatch`, `instance_not_active`, `concurrent_state_change`, `invalid_service_token`, `missing_tenant_context`, `flow_unavailable`, `flow_upstream_error`).
+- **Tests.** `apps/services/flow/backend/tests/Flow.UnitTests` (xUnit). 9 cases, 9 pass — caller classification + service-token startup guard.
+
+See `merge-phase-A1-notes.md` for the full A1 changelog and the deferred Phase A1.1 integration matrix.

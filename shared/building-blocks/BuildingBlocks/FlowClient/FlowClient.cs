@@ -142,6 +142,76 @@ internal sealed class FlowClient : IFlowClient
         return dto;
     }
 
+    // ------------------ LS-FLOW-HARDEN-A1 — atomic ownership surface ------------------
+
+    public async Task<FlowWorkflowInstanceResponse> GetProductWorkflowAsync(
+        string productSlug,
+        string sourceEntityType,
+        string sourceEntityId,
+        Guid workflowInstanceId,
+        CancellationToken cancellationToken = default)
+    {
+        var path = BuildOwnedPath(productSlug, sourceEntityType, sourceEntityId, workflowInstanceId);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Get, path);
+        ApplyExecutionAuth(httpRequest);
+
+        _logger.LogInformation("FlowClient → GET {Path}", path);
+
+        var response = await SendAsync(httpRequest, cancellationToken);
+        return await ReadJsonAsync<FlowWorkflowInstanceResponse>(response, cancellationToken)
+               ?? throw new FlowClientUnavailableException("Flow returned an empty body for GetProductWorkflow.");
+    }
+
+    public async Task<FlowWorkflowInstanceResponse> AdvanceProductWorkflowAsync(
+        string productSlug,
+        string sourceEntityType,
+        string sourceEntityId,
+        Guid workflowInstanceId,
+        FlowAdvanceWorkflowRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var path = BuildOwnedPath(productSlug, sourceEntityType, sourceEntityId, workflowInstanceId) + "/advance";
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(request, options: JsonOptions)
+        };
+        ApplyExecutionAuth(httpRequest);
+
+        _logger.LogInformation(
+            "FlowClient → POST {Path} from={From} to={To}",
+            path, request.ExpectedCurrentStepKey, request.ToStepKey);
+
+        var response = await SendAsync(httpRequest, cancellationToken);
+        return await ReadJsonAsync<FlowWorkflowInstanceResponse>(response, cancellationToken)
+               ?? throw new FlowClientUnavailableException("Flow returned an empty body for AdvanceProductWorkflow.");
+    }
+
+    public async Task<FlowWorkflowInstanceResponse> CompleteProductWorkflowAsync(
+        string productSlug,
+        string sourceEntityType,
+        string sourceEntityId,
+        Guid workflowInstanceId,
+        CancellationToken cancellationToken = default)
+    {
+        var path = BuildOwnedPath(productSlug, sourceEntityType, sourceEntityId, workflowInstanceId) + "/complete";
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, path);
+        ApplyExecutionAuth(httpRequest);
+
+        _logger.LogInformation("FlowClient → POST {Path}", path);
+
+        var response = await SendAsync(httpRequest, cancellationToken);
+        return await ReadJsonAsync<FlowWorkflowInstanceResponse>(response, cancellationToken)
+               ?? throw new FlowClientUnavailableException("Flow returned an empty body for CompleteProductWorkflow.");
+    }
+
+    private static string BuildOwnedPath(
+        string productSlug, string sourceEntityType, string sourceEntityId, Guid workflowInstanceId)
+        => "/api/v1/product-workflows/" +
+           $"{Uri.EscapeDataString(productSlug)}/" +
+           $"{Uri.EscapeDataString(sourceEntityType)}/" +
+           $"{Uri.EscapeDataString(sourceEntityId)}/" +
+           $"{workflowInstanceId}";
+
     /// <summary>
     /// LS-FLOW-MERGE-P5 — auth for the execution surface
     /// (<c>/api/v1/workflow-instances/...</c>). Prefer a fresh service

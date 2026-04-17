@@ -23,7 +23,7 @@ public static class FlowEndpointResults
         {
             case FlowClientUnavailableException fcu:
                 return Results.Json(
-                    new { error = "Flow service unavailable", code = "flow_unavailable", detail = fcu.Message },
+                    new { error = "Flow service unavailable", code = FlowErrorCodes.FlowUnavailable, detail = fcu.Message },
                     statusCode: StatusCodes.Status503ServiceUnavailable);
 
             case HttpRequestException httpEx when httpEx.StatusCode is HttpStatusCode upstream:
@@ -31,16 +31,20 @@ public static class FlowEndpointResults
                 if (status >= 500)
                 {
                     return Results.Json(
-                        new { error = "Flow service error", code = "flow_upstream_error", upstreamStatus = status, detail = httpEx.Message },
+                        new { error = "Flow service error", code = FlowErrorCodes.FlowUpstreamError, upstreamStatus = status, detail = httpEx.Message },
                         statusCode: StatusCodes.Status502BadGateway);
                 }
+                // 4xx from Flow — propagate the upstream status verbatim. The body
+                // already carries Flow's own structured `code` (e.g.
+                // workflow_instance_not_owned, expected_step_mismatch); we don't
+                // override it here.
                 return Results.Json(
-                    new { error = "Flow rejected the request", code = "flow_rejected", upstreamStatus = status, detail = httpEx.Message },
+                    new { error = "Flow rejected the request", code = FlowErrorCodes.FlowUpstreamError, upstreamStatus = status, detail = httpEx.Message },
                     statusCode: status);
 
             case HttpRequestException httpEx:
                 return Results.Json(
-                    new { error = "Flow service error", code = "flow_upstream_error", detail = httpEx.Message },
+                    new { error = "Flow service error", code = FlowErrorCodes.FlowUpstreamError, detail = httpEx.Message },
                     statusCode: StatusCodes.Status502BadGateway);
 
             default:

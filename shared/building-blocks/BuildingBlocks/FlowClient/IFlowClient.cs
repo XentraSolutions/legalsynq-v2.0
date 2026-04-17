@@ -45,6 +45,37 @@ public interface IFlowClient
     Task<FlowWorkflowInstanceResponse> CompleteWorkflowAsync(
         Guid workflowInstanceId,
         CancellationToken cancellationToken = default);
+
+    // ------------ LS-FLOW-HARDEN-A1 — atomic ownership-aware surface ------------
+    //
+    // The triplet below targets Flow's
+    //   /api/v1/product-workflows/{product}/{sourceEntityType}/{sourceEntityId}/{workflowInstanceId}
+    // routes, which validate tenant + product + parent + ownership in
+    // ONE database read before mutating state. Product passthroughs use
+    // these in place of the legacy "ListBySourceEntity then call by id"
+    // pattern, which had a TOCTOU window between the two requests.
+
+    Task<FlowWorkflowInstanceResponse> GetProductWorkflowAsync(
+        string productSlug,
+        string sourceEntityType,
+        string sourceEntityId,
+        Guid workflowInstanceId,
+        CancellationToken cancellationToken = default);
+
+    Task<FlowWorkflowInstanceResponse> AdvanceProductWorkflowAsync(
+        string productSlug,
+        string sourceEntityType,
+        string sourceEntityId,
+        Guid workflowInstanceId,
+        FlowAdvanceWorkflowRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<FlowWorkflowInstanceResponse> CompleteProductWorkflowAsync(
+        string productSlug,
+        string sourceEntityType,
+        string sourceEntityId,
+        Guid workflowInstanceId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

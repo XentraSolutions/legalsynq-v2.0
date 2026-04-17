@@ -113,9 +113,20 @@ else
     authBuilder.AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, _ => { });
 }
 
-// Always register the service-token scheme; it self-disables when no
-// signing secret is configured (no token can validate).
-authBuilder.AddServiceTokenBearer(builder.Configuration);
+// LS-FLOW-MERGE-P5 — register the service-token scheme.
+// LS-FLOW-HARDEN-A1 — outside Development, fail fast on startup if the
+// signing secret is missing/short. Development hosts still self-disable
+// (no token can validate) so local dev keeps working out of the box.
+authBuilder.AddServiceTokenBearer(
+    builder.Configuration,
+    failFastIfMissingSecret: !builder.Environment.IsDevelopment());
+
+// LS-FLOW-HARDEN-A1 — caller-context accessor used by the atomic
+// ownership controller to distinguish user vs service callers.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<
+    BuildingBlocks.Authentication.ServiceTokens.ICallerContextAccessor,
+    BuildingBlocks.Authentication.ServiceTokens.CallerContextAccessor>();
 
 builder.Services.AddAuthorization(options =>
 {
