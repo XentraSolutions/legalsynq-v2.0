@@ -6,7 +6,8 @@
     "dev": "next dev -p 5004",
     "build": "next build",
     "start": "next start -p 5004",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "tsx --test src/lib/__tests__/*.test.ts"
   },
   "dependencies": {
     "next": "15.2.9",

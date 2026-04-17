@@ -5,7 +5,12 @@ import mysql, { type Pool, type PoolOptions, type RowDataPacket } from 'mysql2/p
 import type { AuditActor, AuditAction, AuditEntry } from './system-health-audit';
 import { controlCenterServerApi } from './control-center-api';
 import type { AuditIngestPayload } from '@/types/control-center';
-import { enqueueFailedEmission, resumeOutboxOnStartup } from './system-health-audit-outbox';
+import { configureOutbox, enqueueFailedEmission, resumeOutboxOnStartup } from './system-health-audit-outbox';
+
+// Wire the outbox to the real audit-service client. The outbox itself does
+// not import controlCenterServerApi so it can be loaded in tests without
+// pulling in next/headers et al.
+configureOutbox({ emitter: (payload) => controlCenterServerApi.auditIngest.emit(payload) });
 
 // Resume any pending audit emissions left over from a previous process.
 // Safe to call repeatedly — the outbox worker is idempotent.

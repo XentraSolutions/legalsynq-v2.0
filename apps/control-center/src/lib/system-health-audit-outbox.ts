@@ -2,7 +2,21 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import type { AuditIngestPayload } from '@/types/control-center';
-import { controlCenterServerApi } from './control-center-api';
+
+/**
+ * The outbox is decoupled from the audit-service client so that this module
+ * can be loaded — and tested — without pulling in next.js server-only code
+ * (next/headers, next/cache, ...) via control-center-api. The owning module
+ * (system-health-store) wires in the real emitter at startup via
+ * configureOutbox().
+ */
+export type AuditEmitter = (payload: AuditIngestPayload) => Promise<unknown>;
+
+let emitter: AuditEmitter | null = null;
+
+export function configureOutbox(opts: { emitter: AuditEmitter }): void {
+  emitter = opts.emitter;
+}
 
 /**
  * Durable retry queue ("outbox") for canonical audit emissions.
@@ -191,7 +205,13 @@ export async function processOutboxOnce(): Promise<{ delivered: number; failed: 
 
   for (const entry of due) {
     try {
-      await controlCenterServerApi.auditIngest.emit(entry.payload);
+      if (!emitter) {
+        throw new Error(
+          'system-health-audit-outbox: emitter is not configured. ' +
+          'Call configureOutbox({ emitter }) at startup.',
+        );
+      }
+      await emitter(entry.payload);
       updates.set(entry.id, null); // remove on success
       delivered += 1;
     } catch (err) {
