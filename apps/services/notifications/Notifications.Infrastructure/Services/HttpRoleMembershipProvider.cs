@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Caching.Memory;
@@ -30,6 +31,12 @@ public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider
     private readonly ILogger<HttpRoleMembershipProvider>      _logger;
     private readonly TimeSpan                                 _cacheTtl;
 
+    // Per-tenant version stamp included in cache keys. Bumping the value
+    // for a tenant invalidates every membership entry cached for that tenant
+    // because subsequent lookups compute a different key. Old entries fall
+    // out naturally when their TTL elapses.
+    private readonly ConcurrentDictionary<Guid, long> _tenantVersions = new();
+
     public HttpRoleMembershipProvider(
         IHttpClientFactory                  httpClientFactory,
         IOptions<IdentityServiceOptions>    options,
@@ -51,6 +58,22 @@ public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider
         Guid tenantId, string orgId) =>
         LookupAsync(tenantId, roleKey: null, orgId);
 
+    /// <summary>
+    /// Invalidate every cached membership entry for <paramref name="tenantId"/>
+    /// by bumping the per-tenant version stamp embedded in cache keys. Existing
+    /// entries become unreachable and the next lookup re-fetches from identity.
+    /// Called by the internal membership-cache invalidation endpoint when
+    /// identity emits a role/membership/user-deactivation change event.
+    /// </summary>
+    public void InvalidateTenant(Guid tenantId)
+    {
+        if (tenantId == Guid.Empty) return;
+        var newVersion = _tenantVersions.AddOrUpdate(tenantId, 1L, (_, v) => v + 1);
+        _logger.LogInformation(
+            "Membership cache invalidated for tenant {TenantId} (version now {Version}).",
+            tenantId, newVersion);
+    }
+
     private async Task<IReadOnlyList<ResolvedRecipient>> LookupAsync(
         Guid tenantId, string? roleKey, string? orgId)
     {
@@ -60,7 +83,8 @@ public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider
             return Array.Empty<ResolvedRecipient>();
         }
 
-        var cacheKey = $"notif:membership|{tenantId:N}|r={roleKey?.ToLowerInvariant() ?? "*"}|o={orgId ?? "*"}";
+        var version  = _tenantVersions.GetOrAdd(tenantId, 0L);
+        var cacheKey = $"notif:membership|{tenantId:N}|v={version}|r={roleKey?.ToLowerInvariant() ?? "*"}|o={orgId ?? "*"}";
 
         if (_cacheTtl > TimeSpan.Zero &&
             _cache.TryGetValue(cacheKey, out IReadOnlyList<ResolvedRecipient>? cached) &&

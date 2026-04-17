@@ -36,6 +36,9 @@ public sealed class IdentityServiceOptions
 
     /// <summary>
     /// TTL for the in-process membership cache, in seconds. Defaults to 60 s.
+    /// With identity-driven invalidation wired via
+    /// <c>POST /internal/membership-cache/invalidate</c> this can stay long
+    /// without sacrificing freshness.
     /// Set to 0 to disable caching (each fan-out hits identity).
     /// </summary>
     public int MembershipCacheSeconds { get; set; } = 60;

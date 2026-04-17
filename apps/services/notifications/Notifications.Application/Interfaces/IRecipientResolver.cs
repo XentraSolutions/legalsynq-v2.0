@@ -60,4 +60,17 @@ public interface IRoleMembershipProvider
 
     /// <summary>All members of <paramref name="orgId"/> within the tenant.</summary>
     Task<IReadOnlyList<ResolvedRecipient>> GetOrgMembersAsync(Guid tenantId, string orgId);
+
+    /// <summary>
+    /// Invalidate any cached membership lookups for <paramref name="tenantId"/>
+    /// so the next <see cref="GetRoleMembersAsync"/> / <see cref="GetOrgMembersAsync"/>
+    /// call re-fetches from the underlying source.
+    ///
+    /// Implementations that do not cache (no-op / in-memory test providers) may
+    /// safely ignore this call. The notifications service invokes this in
+    /// response to identity change events (role assigned/removed, user
+    /// deactivated, membership changed) so role/org-addressed fan-outs reflect
+    /// the new membership immediately rather than waiting for the cache TTL.
+    /// </summary>
+    void InvalidateTenant(Guid tenantId) { }
 }

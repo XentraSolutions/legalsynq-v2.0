@@ -3,6 +3,7 @@ using System.Text.Json;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
+using Identity.Infrastructure.Services;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
@@ -1346,11 +1347,12 @@ public static class AdminEndpoints
     /// Returns 404 if the user does not exist.
     /// </summary>
     private static async Task<IResult> DeactivateUser(
-        Guid              id,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        IAuditEventClient auditClient,
-        CancellationToken ct)
+        Guid                      id,
+        ClaimsPrincipal           caller,
+        IdentityDbContext         db,
+        IAuditEventClient         auditClient,
+        INotificationsCacheClient notificationsCache,
+        CancellationToken         ct)
     {
         var user = await db.Users
             .Include(u => u.Tenant)
@@ -1396,6 +1398,14 @@ public static class AdminEndpoints
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.deactivated", user.Id.ToString()),
             Tags = ["user-management", "lifecycle", "deactivation"],
         });
+
+        // Membership state changed for this tenant — drop the notifications
+        // service's cached role/org member lists so role-addressed alerts
+        // immediately stop including the deactivated user.
+        notificationsCache.InvalidateTenant(
+            user.TenantId,
+            eventType: "identity.user.deactivated",
+            reason:    $"user {user.Id} deactivated");
 
         return Results.NoContent();
     }
@@ -2766,11 +2776,12 @@ public static class AdminEndpoints
     /// 404 if user or role not found, 409 Conflict if the same scoped assignment exists.
     /// </summary>
     private static async Task<IResult> AssignRole(
-        Guid                 id,
-        AssignRoleRequest    body,
-        IdentityDbContext    db,
-        IAuditEventClient    auditClient,
-        HttpContext          ctx)
+        Guid                      id,
+        AssignRoleRequest         body,
+        IdentityDbContext         db,
+        IAuditEventClient         auditClient,
+        INotificationsCacheClient notificationsCache,
+        HttpContext               ctx)
     {
         var user = await db.Users.FindAsync(id);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
@@ -2904,6 +2915,13 @@ public static class AdminEndpoints
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.role.assigned", sra.Id.ToString()),
             Tags = ["role-management", "access-control"],
         });
+
+        // Role membership for this tenant changed — invalidate the notifications
+        // service's cache so the next role-addressed fan-out includes this user.
+        notificationsCache.InvalidateTenant(
+            user.TenantId,
+            eventType: "identity.role.assigned",
+            reason:    $"role {body.RoleId} assigned to user {id}");
 
         return Results.Created(
             $"/api/admin/users/{id}/roles/{body.RoleId}",
@@ -3108,11 +3126,12 @@ public static class AdminEndpoints
     /// Returns 204 No Content on success, 404 if user or assignment not found.
     /// </summary>
     private static async Task<IResult> RevokeRole(
-        Guid              id,
-        Guid              roleId,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        IAuditEventClient auditClient)
+        Guid                      id,
+        Guid                      roleId,
+        ClaimsPrincipal           caller,
+        IdentityDbContext         db,
+        IAuditEventClient         auditClient,
+        INotificationsCacheClient notificationsCache)
     {
         var user = await db.Users.FindAsync(id);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
@@ -3153,6 +3172,13 @@ public static class AdminEndpoints
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.role.removed", id.ToString(), roleId.ToString()),
             Tags = ["role-management", "access-control"],
         });
+
+        // Role membership for this tenant changed — invalidate the notifications
+        // service's cache so the next role-addressed fan-out drops this user.
+        notificationsCache.InvalidateTenant(
+            user.TenantId,
+            eventType: "identity.role.removed",
+            reason:    $"role {roleId} removed from user {id}");
 
         return Results.NoContent();
     }
@@ -3493,11 +3519,12 @@ public static class AdminEndpoints
     /// Assigns the user to an organization with the given member role.
     /// </summary>
     private static async Task<IResult> AssignMembership(
-        Guid                    id,
-        AssignMembershipRequest body,
-        ClaimsPrincipal         caller,
-        IdentityDbContext       db,
-        CancellationToken       ct)
+        Guid                      id,
+        AssignMembershipRequest   body,
+        ClaimsPrincipal           caller,
+        IdentityDbContext         db,
+        INotificationsCacheClient notificationsCache,
+        CancellationToken         ct)
     {
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
@@ -3526,6 +3553,13 @@ public static class AdminEndpoints
         db.UserOrganizationMemberships.Add(membership);
         await db.SaveChangesAsync(ct);
 
+        // Org membership for this tenant changed — refresh notifications so
+        // org-addressed fan-out reflects the new member immediately.
+        notificationsCache.InvalidateTenant(
+            user.TenantId,
+            eventType: "identity.membership.changed",
+            reason:    $"user {id} added to organization {body.OrganizationId}");
+
         return Results.Created(
             $"/api/admin/users/{id}/memberships/{membership.Id}",
             new
@@ -3544,11 +3578,12 @@ public static class AdminEndpoints
     /// Clears the primary flag on any other memberships.
     /// </summary>
     private static async Task<IResult> SetPrimaryMembership(
-        Guid              id,
-        Guid              membershipId,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        CancellationToken ct)
+        Guid                      id,
+        Guid                      membershipId,
+        ClaimsPrincipal           caller,
+        IdentityDbContext         db,
+        INotificationsCacheClient notificationsCache,
+        CancellationToken         ct)
     {
         // UIX-003-01: load user to enforce TenantAdmin tenant boundary.
         var user = await db.Users.FindAsync([id], ct);
@@ -3567,6 +3602,17 @@ public static class AdminEndpoints
         target.SetPrimary();
 
         await db.SaveChangesAsync(ct);
+
+        // Primary org changed — org-addressed fan-out keys recipients by org,
+        // so refresh notifications' membership cache for this tenant.
+        if (user is not null)
+        {
+            notificationsCache.InvalidateTenant(
+                user.TenantId,
+                eventType: "identity.membership.changed",
+                reason:    $"primary membership for user {id} set to {membershipId}");
+        }
+
         return Results.NoContent();
     }
 
@@ -3578,11 +3624,12 @@ public static class AdminEndpoints
     ///     (caller must designate a new primary first via set-primary).
     /// </summary>
     private static async Task<IResult> RemoveMembership(
-        Guid              id,
-        Guid              membershipId,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        CancellationToken ct)
+        Guid                      id,
+        Guid                      membershipId,
+        ClaimsPrincipal           caller,
+        IdentityDbContext         db,
+        INotificationsCacheClient notificationsCache,
+        CancellationToken         ct)
     {
         // UIX-003-01: load user to enforce TenantAdmin tenant boundary.
         var user = await db.Users.FindAsync([id], ct);
@@ -3617,6 +3664,17 @@ public static class AdminEndpoints
 
         membership.Deactivate();
         await db.SaveChangesAsync(ct);
+
+        // Org membership removed — refresh notifications so org-addressed
+        // fan-out drops this user immediately.
+        if (user is not null)
+        {
+            notificationsCache.InvalidateTenant(
+                user.TenantId,
+                eventType: "identity.membership.changed",
+                reason:    $"user {id} removed from organization {membership.OrganizationId}");
+        }
+
         return Results.NoContent();
     }
 

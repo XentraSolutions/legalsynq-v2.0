@@ -74,6 +74,23 @@ public static class DependencyInjection
         services.AddScoped<IProductProvisioningService, ProductProvisioningService>();
 
         services.AddScoped<IAuditPublisher, AuditPublisher>();
+
+        // Notifications cache invalidation client — fire-and-observe HTTP call
+        // to notifications when role/membership events occur, so role-addressed
+        // notifications reflect the new membership immediately rather than
+        // waiting for the notifications service's TTL-based cache to expire.
+        services.AddOptions<NotificationsServiceOptions>()
+                .Bind(configuration.GetSection(NotificationsServiceOptions.SectionName));
+        services.AddHttpClient("NotificationsService");
+        var notificationsBaseUrl = configuration[$"{NotificationsServiceOptions.SectionName}:BaseUrl"];
+        if (!string.IsNullOrWhiteSpace(notificationsBaseUrl))
+        {
+            services.AddSingleton<INotificationsCacheClient, NotificationsCacheClient>();
+        }
+        else
+        {
+            services.AddSingleton<INotificationsCacheClient, NoOpNotificationsCacheClient>();
+        }
         services.AddScoped<ITenantProductEntitlementService, TenantProductEntitlementService>();
         services.AddScoped<IUserProductAccessService, UserProductAccessService>();
         services.AddScoped<IUserRoleAssignmentService, UserRoleAssignmentService>();

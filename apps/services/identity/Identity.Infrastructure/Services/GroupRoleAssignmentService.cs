@@ -11,12 +11,18 @@ public class GroupRoleAssignmentService : IGroupRoleAssignmentService
 {
     private readonly IdentityDbContext _db;
     private readonly IAuditPublisher _audit;
+    private readonly INotificationsCacheClient _notificationsCache;
     private readonly ILogger<GroupRoleAssignmentService> _logger;
 
-    public GroupRoleAssignmentService(IdentityDbContext db, IAuditPublisher audit, ILogger<GroupRoleAssignmentService> logger)
+    public GroupRoleAssignmentService(
+        IdentityDbContext db,
+        IAuditPublisher audit,
+        INotificationsCacheClient notificationsCache,
+        ILogger<GroupRoleAssignmentService> logger)
     {
         _db = db;
         _audit = audit;
+        _notificationsCache = notificationsCache;
         _logger = logger;
     }
 
@@ -75,6 +81,13 @@ public class GroupRoleAssignmentService : IGroupRoleAssignmentService
             "GroupRoleAssignment", assignment.Id.ToString(),
             after: JsonSerializer.Serialize(new { assignment.GroupId, assignment.RoleCode, assignment.ProductCode, assignment.AssignmentStatus }));
 
+        // Group role binding changes the effective membership of every user
+        // in the group — refresh notifications' cache for this tenant.
+        _notificationsCache.InvalidateTenant(
+            tenantId,
+            eventType: "identity.group.role.assigned",
+            reason:    $"role {roleCode} assigned to group {groupId}");
+
         return assignment;
     }
 
@@ -99,6 +112,13 @@ public class GroupRoleAssignmentService : IGroupRoleAssignmentService
             "GroupRoleAssignment", existing.Id.ToString(),
             before: before,
             after: JsonSerializer.Serialize(new { existing.AssignmentStatus, existing.RemovedAtUtc }));
+
+        // Group role binding removed — refresh notifications' cache so all
+        // group members drop out of role-addressed fan-out immediately.
+        _notificationsCache.InvalidateTenant(
+            tenantId,
+            eventType: "identity.group.role.removed",
+            reason:    $"role {existing.RoleCode} removed from group {groupId}");
 
         return true;
     }

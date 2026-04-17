@@ -11,15 +11,18 @@ public class UserRoleAssignmentService : IUserRoleAssignmentService
 {
     private readonly IdentityDbContext _db;
     private readonly IAuditPublisher _audit;
+    private readonly INotificationsCacheClient _notificationsCache;
     private readonly ILogger<UserRoleAssignmentService> _logger;
 
     public UserRoleAssignmentService(
         IdentityDbContext db,
         IAuditPublisher audit,
+        INotificationsCacheClient notificationsCache,
         ILogger<UserRoleAssignmentService> logger)
     {
         _db = db;
         _audit = audit;
+        _notificationsCache = notificationsCache;
         _logger = logger;
     }
 
@@ -81,6 +84,12 @@ public class UserRoleAssignmentService : IUserRoleAssignmentService
             "UserRoleAssignment", assignment.Id.ToString(),
             after: JsonSerializer.Serialize(new { assignment.TenantId, assignment.UserId, assignment.RoleCode, assignment.ProductCode, assignment.AssignmentStatus }));
 
+        // Membership for this tenant changed — refresh notifications' cache.
+        _notificationsCache.InvalidateTenant(
+            tenantId,
+            eventType: "identity.user.role.assigned",
+            reason:    $"role {roleCode} assigned to user {userId}");
+
         return assignment;
     }
 
@@ -108,6 +117,12 @@ public class UserRoleAssignmentService : IUserRoleAssignmentService
             "UserRoleAssignment", existing.Id.ToString(),
             before: beforeJson,
             after: JsonSerializer.Serialize(new { existing.AssignmentStatus, existing.RemovedAtUtc }));
+
+        // Membership for this tenant changed — refresh notifications' cache.
+        _notificationsCache.InvalidateTenant(
+            tenantId,
+            eventType: "identity.user.role.removed",
+            reason:    $"role {existing.RoleCode} removed from user {existing.UserId}");
 
         return true;
     }

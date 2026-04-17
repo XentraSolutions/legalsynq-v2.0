@@ -11,12 +11,18 @@ public class GroupMembershipService : IGroupMembershipService
 {
     private readonly IdentityDbContext _db;
     private readonly IAuditPublisher _audit;
+    private readonly INotificationsCacheClient _notificationsCache;
     private readonly ILogger<GroupMembershipService> _logger;
 
-    public GroupMembershipService(IdentityDbContext db, IAuditPublisher audit, ILogger<GroupMembershipService> logger)
+    public GroupMembershipService(
+        IdentityDbContext db,
+        IAuditPublisher audit,
+        INotificationsCacheClient notificationsCache,
+        ILogger<GroupMembershipService> logger)
     {
         _db = db;
         _audit = audit;
+        _notificationsCache = notificationsCache;
         _logger = logger;
     }
 
@@ -63,6 +69,13 @@ public class GroupMembershipService : IGroupMembershipService
             "AccessGroupMembership", membership.Id.ToString(),
             after: JsonSerializer.Serialize(new { membership.GroupId, membership.UserId }));
 
+        // Adding a user to a group changes their effective role membership
+        // (groups grant roles via GroupRoleAssignment) — refresh notifications.
+        _notificationsCache.InvalidateTenant(
+            tenantId,
+            eventType: "identity.group.member.added",
+            reason:    $"user {userId} added to group {groupId}");
+
         return membership;
     }
 
@@ -88,6 +101,13 @@ public class GroupMembershipService : IGroupMembershipService
             tenantId, actorUserId,
             "AccessGroupMembership", membership.Id.ToString(),
             after: JsonSerializer.Serialize(new { membership.GroupId, membership.UserId, membership.MembershipStatus }));
+
+        // Removing a user from a group strips group-granted roles — refresh
+        // notifications so role-addressed alerts drop the user immediately.
+        _notificationsCache.InvalidateTenant(
+            tenantId,
+            eventType: "identity.group.member.removed",
+            reason:    $"user {userId} removed from group {groupId}");
 
         return true;
     }
