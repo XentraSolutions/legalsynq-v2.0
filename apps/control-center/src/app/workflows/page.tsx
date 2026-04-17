@@ -118,6 +118,13 @@ export default async function WorkflowsPage({ searchParams }: WorkflowsPageProps
               </span>
             )}
           </div>
+          <a
+            href="/workflows/exceptions"
+            className="inline-flex items-center gap-1.5 text-xs text-amber-700 hover:underline"
+          >
+            <i className="ri-error-warning-line" aria-hidden="true" />
+            View exceptions
+          </a>
         </div>
 
         {/* Filters */}

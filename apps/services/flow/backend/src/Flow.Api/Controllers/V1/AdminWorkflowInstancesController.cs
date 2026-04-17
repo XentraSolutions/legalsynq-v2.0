@@ -35,6 +35,27 @@ public class AdminWorkflowInstancesController : ControllerBase
     private const int DefaultPageSize = 20;
     private const int MaxPageSize = 100;
 
+    /// <summary>
+    /// E9.3 — default "stale" threshold for the Stuck classification when
+    /// the caller does not pass <c>staleThresholdHours</c>. 24h is the
+    /// safe baseline: any Active/Pending workflow that has not been
+    /// touched (UpdatedAt ?? CreatedAt) within the last day is flagged.
+    /// </summary>
+    private const int DefaultStaleThresholdHours = 24;
+    private const int MinStaleThresholdHours     = 1;
+    private const int MaxStaleThresholdHours     = 24 * 30; // 30d ceiling
+
+    /// <summary>
+    /// E9.3 — supported classification labels for the exception view.
+    /// Kept as constants so server-side filtering and per-row tagging
+    /// agree on the exact spelling. Multiple labels can apply to a single
+    /// row (e.g. a Failed workflow that also has a lastErrorMessage).
+    /// </summary>
+    private const string ClassFailed       = "Failed";
+    private const string ClassCancelled    = "Cancelled";
+    private const string ClassStuck        = "Stuck";
+    private const string ClassErrorPresent = "ErrorPresent";
+
     private readonly IFlowDbContext _db;
     private readonly ITenantProvider _tenantProvider;
     private readonly ILogger<AdminWorkflowInstancesController> _logger;
@@ -57,10 +78,38 @@ public class AdminWorkflowInstancesController : ControllerBase
         [FromQuery] string? search,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = DefaultPageSize,
+        // ── E9.3 — exception / stuck triage filters ──────────────────────
+        // All three are optional. When omitted, the endpoint returns the
+        // identical response shape and ordering as the E9.1 surface so
+        // existing callers are unaffected.
+        [FromQuery] bool exceptionOnly = false,
+        [FromQuery] string? classification = null,
+        [FromQuery] int? staleThresholdHours = null,
         CancellationToken ct = default)
     {
         var p  = page < 1 ? 1 : page;
         var ps = pageSize < 1 ? DefaultPageSize : Math.Min(pageSize, MaxPageSize);
+
+        // Clamp the stale threshold and compute a single cut-off timestamp
+        // so the SQL predicate stays index-friendly (no per-row date math).
+        var staleHours = staleThresholdHours
+            is int sh && sh >= MinStaleThresholdHours
+            ? Math.Min(sh, MaxStaleThresholdHours)
+            : DefaultStaleThresholdHours;
+        var staleCutoff = DateTime.UtcNow.AddHours(-staleHours);
+
+        // Normalise an explicit classification filter (UI sends one of the
+        // constants below). An unknown value is silently ignored so a
+        // bad/legacy URL still returns a stable response.
+        var classFilter = classification?.Trim();
+        if (!string.IsNullOrEmpty(classFilter)
+            && classFilter != ClassFailed
+            && classFilter != ClassCancelled
+            && classFilter != ClassStuck
+            && classFilter != ClassErrorPresent)
+        {
+            classFilter = null;
+        }
 
         var isPlatformAdmin = User.IsInRole(Roles.PlatformAdmin);
 
@@ -114,6 +163,49 @@ public class AdminWorkflowInstancesController : ControllerBase
                 (w.CorrelationKey != null && EF.Functions.Like(w.CorrelationKey, pattern)) ||
                 (w.CurrentStepKey != null && EF.Functions.Like(w.CurrentStepKey, pattern)) ||
                 EF.Functions.Like(w.Id.ToString(), pattern));
+        }
+
+        // ── E9.3 — exception / stuck server-side narrowing ───────────────
+        //
+        // RULES (deterministic; surfaced verbatim as per-row classifications):
+        //   Failed       : Status == "Failed"
+        //   Cancelled    : Status == "Cancelled"
+        //   Stuck        : Status in ("Active","Pending") AND
+        //                  (UpdatedAt ?? CreatedAt) < staleCutoff
+        //   ErrorPresent : LastErrorMessage IS NOT NULL AND length > 0
+        //
+        // exceptionOnly=true → row must match at least ONE classification.
+        // classification=<X> → row must match that specific classification
+        //                      (implies exceptionOnly).
+        var requireExceptions = exceptionOnly || classFilter != null;
+
+        if (classFilter == ClassFailed)
+        {
+            q = q.Where(w => w.Status == "Failed");
+        }
+        else if (classFilter == ClassCancelled)
+        {
+            q = q.Where(w => w.Status == "Cancelled");
+        }
+        else if (classFilter == ClassStuck)
+        {
+            q = q.Where(w =>
+                (w.Status == "Active" || w.Status == "Pending")
+                && (w.UpdatedAt ?? w.CreatedAt) < staleCutoff);
+        }
+        else if (classFilter == ClassErrorPresent)
+        {
+            q = q.Where(w => w.LastErrorMessage != null && w.LastErrorMessage != "");
+        }
+        else if (requireExceptions)
+        {
+            // exceptionOnly with no specific classification → union of all rules.
+            q = q.Where(w =>
+                w.Status == "Failed"
+                || w.Status == "Cancelled"
+                || ((w.Status == "Active" || w.Status == "Pending")
+                    && (w.UpdatedAt ?? w.CreatedAt) < staleCutoff)
+                || (w.LastErrorMessage != null && w.LastErrorMessage != ""));
         }
 
         var total = await q.CountAsync(ct);
@@ -173,19 +265,51 @@ public class AdminWorkflowInstancesController : ControllerBase
             CompletedAt          = r.Instance.CompletedAt,
             UpdatedAt            = r.Instance.UpdatedAt,
             CreatedAt            = r.Instance.CreatedAt,
+            LastErrorMessage     = r.Instance.LastErrorMessage,
+            // E9.3 — same rules as the server-side filter, evaluated in
+            // memory after projection so callers always get the per-row
+            // classifications regardless of whether they passed
+            // exceptionOnly. Multiple labels can apply.
+            Classifications      = ClassifyRow(
+                r.Instance.Status,
+                r.Instance.UpdatedAt ?? r.Instance.CreatedAt,
+                r.Instance.LastErrorMessage,
+                staleCutoff),
         }).ToList();
 
         _logger.LogInformation(
-            "AdminWorkflowInstances.List platformAdmin={IsPlatformAdmin} count={Count} total={Total} filters: product={ProductKey} status={Status} tenant={TenantId} search={SearchPresent}",
-            isPlatformAdmin, items.Count, total, productKey, status, tenantId, !string.IsNullOrWhiteSpace(search));
+            "AdminWorkflowInstances.List platformAdmin={IsPlatformAdmin} count={Count} total={Total} filters: product={ProductKey} status={Status} tenant={TenantId} search={SearchPresent} exceptionOnly={ExceptionOnly} classification={Classification} staleHours={StaleHours}",
+            isPlatformAdmin, items.Count, total, productKey, status, tenantId, !string.IsNullOrWhiteSpace(search),
+            exceptionOnly, classFilter, staleHours);
 
         return Ok(new AdminWorkflowInstanceListResponse
         {
-            Items     = items,
-            TotalCount = total,
-            Page      = p,
-            PageSize  = ps,
+            Items              = items,
+            TotalCount         = total,
+            Page               = p,
+            PageSize           = ps,
+            StaleThresholdHours = staleHours,
         });
+    }
+
+    /// <summary>
+    /// E9.3 — pure classifier shared between the server-side filter
+    /// (LINQ-to-SQL above) and per-row tagging (in-memory here). Returns
+    /// every label that applies; an empty list means "healthy".
+    /// </summary>
+    private static List<string> ClassifyRow(
+        string status,
+        DateTime lastTouchedUtc,
+        string? lastErrorMessage,
+        DateTime staleCutoffUtc)
+    {
+        var labels = new List<string>(capacity: 2);
+        if (status == "Failed")    labels.Add(ClassFailed);
+        if (status == "Cancelled") labels.Add(ClassCancelled);
+        if ((status == "Active" || status == "Pending") && lastTouchedUtc < staleCutoffUtc)
+            labels.Add(ClassStuck);
+        if (!string.IsNullOrEmpty(lastErrorMessage)) labels.Add(ClassErrorPresent);
+        return labels;
     }
 
     /// <summary>
@@ -323,6 +447,20 @@ public sealed record AdminWorkflowInstanceListItem
     public DateTime? CompletedAt { get; init; }
     public DateTime? UpdatedAt { get; init; }
     public DateTime CreatedAt { get; init; }
+
+    /// <summary>
+    /// E9.3 — last engine error message, surfaced on the row so the
+    /// exception view can show a truncated preview without a second
+    /// detail call. Always returned (null when none) for E9.1 callers.
+    /// </summary>
+    public string? LastErrorMessage { get; init; }
+
+    /// <summary>
+    /// E9.3 — every classification label that applies to this row. Empty
+    /// list means "no current exception". Multiple labels are possible
+    /// (e.g. <c>["Failed","ErrorPresent"]</c>).
+    /// </summary>
+    public List<string> Classifications { get; init; } = new();
 }
 
 public sealed record AdminWorkflowInstanceListResponse
@@ -331,4 +469,11 @@ public sealed record AdminWorkflowInstanceListResponse
     public int TotalCount { get; init; }
     public int Page { get; init; }
     public int PageSize { get; init; }
+
+    /// <summary>
+    /// E9.3 — stale threshold (in hours) used to evaluate the "Stuck"
+    /// classification for this response. Echoed back so the UI can label
+    /// the column / filter chip ("Stuck >24h") without guessing.
+    /// </summary>
+    public int StaleThresholdHours { get; init; }
 }

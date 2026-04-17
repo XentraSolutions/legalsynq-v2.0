@@ -1074,6 +1074,42 @@ export interface WorkflowInstanceListItem {
   completedAt:          string | null;
   updatedAt:            string | null;
   createdAt:            string;
+  /**
+   * E9.3 — last engine error preview surfaced on the list row so the
+   * exception view can show a truncated message without a second call.
+   * Always present (null when none).
+   */
+  lastErrorMessage?:    string | null;
+  /**
+   * E9.3 — server-evaluated classification labels for this row. Empty
+   * array means "no current exception". May contain multiple values
+   * (e.g. `['Failed','ErrorPresent']`).
+   */
+  classifications?:     WorkflowClassification[];
+}
+
+/**
+ * E9.3 — supported exception/stuck classification labels. Kept in sync
+ * with `AdminWorkflowInstancesController` constants on the Flow side.
+ */
+export type WorkflowClassification =
+  | 'Failed'
+  | 'Cancelled'
+  | 'Stuck'
+  | 'ErrorPresent';
+
+/**
+ * E9.3 — paged response shape returned by the admin list endpoint when
+ * exception filters are in play. Identical to the E9.1 paged response
+ * with one additional field surfacing the stale threshold the server
+ * used so the UI can label things like "Stuck >24h" without guessing.
+ */
+export interface WorkflowInstancePagedResponse {
+  items:               WorkflowInstanceListItem[];
+  totalCount:          number;
+  page:                number;
+  pageSize:            number;
+  staleThresholdHours: number;
 }
 
 /**

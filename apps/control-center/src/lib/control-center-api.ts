@@ -142,6 +142,7 @@ import type {
   SupportedFieldsResponse,
   WorkflowInstanceListItem,
   WorkflowInstanceDetail,
+  WorkflowInstancePagedResponse,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -185,6 +186,12 @@ function mapWorkflowInstanceListItem(raw: unknown): WorkflowInstanceListItem {
     completedAt:          s(r.completedAt),
     updatedAt:            s(r.updatedAt),
     createdAt:            String(r.createdAt ?? ''),
+    lastErrorMessage:     s(r.lastErrorMessage),
+    classifications:      Array.isArray(r.classifications)
+      ? (r.classifications as unknown[]).map(c => String(c)).filter(c =>
+          c === 'Failed' || c === 'Cancelled' || c === 'Stuck' || c === 'ErrorPresent'
+        ) as WorkflowInstanceListItem['classifications']
+      : [],
   };
 }
 
@@ -2003,6 +2010,55 @@ export const controlCenterServerApi = {
         totalCount: raw?.totalCount ?? 0,
         page:       raw?.page       ?? (params.page     ?? 1),
         pageSize:   raw?.pageSize   ?? (params.pageSize ?? 20),
+      };
+    },
+
+    /**
+     * E9.3 — list workflow instances that match one or more
+     * exception/stuck classifications. Calls the same admin endpoint as
+     * `list()` with `exceptionOnly=true` so the UI can render a focused
+     * triage table without duplicating the underlying handler. Returns
+     * the per-row `classifications` and the server-evaluated stale
+     * threshold (echoed on the response) so labels stay in sync.
+     */
+    listExceptions: async (params: {
+      page?:                number;
+      pageSize?:            number;
+      productKey?:          string;
+      status?:              string;
+      tenantId?:            string;
+      search?:              string;
+      classification?:      string;
+      staleThresholdHours?: number;
+    }): Promise<WorkflowInstancePagedResponse> => {
+      const qs = buildQuery({
+        page:                params.page,
+        pageSize:            params.pageSize,
+        productKey:          params.productKey,
+        status:              params.status,
+        tenantId:            params.tenantId,
+        search:              params.search,
+        exceptionOnly:       true,
+        classification:      params.classification,
+        staleThresholdHours: params.staleThresholdHours,
+      });
+      const raw = await apiClient.get<{
+        items?:               unknown[];
+        totalCount?:          number;
+        page?:                number;
+        pageSize?:            number;
+        staleThresholdHours?: number;
+      }>(
+        `/flow/api/v1/admin/workflow-instances${qs}`,
+        10,
+        [CACHE_TAGS.workflows],
+      );
+      return {
+        items:               (raw?.items ?? []).map(mapWorkflowInstanceListItem),
+        totalCount:          raw?.totalCount ?? 0,
+        page:                raw?.page                ?? (params.page     ?? 1),
+        pageSize:            raw?.pageSize            ?? (params.pageSize ?? 20),
+        staleThresholdHours: raw?.staleThresholdHours ?? (params.staleThresholdHours ?? 24),
       };
     },
 
