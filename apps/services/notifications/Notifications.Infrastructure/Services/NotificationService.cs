@@ -73,38 +73,221 @@ public class NotificationServiceImpl : INotificationService
         if (!isFanOut)
             return await DispatchSingleAsync(tenantId, request, recipientJson);
 
-        // Resolver expands every envelope (single object or array) and
-        // deduplicates the union by ResolvedRecipient.StableKey so a user
-        // matched by multiple addressed roles/orgs is delivered only once.
-        var resolved = await _recipientResolver.ResolveAsync(tenantId, recipientEl);
-        if (resolved.Count == 0)
+        // Role/Org/Batch fan-out: resolver expands every envelope (single
+        // object or array) and dedupes the union by StableKey, then we
+        // persist a parent "fan-out summary" notification capturing how
+        // many users were resolved, delivered, blocked, or skipped — and
+        // why — so operators can diagnose envelopes that unexpectedly
+        // delivered to nobody. The idempotency key applies to the parent;
+        // re-submitting must return the existing parent rather than
+        // violating the (TenantId, IdempotencyKey) unique index.
+        if (!string.IsNullOrEmpty(request.IdempotencyKey))
         {
-            // Persist a single blocked notification so producers see the empty fan-out.
-            var emptyReasonMode = mode ?? (recipientEl.ValueKind == JsonValueKind.Array ? "Batch" : "FanOut");
-            var notification = new Notification
-            {
-                TenantId = tenantId, Channel = request.Channel, Status = "blocked",
-                RecipientJson = recipientJson,
-                MessageJson = JsonSerializer.Serialize(request.Message),
-                MetadataJson = request.Metadata != null ? JsonSerializer.Serialize(request.Metadata) : null,
-                IdempotencyKey = request.IdempotencyKey, TemplateKey = request.TemplateKey,
-                BlockedByPolicy = true, BlockedReasonCode = "recipient_set_empty",
-                LastErrorMessage = $"No members resolved for {emptyReasonMode} recipient"
-            };
-            notification = await _notificationRepo.CreateAsync(notification);
-            _logger.LogWarning("Notification fan-out resolved 0 recipients for tenant {TenantId} mode {Mode}", tenantId, emptyReasonMode);
-            return MapToResult(notification);
+            var existing = await _notificationRepo.FindByIdempotencyKeyAsync(tenantId, request.IdempotencyKey);
+            if (existing != null)
+                return MapToResult(existing);
         }
 
-        var results = new List<NotificationResultDto>(resolved.Count);
+<<<<<<< HEAD
+        var fanOutMode = mode ?? (recipientEl.ValueKind == JsonValueKind.Array ? "Batch" : "FanOut");
+        var resolved   = await _recipientResolver.ResolveAsync(tenantId, recipientEl);
+        var roleKey    = ReadRecipientField(recipientEl, "roleKey");
+        var orgId      = ReadRecipientField(recipientEl, "orgId");
+=======
+        var resolved = await _recipientResolver.ResolveAsync(tenantId, recipientEl);
+        var roleKey  = ReadRecipientField(recipientEl, "roleKey");
+        var orgId    = ReadRecipientField(recipientEl, "orgId");
+>>>>>>> 5264eabc (Show how role/org notifications fanned out (members reached, blocked, skipped))
+
+        var perRecipient = new List<FanOutPerRecipient>(resolved.Count);
+        var dispatched   = new List<NotificationResultDto>(resolved.Count);
+
         foreach (var r in resolved)
         {
+            var skipReason = ClassifySkipReason(request.Channel, r);
+            if (skipReason != null)
+            {
+                perRecipient.Add(new FanOutPerRecipient
+                {
+                    UserId = r.UserId, Email = r.Email, OrgId = r.OrgId,
+                    Status = "skipped", Reason = skipReason,
+                });
+                continue;
+            }
+
             var perRequest = ClonePerRecipient(request, r);
             var perRecipientJson = JsonSerializer.Serialize(perRequest.Recipient);
-            results.Add(await DispatchSingleAsync(tenantId, perRequest, perRecipientJson));
+            var dispatchResult = await DispatchSingleAsync(tenantId, perRequest, perRecipientJson);
+            dispatched.Add(dispatchResult);
+
+            perRecipient.Add(new FanOutPerRecipient
+            {
+                UserId = r.UserId, Email = r.Email, OrgId = r.OrgId,
+                Status = dispatchResult.Status,
+                Reason = dispatchResult.BlockedReasonCode ?? dispatchResult.FailureCategory,
+                NotificationId = dispatchResult.Id == Guid.Empty ? null : dispatchResult.Id.ToString(),
+            });
         }
 
-        return AggregateFanOutResult(results);
+        var summary = BuildFanOutSummary(fanOutMode, roleKey, orgId, request.Channel, resolved.Count, perRecipient);
+        var parent  = await PersistFanOutParentAsync(tenantId, request, recipientJson, summary);
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType = "notification.fanout",
+                Action = "notification.fanout",
+                SourceSystem = "notifications",
+                Description = $"Fan-out {fanOutMode}: resolved={summary.TotalResolved} sent={summary.SentCount} " +
+                              $"failed={summary.FailedCount} blocked={summary.BlockedCount} skipped={summary.SkippedCount}",
+                Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() }
+            });
+        }
+        catch { /* audit best-effort */ }
+
+        if (resolved.Count == 0)
+        {
+            _logger.LogWarning("Notification fan-out resolved 0 recipients for tenant {TenantId} mode {Mode}", tenantId, fanOutMode);
+        }
+
+        return BuildFanOutResult(parent, summary, dispatched);
+    }
+
+    // Skip members that cannot be reached on the requested channel so the
+    // fan-out summary records a clear reason instead of a doomed dispatch.
+    // Note: ResolvedRecipient has no phone today, so sms always skips.
+    private static string? ClassifySkipReason(string channel, ResolvedRecipient r)
+    {
+        var ch = channel?.Trim().ToLowerInvariant();
+        return ch switch
+        {
+            "email"          => string.IsNullOrWhiteSpace(r.Email)  ? "no_email_on_file" : null,
+            "sms"            => "no_phone_on_file",
+            "push"           => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_push" : null,
+            "in-app" or "inapp" => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_inapp" : null,
+            _                => null,
+        };
+    }
+
+    private async Task<Notification> PersistFanOutParentAsync(
+        Guid tenantId, SubmitNotificationDto request, string recipientJson, FanOutSummary summary)
+    {
+        // Merge summary into MetadataJson under "fanout" so the UI can read
+        // it without a schema migration; producer keys are preserved.
+        Dictionary<string, object?> metaDict;
+        if (request.Metadata != null)
+        {
+            try
+            {
+                var existing = JsonSerializer.Serialize(request.Metadata);
+                metaDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(existing) ?? new();
+            }
+            catch { metaDict = new(); }
+        }
+        else
+        {
+            metaDict = new();
+        }
+        // CamelCase so the web UI can read predictable JSON keys.
+        var camelOpts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        var summaryJson = JsonSerializer.Serialize(summary, camelOpts);
+        metaDict["fanout"] = JsonSerializer.Deserialize<JsonElement>(summaryJson);
+
+        var status =
+            summary.TotalResolved == 0                              ? "blocked" :
+            summary.SentCount     == summary.TotalResolved          ? "sent"    :
+            summary.SentCount     == 0 && summary.FailedCount  == 0 ? "blocked" :
+            summary.SentCount     == 0                              ? "failed"  :
+                                                                      "partial";
+
+        var parent = new Notification
+        {
+            TenantId = tenantId,
+            Channel  = request.Channel,
+            Status   = status,
+            RecipientJson = recipientJson,
+            MessageJson   = JsonSerializer.Serialize(request.Message),
+            MetadataJson  = JsonSerializer.Serialize(metaDict),
+            IdempotencyKey = request.IdempotencyKey,
+            TemplateKey    = request.TemplateKey,
+            BlockedByPolicy = status == "blocked",
+            BlockedReasonCode = summary.TotalResolved == 0 ? "recipient_set_empty" : null,
+            // Only surface a "last error" string for non-successful outcomes;
+            // fan-out counts always live in MetadataJson.fanout for the UI.
+            LastErrorMessage = status == "sent"
+                ? null
+                : $"fanout: resolved={summary.TotalResolved} sent={summary.SentCount} " +
+                  $"failed={summary.FailedCount} blocked={summary.BlockedCount} skipped={summary.SkippedCount}",
+            Severity = request.Severity,
+            Category = request.Category,
+        };
+        return await _notificationRepo.CreateAsync(parent);
+    }
+
+    private static FanOutSummary BuildFanOutSummary(
+        string? mode, string? roleKey, string? orgId, string channel,
+        int totalResolved, List<FanOutPerRecipient> perRecipient)
+    {
+        var sent    = perRecipient.Count(p => p.Status == "sent");
+        var failed  = perRecipient.Count(p => p.Status == "failed");
+        var blocked = perRecipient.Count(p => p.Status == "blocked");
+        var skipped = perRecipient.Count(p => p.Status == "skipped");
+
+        var skippedByReason = perRecipient
+            .Where(p => p.Status == "skipped" && !string.IsNullOrEmpty(p.Reason))
+            .GroupBy(p => p.Reason!)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var blockedByReason = perRecipient
+            .Where(p => p.Status == "blocked" && !string.IsNullOrEmpty(p.Reason))
+            .GroupBy(p => p.Reason!)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        return new FanOutSummary
+        {
+            Mode = mode,
+            RoleKey = roleKey,
+            OrgId = orgId,
+            Channel = channel,
+            TotalResolved = totalResolved,
+            SentCount = sent,
+            FailedCount = failed,
+            BlockedCount = blocked,
+            SkippedCount = skipped,
+            DeliveredByChannel = sent > 0
+                ? new Dictionary<string, int> { [channel] = sent }
+                : new Dictionary<string, int>(),
+            SkippedByReason = skippedByReason,
+            BlockedByReason = blockedByReason,
+            Recipients = perRecipient,
+        };
+    }
+
+    private static NotificationResultDto BuildFanOutResult(
+        Notification parent, FanOutSummary summary, List<NotificationResultDto> dispatched) => new()
+    {
+        Id = parent.Id,
+        Status = parent.Status,
+        ProviderUsed = dispatched.FirstOrDefault(r => !string.IsNullOrEmpty(r.ProviderUsed))?.ProviderUsed,
+        PlatformFallbackUsed = dispatched.Any(r => r.PlatformFallbackUsed),
+        BlockedByPolicy = parent.BlockedByPolicy || summary.BlockedCount > 0,
+        BlockedReasonCode = parent.BlockedReasonCode
+            ?? dispatched.FirstOrDefault(r => !string.IsNullOrEmpty(r.BlockedReasonCode))?.BlockedReasonCode,
+        OverrideUsed = dispatched.Any(r => r.OverrideUsed),
+        FailureCategory = dispatched.FirstOrDefault(r => !string.IsNullOrEmpty(r.FailureCategory))?.FailureCategory,
+        LastErrorMessage = parent.LastErrorMessage,
+    };
+
+    private static string? ReadRecipientField(JsonElement obj, string name)
+    {
+        if (obj.ValueKind != JsonValueKind.Object) return null;
+        foreach (var prop in obj.EnumerateObject())
+        {
+            if (string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase))
+                return prop.Value.ValueKind == JsonValueKind.String ? prop.Value.GetString() : null;
+        }
+        return null;
     }
 
     private static SubmitNotificationDto ClonePerRecipient(SubmitNotificationDto src, ResolvedRecipient r)
@@ -135,34 +318,32 @@ public class NotificationServiceImpl : INotificationService
         };
     }
 
-    private static NotificationResultDto AggregateFanOutResult(List<NotificationResultDto> results)
+    /// <summary>Snapshot of a Role/Org fan-out, persisted under MetadataJson.fanout.</summary>
+    public sealed class FanOutSummary
     {
-        if (results.Count == 0)
-            return new NotificationResultDto { Status = "blocked", BlockedByPolicy = true, BlockedReasonCode = "recipient_set_empty" };
+        public string? Mode { get; set; }
+        public string? RoleKey { get; set; }
+        public string? OrgId { get; set; }
+        public string Channel { get; set; } = string.Empty;
+        public int TotalResolved { get; set; }
+        public int SentCount { get; set; }
+        public int FailedCount { get; set; }
+        public int BlockedCount { get; set; }
+        public int SkippedCount { get; set; }
+        public Dictionary<string, int> DeliveredByChannel { get; set; } = new();
+        public Dictionary<string, int> SkippedByReason { get; set; } = new();
+        public Dictionary<string, int> BlockedByReason { get; set; } = new();
+        public List<FanOutPerRecipient> Recipients { get; set; } = new();
+    }
 
-        var sentCount    = results.Count(r => r.Status == "sent");
-        var failedCount  = results.Count(r => r.Status == "failed");
-        var blockedCount = results.Count(r => r.Status == "blocked");
-
-        var status =
-            sentCount == results.Count    ? "sent" :
-            failedCount == results.Count  ? "failed" :
-            blockedCount == results.Count ? "blocked" :
-                                            "partial";
-
-        var first = results[0];
-        return new NotificationResultDto
-        {
-            Id = first.Id,
-            Status = status,
-            ProviderUsed = first.ProviderUsed,
-            PlatformFallbackUsed = results.Any(r => r.PlatformFallbackUsed),
-            BlockedByPolicy = blockedCount > 0,
-            BlockedReasonCode = first.BlockedReasonCode,
-            OverrideUsed = results.Any(r => r.OverrideUsed),
-            FailureCategory = results.FirstOrDefault(r => !string.IsNullOrEmpty(r.FailureCategory))?.FailureCategory,
-            LastErrorMessage = $"fanout: total={results.Count} sent={sentCount} failed={failedCount} blocked={blockedCount}"
-        };
+    public sealed class FanOutPerRecipient
+    {
+        public string? UserId { get; set; }
+        public string? Email { get; set; }
+        public string? OrgId { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public string? Reason { get; set; }
+        public string? NotificationId { get; set; }
     }
 
     private async Task<NotificationResultDto> DispatchSingleAsync(Guid tenantId, SubmitNotificationDto request, string recipientJson)

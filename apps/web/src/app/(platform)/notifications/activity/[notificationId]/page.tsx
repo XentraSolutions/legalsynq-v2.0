@@ -8,6 +8,8 @@ import {
   type NotifDetail,
   type NotifEvent,
   type NotifIssue,
+  type NotifFanOutSummary,
+  type NotifFanOutRecipient,
 } from '@/lib/notifications-server-api';
 import { PRODUCT_TYPE_LABELS, type ProductType } from '@/lib/notifications-shared';
 import DeliveryActionsClient from './delivery-actions-client';
@@ -146,6 +148,165 @@ function TemplateUsageSection({ notification }: { notification: NotifDetail }) {
         )}
       </dl>
     </div>
+  );
+}
+
+function parseFanOutSummary(meta: Record<string, unknown> | null): NotifFanOutSummary | null {
+  if (!meta) return null;
+  const raw = meta['fanout'];
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.totalResolved !== 'number') return null;
+  return obj as unknown as NotifFanOutSummary;
+}
+
+const RECIPIENT_STATUS_CLS: Record<string, string> = {
+  sent:    'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  failed:  'bg-red-50     text-red-700     border border-red-200',
+  blocked: 'bg-amber-50   text-amber-700   border border-amber-200',
+  skipped: 'bg-gray-100   text-gray-600    border border-gray-200',
+};
+
+function humanReason(reason: string): string {
+  return reason
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function FanOutSummarySection({ summary }: { summary: NotifFanOutSummary }) {
+  const reachedCount = summary.sentCount;
+  const blockedTotal = summary.blockedCount + summary.skippedCount + summary.failedCount;
+  const subjectLabel = summary.mode?.toLowerCase() === 'org'
+    ? `org ${summary.orgId ?? ''}`.trim()
+    : `role ${summary.roleKey ?? ''}`.trim();
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-gray-700">
+          Fan-out Summary{summary.mode ? ` — ${summary.mode}` : ''}
+        </h2>
+        {subjectLabel && (
+          <span className="text-xs text-gray-400 font-mono">{subjectLabel}</span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+        <Stat label="Resolved"  value={summary.totalResolved} tone="neutral" />
+        <Stat label="Reached"   value={reachedCount}          tone="emerald" />
+        <Stat label="Failed"    value={summary.failedCount}   tone="red" />
+        <Stat label="Blocked"   value={summary.blockedCount}  tone="amber" />
+        <Stat label="Skipped"   value={summary.skippedCount}  tone="gray" />
+      </div>
+
+      {summary.totalResolved === 0 && (
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3">
+          No members were resolved for this {summary.mode?.toLowerCase() ?? 'fan-out'} envelope. Nobody received this notification.
+        </p>
+      )}
+
+      {summary.totalResolved > 0 && reachedCount === 0 && (
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mb-3">
+          {summary.totalResolved} member{summary.totalResolved === 1 ? '' : 's'} resolved, but none were reached. See breakdown below.
+        </p>
+      )}
+
+      {summary.deliveredByChannel && Object.keys(summary.deliveredByChannel).length > 0 && (
+        <ReasonList title="Delivered per channel" items={summary.deliveredByChannel} tone="emerald" />
+      )}
+      {summary.blockedByReason && Object.keys(summary.blockedByReason).length > 0 && (
+        <ReasonList title="Blocked reasons"       items={summary.blockedByReason} tone="amber" />
+      )}
+      {summary.skippedByReason && Object.keys(summary.skippedByReason).length > 0 && (
+        <ReasonList title="Skipped reasons"       items={summary.skippedByReason} tone="gray" />
+      )}
+
+      {summary.recipients && summary.recipients.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+            Per-recipient outcome ({summary.recipients.length})
+          </p>
+          <div className="overflow-x-auto border border-gray-100 rounded-md">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Member</th>
+                  <th className="px-3 py-2 text-left font-medium">Status</th>
+                  <th className="px-3 py-2 text-left font-medium">Reason</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {summary.recipients.map((r, i) => (
+                  <RecipientRow key={i} recipient={r} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <p className="mt-3 text-[11px] text-gray-400">
+        {reachedCount} of {summary.totalResolved} resolved member{summary.totalResolved === 1 ? '' : 's'} reached
+        {blockedTotal > 0 && ` · ${blockedTotal} not reached`}.
+      </p>
+    </div>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: number; tone: 'neutral' | 'emerald' | 'red' | 'amber' | 'gray' }) {
+  const toneCls: Record<typeof tone, string> = {
+    neutral: 'bg-gray-50  text-gray-800',
+    emerald: 'bg-emerald-50 text-emerald-700',
+    red:     'bg-red-50   text-red-700',
+    amber:   'bg-amber-50 text-amber-700',
+    gray:    'bg-gray-50  text-gray-600',
+  };
+  return (
+    <div className={`rounded-lg border border-gray-100 px-3 py-2 ${toneCls[tone]}`}>
+      <p className="text-[10px] font-semibold uppercase tracking-wide opacity-70">{label}</p>
+      <p className="text-lg font-semibold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+function ReasonList({ title, items, tone }: { title: string; items: Record<string, number>; tone: 'emerald' | 'amber' | 'gray' }) {
+  const toneCls: Record<typeof tone, string> = {
+    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    amber:   'bg-amber-50   text-amber-700   border-amber-200',
+    gray:    'bg-gray-50    text-gray-600    border-gray-200',
+  };
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">{title}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {Object.entries(items).map(([key, count]) => (
+          <span key={key} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${toneCls[tone]}`}>
+            <span className="font-medium">{humanReason(key)}</span>
+            <span className="tabular-nums opacity-80">×{count}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RecipientRow({ recipient }: { recipient: NotifFanOutRecipient }) {
+  const statusCls = RECIPIENT_STATUS_CLS[recipient.status.toLowerCase()] ?? 'bg-gray-100 text-gray-500 border border-gray-200';
+  const member = recipient.email ?? recipient.userId ?? '—';
+  return (
+    <tr>
+      <td className="px-3 py-2">
+        <code className="text-xs text-gray-700 font-mono break-all">{member}</code>
+      </td>
+      <td className="px-3 py-2">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${statusCls}`}>
+          {recipient.status}
+        </span>
+      </td>
+      <td className="px-3 py-2 text-xs text-gray-500">
+        {recipient.reason ? humanReason(recipient.reason) : <span className="text-gray-300">—</span>}
+      </td>
+    </tr>
   );
 }
 
@@ -380,6 +541,7 @@ export default async function NotificationDetailPage({
 
   const recipient = parseRecipient(notification.recipientJson);
   const meta = parseMetadata(notification.metadataJson);
+  const fanOutSummary = parseFanOutSummary(meta);
   const productLabel = notification.productType
     ? PRODUCT_TYPE_LABELS[notification.productType as ProductType] ?? notification.productType
     : (meta?.['productType'] as string | undefined) ?? null;
@@ -433,6 +595,8 @@ export default async function NotificationDetailPage({
           </InfoRow>
         </dl>
       </div>
+
+      {fanOutSummary && <FanOutSummarySection summary={fanOutSummary} />}
 
       <FailureReasonPanel notification={notification} />
 

@@ -39,7 +39,7 @@ export interface NotifStats {
 
 // ── Re-export client-safe branding types from shared module ──────────────────
 
-export type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, OverrideStatus, TemplatePreviewResult, NotifDetail, NotifEvent, NotifIssue, RetryResult, ContactHealth, ContactSuppression, ActionEligibility } from './notifications-shared';
+export type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, OverrideStatus, TemplatePreviewResult, NotifDetail, NotifEvent, NotifIssue, NotifFanOutSummary, NotifFanOutRecipient, RetryResult, ContactHealth, ContactSuppression, ActionEligibility } from './notifications-shared';
 export { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from './notifications-shared';
 
 import type { ProductType, TenantBranding, BrandingListResponse, GlobalTemplate, GlobalTemplateVersion, GlobalTemplateListResponse, BrandedPreviewResult, TenantTemplate, TenantTemplateListResponse, TenantTemplateVersion, TemplatePreviewResult, NotifDetail, NotifEvent, NotifIssue, RetryResult, ContactHealth, ContactSuppression } from './notifications-shared';

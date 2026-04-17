@@ -167,6 +167,32 @@ export interface NotifDetail {
   updatedAt:         string;
 }
 
+/** Fan-out outcome stored on a Role/Org parent notification under metadataJson.fanout. */
+export interface NotifFanOutSummary {
+  mode?:               string | null;
+  roleKey?:            string | null;
+  orgId?:              string | null;
+  channel:             string;
+  totalResolved:       number;
+  sentCount:           number;
+  failedCount:         number;
+  blockedCount:        number;
+  skippedCount:        number;
+  deliveredByChannel?: Record<string, number>;
+  skippedByReason?:    Record<string, number>;
+  blockedByReason?:    Record<string, number>;
+  recipients?:         NotifFanOutRecipient[];
+}
+
+export interface NotifFanOutRecipient {
+  userId?:         string | null;
+  email?:          string | null;
+  orgId?:          string | null;
+  status:          string;
+  reason?:         string | null;
+  notificationId?: string | null;
+}
+
 export interface NotifEvent {
   id:        string;
   type:      string;
