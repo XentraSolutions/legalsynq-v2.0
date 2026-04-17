@@ -137,12 +137,27 @@ public class WorkflowTask : AuditableEntity
         if (string.IsNullOrWhiteSpace(Status))
             throw new InvalidOperationException("WorkflowTask.Status is required.");
 
-        if (CompletedAt is not null && !string.Equals(Status, WorkflowTaskStatus.Completed, StringComparison.Ordinal))
+        // Terminal status ↔ timestamp pairing is enforced in BOTH
+        // directions so an internally inconsistent row (e.g. Status=
+        // Completed with no CompletedAt, or CompletedAt set on a
+        // non-terminal status) cannot be persisted. Spec calls out the
+        // forward direction explicitly; the reverse follows from the
+        // same invariant and is closed off here defensively.
+        var isCompleted = string.Equals(Status, WorkflowTaskStatus.Completed, StringComparison.Ordinal);
+        var isCancelled = string.Equals(Status, WorkflowTaskStatus.Cancelled, StringComparison.Ordinal);
+
+        if (CompletedAt is not null && !isCompleted)
             throw new InvalidOperationException(
                 $"WorkflowTask.CompletedAt is set but Status='{Status}' (expected '{WorkflowTaskStatus.Completed}').");
+        if (isCompleted && CompletedAt is null)
+            throw new InvalidOperationException(
+                $"WorkflowTask.Status='{WorkflowTaskStatus.Completed}' requires CompletedAt to be set.");
 
-        if (CancelledAt is not null && !string.Equals(Status, WorkflowTaskStatus.Cancelled, StringComparison.Ordinal))
+        if (CancelledAt is not null && !isCancelled)
             throw new InvalidOperationException(
                 $"WorkflowTask.CancelledAt is set but Status='{Status}' (expected '{WorkflowTaskStatus.Cancelled}').");
+        if (isCancelled && CancelledAt is null)
+            throw new InvalidOperationException(
+                $"WorkflowTask.Status='{WorkflowTaskStatus.Cancelled}' requires CancelledAt to be set.");
     }
 }
