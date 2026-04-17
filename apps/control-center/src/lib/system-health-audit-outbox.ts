@@ -54,6 +54,25 @@ export interface OutboxStatus {
   lastError:         string | null;
 }
 
+/**
+ * Operator-facing summary of a queued entry. Excludes the full payload —
+ * the banner only needs enough metadata to identify which event would be
+ * retried or discarded, not its complete contents.
+ */
+export interface OutboxEntrySummary {
+  id:                string;
+  enqueuedAt:        string;
+  attempts:          number;
+  lastAttemptAt:     string | null;
+  nextAttemptAt:     string;
+  lastError:         string | null;
+  persistentFailure: boolean;
+  eventType:         string;
+  action:            string | undefined;
+  entityId:          string | undefined;
+  description:       string | undefined;
+}
+
 function outboxFilePath(): string {
   const override = process.env.SYSTEM_HEALTH_AUDIT_OUTBOX_FILE;
   if (override && override.trim()) return override;
@@ -223,6 +242,91 @@ export async function processOutboxOnce(): Promise<{ delivered: number; failed: 
   }
 
   return { delivered, failed };
+}
+
+export async function listOutboxEntries(): Promise<OutboxEntrySummary[]> {
+  const all = await readAll();
+  return all
+    .slice()
+    .sort((a, b) => a.enqueuedAt.localeCompare(b.enqueuedAt))
+    .map(e => ({
+      id:                e.id,
+      enqueuedAt:        e.enqueuedAt,
+      attempts:          e.attempts,
+      lastAttemptAt:     e.lastAttemptAt,
+      nextAttemptAt:     e.nextAttemptAt,
+      lastError:         e.lastError,
+      persistentFailure: e.persistentFailure,
+      eventType:         e.payload.eventType,
+      action:            e.payload.action,
+      entityId:          e.payload.entity?.id,
+      description:       e.payload.description,
+    }));
+}
+
+/**
+ * Force every queued entry — including persistent failures — to be eligible
+ * for an immediate delivery attempt and run one pass of the worker. Operators
+ * use this from the banner once they believe the audit service is healthy
+ * again, instead of waiting for the next backoff window.
+ */
+export async function triggerRetryNow(): Promise<{ delivered: number; failed: number }> {
+  await chain(async () => {
+    const all = await readAll();
+    if (all.length === 0) return;
+    const nowIso = new Date().toISOString();
+    const reset = all.map(e => ({
+      ...e,
+      // Clearing persistentFailure makes the entry eligible for processOutboxOnce
+      // again. attempts is preserved so we don't reset the operator's view of
+      // how many times this event has been tried — but the next failure will
+      // re-mark it persistent immediately if it has already exceeded the budget.
+      persistentFailure: false,
+      nextAttemptAt:     nowIso,
+    }));
+    await writeAll(reset);
+  });
+  ensureWorkerStarted();
+  return processOutboxOnce();
+}
+
+/**
+ * Drop a single entry from the outbox. Used when an operator decides a
+ * payload will never succeed (e.g. the audit service rejected it as
+ * malformed). Returns true if an entry with that id was found and removed.
+ *
+ * Callers are expected to emit a separate canonical audit event recording
+ * the discard so the action itself is traceable.
+ */
+export async function discardOutboxEntry(id: string): Promise<{
+  removed: boolean;
+  entry:   OutboxEntrySummary | null;
+}> {
+  let removed = false;
+  let snapshot: OutboxEntrySummary | null = null;
+  await chain(async () => {
+    const all = await readAll();
+    const idx = all.findIndex(e => e.id === id);
+    if (idx === -1) return;
+    const e = all[idx];
+    snapshot = {
+      id:                e.id,
+      enqueuedAt:        e.enqueuedAt,
+      attempts:          e.attempts,
+      lastAttemptAt:     e.lastAttemptAt,
+      nextAttemptAt:     e.nextAttemptAt,
+      lastError:         e.lastError,
+      persistentFailure: e.persistentFailure,
+      eventType:         e.payload.eventType,
+      action:            e.payload.action,
+      entityId:          e.payload.entity?.id,
+      description:       e.payload.description,
+    };
+    all.splice(idx, 1);
+    await writeAll(all);
+    removed = true;
+  });
+  return { removed, entry: snapshot };
 }
 
 let workerTimer: NodeJS.Timeout | null = null;

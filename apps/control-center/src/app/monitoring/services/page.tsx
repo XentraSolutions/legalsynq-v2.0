@@ -2,7 +2,7 @@ import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { CCShell } from '@/components/shell/cc-shell';
 import { listServices } from '@/lib/system-health-store';
 import { mapCanonicalToAuditEntry, type AuditEntry } from '@/lib/system-health-audit';
-import { getOutboxStatus } from '@/lib/system-health-audit-outbox';
+import { getOutboxStatus, listOutboxEntries } from '@/lib/system-health-audit-outbox';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { ServicesEditor } from '@/components/monitoring/services-editor';
 import { ServicesAuditList } from '@/components/monitoring/services-audit-list';
@@ -40,10 +40,11 @@ async function loadRecentAuditEntries(): Promise<{ entries: AuditEntry[]; error:
 
 export default async function MonitoringServicesPage() {
   const session = await requirePlatformAdmin();
-  const [services, audit, outboxStatus] = await Promise.all([
+  const [services, audit, outboxStatus, outboxEntries] = await Promise.all([
     listServices(),
     loadRecentAuditEntries(),
     getOutboxStatus(),
+    listOutboxEntries(),
   ]);
 
   return (
@@ -67,7 +68,7 @@ export default async function MonitoringServicesPage() {
 
           {(outboxStatus.pending > 0 || outboxStatus.persistentFailures > 0) && (
             <div className="mb-4">
-              <AuditOutboxBanner status={outboxStatus} />
+              <AuditOutboxBanner status={outboxStatus} entries={outboxEntries} />
             </div>
           )}
 
