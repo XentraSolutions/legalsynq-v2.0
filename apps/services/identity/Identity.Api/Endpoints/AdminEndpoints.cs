@@ -184,6 +184,11 @@ public static class AdminEndpoints
         // ── LS-COR-AUT-011D: Authorization Simulation ───────────────────────
         routes.MapPost("/api/admin/authorization/simulate",                                  AdminEndpointsLscc010.SimulateAuthorization);
 
+        // ── Membership lookup (notifications fan-out) ────────────────────────
+        // Internal service-to-service endpoint used by the notifications service
+        // to resolve role- or org-addressed recipients to concrete users.
+        routes.MapGet("/api/admin/membership-lookup", MembershipLookup);
+
         return routes;
     }
 
@@ -1166,6 +1171,94 @@ public static class AdminEndpoints
             page,
             pageSize,
         });
+    }
+
+    /// <summary>
+    /// Resolve role- or organization-addressed recipients to concrete users.
+    /// Used by the notifications service when fanning out a Role/Org envelope.
+    ///
+    /// Filters (all combinations supported except "neither"):
+    ///   tenantId  — required, scopes the lookup.
+    ///   roleKey   — match against Role.Name (case-insensitive) via active GLOBAL
+    ///               ScopedRoleAssignments.
+    ///   orgId     — restrict to users with an active UserOrganizationMembership
+    ///               in that organization.
+    ///
+    /// Returns: { items: [{ userId, email, organizationId? }] }
+    /// </summary>
+    private static async Task<IResult> MembershipLookup(
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        string            tenantId  = "",
+        string            roleKey   = "",
+        string            orgId     = "",
+        CancellationToken ct        = default)
+    {
+        if (!Guid.TryParse(tenantId, out var tid))
+            return Results.BadRequest(new { error = "tenantId is required and must be a GUID." });
+
+        Guid? oid = null;
+        if (!string.IsNullOrWhiteSpace(orgId))
+        {
+            if (!Guid.TryParse(orgId, out var parsedOid))
+                return Results.BadRequest(new { error = "orgId must be a GUID." });
+            oid = parsedOid;
+        }
+
+        var roleKeyTrimmed = roleKey?.Trim();
+        var hasRoleFilter  = !string.IsNullOrWhiteSpace(roleKeyTrimmed);
+        var hasOrgFilter   = oid.HasValue;
+
+        if (!hasRoleFilter && !hasOrgFilter)
+            return Results.BadRequest(new { error = "Provide at least one of roleKey or orgId." });
+
+        // Tenant scope: TenantAdmins may only resolve within their own tenant.
+        // PlatformAdmins (and unauthenticated internal callers — gateway-trusted)
+        // may resolve any tenant. Service-to-service callers (no claims) are allowed
+        // because gateway/network policy fronts this endpoint.
+        var callerTenantId = caller.FindFirstValue("tenant_id");
+        if (callerTenantId is not null && Guid.TryParse(callerTenantId, out var callerTid))
+        {
+            var isPlatformAdmin = caller.IsInRole("PlatformAdmin");
+            if (!isPlatformAdmin && callerTid != tid)
+                return Results.Forbid();
+        }
+
+        var q = db.Users.AsNoTracking()
+            .Where(u => u.TenantId == tid && u.IsActive);
+
+        if (hasRoleFilter)
+        {
+            // Explicit lower-case compare so case-insensitivity is guaranteed
+            // regardless of column collation (MySQL default _ci is permissive,
+            // but other deployments / future migrations may differ).
+            var roleKeyLower = roleKeyTrimmed!.ToLowerInvariant();
+            q = q.Where(u => db.ScopedRoleAssignments.Any(s =>
+                s.UserId    == u.Id    &&
+                s.IsActive             &&
+                s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global &&
+                s.Role.Name.ToLower() == roleKeyLower));
+        }
+
+        if (hasOrgFilter)
+        {
+            q = q.Where(u => db.UserOrganizationMemberships.Any(m =>
+                m.UserId         == u.Id     &&
+                m.IsActive                   &&
+                m.OrganizationId == oid!.Value));
+        }
+
+        var items = await q
+            .OrderBy(u => u.Email)
+            .Select(u => new
+            {
+                userId         = u.Id,
+                email          = u.Email,
+                organizationId = oid,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { items, totalCount = items.Count });
     }
 
     private static async Task<IResult> GetUser(

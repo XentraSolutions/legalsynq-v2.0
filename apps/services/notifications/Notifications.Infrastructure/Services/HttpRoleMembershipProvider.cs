@@ -1,0 +1,178 @@
+using System.Net.Http.Json;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Notifications.Application.Interfaces;
+
+namespace Notifications.Infrastructure.Services;
+
+/// <summary>
+/// Production <see cref="IRoleMembershipProvider"/> that resolves role- and
+/// org-addressed notification recipients by calling the Identity service:
+///
+///   GET {BaseUrl}/api/admin/membership-lookup
+///         ?tenantId={tid}&amp;roleKey={key}&amp;orgId={oid}
+///
+/// Lookups are tenant-scoped (Identity enforces tenant isolation server side)
+/// and cached briefly in-process (TTL configurable via
+/// <see cref="IdentityServiceOptions.MembershipCacheSeconds"/>) so a burst of
+/// fan-out events does not hammer Identity for the same role/org pair.
+///
+/// All failures (network, 4xx/5xx, timeout, parse) return an empty member set
+/// — the caller treats that as a blocked envelope and persists the outcome.
+/// </summary>
+public sealed class HttpRoleMembershipProvider : IRoleMembershipProvider
+{
+    private readonly IHttpClientFactory                       _httpClientFactory;
+    private readonly IdentityServiceOptions                   _options;
+    private readonly IMemoryCache                             _cache;
+    private readonly ILogger<HttpRoleMembershipProvider>      _logger;
+    private readonly TimeSpan                                 _cacheTtl;
+
+    public HttpRoleMembershipProvider(
+        IHttpClientFactory                  httpClientFactory,
+        IOptions<IdentityServiceOptions>    options,
+        IMemoryCache                        cache,
+        ILogger<HttpRoleMembershipProvider> logger)
+    {
+        _httpClientFactory = httpClientFactory;
+        _options           = options.Value;
+        _cache             = cache;
+        _logger            = logger;
+        _cacheTtl          = TimeSpan.FromSeconds(Math.Max(0, _options.MembershipCacheSeconds));
+    }
+
+    public Task<IReadOnlyList<ResolvedRecipient>> GetRoleMembersAsync(
+        Guid tenantId, string roleKey, string? orgId) =>
+        LookupAsync(tenantId, roleKey, orgId);
+
+    public Task<IReadOnlyList<ResolvedRecipient>> GetOrgMembersAsync(
+        Guid tenantId, string orgId) =>
+        LookupAsync(tenantId, roleKey: null, orgId);
+
+    private async Task<IReadOnlyList<ResolvedRecipient>> LookupAsync(
+        Guid tenantId, string? roleKey, string? orgId)
+    {
+        if (string.IsNullOrWhiteSpace(_options.BaseUrl))
+        {
+            _logger.LogDebug("IdentityService:BaseUrl not configured; returning empty membership set.");
+            return Array.Empty<ResolvedRecipient>();
+        }
+
+        var cacheKey = $"notif:membership|{tenantId:N}|r={roleKey?.ToLowerInvariant() ?? "*"}|o={orgId ?? "*"}";
+
+        if (_cacheTtl > TimeSpan.Zero &&
+            _cache.TryGetValue(cacheKey, out IReadOnlyList<ResolvedRecipient>? cached) &&
+            cached is not null)
+        {
+            return cached;
+        }
+
+        var members = await FetchAsync(tenantId, roleKey, orgId);
+
+        if (_cacheTtl > TimeSpan.Zero)
+        {
+            _cache.Set(cacheKey, members, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = _cacheTtl,
+                Size = members.Count + 1,
+            });
+        }
+
+        return members;
+    }
+
+    private async Task<IReadOnlyList<ResolvedRecipient>> FetchAsync(
+        Guid tenantId, string? roleKey, string? orgId)
+    {
+        try
+        {
+            using var client = _httpClientFactory.CreateClient("IdentityService");
+            client.BaseAddress = new Uri(_options.BaseUrl!.TrimEnd('/') + "/");
+            client.Timeout     = TimeSpan.FromSeconds(_options.TimeoutSeconds);
+
+            if (!string.IsNullOrWhiteSpace(_options.AuthHeaderName) &&
+                !string.IsNullOrWhiteSpace(_options.AuthHeaderValue))
+            {
+                client.DefaultRequestHeaders.TryAddWithoutValidation(
+                    _options.AuthHeaderName, _options.AuthHeaderValue);
+            }
+
+            var url = $"api/admin/membership-lookup?tenantId={tenantId:D}";
+            if (!string.IsNullOrWhiteSpace(roleKey))
+                url += $"&roleKey={Uri.EscapeDataString(roleKey)}";
+            if (!string.IsNullOrWhiteSpace(orgId))
+                url += $"&orgId={Uri.EscapeDataString(orgId)}";
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.GetAsync(url, cts.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Identity membership-lookup returned HTTP {Status} for tenant {TenantId} " +
+                    "(roleKey={RoleKey}, orgId={OrgId}). Treating as empty membership.",
+                    (int)response.StatusCode, tenantId, roleKey ?? "(null)", orgId ?? "(null)");
+                return Array.Empty<ResolvedRecipient>();
+            }
+
+            var body = await response.Content.ReadFromJsonAsync<MembershipLookupResponse>(
+                cancellationToken: cts.Token);
+
+            if (body?.Items is null || body.Items.Count == 0)
+                return Array.Empty<ResolvedRecipient>();
+
+            var result = new List<ResolvedRecipient>(body.Items.Count);
+            foreach (var item in body.Items)
+            {
+                if (item.UserId == Guid.Empty && string.IsNullOrEmpty(item.Email))
+                    continue;
+                result.Add(new ResolvedRecipient
+                {
+                    UserId = item.UserId == Guid.Empty ? null : item.UserId.ToString("D"),
+                    Email  = item.Email,
+                    OrgId  = item.OrganizationId?.ToString("D") ?? orgId,
+                });
+            }
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "Identity membership-lookup timed out after {TimeoutSeconds}s for tenant {TenantId} " +
+                "(roleKey={RoleKey}, orgId={OrgId}). Treating as empty membership.",
+                _options.TimeoutSeconds, tenantId, roleKey ?? "(null)", orgId ?? "(null)");
+            return Array.Empty<ResolvedRecipient>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Identity membership-lookup failed for tenant {TenantId} " +
+                "(roleKey={RoleKey}, orgId={OrgId}). Treating as empty membership.",
+                tenantId, roleKey ?? "(null)", orgId ?? "(null)");
+            return Array.Empty<ResolvedRecipient>();
+        }
+    }
+
+    private sealed class MembershipLookupResponse
+    {
+        [JsonPropertyName("items")]
+        public List<MembershipLookupItem>? Items { get; set; }
+
+        [JsonPropertyName("totalCount")]
+        public int TotalCount { get; set; }
+    }
+
+    private sealed class MembershipLookupItem
+    {
+        [JsonPropertyName("userId")]
+        public Guid UserId { get; set; }
+
+        [JsonPropertyName("email")]
+        public string? Email { get; set; }
+
+        [JsonPropertyName("organizationId")]
+        public Guid? OrganizationId { get; set; }
+    }
+}

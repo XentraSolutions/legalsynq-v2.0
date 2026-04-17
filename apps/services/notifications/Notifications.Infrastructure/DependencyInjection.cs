@@ -62,12 +62,27 @@ public static class DependencyInjection
         services.AddScoped<IUsageMeteringService, UsageMeteringService>();
         services.AddScoped<IRecipientContactHealthService, RecipientContactHealthService>();
         services.AddScoped<IProviderRoutingService, ProviderRoutingService>();
-        // In-memory provider is the default registration so role/org fan-out
-        // resolves the seeded membership set at runtime; production deployments
-        // replace it with an identity-backed implementation. Registered as both
-        // the interface and the concrete type so a startup seeder can hydrate it.
+        // Role/org membership lookup. The in-memory provider stays registered so
+        // tests and dev seeders can hydrate it directly; the live provider in
+        // front of it depends on whether IdentityService:BaseUrl is configured:
+        //   • configured  → HttpRoleMembershipProvider hits identity (cached briefly).
+        //   • unconfigured → InMemoryRoleMembershipProvider (empty unless seeded).
         services.AddSingleton<InMemoryRoleMembershipProvider>();
-        services.AddSingleton<IRoleMembershipProvider>(sp => sp.GetRequiredService<InMemoryRoleMembershipProvider>());
+        services.AddOptions<IdentityServiceOptions>()
+                .Bind(configuration.GetSection(IdentityServiceOptions.SectionName));
+        services.AddMemoryCache();
+        services.AddHttpClient("IdentityService");
+
+        var identityBaseUrl = configuration[$"{IdentityServiceOptions.SectionName}:BaseUrl"];
+        if (!string.IsNullOrWhiteSpace(identityBaseUrl))
+        {
+            services.AddSingleton<IRoleMembershipProvider, HttpRoleMembershipProvider>();
+        }
+        else
+        {
+            services.AddSingleton<IRoleMembershipProvider>(sp =>
+                sp.GetRequiredService<InMemoryRoleMembershipProvider>());
+        }
         services.AddScoped<IRecipientResolver, RecipientResolver>();
         services.AddScoped<IWebhookIngestionService, WebhookIngestionServiceImpl>();
         services.AddScoped<InternalEmailService>();
