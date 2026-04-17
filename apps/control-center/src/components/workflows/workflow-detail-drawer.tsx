@@ -376,6 +376,51 @@ function TimelineRow({ event }: { event: WorkflowTimelineEvent }) {
   );
 }
 
+// All possible category buckets surfaced as filter chips. We only
+// render chips for buckets actually present in the fetched payload so
+// the filter row stays compact for short timelines.
+const TIMELINE_BUCKET_ORDER: ReadonlyArray<keyof typeof TIMELINE_CATEGORY_STYLES> = [
+  'AdminAction',
+  'EngineTransition',
+  'Lifecycle',
+  'Task',
+  'Other',
+];
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+  count,
+  testId,
+}: {
+  active:   boolean;
+  onClick:  () => void;
+  children: React.ReactNode;
+  count?:   number;
+  testId?:  string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      data-testid={testId}
+      className={
+        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors ' +
+        (active
+          ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50')
+      }
+    >
+      <span>{children}</span>
+      {typeof count === 'number' && (
+        <span className={active ? 'text-indigo-500' : 'text-gray-400'}>{count}</span>
+      )}
+    </button>
+  );
+}
+
 function TimelineSection({
   loading,
   error,
@@ -387,7 +432,60 @@ function TimelineSection({
   timeline: WorkflowTimelineResponse | null;
   onRetry:  () => void;
 }) {
-  const groups = timeline ? groupEventsByDate(timeline.events) : [];
+  // Client-side filters. Reset whenever the underlying payload changes
+  // (e.g. after a Refresh) so a stale "Cancel actor X" filter doesn't
+  // wipe out a freshly refetched timeline that no longer contains X.
+  const [bucketFilter, setBucketFilter] = useState<string | null>(null);
+  const [actorFilter,  setActorFilter]  = useState<string | null>(null);
+
+  useEffect(() => {
+    setBucketFilter(null);
+    setActorFilter(null);
+  }, [timeline]);
+
+  const events = timeline?.events ?? [];
+
+  // Tally bucket + actor occurrences in one pass so chips can show
+  // counts and we never render a chip that filters everything out.
+  const { bucketCounts, actorCounts } = useMemo(() => {
+    const buckets = new Map<string, number>();
+    const actors  = new Map<string, number>();
+    for (const ev of events) {
+      const b = bucketFromCategory(ev.category);
+      buckets.set(b, (buckets.get(b) ?? 0) + 1);
+      if (ev.performedBy) {
+        actors.set(ev.performedBy, (actors.get(ev.performedBy) ?? 0) + 1);
+      }
+    }
+    return { bucketCounts: buckets, actorCounts: actors };
+  }, [events]);
+
+  const visibleEvents = useMemo(() => {
+    if (!bucketFilter && !actorFilter) return events;
+    return events.filter((ev) => {
+      if (bucketFilter && bucketFromCategory(ev.category) !== bucketFilter) return false;
+      if (actorFilter  && ev.performedBy !== actorFilter)                   return false;
+      return true;
+    });
+  }, [events, bucketFilter, actorFilter]);
+
+  const filtersActive  = !!(bucketFilter || actorFilter);
+  const totalEvents    = events.length;
+  const filteredOut    = totalEvents - visibleEvents.length;
+
+  // Sort actors by frequency (desc) then alpha so the chip row is
+  // stable and most-common operators appear first.
+  const actorList = useMemo(() => {
+    return Array.from(actorCounts.entries()).sort((a, b) => {
+      if (b[1] !== a[1]) return b[1] - a[1];
+      return a[0].localeCompare(b[0]);
+    });
+  }, [actorCounts]);
+
+  // Date grouping runs over the *filtered* event set so date headers
+  // never appear empty when the operator narrows by category/actor.
+  const groups = useMemo(() => groupEventsByDate(visibleEvents), [visibleEvents]);
+
   return (
     <section className="space-y-3" data-testid="workflow-timeline">
       <div className="flex items-center justify-between">
@@ -422,37 +520,123 @@ function TimelineSection({
         </div>
       )}
 
-      {!loading && !error && timeline && timeline.events.length === 0 && (
+      {!loading && !error && timeline && totalEvents === 0 && (
         <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
           No audit events have been recorded for this workflow yet.
         </div>
       )}
 
-      {!loading && !error && timeline && timeline.events.length > 0 && (
+      {!loading && !error && timeline && totalEvents > 0 && (
         <div className="space-y-4">
           {timeline.truncated && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
               Showing the most recent events only — open the audit service for the full record.
             </div>
           )}
-          {groups.map(group => (
-            <div key={group.key} className="space-y-2">
-              <div className="sticky top-0 bg-white pt-1 pb-1 z-[1]">
-                <h4 className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                  {group.label}
-                  <span className="flex-1 border-t border-gray-100" />
-                  <span className="text-[10px] font-normal normal-case text-gray-300">
-                    {group.events.length} event{group.events.length === 1 ? '' : 's'}
+
+          {/* Filter chips. Rendered only when there's something to
+              filter on — a single-category, single-actor timeline
+              has nothing meaningful to narrow. */}
+          {(bucketCounts.size > 1 || actorCounts.size > 1) && (
+            <div className="space-y-2" data-testid="workflow-timeline-filters">
+              {bucketCounts.size > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mr-1">
+                    Category
                   </span>
-                </h4>
-              </div>
-              <ol className="relative space-y-1 border-l border-gray-200 pl-3 ml-1">
-                {group.events.map((ev, idx) => (
-                  <TimelineRow key={ev.eventId || `${ev.occurredAtUtc}-${ev.action}-${idx}`} event={ev} />
-                ))}
-              </ol>
+                  <FilterChip
+                    active={bucketFilter === null}
+                    onClick={() => setBucketFilter(null)}
+                    count={totalEvents}
+                    testId="timeline-filter-category-all"
+                  >
+                    All
+                  </FilterChip>
+                  {TIMELINE_BUCKET_ORDER.filter((b) => bucketCounts.has(b)).map((b) => (
+                    <FilterChip
+                      key={b}
+                      active={bucketFilter === b}
+                      onClick={() => setBucketFilter(bucketFilter === b ? null : b)}
+                      count={bucketCounts.get(b) ?? 0}
+                      testId={`timeline-filter-category-${b}`}
+                    >
+                      {TIMELINE_CATEGORY_STYLES[b].label}
+                    </FilterChip>
+                  ))}
+                </div>
+              )}
+              {actorCounts.size > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mr-1">
+                    Actor
+                  </span>
+                  <FilterChip
+                    active={actorFilter === null}
+                    onClick={() => setActorFilter(null)}
+                    testId="timeline-filter-actor-all"
+                  >
+                    All
+                  </FilterChip>
+                  {actorList.map(([actor, count]) => (
+                    <FilterChip
+                      key={actor}
+                      active={actorFilter === actor}
+                      onClick={() => setActorFilter(actorFilter === actor ? null : actor)}
+                      count={count}
+                      testId={`timeline-filter-actor-${actor}`}
+                    >
+                      <span className="font-mono">{actor}</span>
+                    </FilterChip>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
+          )}
+
+          {visibleEvents.length === 0 ? (
+            <div
+              className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 flex items-center justify-between gap-3"
+              data-testid="workflow-timeline-empty-filtered"
+            >
+              <span>
+                No events match the active filters
+                {filteredOut > 0 ? ` (${filteredOut} hidden)` : ''}.
+              </span>
+              <button
+                type="button"
+                onClick={() => { setBucketFilter(null); setActorFilter(null); }}
+                className="text-[11px] text-indigo-600 hover:underline"
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <>
+              {filtersActive && filteredOut > 0 && (
+                <p className="text-[11px] text-gray-400">
+                  Showing {visibleEvents.length} of {totalEvents} events.
+                </p>
+              )}
+              {groups.map(group => (
+                <div key={group.key} className="space-y-2">
+                  <div className="sticky top-0 bg-white pt-1 pb-1 z-[1]">
+                    <h4 className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                      {group.label}
+                      <span className="flex-1 border-t border-gray-100" />
+                      <span className="text-[10px] font-normal normal-case text-gray-300">
+                        {group.events.length} event{group.events.length === 1 ? '' : 's'}
+                      </span>
+                    </h4>
+                  </div>
+                  <ol className="relative space-y-1 border-l border-gray-200 pl-3 ml-1">
+                    {group.events.map((ev, idx) => (
+                      <TimelineRow key={ev.eventId || `${ev.occurredAtUtc}-${ev.action}-${idx}`} event={ev} />
+                    ))}
+                  </ol>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
     </section>
