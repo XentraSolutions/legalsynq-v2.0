@@ -30,6 +30,8 @@ public class FlowDbContext : DbContext, IFlowDbContext
     public DbSet<ProductWorkflowMapping> ProductWorkflowMappings => Set<ProductWorkflowMapping>();
     // LS-FLOW-MERGE-P4 — dedicated workflow-instance grain.
     public DbSet<WorkflowInstance> WorkflowInstances => Set<WorkflowInstance>();
+    // LS-FLOW-E10.2 — transactional outbox for durable side effects.
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -274,6 +276,38 @@ public class FlowDbContext : DbContext, IFlowDbContext
             entity.HasQueryFilter(e => _tenantProvider == null || e.TenantId == _tenantProvider.GetTenantId());
         });
 
+        // LS-FLOW-E10.2 — transactional outbox. Intentionally NO tenant
+        // query filter: the background OutboxProcessor runs without a
+        // request-scoped tenant context and must see rows across every
+        // tenant. Tenant isolation is enforced at write time (TenantId
+        // is populated from the request context in SaveChangesAsync) and
+        // at handler time (the handler keys off the row's TenantId when
+        // invoking adapters).
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.ToTable("flow_outbox_messages");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TenantId).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.EventType).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(16).HasDefaultValue(Flow.Domain.Common.OutboxStatus.Pending);
+            entity.Property(e => e.PayloadJson).IsRequired().HasColumnType("longtext");
+            entity.Property(e => e.AttemptCount).IsRequired().HasDefaultValue(0);
+            entity.Property(e => e.NextAttemptAt).IsRequired();
+            entity.Property(e => e.LastError).HasMaxLength(2048);
+            entity.Property(e => e.CreatedBy).HasMaxLength(256);
+            entity.Property(e => e.UpdatedBy).HasMaxLength(256);
+            // Polling claim index: worker selects rows where
+            // Status='Pending' AND NextAttemptAt <= NOW() ORDER BY NextAttemptAt.
+            entity.HasIndex(e => new { e.Status, e.NextAttemptAt })
+                .HasDatabaseName("ix_flow_outbox_status_nextattempt");
+            entity.HasIndex(e => e.TenantId);
+            entity.HasIndex(e => e.EventType);
+            entity.HasIndex(e => e.WorkflowInstanceId);
+            // No FK to WorkflowInstance: the row must survive tenant /
+            // instance cleanup so post-mortem replay/inspection remains
+            // possible. WorkflowInstanceId is informational + indexed.
+        });
+
         WorkflowSeedData.Seed(modelBuilder);
 
         modelBuilder.Entity<TaskItem>(entity =>
@@ -319,7 +353,17 @@ public class FlowDbContext : DbContext, IFlowDbContext
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        var tenantId = _tenantProvider?.GetTenantId();
+        // LS-FLOW-E10.2 — tenant resolution is best-effort here.
+        // ClaimsTenantProvider throws when no HTTP claim is present, which is
+        // expected in background scopes (e.g. OutboxProcessor) that update
+        // existing rows whose TenantId is already set. The hard tenant
+        // assertion below still fires for Added entities without a TenantId.
+        string? tenantId = null;
+        if (_tenantProvider is not null)
+        {
+            try { tenantId = _tenantProvider.GetTenantId(); }
+            catch (InvalidOperationException) { /* background scope — no claim */ }
+        }
 
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
         {

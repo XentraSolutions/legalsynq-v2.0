@@ -2,6 +2,7 @@ using System.Security.Claims;
 using BuildingBlocks.Authorization;
 using Flow.Application.Adapters.AuditAdapter;
 using Flow.Application.Interfaces;
+using Flow.Application.Outbox;
 using Flow.Domain.Entities;
 using Flow.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -71,17 +72,20 @@ public class AdminWorkflowInstancesController : ControllerBase
     private readonly IFlowDbContext _db;
     private readonly ITenantProvider _tenantProvider;
     private readonly IAuditAdapter _audit;
+    private readonly IOutboxWriter _outbox;
     private readonly ILogger<AdminWorkflowInstancesController> _logger;
 
     public AdminWorkflowInstancesController(
         IFlowDbContext db,
         ITenantProvider tenantProvider,
         IAuditAdapter audit,
+        IOutboxWriter outbox,
         ILogger<AdminWorkflowInstancesController> logger)
     {
         _db = db;
         _tenantProvider = tenantProvider;
         _audit = audit;
+        _outbox = outbox;
         _logger = logger;
     }
 
@@ -558,6 +562,34 @@ public class AdminWorkflowInstancesController : ControllerBase
                 detail:     errMsg);
         }
 
+        var performedBy = ResolvePerformedBy();
+
+        // LS-FLOW-E10.2 — enqueue the outbox row IN THE SAME EF unit of
+        // work as the state mutation. Both writes commit (or roll back)
+        // together, so we can no longer end up in the previous "state
+        // changed but audit lost" failure mode. The async OutboxProcessor
+        // picks the row up shortly after commit and dispatches it to
+        // IAuditAdapter (durable audit), and — for retry — additionally
+        // emits a structured re-drive log line that operators can monitor
+        // as the durable async signal that the action was processed.
+        var outboxEventType = action switch
+        {
+            ActionRetry         => OutboxEventTypes.AdminRetry,
+            ActionForceComplete => OutboxEventTypes.AdminForceComplete,
+            ActionCancel        => OutboxEventTypes.AdminCancel,
+            _                   => $"workflow.admin.{action}",
+        };
+        _outbox.Enqueue(outboxEventType, instance.Id, new AdminActionPayload(
+            WorkflowInstanceId: instance.Id,
+            ProductKey:         instance.ProductKey,
+            Action:             action,
+            PreviousStatus:     previousStatus,
+            NewStatus:          instance.Status,
+            Reason:             reason,
+            PerformedBy:        performedBy,
+            IsPlatformAdmin:    isPlatformAdmin,
+            OccurredAtUtc:      now));
+
         try
         {
             await _db.SaveChangesAsync(ct);
@@ -568,38 +600,6 @@ public class AdminWorkflowInstancesController : ControllerBase
                 statusCode: StatusCodes.Status409Conflict,
                 title:      "concurrent_state_change",
                 detail:     "Another writer modified this workflow while the admin action was being applied. Please reload and try again.");
-        }
-
-        var performedBy = ResolvePerformedBy();
-
-        // Audit AFTER persistence so a successful audit reflects an
-        // already-saved state. Per IAuditAdapter contract, failures must
-        // not impact the originating operation — try/catch + warn.
-        try
-        {
-            await _audit.WriteEventAsync(new AuditEvent(
-                Action:      $"workflow.admin.{action}",
-                EntityType:  "WorkflowInstance",
-                EntityId:    instance.Id.ToString(),
-                TenantId:    instance.TenantId,
-                UserId:      performedBy,
-                Description: $"Admin action {action}: {previousStatus} → {instance.Status}",
-                Metadata:    new Dictionary<string, string?>
-                {
-                    ["source"]         = "ControlCenterAdminAction",
-                    ["productKey"]     = instance.ProductKey,
-                    ["previousStatus"] = previousStatus,
-                    ["newStatus"]      = instance.Status,
-                    ["reason"]         = reason,
-                    ["isPlatformAdmin"] = isPlatformAdmin ? "true" : "false",
-                },
-                OccurredAtUtc: now), ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "AdminWorkflowInstances.{Action} audit-write failed for {InstanceId} (action persisted regardless).",
-                action, instance.Id);
         }
 
         _logger.LogInformation(

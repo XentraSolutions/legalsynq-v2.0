@@ -17,6 +17,8 @@ public interface IFlowDbContext
     DbSet<ProductWorkflowMapping> ProductWorkflowMappings { get; }
     // LS-FLOW-MERGE-P4 — dedicated workflow-instance grain.
     DbSet<WorkflowInstance> WorkflowInstances { get; }
+    // LS-FLOW-E10.2 — transactional outbox for durable side effects.
+    DbSet<OutboxMessage> OutboxMessages { get; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
     Microsoft.EntityFrameworkCore.Storage.IExecutionStrategy CreateExecutionStrategy();

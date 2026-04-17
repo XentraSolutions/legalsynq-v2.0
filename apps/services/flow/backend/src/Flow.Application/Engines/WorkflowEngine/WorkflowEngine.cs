@@ -2,6 +2,7 @@ using System.Text.Json;
 using Flow.Application.DTOs;
 using Flow.Application.Exceptions;
 using Flow.Application.Interfaces;
+using Flow.Application.Outbox;
 using Flow.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -32,11 +33,13 @@ public sealed class WorkflowEngine : IWorkflowEngine
     public const string StatusFailed    = "Failed";
 
     private readonly IFlowDbContext _db;
+    private readonly IOutboxWriter _outbox;
     private readonly ILogger<WorkflowEngine> _logger;
 
-    public WorkflowEngine(IFlowDbContext db, ILogger<WorkflowEngine> logger)
+    public WorkflowEngine(IFlowDbContext db, IOutboxWriter outbox, ILogger<WorkflowEngine> logger)
     {
         _db = db;
+        _outbox = outbox;
         _logger = logger;
     }
 
@@ -56,12 +59,26 @@ public sealed class WorkflowEngine : IWorkflowEngine
                           $"Workflow definition {instance.WorkflowDefinitionId} has no stages.",
                           "no_initial_stage");
 
+        var fromStatus = instance.Status;
         instance.CurrentStageId   = initial.Id;
         instance.CurrentStepKey   = initial.Key;
         instance.StartedAt      ??= DateTime.UtcNow;
         instance.Status           = initial.IsTerminal ? StatusCompleted : StatusActive;
         if (initial.IsTerminal) instance.CompletedAt ??= DateTime.UtcNow;
         instance.LastErrorMessage = null;
+
+        // LS-FLOW-E10.2 — outbox write committed atomically with the
+        // status/step mutation by the single SaveChangesAsync below.
+        _outbox.Enqueue(OutboxEventTypes.WorkflowStart, instance.Id, new WorkflowLifecyclePayload(
+            WorkflowInstanceId: instance.Id,
+            ProductKey:         instance.ProductKey,
+            FromStepKey:        null,
+            ToStepKey:          instance.CurrentStepKey,
+            FromStatus:         fromStatus,
+            ToStatus:           instance.Status,
+            Reason:             null,
+            PerformedBy:        null,
+            OccurredAtUtc:      DateTime.UtcNow));
 
         await _db.SaveChangesAsync(ct);
 
@@ -145,6 +162,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
         var nextStage = stages.First(s => s.Id == transition.ToStageId);
 
+        var fromStatus = instance.Status;
         instance.CurrentStageId   = nextStage.Id;
         instance.CurrentStepKey   = nextStage.Key;
         instance.LastErrorMessage = null;
@@ -153,6 +171,22 @@ public sealed class WorkflowEngine : IWorkflowEngine
             instance.Status      = StatusCompleted;
             instance.CompletedAt = DateTime.UtcNow;
         }
+
+        // LS-FLOW-E10.2 — outbox write committed atomically with the
+        // status/step mutation by the conditional UPDATE below.
+        var advanceEventType = nextStage.IsTerminal
+            ? OutboxEventTypes.WorkflowComplete
+            : OutboxEventTypes.WorkflowAdvance;
+        _outbox.Enqueue(advanceEventType, instance.Id, new WorkflowLifecyclePayload(
+            WorkflowInstanceId: instance.Id,
+            ProductKey:         instance.ProductKey,
+            FromStepKey:        fromStage.Key,
+            ToStepKey:          nextStage.Key,
+            FromStatus:         fromStatus,
+            ToStatus:           instance.Status,
+            Reason:             null,
+            PerformedBy:        null,
+            OccurredAtUtc:      DateTime.UtcNow));
 
         await SaveWithConcurrencyAsync(ct, "stale_current_step",
             $"Concurrent update detected; expected step '{expectedCurrentStepKey}' is no longer current.");
@@ -176,9 +210,21 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 "instance_not_active");
         }
 
+        var fromStatus = instance.Status;
         instance.Status           = StatusCompleted;
         instance.CompletedAt      = DateTime.UtcNow;
         instance.LastErrorMessage = null;
+
+        _outbox.Enqueue(OutboxEventTypes.WorkflowComplete, instance.Id, new WorkflowLifecyclePayload(
+            WorkflowInstanceId: instance.Id,
+            ProductKey:         instance.ProductKey,
+            FromStepKey:        instance.CurrentStepKey,
+            ToStepKey:          instance.CurrentStepKey,
+            FromStatus:         fromStatus,
+            ToStatus:           instance.Status,
+            Reason:             null,
+            PerformedBy:        null,
+            OccurredAtUtc:      DateTime.UtcNow));
 
         await SaveWithConcurrencyAsync(ct, "concurrent_state_change",
             $"Concurrent update detected on workflow instance {workflowInstanceId}.");
@@ -202,9 +248,21 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 "instance_not_active");
         }
 
+        var fromStatus = instance.Status;
         instance.Status           = StatusCancelled;
         instance.CompletedAt      = DateTime.UtcNow;
         instance.LastErrorMessage = string.IsNullOrWhiteSpace(reason) ? null : Truncate(reason!, 2048);
+
+        _outbox.Enqueue(OutboxEventTypes.WorkflowCancel, instance.Id, new WorkflowLifecyclePayload(
+            WorkflowInstanceId: instance.Id,
+            ProductKey:         instance.ProductKey,
+            FromStepKey:        instance.CurrentStepKey,
+            ToStepKey:          instance.CurrentStepKey,
+            FromStatus:         fromStatus,
+            ToStatus:           instance.Status,
+            Reason:             reason,
+            PerformedBy:        null,
+            OccurredAtUtc:      DateTime.UtcNow));
 
         await SaveWithConcurrencyAsync(ct, "concurrent_state_change",
             $"Concurrent update detected on workflow instance {workflowInstanceId}.");
@@ -227,9 +285,21 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 "instance_not_active");
         }
 
+        var fromStatus = instance.Status;
         instance.Status           = StatusFailed;
         instance.CompletedAt      = DateTime.UtcNow;
         instance.LastErrorMessage = Truncate(errorMessage ?? "Failed", 2048);
+
+        _outbox.Enqueue(OutboxEventTypes.WorkflowFail, instance.Id, new WorkflowLifecyclePayload(
+            WorkflowInstanceId: instance.Id,
+            ProductKey:         instance.ProductKey,
+            FromStepKey:        instance.CurrentStepKey,
+            ToStepKey:          instance.CurrentStepKey,
+            FromStatus:         fromStatus,
+            ToStatus:           instance.Status,
+            Reason:             instance.LastErrorMessage,
+            PerformedBy:        null,
+            OccurredAtUtc:      DateTime.UtcNow));
 
         await SaveWithConcurrencyAsync(ct, "concurrent_state_change",
             $"Concurrent update detected on workflow instance {workflowInstanceId}.");

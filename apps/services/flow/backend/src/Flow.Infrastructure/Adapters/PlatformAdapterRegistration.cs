@@ -1,8 +1,10 @@
 using Flow.Application.Adapters.AuditAdapter;
 using Flow.Application.Adapters.NotificationAdapter;
 using Flow.Application.Events;
+using Flow.Application.Outbox;
 using Flow.Infrastructure.Adapters;
 using Flow.Infrastructure.Events;
+using Flow.Infrastructure.Outbox;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -66,6 +68,12 @@ public static class PlatformAdapterRegistration
 
         // ----- Internal in-process event dispatcher ---------------------
         services.AddScoped<IFlowEventDispatcher, FlowEventDispatcher>();
+
+        // ----- LS-FLOW-E10.2 — transactional outbox + async processor --
+        services.Configure<OutboxOptions>(configuration.GetSection(OutboxOptions.SectionName));
+        services.AddScoped<IOutboxWriter, OutboxWriter>();
+        services.AddScoped<OutboxDispatcher>();
+        services.AddHostedService<OutboxProcessor>();
 
         return services;
     }
