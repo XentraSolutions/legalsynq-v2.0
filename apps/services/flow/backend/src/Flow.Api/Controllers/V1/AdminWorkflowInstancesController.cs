@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using BuildingBlocks.Authorization;
+using Flow.Application.Adapters.AuditAdapter;
 using Flow.Application.Interfaces;
 using Flow.Domain.Entities;
 using Flow.Domain.Interfaces;
@@ -56,17 +58,30 @@ public class AdminWorkflowInstancesController : ControllerBase
     private const string ClassStuck        = "Stuck";
     private const string ClassErrorPresent = "ErrorPresent";
 
+    /// <summary>
+    /// E10.1 — admin-action constants. Kept symmetrical with the
+    /// Control Center client + audit metadata so triage UIs and audit
+    /// log queries share an exact spelling.
+    /// </summary>
+    private const string ActionRetry          = "retry";
+    private const string ActionForceComplete  = "force_complete";
+    private const string ActionCancel         = "cancel";
+    private const int    MaxReasonLength      = 1000;
+
     private readonly IFlowDbContext _db;
     private readonly ITenantProvider _tenantProvider;
+    private readonly IAuditAdapter _audit;
     private readonly ILogger<AdminWorkflowInstancesController> _logger;
 
     public AdminWorkflowInstancesController(
         IFlowDbContext db,
         ITenantProvider tenantProvider,
+        IAuditAdapter audit,
         ILogger<AdminWorkflowInstancesController> logger)
     {
         _db = db;
         _tenantProvider = tenantProvider;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -406,6 +421,219 @@ public class AdminWorkflowInstancesController : ControllerBase
 
         return Ok(dto);
     }
+
+    // ── E10.1 — admin actions (Retry / Force Complete / Cancel) ──────────
+    //
+    // Shared rules across all three:
+    //   * Reason is required (non-empty after trim, capped at
+    //     MaxReasonLength). Sent verbatim to audit.
+    //   * Tenant scoping is identical to GetById: PlatformAdmin can act
+    //     across tenants; TenantAdmin can act only on rows in their own
+    //     tenant. Out-of-scope rows return 404 (existence not leaked).
+    //   * State validation runs in code AFTER the row is loaded so a
+    //     stale UI request fails with 409 ProblemDetails rather than
+    //     silently corrupting state.
+    //   * Audit is written via IAuditAdapter AFTER SaveChangesAsync. The
+    //     adapter is documented fire-and-forget safe; we additionally
+    //     try/catch + log so an audit-pipeline outage cannot fail the
+    //     admin action itself (the structured response + ASP.NET log
+    //     line still record the action server-side).
+    //   * Concurrency: DbUpdateConcurrencyException → 409.
+
+    /// <summary>
+    /// E10.1 — re-enter engine-managed execution after a Failed (or
+    /// errored Active/Pending) workflow. Clears LastErrorMessage and
+    /// flips Status back to "Active"; the engine will pick up from the
+    /// existing CurrentStageId / CurrentStepKey on its next tick. Does
+    /// not rewind history.
+    /// </summary>
+    [HttpPost("{id:guid}/retry")]
+    public Task<IActionResult> Retry(Guid id, [FromBody] AdminWorkflowActionRequest body, CancellationToken ct)
+        => HandleAdminActionAsync(id, ActionRetry, body, ct, (w, _) =>
+        {
+            // Allowed: Failed, OR (Active|Pending with a captured error)
+            var hasErr = !string.IsNullOrEmpty(w.LastErrorMessage);
+            var ok = w.Status == "Failed"
+                  || ((w.Status == "Active" || w.Status == "Pending") && hasErr);
+            if (!ok) return ("not_allowed_in_state", $"Retry is only allowed on Failed workflows or Active/Pending workflows with an error. Current status: {w.Status}.");
+            // Mutation: re-arm execution.
+            w.Status           = "Active";
+            w.LastErrorMessage = null;
+            w.UpdatedAt        = DateTime.UtcNow;
+            return (null, null);
+        });
+
+    /// <summary>
+    /// E10.1 — admin override that marks an Active or Pending workflow
+    /// as Completed without further engine progression. Captures the
+    /// reason in audit so an investigator can see this was a forced
+    /// completion rather than an organic terminal transition.
+    /// </summary>
+    [HttpPost("{id:guid}/force-complete")]
+    public Task<IActionResult> ForceComplete(Guid id, [FromBody] AdminWorkflowActionRequest body, CancellationToken ct)
+        => HandleAdminActionAsync(id, ActionForceComplete, body, ct, (w, now) =>
+        {
+            if (w.Status != "Active" && w.Status != "Pending")
+                return ("not_allowed_in_state", $"Force complete is only allowed on Active or Pending workflows. Current status: {w.Status}.");
+            w.Status      = "Completed";
+            w.CompletedAt = now;
+            w.UpdatedAt   = now;
+            return (null, null);
+        });
+
+    /// <summary>
+    /// E10.1 — admin override that marks an Active or Pending workflow
+    /// as Cancelled. Engine will not advance a Cancelled instance.
+    /// </summary>
+    [HttpPost("{id:guid}/cancel")]
+    public Task<IActionResult> Cancel(Guid id, [FromBody] AdminWorkflowActionRequest body, CancellationToken ct)
+        => HandleAdminActionAsync(id, ActionCancel, body, ct, (w, now) =>
+        {
+            if (w.Status != "Active" && w.Status != "Pending")
+                return ("not_allowed_in_state", $"Cancel is only allowed on Active or Pending workflows. Current status: {w.Status}.");
+            w.Status      = "Cancelled";
+            w.CompletedAt = now;
+            w.UpdatedAt   = now;
+            return (null, null);
+        });
+
+    /// <summary>
+    /// E10.1 — shared admin-action pipeline. Centralises tenant
+    /// scoping, reason validation, state-transition delegation, save,
+    /// audit emit, and structured response shaping so each action
+    /// endpoint stays a thin descriptor.
+    /// </summary>
+    private async Task<IActionResult> HandleAdminActionAsync(
+        Guid id,
+        string action,
+        AdminWorkflowActionRequest? body,
+        CancellationToken ct,
+        Func<WorkflowInstance, DateTime, (string? Code, string? Message)> apply)
+    {
+        // Reason normalisation FIRST so a malformed request fails fast
+        // before we touch the database.
+        var reason = (body?.Reason ?? string.Empty).Trim();
+        if (reason.Length == 0)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title:      "reason_required",
+                detail:     "An admin action reason is required.");
+        }
+        if (reason.Length > MaxReasonLength) reason = reason[..MaxReasonLength];
+
+        var isPlatformAdmin = User.IsInRole(Roles.PlatformAdmin);
+
+        string? scopeTenantId = null;
+        if (!isPlatformAdmin)
+        {
+            try { scopeTenantId = _tenantProvider.GetTenantId(); }
+            catch { return Forbid(); }
+            if (string.IsNullOrEmpty(scopeTenantId)) return Forbid();
+        }
+
+        // Load the row tracked so EF can persist the in-place mutation.
+        var instance = await _db.WorkflowInstances
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(w => w.Id == id, ct);
+
+        if (instance is null) return NotFound();
+
+        // For TenantAdmin, hide rows belonging to other tenants. 404 not
+        // 403: existence in another tenant is intentionally invisible.
+        if (!isPlatformAdmin && instance.TenantId != scopeTenantId)
+        {
+            return NotFound();
+        }
+
+        var previousStatus = instance.Status;
+        var now            = DateTime.UtcNow;
+
+        var (errCode, errMsg) = apply(instance, now);
+        if (errCode is not null)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title:      errCode,
+                detail:     errMsg);
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title:      "concurrent_state_change",
+                detail:     "Another writer modified this workflow while the admin action was being applied. Please reload and try again.");
+        }
+
+        var performedBy = ResolvePerformedBy();
+
+        // Audit AFTER persistence so a successful audit reflects an
+        // already-saved state. Per IAuditAdapter contract, failures must
+        // not impact the originating operation — try/catch + warn.
+        try
+        {
+            await _audit.WriteEventAsync(new AuditEvent(
+                Action:      $"workflow.admin.{action}",
+                EntityType:  "WorkflowInstance",
+                EntityId:    instance.Id.ToString(),
+                TenantId:    instance.TenantId,
+                UserId:      performedBy,
+                Description: $"Admin action {action}: {previousStatus} → {instance.Status}",
+                Metadata:    new Dictionary<string, string?>
+                {
+                    ["source"]         = "ControlCenterAdminAction",
+                    ["productKey"]     = instance.ProductKey,
+                    ["previousStatus"] = previousStatus,
+                    ["newStatus"]      = instance.Status,
+                    ["reason"]         = reason,
+                    ["isPlatformAdmin"] = isPlatformAdmin ? "true" : "false",
+                },
+                OccurredAtUtc: now), ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "AdminWorkflowInstances.{Action} audit-write failed for {InstanceId} (action persisted regardless).",
+                action, instance.Id);
+        }
+
+        _logger.LogInformation(
+            "AdminWorkflowInstances.{Action} id={InstanceId} platformAdmin={IsPlatformAdmin} tenant={TenantId} {Previous}->{New} performedBy={PerformedBy}",
+            action, instance.Id, isPlatformAdmin, instance.TenantId, previousStatus, instance.Status, performedBy);
+
+        return Ok(new AdminWorkflowActionResult
+        {
+            WorkflowInstanceId = instance.Id,
+            Action             = action,
+            PreviousStatus     = previousStatus,
+            NewStatus          = instance.Status,
+            PerformedBy        = performedBy,
+            Timestamp          = now,
+            Reason             = reason,
+        });
+    }
+
+    /// <summary>
+    /// E10.1 — best-effort actor identifier for audit. Tries the common
+    /// JWT subject claims in priority order; falls back to a sentinel
+    /// so an audit row is never produced with an empty performedBy.
+    /// </summary>
+    private string ResolvePerformedBy()
+    {
+        var u = User;
+        return u.FindFirstValue("preferred_username")
+            ?? u.FindFirstValue("email")
+            ?? u.FindFirstValue(ClaimTypes.Email)
+            ?? u.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? u.FindFirstValue("sub")
+            ?? u.Identity?.Name
+            ?? "unknown_admin";
+    }
 }
 
 public sealed record AdminWorkflowInstanceDetail
@@ -461,6 +689,43 @@ public sealed record AdminWorkflowInstanceListItem
     /// (e.g. <c>["Failed","ErrorPresent"]</c>).
     /// </summary>
     public List<string> Classifications { get; init; } = new();
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// E10.1 — admin action contracts. Read-only types belong below; these
+// contracts intentionally live alongside the read DTOs because they
+// share the same admin auth/tenant model and are versioned together.
+// ────────────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// E10.1 — request body for every admin action endpoint
+/// (<c>retry</c>, <c>force-complete</c>, <c>cancel</c>). The reason is
+/// mandatory: it lands verbatim on the audit record so an investigator
+/// can trace why an admin overrode the workflow engine.
+/// </summary>
+public sealed record AdminWorkflowActionRequest
+{
+    /// <summary>
+    /// Operator-provided justification. Must be non-empty after trim.
+    /// Capped server-side at <c>MaxReasonLength</c> characters.
+    /// </summary>
+    public string? Reason { get; init; }
+}
+
+/// <summary>
+/// E10.1 — structured response returned by every admin action so the
+/// Control Center can refresh the drawer optimistically without an
+/// extra GET call. Fields mirror what is also written to audit.
+/// </summary>
+public sealed record AdminWorkflowActionResult
+{
+    public Guid     WorkflowInstanceId { get; init; }
+    public string   Action             { get; init; } = string.Empty;
+    public string   PreviousStatus     { get; init; } = string.Empty;
+    public string   NewStatus          { get; init; } = string.Empty;
+    public string   PerformedBy        { get; init; } = string.Empty;
+    public DateTime Timestamp          { get; init; }
+    public string   Reason             { get; init; } = string.Empty;
 }
 
 public sealed record AdminWorkflowInstanceListResponse

@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useId, useMemo } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import type { WorkflowInstanceDetail } from '@/types/control-center';
+import type {
+  WorkflowAdminAction,
+  WorkflowInstanceDetail,
+} from '@/types/control-center';
 
 interface WorkflowDetailDrawerProps {
   /**
@@ -23,6 +26,14 @@ interface WorkflowDetailDrawerProps {
    * without breaking the underlying list.
    */
   errorMessage?: string | null;
+
+  /**
+   * E10.1 — when true, the drawer renders the Admin Actions section
+   * (Retry / Force Complete / Cancel). The parent page is responsible
+   * for asserting PlatformAdmin role server-side before passing this
+   * flag; the BFF route re-asserts on submit.
+   */
+  canAdmin?: boolean;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -120,16 +131,74 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/**
+ * E10.1 — client-side eligibility for an admin action. Mirrors the
+ * server-side state matrix on AdminWorkflowInstancesController so the
+ * UI never offers a button the backend would reject. The server
+ * remains the source of truth (any client/server divergence surfaces
+ * as a `not_allowed_in_state` ProblemDetails banner inside the drawer
+ * rather than silent corruption).
+ */
+function isActionEligible(
+  action: WorkflowAdminAction,
+  detail: WorkflowInstanceDetail | null,
+): boolean {
+  if (!detail) return false;
+  const s = detail.status;
+  const hasErr = !!(detail.lastErrorMessage && detail.lastErrorMessage.length > 0);
+  switch (action) {
+    case 'retry':
+      return s === 'Failed' || ((s === 'Active' || s === 'Pending') && hasErr);
+    case 'force-complete':
+    case 'cancel':
+      return s === 'Active' || s === 'Pending';
+    default:
+      return false;
+  }
+}
+
+const ACTION_LABELS: Record<WorkflowAdminAction, string> = {
+  'retry':          'Retry',
+  'force-complete': 'Force complete',
+  'cancel':         'Cancel',
+};
+
+const ACTION_INELIGIBLE_HINT: Record<WorkflowAdminAction, string> = {
+  'retry':          'Retry is only available for Failed workflows or Active/Pending workflows with a captured error.',
+  'force-complete': 'Force complete is only available for Active or Pending workflows.',
+  'cancel':         'Cancel is only available for Active or Pending workflows.',
+};
+
+const REASON_MAX = 1000;
+
 export function WorkflowDetailDrawer({
   selectedId,
   detail,
   errorMessage,
+  canAdmin = false,
 }: WorkflowDetailDrawerProps) {
   const titleId = useId();
   const router  = useRouter();
   const params  = useSearchParams();
 
   const isOpen = !!selectedId;
+
+  // E10.1 — admin action panel state. `pendingAction` controls which
+  // confirmation panel is open; only one can be active at a time so
+  // operators cannot accidentally fire two state transitions in
+  // rapid succession.
+  const [pendingAction, setPendingAction] = useState<WorkflowAdminAction | null>(null);
+  const [reason,        setReason]        = useState('');
+  const [submitting,    setSubmitting]    = useState(false);
+  const [actionError,   setActionError]   = useState<string | null>(null);
+
+  // Reset action panel whenever the drawer changes target.
+  useEffect(() => {
+    setPendingAction(null);
+    setReason('');
+    setSubmitting(false);
+    setActionError(null);
+  }, [selectedId]);
 
   // Build the close target: same URL minus `?selected=`. Preserves all
   // other filter params so the operator returns to the same list view.
@@ -278,6 +347,129 @@ export function WorkflowDetailDrawer({
                 </dl>
               </section>
 
+              {/* E10.1 — Admin Actions */}
+              {canAdmin && (
+                <section className="space-y-3" data-testid="workflow-admin-actions">
+                  <h3 className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Admin actions</h3>
+                  <p className="text-[11px] text-gray-500">
+                    Override the workflow engine. Every action is recorded with your reason in the audit log.
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {(['retry', 'force-complete', 'cancel'] as WorkflowAdminAction[]).map((a) => {
+                      const eligible = isActionEligible(a, detail);
+                      const isOpenForThis = pendingAction === a;
+                      const tone =
+                        a === 'cancel'
+                          ? 'border-red-300 text-red-700 hover:bg-red-50'
+                          : a === 'force-complete'
+                            ? 'border-amber-300 text-amber-800 hover:bg-amber-50'
+                            : 'border-indigo-300 text-indigo-700 hover:bg-indigo-50';
+                      return (
+                        <button
+                          key={a}
+                          type="button"
+                          disabled={!eligible || submitting}
+                          aria-pressed={isOpenForThis}
+                          title={eligible ? '' : ACTION_INELIGIBLE_HINT[a]}
+                          onClick={() => {
+                            if (!eligible) return;
+                            setActionError(null);
+                            setReason('');
+                            setPendingAction(isOpenForThis ? null : a);
+                          }}
+                          className={`text-xs font-medium px-2.5 py-1.5 rounded-md border bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${tone} ${isOpenForThis ? 'ring-2 ring-offset-1 ring-indigo-300' : ''}`}
+                        >
+                          {ACTION_LABELS[a]}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {pendingAction && (
+                    <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-2">
+                      <label className="block text-[11px] uppercase tracking-wide text-gray-500 font-semibold" htmlFor={`${titleId}-reason`}>
+                        Reason for {ACTION_LABELS[pendingAction].toLowerCase()}
+                      </label>
+                      <textarea
+                        id={`${titleId}-reason`}
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value.slice(0, REASON_MAX))}
+                        rows={3}
+                        maxLength={REASON_MAX}
+                        placeholder="Required. Recorded in the audit log."
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                      />
+                      <div className="flex items-center justify-between text-[11px] text-gray-400">
+                        <span>{reason.length} / {REASON_MAX}</span>
+                        <span>This action cannot be undone.</span>
+                      </div>
+
+                      {actionError && (
+                        <div className="bg-red-50 border border-red-200 rounded px-2 py-1.5 text-xs text-red-700">
+                          {actionError}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => { setPendingAction(null); setReason(''); setActionError(null); }}
+                          disabled={submitting}
+                          className="text-xs px-2.5 py-1.5 rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                        >
+                          Dismiss
+                        </button>
+                        <button
+                          type="button"
+                          disabled={submitting || reason.trim().length === 0 || !detail}
+                          onClick={async () => {
+                            if (!detail) return;
+                            const trimmed = reason.trim();
+                            if (trimmed.length === 0) {
+                              setActionError('A reason is required.');
+                              return;
+                            }
+                            setSubmitting(true);
+                            setActionError(null);
+                            try {
+                              const res = await fetch(
+                                `/api/admin/workflow-instances/${encodeURIComponent(detail.id)}/${pendingAction}`,
+                                {
+                                  method:  'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body:    JSON.stringify({ reason: trimmed }),
+                                },
+                              );
+                              if (!res.ok) {
+                                let msg = `Action failed (HTTP ${res.status}).`;
+                                try {
+                                  const body = (await res.json()) as { error?: string; detail?: string; title?: string };
+                                  msg = body.error ?? body.detail ?? body.title ?? msg;
+                                } catch { /* keep default */ }
+                                setActionError(msg);
+                                setSubmitting(false);
+                                return;
+                              }
+                              setSubmitting(false);
+                              setPendingAction(null);
+                              setReason('');
+                              router.refresh();
+                            } catch (err) {
+                              setActionError(err instanceof Error ? err.message : 'Network error.');
+                              setSubmitting(false);
+                            }
+                          }}
+                          className="text-xs px-2.5 py-1.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {submitting ? 'Applying…' : `Confirm ${ACTION_LABELS[pendingAction].toLowerCase()}`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+
               {/* Diagnostics */}
               {(detail.lastErrorMessage || detail.status === 'Failed' || detail.status === 'Cancelled') && (
                 <section className="space-y-3">
@@ -299,7 +491,9 @@ export function WorkflowDetailDrawer({
 
         {/* Footer */}
         <footer className="px-5 py-3 border-t border-gray-100 text-[11px] text-gray-400">
-          Read-only inspection. Execution actions remain on the product surface.
+          {canAdmin
+            ? 'Admin overrides bypass the workflow engine. Use sparingly.'
+            : 'Read-only inspection. Execution actions remain on the product surface.'}
         </footer>
       </aside>
     </div>

@@ -268,6 +268,7 @@ export default async function WorkflowExceptionsPage({
         selectedId={selected}
         detail={detail}
         errorMessage={detailError}
+        canAdmin
       />
     </CCShell>
   );

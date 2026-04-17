@@ -1123,3 +1123,24 @@ export interface WorkflowInstanceDetail extends WorkflowInstanceListItem {
   currentStepName:  string | null;
   lastErrorMessage: string | null;
 }
+
+/**
+ * E10.1 — admin action verbs supported by the Control Center drawer
+ * and the matching Flow admin endpoints.
+ */
+export type WorkflowAdminAction = 'retry' | 'force-complete' | 'cancel';
+
+/**
+ * E10.1 — structured result returned by every admin action endpoint
+ * (`POST /api/v1/admin/workflow-instances/{id}/{action}`). Mirrors
+ * `AdminWorkflowActionResult` on the Flow side.
+ */
+export interface WorkflowAdminActionResult {
+  workflowInstanceId: string;
+  action:             string;
+  previousStatus:     string;
+  newStatus:          string;
+  performedBy:        string;
+  timestamp:          string;
+  reason:             string;
+}

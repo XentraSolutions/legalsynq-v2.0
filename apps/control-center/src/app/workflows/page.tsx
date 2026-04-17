@@ -203,6 +203,7 @@ export default async function WorkflowsPage({ searchParams }: WorkflowsPageProps
         selectedId={selected}
         detail={detail}
         errorMessage={detailError}
+        canAdmin
       />
     </CCShell>
   );

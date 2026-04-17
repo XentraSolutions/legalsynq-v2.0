@@ -143,6 +143,8 @@ import type {
   WorkflowInstanceListItem,
   WorkflowInstanceDetail,
   WorkflowInstancePagedResponse,
+  WorkflowAdminAction,
+  WorkflowAdminActionResult,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2059,6 +2061,39 @@ export const controlCenterServerApi = {
         page:                raw?.page                ?? (params.page     ?? 1),
         pageSize:            raw?.pageSize            ?? (params.pageSize ?? 20),
         staleThresholdHours: raw?.staleThresholdHours ?? (params.staleThresholdHours ?? 24),
+      };
+    },
+
+    /**
+     * E10.1 — perform an admin action (retry / force-complete / cancel)
+     * on a workflow instance. Calls the matching Flow admin endpoint
+     * and returns the structured result. The caller is expected to
+     * have already validated the operator's PlatformAdmin role at the
+     * BFF route boundary (`requirePlatformAdmin`); this method is the
+     * thin server-side proxy that re-uses the JWT-bearer api client so
+     * the existing audit/auth path on Flow stays authoritative.
+     *
+     * Throws on non-2xx responses; the BFF route translates the throw
+     * into a JSON error for the drawer.
+     */
+    adminAction: async (
+      id:     string,
+      action: WorkflowAdminAction,
+      reason: string,
+    ): Promise<WorkflowAdminActionResult> => {
+      const raw = await apiClient.post<unknown>(
+        `/flow/api/v1/admin/workflow-instances/${encodeURIComponent(id)}/${action}`,
+        { reason },
+      );
+      const r = (raw ?? {}) as Record<string, unknown>;
+      return {
+        workflowInstanceId: String(r.workflowInstanceId ?? id),
+        action:             String(r.action ?? action),
+        previousStatus:     String(r.previousStatus ?? ''),
+        newStatus:          String(r.newStatus ?? ''),
+        performedBy:        String(r.performedBy ?? ''),
+        timestamp:          String(r.timestamp ?? ''),
+        reason:             String(r.reason ?? reason),
       };
     },
 
