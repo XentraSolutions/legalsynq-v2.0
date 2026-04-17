@@ -59,6 +59,10 @@ public static class DependencyInjection
         // with the rest of Flow.Application so a single DI scope per
         // request is the unit of work.
         services.AddScoped<IWorkflowTaskLifecycleService, WorkflowTaskLifecycleService>();
+        // LS-FLOW-E11.5 — read-only "My Tasks" query surface for the
+        // calling user. Scoped so it shares the per-request IFlowDbContext
+        // and IFlowUserContext, both of which are themselves scoped.
+        services.AddScoped<IMyTasksService, MyTasksService>();
 
         return services;
     }
