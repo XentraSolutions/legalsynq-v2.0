@@ -39,12 +39,18 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
     private readonly IFlowDbContext _db;
     private readonly IOutboxWriter _outbox;
+    private readonly IWorkflowTaskFromWorkflowFactory _taskFactory;
     private readonly ILogger<WorkflowEngine> _logger;
 
-    public WorkflowEngine(IFlowDbContext db, IOutboxWriter outbox, ILogger<WorkflowEngine> logger)
+    public WorkflowEngine(
+        IFlowDbContext db,
+        IOutboxWriter outbox,
+        IWorkflowTaskFromWorkflowFactory taskFactory,
+        ILogger<WorkflowEngine> logger)
     {
         _db = db;
         _outbox = outbox;
+        _taskFactory = taskFactory;
         _logger = logger;
     }
 
@@ -106,6 +112,14 @@ public sealed class WorkflowEngine : IWorkflowEngine
             Reason:             null,
             PerformedBy:        null,
             OccurredAtUtc:      DateTime.UtcNow));
+
+        // LS-FLOW-E11.2 — stage a WorkflowTask for the new step in the
+        // SAME unit-of-work. Factory enforces eligibility (Active +
+        // CurrentStepKey set) and idempotent dedup; terminal initial
+        // stages and re-runs are no-ops. The single SaveChangesAsync
+        // below commits the task atomically with the instance + outbox
+        // row, so a failed save cannot leave an orphan task behind.
+        await _taskFactory.EnsureForCurrentStepAsync(instance, ct);
 
         await _db.SaveChangesAsync(ct);
 
@@ -214,6 +228,15 @@ public sealed class WorkflowEngine : IWorkflowEngine
             Reason:             null,
             PerformedBy:        null,
             OccurredAtUtc:      DateTime.UtcNow));
+
+        // LS-FLOW-E11.2 — stage a WorkflowTask for the new step. The
+        // factory short-circuits when nextStage.IsTerminal (Status flips
+        // to Completed above) so terminal advances do not create a task,
+        // and dedups against any Open / InProgress task that already
+        // exists for (instance, step) — covering the loop-back case
+        // where a definition has a transition that lands back on a
+        // step the operator is still working.
+        await _taskFactory.EnsureForCurrentStepAsync(instance, ct);
 
         await SaveWithConcurrencyAsync(ct, "stale_current_step",
             $"Concurrent update detected; expected step '{expectedCurrentStepKey}' is no longer current.");

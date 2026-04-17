@@ -45,6 +45,9 @@ public static class DependencyInjection
         services.AddScoped<IProductWorkflowService, ProductWorkflowService>();
         // LS-FLOW-MERGE-P5 — execution authority for WorkflowInstance.
         services.AddScoped<IWorkflowEngine, WorkflowEngine>();
+        // LS-FLOW-E11.2 — auto-creates WorkflowTask rows from workflow
+        // transitions. Stateless service; one per scoped DbContext.
+        services.AddScoped<IWorkflowTaskFromWorkflowFactory, WorkflowTaskFromWorkflowFactory>();
 
         return services;
     }

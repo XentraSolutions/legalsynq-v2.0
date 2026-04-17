@@ -74,6 +74,7 @@ public class AdminWorkflowInstancesController : ControllerBase
     private readonly IAuditAdapter _audit;
     private readonly IAuditQueryAdapter _auditQuery;
     private readonly IOutboxWriter _outbox;
+    private readonly IWorkflowTaskFromWorkflowFactory _taskFactory;
     private readonly ILogger<AdminWorkflowInstancesController> _logger;
 
     public AdminWorkflowInstancesController(
@@ -82,6 +83,7 @@ public class AdminWorkflowInstancesController : ControllerBase
         IAuditAdapter audit,
         IAuditQueryAdapter auditQuery,
         IOutboxWriter outbox,
+        IWorkflowTaskFromWorkflowFactory taskFactory,
         ILogger<AdminWorkflowInstancesController> logger)
     {
         _db = db;
@@ -89,6 +91,7 @@ public class AdminWorkflowInstancesController : ControllerBase
         _audit = audit;
         _auditQuery = auditQuery;
         _outbox = outbox;
+        _taskFactory = taskFactory;
         _logger = logger;
     }
 
@@ -661,6 +664,20 @@ public class AdminWorkflowInstancesController : ControllerBase
             PerformedBy:        performedBy,
             IsPlatformAdmin:    isPlatformAdmin,
             OccurredAtUtc:      now));
+
+        // LS-FLOW-E11.2 — only admin Retry can re-enter an actionable
+        // step (Failed → Active or error-bearing Active/Pending →
+        // Active). The factory dedups against any Open / InProgress
+        // task already at (instance, CurrentStepKey), so this call is a
+        // no-op when an active task survives the failure — retry alone
+        // never duplicates work. force-complete and cancel both flip
+        // Status off Active and the factory short-circuits on
+        // ineligible status, so they are also safe no-ops here even
+        // though we only invoke for retry.
+        if (action == ActionRetry)
+        {
+            await _taskFactory.EnsureForCurrentStepAsync(instance, ct);
+        }
 
         try
         {
