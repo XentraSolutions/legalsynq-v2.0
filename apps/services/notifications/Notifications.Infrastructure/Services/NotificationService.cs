@@ -66,16 +66,21 @@ public class NotificationServiceImpl : INotificationService
         catch { recipientEl = default; }
 
         var mode = ReadRecipientMode(recipientEl);
-        var isFanOut = string.Equals(mode, "Role", StringComparison.OrdinalIgnoreCase)
+        var isFanOut = recipientEl.ValueKind == JsonValueKind.Array
+                    || string.Equals(mode, "Role", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(mode, "Org",  StringComparison.OrdinalIgnoreCase);
 
         if (!isFanOut)
             return await DispatchSingleAsync(tenantId, request, recipientJson);
 
+        // Resolver expands every envelope (single object or array) and
+        // deduplicates the union by ResolvedRecipient.StableKey so a user
+        // matched by multiple addressed roles/orgs is delivered only once.
         var resolved = await _recipientResolver.ResolveAsync(tenantId, recipientEl);
         if (resolved.Count == 0)
         {
             // Persist a single blocked notification so producers see the empty fan-out.
+            var emptyReasonMode = mode ?? (recipientEl.ValueKind == JsonValueKind.Array ? "Batch" : "FanOut");
             var notification = new Notification
             {
                 TenantId = tenantId, Channel = request.Channel, Status = "blocked",
@@ -84,10 +89,10 @@ public class NotificationServiceImpl : INotificationService
                 MetadataJson = request.Metadata != null ? JsonSerializer.Serialize(request.Metadata) : null,
                 IdempotencyKey = request.IdempotencyKey, TemplateKey = request.TemplateKey,
                 BlockedByPolicy = true, BlockedReasonCode = "recipient_set_empty",
-                LastErrorMessage = $"No members resolved for {mode} recipient"
+                LastErrorMessage = $"No members resolved for {emptyReasonMode} recipient"
             };
             notification = await _notificationRepo.CreateAsync(notification);
-            _logger.LogWarning("Notification fan-out resolved 0 recipients for tenant {TenantId} mode {Mode}", tenantId, mode);
+            _logger.LogWarning("Notification fan-out resolved 0 recipients for tenant {TenantId} mode {Mode}", tenantId, emptyReasonMode);
             return MapToResult(notification);
         }
 

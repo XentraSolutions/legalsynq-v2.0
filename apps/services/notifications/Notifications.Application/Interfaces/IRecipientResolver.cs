@@ -12,11 +12,20 @@ namespace Notifications.Application.Interfaces;
 public interface IRecipientResolver
 {
     /// <summary>
-    /// Expand the recipient JSON object (as posted on
+    /// Expand the recipient JSON (as posted on
     /// <see cref="DTOs.SubmitNotificationDto.Recipient"/>) to the concrete
     /// users to deliver to. Implementations must respect tenant + org scope.
+    ///
+    /// <para>
     /// Direct UserId / Email modes resolve to a single entry; Role / Org
-    /// modes consult the configured membership provider.
+    /// modes consult the configured membership provider. The
+    /// <paramref name="recipient"/> JSON may be either a single envelope
+    /// object or an array of envelopes — when an array is supplied every
+    /// envelope is resolved and the union is deduplicated by
+    /// <see cref="ResolvedRecipient.StableKey"/> so a user that matches
+    /// more than one addressed role/org receives the notification only
+    /// once.
+    /// </para>
     /// </summary>
     Task<IReadOnlyList<ResolvedRecipient>> ResolveAsync(Guid tenantId, JsonElement recipient);
 }

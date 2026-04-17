@@ -27,9 +27,30 @@ public class RecipientResolver : IRecipientResolver
 
     public async Task<IReadOnlyList<ResolvedRecipient>> ResolveAsync(Guid tenantId, JsonElement recipient)
     {
+        // Array form: producers may address several roles/orgs in a single
+        // submitted notification. Resolve each envelope independently, then
+        // dedupe across the union by StableKey so a user that belongs to
+        // multiple addressed roles/orgs receives the notification only once.
+        if (recipient.ValueKind == JsonValueKind.Array)
+        {
+            var aggregate = new List<ResolvedRecipient>();
+            foreach (var envelope in recipient.EnumerateArray())
+            {
+                if (envelope.ValueKind != JsonValueKind.Object) continue;
+                var part = await ResolveSingleAsync(tenantId, envelope);
+                if (part.Count > 0) aggregate.AddRange(part);
+            }
+            return Dedupe(aggregate);
+        }
+
         if (recipient.ValueKind != JsonValueKind.Object)
             return Array.Empty<ResolvedRecipient>();
 
+        return await ResolveSingleAsync(tenantId, recipient);
+    }
+
+    private async Task<IReadOnlyList<ResolvedRecipient>> ResolveSingleAsync(Guid tenantId, JsonElement recipient)
+    {
         var mode    = ReadMode(recipient);
         var userId  = ReadString(recipient, "userId");
         var email   = ReadString(recipient, "email");
