@@ -21,6 +21,7 @@ public class NotificationServiceImpl : INotificationService
     private readonly IBrandingResolutionService _brandingResolution;
     private readonly IEmailProviderAdapter _sendGridAdapter;
     private readonly ISmsProviderAdapter _twilioAdapter;
+    private readonly IRecipientResolver _recipientResolver;
     private readonly IAuditEventClient _auditClient;
     private readonly ILogger<NotificationServiceImpl> _logger;
 
@@ -36,6 +37,7 @@ public class NotificationServiceImpl : INotificationService
         IBrandingResolutionService brandingResolution,
         IEmailProviderAdapter sendGridAdapter,
         ISmsProviderAdapter twilioAdapter,
+        IRecipientResolver recipientResolver,
         IAuditEventClient auditClient,
         ILogger<NotificationServiceImpl> logger)
     {
@@ -50,13 +52,116 @@ public class NotificationServiceImpl : INotificationService
         _brandingResolution = brandingResolution;
         _sendGridAdapter = sendGridAdapter;
         _twilioAdapter = twilioAdapter;
+        _recipientResolver = recipientResolver;
         _auditClient = auditClient;
         _logger = logger;
     }
 
     public async Task<NotificationResultDto> SubmitAsync(Guid tenantId, SubmitNotificationDto request)
     {
+        // Parse the recipient envelope to detect role/org fan-out modes.
         var recipientJson = JsonSerializer.Serialize(request.Recipient);
+        JsonElement recipientEl;
+        try { recipientEl = JsonDocument.Parse(recipientJson).RootElement.Clone(); }
+        catch { recipientEl = default; }
+
+        var mode = ReadRecipientMode(recipientEl);
+        var isFanOut = string.Equals(mode, "Role", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(mode, "Org",  StringComparison.OrdinalIgnoreCase);
+
+        if (!isFanOut)
+            return await DispatchSingleAsync(tenantId, request, recipientJson);
+
+        var resolved = await _recipientResolver.ResolveAsync(tenantId, recipientEl);
+        if (resolved.Count == 0)
+        {
+            // Persist a single blocked notification so producers see the empty fan-out.
+            var notification = new Notification
+            {
+                TenantId = tenantId, Channel = request.Channel, Status = "blocked",
+                RecipientJson = recipientJson,
+                MessageJson = JsonSerializer.Serialize(request.Message),
+                MetadataJson = request.Metadata != null ? JsonSerializer.Serialize(request.Metadata) : null,
+                IdempotencyKey = request.IdempotencyKey, TemplateKey = request.TemplateKey,
+                BlockedByPolicy = true, BlockedReasonCode = "recipient_set_empty",
+                LastErrorMessage = $"No members resolved for {mode} recipient"
+            };
+            notification = await _notificationRepo.CreateAsync(notification);
+            _logger.LogWarning("Notification fan-out resolved 0 recipients for tenant {TenantId} mode {Mode}", tenantId, mode);
+            return MapToResult(notification);
+        }
+
+        var results = new List<NotificationResultDto>(resolved.Count);
+        foreach (var r in resolved)
+        {
+            var perRequest = ClonePerRecipient(request, r);
+            var perRecipientJson = JsonSerializer.Serialize(perRequest.Recipient);
+            results.Add(await DispatchSingleAsync(tenantId, perRequest, perRecipientJson));
+        }
+
+        return AggregateFanOutResult(results);
+    }
+
+    private static SubmitNotificationDto ClonePerRecipient(SubmitNotificationDto src, ResolvedRecipient r)
+    {
+        var dict = new Dictionary<string, string?>
+        {
+            ["mode"] = !string.IsNullOrEmpty(r.UserId) ? "UserId" : "Email",
+        };
+        if (!string.IsNullOrEmpty(r.UserId)) dict["userId"] = r.UserId;
+        if (!string.IsNullOrEmpty(r.Email))  dict["email"]  = r.Email;
+        if (!string.IsNullOrEmpty(r.OrgId))  dict["orgId"]  = r.OrgId;
+
+        return new SubmitNotificationDto
+        {
+            Channel = src.Channel,
+            Recipient = dict,
+            Message = src.Message,
+            Metadata = src.Metadata,
+            // Per-recipient idempotency suffix preserves the producer's grouping intent.
+            IdempotencyKey = string.IsNullOrEmpty(src.IdempotencyKey)
+                ? null : $"{src.IdempotencyKey}:{r.StableKey}",
+            TemplateKey = src.TemplateKey,
+            TemplateData = src.TemplateData,
+            ProductType = src.ProductType,
+            BrandedRendering = src.BrandedRendering,
+            OverrideSuppression = src.OverrideSuppression,
+            OverrideReason = src.OverrideReason,
+        };
+    }
+
+    private static NotificationResultDto AggregateFanOutResult(List<NotificationResultDto> results)
+    {
+        if (results.Count == 0)
+            return new NotificationResultDto { Status = "blocked", BlockedByPolicy = true, BlockedReasonCode = "recipient_set_empty" };
+
+        var sentCount    = results.Count(r => r.Status == "sent");
+        var failedCount  = results.Count(r => r.Status == "failed");
+        var blockedCount = results.Count(r => r.Status == "blocked");
+
+        var status =
+            sentCount == results.Count    ? "sent" :
+            failedCount == results.Count  ? "failed" :
+            blockedCount == results.Count ? "blocked" :
+                                            "partial";
+
+        var first = results[0];
+        return new NotificationResultDto
+        {
+            Id = first.Id,
+            Status = status,
+            ProviderUsed = first.ProviderUsed,
+            PlatformFallbackUsed = results.Any(r => r.PlatformFallbackUsed),
+            BlockedByPolicy = blockedCount > 0,
+            BlockedReasonCode = first.BlockedReasonCode,
+            OverrideUsed = results.Any(r => r.OverrideUsed),
+            FailureCategory = results.FirstOrDefault(r => !string.IsNullOrEmpty(r.FailureCategory))?.FailureCategory,
+            LastErrorMessage = $"fanout: total={results.Count} sent={sentCount} failed={failedCount} blocked={blockedCount}"
+        };
+    }
+
+    private async Task<NotificationResultDto> DispatchSingleAsync(Guid tenantId, SubmitNotificationDto request, string recipientJson)
+    {
         var messageJson = JsonSerializer.Serialize(request.Message);
         var metadataJson = request.Metadata != null ? JsonSerializer.Serialize(request.Metadata) : null;
 
@@ -150,6 +255,16 @@ public class NotificationServiceImpl : INotificationService
 
         notification = await _notificationRepo.CreateAsync(notification);
         _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "api_notification_request", Channel = request.Channel, NotificationId = notification.Id });
+
+        // In-app deliveries have no provider — the persisted Notification record is the delivery.
+        if (string.Equals(request.Channel, "in-app", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(request.Channel, "inapp",  StringComparison.OrdinalIgnoreCase))
+        {
+            notification.Status = "sent";
+            await _notificationRepo.UpdateAsync(notification);
+            try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.sent", Action = "notification.sent", SourceSystem = "notifications", Description = "In-app notification persisted", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+            return MapToResult(notification);
+        }
 
         var routes = await _routingService.ResolveRoutesAsync(tenantId, request.Channel);
 
@@ -265,6 +380,35 @@ public class NotificationServiceImpl : INotificationService
         Severity = n.Severity, Category = n.Category,
         CreatedAt = n.CreatedAt, UpdatedAt = n.UpdatedAt
     };
+
+    /// <summary>
+    /// Reads the recipient mode tolerating both string ("Role") and numeric (2)
+    /// JSON representations of <see cref="Contracts.Notifications.RecipientMode"/>.
+    /// Producers may serialize the enum either way depending on their JSON
+    /// options; the resolver layer must accept both.
+    /// </summary>
+    private static string? ReadRecipientMode(JsonElement recipient)
+    {
+        if (recipient.ValueKind != JsonValueKind.Object) return null;
+        foreach (var prop in recipient.EnumerateObject())
+        {
+            if (!string.Equals(prop.Name, "mode", StringComparison.OrdinalIgnoreCase)) continue;
+            return prop.Value.ValueKind switch
+            {
+                JsonValueKind.String => prop.Value.GetString(),
+                JsonValueKind.Number when prop.Value.TryGetInt32(out var n) => n switch
+                {
+                    0 => "UserId",
+                    1 => "Email",
+                    2 => "Role",
+                    3 => "Org",
+                    _ => null,
+                },
+                _ => null,
+            };
+        }
+        return null;
+    }
 
     private static string? ExtractContactValue(string channel, string recipientJson)
     {

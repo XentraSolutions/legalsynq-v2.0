@@ -62,6 +62,13 @@ public static class DependencyInjection
         services.AddScoped<IUsageMeteringService, UsageMeteringService>();
         services.AddScoped<IRecipientContactHealthService, RecipientContactHealthService>();
         services.AddScoped<IProviderRoutingService, ProviderRoutingService>();
+        // In-memory provider is the default registration so role/org fan-out
+        // resolves the seeded membership set at runtime; production deployments
+        // replace it with an identity-backed implementation. Registered as both
+        // the interface and the concrete type so a startup seeder can hydrate it.
+        services.AddSingleton<InMemoryRoleMembershipProvider>();
+        services.AddSingleton<IRoleMembershipProvider>(sp => sp.GetRequiredService<InMemoryRoleMembershipProvider>());
+        services.AddScoped<IRecipientResolver, RecipientResolver>();
         services.AddScoped<IWebhookIngestionService, WebhookIngestionServiceImpl>();
         services.AddScoped<InternalEmailService>();
 
