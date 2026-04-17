@@ -328,6 +328,14 @@ function TimelineRow({ event }: { event: WorkflowTimelineEvent }) {
   const rowCls          = severityRowClass(event.severity);
   const dotRing         = severityDotRing(event.severity);
   const badge           = SEVERITY_BADGE[event.severity];
+  // Deep-link the action chip to the central Audit Logs page,
+  // pre-filtered by the canonical AuditId so the operator lands on
+  // the matching row (which exposes before/after JSON, request id,
+  // IP, etc. via its detail panel). Falls back to a plain label
+  // when the upstream did not surface an AuditId.
+  const auditHref = event.auditId
+    ? `/audit-logs?search=${encodeURIComponent(event.auditId)}`
+    : null;
 
   return (
     <li
@@ -354,7 +362,20 @@ function TimelineRow({ event }: { event: WorkflowTimelineEvent }) {
           <i className={`${meta.icon} text-[11px]`} aria-hidden="true" />
           {meta.label}
         </span>
-        <span className="font-mono text-gray-400">{event.action}</span>
+        {auditHref ? (
+          <a
+            href={auditHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open this event in the Audit Logs"
+            className="inline-flex items-center gap-1 font-mono text-gray-500 hover:text-indigo-600 hover:underline"
+          >
+            {event.action}
+            <i className="ri-external-link-line text-[10px]" aria-hidden="true" />
+          </a>
+        ) : (
+          <span className="font-mono text-gray-400">{event.action}</span>
+        )}
         {showTransition && (
           <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">
             {event.previousStatus} → {event.newStatus}

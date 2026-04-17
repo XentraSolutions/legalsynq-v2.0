@@ -1147,6 +1147,13 @@ export interface WorkflowTimelineActor {
 
 export interface WorkflowTimelineEvent {
   eventId:        string;
+  /**
+   * Canonical AuditId of the underlying audit record, when known.
+   * Used by the drawer to deep-link a timeline row to the matching
+   * entry on the central Audit Logs page. Null when the upstream
+   * audit service did not surface an id (degraded / unconfigured).
+   */
+  auditId:        string | null;
   occurredAtUtc:  string;
   category:       string;
   action:         string;

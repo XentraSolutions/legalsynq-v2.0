@@ -56,6 +56,7 @@ public sealed record AuditEventRecord(
     string EventId,
     string Action,
     DateTimeOffset OccurredAtUtc,
+    Guid? AuditId = null,
     string? EventCategory = null,
     string? SourceSystem = null,
     string? SourceService = null,

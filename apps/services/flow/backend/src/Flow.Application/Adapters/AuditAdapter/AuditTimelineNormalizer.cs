@@ -104,6 +104,7 @@ public static class AuditTimelineNormalizer
 
         return new TimelineEvent(
             EventId:        r.EventId,
+            AuditId:        r.AuditId,
             OccurredAtUtc:  r.OccurredAtUtc,
             Category:       category,
             Action:         action,
@@ -219,6 +220,7 @@ public static class AuditTimelineNormalizer
 
 public sealed record TimelineEvent(
     string EventId,
+    Guid? AuditId,
     DateTimeOffset OccurredAtUtc,
     string Category,
     string Action,

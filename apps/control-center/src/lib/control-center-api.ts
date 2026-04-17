@@ -266,6 +266,7 @@ function mapWorkflowTimelineEvent(raw: unknown): WorkflowTimelineEvent {
 
   return {
     eventId:        String(r.eventId ?? ''),
+    auditId:        s(r.auditId),
     occurredAtUtc:  String(r.occurredAtUtc ?? ''),
     category:       String(r.category ?? 'other'),
     action:         String(r.action ?? ''),

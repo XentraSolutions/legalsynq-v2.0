@@ -151,6 +151,7 @@ public sealed class HttpAuditQueryAdapter : IAuditQueryAdapter
         EventId:       (item.AuditId ?? Guid.Empty).ToString(),
         Action:        item.Action ?? string.Empty,
         OccurredAtUtc: item.OccurredAtUtc ?? default,
+        AuditId:       item.AuditId,
         EventCategory: item.EventCategory,
         SourceSystem:  item.SourceSystem,
         SourceService: item.SourceService,
