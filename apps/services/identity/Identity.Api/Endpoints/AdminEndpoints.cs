@@ -1423,11 +1423,12 @@ public static class AdminEndpoints
     /// Emits identity.user.locked audit event.
     /// </summary>
     private static async Task<IResult> LockUser(
-        Guid              id,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        IAuditEventClient auditClient,
-        CancellationToken ct)
+        Guid                      id,
+        ClaimsPrincipal           caller,
+        IdentityDbContext         db,
+        IAuditEventClient         auditClient,
+        INotificationsCacheClient notificationsCache,
+        CancellationToken         ct)
     {
         var user = await db.Users
             .Include(u => u.Tenant)
@@ -1475,6 +1476,14 @@ public static class AdminEndpoints
             Tags = ["user-management", "security", "lock"],
         });
 
+        // Membership state changed for this tenant — drop the notifications
+        // service's cached role/org member lists so role-addressed alerts
+        // immediately stop including the locked user.
+        notificationsCache.InvalidateTenant(
+            user.TenantId,
+            eventType: "identity.user.locked",
+            reason:    $"user {user.Id} locked");
+
         return Results.NoContent();
     }
 
@@ -1486,11 +1495,12 @@ public static class AdminEndpoints
     /// Emits identity.user.unlocked audit event.
     /// </summary>
     private static async Task<IResult> UnlockUser(
-        Guid              id,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        IAuditEventClient auditClient,
-        CancellationToken ct)
+        Guid                      id,
+        ClaimsPrincipal           caller,
+        IdentityDbContext         db,
+        IAuditEventClient         auditClient,
+        INotificationsCacheClient notificationsCache,
+        CancellationToken         ct)
     {
         var user = await db.Users
             .Include(u => u.Tenant)
@@ -1536,6 +1546,14 @@ public static class AdminEndpoints
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.unlocked", user.Id.ToString()),
             Tags = ["user-management", "security", "unlock"],
         });
+
+        // Membership state changed for this tenant — drop the notifications
+        // service's cached role/org member lists so role-addressed alerts
+        // immediately resume including the unlocked user.
+        notificationsCache.InvalidateTenant(
+            user.TenantId,
+            eventType: "identity.user.unlocked",
+            reason:    $"user {user.Id} unlocked");
 
         return Results.NoContent();
     }
@@ -3323,11 +3341,12 @@ public static class AdminEndpoints
     /// Emits identity.user.activated audit event.
     /// </summary>
     private static async Task<IResult> ActivateUser(
-        Guid              id,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        IAuditEventClient auditClient,
-        CancellationToken ct)
+        Guid                      id,
+        ClaimsPrincipal           caller,
+        IdentityDbContext         db,
+        IAuditEventClient         auditClient,
+        INotificationsCacheClient notificationsCache,
+        CancellationToken         ct)
     {
         var user = await db.Users
             .Include(u => u.Tenant)
@@ -3363,6 +3382,14 @@ public static class AdminEndpoints
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.activated", user.Id.ToString()),
             Tags = ["user-management", "lifecycle", "activation"],
         });
+
+        // Membership state changed for this tenant — drop the notifications
+        // service's cached role/org member lists so role-addressed alerts
+        // immediately resume including the reactivated user.
+        notificationsCache.InvalidateTenant(
+            user.TenantId,
+            eventType: "identity.user.activated",
+            reason:    $"user {user.Id} activated");
 
         return Results.NoContent();
     }
