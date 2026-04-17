@@ -7,7 +7,13 @@ public class FlowDbContextFactory : IDesignTimeDbContextFactory<FlowDbContext>
 {
     public FlowDbContext CreateDbContext(string[] args)
     {
-        var connectionString = Environment.GetEnvironmentVariable("FLOW_DB_CONNECTION_STRING")
+        // Prefer the same secret used at runtime (`ConnectionStrings__FlowDb`)
+        // so `dotnet ef` commands hit the deployed DB without extra env vars.
+        // Falls back to the legacy `FLOW_DB_CONNECTION_STRING` and finally
+        // a localhost dev string.
+        var connectionString =
+            Environment.GetEnvironmentVariable("ConnectionStrings__FlowDb")
+            ?? Environment.GetEnvironmentVariable("FLOW_DB_CONNECTION_STRING")
             ?? "Server=localhost;Database=flow_db;User=root;Password=;";
 
         var optionsBuilder = new DbContextOptionsBuilder<FlowDbContext>();
