@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import Link from 'next/link';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { CCShell } from '@/components/shell/cc-shell';
 import { SystemHealthCard } from '@/components/monitoring/system-health-card';
@@ -50,11 +51,19 @@ export default async function MonitoringPage() {
                 Real-time view of platform service status and active alerts.
               </p>
             </div>
-            {criticalCount > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-red-100 text-red-700 border border-red-300 shrink-0">
-                {criticalCount} Critical Alert{criticalCount > 1 ? 's' : ''}
-              </span>
-            )}
+            <div className="flex items-center gap-2 shrink-0">
+              {criticalCount > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-red-100 text-red-700 border border-red-300">
+                  {criticalCount} Critical Alert{criticalCount > 1 ? 's' : ''}
+                </span>
+              )}
+              <Link
+                href="/monitoring/services"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-100"
+              >
+                Manage Services
+              </Link>
+            </div>
           </div>
 
           {fetchError ? (
