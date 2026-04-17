@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Flow.Domain\Flow.Domain.csproj" />
     <ProjectReference Include="..\Flow.Application\Flow.Application.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\shared\building-blocks\BuildingBlocks\BuildingBlocks.csproj" />
+    <ProjectReference Include="..\..\..\..\..\..\shared\contracts\Contracts\Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

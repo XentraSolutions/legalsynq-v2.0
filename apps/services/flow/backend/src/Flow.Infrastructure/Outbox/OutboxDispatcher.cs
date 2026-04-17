@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Contracts.Notifications;
 using Flow.Application.Adapters.AuditAdapter;
 using Flow.Application.Adapters.NotificationAdapter;
 using Flow.Application.Engines.WorkflowEngine;
@@ -129,22 +130,32 @@ public sealed class OutboxDispatcher
             OccurredAtUtc: p.OccurredAtUtc), ct);
 
         // Send a notification only on the natural end-of-life event.
-        if (row.EventType == OutboxEventTypes.WorkflowComplete)
+        if (row.EventType == OutboxEventTypes.WorkflowComplete &&
+            !string.IsNullOrEmpty(p.PerformedBy))
         {
-            await _notifications.SendAsync(new NotificationMessage(
-                Channel:          "system",
-                EventKey:         row.EventType,
-                TenantId:         row.TenantId,
-                RecipientUserId:  p.PerformedBy,
-                RecipientRoleKey: null,
-                Subject:          "Workflow completed",
-                Body:             $"Workflow {p.WorkflowInstanceId} has completed.",
-                Data:             new Dictionary<string, string?>
+            var envelope = new NotificationEnvelope
+            {
+                TemplateKey   = NotificationTemplateKeys.WorkflowCompleted,
+                TenantId      = row.TenantId,
+                ProductKey    = p.ProductKey,
+                EntityType    = "WorkflowInstance",
+                EntityId      = p.WorkflowInstanceId.ToString(),
+                Recipient     = NotificationRecipient.ForUser(p.PerformedBy!),
+                Subject       = "Workflow completed",
+                Body          = $"Workflow {p.WorkflowInstanceId} has completed.",
+                BodyVariables = new Dictionary<string, string?>
                 {
-                    ["outboxId"]           = row.Id.ToString(),
                     ["workflowInstanceId"] = p.WorkflowInstanceId.ToString(),
                     ["productKey"]         = p.ProductKey,
-                }), ct);
+                },
+                Severity      = NotificationSeverity.Info,
+                Category      = NotificationCategory.Workflow,
+                CorrelationId = p.WorkflowInstanceId.ToString(),
+                OutboxId      = row.Id.ToString(),
+                ChannelHints  = new[] { "system" },
+            };
+
+            await _notifications.SendAsync(ToNotificationMessage(envelope, row.EventType), ct);
         }
     }
 
@@ -199,25 +210,91 @@ public sealed class OutboxDispatcher
         // Known Issues / Gaps).
         if (!string.IsNullOrEmpty(p.AssignedToUserId))
         {
-            await _notifications.SendAsync(new NotificationMessage(
-                Channel:          "system",
-                EventKey:         row.EventType,
-                TenantId:         row.TenantId,
-                RecipientUserId:  p.AssignedToUserId,
-                RecipientRoleKey: null,
-                Subject:          subject,
-                Body:             summary,
-                Data:             new Dictionary<string, string?>
+            var (templateKey, severity) = row.EventType switch
+            {
+                OutboxEventTypes.WorkflowSlaDueSoon =>
+                    (NotificationTemplateKeys.WorkflowSlaDueSoon, NotificationSeverity.Warning),
+                OutboxEventTypes.WorkflowSlaOverdue =>
+                    (NotificationTemplateKeys.WorkflowSlaOverdue, NotificationSeverity.Critical),
+                OutboxEventTypes.WorkflowSlaEscalated =>
+                    (NotificationTemplateKeys.WorkflowSlaEscalated, NotificationSeverity.Critical),
+                _ => (row.EventType, NotificationSeverity.Warning),
+            };
+
+            var envelope = new NotificationEnvelope
+            {
+                TemplateKey   = templateKey,
+                TenantId      = row.TenantId,
+                ProductKey    = p.ProductKey,
+                EntityType    = "WorkflowInstance",
+                EntityId      = p.WorkflowInstanceId.ToString(),
+                Recipient     = NotificationRecipient.ForUser(p.AssignedToUserId!),
+                Subject       = subject,
+                Body          = summary,
+                BodyVariables = new Dictionary<string, string?>
                 {
-                    ["outboxId"]           = row.Id.ToString(),
                     ["workflowInstanceId"] = p.WorkflowInstanceId.ToString(),
                     ["productKey"]         = p.ProductKey,
                     ["currentStepKey"]     = p.CurrentStepKey,
                     ["dueAt"]              = p.DueAt.ToString("O"),
                     ["newSlaStatus"]       = p.NewSlaStatus,
                     ["escalationLevel"]    = p.EscalationLevel.ToString(),
-                }), ct);
+                },
+                Severity      = severity,
+                Category      = NotificationCategory.Sla,
+                CorrelationId = p.WorkflowInstanceId.ToString(),
+                OutboxId      = row.Id.ToString(),
+                ChannelHints  = new[] { "system" },
+            };
+
+            await _notifications.SendAsync(ToNotificationMessage(envelope, row.EventType), ct);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // E12.2 — translate the canonical envelope into the legacy
+    // NotificationMessage shape so HttpNotificationAdapter / the
+    // notifications service keep their current wire contract while
+    // every send now carries severity / category / correlationId /
+    // outboxId in the persisted metadata.
+    //
+    // <paramref name="legacyEventKey"/> preserves the original outbox
+    // event-type string on <c>NotificationMessage.EventKey</c> so the
+    // wire payload is bit-identical to pre-E12.2 sends. The canonical
+    // template key still flows through the metadata
+    // (<c>templateKey</c>) and is the field downstream consumers should
+    // migrate to.
+    // ------------------------------------------------------------------
+    private static NotificationMessage ToNotificationMessage(
+        NotificationEnvelope envelope,
+        string legacyEventKey)
+    {
+        var descriptor = NotificationContractTranslator.ToLegacySubmit(envelope);
+
+        var data = new Dictionary<string, string?>(descriptor.Metadata, StringComparer.Ordinal)
+        {
+            ["templateKey"] = descriptor.TemplateKey,
+        };
+        if (descriptor.TemplateData is not null)
+        {
+            foreach (var kv in descriptor.TemplateData)
+            {
+                if (!data.ContainsKey(kv.Key)) data[kv.Key] = kv.Value;
+            }
+        }
+
+        descriptor.Recipient.TryGetValue("userId",  out var userId);
+        descriptor.Recipient.TryGetValue("roleKey", out var roleKey);
+
+        return new NotificationMessage(
+            Channel:          descriptor.Channel,
+            EventKey:         legacyEventKey,
+            TenantId:         envelope.TenantId,
+            RecipientUserId:  userId,
+            RecipientRoleKey: roleKey,
+            Subject:          envelope.Subject ?? descriptor.TemplateKey,
+            Body:             envelope.Body    ?? string.Empty,
+            Data:             data);
     }
 
     // ------------------------------------------------------------------
