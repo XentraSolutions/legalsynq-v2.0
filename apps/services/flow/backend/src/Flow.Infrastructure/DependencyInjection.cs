@@ -63,6 +63,12 @@ public static class DependencyInjection
         // calling user. Scoped so it shares the per-request IFlowDbContext
         // and IFlowUserContext, both of which are themselves scoped.
         services.AddScoped<IMyTasksService, MyTasksService>();
+        // LS-FLOW-E11.7 — task completion ↔ workflow progression binding.
+        // Composes IWorkflowTaskLifecycleService and IWorkflowEngine inside
+        // a single transaction acquired through the DB execution strategy
+        // so the persisted outcome is "task Completed AND workflow advanced"
+        // or nothing.
+        services.AddScoped<IWorkflowTaskCompletionService, WorkflowTaskCompletionService>();
 
         return services;
     }

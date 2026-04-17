@@ -53,10 +53,14 @@ namespace Flow.Api.Controllers.V1;
 public sealed class WorkflowTasksController : ControllerBase
 {
     private readonly IWorkflowTaskLifecycleService _lifecycle;
+    private readonly IWorkflowTaskCompletionService _completion;
 
-    public WorkflowTasksController(IWorkflowTaskLifecycleService lifecycle)
+    public WorkflowTasksController(
+        IWorkflowTaskLifecycleService lifecycle,
+        IWorkflowTaskCompletionService completion)
     {
         _lifecycle = lifecycle;
+        _completion = completion;
     }
 
     /// <summary>POST <c>/api/v1/workflow-tasks/{id}/start</c> — Open → InProgress.</summary>
@@ -71,15 +75,28 @@ public sealed class WorkflowTasksController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>POST <c>/api/v1/workflow-tasks/{id}/complete</c> — InProgress → Completed.</summary>
+    /// <summary>
+    /// POST <c>/api/v1/workflow-tasks/{id}/complete</c> — atomic
+    /// "complete the task AND advance the owning workflow".
+    ///
+    /// <para>
+    /// LS-FLOW-E11.7 wired this endpoint through
+    /// <see cref="IWorkflowTaskCompletionService"/> so completing the
+    /// correct active task progresses its workflow through the engine
+    /// in the same transaction. Stale-step / non-active-workflow
+    /// failures roll the task transition back; duplicate completions
+    /// are blocked by the lifecycle CAS. The external request shape is
+    /// unchanged from E11.5.
+    /// </para>
+    /// </summary>
     [HttpPost("{id:guid}/complete")]
-    [ProducesResponseType(typeof(WorkflowTaskTransitionResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(WorkflowTaskCompletionResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> Complete(Guid id, CancellationToken ct)
     {
-        var result = await _lifecycle.CompleteTaskAsync(id, ct);
+        var result = await _completion.CompleteAndProgressAsync(id, ct);
         return Ok(result);
     }
 

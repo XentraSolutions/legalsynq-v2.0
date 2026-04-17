@@ -51,6 +51,19 @@ public class ExceptionHandlingMiddleware
                 HttpStatusCode.Conflict,
                 new ErrorResponse { Error = concurrency.Message }
             ),
+            // LS-FLOW-E11.7 — workflow engine refused the requested
+            // transition (stale step, instance not active, ambiguous
+            // outbound transition, no matching transition, …). Map to
+            // 409 to match the existing per-controller behaviour in
+            // WorkflowInstancesController / ProductWorkflowExecutionController
+            // so the new task-completion ↔ workflow-advance surface
+            // returns the same code as direct workflow-instance calls.
+            // The exception's `Code` field is preserved in the message
+            // for client-side disambiguation.
+            InvalidWorkflowTransitionException workflowTransition => (
+                HttpStatusCode.Conflict,
+                new ErrorResponse { Error = workflowTransition.Message }
+            ),
             _ => (
                 HttpStatusCode.InternalServerError,
                 new ErrorResponse { Error = "An unexpected error occurred." }
