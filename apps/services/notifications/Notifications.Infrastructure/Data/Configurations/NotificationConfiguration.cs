@@ -28,6 +28,8 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         builder.Property(e => e.BlockedByPolicy).HasDefaultValue(false);
         builder.Property(e => e.BlockedReasonCode).HasMaxLength(100);
         builder.Property(e => e.OverrideUsed).HasDefaultValue(false);
+        builder.Property(e => e.Severity).HasMaxLength(50);
+        builder.Property(e => e.Category).HasMaxLength(100);
 
         builder.HasIndex(e => new { e.TenantId, e.IdempotencyKey })
             .HasDatabaseName("UX_Notifications_TenantId_IdempotencyKey")

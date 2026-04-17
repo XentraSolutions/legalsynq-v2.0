@@ -28,7 +28,8 @@ namespace Contracts.Notifications;
 ///   <item><description>Channel hints collapse to a single primary channel; first hint wins, defaulting to in-app.</description></item>
 ///   <item><description>Recipient flattens to <c>userId</c>/<c>email</c> shape; role/org modes are passed in metadata for later resolution.</description></item>
 ///   <item><description><c>OutboxId</c> becomes the idempotency key when present.</description></item>
-///   <item><description><c>Severity</c>, <c>Category</c>, <c>CorrelationId</c> are surfaced via metadata so legacy storage retains them without DTO changes.</description></item>
+///   <item><description><c>Severity</c> and <c>Category</c> are surfaced as first-class fields on the descriptor and are no longer copied into metadata.</description></item>
+///   <item><description><c>CorrelationId</c> is surfaced via metadata so legacy storage retains it without DTO changes.</description></item>
 /// </list>
 /// </para>
 /// </summary>
@@ -55,7 +56,9 @@ public static class NotificationContractTranslator
             Subject:        envelope.Subject,
             Body:           envelope.Body,
             Metadata:       metadata,
-            IdempotencyKey: envelope.OutboxId);
+            IdempotencyKey: envelope.OutboxId,
+            Severity:       envelope.Severity,
+            Category:       envelope.Category);
     }
 
     private static IReadOnlyDictionary<string, string?> BuildRecipient(NotificationRecipient r)
@@ -73,11 +76,7 @@ public static class NotificationContractTranslator
 
     private static IReadOnlyDictionary<string, string?> BuildMetadata(NotificationEnvelope e)
     {
-        var dict = new Dictionary<string, string?>(StringComparer.Ordinal)
-        {
-            ["severity"] = e.Severity,
-            ["category"] = e.Category,
-        };
+        var dict = new Dictionary<string, string?>(StringComparer.Ordinal);
         if (!string.IsNullOrEmpty(e.CorrelationId)) dict["correlationId"] = e.CorrelationId;
         if (!string.IsNullOrEmpty(e.OutboxId))      dict["outboxId"]      = e.OutboxId;
         if (!string.IsNullOrEmpty(e.ProductKey))    dict["productKey"]    = e.ProductKey;
@@ -110,4 +109,6 @@ public sealed record LegacySubmitDescriptor(
     string? Subject,
     string? Body,
     IReadOnlyDictionary<string, string?> Metadata,
-    string? IdempotencyKey);
+    string? IdempotencyKey,
+    string? Severity,
+    string? Category);

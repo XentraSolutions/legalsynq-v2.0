@@ -25,6 +25,8 @@ public class Notification
     public bool BlockedByPolicy { get; set; }
     public string? BlockedReasonCode { get; set; }
     public bool OverrideUsed { get; set; }
+    public string? Severity { get; set; }
+    public string? Category { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

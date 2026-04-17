@@ -92,7 +92,9 @@ public class NotificationServiceImpl : INotificationService
             IdempotencyKey = request.IdempotencyKey, TemplateKey = request.TemplateKey,
             BlockedByPolicy = enforcement is { Allowed: false },
             BlockedReasonCode = enforcement is { Allowed: false } ? enforcement.ReasonCode : null,
-            OverrideUsed = enforcement?.OverrideUsed ?? false
+            OverrideUsed = enforcement?.OverrideUsed ?? false,
+            Severity = request.Severity,
+            Category = request.Category
         };
 
         if (enforcement is { Allowed: false })
@@ -260,6 +262,7 @@ public class NotificationServiceImpl : INotificationService
         ProviderOwnershipMode = n.ProviderOwnershipMode, ProviderConfigId = n.ProviderConfigId,
         PlatformFallbackUsed = n.PlatformFallbackUsed, BlockedByPolicy = n.BlockedByPolicy,
         BlockedReasonCode = n.BlockedReasonCode, OverrideUsed = n.OverrideUsed,
+        Severity = n.Severity, Category = n.Category,
         CreatedAt = n.CreatedAt, UpdatedAt = n.UpdatedAt
     };
 
