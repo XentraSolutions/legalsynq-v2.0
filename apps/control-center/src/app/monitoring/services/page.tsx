@@ -2,9 +2,11 @@ import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { CCShell } from '@/components/shell/cc-shell';
 import { listServices } from '@/lib/system-health-store';
 import { mapCanonicalToAuditEntry, type AuditEntry } from '@/lib/system-health-audit';
+import { getOutboxStatus } from '@/lib/system-health-audit-outbox';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { ServicesEditor } from '@/components/monitoring/services-editor';
 import { ServicesAuditList } from '@/components/monitoring/services-audit-list';
+import { AuditOutboxBanner } from '@/components/monitoring/audit-outbox-banner';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -38,9 +40,10 @@ async function loadRecentAuditEntries(): Promise<{ entries: AuditEntry[]; error:
 
 export default async function MonitoringServicesPage() {
   const session = await requirePlatformAdmin();
-  const [services, audit] = await Promise.all([
+  const [services, audit, outboxStatus] = await Promise.all([
     listServices(),
     loadRecentAuditEntries(),
+    getOutboxStatus(),
   ]);
 
   return (
@@ -61,6 +64,12 @@ export default async function MonitoringServicesPage() {
               Changes take effect on the next refresh — no redeploy required.
             </p>
           </div>
+
+          {(outboxStatus.pending > 0 || outboxStatus.persistentFailures > 0) && (
+            <div className="mb-4">
+              <AuditOutboxBanner status={outboxStatus} />
+            </div>
+          )}
 
           <ServicesEditor initialServices={services} />
 

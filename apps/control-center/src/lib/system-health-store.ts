@@ -4,6 +4,12 @@ import crypto from 'crypto';
 import mysql, { type Pool, type PoolOptions, type RowDataPacket } from 'mysql2/promise';
 import type { AuditActor, AuditAction, AuditEntry } from './system-health-audit';
 import { controlCenterServerApi } from './control-center-api';
+import type { AuditIngestPayload } from '@/types/control-center';
+import { enqueueFailedEmission, resumeOutboxOnStartup } from './system-health-audit-outbox';
+
+// Resume any pending audit emissions left over from a previous process.
+// Safe to call repeatedly — the outbox worker is idempotent.
+resumeOutboxOnStartup();
 
 const ACTION_PAST_TENSE: Record<AuditAction, string> = {
   add:    'added',
@@ -22,38 +28,60 @@ function describeChange(action: AuditAction, actor: AuditActor, svc: ServiceDef 
   return `${actor.email} ${ACTION_PAST_TENSE[action]} probed service ${label}.`;
 }
 
+function buildCanonicalPayload(entry: AuditEntry): AuditIngestPayload {
+  const snapshot = entry.after ?? entry.before;
+  return {
+    // Single, stable eventType per architect guidance — audit service does
+    // exact-match on eventType, so emitting one type per action would force
+    // the central Audit Logs filter to know all three. The action field
+    // (MonitoringServiceAdded / …Updated / …Removed) carries the variant.
+    eventType:     'monitoring.service.changed',
+    eventCategory: 'Administrative',
+    sourceSystem:  'control-center',
+    sourceService: 'monitoring-services',
+    visibility:    'Platform',
+    severity:      'Info',
+    occurredAtUtc: entry.timestamp,
+    scope:  { scopeType: 'Platform' },
+    actor:  { id: entry.actor.userId, type: 'User', label: entry.actor.email },
+    entity: { type: 'MonitoringService', id: entry.serviceId },
+    action: ACTION_PASCAL[entry.action],
+    description: describeChange(entry.action, entry.actor, snapshot),
+    before: entry.before ? JSON.stringify(entry.before) : undefined,
+    after:  entry.after  ? JSON.stringify(entry.after)  : undefined,
+    // The local AuditEntry.id doubles as the idempotency key so retries from
+    // the outbox are safely deduplicated by the audit service and surface
+    // with the original timestamp on the central Audit Logs page.
+    idempotencyKey: entry.id,
+    tags: ['monitoring', 'configuration', 'system-health'],
+  };
+}
+
 async function emitCanonicalAudit(entry: AuditEntry): Promise<void> {
+  const payload = buildCanonicalPayload(entry);
   try {
-    const snapshot = entry.after ?? entry.before;
-    await controlCenterServerApi.auditIngest.emit({
-      // Single, stable eventType per architect guidance — audit service does
-      // exact-match on eventType, so emitting one type per action would force
-      // the central Audit Logs filter to know all three. The action field
-      // (MonitoringServiceAdded / …Updated / …Removed) carries the variant.
-      eventType:     'monitoring.service.changed',
-      eventCategory: 'Administrative',
-      sourceSystem:  'control-center',
-      sourceService: 'monitoring-services',
-      visibility:    'Platform',
-      severity:      'Info',
-      occurredAtUtc: entry.timestamp,
-      scope:  { scopeType: 'Platform' },
-      actor:  { id: entry.actor.userId, type: 'User', label: entry.actor.email },
-      entity: { type: 'MonitoringService', id: entry.serviceId },
-      action: ACTION_PASCAL[entry.action],
-      description: describeChange(entry.action, entry.actor, snapshot),
-      before: entry.before ? JSON.stringify(entry.before) : undefined,
-      after:  entry.after  ? JSON.stringify(entry.after)  : undefined,
-      idempotencyKey: entry.id,
-      tags: ['monitoring', 'configuration', 'system-health'],
-    });
+    await controlCenterServerApi.auditIngest.emit(payload);
   } catch (err) {
-    console.warn('[system-health-store] Failed to emit canonical audit event', {
+    // Direct emission failed — most likely the audit service is unreachable.
+    // Persist the payload to the outbox so a background worker can retry it
+    // instead of dropping the event and leaving a permanent gap in the
+    // central Audit Logs page.
+    console.warn('[system-health-store] Canonical audit emission failed; queued for retry', {
       action:    entry.action,
       serviceId: entry.serviceId,
       actor:     entry.actor.email,
       err,
     });
+    try {
+      await enqueueFailedEmission(payload, err);
+    } catch (queueErr) {
+      console.error('[system-health-store] Failed to enqueue audit event for retry', {
+        action:    entry.action,
+        serviceId: entry.serviceId,
+        actor:     entry.actor.email,
+        queueErr,
+      });
+    }
   }
 }
 
