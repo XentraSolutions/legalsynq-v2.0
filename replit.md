@@ -417,6 +417,23 @@ apps/
       Comms.Api/
         Middleware/InternalServiceTokenMiddleware.cs ← path-scoped internal service token auth for /api/comms/internal/* (BLK-005)
       Comms.Tests/                     ← xUnit test project (181 tests: ordered thread, participant access, visibility, read tracking, unread, status transitions, closed conversation, 10 attachment tests, 12 email intake tests, 13 outbound email tests, 9 CC/BCC recipient tests, 13 sender/template tests, 14 E2E integration tests, 15 operational workflow tests — BLK-001, 11 SLA notification tests — BLK-002, 18 timeline tests — BLK-003, 18 mention tests — BLK-004, 18 operational view tests — LS-COMMS-04-BLK-001)
+    flow/                                 ← LS-FLOW-MERGE-P1: Generic workflow/task orchestration service (detachable, API-first, owns flow_db)
+      backend/                            ← .NET 8 Web API; own Flow.sln (NOT in LegalSynq.sln per Phase 1 boundary preservation)
+        Flow.sln
+        src/
+          Flow.Api/                       → ASP.NET Core Web API (Controllers/, Middleware/, Services/, appsettings.json with FlowDb conn string)
+          Flow.Application/               → DTOs/, Engines/, Adapters/, Interfaces/, Services/, Exceptions/
+          Flow.Domain/                    → CommonEntities/, Enums/, Interfaces/, Rules/ (no product-specific entities)
+          Flow.Infrastructure/            → Persistence/, Repositories/, DependencyInjection.cs (Pomelo MySQL, flow_db)
+        tests/                            ← (empty placeholder; backend tests deferred)
+      frontend/                           ← Next.js 16 / React 19 / Tailwind v4; own npm install (NOT in LegalSynq pnpm workspace per Phase 1)
+        src/app/{tasks,workflows,workflows/[id],notifications}/
+        src/components/{tasks,tasks/board,tasks/activity,tasks/workflow,workflows,notifications,ui}/
+        src/lib/api/                      ← REST client to Flow.Api
+      docs/
+        architecture.md                   ← Service architecture (purpose, detachable principle, stack, integration model)
+        README.md                         ← Service overview + local-run commands
+        merge-phase-1-notes.md            ← What Phase 1 did vs. deferred to Phase 2 (Identity/Notifications/Audit/gateway/sln integration)
     careconnect/
       CareConnect.Api/                    → ASP.NET Core Web API (port 5003)
         Endpoints/
