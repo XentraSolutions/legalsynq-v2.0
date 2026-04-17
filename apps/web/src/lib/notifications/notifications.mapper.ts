@@ -2,6 +2,7 @@ import type {
   NotifSummaryDto,
   NotifStatsDto,
   NotificationItem,
+  NotificationItemFanOut,
   NotificationStats,
 } from './notifications.types';
 
@@ -31,17 +32,38 @@ function parseRecipient(json: string): string {
   }
 }
 
-function parseMetadata(json: string | null): { templateKey: string | null; subject: string | null } {
-  if (!json) return { templateKey: null, subject: null };
+function parseMetadata(json: string | null): {
+  templateKey: string | null;
+  subject: string | null;
+  fanOut: NotificationItemFanOut | null;
+} {
+  if (!json) return { templateKey: null, subject: null, fanOut: null };
   try {
     const m = JSON.parse(json) as Record<string, unknown>;
     return {
       templateKey: (m.templateKey as string) ?? (m.template as string) ?? null,
       subject: (m.subject as string) ?? null,
+      fanOut: parseFanOut(m.fanout),
     };
   } catch {
-    return { templateKey: null, subject: null };
+    return { templateKey: null, subject: null, fanOut: null };
   }
+}
+
+function parseFanOut(raw: unknown): NotificationItemFanOut | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.totalResolved !== 'number') return null;
+  return {
+    mode:          (obj.mode    as string) ?? null,
+    roleKey:       (obj.roleKey as string) ?? null,
+    orgId:         (obj.orgId   as string) ?? null,
+    totalResolved: obj.totalResolved,
+    sentCount:     typeof obj.sentCount    === 'number' ? obj.sentCount    : 0,
+    failedCount:   typeof obj.failedCount  === 'number' ? obj.failedCount  : 0,
+    blockedCount:  typeof obj.blockedCount === 'number' ? obj.blockedCount : 0,
+    skippedCount:  typeof obj.skippedCount === 'number' ? obj.skippedCount : 0,
+  };
 }
 
 export function mapNotificationItem(dto: NotifSummaryDto): NotificationItem {
@@ -60,6 +82,7 @@ export function mapNotificationItem(dto: NotifSummaryDto): NotificationItem {
     timestampRaw: dto.createdAt,
     isFailed: statusLower === 'failed',
     isBlocked: statusLower === 'blocked',
+    fanOut: meta.fanOut,
   };
 }
 

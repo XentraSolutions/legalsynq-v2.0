@@ -7,6 +7,7 @@ import {
   NOTIF_CHANNEL_OPTIONS,
   type NotifStats,
   type NotifSummary,
+  type NotifFanOutSummary,
 } from '@/lib/notifications-server-api';
 
 const PAGE_SIZE = 25;
@@ -77,6 +78,96 @@ function StatCard({ label, value, note, accent }: {
       <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p>
       <p className={`text-3xl font-bold ${accent ?? 'text-gray-900'}`}>{value}</p>
       {note && <p className="text-xs text-gray-400 mt-1">{note}</p>}
+    </div>
+  );
+}
+
+function parseFanOutSummary(json: string | null): NotifFanOutSummary | null {
+  if (!json) return null;
+  try {
+    const meta = JSON.parse(json) as Record<string, unknown>;
+    const raw = meta['fanout'];
+    if (!raw || typeof raw !== 'object') return null;
+    const obj = raw as Record<string, unknown>;
+    if (typeof obj.totalResolved !== 'number') return null;
+    const num = (k: string) => (typeof obj[k] === 'number' ? (obj[k] as number) : 0);
+    return {
+      mode:               (obj.mode    as string) ?? null,
+      roleKey:            (obj.roleKey as string) ?? null,
+      orgId:              (obj.orgId   as string) ?? null,
+      channel:            (obj.channel as string) ?? '',
+      totalResolved:      obj.totalResolved,
+      sentCount:          num('sentCount'),
+      failedCount:        num('failedCount'),
+      blockedCount:       num('blockedCount'),
+      skippedCount:       num('skippedCount'),
+      deliveredByChannel: (obj.deliveredByChannel as Record<string, number>) ?? undefined,
+      skippedByReason:    (obj.skippedByReason    as Record<string, number>) ?? undefined,
+      blockedByReason:    (obj.blockedByReason    as Record<string, number>) ?? undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function fanOutSubjectLabel(summary: NotifFanOutSummary): { kind: string; subject: string } {
+  const mode = (summary.mode ?? '').toLowerCase();
+  if (mode === 'org') {
+    return { kind: 'Org', subject: summary.orgId ?? '—' };
+  }
+  if (mode === 'role') {
+    return {
+      kind: 'Role',
+      subject: summary.roleKey
+        ? (summary.orgId ? `${summary.roleKey} · ${summary.orgId}` : summary.roleKey)
+        : '—',
+    };
+  }
+  return { kind: summary.mode ?? 'Fan-out', subject: summary.roleKey ?? summary.orgId ?? '—' };
+}
+
+function FanOutBadge({ kind }: { kind: string }) {
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-purple-50 text-purple-700 border border-purple-200">
+      <i className="ri-team-line mr-1" />
+      {kind}
+    </span>
+  );
+}
+
+function FanOutInlineSummary({ summary }: { summary: NotifFanOutSummary }) {
+  const reached = summary.sentCount;
+  const total = summary.totalResolved;
+  const notReached = summary.failedCount + summary.blockedCount + summary.skippedCount;
+  const underDelivered = total > 0 && reached < total;
+  const noneResolved = total === 0;
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+      <span
+        className={`font-semibold tabular-nums ${
+          noneResolved
+            ? 'text-amber-700'
+            : underDelivered
+              ? 'text-amber-700'
+              : 'text-emerald-700'
+        }`}
+        title={noneResolved ? 'No members were resolved for this fan-out' : undefined}
+      >
+        {reached}/{total} reached
+      </span>
+      {summary.failedCount > 0 && (
+        <span className="text-red-600 tabular-nums">{summary.failedCount} failed</span>
+      )}
+      {summary.blockedCount > 0 && (
+        <span className="text-amber-600 tabular-nums">{summary.blockedCount} blocked</span>
+      )}
+      {summary.skippedCount > 0 && (
+        <span className="text-gray-500 tabular-nums">{summary.skippedCount} skipped</span>
+      )}
+      {!underDelivered && !noneResolved && notReached === 0 && total > 0 && (
+        <span className="text-gray-400">all reached</span>
+      )}
     </div>
   );
 }
@@ -383,16 +474,36 @@ export default async function ActivityPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {notifications.map(n => (
-                  <tr key={n.id} className="hover:bg-gray-50 transition-colors group">
-                    <td className="px-5 py-3 text-sm text-gray-700 font-mono">
-                      {parseRecipient(n.recipientJson)}
+                {notifications.map(n => {
+                  const fanOut = parseFanOutSummary(n.metadataJson);
+                  const subj = fanOut ? fanOutSubjectLabel(fanOut) : null;
+                  return (
+                  <tr
+                    key={n.id}
+                    className={`hover:bg-gray-50 transition-colors group ${
+                      fanOut ? 'bg-purple-50/30' : ''
+                    }`}
+                  >
+                    <td className="px-5 py-3 text-sm text-gray-700">
+                      {fanOut && subj ? (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <FanOutBadge kind={subj.kind} />
+                            <span className="font-mono text-xs text-gray-700 truncate max-w-[220px]" title={subj.subject}>
+                              {subj.subject}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="font-mono">{parseRecipient(n.recipientJson)}</span>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       <ChannelBadge channel={n.channel} />
                     </td>
                     <td className="px-5 py-3">
                       <StatusBadge status={n.status} />
+                      {fanOut && <FanOutInlineSummary summary={fanOut} />}
                       {n.lastErrorMessage && (
                         <p className="mt-0.5 text-[11px] text-red-500 max-w-[200px] truncate" title={n.lastErrorMessage}>
                           {n.lastErrorMessage}
@@ -427,7 +538,8 @@ export default async function ActivityPage({
                       </Link>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
 

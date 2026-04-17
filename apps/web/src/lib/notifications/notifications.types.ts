@@ -32,6 +32,17 @@ export interface NotifStatsResponseDto {
   data: NotifStatsDto;
 }
 
+export interface NotificationItemFanOut {
+  mode: string | null;
+  roleKey: string | null;
+  orgId: string | null;
+  totalResolved: number;
+  sentCount: number;
+  failedCount: number;
+  blockedCount: number;
+  skippedCount: number;
+}
+
 export interface NotificationItem {
   id: string;
   channel: string;
@@ -45,6 +56,7 @@ export interface NotificationItem {
   timestampRaw: string;
   isFailed: boolean;
   isBlocked: boolean;
+  fanOut: NotificationItemFanOut | null;
 }
 
 export interface NotificationStats {
