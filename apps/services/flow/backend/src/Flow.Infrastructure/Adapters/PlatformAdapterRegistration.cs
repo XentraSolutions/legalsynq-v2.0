@@ -75,6 +75,10 @@ public static class PlatformAdapterRegistration
         services.AddScoped<OutboxDispatcher>();
         services.AddHostedService<OutboxProcessor>();
 
+        // ----- LS-FLOW-E10.3 — workflow SLA / timer evaluator -----------
+        services.Configure<WorkflowSlaOptions>(configuration.GetSection(WorkflowSlaOptions.SectionName));
+        services.AddHostedService<WorkflowSlaEvaluator>();
+
         return services;
     }
 

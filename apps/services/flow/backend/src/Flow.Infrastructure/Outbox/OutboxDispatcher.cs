@@ -76,6 +76,13 @@ public sealed class OutboxDispatcher
                 await DispatchAdminAsync(row, redrive: true, ct);
                 return;
 
+            // ----------- LS-FLOW-E10.3 — SLA / timer transitions -----
+            case OutboxEventTypes.WorkflowSlaDueSoon:
+            case OutboxEventTypes.WorkflowSlaOverdue:
+            case OutboxEventTypes.WorkflowSlaEscalated:
+                await DispatchSlaTransitionAsync(row, ct);
+                return;
+
             default:
                 throw new InvalidOperationException(
                     $"Unknown outbox event type '{row.EventType}'. Register a handler in OutboxDispatcher.");
@@ -137,6 +144,78 @@ public sealed class OutboxDispatcher
                     ["outboxId"]           = row.Id.ToString(),
                     ["workflowInstanceId"] = p.WorkflowInstanceId.ToString(),
                     ["productKey"]         = p.ProductKey,
+                }), ct);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // LS-FLOW-E10.3 — SLA transitions (audit always; notification when assignee known)
+    // ------------------------------------------------------------------
+
+    private async Task DispatchSlaTransitionAsync(OutboxMessage row, CancellationToken ct)
+    {
+        var p = JsonSerializer.Deserialize<WorkflowSlaTransitionPayload>(row.PayloadJson, JsonOpts)
+                ?? throw new InvalidOperationException("SLA payload deserialised to null.");
+
+        var (subject, summary) = row.EventType switch
+        {
+            OutboxEventTypes.WorkflowSlaDueSoon =>
+                ("Workflow due soon",
+                 $"Workflow {p.WorkflowInstanceId} is due at {p.DueAt:O}."),
+            OutboxEventTypes.WorkflowSlaOverdue =>
+                ("Workflow overdue",
+                 $"Workflow {p.WorkflowInstanceId} is overdue (due {p.DueAt:O})."),
+            OutboxEventTypes.WorkflowSlaEscalated =>
+                ("Workflow escalated",
+                 $"Workflow {p.WorkflowInstanceId} has been overdue for {(p.OverdueDurationSeconds ?? 0) / 60} minute(s); escalation level {p.EscalationLevel}."),
+            _ => (row.EventType, row.EventType),
+        };
+
+        // Always emit the audit row (durable forensic trail).
+        await _audit.WriteEventAsync(new AuditEvent(
+            Action:        row.EventType,
+            EntityType:    "WorkflowInstance",
+            EntityId:      p.WorkflowInstanceId.ToString(),
+            TenantId:      row.TenantId,
+            UserId:        null,                      // system actor
+            Description:   summary,
+            Metadata:      new Dictionary<string, string?>
+            {
+                ["outboxId"]               = row.Id.ToString(),
+                ["productKey"]             = p.ProductKey,
+                ["currentStepKey"]         = p.CurrentStepKey,
+                ["dueAt"]                  = p.DueAt.ToString("O"),
+                ["previousSlaStatus"]      = p.PreviousSlaStatus,
+                ["newSlaStatus"]           = p.NewSlaStatus,
+                ["escalationLevel"]        = p.EscalationLevel.ToString(),
+                ["overdueDurationSeconds"] = p.OverdueDurationSeconds?.ToString(),
+                ["assignedToUserId"]       = p.AssignedToUserId,
+            },
+            OccurredAtUtc: p.OccurredAtUtc), ct);
+
+        // Notification: only when we know an assignee — anonymous SLA
+        // events still produce the audit row but cannot be addressed
+        // to a recipient. Role-based fan-out is deferred (see report
+        // Known Issues / Gaps).
+        if (!string.IsNullOrEmpty(p.AssignedToUserId))
+        {
+            await _notifications.SendAsync(new NotificationMessage(
+                Channel:          "system",
+                EventKey:         row.EventType,
+                TenantId:         row.TenantId,
+                RecipientUserId:  p.AssignedToUserId,
+                RecipientRoleKey: null,
+                Subject:          subject,
+                Body:             summary,
+                Data:             new Dictionary<string, string?>
+                {
+                    ["outboxId"]           = row.Id.ToString(),
+                    ["workflowInstanceId"] = p.WorkflowInstanceId.ToString(),
+                    ["productKey"]         = p.ProductKey,
+                    ["currentStepKey"]     = p.CurrentStepKey,
+                    ["dueAt"]              = p.DueAt.ToString("O"),
+                    ["newSlaStatus"]       = p.NewSlaStatus,
+                    ["escalationLevel"]    = p.EscalationLevel.ToString(),
                 }), ct);
         }
     }

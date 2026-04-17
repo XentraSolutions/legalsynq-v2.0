@@ -3,6 +3,7 @@ using Flow.Application.DTOs;
 using Flow.Application.Exceptions;
 using Flow.Application.Interfaces;
 using Flow.Application.Outbox;
+using Flow.Domain.Common;
 using Flow.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,10 @@ public sealed class WorkflowEngine : IWorkflowEngine
     public const string StatusCompleted = "Completed";
     public const string StatusCancelled = "Cancelled";
     public const string StatusFailed    = "Failed";
+
+    // LS-FLOW-E10.3 — initial SLA status when a definition has no
+    // configured DefaultSlaMinutes and no explicit per-instance DueAt.
+    private const string SlaInitial = WorkflowSlaStatus.OnTrack;
 
     private readonly IFlowDbContext _db;
     private readonly IOutboxWriter _outbox;
@@ -66,6 +71,28 @@ public sealed class WorkflowEngine : IWorkflowEngine
         instance.Status           = initial.IsTerminal ? StatusCompleted : StatusActive;
         if (initial.IsTerminal) instance.CompletedAt ??= DateTime.UtcNow;
         instance.LastErrorMessage = null;
+
+        // LS-FLOW-E10.3 — assign DueAt with the documented precedence:
+        //   1. caller-provided DueAt on the instance (left untouched)
+        //   2. definition.DefaultSlaMinutes added to StartedAt
+        //   3. none (DueAt remains null; evaluator skips this instance)
+        // Initial SlaStatus is always OnTrack — the evaluator promotes it
+        // on its first tick once now() crosses the dueSoon threshold.
+        if (instance.DueAt is null)
+        {
+            var defaultSla = await _db.FlowDefinitions
+                .Where(d => d.Id == instance.WorkflowDefinitionId)
+                .Select(d => d.DefaultSlaMinutes)
+                .FirstOrDefaultAsync(ct);
+            if (defaultSla is int minutes && minutes > 0)
+            {
+                instance.DueAt = instance.StartedAt!.Value.AddMinutes(minutes);
+            }
+        }
+        instance.SlaStatus              = SlaInitial;
+        instance.OverdueSince           = null;
+        instance.EscalationLevel        = 0;
+        instance.LastSlaEvaluatedAt     = null;
 
         // LS-FLOW-E10.2 — outbox write committed atomically with the
         // status/step mutation by the single SaveChangesAsync below.

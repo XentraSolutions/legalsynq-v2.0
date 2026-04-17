@@ -4,6 +4,7 @@ using Flow.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Flow.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(FlowDbContext))]
-    partial class FlowDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260417152404_AddOutboxMessagesE10_2")]
+    partial class AddOutboxMessagesE10_2
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -145,9 +148,6 @@ namespace Flow.Infrastructure.Persistence.Migrations
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(256)
                         .HasColumnType("varchar(256)");
-
-                    b.Property<int?>("DefaultSlaMinutes")
-                        .HasColumnType("int");
 
                     b.Property<string>("Description")
                         .HasMaxLength(2048)
@@ -632,14 +632,6 @@ namespace Flow.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
-                    b.Property<DateTime?>("DueAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int>("EscalationLevel")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
-
                     b.Property<Guid?>("InitialTaskId")
                         .HasColumnType("char(36)");
 
@@ -647,25 +639,12 @@ namespace Flow.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("varchar(2048)");
 
-                    b.Property<DateTime?>("LastSlaEvaluatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("OverdueSince")
-                        .HasColumnType("datetime(6)");
-
                     b.Property<string>("ProductKey")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)")
                         .HasDefaultValue("FLOW_GENERIC");
-
-                    b.Property<string>("SlaStatus")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(16)
-                        .HasColumnType("varchar(16)")
-                        .HasDefaultValue("OnTrack");
 
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("datetime(6)");
@@ -701,15 +680,9 @@ namespace Flow.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("InitialTaskId");
 
-                    b.HasIndex("SlaStatus")
-                        .HasDatabaseName("ix_flow_workflow_instances_slastatus");
-
                     b.HasIndex("Status");
 
                     b.HasIndex("WorkflowDefinitionId");
-
-                    b.HasIndex("Status", "DueAt")
-                        .HasDatabaseName("ix_flow_workflow_instances_status_dueat");
 
                     b.HasIndex("TenantId", "ProductKey");
 
