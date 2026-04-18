@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Reports.Contracts.Adapters;
 using Reports.Contracts.Configuration;
+using Reports.Contracts.Context;
 using Reports.Contracts.Delivery;
 using Reports.Contracts.Export;
 using Reports.Contracts.Observability;
@@ -60,6 +61,9 @@ public static class DependencyInjection
         RegisterMetrics(services);
 
         RegisterIdentityAdapters(services, configuration);
+
+        // Scoped: resolves JWT tenant/user identity for the current HTTP request
+        services.AddScoped<ICurrentTenantContext, CurrentTenantContextAdapter>();
 
         services.AddSingleton<IDocumentAdapter, MockDocumentAdapter>();
         services.AddSingleton<INotificationAdapter, MockNotificationAdapter>();

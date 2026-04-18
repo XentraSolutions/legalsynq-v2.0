@@ -103,6 +103,7 @@ public static class ViewEndpoints
         return result.StatusCode switch
         {
             400 => Results.BadRequest(error),
+            403 => Results.Json(error, statusCode: 403),
             404 => Results.NotFound(error),
             409 => Results.Conflict(error),
             _ => Results.Json(error, statusCode: result.StatusCode)

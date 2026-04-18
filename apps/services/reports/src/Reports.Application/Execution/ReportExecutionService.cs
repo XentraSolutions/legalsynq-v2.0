@@ -93,7 +93,7 @@ public sealed class ReportExecutionService : IReportExecutionService
         TenantReportView? activeView = null;
         if (request.ViewId.HasValue && request.ViewId.Value != Guid.Empty)
         {
-            activeView = await _viewRepo.GetByIdAsync(request.ViewId.Value, ct);
+            activeView = await _viewRepo.GetByIdAsync(request.ViewId.Value, tenantId, ct);
             if (activeView is null || activeView.ReportTemplateId != templateId)
                 return ServiceResult<ReportExecutionResponse>.NotFound($"View '{request.ViewId}' not found for template '{templateId}'.");
             if (!activeView.IsActive)

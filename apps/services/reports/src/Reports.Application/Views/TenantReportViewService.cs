@@ -4,6 +4,7 @@ using Reports.Application.Formulas;
 using Reports.Application.Templates.DTOs;
 using Reports.Application.Views.DTOs;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Context;
 using Reports.Contracts.Persistence;
 using Reports.Domain.Entities;
 
@@ -15,6 +16,7 @@ public sealed class TenantReportViewService : ITenantReportViewService
     private readonly ITemplateRepository _templateRepo;
     private readonly ITemplateAssignmentRepository _assignmentRepo;
     private readonly IAuditAdapter _audit;
+    private readonly ICurrentTenantContext _ctx;
     private readonly ILogger<TenantReportViewService> _log;
 
     public TenantReportViewService(
@@ -22,14 +24,22 @@ public sealed class TenantReportViewService : ITenantReportViewService
         ITemplateRepository templateRepo,
         ITemplateAssignmentRepository assignmentRepo,
         IAuditAdapter audit,
+        ICurrentTenantContext ctx,
         ILogger<TenantReportViewService> log)
     {
         _viewRepo = viewRepo;
         _templateRepo = templateRepo;
         _assignmentRepo = assignmentRepo;
         _audit = audit;
+        _ctx = ctx;
         _log = log;
     }
+
+    /// <summary>
+    /// Resolves the current tenant ID from the JWT context.
+    /// Returns null if the request is unauthenticated or has no tenant claim.
+    /// </summary>
+    private string? CurrentTenantId => _ctx.TenantId;
 
     public async Task<ServiceResult<TenantReportViewResponse>> CreateViewAsync(
         Guid templateId, CreateTenantReportViewRequest request, CancellationToken ct)
@@ -95,15 +105,53 @@ public sealed class TenantReportViewService : ITenantReportViewService
         return ServiceResult<TenantReportViewResponse>.Created(MapToResponse(entity));
     }
 
+    public async Task<ServiceResult<TenantReportViewResponse>> GetViewByIdAsync(
+        Guid templateId, Guid viewId, CancellationToken ct)
+    {
+        var tenantId = CurrentTenantId;
+        if (tenantId is null)
+            return ServiceResult<TenantReportViewResponse>.Forbidden("No tenant context in request.");
+
+        // Repository-layer: query includes TenantId filter — cross-tenant IDs return null
+        var entity = await _viewRepo.GetByIdAsync(viewId, tenantId, ct);
+        if (entity is null || entity.ReportTemplateId != templateId)
+            return ServiceResult<TenantReportViewResponse>.NotFound($"View '{viewId}' not found for template '{templateId}'.");
+
+        // Service-layer: explicit ownership check as defence-in-depth
+        if (!string.Equals(entity.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+        {
+            _log.LogWarning(
+                "Tenant ownership violation on GetView: viewId={ViewId} requestTenant={RequestTenantId} ownerTenant={OwnerTenantId} userId={UserId}",
+                viewId, tenantId, entity.TenantId, _ctx.UserId);
+            return ServiceResult<TenantReportViewResponse>.Forbidden("Access denied.");
+        }
+
+        return ServiceResult<TenantReportViewResponse>.Ok(MapToResponse(entity));
+    }
+
     public async Task<ServiceResult<TenantReportViewResponse>> UpdateViewAsync(
         Guid templateId, Guid viewId, UpdateTenantReportViewRequest request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.UpdatedByUserId))
             return ServiceResult<TenantReportViewResponse>.BadRequest("UpdatedByUserId is required.");
 
-        var entity = await _viewRepo.GetByIdAsync(viewId, ct);
+        var tenantId = CurrentTenantId;
+        if (tenantId is null)
+            return ServiceResult<TenantReportViewResponse>.Forbidden("No tenant context in request.");
+
+        // Repository-layer: query includes TenantId filter — cross-tenant IDs return null
+        var entity = await _viewRepo.GetByIdAsync(viewId, tenantId, ct);
         if (entity is null || entity.ReportTemplateId != templateId)
             return ServiceResult<TenantReportViewResponse>.NotFound($"View '{viewId}' not found for template '{templateId}'.");
+
+        // Service-layer: explicit ownership check as defence-in-depth
+        if (!string.Equals(entity.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+        {
+            _log.LogWarning(
+                "Tenant ownership violation on UpdateView: viewId={ViewId} requestTenant={RequestTenantId} ownerTenant={OwnerTenantId} userId={UserId}",
+                viewId, tenantId, entity.TenantId, _ctx.UserId);
+            return ServiceResult<TenantReportViewResponse>.Forbidden("Access denied.");
+        }
 
         if (!string.IsNullOrWhiteSpace(request.FormulaConfigJson))
         {
@@ -112,9 +160,10 @@ public sealed class TenantReportViewService : ITenantReportViewService
                 return ServiceResult<TenantReportViewResponse>.BadRequest($"Invalid formula config: {formulaError}");
         }
 
+        // Default view flip: scoped to current tenant only
         if (request.IsDefault == true && !entity.IsDefault)
         {
-            var currentDefault = await _viewRepo.GetDefaultViewAsync(entity.TenantId, templateId, ct);
+            var currentDefault = await _viewRepo.GetDefaultViewAsync(tenantId, templateId, ct);
             if (currentDefault is not null && currentDefault.Id != viewId)
             {
                 currentDefault.IsDefault = false;
@@ -141,16 +190,6 @@ public sealed class TenantReportViewService : ITenantReportViewService
         return ServiceResult<TenantReportViewResponse>.Ok(MapToResponse(entity));
     }
 
-    public async Task<ServiceResult<TenantReportViewResponse>> GetViewByIdAsync(
-        Guid templateId, Guid viewId, CancellationToken ct)
-    {
-        var entity = await _viewRepo.GetByIdAsync(viewId, ct);
-        if (entity is null || entity.ReportTemplateId != templateId)
-            return ServiceResult<TenantReportViewResponse>.NotFound($"View '{viewId}' not found for template '{templateId}'.");
-
-        return ServiceResult<TenantReportViewResponse>.Ok(MapToResponse(entity));
-    }
-
     public async Task<ServiceResult<IReadOnlyList<TenantReportViewResponse>>> ListViewsAsync(
         Guid templateId, string tenantId, CancellationToken ct)
     {
@@ -165,12 +204,27 @@ public sealed class TenantReportViewService : ITenantReportViewService
     public async Task<ServiceResult<TenantReportViewResponse>> DeleteViewAsync(
         Guid templateId, Guid viewId, CancellationToken ct)
     {
-        var entity = await _viewRepo.GetByIdAsync(viewId, ct);
+        var tenantId = CurrentTenantId;
+        if (tenantId is null)
+            return ServiceResult<TenantReportViewResponse>.Forbidden("No tenant context in request.");
+
+        // Repository-layer: query includes TenantId filter — cross-tenant IDs return null
+        var entity = await _viewRepo.GetByIdAsync(viewId, tenantId, ct);
         if (entity is null || entity.ReportTemplateId != templateId)
             return ServiceResult<TenantReportViewResponse>.NotFound($"View '{viewId}' not found for template '{templateId}'.");
 
+        // Service-layer: explicit ownership check as defence-in-depth
+        if (!string.Equals(entity.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+        {
+            _log.LogWarning(
+                "Tenant ownership violation on DeleteView: viewId={ViewId} requestTenant={RequestTenantId} ownerTenant={OwnerTenantId} userId={UserId}",
+                viewId, tenantId, entity.TenantId, _ctx.UserId);
+            return ServiceResult<TenantReportViewResponse>.Forbidden("Access denied.");
+        }
+
         var response = MapToResponse(entity);
-        await _viewRepo.DeleteAsync(viewId, ct);
+        // Repository-layer delete also scoped to tenantId for defence-in-depth
+        await _viewRepo.DeleteAsync(viewId, tenantId, ct);
 
         await TryAuditAsync(AuditEventFactory.ViewDeleted(
             entity.TenantId, entity.UpdatedByUserId ?? entity.CreatedByUserId, entity.Id, templateId, entity.Name));

@@ -42,6 +42,13 @@ public sealed class ServiceResult<T>
         StatusCode = 409
     };
 
+    public static ServiceResult<T> Forbidden(string message = "Access denied.") => new()
+    {
+        Success = false,
+        ErrorMessage = message,
+        StatusCode = 403
+    };
+
     public static ServiceResult<T> Fail(string message, int statusCode = 500) => new()
     {
         Success = false,

@@ -7,8 +7,8 @@ public sealed class MockTenantReportViewRepository : ITenantReportViewRepository
 {
     private readonly List<TenantReportView> _store = new();
 
-    public Task<TenantReportView?> GetByIdAsync(Guid viewId, CancellationToken ct)
-        => Task.FromResult(_store.FirstOrDefault(v => v.Id == viewId));
+    public Task<TenantReportView?> GetByIdAsync(Guid viewId, string tenantId, CancellationToken ct)
+        => Task.FromResult(_store.FirstOrDefault(v => v.Id == viewId && v.TenantId == tenantId));
 
     public Task<IReadOnlyList<TenantReportView>> ListByTenantAndTemplateAsync(string tenantId, Guid templateId, CancellationToken ct)
         => Task.FromResult<IReadOnlyList<TenantReportView>>(
@@ -39,9 +39,9 @@ public sealed class MockTenantReportViewRepository : ITenantReportViewRepository
         return Task.FromResult(entity);
     }
 
-    public Task DeleteAsync(Guid viewId, CancellationToken ct)
+    public Task DeleteAsync(Guid viewId, string tenantId, CancellationToken ct)
     {
-        _store.RemoveAll(v => v.Id == viewId);
+        _store.RemoveAll(v => v.Id == viewId && v.TenantId == tenantId);
         return Task.CompletedTask;
     }
 }

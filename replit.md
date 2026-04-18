@@ -4525,3 +4525,37 @@ Hardens the CASE-005 Case Notes feature with identity consistency, normalized GU
 
 ### Analysis
 `analysis/LS-LIENS-CASE-006-report.md`
+
+## LS-REPORTS-08-001 — Saved View Tenant Ownership Enforcement — 2026-04-18
+
+### Summary
+Critical security hardening: enforces strict tenant isolation for all saved view operations in the Reports service. Cross-tenant access via known view IDs is now blocked at both the repository and service layers.
+
+### Security Gaps Closed
+- `GetByIdAsync` fetched by ID only (no tenant filter) — any authenticated user could retrieve any tenant's view by GUID
+- `DeleteAsync` deleted by ID only (no tenant filter)
+- `GetViewByIdAsync`, `UpdateViewAsync`, `DeleteViewAsync` only checked `ReportTemplateId`, never `TenantId`
+
+### New Files
+- `Reports.Contracts/Context/ICurrentTenantContext.cs` — thin interface for JWT tenant/user identity, injectable into Application layer without BuildingBlocks dependency
+- `Reports.Infrastructure/Adapters/CurrentTenantContextAdapter.cs` — implements `ICurrentTenantContext` using `ICurrentRequestContext` from BuildingBlocks
+
+### Backend Changes
+- `ITenantReportViewRepository` — `GetByIdAsync(Guid, string tenantId, ct)` and `DeleteAsync(Guid, string tenantId, ct)` now require tenant parameter
+- `EfTenantReportViewRepository` — both methods filter `WHERE Id = @viewId AND TenantId = @tenantId`
+- `MockTenantReportViewRepository` — same tenant-scoped filtering added
+- `TenantReportViewService` — injected `ICurrentTenantContext`; all three read/mutate/delete methods now resolve tenant from JWT, pass it to repo, and explicitly re-check ownership (defence-in-depth). Denied access attempts logged with `viewId`, `requestTenantId`, `ownerTenantId`, `userId`
+- `ReportExecutionService` — passes `tenantId` from the execution request into `GetByIdAsync`
+- `ServiceResult<T>` — added `Forbidden()` factory method returning HTTP 403
+- `ViewEndpoints.ToResult` — added `403` case
+- `Reports.Infrastructure/DependencyInjection.cs` — registered `AddScoped<ICurrentTenantContext, CurrentTenantContextAdapter>()`
+
+### Error Strategy
+- Unauthenticated/missing tenant context → 403 Forbidden
+- Cross-tenant view lookup (repo returns null) → 404 Not Found (no data leak)
+
+### Known Pre-existing Issue
+`MigrateAsync` compilation error in `Program.cs` (pre-dates this story, unrelated to saved views)
+
+### Analysis
+`analysis/LS-REPORTS-08-001-report.md`

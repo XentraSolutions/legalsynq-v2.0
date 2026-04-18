@@ -10,10 +10,10 @@ public sealed class EfTenantReportViewRepository : ITenantReportViewRepository
 
     public EfTenantReportViewRepository(ReportsDbContext db) => _db = db;
 
-    public async Task<TenantReportView?> GetByIdAsync(Guid viewId, CancellationToken ct)
+    public async Task<TenantReportView?> GetByIdAsync(Guid viewId, string tenantId, CancellationToken ct)
     {
         return await _db.TenantReportViews
-            .FirstOrDefaultAsync(v => v.Id == viewId, ct);
+            .FirstOrDefaultAsync(v => v.Id == viewId && v.TenantId == tenantId, ct);
     }
 
     public async Task<IReadOnlyList<TenantReportView>> ListByTenantAndTemplateAsync(string tenantId, Guid templateId, CancellationToken ct)
@@ -60,9 +60,10 @@ public sealed class EfTenantReportViewRepository : ITenantReportViewRepository
         return entity;
     }
 
-    public async Task DeleteAsync(Guid viewId, CancellationToken ct)
+    public async Task DeleteAsync(Guid viewId, string tenantId, CancellationToken ct)
     {
-        var entity = await _db.TenantReportViews.FindAsync(new object[] { viewId }, ct);
+        var entity = await _db.TenantReportViews
+            .FirstOrDefaultAsync(v => v.Id == viewId && v.TenantId == tenantId, ct);
         if (entity is not null)
         {
             _db.TenantReportViews.Remove(entity);
