@@ -288,3 +288,9 @@ id = "Q-Wz9Ko7WeG8iwGZbjbMK"
 uri = "file://analysis/latest-updates-report.md"
 type = "text"
 title = "LegalSynq Latest Updates Report — April 15, 2026"
+
+[[outputs]]
+id = "KuzQJd2knza2wKMHXG9gj"
+uri = "file://exports/legalsynq-source.zip"
+type = "unspecified"
+title = "LegalSynq full source (2,922 files, 5.3 MB)"
