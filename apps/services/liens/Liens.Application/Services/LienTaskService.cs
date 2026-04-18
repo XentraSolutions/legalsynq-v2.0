@@ -10,11 +10,13 @@ namespace Liens.Application.Services;
 
 public sealed class LienTaskService : ILienTaskService
 {
-    private readonly ILienTaskRepository _taskRepo;
-    private readonly ICaseRepository     _caseRepo;
-    private readonly ILienRepository     _lienRepo;
-    private readonly IAuditPublisher     _audit;
+    private readonly ILienTaskRepository    _taskRepo;
+    private readonly ICaseRepository        _caseRepo;
+    private readonly ILienRepository        _lienRepo;
+    private readonly IAuditPublisher        _audit;
     private readonly INotificationPublisher _notifications;
+    private readonly ILienWorkflowConfigRepository _workflowRepo;
+    private readonly IWorkflowTransitionValidationService _transitionValidator;
     private readonly ILogger<LienTaskService> _logger;
 
     public LienTaskService(
@@ -23,14 +25,18 @@ public sealed class LienTaskService : ILienTaskService
         ILienRepository lienRepo,
         IAuditPublisher audit,
         INotificationPublisher notifications,
+        ILienWorkflowConfigRepository workflowRepo,
+        IWorkflowTransitionValidationService transitionValidator,
         ILogger<LienTaskService> logger)
     {
-        _taskRepo      = taskRepo;
-        _caseRepo      = caseRepo;
-        _lienRepo      = lienRepo;
-        _audit         = audit;
-        _notifications = notifications;
-        _logger        = logger;
+        _taskRepo            = taskRepo;
+        _caseRepo            = caseRepo;
+        _lienRepo            = lienRepo;
+        _audit               = audit;
+        _notifications       = notifications;
+        _workflowRepo        = workflowRepo;
+        _transitionValidator = transitionValidator;
+        _logger              = logger;
     }
 
     public async Task<PaginatedResult<TaskResponse>> SearchAsync(
@@ -149,6 +155,36 @@ public sealed class LienTaskService : ILienTaskService
             errors.Add("priority", [$"Invalid priority '{request.Priority}'."]);
         if (errors.Count > 0)
             throw new ValidationException("Validation failed.", errors);
+
+        // ── LS-LIENS-FLOW-005: Validate workflow stage transition ──────────────
+        // Only validate when moving from one stage to a different stage (both non-null).
+        if (entity.WorkflowStageId.HasValue
+            && request.WorkflowStageId.HasValue
+            && entity.WorkflowStageId.Value != request.WorkflowStageId.Value)
+        {
+            var fromStage = await _workflowRepo.GetStageGlobalAsync(entity.WorkflowStageId.Value, ct);
+            if (fromStage is not null)
+            {
+                var allowed = await _transitionValidator.IsTransitionAllowedAsync(
+                    fromStage.WorkflowConfigId,
+                    entity.WorkflowStageId.Value,
+                    request.WorkflowStageId.Value,
+                    ct);
+
+                if (!allowed)
+                {
+                    var toStage = await _workflowRepo.GetStageGlobalAsync(request.WorkflowStageId.Value, ct);
+                    var fromName = fromStage.StageName;
+                    var toName   = toStage?.StageName ?? request.WorkflowStageId.Value.ToString();
+                    throw new ValidationException("Validation failed.", new Dictionary<string, string[]>
+                    {
+                        ["workflowStageId"] = [
+                            $"Transition from '{fromName}' to '{toName}' is not allowed by the workflow configuration."
+                        ]
+                    });
+                }
+            }
+        }
 
         entity.Update(
             title:           request.Title,

@@ -9,6 +9,7 @@ namespace Liens.Api.Endpoints;
 
 /// <summary>
 /// LS-LIENS-FLOW-001 — Workflow Configuration endpoints.
+/// LS-LIENS-FLOW-005 — Workflow Transition endpoints.
 /// Manages the single-source-of-truth workflow config for Synq Liens.
 /// Both tenant-side Product Settings and admin-side Control Center use the same endpoints.
 /// The caller distinguishes itself via the UpdateSource field in the request body.
@@ -43,6 +44,16 @@ public static class WorkflowConfigEndpoints
         group.MapPost("/{id:guid}/stages/reorder", ReorderStages)
             .RequirePermission(LiensPermissions.WorkflowManage);
 
+        // ── Transition endpoints (LS-LIENS-FLOW-005) ──────────────────────────
+        group.MapPost("/{id:guid}/transitions", AddTransition)
+            .RequirePermission(LiensPermissions.WorkflowManage);
+
+        group.MapDelete("/{id:guid}/transitions/{transitionId:guid}", DeactivateTransition)
+            .RequirePermission(LiensPermissions.WorkflowManage);
+
+        group.MapPost("/{id:guid}/transitions/save", SaveTransitions)
+            .RequirePermission(LiensPermissions.WorkflowManage);
+
         // Admin-only passthrough — platform admin can also manage from control center
         // without needing the tenant's workflow:manage permission.
         var adminGroup = app.MapGroup("/api/liens/admin/workflow-config")
@@ -56,6 +67,11 @@ public static class WorkflowConfigEndpoints
         adminGroup.MapPut("/tenants/{tenantId:guid}/{id:guid}/stages/{stageId:guid}", AdminUpdateStage);
         adminGroup.MapDelete("/tenants/{tenantId:guid}/{id:guid}/stages/{stageId:guid}", AdminRemoveStage);
         adminGroup.MapPost("/tenants/{tenantId:guid}/{id:guid}/stages/reorder", AdminReorderStages);
+
+        // ── Admin transition endpoints (LS-LIENS-FLOW-005) ────────────────────
+        adminGroup.MapPost("/tenants/{tenantId:guid}/{id:guid}/transitions", AdminAddTransition);
+        adminGroup.MapDelete("/tenants/{tenantId:guid}/{id:guid}/transitions/{transitionId:guid}", AdminDeactivateTransition);
+        adminGroup.MapPost("/tenants/{tenantId:guid}/{id:guid}/transitions/save", AdminSaveTransitions);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -147,6 +163,43 @@ public static class WorkflowConfigEndpoints
         return Results.Ok(await svc.ReorderStagesAsync(tenantId, id, userId, request, ct));
     }
 
+    // ── Transition endpoints (tenant-scoped) ──────────────────────────────────
+
+    private static async Task<IResult> AddTransition(
+        Guid id,
+        AddWorkflowTransitionRequest request,
+        ILienWorkflowConfigService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId   = RequireUserId(ctx);
+        return Results.Ok(await svc.AddTransitionAsync(tenantId, id, userId, request, ct));
+    }
+
+    private static async Task<IResult> DeactivateTransition(
+        Guid id, Guid transitionId,
+        ILienWorkflowConfigService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId   = RequireUserId(ctx);
+        return Results.Ok(await svc.DeactivateTransitionAsync(tenantId, id, transitionId, userId, ct));
+    }
+
+    private static async Task<IResult> SaveTransitions(
+        Guid id,
+        SaveWorkflowTransitionsRequest request,
+        ILienWorkflowConfigService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId   = RequireUserId(ctx);
+        return Results.Ok(await svc.SaveTransitionsAsync(tenantId, id, userId, request, ct));
+    }
+
     // ── Admin-scoped endpoints (explicit tenantId in path) ────────────────────
 
     private static async Task<IResult> AdminGetWorkflowConfig(
@@ -222,5 +275,39 @@ public static class WorkflowConfigEndpoints
     {
         var userId = RequireUserId(ctx);
         return Results.Ok(await svc.ReorderStagesAsync(tenantId, id, userId, request, ct));
+    }
+
+    // ── Admin transition endpoints ─────────────────────────────────────────────
+
+    private static async Task<IResult> AdminAddTransition(
+        Guid tenantId, Guid id,
+        AddWorkflowTransitionRequest request,
+        ILienWorkflowConfigService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var userId = RequireUserId(ctx);
+        return Results.Ok(await svc.AddTransitionAsync(tenantId, id, userId, request, ct));
+    }
+
+    private static async Task<IResult> AdminDeactivateTransition(
+        Guid tenantId, Guid id, Guid transitionId,
+        ILienWorkflowConfigService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var userId = RequireUserId(ctx);
+        return Results.Ok(await svc.DeactivateTransitionAsync(tenantId, id, transitionId, userId, ct));
+    }
+
+    private static async Task<IResult> AdminSaveTransitions(
+        Guid tenantId, Guid id,
+        SaveWorkflowTransitionsRequest request,
+        ILienWorkflowConfigService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var userId = RequireUserId(ctx);
+        return Results.Ok(await svc.SaveTransitionsAsync(tenantId, id, userId, request, ct));
     }
 }

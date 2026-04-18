@@ -59,6 +59,7 @@ public static class DependencyInjection
         services.AddScoped<IContactService, ContactService>();
         services.AddScoped<ILienTaskService, LienTaskService>();
         services.AddScoped<ILienWorkflowConfigService, LienWorkflowConfigService>();
+        services.AddScoped<IWorkflowTransitionValidationService, WorkflowTransitionValidationService>();
         services.AddScoped<ILienTaskTemplateService, LienTaskTemplateService>();
         services.AddScoped<ILienTaskGenerationRuleService, LienTaskGenerationRuleService>();
         services.AddScoped<ILienTaskGenerationEngine, LienTaskGenerationEngine>();

@@ -18,8 +18,9 @@ public class LiensDbContext : DbContext
     public DbSet<ServicingItem> ServicingItems => Set<ServicingItem>();
     public DbSet<LienTask> LienTasks => Set<LienTask>();
     public DbSet<LienTaskLienLink> LienTaskLienLinks => Set<LienTaskLienLink>();
-    public DbSet<LienWorkflowConfig> LienWorkflowConfigs => Set<LienWorkflowConfig>();
-    public DbSet<LienWorkflowStage> LienWorkflowStages => Set<LienWorkflowStage>();
+    public DbSet<LienWorkflowConfig>      LienWorkflowConfigs     => Set<LienWorkflowConfig>();
+    public DbSet<LienWorkflowStage>       LienWorkflowStages      => Set<LienWorkflowStage>();
+    public DbSet<LienWorkflowTransition>  LienWorkflowTransitions => Set<LienWorkflowTransition>();
     public DbSet<LienTaskTemplate> LienTaskTemplates => Set<LienTaskTemplate>();
     public DbSet<LienTaskGenerationRule> LienTaskGenerationRules => Set<LienTaskGenerationRule>();
     public DbSet<LienGeneratedTaskMetadata> LienGeneratedTaskMetadatas => Set<LienGeneratedTaskMetadata>();

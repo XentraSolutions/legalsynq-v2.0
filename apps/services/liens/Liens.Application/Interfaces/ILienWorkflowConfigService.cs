@@ -17,4 +17,16 @@ public interface ILienWorkflowConfigService
     Task<WorkflowConfigResponse> RemoveStageAsync(Guid tenantId, Guid id, Guid stageId, Guid actingUserId, CancellationToken ct = default);
 
     Task<WorkflowConfigResponse> ReorderStagesAsync(Guid tenantId, Guid id, Guid actingUserId, ReorderStagesRequest request, CancellationToken ct = default);
+
+    // ── Transition methods (LS-LIENS-FLOW-005) ────────────────────────────────
+
+    Task<WorkflowConfigResponse> AddTransitionAsync(Guid tenantId, Guid id, Guid actingUserId, AddWorkflowTransitionRequest request, CancellationToken ct = default);
+
+    Task<WorkflowConfigResponse> DeactivateTransitionAsync(Guid tenantId, Guid id, Guid transitionId, Guid actingUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Batch-replace all active transitions. Deactivates unlisted ones; creates missing ones.
+    /// Updates workflow version and governance metadata.
+    /// </summary>
+    Task<WorkflowConfigResponse> SaveTransitionsAsync(Guid tenantId, Guid id, Guid actingUserId, SaveWorkflowTransitionsRequest request, CancellationToken ct = default);
 }

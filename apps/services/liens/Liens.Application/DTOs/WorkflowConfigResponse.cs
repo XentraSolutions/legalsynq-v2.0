@@ -12,7 +12,8 @@ public sealed class WorkflowConfigResponse
     public Guid?  LastUpdatedByUserId { get; init; }
     public string? LastUpdatedByName  { get; init; }
     public string LastUpdatedSource   { get; init; } = string.Empty;
-    public List<WorkflowStageResponse> Stages { get; init; } = [];
+    public List<WorkflowStageResponse>      Stages      { get; init; } = [];
+    public List<WorkflowTransitionResponse> Transitions { get; init; } = [];
     public DateTime CreatedAtUtc      { get; init; }
     public DateTime UpdatedAtUtc      { get; init; }
 }
@@ -29,4 +30,16 @@ public sealed class WorkflowStageResponse
     public string? SlaMetadata      { get; init; }
     public DateTime CreatedAtUtc   { get; init; }
     public DateTime UpdatedAtUtc   { get; init; }
+}
+
+public sealed class WorkflowTransitionResponse
+{
+    public Guid    Id               { get; init; }
+    public Guid    WorkflowConfigId { get; init; }
+    public Guid    FromStageId      { get; init; }
+    public Guid    ToStageId        { get; init; }
+    public bool    IsActive         { get; init; }
+    public int     SortOrder        { get; init; }
+    public DateTime CreatedAtUtc    { get; init; }
+    public DateTime UpdatedAtUtc    { get; init; }
 }

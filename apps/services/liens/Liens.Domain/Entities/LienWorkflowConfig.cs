@@ -18,7 +18,8 @@ public class LienWorkflowConfig : AuditableEntity
     public string? LastUpdatedByName    { get; private set; }
     public string LastUpdatedSource     { get; private set; } = WorkflowUpdateSources.TenantProductSettings;
 
-    public List<LienWorkflowStage> Stages { get; private set; } = [];
+    public List<LienWorkflowStage>      Stages      { get; private set; } = [];
+    public List<LienWorkflowTransition> Transitions { get; private set; } = [];
 
     private LienWorkflowConfig() { }
 
@@ -92,5 +93,16 @@ public class LienWorkflowConfig : AuditableEntity
         LastUpdatedAt = DateTime.UtcNow;
         UpdatedAtUtc  = DateTime.UtcNow;
         return stage;
+    }
+
+    /// <summary>Bump version when transitions are modified externally (e.g. batch save).</summary>
+    public void BumpVersion(Guid updatedByUserId, string? updatedByName = null)
+    {
+        Version             += 1;
+        LastUpdatedAt        = DateTime.UtcNow;
+        LastUpdatedByUserId  = updatedByUserId;
+        LastUpdatedByName    = updatedByName ?? LastUpdatedByName;
+        UpdatedByUserId      = updatedByUserId;
+        UpdatedAtUtc         = DateTime.UtcNow;
     }
 }

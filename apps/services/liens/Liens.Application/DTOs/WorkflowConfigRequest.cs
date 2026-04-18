@@ -45,3 +45,30 @@ public sealed class StageOrderEntry
     public Guid StageId    { get; init; }
     public int  StageOrder { get; init; }
 }
+
+// ── Transition requests (LS-LIENS-FLOW-005) ──────────────────────────────────
+
+public sealed class AddWorkflowTransitionRequest
+{
+    public Guid FromStageId { get; init; }
+    public Guid ToStageId   { get; init; }
+    public int  SortOrder   { get; init; }
+}
+
+/// <summary>
+/// Batch-save transitions: replaces all active transitions for the workflow.
+/// Sends the desired full set; the service deactivates any not in the list.
+/// </summary>
+public sealed class SaveWorkflowTransitionsRequest
+{
+    public List<TransitionEntry> Transitions { get; init; } = [];
+    public string UpdateSource  { get; init; } = string.Empty;
+    public string? UpdatedByName { get; init; }
+}
+
+public sealed class TransitionEntry
+{
+    public Guid FromStageId { get; init; }
+    public Guid ToStageId   { get; init; }
+    public int  SortOrder   { get; init; }
+}

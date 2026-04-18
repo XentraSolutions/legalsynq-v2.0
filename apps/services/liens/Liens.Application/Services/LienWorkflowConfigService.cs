@@ -29,7 +29,11 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
     public async Task<WorkflowConfigResponse?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default)
     {
         var entity = await _repo.GetByTenantProductAsync(tenantId, ProductCode, ct);
-        return entity is null ? null : MapToResponse(entity);
+        if (entity is null) return null;
+
+        await EnsureDefaultTransitionsAsync(entity, ct);
+
+        return MapToResponse(entity);
     }
 
     public async Task<WorkflowConfigResponse> CreateAsync(
@@ -224,12 +228,216 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
         return MapToResponse(updated!);
     }
 
+    // ── Transition management (LS-LIENS-FLOW-005) ─────────────────────────────
+
+    public async Task<WorkflowConfigResponse> AddTransitionAsync(
+        Guid tenantId, Guid id, Guid actingUserId, AddWorkflowTransitionRequest request, CancellationToken ct = default)
+    {
+        var entity = await RequireConfig(tenantId, id, ct);
+
+        ValidateStagesBelongToWorkflow(entity, request.FromStageId, request.ToStageId);
+
+        if (request.FromStageId == request.ToStageId)
+            throw new ValidationException("Validation failed.", new Dictionary<string, string[]>
+            {
+                ["toStageId"] = ["A transition cannot point to the same stage (self-transition)."]
+            });
+
+        var exists = await _repo.TransitionExistsAsync(id, request.FromStageId, request.ToStageId, ct);
+        if (exists)
+            throw new ConflictException(
+                "An active transition between these two stages already exists.",
+                "TRANSITION_ALREADY_EXISTS");
+
+        var transition = LienWorkflowTransition.Create(
+            workflowConfigId: id,
+            fromStageId:      request.FromStageId,
+            toStageId:        request.ToStageId,
+            createdByUserId:  actingUserId,
+            sortOrder:        request.SortOrder);
+
+        await _repo.AddTransitionAsync(transition, ct);
+
+        entity.BumpVersion(actingUserId, entity.LastUpdatedByName);
+        await _repo.UpdateAsync(entity, ct);
+
+        _audit.Publish(
+            eventType:   "liens.workflow_transition.created",
+            action:      "create",
+            description: $"Transition {request.FromStageId} → {request.ToStageId} added to workflow '{entity.WorkflowName}'",
+            tenantId:    tenantId,
+            actorUserId: actingUserId,
+            entityType:  "LienWorkflowTransition",
+            entityId:    transition.Id.ToString());
+
+        var updated = await _repo.GetByIdAsync(tenantId, id, ct);
+        return MapToResponse(updated!);
+    }
+
+    public async Task<WorkflowConfigResponse> DeactivateTransitionAsync(
+        Guid tenantId, Guid id, Guid transitionId, Guid actingUserId, CancellationToken ct = default)
+    {
+        var entity     = await RequireConfig(tenantId, id, ct);
+        var transition = await _repo.GetTransitionByIdAsync(id, transitionId, ct)
+            ?? throw new NotFoundException($"Transition '{transitionId}' not found.");
+
+        transition.Deactivate(actingUserId);
+        await _repo.UpdateTransitionAsync(transition, ct);
+
+        entity.BumpVersion(actingUserId, entity.LastUpdatedByName);
+        await _repo.UpdateAsync(entity, ct);
+
+        _audit.Publish(
+            eventType:   "liens.workflow_transition.deactivated",
+            action:      "update",
+            description: $"Transition '{transitionId}' deactivated in workflow '{entity.WorkflowName}'",
+            tenantId:    tenantId,
+            actorUserId: actingUserId,
+            entityType:  "LienWorkflowTransition",
+            entityId:    transitionId.ToString());
+
+        var updated = await _repo.GetByIdAsync(tenantId, id, ct);
+        return MapToResponse(updated!);
+    }
+
+    public async Task<WorkflowConfigResponse> SaveTransitionsAsync(
+        Guid tenantId, Guid id, Guid actingUserId, SaveWorkflowTransitionsRequest request, CancellationToken ct = default)
+    {
+        var entity = await RequireConfig(tenantId, id, ct);
+
+        var errors = new Dictionary<string, string[]>();
+        if (!string.IsNullOrWhiteSpace(request.UpdateSource)
+            && !WorkflowUpdateSources.All.Contains(request.UpdateSource))
+            errors.Add("updateSource", [$"Invalid updateSource '{request.UpdateSource}'."]);
+
+        foreach (var entry in request.Transitions)
+        {
+            if (entry.FromStageId == entry.ToStageId)
+            {
+                errors.Add("transitions", ["A transition cannot point to the same stage."]);
+                break;
+            }
+        }
+
+        if (errors.Count > 0)
+            throw new ValidationException("Validation failed.", errors);
+
+        // Deactivate all current active transitions
+        await _repo.DeactivateAllTransitionsAsync(id, ct);
+
+        // Re-create the desired set
+        var toCreate = new List<LienWorkflowTransition>();
+        var seen     = new HashSet<(Guid, Guid)>();
+
+        foreach (var entry in request.Transitions)
+        {
+            var key = (entry.FromStageId, entry.ToStageId);
+            if (seen.Contains(key)) continue;
+            seen.Add(key);
+
+            toCreate.Add(LienWorkflowTransition.Create(
+                workflowConfigId: id,
+                fromStageId:      entry.FromStageId,
+                toStageId:        entry.ToStageId,
+                createdByUserId:  actingUserId,
+                sortOrder:        entry.SortOrder));
+        }
+
+        if (toCreate.Count > 0)
+            await _repo.AddTransitionsAsync(toCreate, ct);
+
+        var updateSource = !string.IsNullOrWhiteSpace(request.UpdateSource)
+            ? request.UpdateSource
+            : entity.LastUpdatedSource;
+
+        entity.Update(entity.WorkflowName, entity.IsActive, updateSource, actingUserId, request.UpdatedByName ?? entity.LastUpdatedByName);
+        await _repo.UpdateAsync(entity, ct);
+
+        _logger.LogInformation(
+            "Transitions batch-saved for workflow {WorkflowId}: {Count} active transitions",
+            id, toCreate.Count);
+
+        _audit.Publish(
+            eventType:   "liens.workflow_transition.saved",
+            action:      "update",
+            description: $"Workflow '{entity.WorkflowName}' transitions replaced: {toCreate.Count} active",
+            tenantId:    tenantId,
+            actorUserId: actingUserId,
+            entityType:  "LienWorkflowConfig",
+            entityId:    entity.Id.ToString());
+
+        var updated = await _repo.GetByIdAsync(tenantId, id, ct);
+        return MapToResponse(updated!);
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
     private async Task<LienWorkflowConfig> RequireConfig(Guid tenantId, Guid id, CancellationToken ct)
     {
         var entity = await _repo.GetByIdAsync(tenantId, id, ct);
         if (entity is null)
             throw new NotFoundException($"WorkflowConfig '{id}' not found.");
         return entity;
+    }
+
+    private static void ValidateStagesBelongToWorkflow(LienWorkflowConfig entity, Guid fromStageId, Guid toStageId)
+    {
+        var stageIds = entity.Stages.Select(s => s.Id).ToHashSet();
+        var errors   = new Dictionary<string, string[]>();
+
+        if (!stageIds.Contains(fromStageId))
+            errors.Add("fromStageId", [$"Stage '{fromStageId}' does not belong to this workflow."]);
+        if (!stageIds.Contains(toStageId))
+            errors.Add("toStageId",   [$"Stage '{toStageId}' does not belong to this workflow."]);
+
+        if (errors.Count > 0)
+            throw new ValidationException("Validation failed.", errors);
+    }
+
+    /// <summary>
+    /// Lazy default initialization: if a workflow has stages but no active transitions,
+    /// auto-generate linear transitions based on stage order and persist them.
+    /// </summary>
+    private async Task EnsureDefaultTransitionsAsync(LienWorkflowConfig entity, CancellationToken ct)
+    {
+        var activeStages = entity.Stages
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.StageOrder)
+            .ToList();
+
+        if (activeStages.Count < 2) return;
+
+        var existingTransitions = await _repo.GetActiveTransitionsAsync(entity.Id, ct);
+        if (existingTransitions.Count > 0) return;
+
+        _logger.LogInformation(
+            "Auto-initializing linear transitions for workflow {WorkflowId} ({Count} stages)",
+            entity.Id, activeStages.Count);
+
+        var defaultTransitions = new List<LienWorkflowTransition>();
+        for (int i = 0; i < activeStages.Count - 1; i++)
+        {
+            defaultTransitions.Add(LienWorkflowTransition.Create(
+                workflowConfigId: entity.Id,
+                fromStageId:      activeStages[i].Id,
+                toStageId:        activeStages[i + 1].Id,
+                createdByUserId:  entity.CreatedByUserId,
+                sortOrder:        i));
+        }
+
+        await _repo.AddTransitionsAsync(defaultTransitions, ct);
+
+        // Reload transitions into the in-memory entity for the response
+        entity.Transitions.AddRange(defaultTransitions);
+
+        _audit.Publish(
+            eventType:   "liens.workflow_transition.initialized",
+            action:      "create",
+            description: $"Workflow '{entity.WorkflowName}' auto-initialized with {defaultTransitions.Count} linear transitions",
+            tenantId:    entity.TenantId,
+            actorUserId: entity.CreatedByUserId,
+            entityType:  "LienWorkflowConfig",
+            entityId:    entity.Id.ToString());
     }
 
     private static WorkflowConfigResponse MapToResponse(LienWorkflowConfig entity)
@@ -262,6 +470,21 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
                     SlaMetadata      = s.SlaMetadata,
                     CreatedAtUtc     = s.CreatedAtUtc,
                     UpdatedAtUtc     = s.UpdatedAtUtc,
+                }).ToList(),
+            Transitions = entity.Transitions
+                .Where(t => t.IsActive)
+                .OrderBy(t => t.SortOrder)
+                .ThenBy(t => t.CreatedAtUtc)
+                .Select(t => new WorkflowTransitionResponse
+                {
+                    Id               = t.Id,
+                    WorkflowConfigId = t.WorkflowConfigId,
+                    FromStageId      = t.FromStageId,
+                    ToStageId        = t.ToStageId,
+                    IsActive         = t.IsActive,
+                    SortOrder        = t.SortOrder,
+                    CreatedAtUtc     = t.CreatedAtUtc,
+                    UpdatedAtUtc     = t.UpdatedAtUtc,
                 }).ToList(),
         };
     }
