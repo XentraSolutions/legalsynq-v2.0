@@ -23,6 +23,7 @@ public class LiensDbContext : DbContext
     public DbSet<LienTaskTemplate> LienTaskTemplates => Set<LienTaskTemplate>();
     public DbSet<LienTaskGenerationRule> LienTaskGenerationRules => Set<LienTaskGenerationRule>();
     public DbSet<LienGeneratedTaskMetadata> LienGeneratedTaskMetadatas => Set<LienGeneratedTaskMetadata>();
+    public DbSet<LienTaskNote> LienTaskNotes => Set<LienTaskNote>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

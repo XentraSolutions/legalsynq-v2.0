@@ -153,5 +153,7 @@ app.MapWorkflowConfigEndpoints();
 app.MapTaskTemplateEndpoints();
 // LS-LIENS-FLOW-003 — Event-Driven Task Generation.
 app.MapTaskGenerationRuleEndpoints();
+// LS-LIENS-FLOW-004 — Task Notes & Collaboration.
+app.MapTaskNoteEndpoints();
 
 app.Run();

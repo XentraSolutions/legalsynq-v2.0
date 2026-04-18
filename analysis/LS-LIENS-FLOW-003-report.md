@@ -9,7 +9,7 @@
 
 ### Implemented
 - `LienTaskGenerationRule` domain entity with full lifecycle (create / update / activate / deactivate) using the same versioned governance pattern as `LienTaskTemplate`
-- `LienGeneratedTaskMetadata` companion traceability table (1:1 with `LienTask`, per auto-generated task)
+- `LienGeneratedTaskMetadata` companion traceability table (1:1 <with `LienTask`, per auto-generated task)
 - 5 new domain enum constant classes: `TaskGenerationEventType`, `DuplicatePreventionMode`, `AssignmentMode`, `DueDateMode`, `TaskSourceType`
 - `LienTask` extended with `SourceType`, `GenerationRuleId`, `GeneratingTemplateId` columns (nullable, backward-compatible)
 - `ILienTaskGenerationRuleService` + implementation: full CRUD + activate/deactivate

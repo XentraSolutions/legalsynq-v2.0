@@ -31,4 +31,5 @@ public static class LiensPermissions
 
     public const string TaskTemplateManage   = "SYNQ_LIENS.task_template:manage";
     public const string TaskAutomationManage = "SYNQ_LIENS.task_automation:manage";
+    public const string TaskNoteManage       = "SYNQ_LIENS.task_note:manage";
 }

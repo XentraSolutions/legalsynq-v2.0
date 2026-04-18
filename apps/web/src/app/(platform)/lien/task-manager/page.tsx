@@ -15,6 +15,7 @@ import { useLienStore } from '@/stores/lien-store';
 import { PageHeader } from '@/components/lien/page-header';
 import { CreateEditTaskForm } from '@/components/lien/forms/create-edit-task-form';
 import { TaskCard } from '@/components/lien/task-card';
+import { TaskDetailDrawer } from '@/components/lien/task-detail-drawer';
 
 type ViewMode = 'board' | 'list';
 type AssignmentScope = 'all' | 'me' | 'others' | 'unassigned';
@@ -48,6 +49,7 @@ export default function TaskManagerPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [editTask, setEditTask] = useState<TaskDto | undefined>();
+  const [detailTask, setDetailTask] = useState<TaskDto | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const fetchTasks = useCallback(async () => {
@@ -240,7 +242,7 @@ export default function TaskManagerPage() {
                       task={task}
                       onComplete={handleComplete}
                       onCancel={handleCancel}
-                      onClick={(t) => setEditTask(t)}
+                      onClick={(t) => setDetailTask(t)}
                       compact
                     />
                   </div>
@@ -273,7 +275,7 @@ export default function TaskManagerPage() {
                   <tr
                     key={task.id}
                     className={`hover:bg-gray-50 cursor-pointer ${actionLoading === task.id ? 'opacity-50' : ''}`}
-                    onClick={() => setEditTask(task)}
+                    onClick={() => setDetailTask(task)}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -362,6 +364,12 @@ export default function TaskManagerPage() {
           editTask={editTask}
         />
       )}
+
+      <TaskDetailDrawer
+        task={detailTask}
+        onClose={() => setDetailTask(null)}
+        onEdit={(t) => { setDetailTask(null); setEditTask(t); }}
+      />
     </div>
   );
 }

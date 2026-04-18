@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<ILienWorkflowConfigRepository, LienWorkflowConfigRepository>();
         services.AddScoped<ILienTaskTemplateRepository, LienTaskTemplateRepository>();
         services.AddScoped<ILienTaskGenerationRuleRepository, LienTaskGenerationRuleRepository>();
+        services.AddScoped<ILienTaskNoteRepository, LienTaskNoteRepository>();
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddSingleton<IBillOfSalePdfGenerator, BillOfSalePdfGenerator>();
@@ -60,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<ILienTaskTemplateService, LienTaskTemplateService>();
         services.AddScoped<ILienTaskGenerationRuleService, LienTaskGenerationRuleService>();
         services.AddScoped<ILienTaskGenerationEngine, LienTaskGenerationEngine>();
+        services.AddScoped<ILienTaskNoteService, LienTaskNoteService>();
 
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
         services.AddHttpClient("DocumentsService", client =>
