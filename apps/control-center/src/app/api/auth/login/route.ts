@@ -44,15 +44,20 @@ export async function POST(request: NextRequest) {
       },
       body: outgoingBody,
     });
-  } catch {
-    return NextResponse.json({ message: 'Identity service unavailable' }, { status: 503 });
+  } catch (err) {
+    console.error('[cc-login] Identity service fetch error:', err);
+    return NextResponse.json(
+      { message: 'Login is temporarily unavailable. Please try again in a few moments.' },
+      { status: 503 },
+    );
   }
 
   if (!identityRes.ok) {
     const errBody = await identityRes.json().catch(() => ({}));
-    const message = errBody.detail ?? errBody.title ?? 'Invalid credentials';
+    const upstreamMessage = errBody.detail ?? errBody.title ?? null;
+    console.log(`[cc-login] Identity returned ${identityRes.status}: ${JSON.stringify(errBody)}`);
 
-    const isVerifying = typeof message === 'string' && message.includes('verifying DNS configuration');
+    const isVerifying = typeof upstreamMessage === 'string' && upstreamMessage.includes('verifying DNS configuration');
     if (isVerifying) {
       return NextResponse.json(
         { message: 'Your workspace is verifying DNS configuration. This typically completes within a few minutes. Please try again shortly.' },
@@ -60,7 +65,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const isNotProvisioned = typeof message === 'string' && message.includes('not fully provisioned');
+    const isNotProvisioned = typeof upstreamMessage === 'string' && upstreamMessage.includes('not fully provisioned');
     if (isNotProvisioned) {
       return NextResponse.json(
         { message: 'This tenant is still being set up. Please try again shortly.' },
@@ -68,9 +73,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Upstream service failure (5xx) — do NOT surface as "Invalid credentials".
+    // The user's password may well be correct; the identity service is broken.
+    if (identityRes.status >= 500) {
+      console.error(`[cc-login] Identity service error ${identityRes.status} — surfacing generic unavailable message`);
+      return NextResponse.json(
+        { message: 'Login is temporarily unavailable. Please try again in a few moments.' },
+        { status: 503 },
+      );
+    }
+
+    // Genuine credential failure
+    if (identityRes.status === 401) {
+      return NextResponse.json(
+        { message: upstreamMessage ?? 'Invalid credentials.' },
+        { status: 401 },
+      );
+    }
+
+    // Other 4xx — pass through upstream message if available, else a neutral fallback
     return NextResponse.json(
-      { message },
-      { status: identityRes.status === 401 ? 401 : 400 },
+      { message: upstreamMessage ?? 'Unable to sign in. Please check your details and try again.' },
+      { status: 400 },
     );
   }
 
