@@ -25,11 +25,18 @@ echo "[next] Using: $NEXT_BIN"
 # seconds.  Logs a clear WARNING if the service never responds.
 # Used for both .NET and Node.js services.
 _probe_svc() {
-  local label="$1" port="$2" path="$3" deadline="${4:-90}"
+  local label="$1" port="$2" path="$3" pid="${4:-}"
+  local deadline=90
   (
     echo "[$label] Waiting for $path on :$port..."
     local elapsed=0
     while [ "$elapsed" -lt "$deadline" ]; do
+      # If we have a PID and the process is no longer alive, warn immediately
+      # rather than polling for the rest of the 90-second window.
+      if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+        echo "[$label] WARNING: $label process (pid $pid) has exited — service crashed before becoming healthy"
+        exit 1
+      fi
       if curl -sf "http://127.0.0.1:${port}${path}" >/dev/null 2>&1; then
         echo "[$label] $path healthy after ${elapsed}s"
         exit 0
@@ -162,29 +169,55 @@ if command -v dotnet &>/dev/null; then
     # immediately below the loop.
     SVC_PIDS=()
     SVC_NAMES=()
+    PID_IDENTITY="" PID_FUND="" PID_CARECONNECT="" PID_DOCUMENTS=""
+    PID_AUDIT="" PID_NOTIFICATIONS="" PID_LIENS="" PID_GATEWAY="" PID_FLOW=""
+
     for csproj in "${BUILD_PROJECTS[@]}"; do
       svc_name="$(basename "$csproj" .csproj)"
       case "$svc_name" in
         PlatformAuditEventService)
           _svc_label="Audit"
-          launch_svc "$_svc_label"    "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5007 ;;
+          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5007
+          PID_AUDIT=$! ;;
         Notifications.Api)
           _svc_label="Notifications"
-          launch_svc "$_svc_label"    "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5008 ;;
+          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5008
+          PID_NOTIFICATIONS=$! ;;
         Flow.Api)
           _svc_label="Flow API"
           if [ "$SKIP_FLOW" -eq 1 ]; then
             echo "[flow] Skipping Flow API launch due to missing required env vars"
             continue
           fi
-          launch_svc "$_svc_label"    "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5012 ;;
-        Gateway.Api)     _svc_label="Gateway";      launch_svc "$_svc_label" "$csproj" ;;
-        Identity.Api)    _svc_label="Identity API"; launch_svc "$_svc_label" "$csproj" ;;
-        Fund.Api)        _svc_label="Fund API";     launch_svc "$_svc_label" "$csproj" ;;
-        CareConnect.Api) _svc_label="CareConnect";  launch_svc "$_svc_label" "$csproj" ;;
-        Documents.Api)   _svc_label="Documents";    launch_svc "$_svc_label" "$csproj" ;;
-        Liens.Api)       _svc_label="Liens";        launch_svc "$_svc_label" "$csproj" ;;
-        *)               _svc_label="$svc_name";    launch_svc "$_svc_label" "$csproj" ;;
+          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5012
+          PID_FLOW=$! ;;
+        Gateway.Api)
+          _svc_label="Gateway"
+          launch_svc "$_svc_label" "$csproj"
+          PID_GATEWAY=$! ;;
+        Identity.Api)
+          _svc_label="Identity API"
+          launch_svc "$_svc_label" "$csproj"
+          PID_IDENTITY=$! ;;
+        Fund.Api)
+          _svc_label="Fund API"
+          launch_svc "$_svc_label" "$csproj"
+          PID_FUND=$! ;;
+        CareConnect.Api)
+          _svc_label="CareConnect"
+          launch_svc "$_svc_label" "$csproj"
+          PID_CARECONNECT=$! ;;
+        Documents.Api)
+          _svc_label="Documents"
+          launch_svc "$_svc_label" "$csproj"
+          PID_DOCUMENTS=$! ;;
+        Liens.Api)
+          _svc_label="Liens"
+          launch_svc "$_svc_label" "$csproj"
+          PID_LIENS=$! ;;
+        *)
+          _svc_label="$svc_name"
+          launch_svc "$_svc_label" "$csproj" ;;
       esac
       # $! is the PID of the dotnet process just backgrounded by launch_svc
       SVC_PIDS+=("$!")
@@ -220,15 +253,15 @@ if command -v dotnet &>/dev/null; then
     # within the deadline.
     # _probe_svc is defined at the top of this script and inherited here.
 
-    _probe_svc "Identity"      5001 /health
-    _probe_svc "Fund"          5002 /health
-    _probe_svc "CareConnect"   5003 /health
-    _probe_svc "Documents"     5006 /health
-    _probe_svc "Audit"         5007 /health
-    _probe_svc "Notifications" 5008 /health
-    _probe_svc "Liens"         5009 /health
-    _probe_svc "Gateway"       5010 /health
-    _probe_svc "Flow"          5012 /healthz
+    _probe_svc "Identity"      5001 /health      "${PID_IDENTITY:-}"
+    _probe_svc "Fund"          5002 /health      "${PID_FUND:-}"
+    _probe_svc "CareConnect"   5003 /health      "${PID_CARECONNECT:-}"
+    _probe_svc "Documents"     5006 /health      "${PID_DOCUMENTS:-}"
+    _probe_svc "Audit"         5007 /health      "${PID_AUDIT:-}"
+    _probe_svc "Notifications" 5008 /health      "${PID_NOTIFICATIONS:-}"
+    _probe_svc "Liens"         5009 /health      "${PID_LIENS:-}"
+    _probe_svc "Gateway"       5010 /health      "${PID_GATEWAY:-}"
+    _probe_svc "Flow"          5012 /healthz     "${PID_FLOW:-}"
 
     wait
   ) &
