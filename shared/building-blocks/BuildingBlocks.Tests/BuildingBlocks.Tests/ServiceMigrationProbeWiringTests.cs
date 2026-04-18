@@ -72,14 +72,32 @@ public class ServiceMigrationProbeWiringTests
             "MigrationCoverageProbe.RunAsync(db, app.Logger);` block to Program.cs.");
     }
 
-    // Migration directories that must be kept clean of attribute-less files.
-    // Add a new entry here whenever a service gains its own DbContext + migrations.
-    private static readonly string[] MigrationDirs =
+    /// <summary>
+    /// Walks <c>apps/services/</c> under the repo root and returns the
+    /// repo-relative path (sorted, forward-slash-separated) of every
+    /// directory whose name is exactly <c>Migrations</c> (case-sensitive,
+    /// which is the project-wide convention — no service uses a lowercase
+    /// variant).  Results are sorted so that failure output is stable
+    /// across environments.
+    ///
+    /// This replaces the former hand-maintained <c>MigrationDirs</c> array
+    /// so that new services are covered automatically on their first
+    /// migration commit without any manual update to this file.
+    /// </summary>
+    private static IEnumerable<string> DiscoverMigrationDirs(string repoRoot)
     {
-        "apps/services/identity/Identity.Infrastructure/Persistence/Migrations",
-        "apps/services/fund/Fund.Infrastructure/Data/Migrations",
-        "apps/services/careconnect/CareConnect.Infrastructure/Data/Migrations",
-    };
+        var servicesRoot = Path.Combine(repoRoot, "apps", "services");
+        if (!Directory.Exists(servicesRoot))
+            yield break;
+
+        var dirs = Directory
+            .EnumerateDirectories(servicesRoot, "Migrations", SearchOption.AllDirectories)
+            .Select(d => Path.GetRelativePath(repoRoot, d).Replace(Path.DirectorySeparatorChar, '/'))
+            .OrderBy(d => d, StringComparer.Ordinal);
+
+        foreach (var rel in dirs)
+            yield return rel;
+    }
 
     private static readonly Regex MigrationClassPattern =
         new(@":\s*Migration\b", RegexOptions.CultureInvariant);
@@ -108,7 +126,7 @@ public class ServiceMigrationProbeWiringTests
         var repoRoot = FindRepoRoot();
         var failures = new List<string>();
 
-        foreach (var relDir in MigrationDirs)
+        foreach (var relDir in DiscoverMigrationDirs(repoRoot))
         {
             var dir = Path.Combine(repoRoot, relDir.Replace('/', Path.DirectorySeparatorChar));
 
