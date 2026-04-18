@@ -23,8 +23,10 @@ public static class AuthEndpoints
             LoginRequest request,
             HttpContext httpContext,
             IAuthService authService,
+            ILoggerFactory loggerFactory,
             CancellationToken ct) =>
         {
+            var logger = loggerFactory.CreateLogger("Identity.Api.Auth.Login");
             try
             {
                 var ip = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
@@ -39,6 +41,19 @@ public static class AuthEndpoints
             catch (InvalidOperationException ex)
             {
                 return Results.Problem(ex.Message, statusCode: 400);
+            }
+            catch (Exception ex)
+            {
+                // Guardrail: previously, a DB-level failure (e.g. missing column from
+                // an unapplied migration) bubbled up as an unmapped 500 that the BFF
+                // surfaced as "Invalid credentials.", making login regressions look
+                // like password problems. Log the full exception so the next time
+                // login breaks for an infrastructure reason it is diagnosable in
+                // minutes from server logs alone.
+                logger.LogError(ex,
+                    "LoginAsync threw unexpected exception for tenantCode={TenantCode} email={Email}",
+                    request?.TenantCode, request?.Email);
+                throw;
             }
         })
         .AllowAnonymous();

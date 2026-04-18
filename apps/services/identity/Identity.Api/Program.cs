@@ -80,6 +80,12 @@ try
         {
             ("idt_Organizations", "ProviderMode", "varchar(20) NOT NULL", "'sell'"),
             ("idt_Tenants", "LogoWhiteDocumentId", "char(36) NULL", ""),
+            // Backstop: AddUserPhone migration was historically shipped without
+            // its Designer.cs registration, so EF could silently skip it and
+            // every login query would crash with "Unknown column 'i.Phone'".
+            // Keep this guard even after the migration metadata is fixed so a
+            // similar regression cannot silently break authentication again.
+            ("idt_Users", "Phone", "varchar(32) NULL", ""),
         };
 
         foreach (var (table, column, sqlType, defaultValue) in columnsToEnsure)

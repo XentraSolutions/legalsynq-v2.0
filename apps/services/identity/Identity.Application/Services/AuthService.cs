@@ -64,7 +64,11 @@ public class AuthService : IAuthService
 
         if (tenant is null || !tenant.IsActive)
         {
-            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: "TenantNotFound", ipAddress: ipAddress);
+            var reason = tenant is null ? "TenantNotFound" : "TenantInactive";
+            _logger.LogWarning(
+                "LoginAsync failed: branch={Reason} tenantCode={TenantCode} email={Email} ip={Ip}",
+                reason, tenantCodeNorm, emailNorm, ipAddress);
+            EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: reason, ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
 
@@ -86,13 +90,20 @@ public class AuthService : IAuthService
         var user = await _userRepository.GetByTenantAndEmailAsync(tenant.Id, normalizedEmail, ct);
         if (user is null || !user.IsActive)
         {
-            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: null, reason: "UserNotFound", ipAddress: ipAddress);
+            var reason = user is null ? "UserNotFound" : "UserInactive";
+            _logger.LogWarning(
+                "LoginAsync failed: branch={Reason} tenantCode={TenantCode} email={Email} ip={Ip}",
+                reason, tenant.Code, normalizedEmail, ipAddress);
+            EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: null, reason: reason, ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
 
         // UIX-003-03: reject locked accounts (checked after IsActive so lock state is independent).
         if (user.IsLocked)
         {
+            _logger.LogWarning(
+                "LoginAsync failed: branch=AccountLocked userId={UserId} tenantCode={TenantCode} email={Email} ip={Ip}",
+                user.Id, tenant.Code, normalizedEmail, ipAddress);
             EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "AccountLocked", ipAddress: ipAddress);
             EmitLockedLoginBlocked(user, tenant, ipAddress);
             throw new UnauthorizedAccessException();
@@ -101,6 +112,9 @@ public class AuthService : IAuthService
         var valid = _passwordHasher.Verify(request.Password, user.PasswordHash);
         if (!valid)
         {
+            _logger.LogWarning(
+                "LoginAsync failed: branch=InvalidCredentials userId={UserId} tenantCode={TenantCode} email={Email} ip={Ip}",
+                user.Id, tenant.Code, normalizedEmail, ipAddress);
             EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "InvalidCredentials", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
@@ -108,6 +122,9 @@ public class AuthService : IAuthService
         var userWithRoles = await _userRepository.GetByIdWithRolesAsync(user.Id, ct);
         if (userWithRoles is null)
         {
+            _logger.LogWarning(
+                "LoginAsync failed: branch=RoleLookupFailed userId={UserId} tenantCode={TenantCode} email={Email} ip={Ip}",
+                user.Id, tenant.Code, normalizedEmail, ipAddress);
             EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "RoleLookupFailed", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }

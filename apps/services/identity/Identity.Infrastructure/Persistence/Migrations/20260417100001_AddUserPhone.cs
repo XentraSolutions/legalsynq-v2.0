@@ -1,3 +1,6 @@
+using Identity.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -10,6 +13,8 @@ namespace Identity.Infrastructure.Persistence.Migrations
     /// service. Without this column SMS role/org fan-outs always skip with
     /// reason "no_phone_on_file" because there is no phone to dispatch to.
     /// </summary>
+    [DbContext(typeof(IdentityDbContext))]
+    [Migration("20260417100001_AddUserPhone")]
     public partial class AddUserPhone : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
