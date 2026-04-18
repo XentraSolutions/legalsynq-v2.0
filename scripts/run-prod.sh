@@ -172,24 +172,37 @@ if command -v dotnet &>/dev/null; then
 
     echo "[dotnet] Service launch complete"
 
-    # ── Flow health-check probe ───────────────────────────────────────────
-    # Wait up to 90 seconds for Flow /healthz to respond, then log the
-    # result. Services run as long-lived processes, so this probe runs
-    # in the background and does not block the wait below.
-    (
-      echo "[flow] Waiting for /healthz on :5012..."
-      deadline=90
-      elapsed=0
-      while [ "$elapsed" -lt "$deadline" ]; do
-        if curl -sf http://127.0.0.1:5012/healthz >/dev/null 2>&1; then
-          echo "[flow] /healthz healthy after ${elapsed}s"
-          exit 0
-        fi
-        sleep 5
-        elapsed=$((elapsed + 5))
-      done
-      echo "[flow] WARNING: /healthz on :5012 did not respond within ${deadline}s — Flow may be unhealthy"
-    ) &
+    # ── Health-check probes for all .NET services ─────────────────────────
+    # Each probe polls its /health (or /healthz for Flow) endpoint for up to
+    # 90 seconds after launch.  All probes run in the background so they do
+    # not block each other or the wait below.  A clear WARNING is logged if a
+    # service does not respond within the deadline.
+    _probe_svc() {
+      local label="$1" port="$2" path="$3"
+      (
+        echo "[$label] Waiting for $path on :$port..."
+        local deadline=90 elapsed=0
+        while [ "$elapsed" -lt "$deadline" ]; do
+          if curl -sf "http://127.0.0.1:${port}${path}" >/dev/null 2>&1; then
+            echo "[$label] $path healthy after ${elapsed}s"
+            exit 0
+          fi
+          sleep 5
+          elapsed=$((elapsed + 5))
+        done
+        echo "[$label] WARNING: $path on :$port did not respond within ${deadline}s — $label may be unhealthy"
+      ) &
+    }
+
+    _probe_svc "Identity"      5001 /health
+    _probe_svc "Fund"          5002 /health
+    _probe_svc "CareConnect"   5003 /health
+    _probe_svc "Documents"     5006 /health
+    _probe_svc "Audit"         5007 /health
+    _probe_svc "Notifications" 5008 /health
+    _probe_svc "Liens"         5009 /health
+    _probe_svc "Gateway"       5010 /health
+    _probe_svc "Flow"          5012 /healthz
 
     wait
   ) &
