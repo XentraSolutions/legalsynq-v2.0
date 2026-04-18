@@ -364,6 +364,8 @@ export const CACHE_TAGS = {
   policies:             'cc:policies',
   // E9.1 — Cross-product workflow operations list
   workflows:            'cc:workflows',
+  // E19 — analytics & reporting layer
+  analytics:            'cc:analytics',
 } as const;
 
 export type CacheTag = typeof CACHE_TAGS[keyof typeof CACHE_TAGS];

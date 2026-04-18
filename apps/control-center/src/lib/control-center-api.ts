@@ -2413,6 +2413,119 @@ export const controlCenterServerApi = {
     },
   },
 
+  // ── E19 Analytics ──────────────────────────────────────────────────────────
+  //
+  // Read-only reporting APIs backed by Flow's /api/v1/admin/analytics/* endpoints.
+  // All endpoints respect tenant isolation on the backend; the platform summary
+  // requires PlatformAdmin and uses cross-tenant aggregations.
+  //
+  // Cache: 30 s  Tag: cc:analytics
+  // Short TTL: analytics data is operational (operators need freshness).
+
+  analytics: {
+    /**
+     * GET /flow/api/v1/admin/analytics/summary
+     * Unified dashboard summary: SLA + queue + workflows + assignment + outbox.
+     */
+    getDashboardSummary: async (
+      window: 'today' | '7d' | '30d' = '7d',
+    ) => {
+      const qs = `?window=${encodeURIComponent(window)}`;
+      return apiClient.get<import('@/types/control-center').AnalyticsDashboardSummary>(
+        `/flow/api/v1/admin/analytics/summary${qs}`,
+        30,
+        [CACHE_TAGS.analytics],
+      );
+    },
+
+    /**
+     * GET /flow/api/v1/admin/analytics/sla
+     * SLA performance metrics for the caller's tenant scope.
+     */
+    getSlaSummary: async (
+      window: 'today' | '7d' | '30d' = '7d',
+    ) => {
+      const qs = `?window=${encodeURIComponent(window)}`;
+      return apiClient.get<import('@/types/control-center').SlaSummary>(
+        `/flow/api/v1/admin/analytics/sla${qs}`,
+        30,
+        [CACHE_TAGS.analytics],
+      );
+    },
+
+    /**
+     * GET /flow/api/v1/admin/analytics/queues
+     * Queue backlog and workload analytics (current state, no window).
+     */
+    getQueueSummary: async () => {
+      return apiClient.get<import('@/types/control-center').QueueSummary>(
+        `/flow/api/v1/admin/analytics/queues`,
+        30,
+        [CACHE_TAGS.analytics],
+      );
+    },
+
+    /**
+     * GET /flow/api/v1/admin/analytics/workflows
+     * Workflow throughput analytics.
+     */
+    getWorkflowThroughput: async (
+      window: 'today' | '7d' | '30d' = '7d',
+    ) => {
+      const qs = `?window=${encodeURIComponent(window)}`;
+      return apiClient.get<import('@/types/control-center').WorkflowThroughput>(
+        `/flow/api/v1/admin/analytics/workflows${qs}`,
+        30,
+        [CACHE_TAGS.analytics],
+      );
+    },
+
+    /**
+     * GET /flow/api/v1/admin/analytics/assignment
+     * Assignment and workload fairness analytics.
+     */
+    getAssignmentSummary: async (
+      window: 'today' | '7d' | '30d' = '7d',
+    ) => {
+      const qs = `?window=${encodeURIComponent(window)}`;
+      return apiClient.get<import('@/types/control-center').AssignmentSummary>(
+        `/flow/api/v1/admin/analytics/assignment${qs}`,
+        30,
+        [CACHE_TAGS.analytics],
+      );
+    },
+
+    /**
+     * GET /flow/api/v1/admin/analytics/outbox
+     * Outbox reliability analytics: extends E17 summary with trend data.
+     */
+    getOutboxAnalytics: async (
+      window: 'today' | '7d' | '30d' = '7d',
+    ) => {
+      const qs = `?window=${encodeURIComponent(window)}`;
+      return apiClient.get<import('@/types/control-center').OutboxAnalyticsSummary>(
+        `/flow/api/v1/admin/analytics/outbox${qs}`,
+        30,
+        [CACHE_TAGS.analytics],
+      );
+    },
+
+    /**
+     * GET /flow/api/v1/admin/analytics/platform
+     * Cross-tenant platform analytics. PlatformAdmin only.
+     */
+    getPlatformSummary: async (
+      window: 'today' | '7d' | '30d' = '7d',
+    ) => {
+      const qs = `?window=${encodeURIComponent(window)}`;
+      return apiClient.get<import('@/types/control-center').PlatformAnalyticsSummary>(
+        `/flow/api/v1/admin/analytics/platform${qs}`,
+        30,
+        [CACHE_TAGS.analytics],
+      );
+    },
+  },
+
 };
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

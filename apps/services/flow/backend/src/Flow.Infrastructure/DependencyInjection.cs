@@ -82,6 +82,10 @@ public static class DependencyInjection
         services.AddScoped<IWorkloadService, WorkloadService>();
         services.AddScoped<ITaskRecommendationService, TaskRecommendationService>();
 
+        // E19 — analytics read model service. Scoped to share the per-request
+        // IFlowDbContext (tenant filter + AsNoTracking aggregation queries).
+        services.AddScoped<IFlowAnalyticsService, FlowAnalyticsService>();
+
         return services;
     }
 }

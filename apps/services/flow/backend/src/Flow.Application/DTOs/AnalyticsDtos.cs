@@ -379,7 +379,7 @@ public sealed record PlatformAnalyticsSummaryDto
 /// <summary>E19 — one tenant's overdue count for the platform ranking.</summary>
 public sealed record TenantOverdueRankDto
 {
-    public Guid   TenantId     { get; init; }
+    public string TenantId     { get; init; } = string.Empty;
     public int    OverdueCount { get; init; }
     public double OverdueRate  { get; init; }
 }
@@ -387,16 +387,16 @@ public sealed record TenantOverdueRankDto
 /// <summary>E19 — one tenant's active workflow count for the platform ranking.</summary>
 public sealed record TenantWorkflowRankDto
 {
-    public Guid TenantId    { get; init; }
-    public int  ActiveCount { get; init; }
+    public string TenantId    { get; init; } = string.Empty;
+    public int    ActiveCount { get; init; }
 }
 
 /// <summary>E19 — one tenant's outbox health metrics for the platform view.</summary>
 public sealed record TenantOutboxHealthDto
 {
-    public Guid TenantId      { get; init; }
-    public int  FailedCount   { get; init; }
-    public int  DeadLettered  { get; init; }
+    public string TenantId      { get; init; } = string.Empty;
+    public int    FailedCount   { get; init; }
+    public int    DeadLettered  { get; init; }
 }
 
 // ── Unified Summary Card ─────────────────────────────────────────────────────

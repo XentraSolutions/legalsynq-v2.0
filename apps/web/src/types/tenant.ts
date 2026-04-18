@@ -280,3 +280,41 @@ export interface SimPermissionSourceEntry {
   groupId?: string;
   groupName?: string;
 }
+
+// ── E19 Flow Analytics (tenant-scoped) ───────────────────────────────────────
+
+export interface TenantSlaSummary {
+  windowLabel:          string;
+  totalTasks:           number;
+  onTimeCount:          number;
+  atRiskCount:          number;
+  breachedCount:        number;
+  onTimePct:            number;
+  atRiskPct:            number;
+  breachedPct:          number;
+  avgTimeToBreachHours: number | null;
+}
+
+export interface TenantQueueRow {
+  queueName:       string;
+  pendingCount:    number;
+  inProgressCount: number;
+  overdueCount:    number;
+  unassignedCount: number;
+  avgAgeHours:     number;
+}
+
+export interface TenantQueueSummary {
+  rows:         TenantQueueRow[];
+  totalPending: number;
+  totalOverdue: number;
+}
+
+export interface TenantWorkflowThroughput {
+  windowLabel:      string;
+  startedCount:     number;
+  completedCount:   number;
+  cancelledCount:   number;
+  avgDurationHours: number | null;
+  completionRate:   number;
+}

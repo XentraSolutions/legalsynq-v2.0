@@ -4310,3 +4310,33 @@ Deterministic, explainable work-distribution intelligence layer for Flow. Additi
 - **UI Urgency Hints (T009):** `RoleQueueClient` and `OrgQueueClient` show a computed urgency strip above the task list: red "N overdue" pill (Escalated + Overdue) + amber "M at risk" pill (DueSoon). Strip hidden when queue is fully on-track. No extra API call — derived from already-fetched page.
 - **Validation:** `dotnet build` 0 errors 0 warnings; `tsc --noEmit` 0 errors. Fixes during validation: missing `using Flow.Application.Interfaces` in RecommendationDtos.cs; `AuditEventRequest` corrected to `AuditEvent` with proper parameter mapping; CS8602 null-dereference on `User.FindFirst` changed to `User?.FindFirst`.
 - **Analysis:** `analysis/E18-report.md`
+
+## Step 39 — E19 Analytics & Reporting Layer (2026-04-18)
+
+Read-only operational analytics layer over FlowDb. No BI platform, no new write paths.
+
+**Backend (Flow.Api):**
+- `AnalyticsDtos.cs` — 8 DTO types: `SlaSummary`, `QueueSummary`/`QueueRow`, `WorkflowThroughput`, `AssignmentSummary`, `OutboxAnalyticsSummary`, `AnalyticsDashboardSummary`, `PlatformTenantSummary`/`PlatformAnalyticsSummary`.
+- `IFlowAnalyticsService` / `FlowAnalyticsService` — 5 domain queries (`GetSlaSummaryAsync`, `GetQueueSummaryAsync`, `GetWorkflowThroughputAsync`, `GetAssignmentSummaryAsync`, `GetOutboxAnalyticsAsync`) + 2 dashboard aggregators (`GetDashboardSummaryAsync`, `GetPlatformSummaryAsync`).
+- `AdminAnalyticsController` — 7 `GET` endpoints under `/api/v1/admin/analytics/` (`summary`, `sla`, `queues`, `workflows`, `assignment`, `outbox`, `platform`). Class-level `[Authorize(Policies.PlatformOrTenantAdmin)]`; `/platform` additionally checks `User.IsInRole(Roles.PlatformAdmin)` → `Forbid()`.
+- Outbox queries use `IgnoreQueryFilters()` — mirrors AdminOutboxController; outbox runs in null-tenant scope.
+- DI: `AddScoped<IFlowAnalyticsService, FlowAnalyticsService>`.
+
+**Control Center (Platform Admin):**
+- `apps/control-center/src/app/analytics/page.tsx` — server page with `requirePlatformAdmin()`.
+- 5 components: `sla-cards`, `queue-table`, `workflow-cards`, `outbox-cards`, `platform-table`.
+- `control-center-api.ts` analytics namespace — 7 methods using `apiClient.get(path, revalidateSeconds, tags)`.
+- 8 TypeScript types in `types/control-center.ts`.
+- Nav entry added to CC sidebar.
+- **Fix**: CC API calls corrected from `(path, tags[], opts)` to `(path, revalidateSeconds, tags[])`.
+- **Fix**: `CCShell userEmail={session.email}` wired from `requirePlatformAdmin()`.
+
+**Web App (Tenant Admin):**
+- `apps/web/src/app/(platform)/tenant/analytics/page.tsx` — 3 data sections: SLA, queue backlog, workflow throughput. Each fetch isolated with `Promise.allSettled`; error banner per section.
+- `tenant-api.ts` — `getFlowSlaSummary`, `getFlowQueueSummary`, `getFlowWorkflowThroughput`.
+- `types/tenant.ts` — `TenantSlaSummary`, `TenantQueueSummary`/`TenantQueueRow`, `TenantWorkflowThroughput`.
+- `nav.ts` — `ANALYTICS / Operations` section added to `buildNavGroups` (shown to `isTenantAdmin || isPlatformAdmin`).
+
+**Validation:** `dotnet build` 0 errors 0 warnings; `tsc --noEmit` (CC) 0 errors; `tsc --noEmit` (Web) 0 errors.
+
+**Analysis:** `analysis/E19-report.md`

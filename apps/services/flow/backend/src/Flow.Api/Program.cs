@@ -14,6 +14,7 @@ using Flow.Infrastructure;
 using Flow.Infrastructure.Adapters;
 using Flow.Infrastructure.Events;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);

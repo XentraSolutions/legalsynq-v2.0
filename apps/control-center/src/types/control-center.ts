@@ -1288,3 +1288,165 @@ export interface OutboxRetryResult {
   timestamp:      string;
   reason:         string;
 }
+
+// ── E19 Analytics Types ───────────────────────────────────────────────────────
+
+export type AnalyticsWindow = 'today' | '7d' | '30d';
+
+export interface QueueOverdueBreakdown {
+  queueKey:    string;
+  queueType:   string;
+  overdueCount: number;
+}
+
+export interface SlaSummary {
+  activeOnTrackCount:      number;
+  activeAtRiskCount:       number;
+  activeOverdueCount:      number;
+  totalActiveCount:        number;
+  overduePercentage:       number;
+  breachedInWindow:        number;
+  completedOnTimeInWindow: number;
+  completedInWindow:       number;
+  avgOverdueAgeDays:       number | null;
+  windowStart:             string;
+  windowEnd:               string;
+  windowLabel:             string;
+  topOverdueQueues:        QueueOverdueBreakdown[];
+}
+
+export interface RoleQueueBacklog {
+  role:            string;
+  openCount:       number;
+  inProgressCount: number;
+  totalCount:      number;
+  overdueCount:    number;
+}
+
+export interface OrgQueueBacklog {
+  orgId:           string;
+  openCount:       number;
+  inProgressCount: number;
+  totalCount:      number;
+  overdueCount:    number;
+}
+
+export interface QueueSummary {
+  roleQueueBacklog:         number;
+  orgQueueBacklog:          number;
+  unassignedBacklog:        number;
+  oldestQueuedTaskAgeHours: number | null;
+  medianQueueAgeHours:      number | null;
+  activeUserCount:          number;
+  overloadedUserCount:      number;
+  overloadThreshold:        number;
+  roleQueueBreakdown:       RoleQueueBacklog[];
+  orgQueueBreakdown:        OrgQueueBacklog[];
+  asOf:                     string;
+}
+
+export interface WorkflowProductBreakdown {
+  productKey:    string;
+  startedCount:  number;
+  completedCount: number;
+  activeCount:   number;
+}
+
+export interface WorkflowThroughput {
+  startedInWindow:      number;
+  completedInWindow:    number;
+  cancelledInWindow:    number;
+  failedInWindow:       number;
+  currentlyActiveCount: number;
+  avgCycleTimeHours:    number | null;
+  medianCycleTimeHours: number | null;
+  byProduct:            WorkflowProductBreakdown[];
+  windowStart:          string;
+  windowEnd:            string;
+  windowLabel:          string;
+}
+
+export interface UserWorkload {
+  userId:          string;
+  activeTaskCount: number;
+  openCount:       number;
+  inProgressCount: number;
+}
+
+export interface AssignmentSummary {
+  directUserCount:          number;
+  roleQueueCount:           number;
+  orgQueueCount:            number;
+  unassignedCount:          number;
+  assignedInWindow:         number;
+  topAssigneesByActiveLoad: UserWorkload[];
+  assumptionNote:           string;
+  windowStart:              string;
+  windowEnd:                string;
+  windowLabel:              string;
+}
+
+export interface OutboxEventTypeBreakdown {
+  eventType:      string;
+  failedCount:    number;
+  deadLettered:   number;
+  totalUnhealthy: number;
+}
+
+export interface OutboxAnalyticsSummary {
+  pendingCount:        number;
+  processingCount:     number;
+  failedCount:         number;
+  deadLetteredCount:   number;
+  succeededCount:      number;
+  unhealthyCount:      number;
+  createdInWindow:     number;
+  succeededInWindow:   number;
+  failedInWindow:      number;
+  deadLetteredInWindow: number;
+  failedByEventType:   OutboxEventTypeBreakdown[];
+  windowStart:         string;
+  windowEnd:           string;
+  windowLabel:         string;
+  asOf:                string;
+}
+
+export interface AnalyticsDashboardSummary {
+  sla:        SlaSummary;
+  queue:       QueueSummary;
+  workflows:   WorkflowThroughput;
+  assignment:  AssignmentSummary;
+  outbox:      OutboxAnalyticsSummary;
+  generatedAt: string;
+  windowLabel: string;
+}
+
+export interface TenantOverdueRank {
+  tenantId:    string;
+  overdueCount: number;
+  overdueRate: number;
+}
+
+export interface TenantWorkflowRank {
+  tenantId:    string;
+  activeCount: number;
+}
+
+export interface TenantOutboxHealth {
+  tenantId:    string;
+  failedCount: number;
+  deadLettered: number;
+}
+
+export interface PlatformAnalyticsSummary {
+  totalActiveWorkflows:        number;
+  totalActiveTasks:            number;
+  totalOverdueTasks:           number;
+  totalDeadLettered:           number;
+  totalFailedOutbox:           number;
+  topTenantsByOverdue:         TenantOverdueRank[];
+  topTenantsByActiveWorkflows: TenantWorkflowRank[];
+  outboxHealthByTenant:        TenantOutboxHealth[];
+  asOf:                        string;
+  windowLabel:                 string;
+}

@@ -10,6 +10,9 @@ import type {
   GroupRoleAssignment,
   PermissionItem,
   AdminUsersResponse,
+  TenantSlaSummary,
+  TenantQueueSummary,
+  TenantWorkflowThroughput,
 } from '@/types/tenant';
 
 export { ServerApiError };
@@ -57,5 +60,21 @@ export const tenantServerApi = {
   getRolePermissions: (roleId: string) =>
     serverApi.get<{ roleId: string; roleName: string; permissions: { id: string; code: string; name: string; productCode: string }[] }>(
       `/identity/api/admin/roles/${roleId}/permissions`
+    ),
+
+  // ── E19 Flow analytics (tenant-scoped) ──────────────────────────────────
+  getFlowSlaSummary: (window: 'today' | '7d' | '30d' = '7d') =>
+    serverApi.get<TenantSlaSummary>(
+      `/flow/api/v1/admin/analytics/sla?window=${encodeURIComponent(window)}`
+    ),
+
+  getFlowQueueSummary: () =>
+    serverApi.get<TenantQueueSummary>(
+      `/flow/api/v1/admin/analytics/queues`
+    ),
+
+  getFlowWorkflowThroughput: (window: 'today' | '7d' | '30d' = '7d') =>
+    serverApi.get<TenantWorkflowThroughput>(
+      `/flow/api/v1/admin/analytics/workflows?window=${encodeURIComponent(window)}`
     ),
 };

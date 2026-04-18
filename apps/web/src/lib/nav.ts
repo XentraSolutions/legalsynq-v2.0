@@ -203,5 +203,12 @@ export function buildNavGroups(session: PlatformSession): NavSection[] {
     ],
   });
 
+  sections.push({
+    heading: 'ANALYTICS',
+    items: [
+      { href: '/tenant/analytics', label: 'Operations', icon: 'ri-line-chart-line' },
+    ],
+  });
+
   return sections;
 }
