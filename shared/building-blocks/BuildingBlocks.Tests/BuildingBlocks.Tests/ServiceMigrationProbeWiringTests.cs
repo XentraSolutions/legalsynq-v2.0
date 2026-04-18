@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Xunit.Abstractions;
 
 namespace BuildingBlocks.Tests;
 
@@ -33,6 +34,13 @@ namespace BuildingBlocks.Tests;
 /// </summary>
 public class ServiceMigrationProbeWiringTests
 {
+    private readonly ITestOutputHelper _output;
+
+    public ServiceMigrationProbeWiringTests(ITestOutputHelper output)
+    {
+        _output = output;
+    }
+
     // -----------------------------------------------------------------------
     // Explicit list — services that own a DbContext but intentionally have
     // no Migrations/ folder and are therefore not caught by auto-discovery.
@@ -86,6 +94,16 @@ public class ServiceMigrationProbeWiringTests
     /// deduplicated by resolved <c>Program.cs</c> path so each entry point is
     /// verified exactly once. No manual update is required when a new service
     /// adds its first migration.
+    ///
+    /// <b>Opt-out:</b> A service that legitimately does not use
+    /// <c>MigrationCoverageProbe</c> (e.g. a background worker that runs
+    /// migrations but delegates boot-time validation elsewhere) may place a
+    /// <c>.probe-wiring-excluded</c> file in its service root directory. The
+    /// file <b>must be non-empty</b> and contain a brief explanation of why
+    /// the probe is not wired; an empty marker fails the test. This ensures
+    /// the exclusion is commit-reviewed and not a silent skip. Services with
+    /// a valid marker file are logged via the test output helper (always
+    /// visible in CI) but are not counted as failures.
     /// </summary>
     [Fact]
     public void EveryDiscoveredMigrationService_WiresMigrationCoverageProbeInProgram()
@@ -95,10 +113,15 @@ public class ServiceMigrationProbeWiringTests
 
         var noProgramFound = new List<string>();
         var probeNotWired  = new List<string>();
+        var optedOut       = new List<string>();
 
         // Track already-checked Program.cs paths so a service with several
         // migration folders (sharded contexts, etc.) is only verified once.
         var checkedPrograms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Track service roots that have already been opt-out-checked so that
+        // a service with multiple Migrations/ directories is only recorded once.
+        var optedOutServiceRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var relMigrationDir in DiscoverMigrationDirs(repoRoot))
         {
@@ -111,6 +134,30 @@ public class ServiceMigrationProbeWiringTests
 
             var serviceRoot = Path.GetFullPath(
                 Path.Combine(servicesRoot, parts[2]));
+
+            // Check for opt-out marker. A service places a .probe-wiring-excluded
+            // file in its root when it legitimately has a Migrations/ folder but
+            // does not wire MigrationCoverageProbe (e.g. a background worker that
+            // delegates boot-time validation elsewhere). The file must be non-empty
+            // and contain a brief justification so the exclusion is commit-reviewed
+            // rather than a silent skip.
+            var markerPath = Path.Combine(serviceRoot, ".probe-wiring-excluded");
+            if (File.Exists(markerPath))
+            {
+                var markerContent = File.ReadAllText(markerPath).Trim();
+                Assert.True(markerContent.Length > 0,
+                    $"The opt-out marker '{markerPath}' exists but is empty. " +
+                    "Add a brief explanation of why MigrationCoverageProbe is intentionally " +
+                    "absent so that the exclusion is commit-reviewed and not a silent skip.");
+
+                if (optedOutServiceRoots.Add(serviceRoot))
+                {
+                    var relServiceRoot = Path.GetRelativePath(repoRoot, serviceRoot)
+                        .Replace(Path.DirectorySeparatorChar, '/');
+                    optedOut.Add(relServiceRoot);
+                }
+                continue;
+            }
 
             var programPath = FindApiProgramCs(serviceRoot);
 
@@ -132,6 +179,18 @@ public class ServiceMigrationProbeWiringTests
             }
         }
 
+        // Always surface opted-out services in CI output, even when the test
+        // passes. This ensures exemptions are visible in every test run and
+        // are not silently hidden behind a green build.
+        if (optedOut.Count > 0)
+        {
+            _output.WriteLine(
+                "[probe-wiring-excluded] The following service(s) have opted out of the " +
+                "MigrationCoverageProbe wiring check via a .probe-wiring-excluded marker file. " +
+                "Each exclusion must be justified inside its marker file:\n\n" +
+                string.Join("\n", optedOut.Select(s => "  " + s)));
+        }
+
         var messages = new List<string>();
 
         if (noProgramFound.Count > 0)
@@ -149,10 +208,14 @@ public class ServiceMigrationProbeWiringTests
                 "Without this call the boot-time schema/EF-model self-test from Task #62 " +
                 "is silently disabled, re-opening the Task #58 regression class. " +
                 "Add `await BuildingBlocks.Diagnostics.MigrationCoverageProbe.RunAsync(db, " +
-                "app.Logger);` to the service's Program.cs:\n\n" +
+                "app.Logger);` to the service's Program.cs, OR add a " +
+                ".probe-wiring-excluded file to the service root with a comment " +
+                "explaining why the probe is intentionally absent:\n\n" +
                 string.Join("\n", probeNotWired));
 
-        Assert.True(messages.Count == 0, string.Join("\n\n", messages));
+        // Opt-out entries are informational — only failures are fatal.
+        Assert.True(noProgramFound.Count == 0 && probeNotWired.Count == 0,
+            string.Join("\n\n", messages));
     }
 
     // -----------------------------------------------------------------------
