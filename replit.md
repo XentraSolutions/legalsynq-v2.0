@@ -4827,3 +4827,22 @@ Replaces the "admin sets temporary password" flow with a secure invite-based onb
 
 ### Analysis
 `analysis/LS-ID-TNT-007-report.md`
+
+## LS-ID-TNT-008 — Access Model Expansion: Products + Groups + Tenant-Scoped Roles (2026-04-18)
+
+Expands the tenant Authorization → Users page to support three new management surfaces in a rewritten Edit User modal: per-user product access (checkbox grid of tenant-enabled products), group membership (checkbox grid of active groups), and role selection restricted to tenant-relevant roles only. AuthUserTable group/product count columns are also fixed. Incremental — no schema migrations, no regressions to LS-ID-TNT-001 through LS-ID-TNT-007.
+
+### Files Changed
+- `apps/services/identity/Identity.Api/Endpoints/UserEndpoints.cs` — `GET /api/users` injects `IdentityDbContext`; two batch aggregation queries add `groupCount` (active `AccessGroupMemberships`) + `productCount` (granted `UserProductAccessRecords`) to every user in the response
+- `apps/services/identity/Identity.Api/Endpoints/AdminEndpoints.cs` — Added `GET /api/admin/products` route + `ListProducts` handler returning all globally active products ordered by name; tenant-accessible via the YARP gateway
+- `apps/web/src/types/tenant.ts` — `TenantUser` gains `groupCount?` / `productCount?`; added `AssignableRoleItem` + `AssignableRolesResponse` types
+- `apps/web/src/lib/tenant-client-api.ts` — `getRoles()` return type enriched with `isSystemRole`/`isProductRole`/`productCode?`/`productName?`; added `getAssignableRoles`, `getProducts`, `getTenantProducts`, `getUserProducts`, `getGroups`
+- `apps/web/src/app/(platform)/tenant/authorization/users/AuthUserTable.tsx` — Groups column uses `u.groupCount ?? 0`; Products column uses `u.productCount ?? 0`
+- `apps/web/src/app/(platform)/tenant/authorization/users/EditUserModal.tsx` — Full rewrite: size=`lg`, 4 sections (Identity read-only / Role+Phone / Products checkbox grid / Groups checkbox grid); data loaded in parallel via `Promise.allSettled`; diff-based save (role sequential; phone+products+groups parallel); `isTenantRelevantRole` filter
+- `apps/web/src/app/(platform)/tenant/authorization/users/AddUserModal.tsx` — Role dropdown filtered via shared `isTenantRelevantRole` helper (keeps `isProductRole` OR tenant system roles `TenantAdmin`/`TenantUser`)
+
+### Role Filter Rule
+`isTenantRelevantRole(role)` = `role.isProductRole` OR (`role.isSystemRole` AND `role.name` ∈ `{TenantAdmin, TenantUser}`). Excludes `PlatformAdmin`, `SuperAdmin`, `SystemAdmin`, etc.
+
+### Analysis
+`analysis/LS-ID-TNT-008-report.md`

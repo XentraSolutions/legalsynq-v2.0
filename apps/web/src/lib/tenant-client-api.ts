@@ -3,6 +3,7 @@ import type {
   TenantUser,
   TenantUserDetail,
   TenantGroup,
+  AssignableRolesResponse,
   AccessDebugResponse,
   SimulationRequest,
   SimulationResult,
@@ -46,7 +47,7 @@ export const tenantClientApi = {
       `/identity/api/admin/users/${userId}/resend-invite`, {}),
 
   getRoles: () =>
-    apiClient.get<{ id: string; name: string }[]>('/identity/api/admin/roles'),
+    apiClient.get<{ id: string; name: string; isSystemRole: boolean; isProductRole: boolean; productCode?: string; productName?: string }[]>('/identity/api/admin/roles'),
 
   getUserDetail: (userId: string) =>
     apiClient.get<TenantUserDetail>(`/identity/api/admin/users/${userId}`),
@@ -101,6 +102,23 @@ export const tenantClientApi = {
 
   removeGroupRole: (tenantId: string, groupId: string, assignmentId: string) =>
     apiClient.delete<void>(`/identity/api/tenants/${tenantId}/groups/${groupId}/roles/${assignmentId}`),
+
+  getAssignableRoles: (userId: string) =>
+    apiClient.get<AssignableRolesResponse>(`/identity/api/admin/users/${userId}/assignable-roles`),
+
+  getProducts: () =>
+    apiClient.get<{ id: string; name: string; code: string; description?: string; isActive: boolean }[]>('/identity/api/products'),
+
+  getTenantProducts: (tenantId: string) =>
+    apiClient.get<{ id: string; tenantId: string; productCode: string; status: string }[]>(
+      `/identity/api/tenants/${tenantId}/products`),
+
+  getUserProducts: (tenantId: string, userId: string) =>
+    apiClient.get<{ id: string; tenantId: string; userId: string; productCode: string; accessStatus: string }[]>(
+      `/identity/api/tenants/${tenantId}/users/${userId}/products`),
+
+  getGroups: (tenantId: string) =>
+    apiClient.get<TenantGroup[]>(`/identity/api/tenants/${tenantId}/groups`),
 
   getUserAccessDebug: (userId: string) =>
     apiClient.get<AccessDebugResponse>(`/identity/api/admin/users/${userId}/access-debug`),

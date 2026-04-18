@@ -10,6 +10,8 @@ export interface TenantUser {
   organizationId?: string;
   orgType?: string;
   productRoles?: string[];
+  groupCount?: number;
+  productCount?: number;
 }
 
 export interface TenantUserDetail {

@@ -29,8 +29,16 @@ const EMPTY_FORM: FormState = {
 };
 
 interface Role {
-  id:   string;
-  name: string;
+  id:          string;
+  name:        string;
+  isSystemRole?: boolean;
+  isProductRole?: boolean;
+}
+
+function isTenantRelevantRole(role: Role): boolean {
+  if (role.isProductRole) return true;
+  if (role.isSystemRole && (role.name === 'TenantAdmin' || role.name === 'TenantUser')) return true;
+  return false;
 }
 
 interface AddUserModalProps {
@@ -71,7 +79,7 @@ export function AddUserModal({ open, tenantId, onClose, onSuccess }: AddUserModa
     setRolesError(null);
     try {
       const { data } = await tenantClientApi.getRoles();
-      setRoles(data ?? []);
+      setRoles((data ?? []).filter(isTenantRelevantRole));
     } catch {
       setRolesError('Unable to load roles right now.');
     } finally {

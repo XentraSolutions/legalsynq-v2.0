@@ -341,7 +341,7 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
     }
   }
 
-  const productCount = (u: TenantUser) => u.productRoles?.filter(r => !r.includes(':')).length ?? 0;
+  const productCount = (u: TenantUser) => u.productCount ?? 0;
   const roleCount    = (u: TenantUser) => u.roles?.length ?? 0;
 
   const confirmUser    = confirmState?.user;
@@ -606,7 +606,7 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
                     </td>
                     <td className="px-4 py-3 text-center"><CountBadge count={productCount(u)} color="blue" /></td>
                     <td className="px-4 py-3 text-center hidden md:table-cell"><CountBadge count={roleCount(u)} color="indigo" /></td>
-                    <td className="px-4 py-3 text-center hidden lg:table-cell"><CountBadge count={0} color="purple" /></td>
+                    <td className="px-4 py-3 text-center hidden lg:table-cell"><CountBadge count={u.groupCount ?? 0} color="purple" /></td>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       <RowActionsMenu
                         user={u}

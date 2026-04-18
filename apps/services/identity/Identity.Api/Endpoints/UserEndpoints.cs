@@ -1,9 +1,12 @@
 using System.Security.Claims;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
+using Identity.Domain;
+using Identity.Infrastructure.Data;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
+using Microsoft.EntityFrameworkCore;
 
 namespace Identity.Api.Endpoints;
 
@@ -75,6 +78,7 @@ public static class UserEndpoints
         app.MapGet("/api/users", async (
             ClaimsPrincipal   caller,
             IUserService      userService,
+            IdentityDbContext db,
             CancellationToken ct) =>
         {
             var tenantIdStr = caller.FindFirstValue("tenant_id");
@@ -82,7 +86,37 @@ public static class UserEndpoints
                 return Results.Unauthorized();
 
             var users = await userService.GetByTenantAsync(tenantId, ct);
-            return Results.Ok(users);
+            var userIds = users.Select(u => u.Id).ToList();
+
+            var groupCounts = await db.AccessGroupMemberships
+                .Where(am => userIds.Contains(am.UserId)
+                          && am.MembershipStatus == MembershipStatus.Active)
+                .GroupBy(am => am.UserId)
+                .Select(g => new { userId = g.Key, count = g.Count() })
+                .ToDictionaryAsync(x => x.userId, x => x.count, ct);
+
+            var productCounts = await db.UserProductAccessRecords
+                .Where(upa => userIds.Contains(upa.UserId)
+                           && upa.AccessStatus == AccessStatus.Granted)
+                .GroupBy(upa => upa.UserId)
+                .Select(g => new { userId = g.Key, count = g.Count() })
+                .ToDictionaryAsync(x => x.userId, x => x.count, ct);
+
+            var enriched = users.Select(u => new
+            {
+                id           = u.Id,
+                tenantId     = u.TenantId,
+                email        = u.Email,
+                firstName    = u.FirstName,
+                lastName     = u.LastName,
+                isActive     = u.IsActive,
+                roles        = u.Roles,
+                productRoles = u.ProductRoles,
+                groupCount   = groupCounts.GetValueOrDefault(u.Id, 0),
+                productCount = productCounts.GetValueOrDefault(u.Id, 0),
+            });
+
+            return Results.Ok(enriched);
         }).RequireAuthorization();
 
         app.MapGet("/api/users/{id:guid}", async (

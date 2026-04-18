@@ -50,6 +50,9 @@ public static class AdminEndpoints
         routes.MapGet("/api/admin/roles",           ListRoles);
         routes.MapGet("/api/admin/roles/{id:guid}", GetRole);
 
+        // ── Products catalog (tenant-accessible) ────────────────────────
+        routes.MapGet("/api/admin/products",        ListProducts);
+
         // ── Audit Logs ────────────────────────────────────────────────────
         routes.MapGet("/api/admin/audit",           ListAudit);
 
@@ -2241,6 +2244,29 @@ public static class AdminEndpoints
 
     // =========================================================================
     // ROLES
+    // =========================================================================
+
+    // =========================================================================
+    // PRODUCTS CATALOG
+    // =========================================================================
+
+    /// <summary>
+    /// GET /api/admin/products
+    ///
+    /// Returns the global active product catalog. Accessible to TenantAdmins
+    /// so they can reference product names when managing user and group access.
+    /// </summary>
+    private static async Task<IResult> ListProducts(IdentityDbContext db, CancellationToken ct)
+    {
+        var products = await db.Products
+            .Where(p => p.IsActive)
+            .OrderBy(p => p.Name)
+            .Select(p => new { code = p.Code, name = p.Name, description = p.Description, isActive = p.IsActive })
+            .ToListAsync(ct);
+
+        return Results.Ok(products);
+    }
+
     // =========================================================================
 
     private static async Task<IResult> ListRoles(
