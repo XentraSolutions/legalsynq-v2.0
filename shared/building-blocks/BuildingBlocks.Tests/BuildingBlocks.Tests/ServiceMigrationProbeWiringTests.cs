@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace BuildingBlocks.Tests;
 
 /// <summary>
-/// CI guard for Task #66.
+/// CI guard for Task #66 / Task #71.
 ///
 /// Task #62/#65 introduced <see cref="BuildingBlocks.Diagnostics.MigrationCoverageProbe"/>,
 /// the boot-time self-test that compares every EF-mapped table/column against
@@ -13,91 +13,52 @@ namespace BuildingBlocks.Tests;
 /// The probe is only useful if every .NET service actually wires it into
 /// startup. Without this guard, a service could silently drop the
 /// <c>MigrationCoverageProbe.RunAsync(...)</c> call and we'd only find out
-/// in production. This fixture asserts on every build that each known
-/// service's <c>Program.cs</c> calls <c>MigrationCoverageProbe.RunAsync(</c>
-/// at least once. The probe itself does the model-vs-migrations comparison
-/// at production startup; this guard's job is purely to ensure the call is
-/// present so the probe can do that work.
+/// in production.
 ///
-/// Failing the assertion fails the build.
+/// Task #70 / Task #71 retired the old hand-maintained Services list and
+/// replaced it with two complementary guards:
+///
+/// 1. <see cref="EveryDiscoveredMigrationService_WiresMigrationCoverageProbeInProgram"/>
+///    (auto-discovery) — covers any service that has a <c>Migrations/</c>
+///    folder under <c>apps/services/</c>. New services are enrolled
+///    automatically on their first migration commit.
+///
+/// 2. <see cref="EveryExplicitService_WiresMigrationCoverageProbeInProgram"/>
+///    (explicit list) — a small, intentionally short list of services that own
+///    a DbContext but have no <c>Migrations/</c> folder (e.g. because they
+///    use a shared schema or delegate migrations elsewhere). These services
+///    must be listed in <see cref="ExplicitServices"/> to remain covered.
+///
+/// Failing either assertion fails the build.
 /// </summary>
 public class ServiceMigrationProbeWiringTests
 {
-    // Single source of truth: every .NET service that owns a DbContext +
-    // migrations and therefore must wire the probe at boot. Adding a new
-    // service requires adding it here so this guard can't silently fall
-    // out of date as the service catalogue grows.
-    public static readonly (string Name, string ProgramRelPath)[] Services =
-    {
-        ("audit",         "apps/services/audit/Program.cs"),
-        ("careconnect",   "apps/services/careconnect/CareConnect.Api/Program.cs"),
-        ("comms",         "apps/services/comms/Comms.Api/Program.cs"),
-        ("documents",     "apps/services/documents/Documents.Api/Program.cs"),
-        ("flow",          "apps/services/flow/backend/src/Flow.Api/Program.cs"),
-        ("fund",          "apps/services/fund/Fund.Api/Program.cs"),
-        ("identity",      "apps/services/identity/Identity.Api/Program.cs"),
-        ("liens",         "apps/services/liens/Liens.Api/Program.cs"),
-        ("notifications", "apps/services/notifications/Notifications.Api/Program.cs"),
-        ("reports",       "apps/services/reports/src/Reports.Api/Program.cs"),
-    };
-
-    public static IEnumerable<object[]> ServiceCases =>
-        Services.Select(s => new object[] { s.Name, s.ProgramRelPath });
-
-    [Theory]
-    [MemberData(nameof(ServiceCases))]
-    public void EveryService_WiresMigrationCoverageProbeInProgram(
-        string name, string programRelPath)
-    {
-        var repoRoot = FindRepoRoot();
-        var programPath = Path.Combine(repoRoot, programRelPath.Replace('/', Path.DirectorySeparatorChar));
-
-        Assert.True(File.Exists(programPath),
-            $"Expected service entry point at '{programPath}'. " +
-            $"If the service moved or was renamed, update the Services list in {nameof(ServiceMigrationProbeWiringTests)}.");
-
-        var source = File.ReadAllText(programPath);
-
-        // Match either the fully-qualified call or a using-shortened call.
-        // Allow whitespace before the `(` to be tolerant of formatting.
-        var pattern = new Regex(@"MigrationCoverageProbe\s*\.\s*RunAsync\s*\(", RegexOptions.CultureInvariant);
-
-        Assert.True(pattern.IsMatch(source),
-            $"Service '{name}' ({programRelPath}) does not wire MigrationCoverageProbe.RunAsync(...) at boot. " +
-            "Without this call the boot-time schema/EF-model self-test from Task #62 is silently disabled, " +
-            "re-opening the Task #58 regression class (a migration committed without its [Migration] " +
-            "attribute would silently leave the live schema out of sync with the EF model). " +
-            "Add a `using var scope = app.Services.CreateScope(); var db = scope.ServiceProvider." +
-            "GetRequiredService<TDbContext>(); await BuildingBlocks.Diagnostics." +
-            "MigrationCoverageProbe.RunAsync(db, app.Logger);` block to Program.cs.");
-    }
+    // -----------------------------------------------------------------------
+    // Explicit list — services that own a DbContext but intentionally have
+    // no Migrations/ folder and are therefore not caught by auto-discovery.
+    //
+    // Keep this list as short as possible. Every entry here represents a
+    // service that chose NOT to own its own migrations (e.g. reads a shared
+    // schema, receives an already-migrated DB from another service, etc.).
+    // Add a comment explaining WHY the service has no Migrations folder.
+    // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Walks <c>apps/services/</c> under the repo root and returns the
-    /// repo-relative path (sorted, forward-slash-separated) of every
-    /// directory whose name is exactly <c>Migrations</c> (case-sensitive,
-    /// which is the project-wide convention — no service uses a lowercase
-    /// variant).  Results are sorted so that failure output is stable
-    /// across environments.
-    ///
-    /// This replaces the former hand-maintained <c>MigrationDirs</c> array
-    /// so that new services are covered automatically on their first
-    /// migration commit without any manual update to this file.
+    /// Services that own a DbContext and must wire
+    /// <c>MigrationCoverageProbe.RunAsync</c>, but intentionally have no
+    /// <c>Migrations/</c> directory and therefore cannot be covered by the
+    /// auto-discovery test. Each entry is <c>(name, repo-relative path to
+    /// Program.cs)</c>.
     /// </summary>
-    private static IEnumerable<string> DiscoverMigrationDirs(string repoRoot)
+    public static readonly (string Name, string ProgramRelPath)[] ExplicitServices =
     {
-        var servicesRoot = Path.Combine(repoRoot, "apps", "services");
-        if (!Directory.Exists(servicesRoot))
-            yield break;
+        // notifications — uses EF Core read-only projections against a schema
+        // owned and migrated by another service. No Migrations/ folder exists.
+        ("notifications", "apps/services/notifications/Notifications.Api/Program.cs"),
+    };
 
-        var dirs = Directory
-            .EnumerateDirectories(servicesRoot, "Migrations", SearchOption.AllDirectories)
-            .Select(d => Path.GetRelativePath(repoRoot, d).Replace(Path.DirectorySeparatorChar, '/'))
-            .OrderBy(d => d, StringComparer.Ordinal);
-
-        foreach (var rel in dirs)
-            yield return rel;
-    }
+    public static IEnumerable<object[]> ExplicitServiceCases =>
+        ExplicitServices.Select(s => new object[] { s.Name, s.ProgramRelPath });
 
     private static readonly Regex MigrationClassPattern =
         new(@":\s*Migration\b", RegexOptions.CultureInvariant);
@@ -105,32 +66,32 @@ public class ServiceMigrationProbeWiringTests
     private static readonly Regex MigrationAttributePattern =
         new(@"\[Migration\s*\(", RegexOptions.CultureInvariant);
 
+    private static readonly Regex ProbeCallPattern =
+        new(@"MigrationCoverageProbe\s*\.\s*RunAsync\s*\(", RegexOptions.CultureInvariant);
+
+    // -----------------------------------------------------------------------
+    // Test 1 — auto-discovery (covers all services with a Migrations/ folder)
+    // -----------------------------------------------------------------------
+
     /// <summary>
-    /// CI guard complementing <see cref="EveryService_WiresMigrationCoverageProbeInProgram"/>.
+    /// Auto-discovery guard for Task #70 / Task #71.
     ///
-    /// The theory above checks every entry in the hand-maintained <see cref="Services"/>
-    /// array, but it cannot catch a new service that adds a Migrations folder without
-    /// also adding itself to that array.  This fact closes the gap: it walks
-    /// <c>apps/services/</c> with <see cref="DiscoverMigrationDirs"/>, maps every
-    /// migration directory to its service root (the first path segment beneath
-    /// <c>apps/services/</c>), resolves the canonical API <c>Program.cs</c> via
-    /// <see cref="FindApiProgramCs"/>, and asserts the
-    /// <c>MigrationCoverageProbe.RunAsync(</c> call is present — with no manual
-    /// update required when a new service adds its first migration.
+    /// For every service directory under <c>apps/services/</c> that contains
+    /// a <c>Migrations/</c> folder, this test resolves the service root (the
+    /// first path segment beneath <c>apps/services/</c>), locates the
+    /// canonical API <c>Program.cs</c> via <see cref="FindApiProgramCs"/>, and
+    /// asserts that it calls <c>MigrationCoverageProbe.RunAsync(</c>.
     ///
     /// Services with multiple migration directories (e.g. sharded contexts) are
-    /// deduplicated by the resolved <c>Program.cs</c> path so each entry point is
-    /// only verified once.
+    /// deduplicated by resolved <c>Program.cs</c> path so each entry point is
+    /// verified exactly once. No manual update is required when a new service
+    /// adds its first migration.
     /// </summary>
     [Fact]
     public void EveryDiscoveredMigrationService_WiresMigrationCoverageProbeInProgram()
     {
         var repoRoot = FindRepoRoot();
         var servicesRoot = Path.GetFullPath(Path.Combine(repoRoot, "apps", "services"));
-
-        var probePattern = new Regex(
-            @"MigrationCoverageProbe\s*\.\s*RunAsync\s*\(",
-            RegexOptions.CultureInvariant);
 
         var noProgramFound = new List<string>();
         var probeNotWired  = new List<string>();
@@ -163,7 +124,7 @@ public class ServiceMigrationProbeWiringTests
                 continue; // already verified for a sibling migration directory
 
             var source = File.ReadAllText(programPath);
-            if (!probePattern.IsMatch(source))
+            if (!ProbeCallPattern.IsMatch(source))
             {
                 var relProgram = Path.GetRelativePath(repoRoot, programPath)
                     .Replace(Path.DirectorySeparatorChar, '/');
@@ -194,52 +155,46 @@ public class ServiceMigrationProbeWiringTests
         Assert.True(messages.Count == 0, string.Join("\n\n", messages));
     }
 
+    // -----------------------------------------------------------------------
+    // Test 2 — explicit list (covers services intentionally without Migrations/)
+    // -----------------------------------------------------------------------
+
     /// <summary>
-    /// Locates the canonical API entry-point <c>Program.cs</c> within
-    /// <paramref name="serviceRoot"/>.
+    /// Explicit guard for services in <see cref="ExplicitServices"/>.
     ///
-    /// Resolution order:
-    /// <list type="number">
-    ///   <item>A <c>Program.cs</c> whose immediate parent directory name ends with
-    ///   <c>Api</c> (case-insensitive) — covers the typical
-    ///   <c>*.Api/Program.cs</c> layout used by most services.</item>
-    ///   <item>A <c>Program.cs</c> located directly in <paramref name="serviceRoot"/>
-    ///   — covers flat single-project services such as <c>audit</c>.</item>
-    /// </list>
-    ///
-    /// Returns <c>null</c> when no suitable <c>Program.cs</c> is found so the
-    /// caller can report an actionable error.
+    /// These services own a DbContext but have no <c>Migrations/</c> folder
+    /// and are therefore not enrolled in the auto-discovery test above. This
+    /// theory ensures their <c>Program.cs</c> still calls
+    /// <c>MigrationCoverageProbe.RunAsync(</c> even though they are excluded
+    /// from auto-discovery.
     /// </summary>
-    private static string? FindApiProgramCs(string serviceRoot)
+    [Theory]
+    [MemberData(nameof(ExplicitServiceCases))]
+    public void EveryExplicitService_WiresMigrationCoverageProbeInProgram(
+        string name, string programRelPath)
     {
-        if (!Directory.Exists(serviceRoot))
-            return null;
+        var repoRoot = FindRepoRoot();
+        var programPath = Path.Combine(repoRoot, programRelPath.Replace('/', Path.DirectorySeparatorChar));
 
-        var allPrograms = Directory
-            .EnumerateFiles(serviceRoot, "Program.cs", SearchOption.AllDirectories)
-            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        Assert.True(File.Exists(programPath),
+            $"Expected service entry point at '{programPath}'. " +
+            $"If the service moved or was renamed, update ExplicitServices in {nameof(ServiceMigrationProbeWiringTests)}.");
 
-        if (allPrograms.Count == 0)
-            return null;
+        var source = File.ReadAllText(programPath);
 
-        // 1. Prefer Program.cs whose parent directory name ends with "Api".
-        var apiProgram = allPrograms.FirstOrDefault(p =>
-            new DirectoryInfo(p).Parent?.Name
-                .EndsWith("Api", StringComparison.OrdinalIgnoreCase) == true);
-        if (apiProgram is not null)
-            return apiProgram;
-
-        // 2. Fall back to a Program.cs sitting directly in the service root
-        //    (single-project layout, e.g. audit/).
-        var rootProgram = allPrograms.FirstOrDefault(p =>
-            string.Equals(
-                Path.GetFullPath(Path.GetDirectoryName(p)!),
-                Path.GetFullPath(serviceRoot),
-                StringComparison.OrdinalIgnoreCase));
-
-        return rootProgram; // null if nothing matched
+        Assert.True(ProbeCallPattern.IsMatch(source),
+            $"Service '{name}' ({programRelPath}) does not wire MigrationCoverageProbe.RunAsync(...) at boot. " +
+            "Without this call the boot-time schema/EF-model self-test from Task #62 is silently disabled, " +
+            "re-opening the Task #58 regression class (a migration committed without its [Migration] " +
+            "attribute would silently leave the live schema out of sync with the EF model). " +
+            "Add a `using var scope = app.Services.CreateScope(); var db = scope.ServiceProvider." +
+            "GetRequiredService<TDbContext>(); await BuildingBlocks.Diagnostics." +
+            "MigrationCoverageProbe.RunAsync(db, app.Logger);` block to Program.cs.");
     }
+
+    // -----------------------------------------------------------------------
+    // Test 3 — migration attribute check (unchanged)
+    // -----------------------------------------------------------------------
 
     /// <summary>
     /// Static guard for Task #67.
@@ -312,6 +267,80 @@ public class ServiceMigrationProbeWiringTests
             "Add [Migration(\"<timestamp>_<ClassName>\")] directly to the partial class " +
             "or regenerate its companion .Designer.cs file:\n\n" +
             string.Join("\n", failures));
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Walks <c>apps/services/</c> under the repo root and returns the
+    /// repo-relative path (sorted, forward-slash-separated) of every
+    /// directory whose name is exactly <c>Migrations</c> (case-sensitive,
+    /// which is the project-wide convention — no service uses a lowercase
+    /// variant).  Results are sorted so that failure output is stable
+    /// across environments.
+    /// </summary>
+    private static IEnumerable<string> DiscoverMigrationDirs(string repoRoot)
+    {
+        var servicesRoot = Path.Combine(repoRoot, "apps", "services");
+        if (!Directory.Exists(servicesRoot))
+            yield break;
+
+        var dirs = Directory
+            .EnumerateDirectories(servicesRoot, "Migrations", SearchOption.AllDirectories)
+            .Select(d => Path.GetRelativePath(repoRoot, d).Replace(Path.DirectorySeparatorChar, '/'))
+            .OrderBy(d => d, StringComparer.Ordinal);
+
+        foreach (var rel in dirs)
+            yield return rel;
+    }
+
+    /// <summary>
+    /// Locates the canonical API entry-point <c>Program.cs</c> within
+    /// <paramref name="serviceRoot"/>.
+    ///
+    /// Resolution order:
+    /// <list type="number">
+    ///   <item>A <c>Program.cs</c> whose immediate parent directory name ends with
+    ///   <c>Api</c> (case-insensitive) — covers the typical
+    ///   <c>*.Api/Program.cs</c> layout used by most services.</item>
+    ///   <item>A <c>Program.cs</c> located directly in <paramref name="serviceRoot"/>
+    ///   — covers flat single-project services such as <c>audit</c>.</item>
+    /// </list>
+    ///
+    /// Returns <c>null</c> when no suitable <c>Program.cs</c> is found so the
+    /// caller can report an actionable error.
+    /// </summary>
+    private static string? FindApiProgramCs(string serviceRoot)
+    {
+        if (!Directory.Exists(serviceRoot))
+            return null;
+
+        var allPrograms = Directory
+            .EnumerateFiles(serviceRoot, "Program.cs", SearchOption.AllDirectories)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (allPrograms.Count == 0)
+            return null;
+
+        // 1. Prefer Program.cs whose parent directory name ends with "Api".
+        var apiProgram = allPrograms.FirstOrDefault(p =>
+            new DirectoryInfo(p).Parent?.Name
+                .EndsWith("Api", StringComparison.OrdinalIgnoreCase) == true);
+        if (apiProgram is not null)
+            return apiProgram;
+
+        // 2. Fall back to a Program.cs sitting directly in the service root
+        //    (single-project layout, e.g. audit/).
+        var rootProgram = allPrograms.FirstOrDefault(p =>
+            string.Equals(
+                Path.GetFullPath(Path.GetDirectoryName(p)!),
+                Path.GetFullPath(serviceRoot),
+                StringComparison.OrdinalIgnoreCase));
+
+        return rootProgram; // null if nothing matched
     }
 
     // Walk up from the test assembly until we find the repo root marker.
