@@ -118,8 +118,12 @@ Built the user-facing **Work** surface that exposes the assignment engine shippe
 ### Security
 - Cross-tenant rows cannot be returned: every new query reuses the global `WorkflowTask` query filter, so a cross-tenant id surfaces as 404. Same as every other Flow read.
 - Cross-role / cross-org leakage prevented server-side: the queue endpoints filter on `AssignedRole ∈ Roles` / `AssignedOrgId == OrgId` (with platform-admin bypass) BEFORE pagination.
+- **Intra-tenant IDOR closed on `GET /workflow-tasks/{id}`** (architect finding, fixed). `GetTaskDetailAsync` now requires the caller to be platform-admin OR the direct assignee OR a holder of the task's role-queue role OR a member of the task's org. Not-allowed rows return 404 (existence-leak avoided).
 - Reassign: backend `Policies.PlatformOrTenantAdmin` + `EnsureCallerIsAdmin`; the frontend hide of the button is cosmetic only.
 - BFF cookie → Bearer rewrite is unchanged; no token leaks to the browser.
+
+### UX correctness
+- **Error-message extraction widened in `apiClient`** (architect finding, fixed). Flow / Identity / most LegalSynq services return `{ error: "..." }`; the previous client only read `message` / `title`, so 422 / 403 / 409 / 404 paths degraded to "HTTP xxx". Now reads `error → message → detail → title`, so the friendly-text mapping in claim / reassign actually fires.
 
 ### Data integrity
 - All assignment mutations still flow through `IWorkflowTaskAssignmentService` (the spec's "single entry point" contract). The UI never writes assignment columns by any other route.

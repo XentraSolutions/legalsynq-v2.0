@@ -54,7 +54,16 @@ async function request<T>(
     let message = `HTTP ${res.status}`;
     try {
       const errBody = await res.json();
-      message = errBody.message ?? errBody.title ?? message;
+      // Flow / Identity / most LegalSynq services return { error: "..." }
+      // (often with `code` and `errors[]`). ASP.NET's default ProblemDetails
+      // uses `title` / `detail`. Some legacy paths use `message`. Read all
+      // four so the friendly-text mapping in callers actually fires.
+      message =
+        errBody?.error   ??
+        errBody?.message ??
+        errBody?.detail  ??
+        errBody?.title   ??
+        message;
     } catch {
       // non-JSON error body — keep default message
     }

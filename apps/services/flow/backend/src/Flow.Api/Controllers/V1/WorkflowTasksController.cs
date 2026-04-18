@@ -74,9 +74,12 @@ public sealed class WorkflowTasksController : ControllerBase
     /// LS-FLOW-E15 — GET <c>/api/v1/workflow-tasks/{id}</c>. Returns
     /// the single task as a widened <see cref="MyTaskDto"/> (with
     /// assignment context). Tenant-scoped via the global query
-    /// filter; cross-tenant / missing id ⇒ 404. No additional
-    /// eligibility check — the operator portal needs to be able to
-    /// inspect any tenant-visible task it can navigate to. Mutation
+    /// filter, **and** caller-eligibility-scoped:
+    /// <see cref="IMyTasksService.GetTaskDetailAsync"/> requires the
+    /// caller to be platform-admin OR the direct assignee OR a
+    /// holder of the task's role-queue role OR a member of the
+    /// task's org. Cross-tenant ids, missing ids, and ineligible ids
+    /// all collapse to 404 to avoid existence leakage. Mutation
     /// authority remains with the lifecycle / assignment services.
     /// </summary>
     [HttpGet("{id:guid}")]

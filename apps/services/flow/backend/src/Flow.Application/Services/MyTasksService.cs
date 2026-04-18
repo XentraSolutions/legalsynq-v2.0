@@ -211,15 +211,64 @@ public sealed class MyTasksService : IMyTasksService
     // =========================================================
     // E15 — Task detail (single row, widened DTO)
     // =========================================================
+    /// <summary>
+    /// Returns a single task by id, with eligibility-scoped
+    /// authorisation.
+    ///
+    /// <para>
+    /// <b>Eligibility rule</b> (a caller is allowed to read a task
+    /// iff at least one of):
+    ///   <list type="bullet">
+    ///     <item>Platform admin (operations / on-call bypass).</item>
+    ///     <item>The task is <c>DirectUser</c> assigned to the caller.</item>
+    ///     <item>The task is an open <c>RoleQueue</c> for a role the caller holds.</item>
+    ///     <item>The task is an open <c>OrgQueue</c> for the caller's org.</item>
+    ///   </list>
+    /// </para>
+    ///
+    /// <para>
+    /// Without this guard a tenant user who learned a task GUID
+    /// could read every task in the tenant (intra-tenant IDOR).
+    /// We deliberately collapse "not found" and "not eligible" into
+    /// a single <see cref="NotFoundException"/> so the response
+    /// never leaks the difference between "no such id" and
+    /// "exists but you can't see it".
+    /// </para>
+    /// </summary>
     public async Task<MyTaskDto> GetTaskDetailAsync(Guid taskId, CancellationToken ct = default)
     {
+        var userId          = _user.UserId;
+        var orgId           = _user.OrgId;
+        var isPlatformAdmin = _user.IsPlatformAdmin;
+        var roles           = _user.Roles ?? Array.Empty<string>();
+        var rolesList       = roles.ToList();
+
         // Tenant filter is global on WorkflowTask, so a wrong-tenant
-        // id naturally yields null (= NotFoundException) — no special
-        // cross-tenant branch needed and no id leakage.
-        var dto = await _db.WorkflowTasks.AsNoTracking()
-            .Where(t => t.Id == taskId)
-            .Select(ProjectToDto)
-            .FirstOrDefaultAsync(ct);
+        // id naturally yields null (= NotFoundException). On top of
+        // that, encode the eligibility rule as a SQL predicate so a
+        // not-allowed row also yields null and surfaces as 404 — no
+        // existence-leak.
+        var query = _db.WorkflowTasks.AsNoTracking()
+            .Where(t => t.Id == taskId);
+
+        if (!isPlatformAdmin)
+        {
+            query = query.Where(t =>
+                // Direct assignment to the caller.
+                (t.AssignedUserId != null && t.AssignedUserId == userId)
+                // Open role-queue task for a role the caller holds.
+                || (t.AssignmentMode == WorkflowTaskAssignmentMode.RoleQueue
+                    && t.Status == WorkflowTaskStatus.Open
+                    && t.AssignedRole != null
+                    && rolesList.Contains(t.AssignedRole))
+                // Open org-queue task for the caller's org.
+                || (t.AssignmentMode == WorkflowTaskAssignmentMode.OrgQueue
+                    && t.Status == WorkflowTaskStatus.Open
+                    && t.AssignedOrgId != null
+                    && t.AssignedOrgId == orgId));
+        }
+
+        var dto = await query.Select(ProjectToDto).FirstOrDefaultAsync(ct);
 
         if (dto is null)
             throw new NotFoundException(nameof(WorkflowTask), taskId);
