@@ -15,6 +15,7 @@ import { LayoutSplit, type PanelMode } from '@/components/lien/layout-split';
 import { WorkflowPanel } from '@/components/workflow';
 import { useCaseWorkflows } from '@/hooks/use-case-workflows';
 import { workflowApi, type WorkflowInstanceDetail } from '@/lib/workflow';
+import { lienCaseNotesService, type CaseNoteResponse, type CaseNoteCategory } from '@/lib/liens/lien-case-notes.service';
 
 const STATUS_LABELS: Record<string, string> = { PreDemand: 'Pre-demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Case Settled', Closed: 'Closed' };
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
@@ -1612,15 +1613,6 @@ function ServicingTab({ caseDetail, panelMode, onPanelModeChange }: { caseDetail
 }
 
 /* TEMP: visual fallback data for UI review only */
-interface CaseNote {
-  id: string;
-  text: string;
-  author: string;
-  timestamp: string;
-  category?: 'general' | 'internal' | 'follow-up';
-  pinned?: boolean;
-}
-
 const NOTE_CATEGORY_LABELS: Record<string, string> = {
   general: 'General',
   internal: 'Internal',
@@ -1632,15 +1624,6 @@ const NOTE_CATEGORY_COLORS: Record<string, string> = {
   internal: 'bg-purple-50 text-purple-600 border-purple-200',
   'follow-up': 'bg-amber-50 text-amber-600 border-amber-200',
 };
-
-const TEMP_NOTES: CaseNote[] = [
-  { id: 'n-1', text: 'Spoke with plaintiff\'s attorney regarding updated medical documentation. They confirmed records from Tampa General will be sent by end of week. Need to follow up if not received by Friday.', author: 'Sarah Mitchell', timestamp: '2026-04-14T16:30:00Z', category: 'general', pinned: true },
-  { id: 'n-2', text: 'Insurance adjuster from State Farm called to discuss the claim valuation. They are requesting an itemized breakdown of all medical expenses. Preparing summary for submission.', author: 'James Rivera', timestamp: '2026-04-13T14:15:00Z', category: 'general' },
-  { id: 'n-3', text: 'Internal review: lien purchase terms for Bay Area PT need supervisor approval before proceeding. Flagged for management review in Monday standup.', author: 'Robert Chen', timestamp: '2026-04-12T11:00:00Z', category: 'internal' },
-  { id: 'n-4', text: 'Follow up with Clearwater Radiology on outstanding billing discrepancy — their invoice shows $2,400 but records indicate $1,850 for the MRI series. Awaiting corrected statement.', author: 'Sarah Mitchell', timestamp: '2026-04-11T09:45:00Z', category: 'follow-up' },
-  { id: 'n-5', text: 'Demand letter draft reviewed and approved by supervising attorney. Ready to send once final medical totals are confirmed. Target send date: April 25.', author: 'James Rivera', timestamp: '2026-04-10T17:20:00Z', category: 'general' },
-  { id: 'n-6', text: 'HIPAA authorization form collected from plaintiff — original signed copy scanned and uploaded to Documents tab. Verified all provider names are listed correctly.', author: 'Sarah Mitchell', timestamp: '2026-04-08T10:30:00Z', category: 'general' },
-];
 
 function formatNoteDate(iso: string): string {
   const d = new Date(iso);
@@ -1684,38 +1667,48 @@ function avatarColor(name: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-type NoteSortOption = 'newest' | 'oldest';
-type NoteCategoryFilter = 'all' | 'general' | 'internal' | 'follow-up';
-
-const EMPTY_STORE_NOTES: { id: string; text: string; author: string; timestamp: string; category?: string }[] = [];
-
 function NotesTab({ caseId }: { caseId: string }) {
   const addToast = useLienStore((s) => s.addToast);
-  const storeNotes = useLienStore((s) => s.caseNotes[caseId] ?? EMPTY_STORE_NOTES);
-  const addCaseNote = useLienStore((s) => s.addCaseNote);
   const { session } = useSession();
 
+  const [notes, setNotes] = useState<CaseNoteResponse[]>([]);
+  const [notesLoading, setNotesLoading] = useState(true);
+  const [notesError, setNotesError] = useState<string | null>(null);
+
   const [composerText, setComposerText] = useState('');
-  const [composerCategory, setComposerCategory] = useState<'general' | 'internal' | 'follow-up'>('general');
+  const [composerCategory, setComposerCategory] = useState<CaseNoteCategory>('general');
   const [composerExpanded, setComposerExpanded] = useState(false);
-  const [sortOrder, setSortOrder] = useState<NoteSortOption>('newest');
-  const [categoryFilter, setCategoryFilter] = useState<NoteCategoryFilter>('all');
+  const [composerSubmitting, setComposerSubmitting] = useState(false);
+
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [editingCategory, setEditingCategory] = useState<CaseNoteCategory>('general');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | CaseNoteCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const authorName = session?.email?.split('@')[0]?.replace(/[._]/g, ' ')?.replace(/\b\w/g, (c) => c.toUpperCase()) || 'Current User';
+  const currentUserId = session?.userId as string | undefined;
 
-  const allNotes: CaseNote[] = useMemo(() => {
-    const userNotes: CaseNote[] = storeNotes.map((n) => ({
-      ...n,
-      category: (n.category as CaseNote['category']) || 'general',
-    }));
-    const tempIds = new Set(TEMP_NOTES.map((n) => n.id));
-    const dedupedUser = userNotes.filter((n) => !tempIds.has(n.id));
-    return [...dedupedUser, ...TEMP_NOTES];
-  }, [storeNotes]);
+  const loadNotes = useCallback(async () => {
+    setNotesLoading(true);
+    setNotesError(null);
+    try {
+      const data = await lienCaseNotesService.getNotes(caseId);
+      setNotes(data);
+    } catch {
+      setNotesError('Failed to load notes');
+    } finally {
+      setNotesLoading(false);
+    }
+  }, [caseId]);
+
+  useEffect(() => { loadNotes(); }, [loadNotes]);
 
   const filteredNotes = useMemo(() => {
-    let result = [...allNotes];
+    let result = [...notes];
 
     if (categoryFilter !== 'all') {
       result = result.filter((n) => n.category === categoryFilter);
@@ -1724,31 +1717,87 @@ function NotesTab({ caseId }: { caseId: string }) {
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
-        (n) => n.text.toLowerCase().includes(q) || n.author.toLowerCase().includes(q),
+        (n) => n.content.toLowerCase().includes(q) || n.createdByName.toLowerCase().includes(q),
       );
     }
 
     result.sort((a, b) => {
-      const ta = new Date(a.timestamp).getTime() || 0;
-      const tb = new Date(b.timestamp).getTime() || 0;
+      const ta = new Date(a.createdAtUtc).getTime() || 0;
+      const tb = new Date(b.createdAtUtc).getTime() || 0;
       return sortOrder === 'newest' ? tb - ta : ta - tb;
     });
 
-    const pinned = result.filter((n) => n.pinned);
-    const unpinned = result.filter((n) => !n.pinned);
+    const pinned = result.filter((n) => n.isPinned);
+    const unpinned = result.filter((n) => !n.isPinned);
     return [...pinned, ...unpinned];
-  }, [allNotes, categoryFilter, searchQuery, sortOrder]);
-
-  const handleSubmit = () => {
-    const text = composerText.trim();
-    if (!text) return;
-    addCaseNote(caseId, text, { category: composerCategory, author: authorName });
-    setComposerText('');
-    setComposerCategory('general');
-    setComposerExpanded(false);
-  };
+  }, [notes, categoryFilter, searchQuery, sortOrder]);
 
   const hasActiveFilters = categoryFilter !== 'all' || searchQuery.trim() !== '';
+
+  const handleSubmit = async () => {
+    const text = composerText.trim();
+    if (!text || composerSubmitting) return;
+    setComposerSubmitting(true);
+    try {
+      const created = await lienCaseNotesService.createNote(caseId, text, composerCategory, authorName);
+      setNotes((prev) => [created, ...prev]);
+      setComposerText('');
+      setComposerCategory('general');
+      setComposerExpanded(false);
+      addToast({ type: 'success', title: 'Note Added', description: 'Your note was saved.' });
+    } catch {
+      addToast({ type: 'error', title: 'Error', description: 'Failed to add note.' });
+    } finally {
+      setComposerSubmitting(false);
+    }
+  };
+
+  const handleStartEdit = (note: CaseNoteResponse) => {
+    setEditingNoteId(note.id);
+    setEditingText(note.content);
+    setEditingCategory(note.category);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingNoteId(null);
+    setEditingText('');
+  };
+
+  const handleSaveEdit = async (note: CaseNoteResponse) => {
+    if (editSubmitting) return;
+    setEditSubmitting(true);
+    try {
+      const updated = await lienCaseNotesService.updateNote(caseId, note.id, editingText.trim(), editingCategory);
+      setNotes((prev) => prev.map((n) => n.id === updated.id ? updated : n));
+      setEditingNoteId(null);
+      addToast({ type: 'success', title: 'Note Updated', description: 'Your note was saved.' });
+    } catch {
+      addToast({ type: 'error', title: 'Error', description: 'Failed to update note.' });
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (noteId: string) => {
+    try {
+      await lienCaseNotesService.deleteNote(caseId, noteId);
+      setNotes((prev) => prev.filter((n) => n.id !== noteId));
+      addToast({ type: 'success', title: 'Note Deleted', description: 'The note was removed.' });
+    } catch {
+      addToast({ type: 'error', title: 'Error', description: 'Failed to delete note.' });
+    }
+  };
+
+  const handlePin = async (note: CaseNoteResponse) => {
+    try {
+      const updated = note.isPinned
+        ? await lienCaseNotesService.unpinNote(caseId, note.id)
+        : await lienCaseNotesService.pinNote(caseId, note.id);
+      setNotes((prev) => prev.map((n) => n.id === updated.id ? updated : n));
+    } catch {
+      addToast({ type: 'error', title: 'Error', description: 'Failed to update pin status.' });
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -1757,9 +1806,11 @@ function NotesTab({ caseId }: { caseId: string }) {
           <div className="flex items-center gap-2">
             <i className="ri-chat-quote-line text-sm text-gray-500" />
             <h3 className="text-sm font-semibold text-gray-800">Case Notes</h3>
-            <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
-              {filteredNotes.length}{hasActiveFilters ? `/${allNotes.length}` : ''}
-            </span>
+            {!notesLoading && (
+              <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
+                {filteredNotes.length}{hasActiveFilters ? `/${notes.length}` : ''}
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-gray-400">Internal case commentary and collaboration</p>
         </div>
@@ -1792,7 +1843,7 @@ function NotesTab({ caseId }: { caseId: string }) {
                   <div className="relative">
                     <select
                       value={composerCategory}
-                      onChange={(e) => setComposerCategory(e.target.value as 'general' | 'internal' | 'follow-up')}
+                      onChange={(e) => setComposerCategory(e.target.value as CaseNoteCategory)}
                       className="pl-2 pr-6 py-1 text-[11px] font-medium border border-gray-200 rounded-md bg-white appearance-none cursor-pointer focus:border-primary/40 focus:ring-1 focus:ring-primary/20 outline-none"
                     >
                       <option value="general">General</option>
@@ -1801,7 +1852,6 @@ function NotesTab({ caseId }: { caseId: string }) {
                     </select>
                     <i className="ri-arrow-down-s-line absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[10px]" />
                   </div>
-                  <span className="text-[10px] text-gray-300 italic">Not yet connected to API</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
@@ -1812,10 +1862,10 @@ function NotesTab({ caseId }: { caseId: string }) {
                   </button>
                   <button
                     onClick={handleSubmit}
-                    disabled={!composerText.trim()}
+                    disabled={!composerText.trim() || composerSubmitting}
                     className="px-4 py-1.5 text-xs font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
                   >
-                    <i className="ri-send-plane-line text-xs" />
+                    {composerSubmitting ? <i className="ri-loader-4-line text-xs animate-spin" /> : <i className="ri-send-plane-line text-xs" />}
                     Add Note
                   </button>
                 </div>
@@ -1867,12 +1917,21 @@ function NotesTab({ caseId }: { caseId: string }) {
           </div>
         </div>
 
-        <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
-          <p className="text-xs text-amber-700"><i className="ri-information-line mr-1" />Sample notes shown for UI review. Real notes will load from the API.</p>
-        </div>
-
         <div className="px-5 py-4">
-          {filteredNotes.length === 0 ? (
+          {notesLoading ? (
+            <div className="text-center py-8">
+              <i className="ri-loader-4-line text-2xl text-gray-300 animate-spin" />
+              <p className="text-sm text-gray-400 mt-2">Loading notes...</p>
+            </div>
+          ) : notesError ? (
+            <div className="text-center py-8">
+              <i className="ri-error-warning-line text-2xl text-red-300" />
+              <p className="text-sm text-red-500 mt-2">{notesError}</p>
+              <button onClick={loadNotes} className="text-xs text-primary hover:text-primary/80 mt-2 transition-colors">
+                Retry
+              </button>
+            </div>
+          ) : filteredNotes.length === 0 ? (
             <div className="text-center py-8">
               <i className={`${hasActiveFilters ? 'ri-filter-off-line' : 'ri-chat-quote-line'} text-2xl text-gray-300`} />
               <p className="text-sm text-gray-400 mt-2">{hasActiveFilters ? 'No notes match the current filters' : 'No notes yet'}</p>
@@ -1894,11 +1953,13 @@ function NotesTab({ caseId }: { caseId: string }) {
 
               <div className="space-y-0">
                 {filteredNotes.map((note, idx) => {
-                  const noteDate = new Date(note.timestamp);
+                  const noteDate = new Date(note.createdAtUtc);
                   const noteDateStr = isNaN(noteDate.getTime()) ? '' : noteDate.toDateString();
-                  const prevDate = idx > 0 ? new Date(filteredNotes[idx - 1].timestamp) : null;
+                  const prevDate = idx > 0 ? new Date(filteredNotes[idx - 1].createdAtUtc) : null;
                   const prevDateStr = prevDate && !isNaN(prevDate.getTime()) ? prevDate.toDateString() : '';
                   const showDateSeparator = idx === 0 || noteDateStr !== prevDateStr;
+                  const isOwner = currentUserId ? note.createdByUserId === currentUserId : false;
+                  const isEditing = editingNoteId === note.id;
 
                   return (
                     <div key={note.id}>
@@ -1913,32 +1974,101 @@ function NotesTab({ caseId }: { caseId: string }) {
 
                       <div className="flex gap-3 py-2.5 group relative">
                         <div className="relative z-10 shrink-0">
-                          <div className={`w-[38px] h-[38px] rounded-full flex items-center justify-center text-[11px] font-semibold ${avatarColor(note.author)}`}>
-                            {getInitials(note.author)}
+                          <div className={`w-[38px] h-[38px] rounded-full flex items-center justify-center text-[11px] font-semibold ${avatarColor(note.createdByName)}`}>
+                            {getInitials(note.createdByName)}
                           </div>
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <div className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-100 hover:border-gray-200 transition-colors">
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <span className="text-xs font-semibold text-gray-700">{note.author}</span>
-                              {note.category && note.category !== 'general' && (
-                                <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${NOTE_CATEGORY_COLORS[note.category]}`}>
-                                  {NOTE_CATEGORY_LABELS[note.category]}
-                                </span>
-                              )}
-                              {note.pinned && (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
-                                  <i className="ri-pushpin-2-fill text-[10px]" />
-                                  Pinned
-                                </span>
-                              )}
-                              <span className="text-[11px] text-gray-400 ml-auto" title={formatNoteTimestamp(note.timestamp)}>
-                                {formatNoteDate(note.timestamp)}
-                              </span>
+                          {isEditing ? (
+                            <div className="bg-white rounded-lg border border-primary/30 shadow-sm ring-1 ring-primary/10 px-4 py-3">
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="relative">
+                                  <select
+                                    value={editingCategory}
+                                    onChange={(e) => setEditingCategory(e.target.value as CaseNoteCategory)}
+                                    className="pl-2 pr-6 py-0.5 text-[11px] font-medium border border-gray-200 rounded-md bg-white appearance-none cursor-pointer focus:border-primary/40 outline-none"
+                                  >
+                                    <option value="general">General</option>
+                                    <option value="internal">Internal</option>
+                                    <option value="follow-up">Follow-Up</option>
+                                  </select>
+                                  <i className="ri-arrow-down-s-line absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-[10px]" />
+                                </div>
+                              </div>
+                              <textarea
+                                value={editingText}
+                                onChange={(e) => setEditingText(e.target.value)}
+                                rows={4}
+                                className="w-full text-sm text-gray-700 focus:outline-none resize-none bg-transparent"
+                                autoFocus
+                              />
+                              <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-gray-100">
+                                <button onClick={handleCancelEdit} className="px-3 py-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors">
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => handleSaveEdit(note)}
+                                  disabled={!editingText.trim() || editSubmitting}
+                                  className="px-3 py-1 text-xs font-medium text-white bg-primary rounded-md hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1 transition-colors"
+                                >
+                                  {editSubmitting ? <i className="ri-loader-4-line text-xs animate-spin" /> : null}
+                                  Save
+                                </button>
+                              </div>
                             </div>
-                            <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{note.text}</p>
-                          </div>
+                          ) : (
+                            <div className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-100 hover:border-gray-200 transition-colors">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="text-xs font-semibold text-gray-700">{note.createdByName}</span>
+                                {note.category && note.category !== 'general' && (
+                                  <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded border ${NOTE_CATEGORY_COLORS[note.category]}`}>
+                                    {NOTE_CATEGORY_LABELS[note.category]}
+                                  </span>
+                                )}
+                                {note.isPinned && (
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-500">
+                                    <i className="ri-pushpin-2-fill text-[10px]" />
+                                    Pinned
+                                  </span>
+                                )}
+                                {note.isEdited && (
+                                  <span className="text-[10px] text-gray-400 italic">edited</span>
+                                )}
+                                <span className="text-[11px] text-gray-400 ml-auto" title={formatNoteTimestamp(note.createdAtUtc)}>
+                                  {formatNoteDate(note.createdAtUtc)}
+                                </span>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => handlePin(note)}
+                                    title={note.isPinned ? 'Unpin' : 'Pin'}
+                                    className="p-1 rounded text-gray-400 hover:text-amber-500 hover:bg-amber-50 transition-colors"
+                                  >
+                                    <i className={`${note.isPinned ? 'ri-pushpin-fill' : 'ri-pushpin-line'} text-xs`} />
+                                  </button>
+                                  {isOwner && (
+                                    <>
+                                      <button
+                                        onClick={() => handleStartEdit(note)}
+                                        title="Edit"
+                                        className="p-1 rounded text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors"
+                                      >
+                                        <i className="ri-edit-line text-xs" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDelete(note.id)}
+                                        title="Delete"
+                                        className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                      >
+                                        <i className="ri-delete-bin-line text-xs" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{note.content}</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1951,8 +2081,7 @@ function NotesTab({ caseId }: { caseId: string }) {
 
         <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
           <p className="text-xs text-gray-400">
-            {filteredNotes.length} note{filteredNotes.length !== 1 ? 's' : ''}
-            {hasActiveFilters ? ` (filtered from ${allNotes.length})` : ''}
+            {notesLoading ? 'Loading...' : `${filteredNotes.length} note${filteredNotes.length !== 1 ? 's' : ''}${hasActiveFilters ? ` (filtered from ${notes.length})` : ''}`}
           </p>
         </div>
       </div>

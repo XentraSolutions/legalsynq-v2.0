@@ -4469,3 +4469,36 @@ Adds per-task text-only notes (activity thread) and an "Automation Details" pane
 
 ### Analysis
 `analysis/LS-LIENS-FLOW-004-report.md`
+
+---
+
+## LS-LIENS-CASE-005 — Case Notes Backend & Persistence — 2026-04-18
+
+### Summary
+Converts the CASE-004 UI-only Case Notes feature (TEMP_NOTES mocks + Zustand ephemeral store) into a fully persistent backend-driven feature, following the FLOW-004 Task Notes pattern. Notes are stored in `liens_CaseNotes` with category, isPinned, soft-delete, and owner-scoped edit/delete. The scalar `Case.Notes` field (Case Tracking Note) is preserved and unaffected.
+
+### Backend
+- **Entity**: `LienCaseNote` — Content (≤5000), Category (general/internal/follow-up), IsPinned, CreatedByUserId/Name, IsEdited, IsDeleted
+- **Enum**: `CaseNoteCategory` — `general`, `internal`, `follow-up` + `All` validation set
+- **Permission**: `CaseNoteManage = "SYNQ_LIENS.case_note:manage"`
+- **Endpoints**: `CaseNoteEndpoints` — 6 routes under `/api/liens/cases/{caseId}/notes` (GET / POST / PUT /{noteId} / DELETE /{noteId} / POST /{noteId}/pin / POST /{noteId}/unpin)
+- **Service**: `LienCaseNoteService` — tenant scoping, ownership enforcement (edit/delete), content validation, audit events
+- **Migration**: `20260418172126_AddCaseNotes` — table `liens_CaseNotes`, 2 indexes — applied to DB
+- **Build**: 0 errors
+
+### Frontend
+- **Libs**: `lien-case-notes.types.ts`, `lien-case-notes.api.ts`, `lien-case-notes.service.ts`
+- **Component change**: `case-detail-client.tsx` `NotesTab` — TEMP_NOTES removed, Zustand caseNotes/addCaseNote stripped, real API wired; added loading spinner, error + retry, inline edit (owner-only), delete (owner-only), pin/unpin hover controls. All UI (timeline layout, category filter, sort, search, pinned display) preserved.
+
+### Audit Events
+| Event | Trigger |
+|---|---|
+| `liens.case_note.created` | Note added |
+| `liens.case_note.updated` | Note content/category changed |
+| `liens.case_note.deleted` | Note soft-deleted |
+| `liens.case_note.pinned` | Note pinned |
+| `liens.case_note.unpinned` | Note unpinned |
+| `liens.case.note_added` | Case timeline hook — fires on every new note |
+
+### Analysis
+`analysis/LS-LIENS-CASE-005-report.md`

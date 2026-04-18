@@ -142,6 +142,8 @@ app.MapLienEndpoints();
 app.MapLienOfferEndpoints();
 app.MapBillOfSaleEndpoints();
 app.MapCaseEndpoints();
+// LS-LIENS-CASE-005 — Case Notes Backend & Persistence.
+app.MapCaseNoteEndpoints();
 app.MapServicingEndpoints();
 app.MapContactEndpoints();
 // LS-FLOW-MERGE-P4 — product → Flow integration endpoints.
