@@ -5,6 +5,7 @@ using Identity.Infrastructure;
 using Identity.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.IdentityModel.Tokens;
 
 const string ServiceName = "identity";
@@ -112,6 +113,95 @@ try
 catch (Exception ex)
 {
     app.Logger.LogWarning(ex, "Could not ensure missing columns");
+}
+
+// ── Migration coverage self-test ─────────────────────────────────────────
+// Compares every EF-mapped column against information_schema. If a model
+// property has no backing column on the live database, log an ERROR so the
+// regression is loud at boot (and visible to CI / log aggregation).
+// This catches the class of bug behind Task #58: a migration committed
+// without its [Migration] attribute (or otherwise un-applied) leaves the
+// EF model and the live schema out of sync, which previously surfaced only
+// as runtime "Unknown column" SQL errors at login. Runs after Migrate()
+// AND the columnsToEnsure backstop so anything still missing is a true gap.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    var conn = db.Database.GetDbConnection();
+    var dbName = conn.Database;
+    await conn.OpenAsync();
+    try
+    {
+        var actualColumns = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        using (var listCmd = conn.CreateCommand())
+        {
+            listCmd.CommandText = $@"SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_schema = '{dbName}'";
+            using var reader = await listCmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var t = reader.GetString(0);
+                var c = reader.GetString(1);
+                if (!actualColumns.TryGetValue(t, out var set))
+                {
+                    set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    actualColumns[t] = set;
+                }
+                set.Add(c);
+            }
+        }
+
+        var missing = new List<string>();
+        var missingTables = new List<string>();
+        foreach (var entityType in db.Model.GetEntityTypes())
+        {
+            var tableName = entityType.GetTableName();
+            if (string.IsNullOrEmpty(tableName)) continue;
+
+            var storeId = StoreObjectIdentifier.Table(tableName, entityType.GetSchema());
+
+            if (!actualColumns.TryGetValue(tableName, out var presentColumns))
+            {
+                missingTables.Add($"{tableName} (mapped by {entityType.ClrType.Name})");
+                continue;
+            }
+
+            foreach (var prop in entityType.GetProperties())
+            {
+                var columnName = prop.GetColumnName(storeId);
+                if (string.IsNullOrEmpty(columnName)) continue;
+                if (!presentColumns.Contains(columnName))
+                {
+                    missing.Add($"{tableName}.{columnName} (mapped by {entityType.ClrType.Name}.{prop.Name})");
+                }
+            }
+        }
+
+        if (missingTables.Count > 0 || missing.Count > 0)
+        {
+            app.Logger.LogError(
+                "Migration coverage check FAILED — schema is out of sync with the EF model. " +
+                "A migration is likely missing its [Migration] attribute or was never applied. " +
+                "Missing tables: [{MissingTables}]. Missing columns: [{MissingColumns}].",
+                string.Join("; ", missingTables),
+                string.Join("; ", missing));
+        }
+        else
+        {
+            app.Logger.LogInformation(
+                "Migration coverage check passed — all EF-mapped tables and columns are present on the live schema.");
+        }
+    }
+    finally
+    {
+        await conn.CloseAsync();
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Migration coverage self-test could not run");
 }
 
 // ── Startup diagnostic: Phase G authorization status ─────────────────────────
