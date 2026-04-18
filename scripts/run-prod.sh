@@ -68,6 +68,9 @@ if command -v dotnet &>/dev/null; then
       dotnet build "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" --configuration Release --verbosity minimal 2>&1 || true
       dotnet build "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
       dotnet build "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
+      # Flow has its own solution — restore its packages before building
+      dotnet restore "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --verbosity minimal 2>&1 || true
+      dotnet build "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
     else
       echo "[dotnet] Pre-built binaries found — skipping build"
     fi
@@ -82,6 +85,7 @@ if command -v dotnet &>/dev/null; then
     launch_svc "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" \
       env ASPNETCORE_URLS=http://0.0.0.0:5008
     launch_svc "Liens"        "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj"
+    launch_svc "Flow API"     "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj"
     launch_svc "Gateway"      "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
 
     echo "[dotnet] Service launch complete"

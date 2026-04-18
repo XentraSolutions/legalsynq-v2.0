@@ -61,6 +61,9 @@ if command -v dotnet &>/dev/null; then
 
   echo "[dotnet] Restoring packages..."
   dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal 2>&1 || true
+  # Flow lives in its own solution — restore its packages separately so
+  # the test-project dependencies don't block the service build.
+  dotnet restore "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --verbosity minimal 2>&1 || true
 
   build_service "Gateway"       "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
   build_service "Identity"      "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
@@ -70,6 +73,7 @@ if command -v dotnet &>/dev/null; then
   build_service "Audit"         "$ROOT/apps/services/audit/PlatformAuditEventService.csproj"
   build_service "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
   build_service "Liens"         "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj"
+  build_service "Flow API"      "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj"
 
   if [ "$DOTNET_FAIL" -gt 0 ]; then
     echo "[dotnet] WARNING: $DOTNET_FAIL service(s) failed to build"
