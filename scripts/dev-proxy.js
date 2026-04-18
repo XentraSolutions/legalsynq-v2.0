@@ -98,6 +98,16 @@ function proxyRequest(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  if ((req.url === '/health' || req.url === '/health/') && (req.method === 'GET' || req.method === 'HEAD')) {
+    const body = JSON.stringify({ status: 'ok', service: 'proxy' });
+    res.writeHead(200, {
+      'content-type': 'application/json',
+      'cache-control': 'no-store, no-cache, must-revalidate',
+      'content-length': Buffer.byteLength(body),
+    });
+    res.end(req.method === 'HEAD' ? undefined : body);
+    return;
+  }
   if (ready) {
     proxyRequest(req, res);
     return;

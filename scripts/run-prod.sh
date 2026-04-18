@@ -20,6 +20,27 @@ fi
 echo "====== LegalSynq production startup ======"
 echo "[next] Using: $NEXT_BIN"
 
+# ── Health-check probe helper ──────────────────────────────────────────────────
+# Polls <scheme>://<host>:<port><path> in the background for up to $deadline
+# seconds.  Logs a clear WARNING if the service never responds.
+# Used for both .NET and Node.js services.
+_probe_svc() {
+  local label="$1" port="$2" path="$3"
+  (
+    echo "[$label] Waiting for $path on :$port..."
+    local deadline=90 elapsed=0
+    while [ "$elapsed" -lt "$deadline" ]; do
+      if curl -sf "http://127.0.0.1:${port}${path}" >/dev/null 2>&1; then
+        echo "[$label] $path healthy after ${elapsed}s"
+        exit 0
+      fi
+      sleep 5
+      elapsed=$((elapsed + 5))
+    done
+    echo "[$label] WARNING: $path on :$port did not respond within ${deadline}s — $label may be unhealthy"
+  ) &
+}
+
 NEXT_INTERNAL_PORT=3050
 echo "[web] Starting Next.js on :$NEXT_INTERNAL_PORT (internal)"
 (cd "$ROOT/apps/web" && NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 node "$NEXT_BIN" start -p "$NEXT_INTERNAL_PORT") &
@@ -194,22 +215,7 @@ if command -v dotnet &>/dev/null; then
     # 90 seconds after launch.  All probes run in the background so they do
     # not block each other or the wait below.  A clear WARNING is logged if a
     # service does not respond within the deadline.
-    _probe_svc() {
-      local label="$1" port="$2" path="$3"
-      (
-        echo "[$label] Waiting for $path on :$port..."
-        local deadline=90 elapsed=0
-        while [ "$elapsed" -lt "$deadline" ]; do
-          if curl -sf "http://127.0.0.1:${port}${path}" >/dev/null 2>&1; then
-            echo "[$label] $path healthy after ${elapsed}s"
-            exit 0
-          fi
-          sleep 5
-          elapsed=$((elapsed + 5))
-        done
-        echo "[$label] WARNING: $path on :$port did not respond within ${deadline}s — $label may be unhealthy"
-      ) &
-    }
+    # _probe_svc is defined at the top of this script and inherited here.
 
     _probe_svc "Identity"      5001 /health
     _probe_svc "Fund"          5002 /health
@@ -236,6 +242,14 @@ echo "[artifacts] Starting on :5020"
     node_modules/.bin/ts-node --transpile-only src/server.ts
 ) &
 PID_ARTIFACTS=$!
+
+# ── Health-check probes for all Node.js services ──────────────────────────────
+# Each probe polls a liveness endpoint in the background for up to 90 seconds.
+# A clear WARNING is logged if the service does not respond within the deadline.
+_probe_svc "Web"       3050 /api/health
+_probe_svc "Proxy"     5000 /health
+_probe_svc "CC"        5004 /api/health
+_probe_svc "Artifacts" 5020 /api/health
 
 ALL_PIDS="$PID_WEB $PID_PROXY $PID_CC $PID_ARTIFACTS"
 [ -n "$PID_DOTNET" ] && ALL_PIDS="$ALL_PIDS $PID_DOTNET"
