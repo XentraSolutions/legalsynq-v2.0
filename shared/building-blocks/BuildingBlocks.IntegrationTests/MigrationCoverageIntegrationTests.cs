@@ -36,11 +36,12 @@ namespace BuildingBlocks.IntegrationTests;
 ///                   same EnsureCreated limitation as notifications)
 ///
 /// CI note: these tests require Docker (for Testcontainers container spin-up). In CI,
-/// run them via `dotnet test LegalSynq.sln` on a Docker-enabled runner, or explicitly
-/// with `dotnet test shared/building-blocks/BuildingBlocks.IntegrationTests`.
-/// See task #75 for the planned CI pipeline wiring.
+/// they run in the "Schema Drift Integration Tests" job defined in
+/// `.github/workflows/ci.yml`, which uses a GitHub-hosted ubuntu-latest runner
+/// (Docker pre-installed). Filter: `--filter "Category=Integration"`.
 /// </summary>
 [Collection("MySqlCollection")]
+[Trait("Category", "Integration")]
 public class MigrationCoverageIntegrationTests
 {
     private static readonly MySqlServerVersion ServerVersion = new(new Version(8, 0, 0));

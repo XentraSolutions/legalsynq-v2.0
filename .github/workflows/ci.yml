@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Fast unit-test pass — no Docker required, runs first on every push / PR.
+  # Integration tests (Category=Integration) are explicitly excluded so this
+  # step does not fail if the runner has no Docker daemon.
+  # ─────────────────────────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore LegalSynq.sln
+
+      - name: Build
+        run: dotnet build LegalSynq.sln --no-restore --configuration Release
+
+      - name: Run unit tests (excluding integration)
+        run: |
+          dotnet test LegalSynq.sln \
+            --no-build \
+            --configuration Release \
+            --filter "Category!=Integration" \
+            --logger "trx;LogFileName=unit-test-results.trx" \
+            --results-directory ./test-results
+
+      - name: Upload unit-test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: ./test-results/*.trx
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Schema-drift integration tests — require Docker (Testcontainers spins up
+  # a real MySQL 8 container). GitHub-hosted ubuntu-latest runners ship with
+  # the Docker daemon pre-installed, so no extra setup is needed.
+  #
+  # A failure here surfaces as a named check ("Schema Drift Integration Tests")
+  # rather than a generic build failure, making it easy to identify in the PR UI.
+  # ─────────────────────────────────────────────────────────────────────────────
+  schema-drift-integration-tests:
+    name: Schema Drift Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Docker is available
+        run: docker version
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore shared/building-blocks/BuildingBlocks.IntegrationTests/BuildingBlocks.IntegrationTests.csproj
+
+      - name: Build integration test project
+        run: |
+          dotnet build shared/building-blocks/BuildingBlocks.IntegrationTests/BuildingBlocks.IntegrationTests.csproj \
+            --no-restore \
+            --configuration Release
+
+      - name: Run schema-drift integration tests
+        run: |
+          dotnet test shared/building-blocks/BuildingBlocks.IntegrationTests/ \
+            --no-build \
+            --configuration Release \
+            --filter "Category=Integration" \
+            --logger "trx;LogFileName=integration-test-results.trx" \
+            --results-directory ./test-results
+
+      - name: Upload integration-test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: ./test-results/*.trx
