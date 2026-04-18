@@ -21,6 +21,8 @@ public class LiensDbContext : DbContext
     public DbSet<LienWorkflowConfig> LienWorkflowConfigs => Set<LienWorkflowConfig>();
     public DbSet<LienWorkflowStage> LienWorkflowStages => Set<LienWorkflowStage>();
     public DbSet<LienTaskTemplate> LienTaskTemplates => Set<LienTaskTemplate>();
+    public DbSet<LienTaskGenerationRule> LienTaskGenerationRules => Set<LienTaskGenerationRule>();
+    public DbSet<LienGeneratedTaskMetadata> LienGeneratedTaskMetadatas => Set<LienGeneratedTaskMetadata>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -132,4 +132,75 @@ public sealed class LienTaskRepository : ILienTaskRepository
             await _db.SaveChangesAsync(ct);
         }
     }
+
+    public async Task<bool> HasOpenTaskForRuleAsync(
+        Guid tenantId, Guid ruleId, Guid? caseId, Guid? lienId,
+        CancellationToken ct = default)
+    {
+        var openStatuses = new[] { "COMPLETED", "CANCELLED" };
+
+        if (caseId.HasValue)
+        {
+            return await _db.LienTasks.AnyAsync(t =>
+                t.TenantId == tenantId &&
+                t.GenerationRuleId == ruleId &&
+                t.CaseId == caseId.Value &&
+                !openStatuses.Contains(t.Status), ct);
+        }
+
+        if (lienId.HasValue)
+        {
+            var taskIds = await _db.LienTaskLienLinks
+                .Where(l => l.LienId == lienId.Value)
+                .Select(l => l.TaskId)
+                .ToListAsync(ct);
+
+            return await _db.LienTasks.AnyAsync(t =>
+                t.TenantId == tenantId &&
+                t.GenerationRuleId == ruleId &&
+                taskIds.Contains(t.Id) &&
+                !openStatuses.Contains(t.Status), ct);
+        }
+
+        return false;
+    }
+
+    public async Task<bool> HasOpenTaskForTemplateAsync(
+        Guid tenantId, Guid templateId, Guid? caseId, Guid? lienId,
+        CancellationToken ct = default)
+    {
+        var openStatuses = new[] { "COMPLETED", "CANCELLED" };
+
+        if (caseId.HasValue)
+        {
+            return await _db.LienTasks.AnyAsync(t =>
+                t.TenantId == tenantId &&
+                t.GeneratingTemplateId == templateId &&
+                t.CaseId == caseId.Value &&
+                !openStatuses.Contains(t.Status), ct);
+        }
+
+        if (lienId.HasValue)
+        {
+            var taskIds = await _db.LienTaskLienLinks
+                .Where(l => l.LienId == lienId.Value)
+                .Select(l => l.TaskId)
+                .ToListAsync(ct);
+
+            return await _db.LienTasks.AnyAsync(t =>
+                t.TenantId == tenantId &&
+                t.GeneratingTemplateId == templateId &&
+                taskIds.Contains(t.Id) &&
+                !openStatuses.Contains(t.Status), ct);
+        }
+
+        return false;
+    }
+
+    public async Task AddGeneratedMetadataAsync(
+        LienGeneratedTaskMetadata metadata, CancellationToken ct = default)
+    {
+        await _db.LienGeneratedTaskMetadatas.AddAsync(metadata, ct);
+        await _db.SaveChangesAsync(ct);
+    }
 }

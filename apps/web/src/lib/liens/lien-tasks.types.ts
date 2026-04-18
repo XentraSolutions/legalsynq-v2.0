@@ -7,6 +7,8 @@ export interface TaskLienLinkDto {
   createdAtUtc: string;
 }
 
+export type TaskSourceType = 'MANUAL' | 'AUTOMATED';
+
 export interface TaskDto {
   id: string;
   tenantId: string;
@@ -22,6 +24,10 @@ export interface TaskDto {
   closedByUserId?: string;
   linkedLiens: TaskLienLinkDto[];
   createdByUserId?: string;
+  sourceType?: TaskSourceType;
+  generationRuleId?: string;
+  generatingTemplateId?: string;
+  isSystemGenerated?: boolean;
   createdAtUtc: string;
   updatedAtUtc: string;
 }

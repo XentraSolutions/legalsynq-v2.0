@@ -37,6 +37,14 @@ public class LienTaskConfiguration : IEntityTypeConfiguration<LienTask>
         builder.Property(t => t.CompletedAt);
         builder.Property(t => t.ClosedByUserId);
 
+        builder.Property(t => t.SourceType)
+            .IsRequired()
+            .HasMaxLength(30)
+            .HasDefaultValue("MANUAL");
+
+        builder.Property(t => t.GenerationRuleId);
+        builder.Property(t => t.GeneratingTemplateId);
+
         builder.Property(t => t.CreatedByUserId).IsRequired();
         builder.Property(t => t.UpdatedByUserId);
         builder.Property(t => t.CreatedAtUtc).IsRequired();

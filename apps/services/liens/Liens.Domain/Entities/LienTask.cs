@@ -22,6 +22,10 @@ public class LienTask : AuditableEntity
     public DateTime? CompletedAt   { get; private set; }
     public Guid?  ClosedByUserId   { get; private set; }
 
+    public string SourceType           { get; private set; } = TaskSourceType.Manual;
+    public Guid?  GenerationRuleId     { get; private set; }
+    public Guid?  GeneratingTemplateId { get; private set; }
+
     private LienTask() { }
 
     public static LienTask Create(
@@ -33,7 +37,10 @@ public class LienTask : AuditableEntity
         Guid? assignedUserId = null,
         Guid? caseId = null,
         Guid? workflowStageId = null,
-        DateTime? dueDate = null)
+        DateTime? dueDate = null,
+        string? sourceType = null,
+        Guid? generationRuleId = null,
+        Guid? generatingTemplateId = null)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
@@ -43,23 +50,30 @@ public class LienTask : AuditableEntity
         if (!TaskPriorities.All.Contains(effectivePriority))
             throw new ArgumentException($"Invalid priority: '{effectivePriority}'.", nameof(priority));
 
+        var effectiveSourceType = sourceType ?? TaskSourceType.Manual;
+        if (!TaskSourceType.All.Contains(effectiveSourceType))
+            effectiveSourceType = TaskSourceType.Manual;
+
         var now = DateTime.UtcNow;
         return new LienTask
         {
-            Id              = Guid.NewGuid(),
-            TenantId        = tenantId,
-            Title           = title.Trim(),
-            Description     = description?.Trim(),
-            Status          = TaskStatuses.New,
-            Priority        = effectivePriority,
-            AssignedUserId  = assignedUserId,
-            CaseId          = caseId,
-            WorkflowStageId = workflowStageId,
-            DueDate         = dueDate,
-            CreatedByUserId = createdByUserId,
-            UpdatedByUserId = createdByUserId,
-            CreatedAtUtc    = now,
-            UpdatedAtUtc    = now,
+            Id                    = Guid.NewGuid(),
+            TenantId              = tenantId,
+            Title                 = title.Trim(),
+            Description           = description?.Trim(),
+            Status                = TaskStatuses.New,
+            Priority              = effectivePriority,
+            AssignedUserId        = assignedUserId,
+            CaseId                = caseId,
+            WorkflowStageId       = workflowStageId,
+            DueDate               = dueDate,
+            SourceType            = effectiveSourceType,
+            GenerationRuleId      = generationRuleId,
+            GeneratingTemplateId  = generatingTemplateId,
+            CreatedByUserId       = createdByUserId,
+            UpdatedByUserId       = createdByUserId,
+            CreatedAtUtc          = now,
+            UpdatedAtUtc          = now,
         };
     }
 

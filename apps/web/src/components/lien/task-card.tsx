@@ -77,6 +77,11 @@ export function TaskCard({ task, onComplete, onCancel, onClick, compact = false 
       </div>
 
       <div className="mt-2 flex items-center gap-2 flex-wrap">
+        {task.isSystemGenerated && (
+          <span className="text-xs bg-violet-50 text-violet-700 border border-violet-200 rounded px-1.5 py-0.5 flex items-center gap-0.5">
+            <i className="ri-robot-line" />System Generated
+          </span>
+        )}
         {task.linkedLiens.length > 0 && (
           <span className="text-xs bg-purple-50 text-purple-700 rounded px-1.5 py-0.5">
             <i className="ri-stack-line mr-0.5" />{task.linkedLiens.length} lien{task.linkedLiens.length !== 1 ? 's' : ''}

@@ -93,15 +93,18 @@ public sealed class LienTaskService : ILienTaskService
             throw new ValidationException("One or more required fields are missing.", errors);
 
         var entity = LienTask.Create(
-            tenantId:        tenantId,
-            title:           request.Title,
-            createdByUserId: actingUserId,
-            description:     request.Description,
-            priority:        request.Priority,
-            assignedUserId:  request.AssignedUserId,
-            caseId:          request.CaseId,
-            workflowStageId: request.WorkflowStageId,
-            dueDate:         request.DueDate);
+            tenantId:              tenantId,
+            title:                 request.Title,
+            createdByUserId:       actingUserId,
+            description:           request.Description,
+            priority:              request.Priority,
+            assignedUserId:        request.AssignedUserId,
+            caseId:                request.CaseId,
+            workflowStageId:       request.WorkflowStageId,
+            dueDate:               request.DueDate,
+            sourceType:            request.SourceType,
+            generationRuleId:      request.GenerationRuleId,
+            generatingTemplateId:  request.GeneratingTemplateId);
 
         await _taskRepo.AddAsync(entity, ct);
 
@@ -352,22 +355,26 @@ public sealed class LienTaskService : ILienTaskService
     {
         return new TaskResponse
         {
-            Id               = entity.Id,
-            TenantId         = entity.TenantId,
-            Title            = entity.Title,
-            Description      = entity.Description,
-            Status           = entity.Status,
-            Priority         = entity.Priority,
-            AssignedUserId   = entity.AssignedUserId,
-            CaseId           = entity.CaseId,
-            WorkflowStageId  = entity.WorkflowStageId,
-            DueDate          = entity.DueDate,
-            CompletedAt      = entity.CompletedAt,
-            ClosedByUserId   = entity.ClosedByUserId,
-            CreatedByUserId  = entity.CreatedByUserId,
-            CreatedAtUtc     = entity.CreatedAtUtc,
-            UpdatedAtUtc     = entity.UpdatedAtUtc,
-            LinkedLiens      = links.Select(l => new TaskLienLinkResponse
+            Id                    = entity.Id,
+            TenantId              = entity.TenantId,
+            Title                 = entity.Title,
+            Description           = entity.Description,
+            Status                = entity.Status,
+            Priority              = entity.Priority,
+            AssignedUserId        = entity.AssignedUserId,
+            CaseId                = entity.CaseId,
+            WorkflowStageId       = entity.WorkflowStageId,
+            DueDate               = entity.DueDate,
+            CompletedAt           = entity.CompletedAt,
+            ClosedByUserId        = entity.ClosedByUserId,
+            CreatedByUserId       = entity.CreatedByUserId,
+            CreatedAtUtc          = entity.CreatedAtUtc,
+            UpdatedAtUtc          = entity.UpdatedAtUtc,
+            SourceType            = entity.SourceType,
+            IsSystemGenerated     = entity.SourceType == Domain.Enums.TaskSourceType.SystemGenerated,
+            GenerationRuleId      = entity.GenerationRuleId,
+            GeneratingTemplateId  = entity.GeneratingTemplateId,
+            LinkedLiens           = links.Select(l => new TaskLienLinkResponse
             {
                 TaskId       = l.TaskId,
                 LienId       = l.LienId,

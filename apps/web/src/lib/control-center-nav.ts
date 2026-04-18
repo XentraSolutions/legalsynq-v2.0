@@ -67,6 +67,16 @@ export function buildControlCenterNav(_session: PlatformSession): NavGroup[] {
       ],
     },
     {
+      id:    'control-center-liens',
+      label: 'Liens',
+      icon:  'Scale',
+      items: [
+        { href: CCRoutes.liensWorkflow,       label: 'Workflow Config'  },
+        { href: CCRoutes.liensTaskTemplates,  label: 'Task Templates'   },
+        { href: CCRoutes.liensTaskAutomation, label: 'Task Automation'  },
+      ],
+    },
+    {
       id:    'control-center-config',
       label: 'Configuration',
       icon:  'Settings',

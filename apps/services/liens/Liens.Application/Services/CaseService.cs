@@ -10,18 +10,21 @@ namespace Liens.Application.Services;
 
 public sealed class CaseService : ICaseService
 {
-    private readonly ICaseRepository _caseRepo;
-    private readonly IAuditPublisher _audit;
-    private readonly ILogger<CaseService> _logger;
+    private readonly ICaseRepository           _caseRepo;
+    private readonly IAuditPublisher           _audit;
+    private readonly ILienTaskGenerationEngine _taskGenEngine;
+    private readonly ILogger<CaseService>      _logger;
 
     public CaseService(
         ICaseRepository caseRepo,
         IAuditPublisher audit,
+        ILienTaskGenerationEngine taskGenEngine,
         ILogger<CaseService> logger)
     {
-        _caseRepo = caseRepo;
-        _audit = audit;
-        _logger = logger;
+        _caseRepo      = caseRepo;
+        _audit         = audit;
+        _taskGenEngine = taskGenEngine;
+        _logger        = logger;
     }
 
     public async Task<PaginatedResult<CaseResponse>> SearchAsync(
@@ -109,6 +112,25 @@ public sealed class CaseService : ICaseService
             actorUserId: actingUserId,
             entityType: "Case",
             entityId: entity.Id.ToString());
+
+        // Fire-and-observe: task generation failure must not block case creation
+        var caseId    = entity.Id;
+        var genContext = new TaskGenerationContext(
+            TenantId:       tenantId,
+            EventType:      Domain.Enums.TaskGenerationEventType.CaseCreated,
+            EntityType:     "CASE",
+            EntityId:       caseId,
+            CaseId:         caseId,
+            LienId:         null,
+            WorkflowStageId: null,
+            ActorUserId:    actingUserId);
+
+        _ = _taskGenEngine.TriggerAsync(genContext, CancellationToken.None)
+            .ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    _logger.LogWarning(t.Exception, "Task generation failed for case {CaseId}.", caseId);
+            }, TaskContinuationOptions.OnlyOnFaulted);
 
         return MapToResponse(entity);
     }

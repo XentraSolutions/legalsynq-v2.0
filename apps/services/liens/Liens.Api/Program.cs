@@ -151,5 +151,7 @@ app.MapTaskEndpoints();
 app.MapWorkflowConfigEndpoints();
 // LS-LIENS-FLOW-002 — Contextual Task Intelligence: Task Templates.
 app.MapTaskTemplateEndpoints();
+// LS-LIENS-FLOW-003 — Event-Driven Task Generation.
+app.MapTaskGenerationRuleEndpoints();
 
 app.Run();

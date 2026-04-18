@@ -29,5 +29,6 @@ public static class LiensPermissions
 
     public const string WorkflowManage = "SYNQ_LIENS.workflow:manage";
 
-    public const string TaskTemplateManage = "SYNQ_LIENS.task_template:manage";
+    public const string TaskTemplateManage   = "SYNQ_LIENS.task_template:manage";
+    public const string TaskAutomationManage = "SYNQ_LIENS.task_automation:manage";
 }

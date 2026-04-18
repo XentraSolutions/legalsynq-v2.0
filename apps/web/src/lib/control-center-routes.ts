@@ -73,6 +73,17 @@ export const CCRoutes = {
 
   /** /control-center/notifications/log */
   notifLog:                 cc('/notifications/log'),
+
+  // ── Liens ──────────────────────────────────────────────────────────────────
+
+  /** /control-center/liens/workflow */
+  liensWorkflow:            cc('/liens/workflow'),
+
+  /** /control-center/liens/task-templates */
+  liensTaskTemplates:       cc('/liens/task-templates'),
+
+  /** /control-center/liens/task-automation */
+  liensTaskAutomation:      cc('/liens/task-automation'),
 } as const;
 
 export type CCRoutePath = typeof CCRoutes[keyof typeof CCRoutes];

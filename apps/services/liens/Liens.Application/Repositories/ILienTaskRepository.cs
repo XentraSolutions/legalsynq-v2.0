@@ -25,4 +25,8 @@ public interface ILienTaskRepository
     Task UpdateAsync(LienTask entity, CancellationToken ct = default);
     Task AddLienLinksAsync(IEnumerable<LienTaskLienLink> links, CancellationToken ct = default);
     Task RemoveLienLinksAsync(Guid taskId, CancellationToken ct = default);
+
+    Task<bool> HasOpenTaskForRuleAsync(Guid tenantId, Guid ruleId, Guid? caseId, Guid? lienId, CancellationToken ct = default);
+    Task<bool> HasOpenTaskForTemplateAsync(Guid tenantId, Guid templateId, Guid? caseId, Guid? lienId, CancellationToken ct = default);
+    Task AddGeneratedMetadataAsync(LienGeneratedTaskMetadata metadata, CancellationToken ct = default);
 }
