@@ -85,6 +85,24 @@ builder.Services.AddHostedService<ScheduleWorkerService>();
 
 var app = builder.Build();
 
+// ── Migration coverage self-test ─────────────────────────────────────────
+// Compares every EF-mapped column against the live schema and logs an ERROR
+// if any are missing. Guards against the regression behind Task #58 —
+// a migration committed without its [Migration] attribute (or otherwise
+// un-applied) leaves the EF model and the live schema out of sync, which
+// previously surfaced only as runtime "Unknown column" SQL errors.
+try
+{
+    using var probeScope = app.Services.CreateScope();
+    var db = probeScope.ServiceProvider
+        .GetRequiredService<Reports.Infrastructure.Persistence.ReportsDbContext>();
+    await BuildingBlocks.Diagnostics.MigrationCoverageProbe.RunAsync(db, app.Logger);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Migration coverage self-test could not run");
+}
+
 app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();

@@ -615,6 +615,26 @@ try
         }
     }
 
+    // ── Migration coverage self-test ─────────────────────────────────────────
+    // Compares every EF-mapped column against the live schema. If a model
+    // property has no backing column, log an ERROR so the regression is loud
+    // at boot. Catches the class of bug behind Task #58 — a migration
+    // committed without its [Migration] attribute (or otherwise un-applied)
+    // leaves the EF model and the live schema out of sync, which previously
+    // surfaced only as runtime "Unknown column" SQL errors.
+    try
+    {
+        await using var probeScope = app.Services.CreateAsyncScope();
+        var factory = probeScope.ServiceProvider
+            .GetRequiredService<IDbContextFactory<AuditEventDbContext>>();
+        await using var db = await factory.CreateDbContextAsync();
+        await BuildingBlocks.Diagnostics.MigrationCoverageProbe.RunAsync(db, app.Logger);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Migration coverage self-test could not run");
+    }
+
     // ── SQLite: EnsureCreated ────────────────────────────────────────────────
     // EnsureCreated() creates the schema from the EF Core model on first boot.
     // Subsequent starts are no-ops when the file already exists.

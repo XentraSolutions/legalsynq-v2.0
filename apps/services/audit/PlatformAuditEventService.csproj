@@ -49,4 +49,9 @@
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Task #62 — shared MigrationCoverageProbe lives in BuildingBlocks. -->
+    <ProjectReference Include="..\..\..\shared\building-blocks\BuildingBlocks\BuildingBlocks.csproj" />
+  </ItemGroup>
+
 </Project>

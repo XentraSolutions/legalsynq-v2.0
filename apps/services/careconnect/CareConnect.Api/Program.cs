@@ -68,6 +68,23 @@ var app = builder.Build();
     app.Logger.LogInformation("CareConnect database migrations applied successfully.");
 }
 
+// ── Migration coverage self-test ─────────────────────────────────────────
+// Compares every EF-mapped column against the live schema and logs an ERROR
+// if any are missing. Guards against the regression behind Task #58 —
+// a migration committed without its [Migration] attribute (or otherwise
+// un-applied) leaves the EF model and the live schema out of sync, which
+// previously surfaced only as runtime "Unknown column" SQL errors.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<CareConnectDbContext>();
+    await BuildingBlocks.Diagnostics.MigrationCoverageProbe.RunAsync(db, app.Logger);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Migration coverage self-test could not run");
+}
+
 // ── Phase H startup diagnostic: provider/facility Identity linkage health ─────
 try
 {

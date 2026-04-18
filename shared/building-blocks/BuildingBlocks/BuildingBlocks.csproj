@@ -16,6 +16,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.*" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.5.*" />
+    <!-- Task #62 — MigrationCoverageProbe needs to inspect the live schema
+         (information_schema / sqlite_master) and the EF Core model. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.0" />
   </ItemGroup>
 
 </Project>
