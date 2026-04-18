@@ -161,7 +161,9 @@ export function Sidebar() {
           </p>
         )}
         <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
-          {GLOBAL_BOTTOM_NAV.items.map(item => (
+          {GLOBAL_BOTTOM_NAV.items
+            .filter(item => !(selectedProductId === 'lien' && item.href === '/my-work'))
+            .map(item => (
             <SidebarItem
               key={item.href}
               item={item}
