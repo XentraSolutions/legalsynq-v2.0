@@ -16,6 +16,10 @@ public class LiensDbContext : DbContext
     public DbSet<LienOffer> LienOffers => Set<LienOffer>();
     public DbSet<BillOfSale> BillsOfSale => Set<BillOfSale>();
     public DbSet<ServicingItem> ServicingItems => Set<ServicingItem>();
+    public DbSet<LienTask> LienTasks => Set<LienTask>();
+    public DbSet<LienTaskLienLink> LienTaskLienLinks => Set<LienTaskLienLink>();
+    public DbSet<LienWorkflowConfig> LienWorkflowConfigs => Set<LienWorkflowConfig>();
+    public DbSet<LienWorkflowStage> LienWorkflowStages => Set<LienWorkflowStage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

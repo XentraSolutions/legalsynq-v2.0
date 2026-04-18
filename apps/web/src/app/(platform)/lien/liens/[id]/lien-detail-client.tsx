@@ -12,6 +12,7 @@ import { StatusProgress } from '@/components/lien/status-progress';
 import { ConfirmDialog, FormModal } from '@/components/lien/modal';
 import { EntityTimeline } from '@/components/lien/entity-timeline';
 import { NotesPanel } from '@/components/lien/notes-panel';
+import { TaskPanel } from '@/components/lien/task-panel';
 import { useProviderMode } from '@/hooks/use-provider-mode';
 import { LayoutSplit, type PanelMode } from '@/components/lien/layout-split';
 
@@ -241,7 +242,7 @@ export function LienDetailClient({ id }: { id: string }) {
         {activeTab === 'servicing' && <EmptyTab icon="ri-tools-line" label="Servicing" />}
         {activeTab === 'notes' && <NotesPanel notes={lienNotes} onAddNote={() => {}} readOnly />}
         {activeTab === 'history' && <EntityTimeline entityType="Lien" entityId={id} />}
-        {activeTab === 'tasks' && <EmptyTab icon="ri-task-line" label="Tasks" />}
+        {activeTab === 'tasks' && <TaskPanel lienId={id} title="Tasks" />}
       </div>
 
       <FormModal open={isSellMode && showOfferModal} onClose={() => setShowOfferModal(false)} onSubmit={handleSubmitOffer} title="Submit Offer" submitLabel={submitting ? 'Submitting...' : 'Submit Offer'} submitDisabled={!offerAmount || isNaN(Number(offerAmount)) || submitting}>

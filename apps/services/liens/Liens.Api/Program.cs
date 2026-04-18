@@ -146,5 +146,8 @@ app.MapServicingEndpoints();
 app.MapContactEndpoints();
 // LS-FLOW-MERGE-P4 — product → Flow integration endpoints.
 app.MapWorkflowEndpoints();
+// LS-LIENS-FLOW-001 — My Tasks + Workflow Configuration.
+app.MapTaskEndpoints();
+app.MapWorkflowConfigEndpoints();
 
 app.Run();

@@ -18,4 +18,14 @@ public static class LiensPermissions
     public const string CaseRead   = "SYNQ_LIENS.case:read";
     public const string CaseCreate = "SYNQ_LIENS.case:create";
     public const string CaseUpdate = "SYNQ_LIENS.case:update";
+
+    public const string TaskRead    = "SYNQ_LIENS.task:read";
+    public const string TaskCreate  = "SYNQ_LIENS.task:create";
+    public const string TaskEditOwn = "SYNQ_LIENS.task:edit:own";
+    public const string TaskEditAll = "SYNQ_LIENS.task:edit:all";
+    public const string TaskAssign  = "SYNQ_LIENS.task:assign";
+    public const string TaskComplete = "SYNQ_LIENS.task:complete";
+    public const string TaskCancel  = "SYNQ_LIENS.task:cancel";
+
+    public const string WorkflowManage = "SYNQ_LIENS.workflow:manage";
 }

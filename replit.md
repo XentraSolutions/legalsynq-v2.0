@@ -137,6 +137,11 @@ apps/web/
         liens.mapper.ts          ← DTO→UI model mappers: mapLienToListItem, mapLienToDetail, mapOfferToItem, mapDtoToUpdateRequest, mapPagination; inline LIEN_TYPE_LABELS
         liens.service.ts         ← business service: getLiens, getLien, createLien, updateLien, getLienOffers, createOffer, acceptOffer
         index.ts                 ← barrel exports
+        lien-tasks.types.ts      ← LS-LIENS-FLOW-001: TaskDto, PaginatedTasksDto, CreateTaskRequest, UpdateTaskRequest, TaskStatus/Priority enums + color/icon maps, BOARD_COLUMNS constant
+        lien-tasks.api.ts        ← LS-LIENS-FLOW-001: 8 API functions (list, getById, create, update, assign, updateStatus, complete, cancel) → returns ApiResponse<T>
+        lien-tasks.service.ts    ← LS-LIENS-FLOW-001: unwraps .data from ApiResponse; typed return values
+        lien-workflow.types.ts   ← LS-LIENS-FLOW-001: WorkflowConfigDto, WorkflowStageDto, Create/Update requests, ReorderStagesRequest, WorkflowUpdateSource
+        lien-workflow.api.ts     ← LS-LIENS-FLOW-001: tenant API (no tenantId) + admin API (explicit tenantId); safe 404/204 handling via ApiError
       servicing/                 ← LS-LIENS-UI-004: layered API service pattern for Servicing (same 5-file pattern)
         servicing.types.ts       ← DTOs (ServicingItemResponseDto, CreateServicingItemRequestDto, UpdateServicingItemRequestDto, UpdateServicingStatusRequestDto), UI models (ServicingListItem, ServicingDetail), PaginationMeta, ServicingQuery
         servicing.api.ts         ← raw HTTP client: list, getById, create, update, updateStatus → uses apiClient

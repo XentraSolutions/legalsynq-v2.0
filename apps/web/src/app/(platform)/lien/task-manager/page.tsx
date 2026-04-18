@@ -1,169 +1,212 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { KpiCard } from '@/components/lien/kpi-card';
-import { PageHeader } from '@/components/lien/page-header';
-import { FilterToolbar } from '@/components/lien/filter-toolbar';
-import { StatusBadge, PriorityBadge } from '@/components/lien/status-badge';
-import { ActionMenu } from '@/components/lien/action-menu';
-import { AssignTaskForm } from '@/components/lien/forms/assign-task-form';
-import { ConfirmDialog } from '@/components/lien/modal';
+import { lienTasksService } from '@/lib/liens/lien-tasks.service';
+import type { TaskDto, TaskStatus, TaskPriority, TasksQuery } from '@/lib/liens/lien-tasks.types';
+import {
+  TASK_STATUS_LABELS,
+  TASK_STATUS_COLORS,
+  TASK_PRIORITY_COLORS,
+  TASK_PRIORITY_ICONS,
+  BOARD_COLUMNS,
+  ALL_TASK_STATUSES,
+} from '@/lib/liens/lien-tasks.types';
 import { useLienStore } from '@/stores/lien-store';
-import { useRoleAccess } from '@/hooks/use-role-access';
-import { servicingService } from '@/lib/servicing';
-import type { ServicingListItem, PaginationMeta } from '@/lib/servicing';
+import { PageHeader } from '@/components/lien/page-header';
+import { CreateEditTaskForm } from '@/components/lien/forms/create-edit-task-form';
+import { TaskCard } from '@/components/lien/task-card';
 
-function formatDate(val: string): string {
+type ViewMode = 'board' | 'list';
+type AssignmentScope = 'all' | 'me' | 'others' | 'unassigned';
+
+function formatDate(val?: string | null): string {
   if (!val) return '\u2014';
   try {
     const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return val;
-  }
+    return isNaN(d.getTime()) ? val : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch { return val ?? '\u2014'; }
 }
 
-const STATUS_COLUMNS = [
-  { key: 'Pending',    label: 'Pending',     icon: 'ri-time-line',              color: 'border-t-gray-400' },
-  { key: 'InProgress', label: 'In Progress', icon: 'ri-loader-4-line',          color: 'border-t-blue-500' },
-  { key: 'Escalated',  label: 'Escalated',   icon: 'ri-alarm-warning-line',     color: 'border-t-red-500' },
-  { key: 'OnHold',     label: 'On Hold',     icon: 'ri-pause-circle-line',      color: 'border-t-amber-500' },
-  { key: 'Completed',  label: 'Completed',   icon: 'ri-checkbox-circle-line',   color: 'border-t-green-500' },
-] as const;
-
-type ViewMode = 'board' | 'list';
+function isOverdue(dueDate?: string | null, status?: string): boolean {
+  if (!dueDate || status === 'COMPLETED' || status === 'CANCELLED') return false;
+  return new Date(dueDate) < new Date();
+}
 
 export default function TaskManagerPage() {
-  const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
-  const ra = useRoleAccess();
 
-  const [items, setItems] = useState<ServicingListItem[]>([]);
-  const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: 100, totalCount: 0, totalPages: 0 });
+  const [tasks, setTasks] = useState<TaskDto[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('board');
 
   const [search, setSearch] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
-  const [assigneeFilter, setAssigneeFilter] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('board');
+  const [statusFilter, setStatusFilter] = useState<TaskStatus | ''>('');
+  const [priorityFilter, setPriorityFilter] = useState<TaskPriority | ''>('');
+  const [assignmentScope, setAssignmentScope] = useState<AssignmentScope>('all');
+
   const [showCreate, setShowCreate] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<{ id: string; status: string; label: string } | null>(null);
+  const [editTask, setEditTask] = useState<TaskDto | undefined>();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const canEdit = ra.can('servicing:edit');
-
-  const fetchData = useCallback(async () => {
+  const fetchTasks = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await servicingService.getItems({
+      const query: TasksQuery = {
         search: search || undefined,
+        status: statusFilter || undefined,
         priority: priorityFilter || undefined,
-        assignedTo: assigneeFilter || undefined,
+        assignmentScope: assignmentScope === 'all' ? undefined : assignmentScope,
+        pageSize: 200,
         page: 1,
-        pageSize: 100,
-      });
-      setItems(result.items);
-      setPagination(result.pagination);
+      };
+      const result = await lienTasksService.getTasks(query);
+      setTasks(result.items);
+      setTotalCount(result.totalCount);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tasks');
     } finally {
       setLoading(false);
     }
-  }, [search, priorityFilter, assigneeFilter]);
+  }, [search, statusFilter, priorityFilter, assignmentScope]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
-  const assignees = useMemo(() => {
-    const set = new Set(items.map((s) => s.assignedTo));
-    return Array.from(set).sort();
-  }, [items]);
-
-  const pendingCount = items.filter((s) => s.status === 'Pending').length;
-  const inProgressCount = items.filter((s) => s.status === 'InProgress').length;
-  const escalatedCount = items.filter((s) => s.status === 'Escalated').length;
-  const overdueCount = items.filter((s) => s.status !== 'Completed' && s.dueDate && new Date(s.dueDate) < new Date()).length;
-
-  async function handleQuickStatus(id: string, status: string) {
+  async function handleComplete(id: string) {
     setActionLoading(id);
     try {
-      await servicingService.updateStatus(id, status);
-      addToast({ type: 'success', title: `Task ${status === 'Completed' ? 'Completed' : status === 'InProgress' ? 'Started' : status}` });
-      await fetchData();
-    } catch (err) {
-      addToast({ type: 'error', title: 'Action Failed', description: err instanceof Error ? err.message : 'Unknown error' });
+      await lienTasksService.completeTask(id);
+      addToast({ type: 'success', title: 'Task Completed' });
+      fetchTasks();
+    } catch {
+      addToast({ type: 'error', title: 'Failed to complete task' });
     } finally {
       setActionLoading(null);
     }
   }
 
-  async function handleEscalate(id: string) {
+  async function handleCancel(id: string) {
     setActionLoading(id);
     try {
-      await servicingService.updateStatus(id, 'Escalated');
-      addToast({ type: 'warning', title: 'Task Escalated' });
-      await fetchData();
-    } catch (err) {
-      addToast({ type: 'error', title: 'Escalation Failed', description: err instanceof Error ? err.message : 'Unknown error' });
+      await lienTasksService.cancelTask(id);
+      addToast({ type: 'info', title: 'Task Cancelled' });
+      fetchTasks();
+    } catch {
+      addToast({ type: 'error', title: 'Failed to cancel task' });
     } finally {
       setActionLoading(null);
     }
   }
 
-  function getTaskActions(task: ServicingListItem) {
-    const menuItems: { label: string; icon: string; onClick: () => void; variant?: 'danger'; disabled?: boolean; divider?: boolean }[] = [
-      { label: 'View Details', icon: 'ri-eye-line', onClick: () => router.push(`/lien/servicing/${task.id}`) },
-    ];
-    if (canEdit && task.status !== 'Completed') {
-      menuItems.push(
-        { label: 'Start Work', icon: 'ri-play-line', onClick: () => handleQuickStatus(task.id, 'InProgress'), disabled: task.status === 'InProgress' },
-        { label: 'Mark Complete', icon: 'ri-checkbox-circle-line', onClick: () => setConfirmAction({ id: task.id, status: 'Completed', label: 'Complete Task' }) },
-        { label: 'Put On Hold', icon: 'ri-pause-circle-line', onClick: () => handleQuickStatus(task.id, 'OnHold'), disabled: task.status === 'OnHold' },
-        { label: 'Escalate', icon: 'ri-alarm-warning-line', onClick: () => handleEscalate(task.id), variant: 'danger' as const, divider: true },
-      );
-    }
-    return menuItems;
-  }
+  const kpis = useMemo(() => ({
+    total:      tasks.length,
+    new_:       tasks.filter((t) => t.status === 'NEW').length,
+    inProgress: tasks.filter((t) => t.status === 'IN_PROGRESS').length,
+    blocked:    tasks.filter((t) => t.status === 'WAITING_BLOCKED').length,
+    overdue:    tasks.filter((t) => isOverdue(t.dueDate, t.status)).length,
+  }), [tasks]);
 
-  const isOverdue = (dueDate: string) => dueDate && new Date(dueDate) < new Date();
+  const boardColumns = BOARD_COLUMNS.map((status) => ({
+    status,
+    label: TASK_STATUS_LABELS[status],
+    borderColor: TASK_STATUS_COLORS[status].border,
+    items: tasks.filter((t) => t.status === status),
+  }));
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Task Manager" subtitle={`${pagination.totalCount} tasks across ${assignees.length} team members`}
+      <PageHeader
+        title="Task Manager"
+        subtitle={`${totalCount} task${totalCount !== 1 ? 's' : ''} total`}
         actions={
           <div className="flex items-center gap-2">
             <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-              <button onClick={() => setViewMode('board')} className={`px-3 py-1.5 text-sm ${viewMode === 'board' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                <i className="ri-layout-column-line mr-1" />Board
+              <button
+                onClick={() => setViewMode('board')}
+                className={`px-3 py-1.5 text-sm flex items-center gap-1 ${viewMode === 'board' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              >
+                <i className="ri-layout-column-line" /> Board
               </button>
-              <button onClick={() => setViewMode('list')} className={`px-3 py-1.5 text-sm ${viewMode === 'list' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
-                <i className="ri-list-unordered mr-1" />List
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1.5 text-sm flex items-center gap-1 ${viewMode === 'list' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+              >
+                <i className="ri-list-unordered" /> List
               </button>
             </div>
-            {ra.can('servicing:create') && (
-              <button onClick={() => setShowCreate(true)} className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
-                <i className="ri-add-line text-base" />New Task
-              </button>
-            )}
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2"
+            >
+              <i className="ri-add-line" /> New Task
+            </button>
           </div>
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard title="Pending" value={pendingCount} icon="ri-time-line" iconColor="text-gray-600" />
-        <KpiCard title="In Progress" value={inProgressCount} icon="ri-loader-4-line" iconColor="text-blue-600" />
-        <KpiCard title="Escalated" value={escalatedCount} change={escalatedCount > 0 ? 'Needs attention' : 'None'} changeType={escalatedCount > 0 ? 'down' : 'up'} icon="ri-alarm-warning-line" iconColor="text-red-600" />
-        <KpiCard title="Overdue" value={overdueCount} change={overdueCount > 0 ? 'Past due date' : 'All on track'} changeType={overdueCount > 0 ? 'down' : 'up'} icon="ri-calendar-close-line" iconColor="text-amber-600" />
+      {/* KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {[
+          { label: 'Total',       value: kpis.total,      icon: 'ri-task-line',             color: 'text-gray-600'  },
+          { label: 'New',         value: kpis.new_,        icon: 'ri-time-line',             color: 'text-gray-500'  },
+          { label: 'In Progress', value: kpis.inProgress,  icon: 'ri-loader-4-line',         color: 'text-blue-600'  },
+          { label: 'Blocked',     value: kpis.blocked,     icon: 'ri-pause-circle-line',     color: 'text-amber-600' },
+          { label: 'Overdue',     value: kpis.overdue,     icon: 'ri-alarm-warning-line',    color: 'text-red-600'   },
+        ].map((k) => (
+          <div key={k.label} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
+            <div className={`flex items-center gap-1.5 text-xs font-medium ${k.color} mb-1`}>
+              <i className={k.icon} /> {k.label}
+            </div>
+            <div className="text-2xl font-bold text-gray-800">{k.value}</div>
+          </div>
+        ))}
       </div>
 
-      <FilterToolbar searchPlaceholder="Search tasks, descriptions, assignees..." onSearch={setSearch} filters={[
-        { label: 'All Priorities', value: priorityFilter, onChange: setPriorityFilter, options: [{ value: 'Low', label: 'Low' }, { value: 'Normal', label: 'Normal' }, { value: 'High', label: 'High' }, { value: 'Urgent', label: 'Urgent' }] },
-        { label: 'All Assignees', value: assigneeFilter, onChange: setAssigneeFilter, options: assignees.map((a) => ({ value: a, label: a })) },
-      ]} />
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap bg-white border border-gray-100 rounded-xl px-4 py-3">
+        <div className="relative flex-1 min-w-[180px]">
+          <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tasks..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+        <select
+          value={assignmentScope}
+          onChange={(e) => setAssignmentScope(e.target.value as AssignmentScope)}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          <option value="all">All Assignees</option>
+          <option value="me">My Tasks</option>
+          <option value="others">Others&apos; Tasks</option>
+          <option value="unassigned">Unassigned</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as TaskStatus | '')}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          <option value="">All Statuses</option>
+          {ALL_TASK_STATUSES.map((s) => (
+            <option key={s} value={s}>{TASK_STATUS_LABELS[s]}</option>
+          ))}
+        </select>
+        <select
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value as TaskPriority | '')}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          <option value="">All Priorities</option>
+          {(['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as TaskPriority[]).map((p) => (
+            <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>
+          ))}
+        </select>
+      </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
@@ -171,7 +214,7 @@ export default function TaskManagerPage() {
             <i className="ri-error-warning-line text-red-500" />
             <span className="text-sm text-red-700">{error}</span>
           </div>
-          <button onClick={fetchData} className="text-sm text-red-600 hover:text-red-800 font-medium">Retry</button>
+          <button onClick={fetchTasks} className="text-sm text-red-600 hover:text-red-800 font-medium">Retry</button>
         </div>
       )}
 
@@ -181,95 +224,142 @@ export default function TaskManagerPage() {
           <p className="text-sm text-gray-400 mt-2">Loading tasks...</p>
         </div>
       ) : viewMode === 'board' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          {STATUS_COLUMNS.map((col) => {
-            const tasks = items.filter((t) => t.status === col.key);
-            return (
-              <div key={col.key} className={`bg-gray-50 rounded-xl border border-gray-200 border-t-4 ${col.color} min-h-[200px]`}>
-                <div className="px-4 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <i className={`${col.icon} text-sm text-gray-500`} />
-                    <span className="text-sm font-semibold text-gray-700">{col.label}</span>
-                  </div>
-                  <span className="text-xs font-medium text-gray-400 bg-white border border-gray-200 rounded-full px-2 py-0.5">{tasks.length}</span>
-                </div>
-                <div className="px-3 pb-3 space-y-2">
-                  {tasks.map((task) => (
-                    <div key={task.id} className={`bg-white border border-gray-200 rounded-lg p-3 hover:shadow-sm transition-shadow ${actionLoading === task.id ? 'opacity-50' : ''}`}>
-                      <div className="flex items-start justify-between mb-2">
-                        <Link href={`/lien/servicing/${task.id}`} className="text-xs font-mono text-primary hover:underline">{task.taskNumber}</Link>
-                        <ActionMenu items={getTaskActions(task)} />
-                      </div>
-                      <p className="text-sm text-gray-700 line-clamp-2 mb-2">{task.description}</p>
-                      <div className="flex items-center gap-2 mb-2">
-                        <PriorityBadge priority={task.priority} />
-                      </div>
-                      <div className="flex items-center justify-between text-xs text-gray-400">
-                        <span className="flex items-center gap-1">
-                          <i className="ri-user-line" />{task.assignedTo.split(' ')[0]}
-                        </span>
-                        <span className={`flex items-center gap-1 ${isOverdue(task.dueDate) && task.status !== 'Completed' ? 'text-red-500 font-medium' : ''}`}>
-                          <i className="ri-calendar-line" />{formatDate(task.dueDate)}
-                          {isOverdue(task.dueDate) && task.status !== 'Completed' && <i className="ri-error-warning-line" />}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                  {tasks.length === 0 && (
-                    <div className="text-center py-6 text-xs text-gray-400">No tasks</div>
-                  )}
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {boardColumns.map((col) => (
+            <div key={col.status} className={`bg-gray-50 rounded-xl border border-gray-200 border-t-4 ${col.borderColor} min-h-[200px]`}>
+              <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100">
+                <span className="text-sm font-semibold text-gray-700">{col.label}</span>
+                <span className="text-xs font-medium text-gray-400 bg-white border border-gray-200 rounded-full px-2 py-0.5">
+                  {col.items.length}
+                </span>
               </div>
-            );
-          })}
+              <div className="p-3 space-y-2">
+                {col.items.map((task) => (
+                  <div key={task.id} className={actionLoading === task.id ? 'opacity-50' : ''}>
+                    <TaskCard
+                      task={task}
+                      onComplete={handleComplete}
+                      onCancel={handleCancel}
+                      onClick={(t) => setEditTask(t)}
+                      compact
+                    />
+                  </div>
+                ))}
+                {col.items.length === 0 && (
+                  <div className="text-center py-6 text-xs text-gray-300">No tasks</div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-100">
-              <thead><tr className="bg-gray-50">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Task #</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Description</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Assigned</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Priority</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Due</th>
-                <th className="px-4 py-3" />
-              </tr></thead>
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Title</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Priority</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Assignee</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Liens</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Due</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Updated</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
               <tbody className="divide-y divide-gray-100">
-                {items.map((task) => (
-                  <tr key={task.id} className={`hover:bg-gray-50 transition-colors ${actionLoading === task.id ? 'opacity-50' : ''}`}>
-                    <td className="px-4 py-3"><Link href={`/lien/servicing/${task.id}`} className="text-xs font-mono text-primary hover:underline">{task.taskNumber}</Link></td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{task.taskType}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{task.description}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{task.assignedTo}</td>
-                    <td className="px-4 py-3"><PriorityBadge priority={task.priority} /></td>
-                    <td className="px-4 py-3"><StatusBadge status={task.status} /></td>
+                {tasks.map((task) => (
+                  <tr
+                    key={task.id}
+                    className={`hover:bg-gray-50 cursor-pointer ${actionLoading === task.id ? 'opacity-50' : ''}`}
+                    onClick={() => setEditTask(task)}
+                  >
                     <td className="px-4 py-3">
-                      <span className={`text-xs whitespace-nowrap ${isOverdue(task.dueDate) && task.status !== 'Completed' ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
-                        {formatDate(task.dueDate)}
-                        {isOverdue(task.dueDate) && task.status !== 'Completed' && <i className="ri-error-warning-line ml-1" />}
+                      <div className="flex items-center gap-2">
+                        <i className={`${TASK_PRIORITY_ICONS[task.priority]} text-sm ${TASK_PRIORITY_COLORS[task.priority]}`} />
+                        <span className="text-sm font-medium text-gray-800 line-clamp-1">{task.title}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full
+                        ${task.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                          task.status === 'CANCELLED' ? 'bg-red-100 text-red-700' :
+                          task.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
+                          task.status === 'WAITING_BLOCKED' ? 'bg-amber-100 text-amber-700' :
+                          'bg-gray-100 text-gray-600'}`}>
+                        {TASK_STATUS_LABELS[task.status]}
                       </span>
                     </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-medium ${TASK_PRIORITY_COLORS[task.priority]}`}>
+                        {task.priority.charAt(0) + task.priority.slice(1).toLowerCase()}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {task.assignedUserId ? (
+                        <span className="flex items-center gap-1 text-xs"><i className="ri-user-line" />Assigned</span>
+                      ) : <span className="text-gray-300 text-xs">\u2014</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {task.linkedLiens.length > 0 ? (
+                        <span className="bg-purple-50 text-purple-700 text-xs rounded px-1.5 py-0.5">
+                          {task.linkedLiens.length}
+                        </span>
+                      ) : <span className="text-gray-300 text-xs">\u2014</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs ${isOverdue(task.dueDate, task.status) ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+                        {formatDate(task.dueDate)}
+                        {isOverdue(task.dueDate, task.status) && <i className="ri-error-warning-line ml-1" />}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{formatDate(task.updatedAtUtc)}</td>
                     <td className="px-4 py-3 text-right">
-                      <ActionMenu items={getTaskActions(task)} />
+                      <div className="flex items-center justify-end gap-1">
+                        {task.status !== 'COMPLETED' && task.status !== 'CANCELLED' && (
+                          <>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleComplete(task.id); }}
+                              className="p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50 rounded"
+                              title="Complete"
+                            >
+                              <i className="ri-checkbox-circle-line" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleCancel(task.id); }}
+                              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="Cancel"
+                            >
+                              <i className="ri-close-circle-line" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {items.length === 0 && !loading && <div className="p-10 text-center text-sm text-gray-400">No tasks match your filters.</div>}
+          {tasks.length === 0 && !loading && (
+            <div className="p-10 text-center text-sm text-gray-400">No tasks match your filters.</div>
+          )}
         </div>
       )}
 
-      <AssignTaskForm open={showCreate} onClose={() => setShowCreate(false)} onCreated={fetchData} />
+      <CreateEditTaskForm
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSaved={() => { fetchTasks(); setShowCreate(false); }}
+      />
 
-      {confirmAction && (
-        <ConfirmDialog open onClose={() => setConfirmAction(null)}
-          onConfirm={async () => { await handleQuickStatus(confirmAction.id, confirmAction.status); setConfirmAction(null); }}
-          title={confirmAction.label} description={`Mark this task as ${confirmAction.status.toLowerCase()}?`} confirmLabel={confirmAction.label}
+      {editTask && (
+        <CreateEditTaskForm
+          open
+          onClose={() => setEditTask(undefined)}
+          onSaved={() => { fetchTasks(); setEditTask(undefined); }}
+          editTask={editTask}
         />
       )}
     </div>
