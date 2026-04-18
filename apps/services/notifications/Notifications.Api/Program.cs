@@ -24,24 +24,8 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogWarning(ex, "Schema rename step failed — tables/columns may already be renamed");
     }
 
-    try
-    {
-        db.Database.Migrate();
-        app.Logger.LogInformation("Notifications database migrated successfully");
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogWarning(ex, "Database migration failed (may need manual setup), ensuring database is created");
-        try
-        {
-            db.Database.EnsureCreated();
-            app.Logger.LogInformation("Notifications database created via EnsureCreated");
-        }
-        catch (Exception ex2)
-        {
-            app.Logger.LogError(ex2, "Database creation also failed - service will start but DB operations will fail");
-        }
-    }
+    await db.Database.MigrateAsync();
+    app.Logger.LogInformation("Notifications database migrated successfully");
 
     // ── Migration coverage self-test ─────────────────────────────────────
     // Compares every EF-mapped column against the live schema and logs an

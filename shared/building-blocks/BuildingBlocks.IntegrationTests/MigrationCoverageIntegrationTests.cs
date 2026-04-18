@@ -1,6 +1,7 @@
 using BuildingBlocks.Diagnostics;
 using CareConnect.Infrastructure.Data;
 using Comms.Infrastructure.Persistence;
+using Documents.Infrastructure.Database;
 using Flow.Infrastructure.Persistence;
 using Fund.Infrastructure.Data;
 using Identity.Infrastructure.Data;
@@ -8,6 +9,7 @@ using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using MySqlConnector;
+using Notifications.Infrastructure.Data;
 using Reports.Infrastructure.Persistence;
 
 namespace BuildingBlocks.IntegrationTests;
@@ -31,10 +33,6 @@ namespace BuildingBlocks.IntegrationTests;
 ///                   dotnet restore to hang during project-graph resolution. Coverage
 ///                   is provided by AuditSchemaMigrationTests in the audit.Tests project
 ///                   — see task #73.)
-///   - notifications (no timestamped migration files; schema is created via EnsureCreated
-///                   so the probe would trivially pass against an always-matching schema)
-///   - documents    (snapshot-only Migrations folder with no timestamped migration files;
-///                   same EnsureCreated limitation as notifications)
 ///
 /// CI note: these tests require Docker (for Testcontainers container spin-up). In CI,
 /// they run in the "Schema Drift Integration Tests" job defined in
@@ -120,6 +118,24 @@ public class MigrationCoverageIntegrationTests
             "it_reports",
             cs => new ReportsDbContext(
                 new DbContextOptionsBuilder<ReportsDbContext>()
+                    .UseMySql(cs, ServerVersion)
+                    .Options));
+
+    [Fact]
+    public Task Probe_Passes_Notifications() =>
+        AssertProbePassesAsync<NotificationsDbContext>(
+            "it_notifications",
+            cs => new NotificationsDbContext(
+                new DbContextOptionsBuilder<NotificationsDbContext>()
+                    .UseMySql(cs, ServerVersion)
+                    .Options));
+
+    [Fact]
+    public Task Probe_Passes_Documents() =>
+        AssertProbePassesAsync<DocsDbContext>(
+            "it_documents",
+            cs => new DocsDbContext(
+                new DbContextOptionsBuilder<DocsDbContext>()
                     .UseMySql(cs, ServerVersion)
                     .Options));
 

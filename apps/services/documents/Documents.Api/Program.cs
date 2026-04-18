@@ -192,47 +192,11 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 // ── DB schema setup ──────────────────────────────────────────────────────────
-try
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<DocsDbContext>();
-
-    var created = db.Database.EnsureCreated();
-    if (created)
-    {
-        app.Logger.LogInformation("Database created with full schema from EF model");
-    }
-    else
-    {
-        try
-        {
-            var conn = db.Database.GetDbConnection();
-            conn.Open();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'docs_documents'";
-            var tableCount = Convert.ToInt32(cmd.ExecuteScalar());
-            if (tableCount == 0)
-            {
-                var sp = ((Microsoft.EntityFrameworkCore.Infrastructure.IInfrastructure<IServiceProvider>)db.Database).Instance;
-                var relCreator = (Microsoft.EntityFrameworkCore.Storage.IRelationalDatabaseCreator)
-                    sp.GetRequiredService<Microsoft.EntityFrameworkCore.Storage.IDatabaseCreator>();
-                relCreator.CreateTables();
-                app.Logger.LogInformation("Tables created in existing database");
-            }
-            else
-            {
-                app.Logger.LogInformation("Database already exists with tables — applying schema patches if needed");
-            }
-        }
-        catch (Exception tableEx)
-        {
-            app.Logger.LogWarning(tableEx, "Could not verify/create tables");
-        }
-    }
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Could not set up database schema — ensure MySQL is running");
+    await db.Database.MigrateAsync();
+    app.Logger.LogInformation("Documents database migrated successfully");
 }
 
 // ── Migration coverage self-test ─────────────────────────────────────────────

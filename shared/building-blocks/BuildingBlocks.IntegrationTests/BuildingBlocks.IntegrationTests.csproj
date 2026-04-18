@@ -29,8 +29,6 @@
                       web-SDK project from a non-web test project causes dotnet
                       restore to hang during project graph resolution; covered by
                       AuditSchemaMigrationTests in apps/services/audit.Tests — task #73)
-      - notifications (no timestamped migration files; uses EnsureCreated)
-      - documents    (snapshot-only in Migrations/, no timestamped migration files)
   -->
   <ItemGroup>
     <ProjectReference Include="..\BuildingBlocks\BuildingBlocks.csproj" />
@@ -38,10 +36,12 @@
     <!-- remaining services: standard Infrastructure class libraries -->
     <ProjectReference Include="..\..\..\apps\services\careconnect\CareConnect.Infrastructure\CareConnect.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\apps\services\comms\Comms.Infrastructure\Comms.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\apps\services\documents\Documents.Infrastructure\Documents.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\apps\services\flow\backend\src\Flow.Infrastructure\Flow.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\apps\services\fund\Fund.Infrastructure\Fund.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\apps\services\identity\Identity.Infrastructure\Identity.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\apps\services\liens\Liens.Infrastructure\Liens.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\apps\services\notifications\Notifications.Infrastructure\Notifications.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\apps\services\reports\src\Reports.Infrastructure\Reports.Infrastructure.csproj" />
   </ItemGroup>
 
