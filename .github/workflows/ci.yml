@@ -128,3 +128,19 @@ jobs:
           path: |
             ./test-results/integration-test-results.trx
             ./test-results/audit-integration-test-results.trx
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Shell-script tests — verify startup helper behaviour (no .NET required).
+  # Covers the launch_svc missing-binary error path in scripts/run-prod.sh so
+  # that a future refactor cannot silently remove the DLL-existence check.
+  # ─────────────────────────────────────────────────────────────────────────────
+  shell-script-tests:
+    name: Shell Script Tests
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run launch_svc tests
+        run: bash scripts/tests/test-launch-svc.sh
