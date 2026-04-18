@@ -29,6 +29,7 @@ export interface TenantUserDetail {
   lastLoginAtUtc?: string;
   sessionVersion: number;
   avatarDocumentId?: string;
+  phone?: string | null;
   memberships: {
     membershipId: string;
     organizationId: string;

@@ -4680,3 +4680,31 @@ Adds a modal-based Add User flow to the Authorization → Users page. Tenant adm
 
 ### Analysis
 `analysis/LS-ID-TNT-002-report.md`
+
+---
+
+## LS-ID-TNT-003 — User Actions: Edit + Status Control (2026-04-18)
+
+Adds per-row action menus to the Authorization → Users list. Each row gains a "⋯" button with a dropdown containing View Profile, Edit, and Activate/Deactivate. Incremental — no rewrites, no regressions to LS-ID-TNT-001 or LS-ID-TNT-002.
+
+### Files Changed
+- `apps/web/src/types/tenant.ts` — Added `phone?: string | null` to `TenantUserDetail`
+- `apps/web/src/lib/tenant-client-api.ts` — Added `getUserDetail(userId)`, `activateUser(userId)`, `deactivateUser(userId)`, `updatePhone(userId, phone)` methods; imported `TenantUserDetail` type
+- `apps/web/src/app/(platform)/tenant/authorization/users/AuthUserTable.tsx` — Replaced plain "View" button with `RowActionsMenu` dropdown; added `EditUserModal` and `ConfirmDialog` integration; activate/deactivate handlers with `router.refresh()` on success; toast on success/failure
+- `apps/web/src/app/(platform)/tenant/authorization/users/EditUserModal.tsx` — **New** — Edit User modal: firstName/lastName/email shown read-only; Role dropdown (single select, replaces all existing roles); Phone text field; parallel-fetches user detail + roles list on open; role revoke-then-assign on change; API errors surfaced in banner with form preserved
+
+### Backend Contracts Used
+| Action | Endpoint | Method |
+|--------|----------|--------|
+| Get user detail (for prefill) | `GET /identity/api/admin/users/{id}` | Admin |
+| Update role | `DELETE /identity/api/admin/users/{id}/roles/{roleId}` + `POST .../roles` | Admin |
+| Update phone | `PATCH /identity/api/admin/users/{id}/phone` | Admin |
+| Activate | `POST /identity/api/admin/users/{id}/activate` | Admin |
+| Deactivate | `PATCH /identity/api/admin/users/{id}/deactivate` | Admin |
+
+### Known Backend Gaps (documented)
+- firstName / lastName / email: no update endpoint exists → shown read-only in Edit modal
+- Last-admin protection: backend does NOT prevent deactivating the last tenant admin → backend gap, not frontend gap; frontend surfaces backend errors via toast
+
+### Analysis
+`analysis/LS-ID-TNT-003-report.md`

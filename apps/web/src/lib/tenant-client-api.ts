@@ -1,6 +1,7 @@
 import { apiClient, ApiError } from '@/lib/api-client';
 import type {
   TenantUser,
+  TenantUserDetail,
   TenantGroup,
   AccessDebugResponse,
   SimulationRequest,
@@ -24,6 +25,18 @@ export const tenantClientApi = {
 
   getRoles: () =>
     apiClient.get<{ id: string; name: string }[]>('/identity/api/admin/roles'),
+
+  getUserDetail: (userId: string) =>
+    apiClient.get<TenantUserDetail>(`/identity/api/admin/users/${userId}`),
+
+  activateUser: (userId: string) =>
+    apiClient.post<void>(`/identity/api/admin/users/${userId}/activate`, {}),
+
+  deactivateUser: (userId: string) =>
+    apiClient.patch<void>(`/identity/api/admin/users/${userId}/deactivate`, {}),
+
+  updatePhone: (userId: string, phone: string | null) =>
+    apiClient.patch<{ phone: string | null }>(`/identity/api/admin/users/${userId}/phone`, { phone }),
 
   assignProduct: (tenantId: string, userId: string, productCode: string) =>
     apiClient.put<void>(`/identity/api/tenants/${tenantId}/users/${userId}/products/${productCode}`, {}),

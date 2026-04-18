@@ -4,8 +4,13 @@ import { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { TenantUser } from '@/types/tenant';
 import { AddUserModal } from './AddUserModal';
+import { EditUserModal } from './EditUserModal';
+import { ConfirmDialog } from '@/components/lien/modal';
+import { tenantClientApi, ApiError } from '@/lib/tenant-client-api';
+import { useToast } from '@/lib/toast-context';
 
 type StatusFilter = 'All' | 'Active' | 'Inactive';
+type StatusAction = 'activate' | 'deactivate';
 
 const PAGE_SIZE = 15;
 
@@ -52,12 +57,90 @@ function CountBadge({ count, color = 'gray' }: { count: number; color?: string }
   );
 }
 
+function RowActionsMenu({
+  user,
+  onView,
+  onEdit,
+  onActivate,
+  onDeactivate,
+}: {
+  user: TenantUser;
+  onView: () => void;
+  onEdit: () => void;
+  onActivate: () => void;
+  onDeactivate: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  function close() { setOpen(false); }
+
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
+        aria-label="User actions"
+        className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+      >
+        <i className="ri-more-2-fill text-base" />
+      </button>
+
+      {open && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={(e) => { e.stopPropagation(); close(); }}
+          />
+          <div className="absolute right-0 z-20 mt-1 w-44 bg-white rounded-lg border border-gray-200 shadow-lg py-1 text-sm">
+            <button
+              onClick={(e) => { e.stopPropagation(); close(); onView(); }}
+              className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700 flex items-center gap-2"
+            >
+              <i className="ri-user-line text-gray-400" />
+              View Profile
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); close(); onEdit(); }}
+              className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700 flex items-center gap-2"
+            >
+              <i className="ri-edit-line text-gray-400" />
+              Edit
+            </button>
+            <div className="border-t border-gray-100 my-1" />
+            {user.isActive ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); close(); onDeactivate(); }}
+                className="w-full text-left px-3 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2"
+              >
+                <i className="ri-user-unfollow-line" />
+                Deactivate
+              </button>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); close(); onActivate(); }}
+                className="w-full text-left px-3 py-2 hover:bg-green-50 text-green-700 flex items-center gap-2"
+              >
+                <i className="ri-user-follow-line" />
+                Activate
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenantId: string }) {
   const router = useRouter();
+  const { show: showToast } = useToast();
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatus] = useState<StatusFilter>('All');
   const [page, setPage] = useState(1);
-  const [showAddUser, setShowAddUser] = useState(false);
+
+  const [showAddUser,  setShowAddUser]  = useState(false);
+  const [editUser,     setEditUser]     = useState<TenantUser | null>(null);
+  const [confirmState, setConfirmState] = useState<{ user: TenantUser; action: StatusAction } | null>(null);
+  const [actioning,    setActioning]    = useState(false);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -90,8 +173,45 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
     router.refresh();
   }, [router]);
 
+  const handleUserEdited = useCallback(() => {
+    setEditUser(null);
+    router.refresh();
+  }, [router]);
+
+  async function handleStatusAction() {
+    if (!confirmState) return;
+    const { user: u, action } = confirmState;
+    setActioning(true);
+    try {
+      if (action === 'activate') {
+        await tenantClientApi.activateUser(u.id);
+        showToast(`${displayName(u)} has been activated.`, 'success');
+      } else {
+        await tenantClientApi.deactivateUser(u.id);
+        showToast(`${displayName(u)} has been deactivated.`, 'success');
+      }
+      setConfirmState(null);
+      router.refresh();
+    } catch (err) {
+      let msg = 'Something went wrong. Please try again.';
+      if (err instanceof ApiError) {
+        if (err.isForbidden)  msg = 'You do not have permission to perform this action.';
+        else if (err.isNotFound) msg = 'User not found.';
+        else if (err.message) msg = err.message;
+      }
+      showToast(msg, 'error');
+      setConfirmState(null);
+    } finally {
+      setActioning(false);
+    }
+  }
+
   const productCount = (u: TenantUser) => u.productRoles?.filter((r) => !r.includes(':')).length ?? 0;
-  const roleCount = (u: TenantUser) => u.roles?.length ?? 0;
+  const roleCount    = (u: TenantUser) => u.roles?.length ?? 0;
+
+  const confirmUser     = confirmState?.user;
+  const confirmName     = confirmUser ? displayName(confirmUser) : '';
+  const isDeactivating  = confirmState?.action === 'deactivate';
 
   return (
     <>
@@ -100,6 +220,30 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
         tenantId={tenantId}
         onClose={() => setShowAddUser(false)}
         onSuccess={handleUserCreated}
+      />
+
+      {editUser && (
+        <EditUserModal
+          open={!!editUser}
+          user={editUser}
+          onClose={() => setEditUser(null)}
+          onSuccess={handleUserEdited}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!confirmState}
+        onClose={() => { if (!actioning) setConfirmState(null); }}
+        onConfirm={handleStatusAction}
+        loading={actioning}
+        title={isDeactivating ? `Deactivate ${confirmName}?` : `Activate ${confirmName}?`}
+        description={
+          isDeactivating
+            ? 'They will immediately lose access to the platform.'
+            : 'They will regain access based on their assigned role.'
+        }
+        confirmLabel={isDeactivating ? 'Deactivate' : 'Activate'}
+        confirmVariant={isDeactivating ? 'danger' : 'primary'}
       />
 
       <div className="space-y-4">
@@ -191,13 +335,14 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
                     <td className="px-4 py-3 text-center"><CountBadge count={productCount(u)} color="blue" /></td>
                     <td className="px-4 py-3 text-center hidden md:table-cell"><CountBadge count={roleCount(u)} color="indigo" /></td>
                     <td className="px-4 py-3 text-center hidden lg:table-cell"><CountBadge count={0} color="purple" /></td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); router.push(`/tenant/authorization/users/${u.id}`); }}
-                        className="text-xs text-primary hover:text-primary/80 font-medium"
-                      >
-                        View
-                      </button>
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <RowActionsMenu
+                        user={u}
+                        onView={() => router.push(`/tenant/authorization/users/${u.id}`)}
+                        onEdit={() => setEditUser(u)}
+                        onActivate={() => setConfirmState({ user: u, action: 'activate' })}
+                        onDeactivate={() => setConfirmState({ user: u, action: 'deactivate' })}
+                      />
                     </td>
                   </tr>
                 ))}
