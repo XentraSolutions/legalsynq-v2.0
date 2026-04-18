@@ -1,8 +1,24 @@
 'use client';
 
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from '@/hooks/use-session';
+
+// ── LS-ID-TNT-010: reason banner messages ────────────────────────────────────
+const REASON_MESSAGES: Record<string, { icon: string; text: string }> = {
+  idle: {
+    icon: 'ri-time-line',
+    text: 'Your session expired due to inactivity. Please sign in again.',
+  },
+  unauthenticated: {
+    icon: 'ri-shield-keyhole-line',
+    text: 'Your session has ended. Please sign in to continue.',
+  },
+  access_updated: {
+    icon: 'ri-lock-unlock-line',
+    text: 'Your access permissions have changed. Please sign in again to continue.',
+  },
+};
 
 /**
  * Login form — calls the Next.js BFF route POST /api/auth/login.
@@ -29,6 +45,12 @@ export function LoginForm() {
 
   const [mounted,    setMounted]    = useState(false);
   useEffect(() => { setMounted(true); }, []);
+
+  // LS-ID-TNT-010: read reason param to show appropriate context banner.
+  const reasonBanner = useMemo(() => {
+    const r = searchParams.get('reason') ?? '';
+    return REASON_MESSAGES[r] ?? null;
+  }, [searchParams]);
 
   const hasSubdomain = mounted && (() => {
     const host = window.location.hostname;
@@ -85,6 +107,14 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+
+      {/* Reason context banner (idle / unauthenticated / access_updated) */}
+      {reasonBanner && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-3">
+          <i className={`${reasonBanner.icon} text-[15px] text-blue-500 shrink-0 mt-0.5`} />
+          <p className="text-[13px] text-blue-700 leading-snug">{reasonBanner.text}</p>
+        </div>
+      )}
 
       {/* Dev-only tenant code — hidden when a subdomain is detected (tenant resolved from Host) */}
       {showTenantField && (

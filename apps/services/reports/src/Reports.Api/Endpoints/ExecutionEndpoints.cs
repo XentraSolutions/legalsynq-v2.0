@@ -1,3 +1,5 @@
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using Reports.Application.Execution;
 using Reports.Application.Execution.DTOs;
 using Reports.Application.Templates.DTOs;
@@ -8,9 +10,11 @@ public static class ExecutionEndpoints
 {
     public static void MapExecutionEndpoints(this IEndpointRouteBuilder routes)
     {
+        // LS-ID-TNT-010: apply product-access enforcement for SynqInsights.
         var group = routes.MapGroup("/api/v1/report-executions")
             .WithTags("Report Executions")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireProductAccess(ProductCodes.SynqInsights);
 
         group.MapPost("/", ExecuteReport)
             .WithName("ExecuteReport")

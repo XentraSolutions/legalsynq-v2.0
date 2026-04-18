@@ -3,6 +3,18 @@ import { getServerSession, requireSession } from '@/lib/session';
 import type { PlatformSession, ProductRoleValue } from '@/types';
 import { CC_ACCESS_DENIED_URL, CC_LOGIN_URL } from '@/lib/control-center-config';
 
+// ── LS-ID-TNT-010: Frontend-friendly product codes ────────────────────────────
+// Keep in sync with AuthService.DbToFrontendProductCode.
+export const FrontendProductCode = {
+  CareConnect:  'CareConnect',
+  SynqFund:     'SynqFund',
+  SynqLien:     'SynqLien',
+  SynqInsights: 'SynqInsights',
+  SynqComms:    'SynqComms',
+  SynqAI:       'SynqAI',
+} as const;
+export type FrontendProductCodeValue = (typeof FrontendProductCode)[keyof typeof FrontendProductCode];
+
 /**
  * Ensure a valid session exists.
  * Redirects to /login if not.
@@ -31,6 +43,37 @@ export async function requireOrg(): Promise<PlatformSession & { orgId: string }>
 export async function requireProductRole(role: ProductRoleValue): Promise<PlatformSession> {
   const session = await requireOrg();
   if (!session.productRoles.includes(role)) redirect('/dashboard');
+  return session;
+}
+
+/**
+ * LS-ID-TNT-010 — Route-level product access guard.
+ *
+ * Ensures the authenticated user has access to the given product before
+ * rendering any page under a product route group layout. PlatformAdmins
+ * and TenantAdmins bypass the check (they have implicit full access).
+ *
+ * For regular users, checks `session.userProducts` (JWT-derived per-user
+ * list from LS-ID-TNT-009). Falls back to `session.enabledProducts`
+ * (tenant-level) when userProducts is absent (e.g., legacy sessions).
+ *
+ * Redirects to `/access-denied` instead of `/dashboard` so the user
+ * receives a clear product-access message rather than a silent redirect.
+ *
+ * Usage (in a product route layout.tsx server component):
+ *   await requireProductAccess(FrontendProductCode.CareConnect);
+ */
+export async function requireProductAccess(productCode: FrontendProductCodeValue): Promise<PlatformSession> {
+  const session = await requireOrg();
+  // PlatformAdmins and TenantAdmins have implicit access to all products.
+  if (session.isPlatformAdmin || session.isTenantAdmin) return session;
+  // Prefer the user-level product list (JWT product_codes claim, LS-ID-TNT-009).
+  // Fall back to tenant-level enabled products for sessions that pre-date TNT-009.
+  const products: string[] =
+    (session.userProducts?.length ?? 0) > 0
+      ? session.userProducts!
+      : (session.enabledProducts ?? []);
+  if (!products.includes(productCode)) redirect('/access-denied');
   return session;
 }
 

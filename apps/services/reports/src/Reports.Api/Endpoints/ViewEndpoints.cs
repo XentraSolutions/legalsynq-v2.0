@@ -1,3 +1,5 @@
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using Reports.Application.Templates.DTOs;
 using Reports.Application.Views;
 using Reports.Application.Views.DTOs;
@@ -8,9 +10,11 @@ public static class ViewEndpoints
 {
     public static void MapViewEndpoints(this IEndpointRouteBuilder routes)
     {
+        // LS-ID-TNT-010: apply product-access enforcement for SynqInsights.
         var viewGroup = routes.MapGroup("/api/v1/tenant-templates/{templateId:guid}/views")
             .WithTags("Tenant Report Views")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireProductAccess(ProductCodes.SynqInsights);
 
         viewGroup.MapPost("/", CreateView)
             .WithName("CreateTenantReportView")

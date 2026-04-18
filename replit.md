@@ -4870,3 +4870,28 @@ To move to strict explicit-only product access, remove the LegacyDefault block i
 
 ### Analysis
 `analysis/LS-ID-TNT-009-report.md`
+
+## LS-ID-TNT-010 — Enforcement Completion: Route Guards, Session Consistency, Cross-Service Standardisation (2026-04-18)
+
+Closes three enforcement gaps left after LS-ID-TNT-009: (1) **Route-level access guards** — four product route groups (`lien/`, `careconnect/`, `fund/`, `insights/`) now have server-component layouts that call `requireProductAccess()` before rendering any page; unauthenticated or unauthorised navigations redirect server-side to `/access-denied`. (2) **Token/session consistency** — `session-provider.tsx` now subscribes to `document.visibilitychange`; returning to the tab re-calls `/auth/me`, catching `access_version` mismatches immediately; 401 responses redirect to `/login?reason=access_updated` (distinct from `idle` and `unauthenticated`); login form renders a contextual info banner for each reason. (3) **Cross-service standardisation** — `ProductCodes.cs` gains `SynqInsights` and `SynqComms`; all four Reports.Api endpoint groups (`Execution`, `Export`, `View`, `Override`) now carry `.RequireProductAccess(ProductCodes.SynqInsights)`. No schema migrations. No regressions to LS-ID-TNT-001 through LS-ID-TNT-009.
+
+### Files Changed
+- `shared/building-blocks/BuildingBlocks/Authorization/ProductCodes.cs` — added `SynqInsights = "SYNQ_INSIGHTS"` and `SynqComms = "SYNQ_COMMS"` constants
+- `apps/services/reports/src/Reports.Api/Endpoints/ExecutionEndpoints.cs` — `.RequireProductAccess(ProductCodes.SynqInsights)` added
+- `apps/services/reports/src/Reports.Api/Endpoints/ExportEndpoints.cs` — `.RequireProductAccess(ProductCodes.SynqInsights)` added
+- `apps/services/reports/src/Reports.Api/Endpoints/ViewEndpoints.cs` — `.RequireProductAccess(ProductCodes.SynqInsights)` added
+- `apps/services/reports/src/Reports.Api/Endpoints/OverrideEndpoints.cs` — `.RequireProductAccess(ProductCodes.SynqInsights)` added
+- `apps/web/src/lib/auth-guards.ts` — `FrontendProductCode` constants dict + `requireProductAccess()` server guard function
+- `apps/web/src/app/(platform)/access-denied/page.tsx` — **created** platform-level product access denied page (within `(platform)` layout, no product guard)
+- `apps/web/src/app/(platform)/careconnect/layout.tsx` — **created** server layout guard for CareConnect product
+- `apps/web/src/app/(platform)/fund/layout.tsx` — **created** server layout guard for SynqFund product
+- `apps/web/src/app/(platform)/insights/layout.tsx` — **created** server layout guard for SynqInsights product
+- `apps/web/src/app/(platform)/lien/layout.tsx` — **updated**: was `'use client'` wrapping LienProviders; now async server component calling `requireProductAccess(SynqLien)` then rendering `<LienProviders>` as child
+- `apps/web/src/providers/session-provider.tsx` — `visibilitychange` event listener for tab-return re-validation; 401 redirect reason (`access_updated` vs `unauthenticated`) using pre-clear `hadSession` capture
+- `apps/web/src/app/login/login-form.tsx` — `REASON_MESSAGES` map + `reasonBanner` derived via `useMemo`; info banner rendered above form fields for `idle`, `unauthenticated`, `access_updated`
+
+### requireProductAccess() Design
+Server-only async function. Call chain: `requireOrg()` (auth + org) → admin bypass → prefer `userProducts` (JWT claim) → fall back to `enabledProducts` (tenant-level) → `redirect('/access-denied')` on failure. Mirrors backend `RequireProductAccessFilter` bypass logic for PlatformAdmins and TenantAdmins.
+
+### Analysis
+`analysis/LS-ID-TNT-010-report.md`

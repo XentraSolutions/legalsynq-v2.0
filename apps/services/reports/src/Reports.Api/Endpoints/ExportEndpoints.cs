@@ -1,3 +1,5 @@
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using Reports.Application.Export;
 using Reports.Application.Export.DTOs;
 using Reports.Application.Templates.DTOs;
@@ -8,9 +10,11 @@ public static class ExportEndpoints
 {
     public static void MapExportEndpoints(this IEndpointRouteBuilder routes)
     {
+        // LS-ID-TNT-010: apply product-access enforcement for SynqInsights.
         var group = routes.MapGroup("/api/v1/report-exports")
             .WithTags("Report Exports")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireProductAccess(ProductCodes.SynqInsights);
 
         group.MapPost("/", ExportReport)
             .WithName("ExportReport")

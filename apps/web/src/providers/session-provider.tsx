@@ -81,11 +81,18 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
 
       if (!res.ok) {
         if (res.status === 401) {
-          // Genuine auth failure — clear session and redirect to login.
+          // Genuine auth failure — could be session expiry OR access_version mismatch
+          // (LS-ID-TNT-010: access changes bump access_version → /auth/me returns 401
+          // → redirect with reason so the login page shows an appropriate message).
+          // Capture whether a session was active BEFORE clearing, to pick the right reason.
+          const hadSession = !!sessionRef.current;
           setSession(null);
           sessionRef.current = null;
           if (typeof window !== 'undefined') {
-            window.location.href = '/login';
+            // hadSession=true means user was previously authenticated but access changed.
+            // hadSession=false means cold load with no valid session.
+            const reason = hadSession ? 'access_updated' : 'unauthenticated';
+            window.location.href = `/login?reason=${reason}`;
           }
         }
         // Non-401 errors (503, 500, network blip): keep any existing session
@@ -124,6 +131,21 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
   }, []);
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
+
+  // ── LS-ID-TNT-010: Access version re-validation on tab focus ──────────────
+  // When the user returns to this tab after being away, re-call /auth/me.
+  // The Identity service validates the token's access_version against the DB;
+  // if a TenantAdmin revoked access while the user was away, this catches it
+  // on the next tab-focus event and triggers a /login redirect.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && sessionRef.current) {
+        void fetchSession();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [fetchSession]);
 
   const clearSession = useCallback(() => {
     setSession(null);

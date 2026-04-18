@@ -1,3 +1,5 @@
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using Reports.Application.Overrides;
 using Reports.Application.Overrides.DTOs;
 using Reports.Application.Templates.DTOs;
@@ -8,9 +10,11 @@ public static class OverrideEndpoints
 {
     public static void MapOverrideEndpoints(this IEndpointRouteBuilder routes)
     {
+        // LS-ID-TNT-010: apply product-access enforcement for SynqInsights.
         var overrideGroup = routes.MapGroup("/api/v1/tenant-templates/{templateId:guid}/overrides")
             .WithTags("Tenant Report Overrides")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireProductAccess(ProductCodes.SynqInsights);
 
         overrideGroup.MapPost("/", CreateOverride)
             .WithName("CreateTenantReportOverride")
@@ -43,7 +47,8 @@ public static class OverrideEndpoints
 
         var effectiveGroup = routes.MapGroup("/api/v1/tenant-templates/{templateId:guid}")
             .WithTags("Tenant Effective Report")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireProductAccess(ProductCodes.SynqInsights);
 
         effectiveGroup.MapGet("/effective", ResolveEffectiveReport)
             .WithName("ResolveEffectiveReport")
