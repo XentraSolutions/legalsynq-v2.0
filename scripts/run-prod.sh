@@ -25,10 +25,10 @@ echo "[next] Using: $NEXT_BIN"
 # seconds.  Logs a clear WARNING if the service never responds.
 # Used for both .NET and Node.js services.
 _probe_svc() {
-  local label="$1" port="$2" path="$3"
+  local label="$1" port="$2" path="$3" deadline="${4:-90}"
   (
     echo "[$label] Waiting for $path on :$port..."
-    local deadline=90 elapsed=0
+    local elapsed=0
     while [ "$elapsed" -lt "$deadline" ]; do
       if curl -sf "http://127.0.0.1:${port}${path}" >/dev/null 2>&1; then
         echo "[$label] $path healthy after ${elapsed}s"
@@ -214,9 +214,10 @@ if command -v dotnet &>/dev/null; then
 
     # ── Health-check probes for all .NET services ─────────────────────────
     # Each probe polls its /health (or /healthz for Flow) endpoint for up to
-    # 90 seconds after launch.  All probes run in the background so they do
-    # not block each other or the wait below.  A clear WARNING is logged if a
-    # service does not respond within the deadline.
+    # 90 seconds after launch (.NET cold-start + build can take that long).
+    # All probes run in the background so they do not block each other or the
+    # wait below.  A clear WARNING is logged if a service does not respond
+    # within the deadline.
     # _probe_svc is defined at the top of this script and inherited here.
 
     _probe_svc "Identity"      5001 /health
@@ -246,12 +247,14 @@ echo "[artifacts] Starting on :5020"
 PID_ARTIFACTS=$!
 
 # ── Health-check probes for all Node.js services ──────────────────────────────
-# Each probe polls a liveness endpoint in the background for up to 90 seconds.
+# Each probe polls a liveness endpoint in the background for up to 60 seconds.
+# Node.js processes (Next.js, Express) typically start well under 30s, so a
+# 60-second deadline surfaces failures faster than the 90s used for .NET.
 # A clear WARNING is logged if the service does not respond within the deadline.
-_probe_svc "Web"       3050 /api/health
-_probe_svc "Proxy"     5000 /health
-_probe_svc "CC"        5004 /api/health
-_probe_svc "Artifacts" 5020 /api/health
+_probe_svc "Web"       3050 /api/health 60
+_probe_svc "Proxy"     5000 /health     60
+_probe_svc "CC"        5004 /api/health 60
+_probe_svc "Artifacts" 5020 /api/health 60
 
 ALL_PIDS="$PID_WEB $PID_PROXY $PID_CC $PID_ARTIFACTS"
 [ -n "$PID_DOTNET" ] && ALL_PIDS="$ALL_PIDS $PID_DOTNET"
