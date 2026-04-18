@@ -20,13 +20,19 @@ fi
 echo "====== LegalSynq production startup ======"
 echo "[next] Using: $NEXT_BIN"
 
+# ── Startup probe timeouts ─────────────────────────────────────────────────────
+# Override these env vars to tune probe deadlines without editing this script.
+#   PROBE_TIMEOUT_NODEJS — seconds to wait for Node.js services (default 60)
+#   PROBE_TIMEOUT_DOTNET — seconds to wait for .NET services    (default 90)
+PROBE_TIMEOUT_NODEJS="${PROBE_TIMEOUT_NODEJS:-60}"
+PROBE_TIMEOUT_DOTNET="${PROBE_TIMEOUT_DOTNET:-90}"
+
 # ── Health-check probe helper ──────────────────────────────────────────────────
 # Polls <scheme>://<host>:<port><path> in the background for up to $deadline
 # seconds.  Logs a clear WARNING if the service never responds.
 # Used for both .NET and Node.js services.
 _probe_svc() {
-  local label="$1" port="$2" path="$3" pid="${4:-}"
-  local deadline=90
+  local label="$1" port="$2" path="$3" pid="${4:-}" deadline="${5:-90}"
   (
     echo "[$label] Waiting for $path on :$port..."
     local elapsed=0
@@ -222,21 +228,23 @@ if command -v dotnet &>/dev/null; then
 
     # ── Health-check probes for all .NET services ─────────────────────────
     # Each probe polls its /health (or /healthz for Flow) endpoint for up to
-    # 90 seconds after launch (.NET cold-start + build can take that long).
+    # $PROBE_TIMEOUT_DOTNET seconds (default 90) after launch (.NET cold-start
+    # + build can take that long).  Set PROBE_TIMEOUT_DOTNET in the environment
+    # to override without editing this script.
     # All probes run in the background so they do not block each other or the
     # wait below.  A clear WARNING is logged if a service does not respond
     # within the deadline.
     # _probe_svc is defined at the top of this script and inherited here.
 
-    _probe_svc "Identity"      5001 /health      "${PID_IDENTITY:-}"
-    _probe_svc "Fund"          5002 /health      "${PID_FUND:-}"
-    _probe_svc "CareConnect"   5003 /health      "${PID_CARECONNECT:-}"
-    _probe_svc "Documents"     5006 /health      "${PID_DOCUMENTS:-}"
-    _probe_svc "Audit"         5007 /health      "${PID_AUDIT:-}"
-    _probe_svc "Notifications" 5008 /health      "${PID_NOTIFICATIONS:-}"
-    _probe_svc "Liens"         5009 /health      "${PID_LIENS:-}"
-    _probe_svc "Gateway"       5010 /health      "${PID_GATEWAY:-}"
-    _probe_svc "Flow"          5012 /healthz     "${PID_FLOW:-}"
+    _probe_svc "Identity"      5001 /health   "${PID_IDENTITY:-}"      "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Fund"          5002 /health   "${PID_FUND:-}"          "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "CareConnect"   5003 /health   "${PID_CARECONNECT:-}"   "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Documents"     5006 /health   "${PID_DOCUMENTS:-}"     "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Audit"         5007 /health   "${PID_AUDIT:-}"         "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Notifications" 5008 /health   "${PID_NOTIFICATIONS:-}" "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Liens"         5009 /health   "${PID_LIENS:-}"         "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Gateway"       5010 /health   "${PID_GATEWAY:-}"       "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Flow"          5012 /healthz  "${PID_FLOW:-}"          "$PROBE_TIMEOUT_DOTNET"
 
     wait
   ) &
@@ -255,14 +263,16 @@ echo "[artifacts] Starting on :5020"
 PID_ARTIFACTS=$!
 
 # ── Health-check probes for all Node.js services ──────────────────────────────
-# Each probe polls a liveness endpoint in the background for up to 60 seconds.
-# Node.js processes (Next.js, Express) typically start well under 30s, so a
-# 60-second deadline surfaces failures faster than the 90s used for .NET.
+# Each probe polls a liveness endpoint in the background for up to
+# $PROBE_TIMEOUT_NODEJS seconds (default 60).  Node.js processes (Next.js,
+# Express) typically start well under 30s, so the default deadline surfaces
+# failures faster than the 90s used for .NET.  Set PROBE_TIMEOUT_NODEJS in
+# the environment to override without editing this script.
 # A clear WARNING is logged if the service does not respond within the deadline.
-_probe_svc "Web"       3050 /api/health 60
-_probe_svc "Proxy"     5000 /health     60
-_probe_svc "CC"        5004 /api/health 60
-_probe_svc "Artifacts" 5020 /api/health 60
+_probe_svc "Web"       3050 /api/health "$PID_WEB"       "$PROBE_TIMEOUT_NODEJS"
+_probe_svc "Proxy"     5000 /health     "$PID_PROXY"     "$PROBE_TIMEOUT_NODEJS"
+_probe_svc "CC"        5004 /api/health "$PID_CC"        "$PROBE_TIMEOUT_NODEJS"
+_probe_svc "Artifacts" 5020 /api/health "$PID_ARTIFACTS" "$PROBE_TIMEOUT_NODEJS"
 
 ALL_PIDS="$PID_WEB $PID_PROXY $PID_CC $PID_ARTIFACTS"
 [ -n "$PID_DOTNET" ] && ALL_PIDS="$ALL_PIDS $PID_DOTNET"

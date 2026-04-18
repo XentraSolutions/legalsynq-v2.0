@@ -122,6 +122,15 @@ This starts:
 
 Each service reads its configuration from `appsettings.json` and `appsettings.Development.json`. Connection strings are configured per service (e.g., `ConnectionStrings:IdentityDb`, `ConnectionStrings:LiensDb`). JWT signing keys are shared across services for token validation.
 
+#### Startup Probe Timeouts (`scripts/run-prod.sh`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `PROBE_TIMEOUT_NODEJS` | `60` | Seconds to wait for Node.js services (Web, Proxy, Control Center, Artifacts) to respond to their health endpoint before logging a warning. |
+| `PROBE_TIMEOUT_DOTNET` | `90` | Seconds to wait for .NET services (Identity, Fund, CareConnect, Documents, Audit, Notifications, Liens, Gateway, Flow) to respond to their health endpoint before logging a warning. |
+
+Set these in the deployment environment to tune probe deadlines without editing the script.
+
 ## Project Structure
 
 ```
