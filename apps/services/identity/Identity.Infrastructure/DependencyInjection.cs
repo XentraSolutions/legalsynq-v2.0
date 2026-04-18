@@ -82,6 +82,12 @@ public static class DependencyInjection
         services.AddOptions<NotificationsServiceOptions>()
                 .Bind(configuration.GetSection(NotificationsServiceOptions.SectionName));
         services.AddHttpClient("NotificationsService");
+
+        // LS-ID-TNT-006: Transactional email client — calls POST /internal/send-email
+        // on the notifications service to deliver password-reset emails.
+        // Always registered; handles unconfigured BaseUrl/PortalBaseUrl internally
+        // by returning EmailConfigured=false so the handler applies the correct fallback.
+        services.AddScoped<INotificationsEmailClient, NotificationsEmailClient>();
         var notificationsBaseUrl = configuration[$"{NotificationsServiceOptions.SectionName}:BaseUrl"];
         if (!string.IsNullOrWhiteSpace(notificationsBaseUrl))
         {

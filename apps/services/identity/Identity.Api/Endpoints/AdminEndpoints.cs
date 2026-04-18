@@ -10,6 +10,7 @@ using LegalSynq.AuditClient.Enums;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Identity.Api.Endpoints;
 
@@ -1730,21 +1731,24 @@ public static class AdminEndpoints
     /// <summary>
     /// POST /api/admin/users/{id}/reset-password
     ///
-    /// Admin-triggers a password reset workflow for a user.
-    /// Creates a PasswordResetToken (24-hour expiry) and logs the reset link.
-    /// In production, the link would be emailed; in dev it is logged only.
+    /// Admin-triggers a password reset for a user. Creates a PasswordResetToken
+    /// (24-hour expiry), then dispatches a reset-link email via the notifications
+    /// service when configured (LS-ID-TNT-006). Falls back to the env-gated
+    /// resetToken response when notifications is not set up (dev only).
     ///
     /// Any previous pending reset tokens for this user are revoked first (idempotent).
     /// Emits identity.user.password_reset_triggered audit event.
     /// </summary>
     private static async Task<IResult> AdminResetPassword(
-        Guid                id,
-        ClaimsPrincipal     caller,
-        IdentityDbContext   db,
-        IAuditEventClient   auditClient,
-        ILoggerFactory      loggerFactory,
-        IWebHostEnvironment env,
-        CancellationToken   ct)
+        Guid                                  id,
+        ClaimsPrincipal                       caller,
+        IdentityDbContext                     db,
+        IAuditEventClient                     auditClient,
+        ILoggerFactory                        loggerFactory,
+        IWebHostEnvironment                   env,
+        IOptions<NotificationsServiceOptions> notificationsOptions,
+        INotificationsEmailClient             notificationsEmail,
+        CancellationToken                     ct)
     {
         var logger = loggerFactory.CreateLogger(nameof(AdminEndpoints));
 
@@ -1821,9 +1825,39 @@ public static class AdminEndpoints
             Tags = ["user-management", "security", "password-reset"],
         });
 
-        // LS-ID-TNT-005: Return the raw reset token in non-production environments only.
-        // This gives admins a direct path to the reset link without reading server logs.
-        // In production the token is withheld — email delivery is future infrastructure.
+        // LS-ID-TNT-006: Attempt email delivery via notifications service when configured.
+        // The reset link is built from PortalBaseUrl (co-located in NotificationsServiceOptions)
+        // using the same token encoding as the self-service forgot-password BFF route.
+        var portalBaseUrl = notificationsOptions.Value.PortalBaseUrl?.TrimEnd('/');
+        if (!string.IsNullOrWhiteSpace(portalBaseUrl))
+        {
+            var resetLink   = $"{portalBaseUrl}/reset-password?token={Uri.EscapeDataString(rawToken)}";
+            var displayName = $"{user.FirstName} {user.LastName}".Trim();
+            if (string.IsNullOrWhiteSpace(displayName)) displayName = user.Email;
+
+            var (emailConfigured, delivered, deliveryError) =
+                await notificationsEmail.SendPasswordResetEmailAsync(user.Email, displayName, resetLink, ct);
+
+            if (emailConfigured)
+            {
+                if (delivered)
+                    return Results.Ok(new { message = $"Password reset email sent to {user.Email}." });
+
+                // Real delivery failure — return 502 so the caller knows not to claim success.
+                // The reset token is retained; the admin can retry.
+                return Results.Json(
+                    new
+                    {
+                        message = "Failed to deliver the password reset email. Please try again or contact your platform administrator.",
+                        error   = deliveryError,
+                    },
+                    statusCode: 502);
+            }
+        }
+
+        // Fallback: notifications not configured (BaseUrl or PortalBaseUrl missing).
+        // LS-ID-TNT-005: Expose raw token in non-production so admins can complete the flow
+        // without needing a working email provider during development.
         if (!env.IsProduction())
         {
             return Results.Ok(new
@@ -1833,7 +1867,7 @@ public static class AdminEndpoints
             });
         }
 
-        return Results.Ok(new { message = "Password reset email will be sent to the user." });
+        return Results.Ok(new { message = "Password reset initiated." });
     }
 
     /// <summary>

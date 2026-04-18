@@ -4764,3 +4764,34 @@ Moves last-admin protection from frontend-only into authoritative backend enforc
 
 ### Analysis
 `analysis/LS-ID-TNT-005-report.md`
+
+---
+
+## LS-ID-TNT-006 — Email Delivery Integration for Password Reset (2026-04-18)
+
+Wires the Identity service admin-reset-password flow to the existing Notifications service email infrastructure so real reset emails are sent in production-configured environments. Preserves the LS-ID-TNT-005 dev-token fallback when email is not configured.
+
+### Files Changed
+- `apps/services/identity/Identity.Infrastructure/Services/NotificationsCacheClient.cs` — Added `PortalBaseUrl: string?` property to `NotificationsServiceOptions` (config co-location with email-related delivery settings)
+- `apps/services/identity/Identity.Infrastructure/Services/NotificationsEmailClient.cs` — New: `INotificationsEmailClient` interface + `NotificationsEmailClient` implementation; calls `POST /internal/send-email` on the notifications service using same `IHttpClientFactory("NotificationsService")` + `X-Internal-Service-Token` auth pattern as `NotificationsCacheClient`; includes branded HTML and plain-text email templates; returns `(EmailConfigured, Success, Error?)` tuple so handler can distinguish "not wired" from "wired but failed"
+- `apps/services/identity/Identity.Infrastructure/DependencyInjection.cs` — Registered `INotificationsEmailClient` (scoped, always; handles unconfigured `BaseUrl`/`PortalBaseUrl` internally)
+- `apps/services/identity/Identity.Api/Endpoints/AdminEndpoints.cs` — Added `using Microsoft.Extensions.Options`; updated `AdminResetPassword` signature to inject `IOptions<NotificationsServiceOptions>` and `INotificationsEmailClient`; constructs reset link `{PortalBaseUrl}/reset-password?token={encoded}`; calls email client; returns `200 { message }` on success, `502 { message, error }` on delivery failure, or dev-token fallback when not configured
+- `apps/services/identity/Identity.Api/appsettings.Development.json` — Added `NotificationsService` section (`BaseUrl: ""` preserves dev-token fallback, `PortalBaseUrl: "http://localhost:3050"`, `InternalServiceToken: ""`, `TimeoutSeconds: 10`)
+
+### Password Reset Delivery Contract (supersedes LS-ID-TNT-005 production behavior)
+| Condition | Response |
+|-----------|----------|
+| Notifications configured + delivery success | `200 { message: "Password reset email sent to {email}." }` |
+| Notifications configured + delivery failure | `502 { message: "Failed to deliver...", error: "..." }` |
+| Not configured + dev (`IsDevelopment()`) | `200 { message, resetToken }` — modal with link and copy button |
+| Not configured + non-dev | `200 { message: "Password reset initiated." }` |
+
+### Integration Architecture
+- Notifications service: `POST /internal/send-email` (port 5008 in dev)
+- Auth: `X-Internal-Service-Token` header (dev middleware allows empty token)
+- Transport: SMTP (MailKit) or SendGrid per notifications provider config
+- Config gate: `NotificationsService:BaseUrl` must be set in identity config to enable delivery
+- `PortalBaseUrl` is co-located in `NotificationsServiceOptions` — set independently in production env vars
+
+### Analysis
+`analysis/LS-ID-TNT-006-report.md`

@@ -27,6 +27,17 @@ public sealed class NotificationsServiceOptions
     public string? BaseUrl              { get; set; }
     public int     TimeoutSeconds       { get; set; } = 5;
     public string? InternalServiceToken { get; set; }
+
+    /// <summary>
+    /// LS-ID-TNT-006: Base URL of the tenant portal, used to construct
+    /// password-reset links embedded in emails.
+    ///
+    /// Example: https://portal.legalsynq.com
+    ///
+    /// Leave empty if email delivery is not yet configured; the admin-reset-
+    /// password endpoint will use the environment-gated token fallback instead.
+    /// </summary>
+    public string? PortalBaseUrl { get; set; }
 }
 
 /// <summary>
