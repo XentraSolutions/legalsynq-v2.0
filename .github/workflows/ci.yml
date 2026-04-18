@@ -10,6 +10,22 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
+  # Startup-script shell tests — verify that the crash-detection loop in
+  # run-prod.sh names the right service in its error messages.  No .NET build
+  # or Docker daemon required; runs on every push and PR.
+  # ─────────────────────────────────────────────────────────────────────────────
+  startup-crash-detection-tests:
+    name: Startup Crash Detection Tests
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run startup crash-detection tests
+        run: bash scripts/tests/test-startup-crash-detection.sh
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # Fast unit-test pass — no Docker required, runs first on every push / PR.
   # Integration tests (Category=Integration) are explicitly excluded so this
   # step does not fail if the runner has no Docker daemon.

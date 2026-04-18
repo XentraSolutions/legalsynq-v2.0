@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# shellcheck source=scripts/_startup-helpers.sh
+source "$ROOT/scripts/_startup-helpers.sh"
+
 NEXT_BIN=""
 for candidate in \
   "$ROOT/node_modules/.bin/next" \
@@ -155,50 +158,30 @@ if command -v dotnet &>/dev/null; then
 
     for csproj in "${BUILD_PROJECTS[@]}"; do
       svc_name="$(basename "$csproj" .csproj)"
+      # _svc_label_for is defined in scripts/_startup-helpers.sh and maps the
+      # .csproj basename to the human-readable name used in log / error messages.
+      _svc_label="$(_svc_label_for "$svc_name")"
       case "$svc_name" in
         PlatformAuditEventService)
-          _svc_label="Audit"
           launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5007
           PID_AUDIT=$! ;;
         Notifications.Api)
-          _svc_label="Notifications"
           launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5008
           PID_NOTIFICATIONS=$! ;;
         Flow.Api)
-          _svc_label="Flow API"
           if [ "$SKIP_FLOW" -eq 1 ]; then
             echo "[flow] Skipping Flow API launch due to missing required env vars"
             continue
           fi
           launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5012
           PID_FLOW=$! ;;
-        Gateway.Api)
-          _svc_label="Gateway"
-          launch_svc "$_svc_label" "$csproj"
-          PID_GATEWAY=$! ;;
-        Identity.Api)
-          _svc_label="Identity API"
-          launch_svc "$_svc_label" "$csproj"
-          PID_IDENTITY=$! ;;
-        Fund.Api)
-          _svc_label="Fund API"
-          launch_svc "$_svc_label" "$csproj"
-          PID_FUND=$! ;;
-        CareConnect.Api)
-          _svc_label="CareConnect"
-          launch_svc "$_svc_label" "$csproj"
-          PID_CARECONNECT=$! ;;
-        Documents.Api)
-          _svc_label="Documents"
-          launch_svc "$_svc_label" "$csproj"
-          PID_DOCUMENTS=$! ;;
-        Liens.Api)
-          _svc_label="Liens"
-          launch_svc "$_svc_label" "$csproj"
-          PID_LIENS=$! ;;
-        *)
-          _svc_label="$svc_name"
-          launch_svc "$_svc_label" "$csproj" ;;
+        Gateway.Api)   launch_svc "$_svc_label" "$csproj"; PID_GATEWAY=$! ;;
+        Identity.Api)  launch_svc "$_svc_label" "$csproj"; PID_IDENTITY=$! ;;
+        Fund.Api)      launch_svc "$_svc_label" "$csproj"; PID_FUND=$! ;;
+        CareConnect.Api) launch_svc "$_svc_label" "$csproj"; PID_CARECONNECT=$! ;;
+        Documents.Api) launch_svc "$_svc_label" "$csproj"; PID_DOCUMENTS=$! ;;
+        Liens.Api)     launch_svc "$_svc_label" "$csproj"; PID_LIENS=$! ;;
+        *)             launch_svc "$_svc_label" "$csproj" ;;
       esac
       # $! is the PID of the dotnet process just backgrounded by launch_svc
       SVC_PIDS+=("$!")
@@ -211,20 +194,10 @@ if command -v dotnet &>/dev/null; then
     # Poll every 0.5 s for up to 5 s.  Runs entirely in the background so
     # healthy startups are not slowed down at all.  A crashed service is
     # reported within 0.5 s of its exit — no fixed wait required.
-    (
-      window=10  # 10 × 0.5 s = 5 s observation window
-      for ((tick = 1; tick <= window; tick++)); do
-        sleep 0.5
-        for idx in "${!SVC_PIDS[@]}"; do
-          pid="${SVC_PIDS[$idx]}"
-          name="${SVC_NAMES[$idx]}"
-          if ! kill -0 "$pid" 2>/dev/null; then
-            echo "[dotnet] ERROR: ${name} (pid ${pid}) crashed $((tick * 500))ms after launch"
-            exit 1
-          fi
-        done
-      done
-    ) &
+    # _run_crash_monitor is defined in scripts/_startup-helpers.sh.
+    # It polls SVC_PIDS / SVC_NAMES for 5 s (10 × 0.5 s) and exits the
+    # subshell with code 1 if any service crashes in that window.
+    ( _run_crash_monitor ) &
 
     # ── Health-check probes for all .NET services ─────────────────────────
     # Each probe polls its /health (or /healthz for Flow) endpoint for up to
