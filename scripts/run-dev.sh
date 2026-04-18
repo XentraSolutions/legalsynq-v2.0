@@ -27,8 +27,11 @@ PID_CC=$!
   dotnet restore "$ROOT/LegalSynq.sln" --verbosity quiet
   dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Debug --verbosity quiet
   dotnet build "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" --configuration Debug --verbosity quiet
-  # Flow service has its own solution (separate boundary, separate DB)
-  dotnet build "$ROOT/apps/services/flow/backend/Flow.sln" --configuration Debug --verbosity quiet || true
+  # Flow service has its own solution (separate boundary, separate DB).
+  # Build only the API project — not the full Flow.sln — so test-project
+  # NuGet packages (never restored by LegalSynq.sln) don't block the build.
+  dotnet restore "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --verbosity quiet
+  dotnet build   "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --no-restore --configuration Debug --verbosity quiet
   dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
