@@ -42,6 +42,7 @@ export interface CreateTaskRequest {
   lienIds?: string[];
   workflowStageId?: string;
   dueDate?: string;
+  templateId?: string;
 }
 
 export interface UpdateTaskRequest {

@@ -28,4 +28,6 @@ public static class LiensPermissions
     public const string TaskCancel  = "SYNQ_LIENS.task:cancel";
 
     public const string WorkflowManage = "SYNQ_LIENS.workflow:manage";
+
+    public const string TaskTemplateManage = "SYNQ_LIENS.task_template:manage";
 }

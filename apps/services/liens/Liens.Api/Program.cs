@@ -149,5 +149,7 @@ app.MapWorkflowEndpoints();
 // LS-LIENS-FLOW-001 — My Tasks + Workflow Configuration.
 app.MapTaskEndpoints();
 app.MapWorkflowConfigEndpoints();
+// LS-LIENS-FLOW-002 — Contextual Task Intelligence: Task Templates.
+app.MapTaskTemplateEndpoints();
 
 app.Run();
