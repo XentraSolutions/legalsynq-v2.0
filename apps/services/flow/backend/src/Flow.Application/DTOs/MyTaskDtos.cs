@@ -2,23 +2,26 @@ namespace Flow.Application.DTOs;
 
 /// <summary>
 /// LS-FLOW-E11.5 — UI-friendly projection of a
-/// <see cref="Domain.Entities.WorkflowTask"/> for the current
-/// authenticated user's "My Tasks" surface.
+/// <see cref="Domain.Entities.WorkflowTask"/> for the operator portal's
+/// "My Tasks" surface, widened in **LS-FLOW-E15** to also serve the
+/// Role Queue, Org Queue, and task-detail surfaces.
 ///
 /// <para>
-/// Deliberately narrow: only fields the operator portal needs to render
-/// a task row + drawer. Internal engine fields
-/// (<c>MetadataJson</c>, <c>CorrelationKey</c>, role/org assignments,
-/// audit columns beyond the four lifecycle timestamps) are intentionally
-/// excluded so the contract does not couple the UI to engine internals
-/// and so future engine changes can stay backward-compatible.
+/// Originally narrow (E11.5): only the fields needed to render a "task
+/// assigned directly to me" row. E15 added the assignment-context
+/// fields (<c>AssignmentMode</c>, <c>AssignedRole</c>,
+/// <c>AssignedOrgId</c>, <c>AssignedAt</c>, <c>AssignedBy</c>,
+/// <c>AssignmentReason</c>) so the same DTO can drive the queue lists
+/// and the task-detail drawer without introducing a parallel
+/// <c>TaskDetailDto</c>. All new fields are nullable; pre-E15 JSON
+/// consumers are unaffected.
 /// </para>
 ///
 /// <para>
-/// All values originate from <c>WorkflowTask</c> directly except the two
-/// optional workflow-context fields, which are joined from the owning
-/// <c>WorkflowInstance</c> / <c>FlowDefinition</c> in the SAME query
-/// (no N+1).
+/// Internal engine fields (<c>MetadataJson</c>, <c>CorrelationKey</c>,
+/// audit columns beyond the four lifecycle timestamps) remain
+/// excluded so the contract still does not couple the UI to engine
+/// internals.
 /// </para>
 /// </summary>
 public sealed record MyTaskDto
@@ -30,9 +33,33 @@ public sealed record MyTaskDto
     public string Priority { get; init; } = string.Empty;
     public string StepKey { get; init; } = string.Empty;
 
-    /// <summary>The current user's id — always set on rows returned by this surface.</summary>
+    // ---------------- Assignment shape (LS-FLOW-E15) -----------------
+    /// <summary>
+    /// Stable string from <see cref="Domain.Common.WorkflowTaskAssignmentMode"/>:
+    /// <c>DirectUser</c>, <c>RoleQueue</c>, <c>OrgQueue</c>, or
+    /// <c>Unassigned</c>. Always set on rows returned by E15+ queries.
+    /// </summary>
+    public string AssignmentMode { get; init; } = string.Empty;
+
+    /// <summary>The current direct assignee, when <c>AssignmentMode = DirectUser</c>.</summary>
     public string? AssignedUserId { get; init; }
 
+    /// <summary>The role key that owns this task, when <c>AssignmentMode = RoleQueue</c>.</summary>
+    public string? AssignedRole { get; init; }
+
+    /// <summary>The org id that owns this task, when <c>AssignmentMode = OrgQueue</c>.</summary>
+    public string? AssignedOrgId { get; init; }
+
+    /// <summary>UTC timestamp of the most recent assignment event. Null for <c>Unassigned</c>.</summary>
+    public DateTime? AssignedAt { get; init; }
+
+    /// <summary>Actor (user id) who performed the most recent assignment. Null for <c>Unassigned</c>.</summary>
+    public string? AssignedBy { get; init; }
+
+    /// <summary>Free-form note recorded with the most recent assignment. Null when none was supplied.</summary>
+    public string? AssignmentReason { get; init; }
+
+    // ---------------- Lifecycle timestamps -----------------
     public DateTime CreatedAt { get; init; }
     public DateTime? UpdatedAt { get; init; }
     public DateTime? StartedAt { get; init; }
@@ -63,6 +90,32 @@ public sealed record MyTasksQuery
     public int Page { get; init; } = 1;
 
     /// <summary>Page size. Defaults to 25; clamped to <see cref="MyTasksDefaults.MaxPageSize"/>.</summary>
+    public int PageSize { get; init; } = MyTasksDefaults.DefaultPageSize;
+}
+
+/// <summary>
+/// LS-FLOW-E15 — server-side query parameters for the Role Queue
+/// surface. The set of eligible roles is **never** taken from the
+/// caller; it is always derived server-side from
+/// <see cref="Domain.Interfaces.IFlowUserContext.Roles"/>. The query
+/// only carries pagination so cross-role injection is impossible by
+/// API shape.
+/// </summary>
+public sealed record RoleQueueQuery
+{
+    public int Page { get; init; } = 1;
+    public int PageSize { get; init; } = MyTasksDefaults.DefaultPageSize;
+}
+
+/// <summary>
+/// LS-FLOW-E15 — server-side query parameters for the Org Queue
+/// surface. Same rationale as <see cref="RoleQueueQuery"/>: the
+/// caller's org id is server-derived and never accepted from the
+/// request.
+/// </summary>
+public sealed record OrgQueueQuery
+{
+    public int Page { get; init; } = 1;
     public int PageSize { get; init; } = MyTasksDefaults.DefaultPageSize;
 }
 

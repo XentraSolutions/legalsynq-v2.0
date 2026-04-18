@@ -36,7 +36,17 @@ import { TaskRow } from './task-row';
  * Completed / Cancelled, then by recency (see MyTasksService); we keep
  * the list in server order so the queue feels consistent.
  */
-export function MyWorkClient() {
+/**
+ * LS-FLOW-E15 — opt-in callback so the WorkAreaClient drawer can
+ * open from a row click. When omitted, MyWorkClient continues to
+ * render exactly as it did pre-E15 (no row-click affordance,
+ * inline action buttons only).
+ */
+export interface MyWorkClientProps {
+  onOpenTask?: (taskId: string) => void;
+}
+
+export function MyWorkClient({ onOpenTask }: MyWorkClientProps = {}) {
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [tasks, setTasks]   = useState<MyTask[]>([]);
   const [total, setTotal]   = useState(0);
@@ -150,7 +160,12 @@ export function MyWorkClient() {
           </p>
           <ul className="space-y-2">
             {tasks.map(t => (
-              <TaskRow key={t.taskId} task={t} onChanged={() => void fetchTasks()} />
+              <TaskRow
+                key={t.taskId}
+                task={t}
+                onChanged={() => void fetchTasks()}
+                onOpen={onOpenTask}
+              />
             ))}
           </ul>
         </>

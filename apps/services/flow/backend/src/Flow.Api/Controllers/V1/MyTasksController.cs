@@ -77,4 +77,44 @@ public sealed class MyTasksController : ControllerBase
         var result = await _service.ListMyTasksAsync(query, ct);
         return Ok(result);
     }
+
+    /// <summary>
+    /// LS-FLOW-E15 — GET <c>/api/v1/tasks/role-queue</c>. Returns
+    /// open <c>RoleQueue</c> tasks the calling user is eligible to
+    /// claim. Eligibility (<c>AssignedRole ∈ caller's roles</c>) is
+    /// determined entirely server-side from <c>IFlowUserContext</c>;
+    /// the request body has no role list so cross-role enumeration
+    /// is impossible by API shape. Platform admins see every
+    /// role-queue row in the tenant.
+    /// </summary>
+    [HttpGet("role-queue")]
+    [ProducesResponseType(typeof(PagedResponse<MyTaskDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRoleQueue(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = MyTasksDefaults.DefaultPageSize,
+        CancellationToken ct = default)
+    {
+        var result = await _service.ListRoleQueueAsync(
+            new RoleQueueQuery { Page = page, PageSize = pageSize }, ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// LS-FLOW-E15 — GET <c>/api/v1/tasks/org-queue</c>. Returns
+    /// open <c>OrgQueue</c> tasks the calling user is eligible to
+    /// claim (<c>AssignedOrgId == caller.OrgId</c>). Same security
+    /// posture as <c>role-queue</c>: org id is server-derived only.
+    /// Platform admins see every org-queue row in the tenant.
+    /// </summary>
+    [HttpGet("org-queue")]
+    [ProducesResponseType(typeof(PagedResponse<MyTaskDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetOrgQueue(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = MyTasksDefaults.DefaultPageSize,
+        CancellationToken ct = default)
+    {
+        var result = await _service.ListOrgQueueAsync(
+            new OrgQueueQuery { Page = page, PageSize = pageSize }, ct);
+        return Ok(result);
+    }
 }

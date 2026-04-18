@@ -1,7 +1,9 @@
+using System.Linq.Expressions;
 using Flow.Application.DTOs;
 using Flow.Application.Exceptions;
 using Flow.Application.Interfaces;
 using Flow.Domain.Common;
+using Flow.Domain.Entities;
 using Flow.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -9,25 +11,37 @@ using Microsoft.Extensions.Logging;
 namespace Flow.Application.Services;
 
 /// <summary>
-/// LS-FLOW-E11.5 — default implementation of
+/// LS-FLOW-E11.5 / LS-FLOW-E15 — default implementation of
 /// <see cref="IMyTasksService"/>.
 ///
 /// <para>
-/// Single EF query: filters on
-/// <c>(TenantId via query filter) + AssignedUserId == currentUserId
-/// (+ optional Status IN (...))</c>, joins the owning <c>WorkflowInstance</c>
-/// and its <c>FlowDefinition</c> via a projected LEFT JOIN to enrich the
-/// response with <c>WorkflowName</c> and <c>ProductKey</c>, paginates,
-/// and returns a <see cref="PagedResponse{T}"/>. Both the count and the
-/// page slice run through the same predicate so the count is always
-/// consistent with the returned items.
+/// E15 widened the surface from "list my direct tasks" to also include
+/// "list the role-queue tasks I can claim", "list the org-queue tasks
+/// I can claim", and "get a single task by id". All four queries share
+/// the same <see cref="ProjectToDto"/> expression so the widened
+/// <see cref="MyTaskDto"/> assignment fields are populated identically
+/// everywhere — no chance of drift between list and detail.
 /// </para>
 ///
 /// <para>
-/// <b>Index usage:</b> the <c>(TenantId, AssignedUserId, Status)</c>
-/// composite index shipped in E11.1 is the perfect cover for this
-/// query — predicate columns are leftmost-prefix and the optional
-/// status filter narrows the scan further.
+/// <b>Tenant safety:</b> enforced by the global query filter on
+/// <see cref="WorkflowTask"/>. Cross-tenant ids surface as
+/// <see cref="NotFoundException"/> ⇒ 404, identical to a missing task.
+/// </para>
+///
+/// <para>
+/// <b>Eligibility filtering for queues:</b>
+///   <list type="bullet">
+///     <item>RoleQueue: <c>AssignedRole IN (caller.Roles)</c>. Platform
+///       admins bypass this filter (they can see every queue for
+///       support / on-call work).</item>
+///     <item>OrgQueue: <c>AssignedOrgId = caller.OrgId</c>. Platform
+///       admins bypass.</item>
+///   </list>
+/// Both queue queries are pinned to <c>Status = Open</c>: in our
+/// model, only Open queue rows are claimable; an InProgress row has
+/// already been claimed and would not benefit from being shown in the
+/// queue surface.
 /// </para>
 /// </summary>
 public sealed class MyTasksService : IMyTasksService
@@ -43,67 +57,20 @@ public sealed class MyTasksService : IMyTasksService
         _log = log;
     }
 
+    // =========================================================
+    // E11.5 — My direct tasks
+    // =========================================================
     public async Task<PagedResponse<MyTaskDto>> ListMyTasksAsync(MyTasksQuery query, CancellationToken ct = default)
     {
-        // ------- Identity / tenant resolution -------
         var userId = _user.UserId;
         if (string.IsNullOrWhiteSpace(userId))
         {
-            // The endpoint is [Authorize]'d so this should not happen via
-            // the normal HTTP pipeline; treat it as a hard validation
-            // failure so the controller can map to 401/400 rather than
-            // silently returning an empty (and misleading) page.
             throw new ValidationException("Authenticated user id is required to list My Tasks.");
         }
 
-        // ------- Page-shape normalisation -------
-        var page     = query.Page < 1 ? 1 : query.Page;
-        var pageSize = query.PageSize < 1
-            ? MyTasksDefaults.DefaultPageSize
-            : Math.Min(query.PageSize, MyTasksDefaults.MaxPageSize);
+        var (page, pageSize) = NormalizePage(query.Page, query.PageSize);
+        var statusFilter = NormaliseStatusFilter(query.Status);
 
-        // ------- Status filter normalisation -------
-        // Accept multi-value status, drop blanks, dedupe ordinal-IC,
-        // reject unknown values up-front so the caller gets a clear 400
-        // rather than an empty result they cannot debug. Empty / null
-        // input means "all statuses".
-        IReadOnlyList<string>? statusFilter = null;
-        if (query.Status is { Count: > 0 })
-        {
-            var cleaned = query.Status
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Select(s => s.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            // Canonicalise FIRST (case-insensitive), then validate.
-            // WorkflowTaskStatus.IsKnown is a case-sensitive switch
-            // expression, so calling it on the raw input would reject
-            // valid case variants like "open" / "INPROGRESS". By mapping
-            // to the on-disk casing up front we both (a) make the SQL
-            // IN comparison match and (b) make IsKnown a reliable
-            // backstop against truly unknown values.
-            var canonicalised = cleaned
-                .Select(s =>
-                    s.Equals(WorkflowTaskStatus.Open,       StringComparison.OrdinalIgnoreCase) ? WorkflowTaskStatus.Open       :
-                    s.Equals(WorkflowTaskStatus.InProgress, StringComparison.OrdinalIgnoreCase) ? WorkflowTaskStatus.InProgress :
-                    s.Equals(WorkflowTaskStatus.Completed,  StringComparison.OrdinalIgnoreCase) ? WorkflowTaskStatus.Completed  :
-                    s.Equals(WorkflowTaskStatus.Cancelled,  StringComparison.OrdinalIgnoreCase) ? WorkflowTaskStatus.Cancelled  :
-                                                                                                  s) // unknown — preserved for the error message
-                .ToArray();
-
-            var unknown = canonicalised.Where(s => !WorkflowTaskStatus.IsKnown(s)).ToArray();
-            if (unknown.Length > 0)
-            {
-                throw new ValidationException(
-                    $"Unknown WorkflowTaskStatus value(s): {string.Join(", ", unknown)}. " +
-                    $"Allowed: Open, InProgress, Completed, Cancelled.");
-            }
-
-            statusFilter = canonicalised;
-        }
-
-        // ------- Base predicate (tenant via query filter, user explicit) -------
         var baseQuery = _db.WorkflowTasks.AsNoTracking()
             .Where(t => t.AssignedUserId == userId);
 
@@ -112,53 +79,12 @@ public sealed class MyTasksService : IMyTasksService
             baseQuery = baseQuery.Where(t => statusFilter.Contains(t.Status));
         }
 
-        // ------- Total count (same predicate, before paging) -------
         var totalCount = await baseQuery.CountAsync(ct);
 
-        // ------- Page slice with deterministic ordering + workflow context join -------
-        // Ordering rationale (see report §"Query / Filtering Notes"):
-        //   1. Active first  — Open / InProgress sort before Completed /
-        //      Cancelled. Encoded as `IsActive DESC` so true beats false.
-        //   2. Recency       — UpdatedAt DESC, with CreatedAt fallback
-        //      because UpdatedAt is null on never-modified rows.
-        //   3. Stable tiebreaker — Id, so Skip/Take is reproducible
-        //      across requests with identical timestamps (seed data,
-        //      bulk inserts).
-        var items = await baseQuery
-            .OrderByDescending(t =>
-                t.Status == WorkflowTaskStatus.Open ||
-                t.Status == WorkflowTaskStatus.InProgress)
-            .ThenByDescending(t => t.UpdatedAt ?? t.CreatedAt)
-            .ThenBy(t => t.Id)
+        var items = await OrderActiveFirst(baseQuery)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(t => new MyTaskDto
-            {
-                TaskId             = t.Id,
-                Title              = t.Title,
-                Description        = t.Description,
-                Status             = t.Status,
-                Priority           = t.Priority,
-                StepKey            = t.StepKey,
-                AssignedUserId     = t.AssignedUserId,
-                CreatedAt          = t.CreatedAt,
-                UpdatedAt          = t.UpdatedAt,
-                StartedAt          = t.StartedAt,
-                CompletedAt        = t.CompletedAt,
-                CancelledAt        = t.CancelledAt,
-                WorkflowInstanceId = t.WorkflowInstanceId,
-                // LEFT-JOIN-style enrichment via navigation properties.
-                // EF translates this into a single SQL with LEFT JOINs;
-                // no N+1. WorkflowInstance and WorkflowDefinition are
-                // both nullable so a missing definition yields nulls
-                // rather than throwing.
-                WorkflowName       = t.WorkflowInstance != null && t.WorkflowInstance.WorkflowDefinition != null
-                                        ? t.WorkflowInstance.WorkflowDefinition.Name
-                                        : null,
-                ProductKey         = t.WorkflowInstance != null
-                                        ? t.WorkflowInstance.ProductKey
-                                        : null,
-            })
+            .Select(ProjectToDto)
             .ToListAsync(ct);
 
         _log.LogDebug(
@@ -174,5 +100,234 @@ public sealed class MyTasksService : IMyTasksService
             Page       = page,
             PageSize   = pageSize,
         };
+    }
+
+    // =========================================================
+    // E15 — Role Queue (claimable role-queue tasks for caller)
+    // =========================================================
+    public async Task<PagedResponse<MyTaskDto>> ListRoleQueueAsync(RoleQueueQuery query, CancellationToken ct = default)
+    {
+        // No caller-supplied role list — eligibility is always derived
+        // from the auth context. This makes cross-role enumeration
+        // impossible by API shape (not just by policy).
+        var roles = _user.Roles;
+        var isPlatformAdmin = _user.IsPlatformAdmin;
+
+        var (page, pageSize) = NormalizePage(query.Page, query.PageSize);
+
+        // Platform admins see all role-queue rows (still tenant-scoped).
+        // Non-admins must hold at least one role; if they don't, the
+        // result is necessarily empty — short-circuit so we don't spin
+        // up a no-op SQL round-trip.
+        if (!isPlatformAdmin && (roles is null || roles.Count == 0))
+        {
+            return EmptyPage(page, pageSize);
+        }
+
+        var baseQuery = _db.WorkflowTasks.AsNoTracking()
+            .Where(t => t.AssignmentMode == WorkflowTaskAssignmentMode.RoleQueue
+                     && t.Status == WorkflowTaskStatus.Open);
+
+        if (!isPlatformAdmin)
+        {
+            // Materialise to a List<string> for EF's `Contains`
+            // translation. AssignedRole is nullable; the IN list won't
+            // include nulls so a row with a null role is naturally
+            // excluded (which also happens to be our fail-closed
+            // posture from E14.2).
+            var rolesList = roles!.ToList();
+            baseQuery = baseQuery.Where(t =>
+                t.AssignedRole != null && rolesList.Contains(t.AssignedRole));
+        }
+
+        var totalCount = await baseQuery.CountAsync(ct);
+
+        var items = await OrderActiveFirst(baseQuery)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(ProjectToDto)
+            .ToListAsync(ct);
+
+        _log.LogDebug(
+            "RoleQueue query: UserId={UserId} IsPlatformAdmin={IsAdmin} Roles={RoleCount} Page={Page}/{PageSize} Total={Total}",
+            _user.UserId, isPlatformAdmin, roles?.Count ?? 0, page, pageSize, totalCount);
+
+        return new PagedResponse<MyTaskDto>
+        {
+            Items      = items,
+            TotalCount = totalCount,
+            Page       = page,
+            PageSize   = pageSize,
+        };
+    }
+
+    // =========================================================
+    // E15 — Org Queue (claimable org-queue tasks for caller)
+    // =========================================================
+    public async Task<PagedResponse<MyTaskDto>> ListOrgQueueAsync(OrgQueueQuery query, CancellationToken ct = default)
+    {
+        var orgId = _user.OrgId;
+        var isPlatformAdmin = _user.IsPlatformAdmin;
+
+        var (page, pageSize) = NormalizePage(query.Page, query.PageSize);
+
+        if (!isPlatformAdmin && string.IsNullOrWhiteSpace(orgId))
+        {
+            return EmptyPage(page, pageSize);
+        }
+
+        var baseQuery = _db.WorkflowTasks.AsNoTracking()
+            .Where(t => t.AssignmentMode == WorkflowTaskAssignmentMode.OrgQueue
+                     && t.Status == WorkflowTaskStatus.Open);
+
+        if (!isPlatformAdmin)
+        {
+            // Equality here intentionally — an OrgQueue row's
+            // AssignedOrgId must match the caller's OrgId exactly.
+            baseQuery = baseQuery.Where(t => t.AssignedOrgId == orgId);
+        }
+
+        var totalCount = await baseQuery.CountAsync(ct);
+
+        var items = await OrderActiveFirst(baseQuery)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(ProjectToDto)
+            .ToListAsync(ct);
+
+        _log.LogDebug(
+            "OrgQueue query: UserId={UserId} OrgId={OrgId} IsPlatformAdmin={IsAdmin} Page={Page}/{PageSize} Total={Total}",
+            _user.UserId, orgId, isPlatformAdmin, page, pageSize, totalCount);
+
+        return new PagedResponse<MyTaskDto>
+        {
+            Items      = items,
+            TotalCount = totalCount,
+            Page       = page,
+            PageSize   = pageSize,
+        };
+    }
+
+    // =========================================================
+    // E15 — Task detail (single row, widened DTO)
+    // =========================================================
+    public async Task<MyTaskDto> GetTaskDetailAsync(Guid taskId, CancellationToken ct = default)
+    {
+        // Tenant filter is global on WorkflowTask, so a wrong-tenant
+        // id naturally yields null (= NotFoundException) — no special
+        // cross-tenant branch needed and no id leakage.
+        var dto = await _db.WorkflowTasks.AsNoTracking()
+            .Where(t => t.Id == taskId)
+            .Select(ProjectToDto)
+            .FirstOrDefaultAsync(ct);
+
+        if (dto is null)
+            throw new NotFoundException(nameof(WorkflowTask), taskId);
+
+        return dto;
+    }
+
+    // =========================================================
+    // Shared helpers
+    // =========================================================
+
+    /// <summary>
+    /// Single source of truth for the <see cref="WorkflowTask"/> →
+    /// <see cref="MyTaskDto"/> projection. Materialised as an
+    /// expression so it can be reused inside multiple
+    /// <c>IQueryable.Select</c> calls — EF translates it to SQL
+    /// identically each time, so the four surfaces can never drift.
+    /// </summary>
+    private static readonly Expression<Func<WorkflowTask, MyTaskDto>> ProjectToDto = t => new MyTaskDto
+    {
+        TaskId             = t.Id,
+        Title              = t.Title,
+        Description        = t.Description,
+        Status             = t.Status,
+        Priority           = t.Priority,
+        StepKey            = t.StepKey,
+
+        AssignmentMode     = t.AssignmentMode,
+        AssignedUserId     = t.AssignedUserId,
+        AssignedRole       = t.AssignedRole,
+        AssignedOrgId      = t.AssignedOrgId,
+        AssignedAt         = t.AssignedAt,
+        AssignedBy         = t.AssignedBy,
+        AssignmentReason   = t.AssignmentReason,
+
+        CreatedAt          = t.CreatedAt,
+        UpdatedAt          = t.UpdatedAt,
+        StartedAt          = t.StartedAt,
+        CompletedAt        = t.CompletedAt,
+        CancelledAt        = t.CancelledAt,
+
+        WorkflowInstanceId = t.WorkflowInstanceId,
+        // LEFT-JOIN-style enrichment via navigation properties; EF
+        // translates to a single SQL with LEFT JOINs (no N+1).
+        WorkflowName       = t.WorkflowInstance != null && t.WorkflowInstance.WorkflowDefinition != null
+                                ? t.WorkflowInstance.WorkflowDefinition.Name
+                                : null,
+        ProductKey         = t.WorkflowInstance != null
+                                ? t.WorkflowInstance.ProductKey
+                                : null,
+    };
+
+    /// <summary>
+    /// Shared deterministic ordering: active tasks first (Open /
+    /// InProgress), then UpdatedAt DESC (falling back to CreatedAt
+    /// for never-modified rows), then Id as a stable tiebreaker.
+    /// </summary>
+    private static IQueryable<WorkflowTask> OrderActiveFirst(IQueryable<WorkflowTask> q) =>
+        q.OrderByDescending(t =>
+            t.Status == WorkflowTaskStatus.Open ||
+            t.Status == WorkflowTaskStatus.InProgress)
+         .ThenByDescending(t => t.UpdatedAt ?? t.CreatedAt)
+         .ThenBy(t => t.Id);
+
+    private static (int Page, int PageSize) NormalizePage(int page, int pageSize)
+    {
+        var p = page < 1 ? 1 : page;
+        var ps = pageSize < 1
+            ? MyTasksDefaults.DefaultPageSize
+            : Math.Min(pageSize, MyTasksDefaults.MaxPageSize);
+        return (p, ps);
+    }
+
+    private static PagedResponse<MyTaskDto> EmptyPage(int page, int pageSize) => new()
+    {
+        Items      = Array.Empty<MyTaskDto>(),
+        TotalCount = 0,
+        Page       = page,
+        PageSize   = pageSize,
+    };
+
+    private static IReadOnlyList<string>? NormaliseStatusFilter(IReadOnlyList<string>? status)
+    {
+        if (status is not { Count: > 0 }) return null;
+
+        var cleaned = status
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var canonicalised = cleaned
+            .Select(s =>
+                s.Equals(WorkflowTaskStatus.Open,       StringComparison.OrdinalIgnoreCase) ? WorkflowTaskStatus.Open       :
+                s.Equals(WorkflowTaskStatus.InProgress, StringComparison.OrdinalIgnoreCase) ? WorkflowTaskStatus.InProgress :
+                s.Equals(WorkflowTaskStatus.Completed,  StringComparison.OrdinalIgnoreCase) ? WorkflowTaskStatus.Completed  :
+                s.Equals(WorkflowTaskStatus.Cancelled,  StringComparison.OrdinalIgnoreCase) ? WorkflowTaskStatus.Cancelled  :
+                                                                                              s)
+            .ToArray();
+
+        var unknown = canonicalised.Where(s => !WorkflowTaskStatus.IsKnown(s)).ToArray();
+        if (unknown.Length > 0)
+        {
+            throw new ValidationException(
+                $"Unknown WorkflowTaskStatus value(s): {string.Join(", ", unknown)}. " +
+                $"Allowed: Open, InProgress, Completed, Cancelled.");
+        }
+
+        return canonicalised;
     }
 }

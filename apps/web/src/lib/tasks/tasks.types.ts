@@ -1,11 +1,12 @@
 /**
- * LS-FLOW-E11.6 — type contracts for the My Work UI.
+ * LS-FLOW-E11.6 / LS-FLOW-E15 — type contracts for the Work area UI.
  *
  * Mirrors the Flow.Api DTOs:
- *   - MyTaskDto                       (Application/DTOs/MyTaskDtos.cs)
+ *   - MyTaskDto                       (Application/DTOs/MyTaskDtos.cs) — widened in E15
  *   - PagedResponse<T>                (Application/DTOs/TaskDtos.cs)
  *   - WorkflowTaskTransitionResult    (Application/Interfaces/IWorkflowTaskLifecycleService.cs)
  *   - WorkflowTaskCompletionResult    (Application/Interfaces/IWorkflowTaskCompletionService.cs)
+ *   - WorkflowTaskAssignmentResult    (Application/Interfaces/IWorkflowTaskAssignmentService.cs)  — E14.2
  *
  * Field shapes are kept narrow on purpose so the UI does not couple to
  * engine internals. Anything missing here is intentionally not surfaced.
@@ -15,6 +16,24 @@ export type WorkflowTaskStatus = 'Open' | 'InProgress' | 'Completed' | 'Cancelle
 
 export type WorkflowTaskPriority = 'Low' | 'Normal' | 'High' | 'Urgent';
 
+/**
+ * LS-FLOW-E14.1 — assignment-mode discriminator. Mirrors
+ * Flow.Domain.Common.WorkflowTaskAssignmentMode. Stable strings, not
+ * enum ordinals, so the wire format is the same as the persisted form.
+ */
+export type WorkflowTaskAssignmentMode =
+  | 'DirectUser'
+  | 'RoleQueue'
+  | 'OrgQueue'
+  | 'Unassigned';
+
+export const ASSIGNMENT_MODES: WorkflowTaskAssignmentMode[] = [
+  'DirectUser',
+  'RoleQueue',
+  'OrgQueue',
+  'Unassigned',
+];
+
 export interface MyTask {
   taskId: string;
   title: string;
@@ -23,7 +42,14 @@ export interface MyTask {
   priority: WorkflowTaskPriority;
   stepKey: string;
 
+  // Assignment context (LS-FLOW-E15)
+  assignmentMode: WorkflowTaskAssignmentMode;
   assignedUserId?: string | null;
+  assignedRole?: string | null;
+  assignedOrgId?: string | null;
+  assignedAt?: string | null;
+  assignedBy?: string | null;
+  assignmentReason?: string | null;
 
   createdAt: string;
   updatedAt?: string | null;
@@ -65,9 +91,42 @@ export interface TaskCompletionResult extends TaskTransitionResult {
   workflowAdvanced: boolean;
 }
 
+/**
+ * LS-FLOW-E14.2 — response shape from /claim and /reassign. The
+ * server returns the post-write task state so callers can refresh
+ * local UI without a follow-up GET.
+ */
+export interface WorkflowTaskAssignmentResult {
+  taskId: string;
+  workflowInstanceId: string;
+  status: WorkflowTaskStatus;
+  assignmentMode: WorkflowTaskAssignmentMode;
+  assignedUserId?: string | null;
+  assignedRole?: string | null;
+  assignedOrgId?: string | null;
+  assignedAt?: string | null;
+  assignedBy?: string | null;
+  assignmentReason?: string | null;
+  occurredAtUtc: string;
+}
+
+/** Body for POST /claim. All fields optional; the body itself may be omitted. */
+export interface ClaimTaskRequest {
+  reason?: string;
+}
+
+/** Body for POST /reassign. */
+export interface ReassignTaskRequest {
+  targetMode: WorkflowTaskAssignmentMode;
+  assignedUserId?: string | null;
+  assignedRole?: string | null;
+  assignedOrgId?: string | null;
+  reason: string;
+}
+
 export type StatusFilter = 'all' | WorkflowTaskStatus;
 
-/** Status values the user can pick in the filter chip. */
+/** Status values the user can pick in the My Tasks filter chip. */
 export const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'all',        label: 'All' },
   { value: 'Open',       label: 'Open' },
@@ -75,3 +134,6 @@ export const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'Completed',  label: 'Completed' },
   { value: 'Cancelled',  label: 'Cancelled' },
 ];
+
+/** Reason text limit, matched to the backend MaxReasonLength (E14.2). */
+export const REASSIGN_REASON_MAX = 500;

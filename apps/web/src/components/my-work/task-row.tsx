@@ -31,6 +31,13 @@ export interface TaskRowProps {
   task: MyTask;
   /** Called after any successful or stale-state action so the list can refetch. */
   onChanged: () => void;
+  /**
+   * LS-FLOW-E15 — optional row-click handler that opens the
+   * task-detail drawer. When provided, the row body becomes
+   * clickable; the inline action buttons use stopPropagation so
+   * they don't double-fire.
+   */
+  onOpen?: (taskId: string) => void;
 }
 
 type ActionKind = 'start' | 'complete' | 'cancel';
@@ -72,11 +79,14 @@ function friendlyError(err: ApiError, kind: ActionKind): string {
   return err.message || 'Something went wrong. Please try again.';
 }
 
-export function TaskRow({ task, onChanged }: TaskRowProps) {
+export function TaskRow({ task, onChanged, onOpen }: TaskRowProps) {
   const toast = useToast();
   const [busy, setBusy] = useState<ActionKind | null>(null);
 
-  async function run(kind: ActionKind) {
+  async function run(kind: ActionKind, e?: React.MouseEvent) {
+    // E15: stop click bubbling so the row-click drawer-open doesn't
+    // fire when an action button is pressed.
+    e?.stopPropagation();
     if (busy) return;
     setBusy(kind);
     try {
@@ -127,8 +137,32 @@ export function TaskRow({ task, onChanged }: TaskRowProps) {
   const canComplete = task.status === 'InProgress';
   const canCancel   = task.status === 'Open' || task.status === 'InProgress';
 
+  // Row body is clickable as a "view detail" affordance only when
+  // the parent provided onOpen (E15). Pre-E15 callers get the
+  // original non-interactive list item.
+  const rowClickable = !!onOpen;
+  const rowProps = rowClickable
+    ? {
+        onClick: () => onOpen!(task.taskId),
+        role: 'button' as const,
+        tabIndex: 0,
+        onKeyDown: (ev: React.KeyboardEvent) => {
+          if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault();
+            onOpen!(task.taskId);
+          }
+        },
+      }
+    : {};
+
   return (
-    <li className="bg-white border border-gray-200 rounded-lg px-4 py-3 hover:border-gray-300 transition-colors">
+    <li
+      className={
+        'bg-white border border-gray-200 rounded-lg px-4 py-3 hover:border-gray-300 transition-colors ' +
+        (rowClickable ? 'cursor-pointer' : '')
+      }
+      {...rowProps}
+    >
       <div className="flex items-start gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -184,7 +218,7 @@ export function TaskRow({ task, onChanged }: TaskRowProps) {
             {canStart && (
               <button
                 type="button"
-                onClick={() => run('start')}
+                onClick={(e) => run('start', e)}
                 disabled={busy !== null}
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed"
               >
@@ -194,7 +228,7 @@ export function TaskRow({ task, onChanged }: TaskRowProps) {
             {canComplete && (
               <button
                 type="button"
-                onClick={() => run('complete')}
+                onClick={(e) => run('complete', e)}
                 disabled={busy !== null}
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
               >
@@ -204,7 +238,7 @@ export function TaskRow({ task, onChanged }: TaskRowProps) {
             {canCancel && (
               <button
                 type="button"
-                onClick={() => run('cancel')}
+                onClick={(e) => run('cancel', e)}
                 disabled={busy !== null}
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
               >

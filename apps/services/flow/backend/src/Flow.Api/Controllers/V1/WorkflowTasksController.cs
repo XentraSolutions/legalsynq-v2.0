@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using Flow.Application.DTOs;
 using Flow.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -55,15 +56,36 @@ public sealed class WorkflowTasksController : ControllerBase
     private readonly IWorkflowTaskLifecycleService _lifecycle;
     private readonly IWorkflowTaskCompletionService _completion;
     private readonly IWorkflowTaskAssignmentService _assignment;
+    private readonly IMyTasksService _read;
 
     public WorkflowTasksController(
         IWorkflowTaskLifecycleService lifecycle,
         IWorkflowTaskCompletionService completion,
-        IWorkflowTaskAssignmentService assignment)
+        IWorkflowTaskAssignmentService assignment,
+        IMyTasksService read)
     {
         _lifecycle = lifecycle;
         _completion = completion;
         _assignment = assignment;
+        _read = read;
+    }
+
+    /// <summary>
+    /// LS-FLOW-E15 — GET <c>/api/v1/workflow-tasks/{id}</c>. Returns
+    /// the single task as a widened <see cref="MyTaskDto"/> (with
+    /// assignment context). Tenant-scoped via the global query
+    /// filter; cross-tenant / missing id ⇒ 404. No additional
+    /// eligibility check — the operator portal needs to be able to
+    /// inspect any tenant-visible task it can navigate to. Mutation
+    /// authority remains with the lifecycle / assignment services.
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(MyTaskDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+    {
+        var dto = await _read.GetTaskDetailAsync(id, ct);
+        return Ok(dto);
     }
 
     /// <summary>POST <c>/api/v1/workflow-tasks/{id}/start</c> — Open → InProgress.</summary>
