@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../audit/PlatformAuditEventService.csproj" />
+    <ProjectReference Include="../../../shared/building-blocks/BuildingBlocks.TestHelpers/BuildingBlocks.TestHelpers.csproj" />
   </ItemGroup>
 
 </Project>

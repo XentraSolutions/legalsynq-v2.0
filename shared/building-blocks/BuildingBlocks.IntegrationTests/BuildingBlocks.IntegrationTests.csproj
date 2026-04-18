@@ -32,6 +32,7 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\BuildingBlocks\BuildingBlocks.csproj" />
+    <ProjectReference Include="..\BuildingBlocks.TestHelpers\BuildingBlocks.TestHelpers.csproj" />
 
     <!-- remaining services: standard Infrastructure class libraries -->
     <ProjectReference Include="..\..\..\apps\services\careconnect\CareConnect.Infrastructure\CareConnect.Infrastructure.csproj" />
