@@ -69,6 +69,11 @@ public static class DependencyInjection
         // so the persisted outcome is "task Completed AND workflow advanced"
         // or nothing.
         services.AddScoped<IWorkflowTaskCompletionService, WorkflowTaskCompletionService>();
+        // LS-FLOW-E14.2 — sole entry point for user-driven assignment
+        // transitions (claim / reassign). Stateless; uses the scoped
+        // IFlowDbContext for the atomic CAS UPDATE and IAuditAdapter
+        // for fire-and-forget audit emission.
+        services.AddScoped<IWorkflowTaskAssignmentService, WorkflowTaskAssignmentService>();
 
         return services;
     }

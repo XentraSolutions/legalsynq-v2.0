@@ -64,6 +64,25 @@ public class ExceptionHandlingMiddleware
                 HttpStatusCode.Conflict,
                 new ErrorResponse { Error = workflowTransition.Message }
             ),
+            // LS-FLOW-E14.2 — claim / reassign rule violation
+            // (state, target shape, missing reason, mode mismatch,
+            // already-assigned, …). Mapped to 422 so clients can
+            // distinguish a semantically-invalid request from a
+            // racing-write 409. The exception's stable `Code` is
+            // already embedded in the message for client dispatch.
+            AssignmentRuleException assignmentRule => (
+                HttpStatusCode.UnprocessableEntity,
+                new ErrorResponse { Error = assignmentRule.Message }
+            ),
+            // LS-FLOW-E14.2 — caller is authenticated but ineligible
+            // for the requested assignment action (queue membership,
+            // supervisor role, …). Mapped to 403 to keep cross-tenant
+            // id-probing impossible: out-of-scope task ids that the
+            // tenant filter would already hide return 404 instead.
+            AssignmentForbiddenException assignmentForbidden => (
+                HttpStatusCode.Forbidden,
+                new ErrorResponse { Error = assignmentForbidden.Message }
+            ),
             _ => (
                 HttpStatusCode.InternalServerError,
                 new ErrorResponse { Error = "An unexpected error occurred." }

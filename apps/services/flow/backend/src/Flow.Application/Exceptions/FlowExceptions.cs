@@ -65,3 +65,50 @@ public class WorkflowTaskConcurrencyException : Exception
         ExpectedStatus = expectedStatus;
     }
 }
+
+/// <summary>
+/// LS-FLOW-E14.2 — raised by
+/// <see cref="Interfaces.IWorkflowTaskAssignmentService"/> when a
+/// claim or reassign request violates a state, target-shape, or
+/// reason-required rule. Carries a stable
+/// <see cref="Code"/> from
+/// <see cref="Domain.Common.WorkflowTaskAssignmentErrorCodes"/> so
+/// clients can dispatch on it without parsing the message. Mapped to
+/// HTTP <b>422 Unprocessable Entity</b> by
+/// <see cref="Api.Middleware.ExceptionHandlingMiddleware"/>.
+/// </summary>
+public class AssignmentRuleException : Exception
+{
+    public string Code { get; }
+
+    public AssignmentRuleException(string code, string message)
+        : base($"[{code}] {message}")
+    {
+        Code = code;
+    }
+}
+
+/// <summary>
+/// LS-FLOW-E14.2 — raised by
+/// <see cref="Interfaces.IWorkflowTaskAssignmentService"/> when the
+/// authenticated caller is not eligible for the requested assignment
+/// action (e.g. claiming a role queue without holding the role,
+/// claiming an org queue from a different org, reassigning without
+/// supervisor authority). Distinct from
+/// <see cref="UnauthorizedAccessException"/>: the caller is correctly
+/// authenticated, just out-of-scope for this particular task.
+/// Carries a stable <see cref="Code"/> (currently always
+/// <see cref="Domain.Common.WorkflowTaskAssignmentErrorCodes.ForbiddenAssignmentAction"/>).
+/// Mapped to HTTP <b>403 Forbidden</b> by
+/// <see cref="Api.Middleware.ExceptionHandlingMiddleware"/>.
+/// </summary>
+public class AssignmentForbiddenException : Exception
+{
+    public string Code { get; }
+
+    public AssignmentForbiddenException(string code, string message)
+        : base($"[{code}] {message}")
+    {
+        Code = code;
+    }
+}

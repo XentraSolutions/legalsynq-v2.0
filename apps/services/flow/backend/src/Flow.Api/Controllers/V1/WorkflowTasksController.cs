@@ -54,13 +54,16 @@ public sealed class WorkflowTasksController : ControllerBase
 {
     private readonly IWorkflowTaskLifecycleService _lifecycle;
     private readonly IWorkflowTaskCompletionService _completion;
+    private readonly IWorkflowTaskAssignmentService _assignment;
 
     public WorkflowTasksController(
         IWorkflowTaskLifecycleService lifecycle,
-        IWorkflowTaskCompletionService completion)
+        IWorkflowTaskCompletionService completion,
+        IWorkflowTaskAssignmentService assignment)
     {
         _lifecycle = lifecycle;
         _completion = completion;
+        _assignment = assignment;
     }
 
     /// <summary>POST <c>/api/v1/workflow-tasks/{id}/start</c> — Open → InProgress.</summary>
@@ -111,4 +114,85 @@ public sealed class WorkflowTasksController : ControllerBase
         var result = await _lifecycle.CancelTaskAsync(id, ct);
         return Ok(result);
     }
+
+    /// <summary>
+    /// LS-FLOW-E14.2 — POST <c>/api/v1/workflow-tasks/{id}/claim</c>:
+    /// the authenticated caller becomes the <c>DirectUser</c>
+    /// assignee, provided they are eligible for the source queue.
+    ///
+    /// <para>
+    /// Rules (enforced by
+    /// <see cref="IWorkflowTaskAssignmentService.ClaimAsync"/>):
+    ///   <list type="bullet">
+    ///     <item>Status must be <c>Open</c>.</item>
+    ///     <item>Source mode must be <c>RoleQueue</c> (caller holds
+    ///       the role) or <c>OrgQueue</c> (caller is in the org).
+    ///       <c>DirectUser</c> ⇒ <c>task_already_assigned</c>;
+    ///       <c>Unassigned</c> ⇒ <c>task_not_claimable</c> (use
+    ///       reassign).</item>
+    ///   </list>
+    /// </para>
+    ///
+    /// <para>
+    /// Body is optional (<c>{"reason": "..."}</c>); when omitted the
+    /// service stamps a deterministic default so audit rows are
+    /// never blank.
+    /// </para>
+    /// </summary>
+    [HttpPost("{id:guid}/claim")]
+    [ProducesResponseType(typeof(WorkflowTaskAssignmentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> Claim(
+        Guid id,
+        [FromBody] ClaimTaskRequest? body,
+        CancellationToken ct)
+    {
+        var result = await _assignment.ClaimAsync(id, body?.Reason, ct);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// LS-FLOW-E14.2 — POST <c>/api/v1/workflow-tasks/{id}/reassign</c>:
+    /// supervisor-driven reassignment to a new direct user, role
+    /// queue, org queue, or back to <c>Unassigned</c>.
+    ///
+    /// <para>
+    /// Authorized for platform/tenant admins only — gated here at
+    /// the controller via <see cref="Policies.PlatformOrTenantAdmin"/>
+    /// and re-asserted in the service so the gate cannot be relaxed
+    /// by accident in another caller.
+    /// </para>
+    ///
+    /// <para>
+    /// Body is required and must contain a non-whitespace
+    /// <c>reason</c>. The (<c>assignedUserId</c>,
+    /// <c>assignedRole</c>, <c>assignedOrgId</c>) tuple must match
+    /// <c>targetMode</c> exactly — see
+    /// <see cref="ReassignTaskRequest"/> for the rules.
+    /// </para>
+    /// </summary>
+    [HttpPost("{id:guid}/reassign")]
+    [Authorize(Policy = Policies.PlatformOrTenantAdmin)]
+    [ProducesResponseType(typeof(WorkflowTaskAssignmentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> Reassign(
+        Guid id,
+        [FromBody] ReassignTaskRequest body,
+        CancellationToken ct)
+    {
+        var result = await _assignment.ReassignAsync(id, body, ct);
+        return Ok(result);
+    }
 }
+
+/// <summary>
+/// LS-FLOW-E14.2 — request body for the <c>claim</c> endpoint.
+/// All fields optional; the body itself may be omitted entirely.
+/// </summary>
+public sealed record ClaimTaskRequest(string? Reason);
