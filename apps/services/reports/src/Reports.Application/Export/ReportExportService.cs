@@ -6,6 +6,7 @@ using Reports.Application.Execution.DTOs;
 using Reports.Application.Export.DTOs;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Context;
 using Reports.Contracts.Export;
 using Reports.Contracts.Observability;
 using Reports.Contracts.Storage;
@@ -21,6 +22,7 @@ public sealed class ReportExportService : IReportExportService
     private readonly IAuditAdapter _audit;
     private readonly IFileStorageAdapter _storage;
     private readonly IReportsMetrics _metrics;
+    private readonly ICurrentTenantContext _ctx;
     private readonly ILogger<ReportExportService> _log;
 
     public ReportExportService(
@@ -29,6 +31,7 @@ public sealed class ReportExportService : IReportExportService
         IAuditAdapter audit,
         IFileStorageAdapter storage,
         IReportsMetrics metrics,
+        ICurrentTenantContext ctx,
         ILogger<ReportExportService> log)
     {
         _executionService = executionService;
@@ -36,12 +39,18 @@ public sealed class ReportExportService : IReportExportService
         _audit = audit;
         _storage = storage;
         _metrics = metrics;
+        _ctx = ctx;
         _log = log;
     }
 
     public async Task<ServiceResult<ExportReportResponse>> ExportReportAsync(
         ExportReportRequest request, CancellationToken ct)
     {
+        // Actor identity is always server-derived — never trusted from request
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<ExportReportResponse>.Forbidden("No authenticated user context for export.");
+
         var validation = ValidateRequest(request);
         if (validation is not null)
             return ServiceResult<ExportReportResponse>.BadRequest(validation);
@@ -56,7 +65,7 @@ public sealed class ReportExportService : IReportExportService
         var exportId = Guid.NewGuid();
 
         await TryAuditAsync(AuditEventFactory.ExportStarted(
-            request.TenantId, request.RequestedByUserId, exportId,
+            request.TenantId, actorId, exportId,
             request.TemplateId, request.Format.ToString(), request.ProductCode));
 
         var executeRequest = new ExecuteReportRequest
@@ -66,7 +75,7 @@ public sealed class ReportExportService : IReportExportService
             ProductCode = request.ProductCode,
             OrganizationType = request.OrganizationType,
             ParametersJson = request.ParametersJson,
-            RequestedByUserId = request.RequestedByUserId,
+            RequestedByUserId = actorId,
             UseOverride = request.UseOverride,
             ViewId = request.ViewId
         };
@@ -77,7 +86,7 @@ public sealed class ReportExportService : IReportExportService
         {
             var reason = executionResult.ErrorMessage ?? "Execution failed.";
             await TryAuditAsync(AuditEventFactory.ExportFailed(
-                request.TenantId, request.RequestedByUserId, exportId,
+                request.TenantId, actorId, exportId,
                 request.TemplateId, request.Format.ToString(), reason, request.ProductCode));
 
             return ServiceResult<ExportReportResponse>.Fail(
@@ -138,7 +147,7 @@ public sealed class ReportExportService : IReportExportService
             _log.LogError(ex, "Export {ExportId} failed during {Format} generation", exportId, request.Format);
             _metrics.IncrementExportCount(request.TenantId, request.Format.ToString(), "Failed");
             await TryAuditAsync(AuditEventFactory.ExportFailed(
-                request.TenantId, request.RequestedByUserId, exportId,
+                request.TenantId, actorId, exportId,
                 request.TemplateId, request.Format.ToString(), ex.Message, request.ProductCode));
 
             return ServiceResult<ExportReportResponse>.Fail(
@@ -151,7 +160,7 @@ public sealed class ReportExportService : IReportExportService
             _log.LogWarning("Export {ExportId}: {Message}", exportId, msg);
             _metrics.IncrementExportCount(request.TenantId, request.Format.ToString(), "Failed");
             await TryAuditAsync(AuditEventFactory.ExportFailed(
-                request.TenantId, request.RequestedByUserId, exportId,
+                request.TenantId, actorId, exportId,
                 request.TemplateId, request.Format.ToString(), msg, request.ProductCode));
 
             return ServiceResult<ExportReportResponse>.BadRequest(msg);
@@ -178,21 +187,21 @@ public sealed class ReportExportService : IReportExportService
                     exportId, storageResult.StorageKey, storageResult.Provider);
 
                 await TryAuditAsync(AuditEventFactory.FileStored(
-                    request.TenantId, request.RequestedByUserId, exportId,
+                    request.TenantId, actorId, exportId,
                     storageResult.StorageKey, storageResult.Provider, storageResult.SizeBytes, request.ProductCode));
             }
             catch (Exception ex)
             {
                 _log.LogWarning(ex, "Export {ExportId}: file storage failed (non-fatal)", exportId);
                 await TryAuditAsync(AuditEventFactory.FileStoreFailed(
-                    request.TenantId, request.RequestedByUserId, exportId, ex.Message, request.ProductCode));
+                    request.TenantId, actorId, exportId, ex.Message, request.ProductCode));
             }
         }
 
         _metrics.IncrementExportCount(request.TenantId, request.Format.ToString(), "Success");
 
         await TryAuditAsync(AuditEventFactory.ExportCompleted(
-            request.TenantId, request.RequestedByUserId, exportId,
+            request.TenantId, actorId, exportId,
             request.TemplateId, request.Format.ToString(),
             execData.RowCount, exportResult.FileSize, request.ProductCode));
 
@@ -224,8 +233,6 @@ public sealed class ReportExportService : IReportExportService
             return "ProductCode is required.";
         if (string.IsNullOrWhiteSpace(request.OrganizationType))
             return "OrganizationType is required.";
-        if (string.IsNullOrWhiteSpace(request.RequestedByUserId))
-            return "RequestedByUserId is required.";
         if (!Enum.IsDefined(typeof(ExportFormat), request.Format))
             return $"Invalid export format: {request.Format}";
         return null;

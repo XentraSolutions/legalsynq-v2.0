@@ -44,6 +44,11 @@ public sealed class TenantReportViewService : ITenantReportViewService
     public async Task<ServiceResult<TenantReportViewResponse>> CreateViewAsync(
         Guid templateId, CreateTenantReportViewRequest request, CancellationToken ct)
     {
+        // Actor identity is always server-derived — never trusted from request
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<TenantReportViewResponse>.Forbidden("No authenticated user context.");
+
         var validation = ValidateCreateRequest(request, templateId);
         if (validation is not null)
             return ServiceResult<TenantReportViewResponse>.BadRequest(validation);
@@ -91,13 +96,13 @@ public sealed class TenantReportViewService : ITenantReportViewService
             FilterConfigJson = request.FilterConfigJson,
             FormulaConfigJson = request.FormulaConfigJson,
             FormattingConfigJson = request.FormattingConfigJson,
-            CreatedByUserId = request.CreatedByUserId.Trim()
+            CreatedByUserId = actorId
         };
 
         await _viewRepo.CreateAsync(entity, ct);
 
         await TryAuditAsync(AuditEventFactory.ViewCreated(
-            entity.TenantId, entity.CreatedByUserId, entity.Id, templateId, entity.Name));
+            entity.TenantId, actorId, entity.Id, templateId, entity.Name));
 
         _log.LogInformation("View created: {ViewId} tenant={TenantId} template={TemplateId} name={Name}",
             entity.Id, entity.TenantId, templateId, entity.Name);
@@ -132,8 +137,10 @@ public sealed class TenantReportViewService : ITenantReportViewService
     public async Task<ServiceResult<TenantReportViewResponse>> UpdateViewAsync(
         Guid templateId, Guid viewId, UpdateTenantReportViewRequest request, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.UpdatedByUserId))
-            return ServiceResult<TenantReportViewResponse>.BadRequest("UpdatedByUserId is required.");
+        // Actor identity is always server-derived — never trusted from request
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<TenantReportViewResponse>.Forbidden("No authenticated user context.");
 
         var tenantId = CurrentTenantId;
         if (tenantId is null)
@@ -180,12 +187,12 @@ public sealed class TenantReportViewService : ITenantReportViewService
         if (request.FilterConfigJson is not null) entity.FilterConfigJson = request.FilterConfigJson;
         if (request.FormulaConfigJson is not null) entity.FormulaConfigJson = request.FormulaConfigJson;
         if (request.FormattingConfigJson is not null) entity.FormattingConfigJson = request.FormattingConfigJson;
-        entity.UpdatedByUserId = request.UpdatedByUserId.Trim();
+        entity.UpdatedByUserId = actorId;
 
         await _viewRepo.UpdateAsync(entity, ct);
 
         await TryAuditAsync(AuditEventFactory.ViewUpdated(
-            entity.TenantId, request.UpdatedByUserId.Trim(), entity.Id, templateId, entity.Name));
+            entity.TenantId, actorId, entity.Id, templateId, entity.Name));
 
         return ServiceResult<TenantReportViewResponse>.Ok(MapToResponse(entity));
     }
@@ -264,7 +271,6 @@ public sealed class TenantReportViewService : ITenantReportViewService
         if (request.BaseTemplateVersionNumber <= 0) return "BaseTemplateVersionNumber must be > 0.";
         if (string.IsNullOrWhiteSpace(request.Name)) return "Name is required.";
         if (request.Name.Length > 200) return "Name must be 200 characters or fewer.";
-        if (string.IsNullOrWhiteSpace(request.CreatedByUserId)) return "CreatedByUserId is required.";
         return null;
     }
 

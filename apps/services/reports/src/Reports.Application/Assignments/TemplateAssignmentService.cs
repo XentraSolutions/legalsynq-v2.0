@@ -16,23 +16,31 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
     private readonly ITemplateAssignmentRepository _assignmentRepo;
     private readonly ITemplateRepository _templateRepo;
     private readonly IAuditAdapter _audit;
+    private readonly ICurrentTenantContext _ctx;
     private readonly ILogger<TemplateAssignmentService> _log;
 
     public TemplateAssignmentService(
         ITemplateAssignmentRepository assignmentRepo,
         ITemplateRepository templateRepo,
         IAuditAdapter audit,
+        ICurrentTenantContext ctx,
         ILogger<TemplateAssignmentService> log)
     {
         _assignmentRepo = assignmentRepo;
         _templateRepo = templateRepo;
         _audit = audit;
+        _ctx = ctx;
         _log = log;
     }
 
     public async Task<ServiceResult<TemplateAssignmentResponse>> CreateAssignmentAsync(
         Guid templateId, CreateTemplateAssignmentRequest request, CancellationToken ct)
     {
+        // Actor identity is always server-derived — never trusted from request
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<TemplateAssignmentResponse>.Forbidden("No authenticated user context.");
+
         var validation = ValidateCreateRequest(request);
         if (validation is not null)
             return ServiceResult<TemplateAssignmentResponse>.BadRequest(validation);
@@ -100,7 +108,7 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
             IsActive = request.IsActive,
             RequiredFeatureCode = request.RequiredFeatureCode?.Trim(),
             MinimumTierCode = request.MinimumTierCode?.Trim(),
-            CreatedByUserId = request.CreatedByUserId.Trim()
+            CreatedByUserId = actorId
         };
 
         if (!isGlobal)
@@ -112,7 +120,7 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
                     Id = Guid.NewGuid(),
                     TenantId = tenantId.Trim(),
                     IsActive = true,
-                    CreatedByUserId = request.CreatedByUserId.Trim()
+                    CreatedByUserId = actorId
                 });
             }
         }
@@ -128,7 +136,7 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
         }
 
         await TryAuditAsync(AuditEventFactory.AssignmentCreated(
-            "system", request.CreatedByUserId.Trim(), created.Id, templateId, created.AssignmentScope));
+            "system", actorId, created.Id, templateId, created.AssignmentScope));
 
         _log.LogInformation("Assignment created: {AssignmentId} template={TemplateId} scope={Scope}",
             created.Id, templateId, created.AssignmentScope);
@@ -139,8 +147,10 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
     public async Task<ServiceResult<TemplateAssignmentResponse>> UpdateAssignmentAsync(
         Guid templateId, Guid assignmentId, UpdateTemplateAssignmentRequest request, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.UpdatedByUserId))
-            return ServiceResult<TemplateAssignmentResponse>.BadRequest("UpdatedByUserId is required.");
+        // Actor identity is always server-derived — never trusted from request
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<TemplateAssignmentResponse>.Forbidden("No authenticated user context.");
 
         var template = await _templateRepo.GetByIdAsync(templateId, ct);
         if (template is null)
@@ -202,7 +212,7 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
         assignment.IsActive = request.IsActive;
         assignment.RequiredFeatureCode = request.RequiredFeatureCode?.Trim();
         assignment.MinimumTierCode = request.MinimumTierCode?.Trim();
-        assignment.UpdatedByUserId = request.UpdatedByUserId.Trim();
+        assignment.UpdatedByUserId = actorId;
 
         if (!isGlobal && request.TenantIds is not null)
         {
@@ -214,7 +224,7 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
                     Id = Guid.NewGuid(),
                     TenantId = tenantId.Trim(),
                     IsActive = true,
-                    CreatedByUserId = request.UpdatedByUserId.Trim()
+                    CreatedByUserId = actorId
                 });
             }
         }
@@ -230,7 +240,7 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
         }
 
         await TryAuditAsync(AuditEventFactory.AssignmentUpdated(
-            "system", request.UpdatedByUserId.Trim(), updated.Id, templateId));
+            "system", actorId, updated.Id, templateId));
 
         _log.LogInformation("Assignment updated: {AssignmentId} template={TemplateId}", updated.Id, templateId);
 
@@ -309,8 +319,6 @@ public sealed class TemplateAssignmentService : ITemplateAssignmentService
             return "AssignmentScope is required.";
         if (!ValidScopes.Contains(request.AssignmentScope.Trim()))
             return $"AssignmentScope must be 'Global' or 'Tenant'. Got: '{request.AssignmentScope}'.";
-        if (string.IsNullOrWhiteSpace(request.CreatedByUserId))
-            return "CreatedByUserId is required.";
         return null;
     }
 

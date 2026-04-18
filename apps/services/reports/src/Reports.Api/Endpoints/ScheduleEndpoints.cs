@@ -84,9 +84,9 @@ public static class ScheduleEndpoints
     }
 
     private static async Task<IResult> DeactivateSchedule(
-        Guid scheduleId, string userId, IReportScheduleService service, CancellationToken ct)
+        Guid scheduleId, IReportScheduleService service, CancellationToken ct)
     {
-        var result = await service.DeactivateScheduleAsync(scheduleId, userId, ct);
+        var result = await service.DeactivateScheduleAsync(scheduleId, ct);
         return ToResult(result);
     }
 
@@ -105,9 +105,9 @@ public static class ScheduleEndpoints
     }
 
     private static async Task<IResult> RunNow(
-        Guid scheduleId, string userId, IReportScheduleService service, CancellationToken ct)
+        Guid scheduleId, IReportScheduleService service, CancellationToken ct)
     {
-        var result = await service.TriggerRunNowAsync(scheduleId, userId, ct);
+        var result = await service.TriggerRunNowAsync(scheduleId, ct);
         return ToResult(result);
     }
 

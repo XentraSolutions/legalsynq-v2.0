@@ -12,20 +12,25 @@ public sealed class TemplateManagementService : ITemplateManagementService
 {
     private readonly ITemplateRepository _repo;
     private readonly IAuditAdapter _audit;
+    private readonly ICurrentTenantContext _ctx;
     private readonly ILogger<TemplateManagementService> _log;
 
     public TemplateManagementService(
         ITemplateRepository repo,
         IAuditAdapter audit,
+        ICurrentTenantContext ctx,
         ILogger<TemplateManagementService> log)
     {
         _repo = repo;
         _audit = audit;
+        _ctx = ctx;
         _log = log;
     }
 
     public async Task<ServiceResult<TemplateResponse>> CreateTemplateAsync(CreateTemplateRequest request, CancellationToken ct)
     {
+        var actorId = _ctx.UserId ?? "system";
+
         var validation = ValidateCreateRequest(request);
         if (validation is not null)
             return ServiceResult<TemplateResponse>.BadRequest(validation);
@@ -48,7 +53,7 @@ public sealed class TemplateManagementService : ITemplateManagementService
         var created = await _repo.CreateAsync(entity, ct);
 
         await TryAuditAsync(AuditEventFactory.TemplateCreated(
-            "system", "system", created.Id, created.Code, created.ProductCode));
+            "system", actorId, created.Id, created.Code, created.ProductCode));
 
         _log.LogInformation("Template created: {TemplateId} code={Code}", created.Id, created.Code);
         return ServiceResult<TemplateResponse>.Created(MapToResponse(created));
@@ -56,6 +61,8 @@ public sealed class TemplateManagementService : ITemplateManagementService
 
     public async Task<ServiceResult<TemplateResponse>> UpdateTemplateAsync(Guid templateId, UpdateTemplateRequest request, CancellationToken ct)
     {
+        var actorId = _ctx.UserId ?? "system";
+
         var validation = ValidateUpdateRequest(request);
         if (validation is not null)
             return ServiceResult<TemplateResponse>.BadRequest(validation);
@@ -73,7 +80,7 @@ public sealed class TemplateManagementService : ITemplateManagementService
         var updated = await _repo.UpdateAsync(entity, ct);
 
         await TryAuditAsync(AuditEventFactory.TemplateUpdated(
-            "system", "system", updated.Id, updated.Code, updated.ProductCode));
+            "system", actorId, updated.Id, updated.Code, updated.ProductCode));
 
         _log.LogInformation("Template updated: {TemplateId}", updated.Id);
         return ServiceResult<TemplateResponse>.Ok(MapToResponse(updated));
@@ -100,6 +107,11 @@ public sealed class TemplateManagementService : ITemplateManagementService
 
     public async Task<ServiceResult<TemplateVersionResponse>> CreateVersionAsync(Guid templateId, CreateTemplateVersionRequest request, CancellationToken ct)
     {
+        // Actor identity is always server-derived — never trusted from request
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<TemplateVersionResponse>.Forbidden("No authenticated user context.");
+
         var validation = ValidateCreateVersionRequest(request);
         if (validation is not null)
             return ServiceResult<TemplateVersionResponse>.BadRequest(validation);
@@ -115,13 +127,13 @@ public sealed class TemplateManagementService : ITemplateManagementService
             OutputFormat = request.OutputFormat.Trim(),
             ChangeNotes = request.ChangeNotes?.Trim(),
             IsActive = request.IsActive,
-            CreatedByUserId = request.CreatedByUserId.Trim()
+            CreatedByUserId = actorId
         };
 
         var created = await _repo.CreateVersionAtomicAsync(template, version, ct);
 
         await TryAuditAsync(AuditEventFactory.VersionCreated(
-            "system", request.CreatedByUserId.Trim(), templateId, template.Code, created.VersionNumber, template.ProductCode));
+            "system", actorId, templateId, template.Code, created.VersionNumber, template.ProductCode));
 
         _log.LogInformation("Version {Version} created for template {TemplateId}", created.VersionNumber, templateId);
         return ServiceResult<TemplateVersionResponse>.Created(MapToVersionResponse(created));
@@ -155,8 +167,10 @@ public sealed class TemplateManagementService : ITemplateManagementService
 
     public async Task<ServiceResult<TemplateVersionResponse>> PublishVersionAsync(Guid templateId, int versionNumber, PublishTemplateVersionRequest request, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.PublishedByUserId))
-            return ServiceResult<TemplateVersionResponse>.BadRequest("PublishedByUserId is required.");
+        // Actor identity is always server-derived — never trusted from request
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<TemplateVersionResponse>.Forbidden("No authenticated user context.");
 
         var template = await _repo.GetByIdAsync(templateId, ct);
         if (template is null)
@@ -169,10 +183,10 @@ public sealed class TemplateManagementService : ITemplateManagementService
         if (targetVersion.IsPublished)
             return ServiceResult<TemplateVersionResponse>.Ok(MapToVersionResponse(targetVersion));
 
-        var updated = await _repo.PublishVersionAtomicAsync(templateId, versionNumber, request.PublishedByUserId.Trim(), ct);
+        var updated = await _repo.PublishVersionAtomicAsync(templateId, versionNumber, actorId, ct);
 
         await TryAuditAsync(AuditEventFactory.VersionPublished(
-            "system", request.PublishedByUserId.Trim(), templateId, template.Code, versionNumber, template.ProductCode));
+            "system", actorId, templateId, template.Code, versionNumber, template.ProductCode));
 
         _log.LogInformation("Version {Version} published for template {TemplateId}", versionNumber, templateId);
         return ServiceResult<TemplateVersionResponse>.Ok(MapToVersionResponse(updated));

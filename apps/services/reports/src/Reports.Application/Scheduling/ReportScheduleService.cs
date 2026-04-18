@@ -8,6 +8,7 @@ using Reports.Application.Export.DTOs;
 using Reports.Application.Scheduling.DTOs;
 using Reports.Application.Templates.DTOs;
 using Reports.Contracts.Adapters;
+using Reports.Contracts.Context;
 using Reports.Contracts.Delivery;
 using Reports.Contracts.Observability;
 using Reports.Contracts.Persistence;
@@ -31,6 +32,7 @@ public sealed class ReportScheduleService : IReportScheduleService
     private readonly IEnumerable<IReportDeliveryAdapter> _deliveryAdapters;
     private readonly IAuditAdapter _audit;
     private readonly IReportsMetrics _metrics;
+    private readonly ICurrentTenantContext _ctx;
     private readonly ILogger<ReportScheduleService> _log;
 
     public ReportScheduleService(
@@ -42,6 +44,7 @@ public sealed class ReportScheduleService : IReportScheduleService
         IEnumerable<IReportDeliveryAdapter> deliveryAdapters,
         IAuditAdapter audit,
         IReportsMetrics metrics,
+        ICurrentTenantContext ctx,
         ILogger<ReportScheduleService> log)
     {
         _scheduleRepo = scheduleRepo;
@@ -52,12 +55,18 @@ public sealed class ReportScheduleService : IReportScheduleService
         _deliveryAdapters = deliveryAdapters;
         _audit = audit;
         _metrics = metrics;
+        _ctx = ctx;
         _log = log;
     }
 
     public async Task<ServiceResult<ReportScheduleResponse>> CreateScheduleAsync(
         CreateReportScheduleRequest request, CancellationToken ct)
     {
+        // Actor identity is always server-derived — never trusted from request
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<ReportScheduleResponse>.Forbidden("No authenticated user context.");
+
         var validation = ValidateCreateRequest(request);
         if (validation is not null)
             return ServiceResult<ReportScheduleResponse>.BadRequest(validation);
@@ -111,13 +120,13 @@ public sealed class ReportScheduleService : IReportScheduleService
             ParametersJson = request.ParametersJson,
             RequiredFeatureCode = request.RequiredFeatureCode,
             MinimumTierCode = request.MinimumTierCode,
-            CreatedByUserId = request.CreatedByUserId.Trim()
+            CreatedByUserId = actorId
         };
 
         await _scheduleRepo.SaveAsync(schedule, ct);
 
         await TryAuditAsync(AuditEventFactory.ScheduleCreated(
-            schedule.TenantId, schedule.CreatedByUserId, schedule.Id,
+            schedule.TenantId, actorId, schedule.Id,
             schedule.ReportTemplateId, schedule.Name, schedule.ProductCode));
 
         _log.LogInformation("Schedule created: {ScheduleId} tenant={TenantId} template={TemplateId} freq={Freq}",
@@ -129,6 +138,11 @@ public sealed class ReportScheduleService : IReportScheduleService
     public async Task<ServiceResult<ReportScheduleResponse>> UpdateScheduleAsync(
         Guid scheduleId, UpdateReportScheduleRequest request, CancellationToken ct)
     {
+        // Actor identity is always server-derived — never trusted from request
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<ReportScheduleResponse>.Forbidden("No authenticated user context.");
+
         var schedule = await _scheduleRepo.GetByIdAsync(scheduleId, ct);
         if (schedule is null)
             return ServiceResult<ReportScheduleResponse>.NotFound($"Schedule '{scheduleId}' not found.");
@@ -155,7 +169,7 @@ public sealed class ReportScheduleService : IReportScheduleService
         schedule.ParametersJson = request.ParametersJson;
         schedule.RequiredFeatureCode = request.RequiredFeatureCode;
         schedule.MinimumTierCode = request.MinimumTierCode;
-        schedule.UpdatedByUserId = request.UpdatedByUserId.Trim();
+        schedule.UpdatedByUserId = actorId;
         schedule.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
         if (schedule.IsActive)
@@ -166,7 +180,7 @@ public sealed class ReportScheduleService : IReportScheduleService
         await _scheduleRepo.UpdateAsync(schedule, ct);
 
         await TryAuditAsync(AuditEventFactory.ScheduleUpdated(
-            schedule.TenantId, request.UpdatedByUserId.Trim(), schedule.Id,
+            schedule.TenantId, actorId, schedule.Id,
             schedule.ReportTemplateId, schedule.Name, schedule.ProductCode));
 
         return ServiceResult<ReportScheduleResponse>.Ok(MapToResponse(schedule));
@@ -193,34 +207,42 @@ public sealed class ReportScheduleService : IReportScheduleService
     }
 
     public async Task<ServiceResult<ReportScheduleResponse>> DeactivateScheduleAsync(
-        Guid scheduleId, string userId, CancellationToken ct)
+        Guid scheduleId, CancellationToken ct)
     {
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<ReportScheduleResponse>.Forbidden("No authenticated user context.");
+
         var schedule = await _scheduleRepo.GetByIdAsync(scheduleId, ct);
         if (schedule is null)
             return ServiceResult<ReportScheduleResponse>.NotFound($"Schedule '{scheduleId}' not found.");
 
         schedule.IsActive = false;
         schedule.NextRunAtUtc = null;
-        schedule.UpdatedByUserId = userId;
+        schedule.UpdatedByUserId = actorId;
         schedule.UpdatedAtUtc = DateTimeOffset.UtcNow;
 
         await _scheduleRepo.UpdateAsync(schedule, ct);
 
         await TryAuditAsync(AuditEventFactory.ScheduleDeactivated(
-            schedule.TenantId, userId, schedule.Id, schedule.ReportTemplateId,
+            schedule.TenantId, actorId, schedule.Id, schedule.ReportTemplateId,
             schedule.Name, schedule.ProductCode));
 
         return ServiceResult<ReportScheduleResponse>.Ok(MapToResponse(schedule));
     }
 
     public async Task<ServiceResult<ReportScheduleRunResponse>> TriggerRunNowAsync(
-        Guid scheduleId, string userId, CancellationToken ct)
+        Guid scheduleId, CancellationToken ct)
     {
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<ReportScheduleRunResponse>.Forbidden("No authenticated user context.");
+
         var schedule = await _scheduleRepo.GetByIdAsync(scheduleId, ct);
         if (schedule is null)
             return ServiceResult<ReportScheduleRunResponse>.NotFound($"Schedule '{scheduleId}' not found.");
 
-        var run = await ExecuteScheduleRunAsync(schedule, DateTimeOffset.UtcNow, userId, ct);
+        var run = await ExecuteScheduleRunAsync(schedule, DateTimeOffset.UtcNow, actorId, ct);
         return ServiceResult<ReportScheduleRunResponse>.Ok(MapRunToResponse(run));
     }
 
@@ -504,7 +526,6 @@ public sealed class ReportScheduleService : IReportScheduleService
         if (!SupportedFormats.Contains(request.ExportFormat.Trim())) return $"Unsupported ExportFormat: '{request.ExportFormat}'. Supported: CSV, XLSX, PDF.";
         if (string.IsNullOrWhiteSpace(request.DeliveryMethod)) return "DeliveryMethod is required.";
         if (!SupportedDeliveryMethods.Contains(request.DeliveryMethod.Trim())) return $"Unsupported DeliveryMethod: '{request.DeliveryMethod}'. Supported: OnScreen, Email, SFTP.";
-        if (string.IsNullOrWhiteSpace(request.CreatedByUserId)) return "CreatedByUserId is required.";
         var freqError = ValidateFrequencyConfig(request.FrequencyType.Trim(), request.FrequencyConfigJson);
         if (freqError is not null) return freqError;
         return null;
@@ -522,7 +543,6 @@ public sealed class ReportScheduleService : IReportScheduleService
         if (!SupportedFormats.Contains(request.ExportFormat.Trim())) return $"Unsupported ExportFormat: '{request.ExportFormat}'.";
         if (string.IsNullOrWhiteSpace(request.DeliveryMethod)) return "DeliveryMethod is required.";
         if (!SupportedDeliveryMethods.Contains(request.DeliveryMethod.Trim())) return $"Unsupported DeliveryMethod: '{request.DeliveryMethod}'.";
-        if (string.IsNullOrWhiteSpace(request.UpdatedByUserId)) return "UpdatedByUserId is required.";
         var freqError = ValidateFrequencyConfig(request.FrequencyType.Trim(), request.FrequencyConfigJson);
         if (freqError is not null) return freqError;
         return null;

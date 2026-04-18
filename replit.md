@@ -4559,3 +4559,36 @@ Critical security hardening: enforces strict tenant isolation for all saved view
 
 ### Analysis
 `analysis/LS-REPORTS-08-001-report.md`
+
+## LS-REPORTS-08-002 — Server-Derived Actor Identity Enforcement — 2026-04-18
+
+### Summary
+Eliminated client-supplied actor spoofing across all Reports service write paths. All user attribution (actor IDs in entity writes and audit events) is now derived exclusively from the authenticated JWT context (`ICurrentTenantContext.UserId`). Client-supplied actor fields in request DTOs are silently ignored.
+
+### Actor Fields Rendered Inert (Kept for Compat, Ignored in Logic)
+- `RequestedByUserId` on `ExecuteReportRequest`, `ExportReportRequest`
+- `CreatedByUserId` on `CreateReportScheduleRequest`, `CreateTemplateAssignmentRequest`, `CreateTenantReportViewRequest`, `CreateTemplateVersionRequest`
+- `UpdatedByUserId` on `UpdateReportScheduleRequest`, `UpdateTemplateAssignmentRequest`, `UpdateTenantReportViewRequest`
+- `PublishedByUserId` on `PublishTemplateVersionRequest`
+- `userId` query param on schedule Deactivate/RunNow endpoints (fully removed)
+
+### Services Hardened
+1. `ReportExecutionService` — execution actor from JWT
+2. `ReportExportService` — export actor from JWT
+3. `ReportScheduleService` — create/update/deactivate/run-now actor from JWT; background run retains `schedule.CreatedByUserId`
+4. `TemplateAssignmentService` — create/update actor from JWT
+5. `TenantReportViewService` — create/update actor from JWT
+6. `TemplateManagementService` — version create/publish actor from JWT
+
+### Pattern Applied
+```csharp
+var actorId = _ctx.UserId;
+if (actorId is null) return ServiceResult<T>.Forbidden("No authenticated user context.");
+// use actorId everywhere — never request fields
+```
+
+### Interface Change
+`IReportScheduleService.DeactivateScheduleAsync` and `TriggerRunNowAsync` no longer accept `string userId` parameter.
+
+### Analysis
+`analysis/LS-REPORTS-08-002-report.md`
