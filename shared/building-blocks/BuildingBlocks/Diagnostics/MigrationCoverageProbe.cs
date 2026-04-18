@@ -1,6 +1,10 @@
+using System.Data.Common;
+using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Logging;
+
+[assembly: InternalsVisibleTo("BuildingBlocks.Tests")]
 
 namespace BuildingBlocks.Diagnostics;
 
@@ -24,10 +28,36 @@ public static class MigrationCoverageProbe
 {
     public static async Task RunAsync(DbContext db, ILogger logger, CancellationToken cancellationToken = default)
     {
+        DbConnection conn;
+        string providerName;
         try
         {
-            var providerName = db.Database.ProviderName ?? string.Empty;
-            var conn = db.Database.GetDbConnection();
+            providerName = db.Database.ProviderName ?? string.Empty;
+            conn = db.Database.GetDbConnection();
+        }
+        catch (Exception ex)
+        {
+            // Mirrors the best-effort contract: never let a startup probe abort
+            // the boot — e.g. non-relational providers (InMemory) throw on
+            // GetDbConnection().
+            logger.LogWarning(ex, "Migration coverage self-test could not run");
+            return;
+        }
+        await RunCoreAsync(providerName, conn, db.Model, logger, cancellationToken);
+    }
+
+    // Test-visible seam: lets unit tests drive the probe without standing up
+    // a full DbContext. The DbContext-facing public RunAsync is the only
+    // production caller.
+    internal static async Task RunCoreAsync(
+        string providerName,
+        DbConnection conn,
+        IModel model,
+        ILogger logger,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
             await conn.OpenAsync(cancellationToken);
             try
             {
@@ -92,7 +122,7 @@ public static class MigrationCoverageProbe
 
                 var missing = new List<string>();
                 var missingTables = new List<string>();
-                foreach (var entityType in db.Model.GetEntityTypes())
+                foreach (var entityType in model.GetEntityTypes())
                 {
                     var tableName = entityType.GetTableName();
                     if (string.IsNullOrEmpty(tableName)) continue;
