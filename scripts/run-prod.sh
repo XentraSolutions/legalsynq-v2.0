@@ -161,6 +161,8 @@ if command -v dotnet &>/dev/null; then
     # Per-service env vars (e.g. ASPNETCORE_URLS) are set via a case statement;
     # the catch-all (*) ensures any new entry in BUILD_PROJECTS is launched
     # automatically even if it has no special configuration.
+    # SVC_PIDS / SVC_NAMES are populated here and consumed by the crash-monitor
+    # immediately below the loop.
     SVC_PIDS=()
     SVC_NAMES=()
     for csproj in "${BUILD_PROJECTS[@]}"; do
@@ -190,25 +192,24 @@ if command -v dotnet &>/dev/null; then
 
     echo "[dotnet] Service launch complete"
 
-    # ── Early crash detection ─────────────────────────────────────────────
-    # Give each service a brief window to fail fast (bad config, missing
-    # env vars, port conflict, etc.) before we hand off to the health probes.
-    sleep 5
-    _dotnet_crashed=0
-    _svc_idx=0
-    for _svc_pid in "${SVC_PIDS[@]}"; do
-      _svc_label="${SVC_NAMES[$_svc_idx]}"
-      _svc_idx=$(( _svc_idx + 1 ))
-      if ! kill -0 "$_svc_pid" 2>/dev/null; then
-        wait "$_svc_pid" 2>/dev/null; _svc_ec=$?
-        echo "[dotnet] ERROR: $_svc_label (pid $_svc_pid) exited unexpectedly at launch with code $_svc_ec"
-        _dotnet_crashed=1
-      fi
-    done
-    if [ "$_dotnet_crashed" -ne 0 ]; then
-      echo "[dotnet] ERROR: One or more .NET services crashed at launch — aborting"
-      exit 1
-    fi
+    # ── Fast crash-detection ──────────────────────────────────────────────────
+    # Poll every 0.5 s for up to 5 s.  Runs entirely in the background so
+    # healthy startups are not slowed down at all.  A crashed service is
+    # reported within 0.5 s of its exit — no fixed wait required.
+    (
+      window=10  # 10 × 0.5 s = 5 s observation window
+      for ((tick = 1; tick <= window; tick++)); do
+        sleep 0.5
+        for idx in "${!SVC_PIDS[@]}"; do
+          pid="${SVC_PIDS[$idx]}"
+          name="${SVC_NAMES[$idx]}"
+          if ! kill -0 "$pid" 2>/dev/null; then
+            echo "[dotnet] ERROR: ${name} (pid ${pid}) crashed $((tick * 500))ms after launch"
+            exit 1
+          fi
+        done
+      done
+    ) &
 
     # ── Health-check probes for all .NET services ─────────────────────────
     # Each probe polls its /health (or /healthz for Flow) endpoint for up to
