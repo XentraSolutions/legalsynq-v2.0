@@ -22,6 +22,7 @@ interface AuthMeResponse {
   phone?:                string;
   sessionTimeoutMinutes: number;
   enabledProducts?:      string[];
+  userProducts?:         string[];
 }
 
 // ── Server-side session helper ────────────────────────────────────────────────
@@ -77,6 +78,7 @@ function mapToSession(me: AuthMeResponse): PlatformSession {
     productRoles:     me.productRoles ?? [],
     systemRoles,
     enabledProducts:  me.enabledProducts ?? [],
+    userProducts:     me.userProducts  ?? [],
     isPlatformAdmin:  systemRoles.includes(SystemRole.PlatformAdmin),
     isTenantAdmin:    systemRoles.includes(SystemRole.TenantAdmin),
     hasOrg:           !!me.orgId,

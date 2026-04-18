@@ -249,6 +249,19 @@ public class AuthService : IAuthService
             .Select(c => c.Value)
             .ToList();
 
+        // LS-ID-TNT-009: Read the user-specific effective product codes baked into the JWT
+        // by EffectiveAccessService at login time. These reflect direct grants, group
+        // inheritance, TenantAdmin auto-grant, and LegacyDefault — and are kept fresh by
+        // the access_version stale-token check above. The product_codes claim stores
+        // backend codes (e.g. "SYNQ_FUND"); map them to the same frontend-friendly codes
+        // used by enabledProducts so the product switcher can apply a single filter.
+        var rawUserProductCodes = principal.FindAll("product_codes")
+            .Select(c => c.Value)
+            .ToList();
+        var userProducts = rawUserProductCodes
+            .Select(code => DbToFrontendProductCode.TryGetValue(code, out var fc) ? fc : code)
+            .ToList();
+
         // Derive expiry from the "exp" claim (Unix epoch seconds)
         var expClaim    = principal.FindFirstValue("exp");
         var expiresAtUtc = expClaim is not null && long.TryParse(expClaim, out var expUnix)
@@ -325,7 +338,8 @@ public class AuthService : IAuthService
             SessionTimeoutMinutes:  sessionTimeoutMinutes,
             AvatarDocumentId:       avatarDocumentId,
             EnabledProducts:        enabledProducts,
-            Phone:                  phone);
+            Phone:                  phone,
+            UserProducts:           userProducts);
     }
 
     // Maps the DB product Code column → the frontend ProductCode (TypeScript).

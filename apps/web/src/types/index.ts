@@ -77,6 +77,12 @@ export interface PlatformSession {
 
   // Products
   enabledProducts?: string[];
+  /**
+   * LS-ID-TNT-009: User-specific effective product codes from the JWT product_codes claim.
+   * Reflects direct grants + group inheritance + TenantAdmin auto-grant + LegacyDefault.
+   * Use this to drive the product switcher; prefer it over enabledProducts (tenant-level).
+   */
+  userProducts?: string[];
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────

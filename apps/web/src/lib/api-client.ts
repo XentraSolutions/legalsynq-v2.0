@@ -58,9 +58,12 @@ async function request<T>(
       // (often with `code` and `errors[]`). ASP.NET's default ProblemDetails
       // uses `title` / `detail`. Some legacy paths use `message`. Read all
       // four so the friendly-text mapping in callers actually fires.
+      // Prefer the human-readable `message` field when present (LS-ID-TNT-009 pattern:
+      // error = machine code, message = human description). Fall back to `error` for
+      // responses that only include an `error` string (older endpoint convention).
       message =
-        errBody?.error   ??
         errBody?.message ??
+        errBody?.error   ??
         errBody?.detail  ??
         errBody?.title   ??
         message;

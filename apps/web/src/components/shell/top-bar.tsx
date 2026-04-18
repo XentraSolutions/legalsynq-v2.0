@@ -102,15 +102,16 @@ function AppSwitcher() {
   const { session, isLoading } = useSession();
 
   // Compute visible products only once the session is confirmed loaded.
-  // Distinguish three states:
-  //   isLoading=true  → session is still being fetched; show nothing yet
-  //   session loaded, enabledProducts.length > 0 → show only those products
-  //   session loaded, enabledProducts.length === 0 → PlatformAdmin / unconfigured; show all
+  // LS-ID-TNT-009: prefer userProducts (user-level effective access from JWT product_codes)
+  // over enabledProducts (tenant-level) so the switcher shows only products the user can
+  // actually use. Both empty → PlatformAdmin / unconfigured; show all.
   const visibleProducts: typeof ALL_PRODUCTS[number][] = (() => {
     if (isLoading || !session) return [];                   // not ready yet
+    const up = session.userProducts ?? [];
     const ep = session.enabledProducts ?? [];
-    if (ep.length === 0) return [...ALL_PRODUCTS];          // fallback: show all
-    const ids = new Set(ep.map(code => PRODUCT_CODE_TO_NAV_KEY[code]).filter(Boolean));
+    const productList = up.length > 0 ? up : ep;           // user-level beats tenant-level
+    if (productList.length === 0) return [...ALL_PRODUCTS]; // PlatformAdmin / unconfigured
+    const ids = new Set(productList.map(code => PRODUCT_CODE_TO_NAV_KEY[code]).filter(Boolean));
     return ALL_PRODUCTS.filter(p => ids.has(p.id));
   })();
 

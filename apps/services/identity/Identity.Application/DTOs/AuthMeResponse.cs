@@ -29,4 +29,13 @@ public record AuthMeResponse(
     /// the profile page can display the current value without a second round-trip.
     /// Null when the user has not provided a phone yet.
     /// </summary>
-    string? Phone = null);
+    string? Phone = null,
+    /// <summary>
+    /// LS-ID-TNT-009: Frontend-friendly product codes representing this specific user's
+    /// effective product access (direct grants + group inheritance + TenantAdmin auto-grant
+    /// + LegacyDefault). Read from the JWT <c>product_codes</c> claim, which is computed
+    /// by <c>EffectiveAccessService</c> at login time and kept fresh via <c>access_version</c>
+    /// stale-token protection. Use this — not <c>EnabledProducts</c> — to filter the
+    /// product switcher by what the user can actually access.
+    /// </summary>
+    List<string>? UserProducts = null);

@@ -3003,6 +3003,27 @@ public static class AdminEndpoints
         var role = await db.Roles.FindAsync(body.RoleId);
         if (role is null) return Results.NotFound(new { error = $"Role '{body.RoleId}' not found." });
 
+        // ── LS-ID-TNT-009: Platform-role guard ──────────────────────────────
+        // TenantAdmins may only assign system roles that are valid at tenant level.
+        // Platform-only roles (PlatformAdmin, SuperAdmin, SystemAdmin, …) can only
+        // be assigned by a PlatformAdmin regardless of tenant isolation.
+        if (role.IsSystemRole)
+        {
+            var callerIsPlatformAdmin = ctx.User.IsInRole("PlatformAdmin");
+            if (!callerIsPlatformAdmin)
+            {
+                var tenantAssignableSystemRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                    { "TenantAdmin", "TenantUser" };
+                if (!tenantAssignableSystemRoles.Contains(role.Name))
+                    return Results.BadRequest(new
+                    {
+                        error   = "ROLE_NOT_TENANT_ASSIGNABLE",
+                        message = "This role cannot be assigned by a tenant administrator. " +
+                                  "Only TenantAdmin and TenantUser roles are assignable at the tenant level.",
+                    });
+            }
+        }
+
         // ── UIX-002-C: Product Role Eligibility Guardrails ──────────────────
         // If this role maps to a ProductRole (IsSystemRole == false and name matches
         // a ProductRole code), enforce org-type and product-enablement rules.

@@ -4846,3 +4846,27 @@ Expands the tenant Authorization → Users page to support three new management 
 
 ### Analysis
 `analysis/LS-ID-TNT-008-report.md`
+
+## LS-ID-TNT-009 — Access Enforcement Layer: Products + Roles (2026-04-18)
+
+Hardens the access enforcement layer across three axes: (1) role assignment guard — TenantAdmins can no longer assign platform-only system roles (`PlatformAdmin`, `SuperAdmin`, `SystemAdmin`, etc.); only `TenantAdmin` and `TenantUser` system roles remain assignable at tenant level, returning `400 ROLE_NOT_TENANT_ASSIGNABLE` otherwise. (2) LegacyDefault product access — users with no explicit product assignments (direct or group-inherited) and who are not TenantAdmin receive all tenant-enabled products via a new `LegacyDefault` source in `EffectiveAccessService`, preserving pre-LS-ID-TNT-008 behavior. (3) User-level product visibility — `AuthMeResponse` gains `UserProducts` (read from JWT `product_codes` claim); product switcher in top bar prefers this over tenant-level `EnabledProducts`. Additionally, `api-client.ts` error body priority fixed from `error ?? message` to `message ?? error` so human-readable descriptions reach the UI. No schema migrations. Incremental — no regressions to LS-ID-TNT-001 through LS-ID-TNT-008.
+
+### Files Changed
+- `apps/services/identity/Identity.Api/Endpoints/AdminEndpoints.cs` — `AssignRole` gains LS-ID-TNT-009 platform-role guard block; rejects non-PlatformAdmin callers attempting to assign system roles outside `{TenantAdmin, TenantUser}`
+- `apps/services/identity/Identity.Infrastructure/Services/EffectiveAccessService.cs` — `ComputeEffectiveAccessAsync` adds `LegacyDefault` source block after `TenantAdmin`/`Direct`/`Inherited` resolution
+- `apps/services/identity/Identity.Application/DTOs/AuthMeResponse.cs` — `UserProducts?: List<string>` field added (maps JWT `product_codes` to frontend codes)
+- `apps/services/identity/Identity.Application/Services/AuthService.cs` — `GetMeAsync` reads `product_codes` JWT claims → maps via `DbToFrontendProductCode` → sets `UserProducts`
+- `apps/web/src/types/index.ts` — `userProducts?: string[]` added to `PlatformSession`
+- `apps/web/src/lib/session.ts` — `AuthMeResponse` type extended with `userProducts`; `mapToSession` includes it
+- `apps/web/src/providers/session-provider.tsx` — passes `userProducts` through `SessionContext`
+- `apps/web/src/components/shell/top-bar.tsx` — `AppSwitcher` prefers `session.userProducts` over `session.enabledProducts`; falls back to all products for PlatformAdmins
+- `apps/web/src/lib/api-client.ts` — error body priority changed to `message ?? error ?? detail ?? title`
+
+### Role Guard Rule
+`PlatformAdmin` callers: may assign any role. All other callers: may assign product roles freely; may assign `TenantAdmin` or `TenantUser` system roles; attempting to assign any other system role → `400 ROLE_NOT_TENANT_ASSIGNABLE`.
+
+### LegacyDefault Design Note
+To move to strict explicit-only product access, remove the LegacyDefault block in `EffectiveAccessService.ComputeEffectiveAccessAsync` and run a migration to explicitly grant all active tenant products to all existing active users.
+
+### Analysis
+`analysis/LS-ID-TNT-009-report.md`
