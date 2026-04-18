@@ -280,8 +280,9 @@ public class EffectiveAccessService : IEffectiveAccessService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (allRoleCodes.Count == 0)
-            return ([], []);
+        // LS-ID-TNT-011: even if there are no product role codes, we still need to
+        // resolve tenant-level permissions via system role → RolePermissionAssignment.
+        // Do not short-circuit here; always reach the system-role resolution below.
 
         var rolePermissions = await _db.ProductRoles
             .Where(pr => allRoleCodes.Contains(pr.Code) && pr.IsActive)
@@ -334,6 +335,34 @@ public class EffectiveAccessService : IEffectiveAccessService
             {
                 if (seenPermissions.Add(permCode + ":TenantAdmin"))
                     permissionSources.Add(new EffectivePermissionEntry(permCode, perm.ProductCode, "TenantAdmin", perm.RoleCode));
+            }
+        }
+
+        // ── LS-ID-TNT-011: Tenant-level permissions via system role → RolePermissionAssignment ──
+        // Look up active global-scoped system role names for this user, then load the
+        // corresponding permissions from idt_RoleCapabilityAssignments.  This is separate
+        // from the product-role → RolePermissionMapping path above; tenant permissions live
+        // under the SYNQ_PLATFORM pseudo-product and are not gated on product entitlement.
+        var systemRoleNames = await _db.ScopedRoleAssignments
+            .Where(s => s.UserId == userId
+                && s.IsActive
+                && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
+            .Select(s => s.Role.Name)
+            .Distinct()
+            .ToListAsync(ct);
+
+        if (systemRoleNames.Count > 0)
+        {
+            var systemRolePerms = await _db.RolePermissionAssignments
+                .Where(a => systemRoleNames.Contains(a.Role.Name) && a.Permission.IsActive)
+                .Select(a => new { RoleName = a.Role.Name, PermCode = a.Permission.Code, ProductCode = a.Permission.Product.Code })
+                .ToListAsync(ct);
+
+            foreach (var tp in systemRolePerms)
+            {
+                var sourceKey = $"{tp.PermCode}:SystemRole:{tp.RoleName}";
+                if (seenPermissions.Add(sourceKey))
+                    permissionSources.Add(new EffectivePermissionEntry(tp.PermCode, tp.ProductCode, "SystemRole", tp.RoleName));
             }
         }
 

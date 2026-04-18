@@ -99,4 +99,17 @@ internal static class SeedIds
     public static readonly Guid PermPartyCreate              = new("60000000-0000-0000-0000-000000000027");
     public static readonly Guid PermPartyReadOwn             = new("60000000-0000-0000-0000-000000000028");
     public static readonly Guid PermApplicationStatusView    = new("60000000-0000-0000-0000-000000000029");
+
+    // ── LS-ID-TNT-011: Products — SynqPlatform (tenant-permission catalog anchor) ─
+    public static readonly Guid ProductSynqPlatform = new("10000000-0000-0000-0000-000000000006");
+
+    // ── LS-ID-TNT-011: Permissions — Tenant-level operations (SYNQ_PLATFORM) ─────
+    public static readonly Guid PermTenantUsersView          = new("60000000-0000-0000-0000-000000000030");
+    public static readonly Guid PermTenantUsersManage        = new("60000000-0000-0000-0000-000000000031");
+    public static readonly Guid PermTenantGroupsManage       = new("60000000-0000-0000-0000-000000000032");
+    public static readonly Guid PermTenantRolesAssign        = new("60000000-0000-0000-0000-000000000033");
+    public static readonly Guid PermTenantProductsAssign     = new("60000000-0000-0000-0000-000000000034");
+    public static readonly Guid PermTenantSettingsManage     = new("60000000-0000-0000-0000-000000000035");
+    public static readonly Guid PermTenantAuditView          = new("60000000-0000-0000-0000-000000000036");
+    public static readonly Guid PermTenantInvitationsManage  = new("60000000-0000-0000-0000-000000000037");
 }

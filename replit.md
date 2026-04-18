@@ -4895,3 +4895,34 @@ Server-only async function. Call chain: `requireOrg()` (auth + org) → admin by
 
 ### Analysis
 `analysis/LS-ID-TNT-010-report.md`
+
+## LS-ID-TNT-011 — Permission Model Foundation (Tenant Catalog + Effective Resolution) (2026-04-18)
+
+Introduces the **tenant-level permission catalog** as the authoritative RBAC layer for cross-product tenant operations. Adds `SYNQ_PLATFORM` pseudo-product, seeds 8 `TENANT.*` capability codes, maps `TenantAdmin → all 8` and `StandardUser → TENANT.users:view`, extends `EffectiveAccessService` to resolve tenant permissions via system roles, introduces `IEffectivePermissionService` as the standard enforcement contract, and adds 3 inspection endpoints. Also adds `Category` + audit columns to `idt_Capabilities` and creates empty `idt_Policies` / `idt_PermissionPolicies` / `idt_PolicyRules` tables as ABAC scaffolding. Includes a MySQL 8.0 partial-apply guard in `Program.cs` that detects DDL-committed-but-not-recorded migration state, seeds data idempotently, and records the migration so EF skips re-application on next startup. No regressions to LS-ID-TNT-001..010.
+
+### Schema Changes (migration `20260418230627_AddTenantPermissionCatalog`)
+- `idt_Capabilities`: widened `Code` varchar(100→150); added `Category varchar(100)`, `CreatedBy char(36)`, `UpdatedAtUtc datetime(6)`, `UpdatedBy char(36)`
+- New product seeded: `SYNQ_PLATFORM` (ID `10000000-0000-0000-0000-000000000006`)
+- 8 `TENANT.*` capabilities seeded (IDs `60000000-…-0030..0037`)
+- 9 role-capability assignments seeded in `idt_RoleCapabilityAssignments` (DB col `CapabilityId`)
+- New tables: `idt_Policies`, `idt_PermissionPolicies`, `idt_PolicyRules` (ABAC scaffolding, empty)
+
+### Files Changed
+- `Identity.Infrastructure/Data/Seed/SeedIds.cs` — `SynqPlatformProductId` + 8 `TenantCapability*` GUIDs
+- `Identity.Infrastructure/Data/Configurations/PermissionConfiguration.cs` — Category + audit column mappings
+- `Identity.Infrastructure/Services/EffectiveAccessService.cs` — removed early-return guard; added system-role → `RolePermissionAssignment` path (LS-ID-TNT-011 block)
+- `Identity.Application/Interfaces/IEffectivePermissionService.cs` — **created** interface + `EffectivePermissionsDto` record
+- `Identity.Infrastructure/Services/EffectivePermissionService.cs` — **created** concrete implementation
+- `Identity.Api/Endpoints/PermissionCatalogEndpoints.cs` — **created** 3 inspection endpoints
+- `Identity.Infrastructure/InfrastructureServiceCollectionExtensions.cs` — DI registration
+- `Identity.Api/Endpoints/EndpointExtensions.cs` — `MapPermissionCatalogEndpoints()` wired
+- `Identity.Api/Program.cs` — LS-ID-TNT-011 pre-migration guard (column-existence check → seed → history insert)
+- `Identity.Infrastructure/Persistence/Migrations/20260418230627_AddTenantPermissionCatalog.cs` — EF migration
+
+### New Endpoints
+- `GET /api/admin/permissions/catalog` — full active permission catalog grouped by product (PlatformAdmin)
+- `GET /api/admin/permissions/role-assignments` — system role → permission mappings grouped by role (PlatformAdmin)
+- `GET /api/permissions/effective` — tenant + product + union permissions for a user (JWT + x-user-id/x-tenant-id headers)
+
+### Analysis
+`analysis/LS-ID-TNT-011-report.md`

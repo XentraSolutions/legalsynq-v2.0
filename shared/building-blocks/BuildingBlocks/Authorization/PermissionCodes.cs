@@ -35,6 +35,20 @@ public static class PermissionCodes
     /// </summary>
     public const string LienSell      = "SYNQ_LIENS.lien:sell";
 
+    // ── Tenant operations (SYNQ_PLATFORM pseudo-product) ─────────────────────
+    // Naming: TENANT.<domain>:<action>
+    // Resolved via system role → RolePermissionAssignment, not via product roles.
+    // UI ownership: Tenant Portal manages tenant role → permission visibility;
+    //               Control Center manages the catalog and role-permission governance.
+    public const string TenantUsersView         = "TENANT.users:view";
+    public const string TenantUsersManage       = "TENANT.users:manage";
+    public const string TenantGroupsManage      = "TENANT.groups:manage";
+    public const string TenantRolesAssign       = "TENANT.roles:assign";
+    public const string TenantProductsAssign    = "TENANT.products:assign";
+    public const string TenantSettingsManage    = "TENANT.settings:manage";
+    public const string TenantAuditView         = "TENANT.audit:view";
+    public const string TenantInvitationsManage = "TENANT.invitations:manage";
+
     // ── SynqFund ─────────────────────────────────────────────────────────────
     public const string ApplicationCreate          = "SYNQ_FUND.application:create";
     /// <summary>

@@ -29,5 +29,33 @@ public class RolePermissionAssignmentConfiguration : IEntityTypeConfiguration<Ro
 
         builder.HasIndex(a => a.RoleId);
         builder.HasIndex(a => a.PermissionId);
+
+        // LS-ID-TNT-011: Seed default tenant role → tenant permission mappings.
+        //
+        // TenantAdmin gets all 8 tenant permissions (full administrative access).
+        // StandardUser gets only users:view (can see the user list, cannot administer it).
+        // PlatformAdmin is handled by code-level bypass (IsPlatformAdmin) so no seed needed.
+        //
+        // These mappings are read by EffectiveAccessService.ResolvePermissionsAsync to
+        // include tenant permissions in the JWT `permissions` claim alongside product permissions.
+
+        var ta  = SeedIds.RoleTenantAdmin;
+        var std = SeedIds.RoleStandardUser;
+        var at  = SeedIds.SeededAt;
+
+        builder.HasData(
+            // TenantAdmin → all tenant permissions
+            new { RoleId = ta, PermissionId = SeedIds.PermTenantUsersView,         AssignedAtUtc = at, AssignedByUserId = (Guid?)null },
+            new { RoleId = ta, PermissionId = SeedIds.PermTenantUsersManage,       AssignedAtUtc = at, AssignedByUserId = (Guid?)null },
+            new { RoleId = ta, PermissionId = SeedIds.PermTenantGroupsManage,      AssignedAtUtc = at, AssignedByUserId = (Guid?)null },
+            new { RoleId = ta, PermissionId = SeedIds.PermTenantRolesAssign,       AssignedAtUtc = at, AssignedByUserId = (Guid?)null },
+            new { RoleId = ta, PermissionId = SeedIds.PermTenantProductsAssign,    AssignedAtUtc = at, AssignedByUserId = (Guid?)null },
+            new { RoleId = ta, PermissionId = SeedIds.PermTenantSettingsManage,    AssignedAtUtc = at, AssignedByUserId = (Guid?)null },
+            new { RoleId = ta, PermissionId = SeedIds.PermTenantAuditView,         AssignedAtUtc = at, AssignedByUserId = (Guid?)null },
+            new { RoleId = ta, PermissionId = SeedIds.PermTenantInvitationsManage, AssignedAtUtc = at, AssignedByUserId = (Guid?)null },
+
+            // StandardUser → read-only tenant user visibility
+            new { RoleId = std, PermissionId = SeedIds.PermTenantUsersView,        AssignedAtUtc = at, AssignedByUserId = (Guid?)null }
+        );
     }
 }

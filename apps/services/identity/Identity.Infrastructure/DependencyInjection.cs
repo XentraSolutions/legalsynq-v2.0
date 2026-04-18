@@ -112,6 +112,7 @@ public static class DependencyInjection
         services.AddScoped<IUserRoleAssignmentService, UserRoleAssignmentService>();
         services.AddScoped<IAccessSourceQueryService, AccessSourceQueryService>();
         services.AddScoped<IEffectiveAccessService, EffectiveAccessService>();
+        services.AddScoped<IEffectivePermissionService, EffectivePermissionService>();
         services.AddScoped<IAuthorizationSimulationService, AuthorizationSimulationService>();
 
         services.AddScoped<IGroupService, GroupService>();

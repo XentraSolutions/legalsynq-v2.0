@@ -55,6 +55,92 @@ var env = app.Environment.EnvironmentName;
 
 app.Logger.LogInformation("Starting {Service} {Version} in {Environment}", ServiceName, Version, env);
 
+// ── LS-ID-TNT-011 pre-migration guard ────────────────────────────────────────
+// MySQL auto-commits DDL (ALTER TABLE, CREATE TABLE) immediately, even inside a
+// failed migration transaction. If 20260418230627_AddTenantPermissionCatalog ran
+// its DDL but failed on the data-seed step, the schema is already correct but EF
+// has no record of the migration. On the next startup EF tries to re-apply it,
+// the AddColumn calls fail with "Duplicate column name", and the service can never
+// start. This guard detects that scenario, runs the idempotent data seeds, and
+// inserts the migration record so EF's Migrate() finds nothing to do.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db    = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    var conn  = db.Database.GetDbConnection();
+    if (conn.State != System.Data.ConnectionState.Open) conn.Open();
+    using var cmd = conn.CreateCommand();
+
+    // 1. Has the DDL already been applied?
+    cmd.CommandText = @"
+        SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME   = 'idt_Capabilities'
+          AND COLUMN_NAME  = 'Category';";
+    var colExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+
+    // 2. Has the migration already been recorded?
+    cmd.CommandText = @"
+        SELECT COUNT(*) FROM `__EFMigrationsHistory`
+        WHERE `MigrationId` = '20260418230627_AddTenantPermissionCatalog';";
+    var migExists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+
+    if (colExists && !migExists)
+    {
+        app.Logger.LogWarning(
+            "LS-ID-TNT-011: AddTenantPermissionCatalog DDL was partially committed " +
+            "by a prior run. Seeding data idempotently and marking migration as applied.");
+
+        // Seed SYNQ_PLATFORM product (idempotent)
+        cmd.CommandText = @"
+            INSERT IGNORE INTO `idt_Products` (`Id`, `Code`, `CreatedAtUtc`, `Description`, `IsActive`, `Name`)
+            VALUES ('10000000-0000-0000-0000-000000000006','SYNQ_PLATFORM','2025-01-01 00:00:00.000000',
+                    'Platform/tenant operation capabilities',1,'SynqPlatform');";
+        cmd.ExecuteNonQuery();
+
+        // Seed 8 TENANT.* permissions (idempotent)
+        cmd.CommandText = @"
+            INSERT IGNORE INTO `idt_Capabilities`
+                (`Id`,`ProductId`,`Code`,`Name`,`Description`,`Category`,`IsActive`,`CreatedAtUtc`,`UpdatedAtUtc`,`CreatedBy`,`UpdatedBy`)
+            VALUES
+                ('60000000-0000-0000-0000-000000000030','10000000-0000-0000-0000-000000000006','TENANT.users:view',        'View Tenant Users',       'View the list of users in the tenant',                  'Users',      1,'2025-01-01 00:00:00.000000',NULL,NULL,NULL),
+                ('60000000-0000-0000-0000-000000000031','10000000-0000-0000-0000-000000000006','TENANT.users:manage',      'Manage Tenant Users',     'Create, edit, and deactivate users in the tenant',      'Users',      1,'2025-01-01 00:00:00.000000',NULL,NULL,NULL),
+                ('60000000-0000-0000-0000-000000000032','10000000-0000-0000-0000-000000000006','TENANT.groups:manage',     'Manage Access Groups',    'Create, edit, and delete tenant access groups',         'Groups',     1,'2025-01-01 00:00:00.000000',NULL,NULL,NULL),
+                ('60000000-0000-0000-0000-000000000033','10000000-0000-0000-0000-000000000006','TENANT.roles:assign',      'Assign Roles',            'Assign or revoke roles for tenant users',               'Roles',      1,'2025-01-01 00:00:00.000000',NULL,NULL,NULL),
+                ('60000000-0000-0000-0000-000000000034','10000000-0000-0000-0000-000000000006','TENANT.products:assign',   'Assign Product Access',   'Assign or revoke product access for tenant users',      'Products',   1,'2025-01-01 00:00:00.000000',NULL,NULL,NULL),
+                ('60000000-0000-0000-0000-000000000035','10000000-0000-0000-0000-000000000006','TENANT.settings:manage',   'Manage Tenant Settings',  'Update tenant configuration and preferences',           'Settings',   1,'2025-01-01 00:00:00.000000',NULL,NULL,NULL),
+                ('60000000-0000-0000-0000-000000000036','10000000-0000-0000-0000-000000000006','TENANT.audit:view',        'View Audit Logs',         'View identity and access audit events for the tenant',  'Audit',      1,'2025-01-01 00:00:00.000000',NULL,NULL,NULL),
+                ('60000000-0000-0000-0000-000000000037','10000000-0000-0000-0000-000000000006','TENANT.invitations:manage','Manage User Invitations', 'Send, resend, and revoke user invitations',             'Invitations',1,'2025-01-01 00:00:00.000000',NULL,NULL,NULL);";
+        cmd.ExecuteNonQuery();
+
+        // Seed role → capability assignments (idempotent). Column is CapabilityId (not PermissionId).
+        cmd.CommandText = @"
+            INSERT IGNORE INTO `idt_RoleCapabilityAssignments` (`RoleId`,`CapabilityId`,`AssignedAtUtc`,`AssignedByUserId`)
+            VALUES
+                ('30000000-0000-0000-0000-000000000002','60000000-0000-0000-0000-000000000030','2025-01-01 00:00:00.000000',NULL),
+                ('30000000-0000-0000-0000-000000000002','60000000-0000-0000-0000-000000000031','2025-01-01 00:00:00.000000',NULL),
+                ('30000000-0000-0000-0000-000000000002','60000000-0000-0000-0000-000000000032','2025-01-01 00:00:00.000000',NULL),
+                ('30000000-0000-0000-0000-000000000002','60000000-0000-0000-0000-000000000033','2025-01-01 00:00:00.000000',NULL),
+                ('30000000-0000-0000-0000-000000000002','60000000-0000-0000-0000-000000000034','2025-01-01 00:00:00.000000',NULL),
+                ('30000000-0000-0000-0000-000000000002','60000000-0000-0000-0000-000000000035','2025-01-01 00:00:00.000000',NULL),
+                ('30000000-0000-0000-0000-000000000002','60000000-0000-0000-0000-000000000036','2025-01-01 00:00:00.000000',NULL),
+                ('30000000-0000-0000-0000-000000000002','60000000-0000-0000-0000-000000000037','2025-01-01 00:00:00.000000',NULL),
+                ('30000000-0000-0000-0000-000000000003','60000000-0000-0000-0000-000000000030','2025-01-01 00:00:00.000000',NULL);";
+        cmd.ExecuteNonQuery();
+
+        // Mark migration as applied so EF's Migrate() skips it.
+        cmd.CommandText = @"
+            INSERT IGNORE INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`)
+            VALUES ('20260418230627_AddTenantPermissionCatalog','8.0.7');";
+        cmd.ExecuteNonQuery();
+    }
+    conn.Close();
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "LS-ID-TNT-011 pre-migration guard failed — proceeding with normal migration");
+}
+
 try
 {
     using var scope = app.Services.CreateScope();
@@ -349,5 +435,6 @@ app.MapTenantBrandingEndpoints();
 app.MapAdminEndpoints();
 app.MapAccessSourceEndpoints();
 app.MapGroupEndpoints();
+app.MapPermissionCatalogEndpoints();
 
 app.Run();
