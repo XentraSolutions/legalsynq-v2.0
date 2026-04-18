@@ -152,25 +152,30 @@ if command -v dotnet &>/dev/null; then
     # the catch-all (*) ensures any new entry in BUILD_PROJECTS is launched
     # automatically even if it has no special configuration.
     SVC_PIDS=()
+    SVC_NAMES=()
     for csproj in "${BUILD_PROJECTS[@]}"; do
       svc_name="$(basename "$csproj" .csproj)"
       case "$svc_name" in
         PlatformAuditEventService)
-          launch_svc "Audit"         "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5007 ;;
+          _svc_label="Audit"
+          launch_svc "$_svc_label"    "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5007 ;;
         Notifications.Api)
-          launch_svc "Notifications" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5008 ;;
+          _svc_label="Notifications"
+          launch_svc "$_svc_label"    "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5008 ;;
         Flow.Api)
-          launch_svc "Flow API"      "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5012 ;;
-        Gateway.Api)   launch_svc "Gateway"      "$csproj" ;;
-        Identity.Api)  launch_svc "Identity API" "$csproj" ;;
-        Fund.Api)      launch_svc "Fund API"      "$csproj" ;;
-        CareConnect.Api) launch_svc "CareConnect" "$csproj" ;;
-        Documents.Api) launch_svc "Documents"     "$csproj" ;;
-        Liens.Api)     launch_svc "Liens"         "$csproj" ;;
-        *)             launch_svc "$svc_name"     "$csproj" ;;
+          _svc_label="Flow API"
+          launch_svc "$_svc_label"    "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5012 ;;
+        Gateway.Api)     _svc_label="Gateway";      launch_svc "$_svc_label" "$csproj" ;;
+        Identity.Api)    _svc_label="Identity API"; launch_svc "$_svc_label" "$csproj" ;;
+        Fund.Api)        _svc_label="Fund API";     launch_svc "$_svc_label" "$csproj" ;;
+        CareConnect.Api) _svc_label="CareConnect";  launch_svc "$_svc_label" "$csproj" ;;
+        Documents.Api)   _svc_label="Documents";    launch_svc "$_svc_label" "$csproj" ;;
+        Liens.Api)       _svc_label="Liens";        launch_svc "$_svc_label" "$csproj" ;;
+        *)               _svc_label="$svc_name";    launch_svc "$_svc_label" "$csproj" ;;
       esac
       # $! is the PID of the dotnet process just backgrounded by launch_svc
       SVC_PIDS+=("$!")
+      SVC_NAMES+=("$_svc_label")
     done
 
     echo "[dotnet] Service launch complete"
@@ -180,10 +185,13 @@ if command -v dotnet &>/dev/null; then
     # env vars, port conflict, etc.) before we hand off to the health probes.
     sleep 5
     _dotnet_crashed=0
+    _svc_idx=0
     for _svc_pid in "${SVC_PIDS[@]}"; do
+      _svc_label="${SVC_NAMES[$_svc_idx]}"
+      _svc_idx=$(( _svc_idx + 1 ))
       if ! kill -0 "$_svc_pid" 2>/dev/null; then
         wait "$_svc_pid" 2>/dev/null; _svc_ec=$?
-        echo "[dotnet] ERROR: A .NET service (pid $_svc_pid) exited unexpectedly at launch with code $_svc_ec — check the output above for details"
+        echo "[dotnet] ERROR: $_svc_label (pid $_svc_pid) exited unexpectedly at launch with code $_svc_ec"
         _dotnet_crashed=1
       fi
     done
