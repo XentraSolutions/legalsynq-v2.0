@@ -9,7 +9,7 @@ import { ConfirmDialog, Modal } from '@/components/lien/modal';
 import { tenantClientApi, ApiError } from '@/lib/tenant-client-api';
 import { useToast } from '@/lib/toast-context';
 
-type StatusFilter = 'All' | 'Active' | 'Inactive';
+type StatusFilter = 'All' | 'Active' | 'Inactive' | 'Invited';
 type StatusAction = 'activate' | 'deactivate';
 
 const PAGE_SIZE = 15;
@@ -31,14 +31,32 @@ function displayName(u: TenantUser): string {
   return [f, l].filter(Boolean).join(' ');
 }
 
-function StatusBadge({ isActive }: { isActive: boolean }) {
-  const cls = isActive
-    ? 'bg-green-50 text-green-700 border-green-200'
-    : 'bg-gray-100 text-gray-500 border-gray-200';
+function getUserStatus(u: TenantUser): string {
+  if (u.status) return u.status;
+  return u.isActive ? 'Active' : 'Inactive';
+}
+
+function StatusBadge({ status }: { status: string }) {
+  if (status === 'Active') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border bg-green-50 text-green-700 border-green-200">
+        <span className="w-1.5 h-1.5 rounded-full inline-block bg-green-500" />
+        Active
+      </span>
+    );
+  }
+  if (status === 'Invited') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border bg-amber-50 text-amber-700 border-amber-200">
+        <i className="ri-mail-send-line text-[11px]" />
+        Invited
+      </span>
+    );
+  }
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${cls}`}>
-      <span className={`w-1.5 h-1.5 rounded-full inline-block ${isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
-      {isActive ? 'Active' : 'Inactive'}
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border bg-gray-100 text-gray-500 border-gray-200">
+      <span className="w-1.5 h-1.5 rounded-full inline-block bg-gray-400" />
+      Inactive
     </span>
   );
 }
@@ -65,6 +83,7 @@ function RowActionsMenu({
   onActivate,
   onDeactivate,
   onResetPassword,
+  onResendInvite,
 }: {
   user:             TenantUser;
   onView:           () => void;
@@ -72,9 +91,12 @@ function RowActionsMenu({
   onActivate:       () => void;
   onDeactivate:     () => void;
   onResetPassword:  () => void;
+  onResendInvite:   () => void;
 }) {
   const [open, setOpen] = useState(false);
   function close() { setOpen(false); }
+  const userStatus = getUserStatus(user);
+  const isInvited  = userStatus === 'Invited';
 
   return (
     <div className="relative inline-block">
@@ -92,7 +114,7 @@ function RowActionsMenu({
             className="fixed inset-0 z-10"
             onClick={(e) => { e.stopPropagation(); close(); }}
           />
-          <div className="absolute right-0 z-20 mt-1 w-48 bg-white rounded-lg border border-gray-200 shadow-lg py-1 text-sm">
+          <div className="absolute right-0 z-20 mt-1 w-52 bg-white rounded-lg border border-gray-200 shadow-lg py-1 text-sm">
             <button
               onClick={(e) => { e.stopPropagation(); close(); onView(); }}
               className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700 flex items-center gap-2"
@@ -107,13 +129,25 @@ function RowActionsMenu({
               <i className="ri-edit-line text-gray-400" />
               Edit
             </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); close(); onResetPassword(); }}
-              className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700 flex items-center gap-2"
-            >
-              <i className="ri-lock-password-line text-gray-400" />
-              Reset Password
-            </button>
+
+            {isInvited ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); close(); onResendInvite(); }}
+                className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-700 flex items-center gap-2"
+              >
+                <i className="ri-mail-send-line" />
+                Resend Invite
+              </button>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); close(); onResetPassword(); }}
+                className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700 flex items-center gap-2"
+              >
+                <i className="ri-lock-password-line text-gray-400" />
+                Reset Password
+              </button>
+            )}
+
             <div className="border-t border-gray-100 my-1" />
             {user.isActive ? (
               <button
@@ -156,6 +190,11 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
   const [resetResult,   setResetResult]   = useState<{ name: string; email: string; link: string } | null>(null);
   const [copyLabel,     setCopyLabel]     = useState('Copy link');
 
+  const [resendInviteUser,  setResendInviteUser]  = useState<TenantUser | null>(null);
+  const [resending,         setResending]         = useState(false);
+  const [inviteResult,      setInviteResult]      = useState<{ name: string; email: string; link: string } | null>(null);
+  const [inviteCopyLabel,   setInviteCopyLabel]   = useState('Copy link');
+
   const activeAdminCount = useMemo(
     () => users.filter(u => u.isActive && (u.roles ?? []).includes(TENANT_ADMIN_ROLE)).length,
     [users]
@@ -168,10 +207,10 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return users.filter((u) => {
+      const uStatus = getUserStatus(u);
       const matchesStatus =
         statusFilter === 'All' ||
-        (statusFilter === 'Active' && !!u.isActive) ||
-        (statusFilter === 'Inactive' && !u.isActive);
+        statusFilter === uStatus;
       if (!matchesStatus) return false;
       if (!q) return true;
       const fullName = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
@@ -241,9 +280,6 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
       const name  = displayName(resetPwdUser);
       const email = (resetPwdUser.email ?? '').trim();
       setResetPwdUser(null);
-      // LS-ID-TNT-005: Non-production environments return a resetToken so the admin
-      // can hand-deliver the link without reading server logs.  In production only
-      // the message is returned (email delivery is future infrastructure).
       if (result.data?.resetToken) {
         const link = `${window.location.origin}/reset-password?token=${encodeURIComponent(result.data.resetToken)}`;
         setResetResult({ name, email, link });
@@ -270,6 +306,41 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
     }
   }
 
+  async function handleResendInviteConfirm() {
+    if (!resendInviteUser) return;
+    setResending(true);
+    try {
+      const result = await tenantClientApi.resendInvite(resendInviteUser.id);
+      const name  = displayName(resendInviteUser);
+      const email = (resendInviteUser.email ?? '').trim();
+      setResendInviteUser(null);
+      if (result.data?.inviteToken) {
+        const link = `${window.location.origin}/accept-invite?token=${encodeURIComponent(result.data.inviteToken)}`;
+        setInviteResult({ name, email, link });
+        setInviteCopyLabel('Copy link');
+      } else {
+        showToast(
+          email
+            ? `Invitation resent to ${email}.`
+            : 'Invitation resent.',
+          'success',
+        );
+      }
+      router.refresh();
+    } catch (err) {
+      let msg = 'Something went wrong. Please try again.';
+      if (err instanceof ApiError) {
+        if (err.isForbidden) msg = 'You do not have permission to resend invitations.';
+        else if (err.isNotFound) msg = 'User not found.';
+        else if (err.message) msg = err.message;
+      }
+      showToast(msg, 'error');
+      setResendInviteUser(null);
+    } finally {
+      setResending(false);
+    }
+  }
+
   const productCount = (u: TenantUser) => u.productRoles?.filter(r => !r.includes(':')).length ?? 0;
   const roleCount    = (u: TenantUser) => u.roles?.length ?? 0;
 
@@ -279,6 +350,9 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
 
   const resetPwdName  = resetPwdUser ? displayName(resetPwdUser) : '';
   const resetPwdEmail = (resetPwdUser?.email ?? '').trim();
+
+  const resendInviteName  = resendInviteUser ? displayName(resendInviteUser) : '';
+  const resendInviteEmail = (resendInviteUser?.email ?? '').trim();
 
   return (
     <>
@@ -326,6 +400,21 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
             : 'A password reset link will be sent to this user. Their existing password will remain valid until they complete the reset.'
         }
         confirmLabel="Send Reset Link"
+        confirmVariant="primary"
+      />
+
+      <ConfirmDialog
+        open={!!resendInviteUser}
+        onClose={() => { if (!resending) setResendInviteUser(null); }}
+        onConfirm={handleResendInviteConfirm}
+        loading={resending}
+        title={`Resend Invite to ${resendInviteName}?`}
+        description={
+          resendInviteEmail
+            ? `A new invitation link will be created and sent to ${resendInviteEmail}. The previous invitation will be invalidated.`
+            : 'A new invitation link will be created. The previous invitation will be invalidated.'
+        }
+        confirmLabel="Resend Invite"
         confirmVariant="primary"
       />
 
@@ -378,6 +467,55 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
         )}
       </Modal>
 
+      {/* LS-ID-TNT-007: Dev/non-production invite link delivery modal */}
+      <Modal
+        open={!!inviteResult}
+        onClose={() => setInviteResult(null)}
+        title="Invitation Link"
+        size="sm"
+      >
+        {inviteResult && (
+          <div className="space-y-4 py-1">
+            <p className="text-sm text-gray-600">
+              A new invitation link has been created for <span className="font-medium text-gray-900">{inviteResult.name}</span>
+              {inviteResult.email && <> ({inviteResult.email})</>}.
+              Share this link so they can set their password and activate their account.
+            </p>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <i className="ri-information-line text-[15px] text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[13px] text-amber-700 leading-snug">
+                  <span className="font-medium">Non-production only.</span> In production this link is delivered via email. Do not share this link in an insecure channel.
+                </p>
+              </div>
+              <a
+                href={inviteResult.link}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-orange-600 underline underline-offset-2 break-all"
+              >
+                <i className="ri-mail-send-line text-[14px] shrink-0" />
+                {inviteResult.link}
+              </a>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(inviteResult.link).catch(() => {});
+                setInviteCopyLabel('Copied!');
+                setTimeout(() => setInviteCopyLabel('Copy link'), 2500);
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            >
+              <i className={`${inviteCopyLabel === 'Copied!' ? 'ri-check-line text-green-600' : 'ri-file-copy-line'} text-[15px]`} />
+              {inviteCopyLabel}
+            </button>
+          </div>
+        )}
+      </Modal>
+
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="relative flex-1 max-w-sm">
@@ -394,7 +532,7 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
           </div>
 
           <div className="flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 p-1">
-            {(['All', 'Active', 'Inactive'] as StatusFilter[]).map((s) => (
+            {(['All', 'Active', 'Invited', 'Inactive'] as StatusFilter[]).map((s) => (
               <button
                 key={s}
                 onClick={() => handleStatus(s)}
@@ -418,7 +556,7 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
             className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-sm font-medium transition-colors whitespace-nowrap"
           >
             <i className="ri-user-add-line text-base" />
-            Add User
+            Invite User
           </button>
         </div>
 
@@ -463,7 +601,9 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
                       </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-gray-600">{u.email || '—'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap"><StatusBadge isActive={!!u.isActive} /></td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <StatusBadge status={getUserStatus(u)} />
+                    </td>
                     <td className="px-4 py-3 text-center"><CountBadge count={productCount(u)} color="blue" /></td>
                     <td className="px-4 py-3 text-center hidden md:table-cell"><CountBadge count={roleCount(u)} color="indigo" /></td>
                     <td className="px-4 py-3 text-center hidden lg:table-cell"><CountBadge count={0} color="purple" /></td>
@@ -473,6 +613,7 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
                         onView={() => router.push(`/tenant/authorization/users/${u.id}`)}
                         onEdit={() => setEditUser(u)}
                         onResetPassword={() => setResetPwdUser(u)}
+                        onResendInvite={() => setResendInviteUser(u)}
                         onActivate={() => setConfirmState({ user: u, action: 'activate' })}
                         onDeactivate={() => handleDeactivateRequest(u)}
                       />

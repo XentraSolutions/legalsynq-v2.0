@@ -5,6 +5,7 @@ export interface TenantUser {
   firstName: string;
   lastName: string;
   isActive: boolean;
+  status?: string;
   roles: string[];
   organizationId?: string;
   orgType?: string;

@@ -4795,3 +4795,35 @@ Wires the Identity service admin-reset-password flow to the existing Notificatio
 
 ### Analysis
 `analysis/LS-ID-TNT-006-report.md`
+
+## LS-ID-TNT-007 — Invite-Based User Creation (2026-04-18)
+
+Replaces the "admin sets temporary password" flow with a secure invite-based onboarding flow. Admin creates an inactive user; platform generates a 72-hour single-use invite token, sends a branded invite email via the Notifications service, and the invitee lands on `/accept-invite?token=…` to choose their own password and activate the account. Reuses LS-ID-TNT-006 email-client infrastructure.
+
+### Files Changed
+- `apps/services/identity/Identity.Infrastructure/Services/NotificationsEmailClient.cs` — Added `SendInviteEmailAsync` to `INotificationsEmailClient` interface + implementation; branded HTML/text invite templates; builds activation link `{PortalBaseUrl}/accept-invite?token={encoded}`; returns `(EmailConfigured, Success, Error?)` tuple
+- `apps/services/identity/Identity.Api/Endpoints/AdminEndpoints.cs` — `InviteUser` + `ResendInvite` handlers inject `IOptions<NotificationsServiceOptions>`, `INotificationsEmailClient`, `IWebHostEnvironment`; removed `temporaryPassword` from create flow; build and send activation link; `502` on delivery failure when configured; env-gated `inviteToken` fallback in development
+- `apps/web/src/types/index.ts` — Added `status?: string` to `TenantUser`
+- `apps/web/src/lib/tenant-client-api.ts` — Added `inviteUser()` and `resendInvite()` client methods
+- `apps/web/src/app/(platform)/tenant/authorization/users/AddUserModal.tsx` — Rewritten: removed password field; "Send Invite" CTA; invite-link panel with copy-to-clipboard when dev token returned; "Done" calls `onSuccess()`
+- `apps/web/src/app/(platform)/tenant/authorization/users/AuthUserTable.tsx` — Amber "Invited" badge; "Invited" status filter; "Resend Invite" row action; "Invite User" button label; dedicated invite-link modal
+- `apps/web/src/app/accept-invite/page.tsx` — New: public route rendering `AcceptInviteForm` with branded left panel
+- `apps/web/src/app/accept-invite/accept-invite-form.tsx` — New: client form (new password + confirm); posts to BFF `/api/auth/accept-invite`; redirects to `/login` on success
+- `apps/web/src/app/api/auth/accept-invite/route.ts` — New: BFF POST handler proxying to `${GATEWAY_URL}/identity/api/auth/accept-invite`
+- `apps/web/src/middleware.ts` — Added `/accept-invite` and `/api/auth/accept-invite` to `PUBLIC_PATHS`
+
+### Invite Delivery Contract
+| Condition | Response |
+|-----------|----------|
+| Notifications configured + delivery success | `201 { id, email, status }` |
+| Notifications configured + delivery failure | `502 { message, error }` |
+| Not configured + dev (`IsDevelopment()`) | `201 { id, email, status, inviteToken }` — dev modal with link and copy button |
+| Not configured + non-dev | `201 { id, email, status }` |
+
+### Token Model
+- Raw token: 64-hex (two `Guid.N` concat), SHA-256 hashed in DB, 72h expiry
+- State machine: `PENDING → ACCEPTED | EXPIRED | REVOKED`
+- Activation link: `{PortalBaseUrl}/accept-invite?token={Uri.EscapeDataString(rawToken)}`
+
+### Analysis
+`analysis/LS-ID-TNT-007-report.md`

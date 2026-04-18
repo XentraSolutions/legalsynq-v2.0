@@ -34,6 +34,8 @@ const PUBLIC_PATHS = [
   '/api/auth/reset-password',
   '/forgot-password',
   '/reset-password',
+  '/accept-invite',
+  '/api/auth/accept-invite',
   // Public branding / logo routes — no session required (used by login page)
   '/api/branding',
   '/api/identity/api/tenants/current/branding',

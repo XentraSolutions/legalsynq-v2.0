@@ -19,9 +19,31 @@ export interface CreateUserBody {
   roleIds?:  string[];
 }
 
+export interface InviteUserBody {
+  tenantId:  string;
+  email:     string;
+  firstName: string;
+  lastName:  string;
+  roleId?:   string;
+}
+
+export interface InviteUserResponse {
+  userId:       string;
+  invitationId: string;
+  email:        string;
+  inviteToken?: string;
+}
+
 export const tenantClientApi = {
   createUser: (body: CreateUserBody) =>
     apiClient.post<TenantUser>('/identity/api/users', body),
+
+  inviteUser: (body: InviteUserBody) =>
+    apiClient.post<InviteUserResponse>('/identity/api/admin/users/invite', body),
+
+  resendInvite: (userId: string) =>
+    apiClient.post<{ invitationId: string; inviteToken?: string }>(
+      `/identity/api/admin/users/${userId}/resend-invite`, {}),
 
   getRoles: () =>
     apiClient.get<{ id: string; name: string }[]>('/identity/api/admin/roles'),

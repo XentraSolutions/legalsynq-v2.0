@@ -3588,12 +3588,15 @@ public static class AdminEndpoints
     /// Returns 201 with the new userId and invitationId.
     /// </summary>
     private static async Task<IResult> InviteUser(
-        InviteUserRequest body,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        IPasswordHasher   passwordHasher,
-        IAuditEventClient auditClient,
-        CancellationToken ct)
+        InviteUserRequest                     body,
+        ClaimsPrincipal                       caller,
+        IdentityDbContext                     db,
+        IPasswordHasher                       passwordHasher,
+        IAuditEventClient                     auditClient,
+        IOptions<NotificationsServiceOptions> notifOptions,
+        INotificationsEmailClient             emailClient,
+        IWebHostEnvironment                   env,
+        CancellationToken                     ct)
     {
         if (string.IsNullOrWhiteSpace(body.Email))
             return Results.BadRequest(new { error = "email is required." });
@@ -3659,8 +3662,34 @@ public static class AdminEndpoints
             Tags = ["user-management", "invite"],
         });
 
-        // DEV ONLY: log the raw token so the invite link can be tested without email.
-        Console.WriteLine($"[INVITE TOKEN — dev only] userId={user.Id} token={rawToken}");
+        // LS-ID-TNT-007: Send invitation email when PortalBaseUrl is configured.
+        var portalBase     = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
+        var activationLink = !string.IsNullOrWhiteSpace(portalBase)
+            ? $"{portalBase}/accept-invite?token={Uri.EscapeDataString(rawToken)}"
+            : string.Empty;
+
+        var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();
+        if (!string.IsNullOrWhiteSpace(activationLink))
+        {
+            var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
+                emailLower, displayNameStr, activationLink, ct);
+
+            if (emailConfigured && !emailSuccess)
+            {
+                return Results.Problem(
+                    $"User created but invitation email could not be sent: {emailError}",
+                    statusCode: 502);
+            }
+        }
+
+        // Non-production: return raw token so the admin can hand-deliver the link.
+        if (!env.IsProduction())
+        {
+            Console.WriteLine($"[INVITE TOKEN — dev only] userId={user.Id} token={rawToken}");
+            return Results.Created(
+                $"/api/admin/users/{user.Id}",
+                new { userId = user.Id, invitationId = invitation.Id, email = emailLower, inviteToken = rawToken });
+        }
 
         return Results.Created(
             $"/api/admin/users/{user.Id}",
@@ -3672,11 +3701,14 @@ public static class AdminEndpoints
     /// Revokes all pending invitations for the user, creates a new one.
     /// </summary>
     private static async Task<IResult> ResendInvite(
-        Guid              id,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        IAuditEventClient auditClient,
-        CancellationToken ct)
+        Guid                                  id,
+        ClaimsPrincipal                       caller,
+        IdentityDbContext                     db,
+        IAuditEventClient                     auditClient,
+        IOptions<NotificationsServiceOptions> notifOptions,
+        INotificationsEmailClient             emailClient,
+        IWebHostEnvironment                   env,
+        CancellationToken                     ct)
     {
         var user = await db.Users.FindAsync([id], ct);
         if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
@@ -3715,7 +3747,32 @@ public static class AdminEndpoints
             Tags = ["user-management", "invite"],
         });
 
-        Console.WriteLine($"[RESEND INVITE — dev only] userId={id} token={rawToken}");
+        // LS-ID-TNT-007: Send invitation email when PortalBaseUrl is configured.
+        var portalBase     = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
+        var activationLink = !string.IsNullOrWhiteSpace(portalBase)
+            ? $"{portalBase}/accept-invite?token={Uri.EscapeDataString(rawToken)}"
+            : string.Empty;
+
+        var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();
+        if (!string.IsNullOrWhiteSpace(activationLink))
+        {
+            var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
+                user.Email, displayNameStr, activationLink, ct);
+
+            if (emailConfigured && !emailSuccess)
+            {
+                return Results.Problem(
+                    $"Invitation refreshed but email could not be sent: {emailError}",
+                    statusCode: 502);
+            }
+        }
+
+        // Non-production: return raw token for hand-delivery.
+        if (!env.IsProduction())
+        {
+            Console.WriteLine($"[RESEND INVITE — dev only] userId={id} token={rawToken}");
+            return Results.Ok(new { invitationId = newInvite.Id, inviteToken = rawToken });
+        }
 
         return Results.Ok(new { invitationId = newInvite.Id });
     }
