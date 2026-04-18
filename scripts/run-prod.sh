@@ -127,20 +127,17 @@ if command -v dotnet &>/dev/null; then
     # ServiceToken__SigningKey — required in Production; Flow's Program.cs
     #   calls AddServiceTokenBearer with failFastIfMissingSecret:true outside
     #   Development, so startup crashes if this key is absent.
-    flow_missing_required=0
+    SKIP_FLOW=0
     # Flow.Infrastructure.DependencyInjection reads FLOW_DB_CONNECTION_STRING
     # first, then ConnectionStrings:FlowDb. Accept either form here so the
     # check mirrors the actual runtime resolution order.
     if [ -z "${FLOW_DB_CONNECTION_STRING:-}" ] && [ -z "${ConnectionStrings__FlowDb:-}" ]; then
-      echo "[flow] ERROR: neither FLOW_DB_CONNECTION_STRING nor ConnectionStrings__FlowDb is set — Flow cannot start without a database connection"
-      flow_missing_required=1
+      echo "[flow] WARNING: neither FLOW_DB_CONNECTION_STRING nor ConnectionStrings__FlowDb is set — Flow will be skipped"
+      SKIP_FLOW=1
     fi
     if [ -z "${ServiceToken__SigningKey:-}" ]; then
-      echo "[flow] ERROR: ServiceToken__SigningKey is not set — Flow will crash on startup in Production (failFastIfMissingSecret is true)"
-      flow_missing_required=1
-    fi
-    if [ "$flow_missing_required" -ne 0 ]; then
-      exit 1
+      echo "[flow] WARNING: ServiceToken__SigningKey is not set — Flow will be skipped (failFastIfMissingSecret is true in Production)"
+      SKIP_FLOW=1
     fi
     # JWT keys are optional — Program.cs registers a no-op JWT bearer when
     # Jwt:SigningKey is absent (user tokens simply won't validate), so these
@@ -176,6 +173,10 @@ if command -v dotnet &>/dev/null; then
           launch_svc "$_svc_label"    "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5008 ;;
         Flow.Api)
           _svc_label="Flow API"
+          if [ "$SKIP_FLOW" -eq 1 ]; then
+            echo "[flow] Skipping Flow API launch due to missing required env vars"
+            continue
+          fi
           launch_svc "$_svc_label"    "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5012 ;;
         Gateway.Api)     _svc_label="Gateway";      launch_svc "$_svc_label" "$csproj" ;;
         Identity.Api)    _svc_label="Identity API"; launch_svc "$_svc_label" "$csproj" ;;
