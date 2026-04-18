@@ -229,6 +229,23 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// ── Auto-migrate ──────────────────────────────────────────────────────────
+// Apply pending EF Core migrations on startup in all environments.
+// __EFMigrationsHistory tracks which migrations have already been applied,
+// so this is safe and idempotent across restarts and re-deploys.
+// Runs before the coverage probe so the probe validates the final schema.
+try
+{
+    using var migrateScope = app.Services.CreateScope();
+    var db = migrateScope.ServiceProvider.GetRequiredService<Flow.Infrastructure.Persistence.FlowDbContext>();
+    await db.Database.MigrateAsync();
+    app.Logger.LogInformation("Flow database migrations applied successfully.");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Could not apply Flow database migrations on startup — schema may be out of sync.");
+}
+
 // ── Migration coverage self-test ─────────────────────────────────────────
 // Compares every EF-mapped column against the live schema and logs an ERROR
 // if any are missing. Guards against the regression behind Task #58 —

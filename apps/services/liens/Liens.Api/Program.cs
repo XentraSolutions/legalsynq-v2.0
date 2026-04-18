@@ -66,19 +66,18 @@ var app = builder.Build();
 var env = app.Environment.EnvironmentName;
 app.Logger.LogInformation("Starting {Service} {Version} in {Environment}", ServiceName, Version, env);
 
-if (app.Environment.IsDevelopment())
+// Auto-migrate — apply pending EF Core migrations in all environments (not just Development).
+// __EFMigrationsHistory tracks applied migrations; idempotent across restarts and re-deploys.
+try
 {
-    try
-    {
-        using var scope = app.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-        db.Database.Migrate();
-        app.Logger.LogInformation("Database migrations applied");
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogWarning(ex, "Could not apply migrations on startup");
-    }
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+    await db.Database.MigrateAsync();
+    app.Logger.LogInformation("Liens database migrations applied successfully.");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Could not apply Liens database migrations on startup — schema may be out of sync.");
 }
 
 // ── Migration coverage self-test ─────────────────────────────────────────

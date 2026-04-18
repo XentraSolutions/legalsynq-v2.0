@@ -84,6 +84,21 @@ if (app.Environment.IsDevelopment())
 // a migration committed without its [Migration] attribute (or otherwise
 // un-applied) leaves the EF model and the live schema out of sync, which
 // previously surfaced only as runtime "Unknown column" SQL errors.
+
+// Auto-migrate — apply pending EF Core migrations in all environments.
+// __EFMigrationsHistory tracks applied migrations; idempotent across restarts.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<CommsDbContext>();
+    await db.Database.MigrateAsync();
+    app.Logger.LogInformation("Comms database migrations applied successfully.");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Could not apply Comms database migrations on startup — schema may be out of sync.");
+}
+
 try
 {
     using var scope = app.Services.CreateScope();

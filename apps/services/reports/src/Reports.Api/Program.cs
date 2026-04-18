@@ -85,6 +85,22 @@ builder.Services.AddHostedService<ScheduleWorkerService>();
 
 var app = builder.Build();
 
+// ── Auto-migrate ──────────────────────────────────────────────────────────
+// Apply pending EF Core migrations in all environments.
+// __EFMigrationsHistory tracks applied migrations; idempotent across restarts.
+try
+{
+    using var migrateScope = app.Services.CreateScope();
+    var db = migrateScope.ServiceProvider
+        .GetRequiredService<Reports.Infrastructure.Persistence.ReportsDbContext>();
+    await db.Database.MigrateAsync();
+    app.Logger.LogInformation("Reports database migrations applied successfully.");
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Could not apply Reports database migrations on startup — schema may be out of sync.");
+}
+
 // ── Migration coverage self-test ─────────────────────────────────────────
 // Compares every EF-mapped column against the live schema and logs an ERROR
 // if any are missing. Guards against the regression behind Task #58 —
