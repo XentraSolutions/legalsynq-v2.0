@@ -192,11 +192,19 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 // ── DB schema setup ──────────────────────────────────────────────────────────
+try
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<DocsDbContext>();
     await db.Database.MigrateAsync();
     app.Logger.LogInformation("Documents database migrated successfully");
+}
+catch (Exception ex)
+{
+    // If the schema already exists (e.g. deployed over a live DB), log a
+    // warning and continue — the service can still serve requests against
+    // the existing schema rather than crashing on startup.
+    app.Logger.LogWarning(ex, "Could not apply Documents database migrations on startup — schema may be out of sync.");
 }
 
 // ── Migration coverage self-test ─────────────────────────────────────────────

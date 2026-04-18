@@ -24,8 +24,15 @@ using (var scope = app.Services.CreateScope())
         app.Logger.LogWarning(ex, "Schema rename step failed — tables/columns may already be renamed");
     }
 
-    await db.Database.MigrateAsync();
-    app.Logger.LogInformation("Notifications database migrated successfully");
+    try
+    {
+        await db.Database.MigrateAsync();
+        app.Logger.LogInformation("Notifications database migrated successfully");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Could not apply Notifications database migrations on startup — schema may be out of sync.");
+    }
 
     // ── Migration coverage self-test ─────────────────────────────────────
     // Compares every EF-mapped column against the live schema and logs an
