@@ -46,14 +46,31 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tenantCode, email, subdomain: rawSubdomain }),
     });
-  } catch {
-    return NextResponse.json({ message: 'Identity service unavailable' }, { status: 503 });
+  } catch (err) {
+    console.error(`[forgot-password] Identity service fetch error:`, err);
+    return NextResponse.json(
+      { message: 'Password reset is temporarily unavailable. Please try again in a few moments.' },
+      { status: 503 },
+    );
   }
 
   if (!identityRes.ok) {
     const errBody = await identityRes.json().catch(() => ({}));
+    const upstreamMessage = errBody.error ?? errBody.detail ?? errBody.title ?? null;
+    console.log(`[forgot-password] Identity returned ${identityRes.status}: ${JSON.stringify(errBody)}`);
+
+    // Upstream service failure (5xx) — do NOT blame the user; the identity service is broken.
+    if (identityRes.status >= 500) {
+      console.error(`[forgot-password] Identity service error ${identityRes.status} — surfacing generic unavailable message`);
+      return NextResponse.json(
+        { message: 'Password reset is temporarily unavailable. Please try again in a few moments.' },
+        { status: 503 },
+      );
+    }
+
+    // 4xx — pass through upstream message if available, else a neutral fallback.
     return NextResponse.json(
-      { message: errBody.error ?? 'Something went wrong. Please try again.' },
+      { message: upstreamMessage ?? 'Unable to start password reset. Please check your details and try again.' },
       { status: identityRes.status },
     );
   }

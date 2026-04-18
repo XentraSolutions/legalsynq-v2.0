@@ -26,15 +26,32 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, newPassword }),
     });
-  } catch {
-    return NextResponse.json({ message: 'Identity service unavailable' }, { status: 503 });
+  } catch (err) {
+    console.error(`[reset-password] Identity service fetch error:`, err);
+    return NextResponse.json(
+      { message: 'Password reset is temporarily unavailable. Please try again in a few moments.' },
+      { status: 503 },
+    );
   }
 
   const data = await identityRes.json().catch(() => ({}));
 
   if (!identityRes.ok) {
+    const upstreamMessage = data.error ?? data.detail ?? data.title ?? null;
+    console.log(`[reset-password] Identity returned ${identityRes.status}: ${JSON.stringify(data)}`);
+
+    // Upstream service failure (5xx) — do NOT blame the user (their token may be perfectly valid).
+    if (identityRes.status >= 500) {
+      console.error(`[reset-password] Identity service error ${identityRes.status} — surfacing generic unavailable message`);
+      return NextResponse.json(
+        { message: 'Password reset is temporarily unavailable. Please try again in a few moments.' },
+        { status: 503 },
+      );
+    }
+
+    // 4xx — pass through upstream message (e.g. expired/invalid token) if available, else a neutral fallback.
     return NextResponse.json(
-      { message: data.error ?? 'Failed to reset password. The link may have expired.' },
+      { message: upstreamMessage ?? 'Failed to reset password. The link may have expired.' },
       { status: identityRes.status },
     );
   }
