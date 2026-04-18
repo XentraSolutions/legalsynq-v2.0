@@ -106,6 +106,142 @@ public class ServiceMigrationProbeWiringTests
         new(@"\[Migration\s*\(", RegexOptions.CultureInvariant);
 
     /// <summary>
+    /// CI guard complementing <see cref="EveryService_WiresMigrationCoverageProbeInProgram"/>.
+    ///
+    /// The theory above checks every entry in the hand-maintained <see cref="Services"/>
+    /// array, but it cannot catch a new service that adds a Migrations folder without
+    /// also adding itself to that array.  This fact closes the gap: it walks
+    /// <c>apps/services/</c> with <see cref="DiscoverMigrationDirs"/>, maps every
+    /// migration directory to its service root (the first path segment beneath
+    /// <c>apps/services/</c>), resolves the canonical API <c>Program.cs</c> via
+    /// <see cref="FindApiProgramCs"/>, and asserts the
+    /// <c>MigrationCoverageProbe.RunAsync(</c> call is present — with no manual
+    /// update required when a new service adds its first migration.
+    ///
+    /// Services with multiple migration directories (e.g. sharded contexts) are
+    /// deduplicated by the resolved <c>Program.cs</c> path so each entry point is
+    /// only verified once.
+    /// </summary>
+    [Fact]
+    public void EveryDiscoveredMigrationService_WiresMigrationCoverageProbeInProgram()
+    {
+        var repoRoot = FindRepoRoot();
+        var servicesRoot = Path.GetFullPath(Path.Combine(repoRoot, "apps", "services"));
+
+        var probePattern = new Regex(
+            @"MigrationCoverageProbe\s*\.\s*RunAsync\s*\(",
+            RegexOptions.CultureInvariant);
+
+        var noProgramFound = new List<string>();
+        var probeNotWired  = new List<string>();
+
+        // Track already-checked Program.cs paths so a service with several
+        // migration folders (sharded contexts, etc.) is only verified once.
+        var checkedPrograms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var relMigrationDir in DiscoverMigrationDirs(repoRoot))
+        {
+            // Resolve the service root: the first directory beneath apps/services/.
+            // e.g. "apps/services/careconnect/CareConnect.Infrastructure/Data/Migrations"
+            //   →  "<repoRoot>/apps/services/careconnect"
+            var parts = relMigrationDir.Split('/');
+            if (parts.Length < 3)
+                continue; // unexpected structure — "apps/services/<name>/..."
+
+            var serviceRoot = Path.GetFullPath(
+                Path.Combine(servicesRoot, parts[2]));
+
+            var programPath = FindApiProgramCs(serviceRoot);
+
+            if (programPath is null)
+            {
+                noProgramFound.Add(relMigrationDir);
+                continue;
+            }
+
+            if (!checkedPrograms.Add(programPath))
+                continue; // already verified for a sibling migration directory
+
+            var source = File.ReadAllText(programPath);
+            if (!probePattern.IsMatch(source))
+            {
+                var relProgram = Path.GetRelativePath(repoRoot, programPath)
+                    .Replace(Path.DirectorySeparatorChar, '/');
+                probeNotWired.Add(relProgram);
+            }
+        }
+
+        var messages = new List<string>();
+
+        if (noProgramFound.Count > 0)
+            messages.Add(
+                "Could not find a Program.cs for the following auto-discovered migration " +
+                "directories. FindApiProgramCs searches the service root for a directory " +
+                "whose name ends with 'Api' and falls back to a root-level Program.cs. " +
+                "If the service layout differs, update FindApiProgramCs:\n\n" +
+                string.Join("\n", noProgramFound));
+
+        if (probeNotWired.Count > 0)
+            messages.Add(
+                "The following Program.cs files were auto-discovered via their Migrations " +
+                "folder but do not wire MigrationCoverageProbe.RunAsync(...) at boot. " +
+                "Without this call the boot-time schema/EF-model self-test from Task #62 " +
+                "is silently disabled, re-opening the Task #58 regression class. " +
+                "Add `await BuildingBlocks.Diagnostics.MigrationCoverageProbe.RunAsync(db, " +
+                "app.Logger);` to the service's Program.cs:\n\n" +
+                string.Join("\n", probeNotWired));
+
+        Assert.True(messages.Count == 0, string.Join("\n\n", messages));
+    }
+
+    /// <summary>
+    /// Locates the canonical API entry-point <c>Program.cs</c> within
+    /// <paramref name="serviceRoot"/>.
+    ///
+    /// Resolution order:
+    /// <list type="number">
+    ///   <item>A <c>Program.cs</c> whose immediate parent directory name ends with
+    ///   <c>Api</c> (case-insensitive) — covers the typical
+    ///   <c>*.Api/Program.cs</c> layout used by most services.</item>
+    ///   <item>A <c>Program.cs</c> located directly in <paramref name="serviceRoot"/>
+    ///   — covers flat single-project services such as <c>audit</c>.</item>
+    /// </list>
+    ///
+    /// Returns <c>null</c> when no suitable <c>Program.cs</c> is found so the
+    /// caller can report an actionable error.
+    /// </summary>
+    private static string? FindApiProgramCs(string serviceRoot)
+    {
+        if (!Directory.Exists(serviceRoot))
+            return null;
+
+        var allPrograms = Directory
+            .EnumerateFiles(serviceRoot, "Program.cs", SearchOption.AllDirectories)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (allPrograms.Count == 0)
+            return null;
+
+        // 1. Prefer Program.cs whose parent directory name ends with "Api".
+        var apiProgram = allPrograms.FirstOrDefault(p =>
+            new DirectoryInfo(p).Parent?.Name
+                .EndsWith("Api", StringComparison.OrdinalIgnoreCase) == true);
+        if (apiProgram is not null)
+            return apiProgram;
+
+        // 2. Fall back to a Program.cs sitting directly in the service root
+        //    (single-project layout, e.g. audit/).
+        var rootProgram = allPrograms.FirstOrDefault(p =>
+            string.Equals(
+                Path.GetFullPath(Path.GetDirectoryName(p)!),
+                Path.GetFullPath(serviceRoot),
+                StringComparison.OrdinalIgnoreCase));
+
+        return rootProgram; // null if nothing matched
+    }
+
+    /// <summary>
     /// Static guard for Task #67.
     ///
     /// EF Core silently ignores a migration whose partial class has no
