@@ -16,6 +16,7 @@ import { WorkflowPanel } from '@/components/workflow';
 import { useCaseWorkflows } from '@/hooks/use-case-workflows';
 import { workflowApi, type WorkflowInstanceDetail } from '@/lib/workflow';
 import { lienCaseNotesService, type CaseNoteResponse, type CaseNoteCategory } from '@/lib/liens/lien-case-notes.service';
+import { emailToDisplayName, isNoteOwner } from '@/lib/liens/note-utils';
 
 const STATUS_LABELS: Record<string, string> = { PreDemand: 'Pre-demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Case Settled', Closed: 'Closed' };
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
@@ -1684,13 +1685,15 @@ function NotesTab({ caseId }: { caseId: string }) {
   const [editingText, setEditingText] = useState('');
   const [editingCategory, setEditingCategory] = useState<CaseNoteCategory>('general');
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
+  const [pinningNoteId, setPinningNoteId] = useState<string | null>(null);
 
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [categoryFilter, setCategoryFilter] = useState<'all' | CaseNoteCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const authorName = session?.email?.split('@')[0]?.replace(/[._]/g, ' ')?.replace(/\b\w/g, (c) => c.toUpperCase()) || 'Current User';
-  const currentUserId = session?.userId as string | undefined;
+  const authorName = emailToDisplayName(session?.email);
+  const currentUserId = session?.userId;
 
   const loadNotes = useCallback(async () => {
     setNotesLoading(true);
@@ -1779,16 +1782,22 @@ function NotesTab({ caseId }: { caseId: string }) {
   };
 
   const handleDelete = async (noteId: string) => {
+    if (deletingNoteId === noteId) return;
+    setDeletingNoteId(noteId);
     try {
       await lienCaseNotesService.deleteNote(caseId, noteId);
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
       addToast({ type: 'success', title: 'Note Deleted', description: 'The note was removed.' });
     } catch {
       addToast({ type: 'error', title: 'Error', description: 'Failed to delete note.' });
+    } finally {
+      setDeletingNoteId(null);
     }
   };
 
   const handlePin = async (note: CaseNoteResponse) => {
+    if (pinningNoteId === note.id) return;
+    setPinningNoteId(note.id);
     try {
       const updated = note.isPinned
         ? await lienCaseNotesService.unpinNote(caseId, note.id)
@@ -1796,6 +1805,8 @@ function NotesTab({ caseId }: { caseId: string }) {
       setNotes((prev) => prev.map((n) => n.id === updated.id ? updated : n));
     } catch {
       addToast({ type: 'error', title: 'Error', description: 'Failed to update pin status.' });
+    } finally {
+      setPinningNoteId(null);
     }
   };
 
@@ -1958,8 +1969,10 @@ function NotesTab({ caseId }: { caseId: string }) {
                   const prevDate = idx > 0 ? new Date(filteredNotes[idx - 1].createdAtUtc) : null;
                   const prevDateStr = prevDate && !isNaN(prevDate.getTime()) ? prevDate.toDateString() : '';
                   const showDateSeparator = idx === 0 || noteDateStr !== prevDateStr;
-                  const isOwner = currentUserId ? note.createdByUserId === currentUserId : false;
+                  const isOwner = isNoteOwner(currentUserId, note.createdByUserId);
                   const isEditing = editingNoteId === note.id;
+                  const isDeleting = deletingNoteId === note.id;
+                  const isPinning = pinningNoteId === note.id;
 
                   return (
                     <div key={note.id}>
@@ -2033,7 +2046,12 @@ function NotesTab({ caseId }: { caseId: string }) {
                                   </span>
                                 )}
                                 {note.isEdited && (
-                                  <span className="text-[10px] text-gray-400 italic">edited</span>
+                                  <span
+                                    className="text-[10px] text-gray-400 italic"
+                                    title={note.updatedAtUtc ? `Edited ${formatNoteTimestamp(note.updatedAtUtc)}` : 'Edited'}
+                                  >
+                                    edited
+                                  </span>
                                 )}
                                 <span className="text-[11px] text-gray-400 ml-auto" title={formatNoteTimestamp(note.createdAtUtc)}>
                                   {formatNoteDate(note.createdAtUtc)}
@@ -2041,26 +2059,33 @@ function NotesTab({ caseId }: { caseId: string }) {
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button
                                     onClick={() => handlePin(note)}
+                                    disabled={isPinning}
                                     title={note.isPinned ? 'Unpin' : 'Pin'}
-                                    className="p-1 rounded text-gray-400 hover:text-amber-500 hover:bg-amber-50 transition-colors"
+                                    className="p-1 rounded text-gray-400 hover:text-amber-500 hover:bg-amber-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                   >
-                                    <i className={`${note.isPinned ? 'ri-pushpin-fill' : 'ri-pushpin-line'} text-xs`} />
+                                    {isPinning
+                                      ? <i className="ri-loader-4-line text-xs animate-spin" />
+                                      : <i className={`${note.isPinned ? 'ri-pushpin-fill' : 'ri-pushpin-line'} text-xs`} />}
                                   </button>
                                   {isOwner && (
                                     <>
                                       <button
                                         onClick={() => handleStartEdit(note)}
+                                        disabled={isDeleting || isPinning}
                                         title="Edit"
-                                        className="p-1 rounded text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors"
+                                        className="p-1 rounded text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                       >
                                         <i className="ri-edit-line text-xs" />
                                       </button>
                                       <button
                                         onClick={() => handleDelete(note.id)}
+                                        disabled={isDeleting || isPinning}
                                         title="Delete"
-                                        className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                        className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                       >
-                                        <i className="ri-delete-bin-line text-xs" />
+                                        {isDeleting
+                                          ? <i className="ri-loader-4-line text-xs animate-spin" />
+                                          : <i className="ri-delete-bin-line text-xs" />}
                                       </button>
                                     </>
                                   )}

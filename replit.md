@@ -4502,3 +4502,26 @@ Converts the CASE-004 UI-only Case Notes feature (TEMP_NOTES mocks + Zustand eph
 
 ### Analysis
 `analysis/LS-LIENS-CASE-005-report.md`
+
+## LS-LIENS-CASE-006 — Case Notes UX Hardening & Identity Normalization — 2026-04-18
+
+### Summary
+Hardens the CASE-005 Case Notes feature with identity consistency, normalized GUID ownership comparison, per-note action-state guards, a shared author display helper, and task notes service/type cleanup.
+
+### New Files
+- `apps/web/src/lib/liens/note-utils.ts` — shared helpers: `emailToDisplayName`, `normalizeUserId`, `isNoteOwner`, `formatNoteRelativeTime`, `formatNoteFullTimestamp`, `getNoteInitials`
+
+### Frontend Changes
+- **`lien-task-notes.types.ts`**: Renamed `createdByUserName?: string` → `createdByName: string` (matches backend DTO)
+- **`lien-task-notes.service.ts`**: Fixed all 4 methods to unwrap `ApiResponse<T>` via `res.data` (was returning raw wrapper — pre-existing TS bug silently broken task notes)
+- **`task-detail-drawer.tsx`**: Removed local `initials()` fn; imported `getNoteInitials`; all `note.createdByUserName` → `note.createdByName`
+- **`case-detail-client.tsx` `NotesTab`**:
+  - `authorName` now uses `emailToDisplayName(session?.email)` (shared util, handles `.`, `_`, `-`)
+  - `currentUserId` — removed unnecessary `as string | undefined` assertion
+  - Ownership: `isNoteOwner(currentUserId, note.createdByUserId)` — GUID-normalized comparison
+  - Added `deletingNoteId: string | null` — delete button shows spinner, disables during in-flight; also disables edit
+  - Added `pinningNoteId: string | null` — pin button shows spinner, disables during in-flight; also disables edit/delete
+  - "edited" indicator now shows `updatedAtUtc` in its hover tooltip
+
+### Analysis
+`analysis/LS-LIENS-CASE-006-report.md`

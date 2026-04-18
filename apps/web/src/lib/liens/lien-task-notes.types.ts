@@ -4,7 +4,7 @@ export interface TaskNoteResponse {
   tenantId: string;
   content: string;
   createdByUserId: string;
-  createdByUserName?: string;
+  createdByName: string;
   isEdited: boolean;
   createdAtUtc: string;
   updatedAtUtc: string;

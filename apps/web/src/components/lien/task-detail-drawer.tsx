@@ -6,6 +6,7 @@ import type { TaskNoteResponse } from '@/lib/liens/lien-task-notes.types';
 import type { TaskDto } from '@/lib/liens/lien-tasks.types';
 import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, TASK_PRIORITY_COLORS, TASK_PRIORITY_ICONS } from '@/lib/liens/lien-tasks.types';
 import { formatDateTime } from '@/lib/lien-utils';
+import { getNoteInitials } from '@/lib/liens/note-utils';
 
 interface TaskDetailDrawerProps {
   task: TaskDto | null;
@@ -14,16 +15,6 @@ interface TaskDetailDrawerProps {
 }
 
 const MAX_CHARS = 5000;
-
-function initials(name?: string): string {
-  if (!name) return '?';
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-}
 
 function formatDate(val?: string | null): string {
   if (!val) return '\u2014';
@@ -270,12 +261,12 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
                 {notes.map((note) => (
                   <div key={note.id} className="flex gap-3">
                     <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
-                      {initials(note.createdByUserName)}
+                      {getNoteInitials(note.createdByName)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-xs font-medium text-gray-700">
-                          {note.createdByUserName ?? 'User'}
+                          {note.createdByName || 'User'}
                         </span>
                         {note.isEdited && (
                           <span className="text-xs text-gray-400 italic">edited</span>

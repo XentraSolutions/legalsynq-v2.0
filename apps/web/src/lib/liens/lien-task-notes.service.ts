@@ -7,20 +7,25 @@ import type {
 
 export const lienTaskNotesService = {
   async getNotes(taskId: string): Promise<TaskNoteResponse[]> {
-    return lienTaskNotesApi.list(taskId);
+    const res = await lienTaskNotesApi.list(taskId);
+    return res.data ?? [];
   },
 
   async createNote(taskId: string, content: string): Promise<TaskNoteResponse> {
     const request: CreateTaskNoteRequest = { content };
-    return lienTaskNotesApi.create(taskId, request);
+    const res = await lienTaskNotesApi.create(taskId, request);
+    if (!res.data) throw new Error('Failed to create note');
+    return res.data;
   },
 
   async updateNote(taskId: string, noteId: string, content: string): Promise<TaskNoteResponse> {
     const request: UpdateTaskNoteRequest = { content };
-    return lienTaskNotesApi.update(taskId, noteId, request);
+    const res = await lienTaskNotesApi.update(taskId, noteId, request);
+    if (!res.data) throw new Error('Failed to update note');
+    return res.data;
   },
 
   async deleteNote(taskId: string, noteId: string): Promise<void> {
-    return lienTaskNotesApi.delete(taskId, noteId);
+    await lienTaskNotesApi.delete(taskId, noteId);
   },
 };
