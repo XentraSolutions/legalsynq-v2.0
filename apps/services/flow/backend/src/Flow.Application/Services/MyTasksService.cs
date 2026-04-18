@@ -310,6 +310,14 @@ public sealed class MyTasksService : IMyTasksService
         CompletedAt        = t.CompletedAt,
         CancelledAt        = t.CancelledAt,
 
+        // LS-FLOW-E10.3 task slice — SLA fields. Defaulting SlaStatus
+        // to OnTrack when null is defensive: the column is NOT NULL in
+        // the schema, but EF projection through navigation properties
+        // would otherwise need an explicit non-null guarantee.
+        DueAt              = t.DueAt,
+        SlaStatus          = t.SlaStatus,
+        SlaBreachedAt      = t.SlaBreachedAt,
+
         WorkflowInstanceId = t.WorkflowInstanceId,
         // LEFT-JOIN-style enrichment via navigation properties; EF
         // translates to a single SQL with LEFT JOINs (no N+1).

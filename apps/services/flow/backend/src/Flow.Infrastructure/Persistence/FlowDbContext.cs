@@ -382,6 +382,34 @@ public class FlowDbContext : DbContext, IFlowDbContext
             entity.HasIndex(e => e.WorkflowInstanceId)
                 .HasDatabaseName("ix_flow_workflow_tasks_instance");
 
+            // LS-FLOW-E10.3 (task slice) — SLA / timer columns.
+            // SlaStatus stored as varchar(16) for human-readable
+            // operator queries (matches the workflow-level shape).
+            entity.Property(e => e.SlaStatus)
+                .IsRequired()
+                .HasMaxLength(16)
+                .HasDefaultValue(Flow.Domain.Common.WorkflowSlaStatus.OnTrack);
+            entity.Property(e => e.SlaPolicyKey).HasMaxLength(64);
+            // Composite indexes sized for the two read patterns this
+            // phase introduces:
+            //   (TenantId, Status, SlaStatus) — admin / API "show me
+            //     at-risk / overdue active tasks" scans (tenant-scoped).
+            //   (TenantId, Status, DueAt) — same shape, ordered for
+            //     UI lists that surface "what's due next".
+            //   (Status, DueAt) — *cross-tenant* index for the
+            //     WorkflowTaskSlaEvaluator hot path. The worker runs
+            //     with IgnoreQueryFilters() (no tenant predicate), so
+            //     a TenantId-leading index would force the planner to
+            //     either ignore tenancy and scan, or merge across
+            //     tenant partitions. A non-tenant-leading index keeps
+            //     the evaluator's range scan tight as the table grows.
+            entity.HasIndex(e => new { e.TenantId, e.Status, e.SlaStatus })
+                .HasDatabaseName("ix_flow_workflow_tasks_tenant_status_slastatus");
+            entity.HasIndex(e => new { e.TenantId, e.Status, e.DueAt })
+                .HasDatabaseName("ix_flow_workflow_tasks_tenant_status_dueat");
+            entity.HasIndex(e => new { e.Status, e.DueAt })
+                .HasDatabaseName("ix_flow_workflow_tasks_status_dueat_eval");
+
             // Restrict deletion of an instance that still owns tasks
             // — work items are durable evidence; cleanup is an explicit
             // future operation, not a cascade.

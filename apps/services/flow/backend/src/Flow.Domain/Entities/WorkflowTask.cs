@@ -132,6 +132,54 @@ public class WorkflowTask : AuditableEntity
     public DateTime? CompletedAt { get; set; }
     public DateTime? CancelledAt { get; set; }
 
+    // ---------------- SLA / Timer (LS-FLOW-E10.3) -----------------
+    //
+    // Additive time-awareness layer. DueAt is stamped exactly once at
+    // creation by WorkflowTaskFromWorkflowFactory using the per-priority
+    // duration from WorkflowTaskSlaOptions; reassignment / claim do NOT
+    // recompute it. SlaStatus is owned by WorkflowTaskSlaEvaluator,
+    // which is the only writer of SlaStatus / SlaBreachedAt /
+    // LastSlaEvaluatedAt after creation.
+
+    /// <summary>
+    /// UTC deadline for this task. Null when no SLA was applicable at
+    /// creation time (e.g. legacy rows pre-E10.3 phase 2). The
+    /// evaluator skips rows where this is null.
+    /// </summary>
+    public DateTime? DueAt { get; set; }
+
+    /// <summary>
+    /// One of <see cref="WorkflowSlaStatus"/> (OnTrack / DueSoon /
+    /// Overdue). Defaults to <c>OnTrack</c> so a freshly stamped task
+    /// with a future <see cref="DueAt"/> reads correctly even before
+    /// the evaluator's first visit. The evaluator never persists
+    /// <c>Escalated</c> for tasks in this phase.
+    /// </summary>
+    public string SlaStatus { get; set; } = WorkflowSlaStatus.OnTrack;
+
+    /// <summary>
+    /// First-observation breach timestamp. Stamped by the evaluator on
+    /// the visit that first classifies the row as Overdue, then never
+    /// rewritten (so the row carries a stable breach marker even if it
+    /// later flips back to OnTrack via an admin-set DueAt change).
+    /// </summary>
+    public DateTime? SlaBreachedAt { get; set; }
+
+    /// <summary>
+    /// Stamped by the evaluator on every visit, regardless of whether
+    /// the SLA state changed. Drives the evaluator's fair-rotation
+    /// ordering (oldest evaluated first).
+    /// </summary>
+    public DateTime? LastSlaEvaluatedAt { get; set; }
+
+    /// <summary>
+    /// Reserved for the future SLA designer phase. Null in this phase
+    /// — duration is read from <c>WorkflowTaskSla:Durations</c> by
+    /// priority. Persisting the column now keeps the schema forward-
+    /// compatible without an additional migration later.
+    /// </summary>
+    public string? SlaPolicyKey { get; set; }
+
     // ---------------- Extensibility surfaces -----------------
 
     /// <summary>

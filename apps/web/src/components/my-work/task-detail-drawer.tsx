@@ -6,6 +6,7 @@ import { tasksApi, type MyTask } from '@/lib/tasks';
 import { useToast } from '@/lib/toast-context';
 import { TaskPriorityBadge } from './priority-badge';
 import { ReassignModal } from './reassign-modal';
+import { SlaBadge } from './sla-badge';
 import { TaskStatusBadge } from './status-badge';
 
 /**
@@ -194,6 +195,7 @@ export function TaskDetailDrawer({
                 <div className="mt-2 flex items-center gap-2 flex-wrap">
                   <TaskStatusBadge status={task.status} />
                   <TaskPriorityBadge priority={task.priority} />
+                  <SlaBadge status={task.slaStatus} dueAt={task.dueAt} />
                   <span className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full bg-gray-100 text-gray-700 border border-gray-200">
                     {MODE_LABEL[task.assignmentMode] ?? task.assignmentMode}
                   </span>
@@ -236,6 +238,19 @@ export function TaskDetailDrawer({
                 {task.completedAt && <Field label="Completed" value={fmtDate(task.completedAt)} />}
                 {task.cancelledAt && <Field label="Cancelled" value={fmtDate(task.cancelledAt)} />}
               </Section>
+
+              {/* LS-FLOW-E10.3 (task slice) — SLA / Timer panel. Rendered
+                  only when the row carries a deadline; legacy / SLA-disabled
+                  tasks stay clean. */}
+              {task.dueAt && (
+                <Section title="SLA">
+                  <Field label="Status" value={task.slaStatus ?? 'OnTrack'} />
+                  <Field label="Due"    value={fmtDate(task.dueAt)} />
+                  {task.slaBreachedAt && (
+                    <Field label="Breached at" value={fmtDate(task.slaBreachedAt)} />
+                  )}
+                </Section>
+              )}
             </>
           ) : null}
         </div>

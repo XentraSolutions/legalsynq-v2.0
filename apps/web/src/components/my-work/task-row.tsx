@@ -6,6 +6,7 @@ import { tasksApi, type MyTask } from '@/lib/tasks';
 import { useToast } from '@/lib/toast-context';
 import { TaskStatusBadge } from './status-badge';
 import { TaskPriorityBadge } from './priority-badge';
+import { SlaBadge } from './sla-badge';
 
 /**
  * LS-FLOW-E11.6 — a single row in the My Work inbox.
@@ -171,6 +172,7 @@ export function TaskRow({ task, onChanged, onOpen }: TaskRowProps) {
             </h3>
             <TaskStatusBadge status={task.status} />
             <TaskPriorityBadge priority={task.priority} />
+            <SlaBadge status={task.slaStatus} dueAt={task.dueAt} />
           </div>
 
           {task.description && (
@@ -198,6 +200,12 @@ export function TaskRow({ task, onChanged, onOpen }: TaskRowProps) {
               <dt className="inline font-medium text-gray-600">Created:</dt>{' '}
               <dd className="inline">{fmtDate(task.createdAt)}</dd>
             </div>
+            {task.dueAt && (
+              <div className="truncate">
+                <dt className="inline font-medium text-gray-600">Due:</dt>{' '}
+                <dd className="inline">{fmtDate(task.dueAt)}</dd>
+              </div>
+            )}
             {task.startedAt && (
               <div className="truncate">
                 <dt className="inline font-medium text-gray-600">Started:</dt>{' '}

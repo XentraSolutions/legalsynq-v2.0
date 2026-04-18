@@ -54,15 +54,18 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
 
     private readonly IFlowDbContext _db;
     private readonly IWorkflowTaskAssignmentResolver _assignmentResolver;
+    private readonly IWorkflowTaskSlaClock _slaClock;
     private readonly ILogger<WorkflowTaskFromWorkflowFactory> _logger;
 
     public WorkflowTaskFromWorkflowFactory(
         IFlowDbContext db,
         IWorkflowTaskAssignmentResolver assignmentResolver,
+        IWorkflowTaskSlaClock slaClock,
         ILogger<WorkflowTaskFromWorkflowFactory> logger)
     {
         _db = db;
         _assignmentResolver = assignmentResolver;
+        _slaClock = slaClock;
         _logger = logger;
     }
 
@@ -182,6 +185,34 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
             Status             = WorkflowTaskStatus.Open,
             Priority           = WorkflowTaskPriority.Normal,
         };
+
+        // ── SLA / DueAt stamping (LS-FLOW-E10.3 task slice) ──────────
+        // Computed exactly once at creation from the per-priority
+        // duration in WorkflowTaskSlaOptions. Reassignment / claim do
+        // NOT recompute this value — see analysis/E10.3-report.md
+        // §"Due-Date / Calculation Notes". The clock returns null when
+        // SLA is disabled or the priority is unknown; persisting null
+        // is the documented "no SLA applies" shape.
+        //
+        // We use DateTime.UtcNow rather than reading task.CreatedAt
+        // because the AuditableEntity timestamp is stamped later in
+        // FlowDbContext.SaveChangesAsync; computing it here yields a
+        // value that is at most a few ms behind the persisted
+        // CreatedAt, which is well inside the evaluator's polling
+        // resolution.
+        try
+        {
+            task.DueAt = _slaClock.ComputeDueAt(System.DateTime.UtcNow, task.Priority);
+        }
+        catch (System.Exception ex)
+        {
+            // Best-effort, fail-safe: a misconfigured clock must not
+            // break task creation. Leave DueAt null and continue.
+            _logger.LogWarning(ex,
+                "WorkflowTaskSlaClock threw for instance={InstanceId} step={StepKey} priority={Priority}; persisting task with null DueAt.",
+                instanceId, stepKey, task.Priority);
+            task.DueAt = null;
+        }
 
         // ── Assignment (E11.3) ───────────────────────────────────────
         // The resolver is pure / local / stateless — no external calls,

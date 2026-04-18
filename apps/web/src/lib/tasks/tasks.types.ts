@@ -60,7 +60,25 @@ export interface MyTask {
   workflowInstanceId: string;
   workflowName?: string | null;
   productKey?: string | null;
+
+  // SLA / Timer (LS-FLOW-E10.3 task slice)
+  /** UTC deadline for this task. Null when no SLA applied at creation. */
+  dueAt?: string | null;
+  /**
+   * SLA classification. The wire string `DueSoon` is rendered as
+   * "At Risk" in the UI to match the spec vocabulary.
+   */
+  slaStatus?: WorkflowTaskSlaStatus;
+  /** First-observation breach timestamp; null until the task is observed Overdue. */
+  slaBreachedAt?: string | null;
 }
+
+/**
+ * LS-FLOW-E10.3 (task slice) — wire-format SLA status. Mirrors
+ * Flow.Domain.Common.WorkflowSlaStatus. Tasks never carry `Escalated`
+ * in this phase.
+ */
+export type WorkflowTaskSlaStatus = 'OnTrack' | 'DueSoon' | 'Overdue' | 'Escalated';
 
 export interface PagedTasks {
   items: MyTask[];

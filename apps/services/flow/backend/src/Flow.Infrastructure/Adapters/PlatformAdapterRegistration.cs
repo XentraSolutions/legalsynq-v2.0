@@ -117,6 +117,14 @@ public static class PlatformAdapterRegistration
         services.Configure<WorkflowSlaOptions>(configuration.GetSection(WorkflowSlaOptions.SectionName));
         services.AddHostedService<WorkflowSlaEvaluator>();
 
+        // ----- LS-FLOW-E10.3 (task slice) — task SLA clock + evaluator --
+        // Clock is scoped because the factory consuming it is scoped.
+        // Evaluator is hosted (singleton lifecycle) and opens its own
+        // DI scope per tick, mirroring the workflow-level evaluator.
+        services.Configure<WorkflowTaskSlaOptions>(configuration.GetSection(WorkflowTaskSlaOptions.SectionName));
+        services.AddScoped<Flow.Application.Interfaces.IWorkflowTaskSlaClock, WorkflowTaskSlaClock>();
+        services.AddHostedService<WorkflowTaskSlaEvaluator>();
+
         return services;
     }
 

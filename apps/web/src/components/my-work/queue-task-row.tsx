@@ -6,6 +6,7 @@ import { tasksApi, type MyTask } from '@/lib/tasks';
 import { useToast } from '@/lib/toast-context';
 import { TaskStatusBadge } from './status-badge';
 import { TaskPriorityBadge } from './priority-badge';
+import { SlaBadge } from './sla-badge';
 
 /**
  * LS-FLOW-E15 — a single row in a queue list (Role Queue or Org Queue).
@@ -111,6 +112,7 @@ export function QueueTaskRow({ task, onChanged, onOpen, queueKind }: QueueTaskRo
             </h3>
             <TaskStatusBadge status={task.status} />
             <TaskPriorityBadge priority={task.priority} />
+            <SlaBadge status={task.slaStatus} dueAt={task.dueAt} />
             <span className="px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
               {queueKind === 'role' ? 'Role queue' : 'Org queue'}
             </span>
@@ -153,6 +155,12 @@ export function QueueTaskRow({ task, onChanged, onOpen, queueKind }: QueueTaskRo
               <div className="truncate">
                 <dt className="inline font-medium text-gray-600">Queued:</dt>{' '}
                 <dd className="inline">{fmtDate(task.assignedAt)}</dd>
+              </div>
+            )}
+            {task.dueAt && (
+              <div className="truncate">
+                <dt className="inline font-medium text-gray-600">Due:</dt>{' '}
+                <dd className="inline">{fmtDate(task.dueAt)}</dd>
               </div>
             )}
           </dl>

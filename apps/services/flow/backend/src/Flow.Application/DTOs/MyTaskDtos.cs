@@ -66,6 +66,23 @@ public sealed record MyTaskDto
     public DateTime? CompletedAt { get; init; }
     public DateTime? CancelledAt { get; init; }
 
+    // ---------------- SLA / Timer (LS-FLOW-E10.3 task slice) -----------------
+    /// <summary>
+    /// UTC deadline for this task. Null when no SLA applied at
+    /// creation (legacy rows or disabled SLA).
+    /// </summary>
+    public DateTime? DueAt { get; init; }
+
+    /// <summary>
+    /// One of <see cref="Domain.Common.WorkflowSlaStatus"/>: OnTrack,
+    /// DueSoon (= "At Risk" in the UI), or Overdue. Defaults to
+    /// OnTrack on rows the evaluator has not yet visited.
+    /// </summary>
+    public string SlaStatus { get; init; } = Domain.Common.WorkflowSlaStatus.OnTrack;
+
+    /// <summary>First-observation breach timestamp; null until the task is observed Overdue.</summary>
+    public DateTime? SlaBreachedAt { get; init; }
+
     // ---------------- Minimal workflow context -----------------
     /// <summary>Owning workflow instance — opaque to the UI, useful as a deep-link target.</summary>
     public Guid WorkflowInstanceId { get; init; }
