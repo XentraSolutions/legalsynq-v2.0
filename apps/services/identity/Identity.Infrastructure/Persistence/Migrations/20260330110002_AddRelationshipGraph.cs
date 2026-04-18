@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Identity.Infrastructure.Persistence.Migrations;
 
+[Migration("20260330110002_AddRelationshipGraph")]
 public partial class AddRelationshipGraph : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

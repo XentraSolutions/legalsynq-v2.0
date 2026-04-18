@@ -18,6 +18,7 @@ namespace CareConnect.Infrastructure.Data.Migrations;
 ///   - indexed on AttemptedAtUtc for time-windowed dashboard queries
 ///   - all FK columns are nullable — partial context (e.g., no provider) is still useful
 /// </summary>
+[Migration("20260402010000_LSCC01004_BlockedProviderAccessLog")]
 public partial class LSCC01004_BlockedProviderAccessLog : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

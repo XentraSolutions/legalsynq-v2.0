@@ -24,6 +24,7 @@ namespace Identity.Infrastructure.Persistence.Migrations;
 ///   - EligibleOrgType was nulled out in migration 20260330200001 before column drop.
 ///   - AuthService no longer reads EligibleOrgType after this code change.
 /// </summary>
+[Migration("20260330200003_PhaseFRetirement_DropEligibleOrgTypeColumn")]
 public partial class PhaseFRetirement_DropEligibleOrgTypeColumn : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

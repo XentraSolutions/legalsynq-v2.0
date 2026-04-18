@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Identity.Infrastructure.Persistence.Migrations
 {
+    [Migration("20260414100001_AddOrganizationProviderMode")]
     public partial class AddOrganizationProviderMode : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Identity.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [Migration("20260330200005_PhaseI_BackfillOrganizationTypeId")]
     public partial class PhaseI_BackfillOrganizationTypeId : Migration
     {
         /// <inheritdoc />

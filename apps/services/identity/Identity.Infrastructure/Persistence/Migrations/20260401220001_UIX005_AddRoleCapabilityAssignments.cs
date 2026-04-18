@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Identity.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [Migration("20260401220001_UIX005_AddRoleCapabilityAssignments")]
     public partial class UIX005_AddRoleCapabilityAssignments : Migration
     {
         /// <inheritdoc />

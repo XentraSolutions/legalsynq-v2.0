@@ -72,6 +72,94 @@ public class ServiceMigrationProbeWiringTests
             "MigrationCoverageProbe.RunAsync(db, app.Logger);` block to Program.cs.");
     }
 
+    // Migration directories that must be kept clean of attribute-less files.
+    // Add a new entry here whenever a service gains its own DbContext + migrations.
+    private static readonly string[] MigrationDirs =
+    {
+        "apps/services/identity/Identity.Infrastructure/Persistence/Migrations",
+        "apps/services/fund/Fund.Infrastructure/Data/Migrations",
+        "apps/services/careconnect/CareConnect.Infrastructure/Data/Migrations",
+    };
+
+    private static readonly Regex MigrationClassPattern =
+        new(@":\s*Migration\b", RegexOptions.CultureInvariant);
+
+    private static readonly Regex MigrationAttributePattern =
+        new(@"\[Migration\s*\(", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Static guard for Task #67.
+    ///
+    /// EF Core silently ignores a migration whose partial class has no
+    /// <c>[Migration("...")]</c> attribute — the class is simply not
+    /// discovered when <c>dotnet ef database update</c> runs.  This was
+    /// the exact regression that broke a fresh-DB setup (Task #58).
+    ///
+    /// For every migration file (non-Designer, non-Snapshot) across the
+    /// known service migration directories, this test asserts that the
+    /// <c>[Migration("...")]</c> attribute is present either in the main
+    /// file itself (single-file style) or in its companion
+    /// <c>.Designer.cs</c>.  Failing this test means a recently added
+    /// migration will be silently skipped on any clean database.
+    /// </summary>
+    [Fact]
+    public void EveryMigrationFile_HasMigrationAttribute()
+    {
+        var repoRoot = FindRepoRoot();
+        var failures = new List<string>();
+
+        foreach (var relDir in MigrationDirs)
+        {
+            var dir = Path.Combine(repoRoot, relDir.Replace('/', Path.DirectorySeparatorChar));
+
+            if (!Directory.Exists(dir))
+            {
+                failures.Add($"Migration directory not found: {relDir}");
+                continue;
+            }
+
+            var mainFiles = Directory.GetFiles(dir, "*.cs")
+                .Where(f => !f.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase)
+                         && !f.EndsWith("ModelSnapshot.cs", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(f => f);
+
+            foreach (var file in mainFiles)
+            {
+                var source = File.ReadAllText(file);
+
+                // Only check files that actually declare a migration class.
+                if (!MigrationClassPattern.IsMatch(source))
+                    continue;
+
+                // The [Migration("...")] attribute may live in the main file
+                // (single-file style) or in the companion Designer.cs.
+                var hasAttribute = MigrationAttributePattern.IsMatch(source);
+
+                if (!hasAttribute)
+                {
+                    var designerPath = Path.ChangeExtension(file, null) + ".Designer.cs";
+                    if (File.Exists(designerPath))
+                        hasAttribute = MigrationAttributePattern.IsMatch(File.ReadAllText(designerPath));
+                }
+
+                if (!hasAttribute)
+                {
+                    var relPath = Path.GetRelativePath(repoRoot, file)
+                        .Replace(Path.DirectorySeparatorChar, '/');
+                    failures.Add(relPath);
+                }
+            }
+        }
+
+        Assert.True(failures.Count == 0,
+            "The following migration files are missing the [Migration(\"...\")] attribute. " +
+            "EF Core silently skips migrations without this attribute, leaving fresh-database " +
+            "schemas incomplete (Task #58 / Task #67 regression class). " +
+            "Add [Migration(\"<timestamp>_<ClassName>\")] directly to the partial class " +
+            "or regenerate its companion .Designer.cs file:\n\n" +
+            string.Join("\n", failures));
+    }
+
     // Walk up from the test assembly until we find the repo root marker.
     // We look for `LegalSynq.sln` so this test works whether it's run from
     // `dotnet test`, the IDE, or CI's working directory.

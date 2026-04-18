@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Identity.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [Migration("20260330200004_PhaseG_DropUserRolesAndUserRoleAssignments")]
     public partial class PhaseG_DropUserRolesAndUserRoleAssignments : Migration
     {
         /// <inheritdoc />

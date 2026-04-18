@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Identity.Infrastructure.Persistence.Migrations
 {
+    [Migration("20260407100001_AddVerificationRetryFields")]
     public partial class AddVerificationRetryFields : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

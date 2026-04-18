@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Identity.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [Migration("20260407000001_AddTenantProvisioningFields")]
     public partial class AddTenantProvisioningFields : Migration
     {
         /// <inheritdoc />

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Identity.Infrastructure.Persistence.Migrations;
 
+[Migration("20260330110001_AddOrganizationTypeCatalog")]
 public partial class AddOrganizationTypeCatalog : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

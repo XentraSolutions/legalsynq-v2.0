@@ -23,6 +23,7 @@ namespace Identity.Infrastructure.Persistence.Migrations;
 ///
 /// Idempotent: uses INSERT IGNORE + NOT EXISTS guard. Safe to re-run.
 /// </summary>
+[Migration("20260330200002_BackfillScopedRoleAssignmentsFromUserRoles")]
 public partial class BackfillScopedRoleAssignmentsFromUserRoles : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

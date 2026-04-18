@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Identity.Infrastructure.Persistence.Migrations;
 
+[Migration("20260330110004_AddScopedRoleAssignment")]
 public partial class AddScopedRoleAssignment : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Identity.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [Migration("20260401000001_UIX002_UserManagement")]
     public partial class UIX002_UserManagement : Migration
     {
         /// <inheritdoc />

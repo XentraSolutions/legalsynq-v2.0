@@ -67,53 +67,6 @@ catch (Exception ex)
     app.Logger.LogWarning(ex, "Could not apply migrations — ensure MySQL is running and connection string is correct");
 }
 
-try
-{
-    using var scope = app.Services.CreateScope();
-    var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-    var conn = db.Database.GetDbConnection();
-    var dbName = conn.Database;
-    await conn.OpenAsync();
-    try
-    {
-        var columnsToEnsure = new (string Table, string Column, string SqlType, string Default)[]
-        {
-            ("idt_Organizations", "ProviderMode", "varchar(20) NOT NULL", "'sell'"),
-            ("idt_Tenants", "LogoWhiteDocumentId", "char(36) NULL", ""),
-            // Backstop: AddUserPhone migration was historically shipped without
-            // its Designer.cs registration, so EF could silently skip it and
-            // every login query would crash with "Unknown column 'i.Phone'".
-            // Keep this guard even after the migration metadata is fixed so a
-            // similar regression cannot silently break authentication again.
-            ("idt_Users", "Phone", "varchar(32) NULL", ""),
-        };
-
-        foreach (var (table, column, sqlType, defaultValue) in columnsToEnsure)
-        {
-            using var checkCmd = conn.CreateCommand();
-            checkCmd.CommandText = $@"SELECT COUNT(*) FROM information_schema.columns
-                WHERE table_schema = '{dbName}' AND table_name = '{table}' AND column_name = '{column}'";
-            var exists = Convert.ToInt64(await checkCmd.ExecuteScalarAsync()) > 0;
-            if (!exists)
-            {
-                var defaultClause = string.IsNullOrEmpty(defaultValue) ? "" : $" DEFAULT {defaultValue}";
-                using var alterCmd = conn.CreateCommand();
-                alterCmd.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{column}` {sqlType}{defaultClause}";
-                await alterCmd.ExecuteNonQueryAsync();
-                app.Logger.LogInformation("Added missing column {Table}.{Column}", table, column);
-            }
-        }
-    }
-    finally
-    {
-        await conn.CloseAsync();
-    }
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Could not ensure missing columns");
-}
-
 // ── Migration coverage self-test ─────────────────────────────────────────
 // Compares every EF-mapped column against information_schema. If a model
 // property has no backing column on the live database, log an ERROR so the
@@ -122,7 +75,7 @@ catch (Exception ex)
 // without its [Migration] attribute (or otherwise un-applied) leaves the
 // EF model and the live schema out of sync, which previously surfaced only
 // as runtime "Unknown column" SQL errors at login. Runs after Migrate()
-// AND the columnsToEnsure backstop so anything still missing is a true gap.
+// so anything still missing is a true gap.
 try
 {
     using var scope = app.Services.CreateScope();

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Fund.Infrastructure.Data.Migrations
 {
     /// <inheritdoc />
+    [Migration("20260328120000_AddApplicationFields")]
     public partial class AddApplicationFields : Migration
     {
         /// <inheritdoc />

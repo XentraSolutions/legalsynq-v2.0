@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Identity.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    [Migration("20260411000001_DropLegacyGroupTables")]
     public partial class DropLegacyGroupTables : Migration
     {
         /// <inheritdoc />
