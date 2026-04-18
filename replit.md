@@ -137,11 +137,20 @@ apps/web/
         liens.mapper.ts          ← DTO→UI model mappers: mapLienToListItem, mapLienToDetail, mapOfferToItem, mapDtoToUpdateRequest, mapPagination; inline LIEN_TYPE_LABELS
         liens.service.ts         ← business service: getLiens, getLien, createLien, updateLien, getLienOffers, createOffer, acceptOffer
         index.ts                 ← barrel exports
-        lien-tasks.types.ts      ← LS-LIENS-FLOW-001: TaskDto, PaginatedTasksDto, CreateTaskRequest, UpdateTaskRequest, TaskStatus/Priority enums + color/icon maps, BOARD_COLUMNS constant
-        lien-tasks.api.ts        ← LS-LIENS-FLOW-001: 8 API functions (list, getById, create, update, assign, updateStatus, complete, cancel) → returns ApiResponse<T>
-        lien-tasks.service.ts    ← LS-LIENS-FLOW-001: unwraps .data from ApiResponse; typed return values
-        lien-workflow.types.ts   ← LS-LIENS-FLOW-001: WorkflowConfigDto, WorkflowStageDto, Create/Update requests, ReorderStagesRequest, WorkflowUpdateSource
-        lien-workflow.api.ts     ← LS-LIENS-FLOW-001: tenant API (no tenantId) + admin API (explicit tenantId); safe 404/204 handling via ApiError
+        lien-tasks.types.ts           ← LS-LIENS-FLOW-001: TaskDto, PaginatedTasksDto, CreateTaskRequest, UpdateTaskRequest, TaskStatus/Priority enums + color/icon maps, BOARD_COLUMNS constant; TaskSourceType, isSystemGenerated, generationRuleId, generatingTemplateId fields (FLOW-003)
+        lien-tasks.api.ts             ← LS-LIENS-FLOW-001: 8 API functions (list, getById, create, update, assign, updateStatus, complete, cancel) → returns ApiResponse<T>
+        lien-tasks.service.ts         ← LS-LIENS-FLOW-001: unwraps .data from ApiResponse; typed return values
+        lien-workflow.types.ts        ← LS-LIENS-FLOW-001: WorkflowConfigDto, WorkflowStageDto, Create/Update requests, ReorderStagesRequest, WorkflowUpdateSource
+        lien-workflow.api.ts          ← LS-LIENS-FLOW-001: tenant API (no tenantId) + admin API (explicit tenantId); safe 404/204 handling via ApiError
+        lien-task-templates.types.ts  ← LS-LIENS-FLOW-002: LienTaskTemplateDto, CreateTaskTemplateRequest, UpdateTaskTemplateRequest
+        lien-task-templates.api.ts    ← LS-LIENS-FLOW-002: list, getById, create, update, delete
+        lien-task-templates.service.ts ← LS-LIENS-FLOW-002: typed service wrapper
+        lien-task-generation-rules.types.ts ← LS-LIENS-FLOW-003: LienTaskGenerationRuleDto, Create/Update requests, LienGeneratedTaskMetadataDto, TriggerEventType enum
+        lien-task-generation-rules.api.ts   ← LS-LIENS-FLOW-003: list, getById, create, update, delete, enable, disable
+        lien-task-generation-rules.service.ts ← LS-LIENS-FLOW-003: typed service wrapper
+        lien-task-notes.types.ts      ← LS-LIENS-FLOW-004: TaskNoteResponse, CreateTaskNoteRequest, UpdateTaskNoteRequest
+        lien-task-notes.api.ts        ← LS-LIENS-FLOW-004: list, create, update, delete under /api/liens/tasks/{taskId}/notes
+        lien-task-notes.service.ts    ← LS-LIENS-FLOW-004: typed service wrapper (getNotes, createNote, updateNote, deleteNote)
       servicing/                 ← LS-LIENS-UI-004: layered API service pattern for Servicing (same 5-file pattern)
         servicing.types.ts       ← DTOs (ServicingItemResponseDto, CreateServicingItemRequestDto, UpdateServicingItemRequestDto, UpdateServicingStatusRequestDto), UI models (ServicingListItem, ServicingDetail), PaginationMeta, ServicingQuery
         servicing.api.ts         ← raw HTTP client: list, getById, create, update, updateStatus → uses apiClient
@@ -208,7 +217,7 @@ apps/web/
         lien/marketplace/page.tsx
         lien/layout.tsx                           ← LienProviders wrapper (ToastContainer + RoleSwitcher)
         lien/dashboard/page.tsx                   ← V2 UX: store-wired dashboard, KPI cards, task queue, activity feed, donut charts, Create Case modal
-        lien/task-manager/page.tsx                ← V2 UX: Kanban board + list view, KPI cards (pending/in-progress/escalated/overdue), board/list toggle, filter by priority/assignee, quick status actions. LS-LIENS-FLOW-004: clicking a task card opens TaskDetailDrawer (slide-in panel) with Notes tab + Details/Automation Details tab
+        lien/task-manager/page.tsx                ← V2 UX: Kanban board + list view, KPI cards (pending/in-progress/escalated/overdue), board/list toggle, filter by priority/assignee, quick status actions. LS-LIENS-FLOW-004: clicking a task card/row opens TaskDetailDrawer; Edit button inside drawer routes to CreateEditTaskForm
         lien/cases/page.tsx                       ← LS-LIENS-UI-002: API-backed list via casesService, loading/error/pagination, Create Case modal, ActionMenu (advance status via API), SideDrawer preview
         lien/cases/[id]/page.tsx                  ← LS-LIENS-UI-002 + UI-POLISH + LS-LIENS-UI-013-02 + LS-LIENS-CASE-DETAILS-001: API-backed detail via casesService, advance status via API, NotesPanel (read-only). UI-POLISH: header+tabs unified in single rounded-lg card. LS-LIENS-UI-013-02: 3-state panel expand/collapse (split/left/right) with PanelDivider matching Lien Detail, header rebalanced with structured grid-cols-4 metadata grid, title block text-xl font-bold min-w-[160px], action button in grid cell with items-end alignment. LS-LIENS-CASE-DETAILS-001: Details tab expanded with Case Tracking checkbox toggles (Share with Law Firm, UCC Filed, Case Dropped, Child Support, Minor Comp), Updates activity table (Timestamp/Actions/Description/Updated By), right panel SMS card + Contacts section (Case Manager, Law Firm). All temp visual fallback data clearly marked.
         lien/liens/page.tsx                       ← V2 UX: store-backed list, Create Lien modal, ActionMenu (list/withdraw), SideDrawer, multi-filter
@@ -370,22 +379,30 @@ apps/
     liens/
       Liens.Api/                          → ASP.NET Core Web API (port 5009)
         Endpoints/
-          LienEndpoints.cs               ← real database-backed Lien CRUD endpoints (GET list/by-id/by-number, POST, PUT)
-          CaseEndpoints.cs               ← real database-backed Case CRUD endpoints (GET list/by-id/by-number, POST, PUT)
+          LienEndpoints.cs               ← Lien CRUD (GET list/by-id/by-number, POST, PUT)
+          CaseEndpoints.cs               ← Case CRUD (GET list/by-id/by-number, POST, PUT)
+          TaskEndpoints.cs               ← LS-LIENS-FLOW-001: task CRUD + status transitions + assign (GET list/by-id, POST, PUT, PATCH status/assign/complete/cancel); permission-gated per action
+          WorkflowConfigEndpoints.cs     ← LS-LIENS-FLOW-001: workflow config + stages CRUD (GET/POST/PUT/DELETE/reorder)
+          TaskTemplateEndpoints.cs       ← LS-LIENS-FLOW-002: task template CRUD (GET list/by-id, POST, PUT, DELETE) under /api/liens/task-templates
+          TaskGenerationRuleEndpoints.cs ← LS-LIENS-FLOW-003: generation rule CRUD + enable/disable (GET list/by-id, POST, PUT, DELETE, PATCH enable/disable) under /api/liens/task-generation-rules
+          TaskNoteEndpoints.cs           ← LS-LIENS-FLOW-004: per-task notes (GET, POST, PUT /{noteId}, DELETE /{noteId}) under /api/liens/tasks/{taskId}/notes; ownership-enforced
         Middleware/ExceptionHandlingMiddleware.cs ← handles ValidationException→400, NotFoundException→404, ConflictException→409, InvalidOperationException→409, UnauthorizedAccessException→401
-        appsettings.json                  ← port 5009 + ConnectionStrings:LiensDb (placeholder)
+        appsettings.json                  ← port 5009 + ConnectionStrings:LiensDb
         appsettings.Development.json      ← dev JWT signing key + debug logging
       Liens.Application/
-        DTOs/                             ← LienResponse, CreateLienRequest, UpdateLienRequest, CaseResponse, CreateCaseRequest, UpdateCaseRequest, PaginatedResult<T>
-        Interfaces/                       ← ILienService, ICaseService, ILienSaleService, IUnitOfWork, ITransactionScope
-        Services/                         ← LienService, CaseService, LienSaleService
+        DTOs/                             ← LienResponse, CreateLienRequest, UpdateLienRequest, CaseResponse, CreateCaseRequest, UpdateCaseRequest, PaginatedResult<T>; TaskDto, CreateTaskRequest, UpdateTaskRequest, AssignTaskRequest, UpdateTaskStatusRequest, TaskLienLinkDto; WorkflowConfigDto, WorkflowStageDto, CreateWorkflowConfigRequest; LienTaskTemplateDto + Create/Update requests (FLOW-002); LienTaskGenerationRuleDto + Create/Update requests, LienGeneratedTaskMetadataDto (FLOW-003); TaskNoteResponse, CreateTaskNoteRequest, UpdateTaskNoteRequest (FLOW-004)
+        Interfaces/                       ← ILienService, ICaseService, ILienSaleService, IUnitOfWork, ITransactionScope; ILienTaskService, ILienWorkflowConfigService (FLOW-001); ILienTaskTemplateService (FLOW-002); ILienTaskGenerationRuleService, ILienTaskGenerationEngine (FLOW-003); ILienTaskNoteService (FLOW-004)
+        Repositories/                     ← ILienTaskRepository, ILienWorkflowConfigRepository (FLOW-001); ILienTaskTemplateRepository (FLOW-002); ILienTaskGenerationRuleRepository (FLOW-003); ILienTaskNoteRepository (FLOW-004)
+        Services/                         ← LienService, CaseService, LienSaleService; LienTaskService, LienWorkflowConfigService (FLOW-001); LienTaskTemplateService (FLOW-002); LienTaskGenerationRuleService, LienTaskGenerationEngine (FLOW-003); LienTaskNoteService (FLOW-004)
       Liens.Domain/
-        Entities/                         ← Lien, LienOffer, Case, Contact, Facility, LookupValue, BillOfSale
-        LiensPermissions.cs              ← static permission code constants (LienRead/Create/Update/Offer/ReadOwn/Browse/Purchase/ReadHeld/Service/Settle + CaseRead/Create/Update)
+        Entities/                         ← Lien, LienOffer, Case, Contact, Facility, LookupValue, BillOfSale; LienTask, LienTaskLienLink (FLOW-001); LienWorkflowConfig, LienWorkflowStage (FLOW-001); LienTaskTemplate (FLOW-002); LienTaskGenerationRule, LienGeneratedTaskMetadata (FLOW-003); LienTaskNote (FLOW-004)
+        LiensPermissions.cs              ← static permission constants: LienRead/Create/Update/Offer/ReadOwn/Browse/Purchase/ReadHeld/Service/Settle; CaseRead/Create/Update; TaskRead/Create/Manage/Assign/Complete/Cancel (FLOW-001); WorkflowManage (FLOW-001); TaskTemplateManage (FLOW-002); TaskAutomationManage (FLOW-003); TaskNoteManage (FLOW-004)
       Liens.Infrastructure/
-        DependencyInjection.cs            ← AddLiensServices() extension (repos, services, UnitOfWork, ICurrentRequestContext)
-        Persistence/                      ← LiensDbContext, UnitOfWork, migrations
-        Repositories/                     ← LienRepository, CaseRepository, FacilityRepository, ContactRepository, etc.
+        DependencyInjection.cs            ← AddLiensServices(): repos (Lien, Case, Facility, Contact, LookupValue, BillOfSale, ServicingItem, LienTask, LienWorkflowConfig, LienTaskTemplate, LienTaskGenerationRule, LienTaskNote), services (all above + LienTaskGenerationEngine), UnitOfWork, ICurrentRequestContext, HTTP clients (DocumentsService, NotificationsService), AuditPublisher, NotificationPublisher
+        Persistence/
+          LiensDbContext.cs              ← 15 DbSets: Cases, Contacts, Facilities, LookupValues, Liens, LienOffers, BillsOfSale, ServicingItems, LienTasks, LienTaskLienLinks, LienWorkflowConfigs, LienWorkflowStages, LienTaskTemplates, LienTaskGenerationRules, LienGeneratedTaskMetadatas, LienTaskNotes
+          Migrations/                    ← 20260418000001_InitialLiensSchema; 20260418000002_AddTasksAndWorkflow (FLOW-001); 20260418000003_AddTaskTemplatesAndRules (FLOW-002/003); 20260418000004_AddTaskNotes (FLOW-004)
+        Repositories/                     ← LienRepository, CaseRepository, FacilityRepository, ContactRepository, LookupValueRepository, BillOfSaleRepository, ServicingItemRepository; LienTaskRepository, LienWorkflowConfigRepository (FLOW-001); LienTaskTemplateRepository (FLOW-002); LienTaskGenerationRuleRepository (FLOW-003); LienTaskNoteRepository (FLOW-004)
     comms/
       Comms.Api/                       → ASP.NET Core Web API (port 5011)
         Endpoints/
@@ -3795,6 +3812,14 @@ Defined foundational domain entities for the Liens microservice following v2 pat
 - **Facility** (`Liens.Domain/Entities/Facility.cs`) — Name, Code, ExternalReference, inline address, OrganizationId soft FK to Identity, IsActive
 - **LookupValue** (`Liens.Domain/Entities/LookupValue.cs`) — Category-driven (CaseStatus, LienStatus, etc.), tenant-scoped or global, IsSystem guard
 - **ServicingItem** (`Liens.Domain/Entities/ServicingItem.cs`) — LS-LIENS-UI-004: task management entity with TenantId, OrgId, TaskNumber (unique per tenant), TaskType, Description, Status lifecycle (Pending→InProgress→Completed/Escalated/OnHold), Priority (auto-escalation to Urgent on escalate), AssignedTo, DueDate, CaseId/LienId cross-entity links, Notes, Resolution, timeline timestamps (StartedAtUtc, CompletedAtUtc, EscalatedAtUtc). Full backend stack: entity → repository → service → DTOs → endpoints. Table: `liens_ServicingItems`. EF migration: `AddServicingItem`. API: 5 endpoints at `/api/liens/servicing`.
+- **LienTask** (`Liens.Domain/Entities/LienTask.cs`) — LS-LIENS-FLOW-001: tenant-scoped task with Title, Description, Status (NEW→IN_PROGRESS→WAITING_BLOCKED→COMPLETED/CANCELLED), Priority (LOW/MEDIUM/HIGH/URGENT), AssignedUserId, CaseId, WorkflowStageId, DueDate, SourceType (MANUAL/AUTOMATED), IsSystemGenerated, GenerationRuleId, GeneratingTemplateId, LinkedLiens collection. Table: `liens_Tasks`.
+- **LienTaskLienLink** (`Liens.Domain/Entities/LienTaskLienLink.cs`) — LS-LIENS-FLOW-001: join entity linking a task to one or more liens. Table: `liens_TaskLienLinks`.
+- **LienWorkflowConfig** (`Liens.Domain/Entities/LienWorkflowConfig.cs`) — LS-LIENS-FLOW-001: per-tenant workflow configuration with Name, IsActive, ordered stages collection. Table: `liens_WorkflowConfigs`.
+- **LienWorkflowStage** (`Liens.Domain/Entities/LienWorkflowStage.cs`) — LS-LIENS-FLOW-001: ordered stage within a workflow config (Name, Order, IsTerminal). Table: `liens_WorkflowStages`.
+- **LienTaskTemplate** (`Liens.Domain/Entities/LienTaskTemplate.cs`) — LS-LIENS-FLOW-002: reusable task blueprint with Name, DefaultTitle, DefaultDescription, DefaultPriority, DefaultDueDaysOffset, IsActive. Table: `liens_TaskTemplates`.
+- **LienTaskGenerationRule** (`Liens.Domain/Entities/LienTaskGenerationRule.cs`) — LS-LIENS-FLOW-003: event-to-template mapping with TriggerEventType (string constant), TemplateId FK, AssignToCaseManager flag, IsEnabled, Priority, LastTriggeredAtUtc. Table: `liens_TaskGenerationRules`.
+- **LienGeneratedTaskMetadata** (`Liens.Domain/Entities/LienGeneratedTaskMetadata.cs`) — LS-LIENS-FLOW-003: audit record linking a generated task back to the rule, template, and triggering event/entity. Table: `liens_GeneratedTaskMetadata`.
+- **LienTaskNote** (`Liens.Domain/Entities/LienTaskNote.cs`) — LS-LIENS-FLOW-004: per-task text note with Content (≤5000 chars), CreatedByUserId, CreatedByUserName (denormalized), IsEdited, IsDeleted (soft-delete). Factory methods: Create, Edit, SoftDelete. Table: `liens_TaskNotes`.
 
 ### Supporting Types
 - **Enums:** `CaseStatus`, `ContactType`, `LienType`, `LienStatus`, `ServicingStatus`, `ServicingPriority`, `LookupCategory` (all string constants with `IReadOnlySet<string> All`)
@@ -3853,7 +3878,7 @@ Each microservice uses a table name prefix for organizational clarity:
 | Notifications | `ntf_` | MySQL | `ntf_Notifications`, `ntf_Templates` |
 | Audit | `aud_` | MySQL/SQLite | `aud_AuditEventRecords`, `aud_LegalHolds` |
 | Documents | `docs_` | PostgreSQL | `docs_documents`, `docs_document_versions` |
-| Liens | `liens_` | MySQL | `liens_Cases`, `liens_Liens`, `liens_BillsOfSale` |
+| Liens | `liens_` | MySQL | `liens_Cases`, `liens_Liens`, `liens_BillsOfSale`, `liens_Tasks`, `liens_TaskNotes` |
 
 ### Implementation
 - Each service's EF Core entity configurations use `builder.ToTable("prefix_TableName")`
@@ -4260,6 +4285,8 @@ Added status transition endpoints to BillOfSale backend (submit/execute/cancel),
 - **Enums**: Backend serializes enums as strings (`JsonStringEnumConverter`); frontend types use string unions
 - **Query params**: `Page`, `PageSize`, `EventTypes`, `SortDescending` (PascalCase matching backend `AuditEventQueryRequest`)
 - **Component**: `EntityTimeline` at `apps/web/src/components/lien/entity-timeline.tsx` — reusable, takes `entityType` + `entityId`, handles loading/error/empty/pagination
+- **Component**: `TaskDetailDrawer` at `apps/web/src/components/lien/task-detail-drawer.tsx` — LS-LIENS-FLOW-004: slide-in right panel for per-task detail. Two tabs: (1) **Notes** — scrollable activity thread with inline edit/delete (hover controls, own notes only), avatar initials, compose box with 5000-char limit and char counter, optimistic append on post; (2) **Details / Automation Details** — for manual tasks shows task metadata (ID, created-by, dates, workflow stage); for `isSystemGenerated=true` tasks shows violet Automation Details panel (generation rule ID, template ID, case link, 3-step engine explanation). Backdrop dismiss, Edit button routes to `CreateEditTaskForm`. Uses `lienTaskNotesService` for all API calls; no full-refetch on note add/edit/delete.
+- **Component**: `NotesPanel` at `apps/web/src/components/lien/notes-panel.tsx` — generic case notes display (Note interface: id/text/author/timestamp); used in case detail pages; distinct from TaskDetailDrawer's task notes thread
 
 ### Pages with EntityTimeline
 - `cases/[id]/page.tsx` — entity type `Case`
@@ -4345,3 +4372,100 @@ Read-only operational analytics layer over FlowDb. No BI platform, no new write 
 **Validation:** `dotnet build` 0 errors 0 warnings; `tsc --noEmit` (CC) 0 errors; `tsc --noEmit` (Web) 0 errors.
 
 **Analysis:** `analysis/E19-report.md`
+
+---
+
+## LS-LIENS-FLOW-001 — Task Management Core — 2026-04-18
+
+### Summary
+Full task management backbone for the Liens microservice. Implements the `LienTask` entity, CRUD + status-transition API, workflow config, and the Task Manager Kanban/list UI.
+
+### Backend
+- **Entities**: `LienTask`, `LienTaskLienLink`, `LienWorkflowConfig`, `LienWorkflowStage`
+- **Permissions**: `TaskRead`, `TaskCreate`, `TaskManage`, `TaskAssign`, `TaskComplete`, `TaskCancel`, `WorkflowManage`
+- **Endpoints**: `TaskEndpoints` (9 routes under `/api/liens/tasks`), `WorkflowConfigEndpoints` (CRUD + reorder under `/api/liens/workflow-configs`)
+- **Migration**: `20260418000002_AddTasksAndWorkflow`
+- **Build**: 0 errors
+
+### Frontend
+- **Libs**: `lien-tasks.types.ts`, `lien-tasks.api.ts`, `lien-tasks.service.ts`, `lien-workflow.types.ts`, `lien-workflow.api.ts`
+- **Page**: `lien/task-manager/page.tsx` — Kanban board (4 columns: NEW/IN_PROGRESS/WAITING_BLOCKED/COMPLETED) + list view, 5 KPI cards, search/status/priority/assignee filters, `CreateEditTaskForm` modal, System Generated badge
+
+### Analysis
+`analysis/LS-LIENS-FLOW-001-report.md`
+
+---
+
+## LS-LIENS-FLOW-002 — Contextual Task Intelligence: Task Templates — 2026-04-18
+
+### Summary
+Reusable task template system allowing operators to define blueprints (title, description, priority, due-date offset) that can be manually applied or referenced by generation rules.
+
+### Backend
+- **Entity**: `LienTaskTemplate`
+- **Permission**: `TaskTemplateManage`
+- **Endpoints**: `TaskTemplateEndpoints` (5 routes under `/api/liens/task-templates`)
+- **Migration**: `20260418000003_AddTaskTemplatesAndRules` (shared with FLOW-003)
+- **Build**: 0 errors
+
+### Frontend
+- **Libs**: `lien-task-templates.types.ts`, `lien-task-templates.api.ts`, `lien-task-templates.service.ts`
+- **Pages**: Task Template management page in tenant portal and Control Center
+
+### Analysis
+`analysis/LS-LIENS-FLOW-002-report.md`
+
+---
+
+## LS-LIENS-FLOW-003 — Event-Driven Task Generation — 2026-04-18
+
+### Summary
+Rules engine that listens to domain events (lien status changes, case stage transitions) and automatically generates `LienTask` records from configured templates. Each generated task stores provenance metadata.
+
+### Backend
+- **Entities**: `LienTaskGenerationRule`, `LienGeneratedTaskMetadata`
+- **Permission**: `TaskAutomationManage`
+- **Endpoints**: `TaskGenerationRuleEndpoints` (7 routes under `/api/liens/task-generation-rules` including PATCH enable/disable)
+- **Engine**: `ILienTaskGenerationEngine` / `LienTaskGenerationEngine` — resolves matching rules for a given event type, hydrates task from template, saves `LienGeneratedTaskMetadata` record
+- **Hooks**: `CaseService` and `LienService` call the engine on status transitions
+- **Migration**: `20260418000003_AddTaskTemplatesAndRules`
+- **Build**: 0 errors
+
+### Frontend
+- **Libs**: `lien-task-generation-rules.types.ts`, `lien-task-generation-rules.api.ts`, `lien-task-generation-rules.service.ts`
+- **Pages**: Task Automation (Generation Rules) management page in tenant portal and Control Center; System Generated badge on task cards in Task Manager
+
+### Analysis
+`analysis/LS-LIENS-FLOW-003-report.md`
+
+---
+
+## LS-LIENS-FLOW-004 — Task Notes & Collaboration + Generated Task Visibility — 2026-04-18
+
+### Summary
+Adds per-task text-only notes (activity thread) and an "Automation Details" panel for system-generated tasks. Notes are stored in `liens_TaskNotes` with ownership enforcement (users edit/delete only their own notes), soft-delete, and audit integration.
+
+### Backend
+- **Entity**: `LienTaskNote` — Content (≤5000), CreatedByUserId/UserName, IsEdited, IsDeleted
+- **Permission**: `TaskNoteManage = "SYNQ_LIENS.task_note:manage"`
+- **Endpoints**: `TaskNoteEndpoints` — GET / POST / PUT /{noteId} / DELETE /{noteId} under `/api/liens/tasks/{taskId}/notes`
+- **Service**: `LienTaskNoteService` — ownership enforcement, content validation, fire-and-forget audit events (`liens.task_note.created/updated/deleted`, `liens.case.task_note_added` when task has CaseId)
+- **Migration**: `20260418000004_AddTaskNotes` — applied to DB
+- **Build**: 0 errors
+
+### Frontend
+- **Libs**: `lien-task-notes.types.ts`, `lien-task-notes.api.ts`, `lien-task-notes.service.ts`
+- **Component**: `TaskDetailDrawer` (`components/lien/task-detail-drawer.tsx`) — slide-in right panel; Notes tab with activity thread + inline edit/delete + compose box; Details/Automation Details tab (violet panel for system tasks with rule/template IDs + 3-step engine explanation)
+- **Page change**: `task-manager/page.tsx` — task card/row click now opens drawer instead of edit form directly; Edit action inside drawer routes to `CreateEditTaskForm`
+- **Next.js**: Fast Refresh 0 errors
+
+### Audit Events
+| Event | Trigger |
+|---|---|
+| `liens.task_note.created` | Note added |
+| `liens.task_note.updated` | Note content changed |
+| `liens.task_note.deleted` | Note soft-deleted |
+| `liens.case.task_note_added` | Note added on task with a linked CaseId |
+
+### Analysis
+`analysis/LS-LIENS-FLOW-004-report.md`
