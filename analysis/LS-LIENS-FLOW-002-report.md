@@ -1,5 +1,5 @@
 # LS-LIENS-FLOW-002 — Contextual Task Intelligence
-**Status:** IN PROGRESS  
+**Status:** COMPLETE  
 **Started:** 2026-04-18  
 **Feature:** Task Templates + Contextual Creation + Workflow Awareness for Synq Liens
 
@@ -23,13 +23,13 @@
 - Nav entries added for both surfaces
 - Audit logging for template created/updated/activated/deactivated
 - Due-date prefill via `defaultDueOffsetDays`
+- Workflow stage awareness: `TaskPanel` now accepts `workflowStageId`; case `TaskManagerTab` sources `active?.currentStageId` from `useCaseWorkflows` and passes it through so stage-context templates are surfaced and `workflowStageId` is pre-filled on task creation
 
 ### Partially Implemented
 - Role-based assignee suggestion: template stores `defaultRoleId`; frontend reads it and shows a label. Full user-by-role lookup requires a dedicated Identity endpoint (`GET /api/users?role=X`) which does not exist yet — safe fallback (no suggestion, manual pick) is in place.
 
 ### Deferred
 - Auto-suggest specific user by role (blocked on Identity user-by-role endpoint)
-- Stage-context templates surfaced dynamically based on live workflow stage of a case/lien (data not yet plumbed from backend into case/lien detail views)
 - Template usage audit event (optional per spec — deferred to keep audit stream clean)
 
 ---
@@ -67,8 +67,8 @@
 - `Liens.Infrastructure/Repositories/LienTaskTemplateRepository.cs`
 - `Liens.Infrastructure/Persistence/Configurations/LienTaskTemplateConfiguration.cs`
 - `Liens.Api/Endpoints/TaskTemplateEndpoints.cs`
-- `Liens.Infrastructure/Persistence/Migrations/20260418000002_AddTaskTemplates.cs`
-- `Liens.Infrastructure/Persistence/Migrations/20260418000002_AddTaskTemplates.Designer.cs`
+- `Liens.Infrastructure/Persistence/Migrations/20260418152345_AddTaskTemplates.cs`
+- `Liens.Infrastructure/Persistence/Migrations/20260418152345_AddTaskTemplates.Designer.cs`
 
 ### Backend — Modified Files
 - `Liens.Domain/LiensPermissions.cs` — added `TaskTemplateManage`
@@ -86,6 +86,8 @@
 
 ### Frontend — Modified Files
 - `apps/web/src/components/lien/forms/create-edit-task-form.tsx` — template selection step
+- `apps/web/src/components/lien/task-panel.tsx` — added `workflowStageId` prop, passed to `CreateEditTaskForm`
+- `apps/web/src/app/(platform)/lien/cases/[id]/case-detail-client.tsx` — `TaskManagerTab` uses `useCaseWorkflows` to source and pass active stage ID
 - `apps/web/src/lib/nav.ts` — Task Templates entries
 
 ---
@@ -230,7 +232,7 @@ Gap: Identity does not expose a dedicated `/api/users?role=X` endpoint. The fron
 ## 11. Known Gaps / Risks
 
 1. **Role-based user lookup**: Only client-side filtering over full user list. Fine for Phase 2, should be replaced with a server-side `GET /api/users?roleName=X` endpoint in Phase 3.
-2. **Stage-context surfacing**: `applicableWorkflowStageId` is stored and filterable, but the case/lien detail views do not yet expose the "current workflow stage" of the record — surfacing stage-matched templates requires that data to be plumbed in.
+2. **Lien detail stage awareness**: The lien detail view (`lien-detail-client.tsx`) does not have an associated workflow panel; no workflow stage is passed to `TaskPanel` there. Stage-context template filtering is therefore only active on the case Task Manager tab. This is acceptable Phase 2 behavior.
 3. **Template versioning concurrency**: Version field is stored and incremented, but the admin UI currently sends `version` from the last-fetched response. If two admins edit simultaneously, the second will get a 409 and must reload — acceptable Phase 2 behavior.
 
 ---

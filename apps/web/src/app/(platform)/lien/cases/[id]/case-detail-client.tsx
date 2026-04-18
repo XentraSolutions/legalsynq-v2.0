@@ -13,6 +13,8 @@ import { TaskPanel } from '@/components/lien/task-panel';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { LayoutSplit, type PanelMode } from '@/components/lien/layout-split';
 import { WorkflowPanel } from '@/components/workflow';
+import { useCaseWorkflows } from '@/hooks/use-case-workflows';
+import { workflowApi, type WorkflowInstanceDetail } from '@/lib/workflow';
 
 const STATUS_LABELS: Record<string, string> = { PreDemand: 'Pre-demand', DemandSent: 'Demand Sent', InNegotiation: 'In Negotiation', CaseSettled: 'Case Settled', Closed: 'Closed' };
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
@@ -1959,5 +1961,22 @@ function NotesTab({ caseId }: { caseId: string }) {
 }
 
 function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
-  return <TaskPanel caseId={caseDetail.id} title="Task Manager" />;
+  const { active } = useCaseWorkflows(caseDetail.id);
+  const [workflowDetail, setWorkflowDetail] = useState<WorkflowInstanceDetail | null>(null);
+
+  useEffect(() => {
+    const instanceId = active?.workflowInstanceId;
+    if (!instanceId) { setWorkflowDetail(null); return; }
+    workflowApi.getDetail(caseDetail.id, instanceId)
+      .then((res) => setWorkflowDetail(res.data ?? null))
+      .catch(() => setWorkflowDetail(null));
+  }, [caseDetail.id, active?.workflowInstanceId]);
+
+  return (
+    <TaskPanel
+      caseId={caseDetail.id}
+      workflowStageId={workflowDetail?.currentStageId ?? undefined}
+      title="Task Manager"
+    />
+  );
 }

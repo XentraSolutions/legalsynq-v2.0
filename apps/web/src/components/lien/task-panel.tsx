@@ -10,10 +10,11 @@ import { CreateEditTaskForm } from './forms/create-edit-task-form';
 interface TaskPanelProps {
   caseId?: string;
   lienId?: string;
+  workflowStageId?: string | null;
   title?: string;
 }
 
-export function TaskPanel({ caseId, lienId, title = 'Tasks' }: TaskPanelProps) {
+export function TaskPanel({ caseId, lienId, workflowStageId, title = 'Tasks' }: TaskPanelProps) {
   const [tasks, setTasks] = useState<TaskDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +142,7 @@ export function TaskPanel({ caseId, lienId, title = 'Tasks' }: TaskPanelProps) {
         onSaved={() => { fetchTasks(); setShowCreate(false); }}
         prefillCaseId={caseId}
         prefillLienId={lienId}
+        prefillWorkflowStageId={workflowStageId ?? undefined}
       />
 
       {editTask && (
