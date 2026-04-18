@@ -50,6 +50,7 @@ export interface PlatformSession {
   isTenantAdmin:    boolean;
   hasOrg:           boolean;
   avatarDocumentId?:     string;
+  phone?:                string;
   expiresAt:             Date;
   sessionTimeoutMinutes: number;
 }

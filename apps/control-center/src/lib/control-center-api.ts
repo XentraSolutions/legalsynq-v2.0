@@ -625,6 +625,23 @@ export const controlCenterServerApi = {
       revalidateTag(CACHE_TAGS.users);
     },
 
+    /**
+     * PATCH /identity/api/admin/users/{id}/phone
+     *
+     * Sets or clears the user's primary phone number. Pass null/empty to
+     * clear. The identity service performs E.164 normalisation and rejects
+     * malformed input with a 400; callers should surface response.error.
+     * Revalidates cc:users so the user-management list reflects changes.
+     */
+    updatePhone: async (id: string, phone: string | null): Promise<{ phone: string | null }> => {
+      const raw = await apiClient.patch<{ phone?: string | null }>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/phone`,
+        { phone: phone && phone.trim() !== '' ? phone.trim() : null },
+      );
+      revalidateTag(CACHE_TAGS.users);
+      return { phone: raw?.phone ?? null };
+    },
+
     setPassword: async (id: string, newPassword: string): Promise<void> => {
       await apiClient.post<unknown>(
         `/identity/api/admin/users/${encodeURIComponent(id)}/set-password`,

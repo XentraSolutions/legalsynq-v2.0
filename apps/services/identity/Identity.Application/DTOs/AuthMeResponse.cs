@@ -23,4 +23,10 @@ public record AuthMeResponse(
     /// that is currently enabled at the tenant level.  Used by the tenant portal to show
     /// only the products the tenant has licensed.  Derived from TenantProduct.IsEnabled.
     /// </summary>
-    List<string>? EnabledProducts = null);
+    List<string>? EnabledProducts = null,
+    /// <summary>
+    /// Primary phone number on file for the user, in E.164 form. Surfaced so
+    /// the profile page can display the current value without a second round-trip.
+    /// Null when the user has not provided a phone yet.
+    /// </summary>
+    string? Phone = null);

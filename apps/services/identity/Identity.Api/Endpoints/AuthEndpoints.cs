@@ -419,6 +419,75 @@ public static class AuthEndpoints
         })
         .RequireAuthorization();
 
+        // ── PATCH /api/profile/phone ──────────────────────────────────────────
+        // Authenticated. Lets the signed-in user set or clear their primary
+        // phone number. Phones are normalised to E.164 before persisting so
+        // the notifications service can dispatch SMS without further reformat.
+        // Pass an empty/whitespace string (or null) to clear the field.
+        app.MapPatch("/api/profile/phone", async (
+            SetPhoneRequest    body,
+            HttpContext        httpContext,
+            IUserRepository    userRepo,
+            IAuditEventClient  auditClient,
+            CancellationToken  ct) =>
+        {
+            var userIdStr = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                         ?? httpContext.User.FindFirstValue("sub");
+
+            if (!Guid.TryParse(userIdStr, out var userId))
+                return Results.Problem("Invalid or missing user identity.", statusCode: 401);
+
+            var (ok, normalised, error) = PhoneNumber.TryNormalise(body.Phone);
+            if (!ok)
+                return Results.BadRequest(new { error });
+
+            bool changed;
+            try
+            {
+                changed = await userRepo.UpdatePhoneAsync(userId, normalised, ct);
+            }
+            catch (InvalidOperationException)
+            {
+                return Results.Problem("User record not found.", statusCode: 404);
+            }
+
+            if (changed)
+            {
+                var now = DateTimeOffset.UtcNow;
+                _ = auditClient.IngestAsync(new IngestAuditEventRequest
+                {
+                    EventType     = normalised is null
+                        ? "identity.user.phone_cleared"
+                        : "identity.user.phone_set",
+                    EventCategory = EventCategory.DataChange,
+                    SourceSystem  = "identity-service",
+                    SourceService = "auth-api",
+                    Visibility    = VisibilityScope.Tenant,
+                    Severity      = SeverityLevel.Info,
+                    OccurredAtUtc = now,
+                    Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant },
+                    Actor         = new AuditEventActorDto
+                    {
+                        Id        = userIdStr,
+                        Type      = ActorType.User,
+                        IpAddress = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
+                                 ?? httpContext.Connection.RemoteIpAddress?.ToString(),
+                    },
+                    Entity         = new AuditEventEntityDto { Type = "User", Id = userIdStr! },
+                    Action         = normalised is null ? "PhoneCleared" : "PhoneSet",
+                    Description    = normalised is null
+                        ? "User cleared their primary phone number."
+                        : "User updated their primary phone number.",
+                    IdempotencyKey = LegalSynq.AuditClient.IdempotencyKey.ForWithTimestamp(
+                        now, "identity-service", "identity.user.phone_changed", userIdStr ?? ""),
+                    Tags = ["profile", "phone"],
+                });
+            }
+
+            return Results.Ok(new { phone = normalised });
+        })
+        .RequireAuthorization();
+
         // ── POST /api/auth/password-reset/confirm ─────────────────────────────
         // Anonymous. Accepts a password-reset token (admin-triggered), validates it,
         // sets a new password, and invalidates all existing sessions (SessionVersion++).
@@ -624,5 +693,6 @@ public static class AuthEndpoints
     private record PasswordResetConfirmRequest(string Token, string NewPassword);
     private record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     private record SetAvatarRequest(string DocumentId);
+    private record SetPhoneRequest(string? Phone);
     private record ForgotPasswordRequest(string TenantCode, string Email, string? Subdomain = null);
 }

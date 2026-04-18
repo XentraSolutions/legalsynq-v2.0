@@ -71,6 +71,7 @@ export interface PlatformSession {
 
   // Session
   avatarDocumentId?:     string;
+  phone?:                string;
   expiresAt:             Date;
   sessionTimeoutMinutes: number;
 

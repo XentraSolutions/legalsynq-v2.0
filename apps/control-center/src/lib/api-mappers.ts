@@ -395,6 +395,7 @@ export function mapUserDetail(raw: unknown): UserDetail {
                          ? (r['sessionVersion'] ?? r['session_version']) as number
                          : undefined,
     avatarDocumentId:  (r['avatarDocumentId'] ?? r['avatar_document_id']) as string | undefined,
+    phone:             optStr(r, 'phone',             'phone'),
     inviteSentAtUtc:   optStr(r, 'invite_sent_at',    'inviteSentAtUtc'),
     memberships: rawMemberships.map(m => {
       const mo = asObj(m);

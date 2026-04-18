@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import Link               from 'next/link';
 import type { UserDetail, UserStatus } from '@/types/control-center';
 import { Routes }         from '@/lib/routes';
+import { AdminPhoneEditor } from '@/components/users/admin-phone-editor';
 
 interface UserDetailCardProps {
   user: UserDetail;
@@ -87,6 +88,7 @@ export function UserDetailCard({ user }: UserDetailCardProps) {
               {user.email}
             </a>
           } />
+          <InfoRow label="Phone"        value={<AdminPhoneEditor userId={user.id} phone={user.phone} />} />
           <InfoRow label="Platform Role" value={<RolePill role={user.role} />} />
           <InfoRow label="Status"       value={<StatusPill status={user.status} />} />
           <InfoRow label="Tenant"       value={

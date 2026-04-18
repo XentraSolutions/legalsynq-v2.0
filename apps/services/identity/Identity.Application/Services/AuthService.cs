@@ -245,6 +245,7 @@ public class AuthService : IAuthService
         // AvatarDocumentId is not in the JWT (changes independently) — fetch from DB.
         // UIX-003-03: also validate SessionVersion and IsLocked from DB.
         Guid? avatarDocumentId = null;
+        string? phone = null;
         if (Guid.TryParse(userId, out var userGuid))
         {
             var user = await _userRepository.GetByIdAsync(userGuid, ct);
@@ -257,6 +258,7 @@ public class AuthService : IAuthService
                 throw new UnauthorizedAccessException("Account is locked.");
 
             avatarDocumentId = user.AvatarDocumentId;
+            phone            = user.Phone;
 
             // UIX-003-03: validate session version. Tokens from before a force-logout
             // or lock will have an older session_version and must be rejected.
@@ -305,7 +307,8 @@ public class AuthService : IAuthService
             ExpiresAtUtc:           expiresAtUtc,
             SessionTimeoutMinutes:  sessionTimeoutMinutes,
             AvatarDocumentId:       avatarDocumentId,
-            EnabledProducts:        enabledProducts);
+            EnabledProducts:        enabledProducts,
+            Phone:                  phone);
     }
 
     // Maps the DB product Code column → the frontend ProductCode (TypeScript).

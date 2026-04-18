@@ -108,6 +108,9 @@ public static class AdminEndpoints
         // UIX-002: resend invite
         routes.MapPost("/api/admin/users/{id:guid}/resend-invite",          ResendInvite);
 
+        // Admin can edit a user's primary phone number on file.
+        routes.MapPatch("/api/admin/users/{id:guid}/phone",                 UpdateUserPhone);
+
         // UIX-003-03: security / session admin actions
         routes.MapPost("/api/admin/users/{id:guid}/lock",                   LockUser);
         routes.MapPost("/api/admin/users/{id:guid}/unlock",                 UnlockUser);
@@ -1329,6 +1332,7 @@ public static class AdminEndpoints
             lastLoginAtUtc    = u.LastLoginAtUtc,
             sessionVersion    = u.SessionVersion,
             avatarDocumentId  = u.AvatarDocumentId,
+            phone             = u.Phone,
             memberships = u.OrganizationMemberships.Select(m => new
             {
                 membershipId   = m.Id,
@@ -1419,6 +1423,81 @@ public static class AdminEndpoints
 
         return Results.NoContent();
     }
+
+    /// <summary>
+    /// PATCH /api/admin/users/{id}/phone
+    ///
+    /// Lets a tenant admin set or clear the user's primary phone number.
+    /// Body: { "phone": "+15551234567" } — pass null/empty to clear.
+    /// Phones are normalised to E.164 before persisting.
+    /// Returns 200 with { phone } on success (including idempotent no-ops),
+    /// 400 on invalid input, 403 cross-tenant, 404 unknown user.
+    /// Emits identity.admin.user_phone_updated audit event when the value
+    /// actually changes.
+    /// </summary>
+    private static async Task<IResult> UpdateUserPhone(
+        Guid               id,
+        UpdatePhoneRequest body,
+        ClaimsPrincipal    caller,
+        IdentityDbContext  db,
+        IAuditEventClient  auditClient,
+        CancellationToken  ct)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null) return Results.NotFound();
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var (ok, normalised, error) = PhoneNumber.TryNormalise(body.Phone);
+        // Return both `message` (consumed by the Control Center api client)
+        // and `error` (consumed by the tenant portal's PhoneEditor) so the
+        // same upstream payload satisfies both BFFs without translation.
+        if (!ok) return Results.BadRequest(new { error, message = error });
+
+        var before  = user.Phone;
+        var changed = user.SetPhone(normalised);
+        if (!changed) return Results.Ok(new { phone = user.Phone });
+
+        await db.SaveChangesAsync(ct);
+
+        var callerIdStr = caller.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)
+                       ?? caller.FindFirstValue("sub");
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.admin.user_phone_updated",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = user.TenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = callerIdStr,
+                Type = ActorType.User,
+                Name = "admin",
+            },
+            Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = normalised is null ? "PhoneCleared" : "PhoneUpdated",
+            Description = normalised is null
+                ? $"Admin cleared phone for user '{user.Email}'."
+                : $"Admin updated phone for user '{user.Email}'.",
+            Before         = JsonSerializer.Serialize(new { phone = before }),
+            After          = JsonSerializer.Serialize(new { phone = normalised }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                now, "identity-service", "identity.admin.user_phone_updated", user.Id.ToString()),
+            Tags = ["user-management", "phone"],
+        });
+
+        return Results.Ok(new { phone = user.Phone });
+    }
+
+    private record UpdatePhoneRequest(string? Phone);
 
     // =========================================================================
     // UIX-003-03: SECURITY / SESSION ADMIN ACTIONS

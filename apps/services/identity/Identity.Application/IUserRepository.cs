@@ -21,6 +21,14 @@ public interface IUserRepository
     Task UpdateAvatarAsync(Guid userId, Guid? avatarDocumentId, CancellationToken ct = default);
 
     /// <summary>
+    /// Updates the user's primary phone number. Pass null or whitespace to clear it.
+    /// Callers are expected to have already validated the value against E.164 format.
+    /// Returns true when the value actually changed, false when it was already equal.
+    /// Throws InvalidOperationException when the user is not found.
+    /// </summary>
+    Task<bool> UpdatePhoneAsync(Guid userId, string? phone, CancellationToken ct = default);
+
+    /// <summary>
     /// UIX-003-03: Persists pending EF change-tracked mutations on the Users entity
     /// (e.g. RecordLogin, IncrementSessionVersion). Callers must load the entity via
     /// this repository before mutating — do not use this for unrelated entities.

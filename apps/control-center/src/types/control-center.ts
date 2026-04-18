@@ -114,6 +114,7 @@ export interface UserDetail extends UserSummary {
   lastLoginAtUtc?:   string;
   sessionVersion?:   number;
   avatarDocumentId?: string;
+  phone?:            string;
   inviteSentAtUtc?:  string;
   memberships?:      OrgMembershipSummary[];
   groups?:           UserGroupSummary[];

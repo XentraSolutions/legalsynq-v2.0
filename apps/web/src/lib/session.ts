@@ -19,6 +19,7 @@ interface AuthMeResponse {
   systemRoles:       SystemRoleValue[];
   expiresAtUtc:          string;
   avatarDocumentId?:     string;
+  phone?:                string;
   sessionTimeoutMinutes: number;
   enabledProducts?:      string[];
 }
@@ -80,6 +81,7 @@ function mapToSession(me: AuthMeResponse): PlatformSession {
     isTenantAdmin:    systemRoles.includes(SystemRole.TenantAdmin),
     hasOrg:           !!me.orgId,
     avatarDocumentId:      me.avatarDocumentId,
+    phone:                 me.phone,
     expiresAt:             new Date(me.expiresAtUtc),
     sessionTimeoutMinutes: me.sessionTimeoutMinutes ?? 30,
   };

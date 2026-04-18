@@ -1,5 +1,6 @@
 import { requireOrg } from '@/lib/auth-guards';
 import { AvatarUpload } from '@/components/avatar/AvatarUpload';
+import { PhoneEditor } from '@/components/profile/PhoneEditor';
 
 /**
  * /profile — Authenticated user's profile overview.
@@ -71,6 +72,7 @@ export default async function ProfilePage() {
             {/* Details grid */}
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
               <InfoRow label="Email" value={session.email} mono />
+              <PhoneEditor phone={session.phone} />
               <InfoRow label="Organisation" value={session.orgName ?? '—'} />
               <InfoRow label="Org type" value={session.orgType ?? '—'} />
               <InfoRow label="Tenant code" value={session.tenantCode} mono />

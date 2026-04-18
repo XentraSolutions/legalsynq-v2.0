@@ -77,6 +77,16 @@ public class UserRepository : IUserRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task<bool> UpdatePhoneAsync(Guid userId, string? phone, CancellationToken ct = default)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new InvalidOperationException($"User {userId} not found.");
+
+        var changed = user.SetPhone(phone);
+        if (changed) await _db.SaveChangesAsync(ct);
+        return changed;
+    }
+
     public Task<UserOrganizationMembership?> GetPrimaryOrgMembershipAsync(
         Guid userId, CancellationToken ct = default) =>
         _db.UserOrganizationMemberships
