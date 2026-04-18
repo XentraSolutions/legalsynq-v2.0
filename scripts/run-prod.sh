@@ -64,6 +64,8 @@ PID_CC=$!
 echo "[dotnet] Starting .NET services"
 # shellcheck source=scripts/lib/dotnet-helpers.sh
 source "$ROOT/scripts/lib/dotnet-helpers.sh"
+# shellcheck source=scripts/lib/flow-preflight.sh
+source "$ROOT/scripts/lib/flow-preflight.sh"
 
 if command -v dotnet &>/dev/null; then
   (
@@ -126,39 +128,12 @@ if command -v dotnet &>/dev/null; then
     fi
 
     # ── Flow env-var pre-flight ───────────────────────────────────────────
-    # Hard-fail on required keys so the operator gets a clear error message
-    # before services are launched, rather than an opaque crash post-start.
-    #
-    # FLOW_DB_CONNECTION_STRING — required; without it, the app falls back to
-    #   a localhost address that never works in a deployed environment.
-    # ServiceToken__SigningKey — required in Production; Flow's Program.cs
-    #   calls AddServiceTokenBearer with failFastIfMissingSecret:true outside
-    #   Development, so startup crashes if this key is absent.
-    SKIP_FLOW=0
-    # Flow.Infrastructure.DependencyInjection reads FLOW_DB_CONNECTION_STRING
-    # first, then ConnectionStrings:FlowDb. Accept either form here so the
-    # check mirrors the actual runtime resolution order.
-    if [ -z "${FLOW_DB_CONNECTION_STRING:-}" ] && [ -z "${ConnectionStrings__FlowDb:-}" ]; then
-      echo "[flow] WARNING: neither FLOW_DB_CONNECTION_STRING nor ConnectionStrings__FlowDb is set — Flow will be skipped"
-      SKIP_FLOW=1
-    fi
-    if [ -z "${ServiceToken__SigningKey:-}" ]; then
-      echo "[flow] WARNING: ServiceToken__SigningKey is not set — Flow will be skipped (failFastIfMissingSecret is true in Production)"
-      SKIP_FLOW=1
-    fi
-    # JWT keys are optional — Program.cs registers a no-op JWT bearer when
-    # Jwt:SigningKey is absent (user tokens simply won't validate), so these
-    # are warnings rather than hard failures.
-    for key in "Jwt__SigningKey" "Jwt__Issuer" "Jwt__Audience"; do
-      if [ -z "${!key:-}" ]; then
-        echo "[flow] WARNING: $key is not set — user-token auth will be disabled"
-      fi
-    done
-    # CORS is not required for service startup but an empty AllowedOrigins
-    # means browser clients will be blocked by CORS policy.
-    if [ -z "${Cors__AllowedOrigins:-}" ]; then
-      echo "[flow] WARNING: Cors__AllowedOrigins is not set — browser cross-origin requests to Flow will be rejected"
-    fi
+    # Warn on missing required keys and set SKIP_FLOW so the operator gets a
+    # clear message before services are launched. Flow is skipped gracefully
+    # rather than aborting all other services.
+    # Implementation lives in scripts/lib/flow-preflight.sh so it can be
+    # sourced independently by the shell-script test suite.
+    check_flow_env_vars
 
     echo "[dotnet] Launching services..."
     # Derived from BUILD_PROJECTS — every service that was built is launched.

@@ -144,3 +144,6 @@ jobs:
 
       - name: Run launch_svc tests
         run: bash scripts/tests/test-launch-svc.sh
+
+      - name: Run Flow env-var pre-flight tests
+        run: bash scripts/tests/test-run-prod-preflight.sh
