@@ -37,50 +37,75 @@ echo "[dotnet] Starting .NET services"
 launch_svc() {
   local name="$1" project="$2"
   shift 2
-  local dll_dir
+  local dll_dir dll_name
   dll_dir="$(dirname "$project")/bin/Release/net8.0"
-  local dll_name
   dll_name="$(basename "$project" .csproj).dll"
-  if [ -f "$dll_dir/$dll_name" ]; then
-    (cd "$(dirname "$project")" && "$@" dotnet run --no-build --no-launch-profile --configuration Release) &
-    echo "[dotnet] $name launched (pid $!)"
-  else
-    echo "[dotnet] $name SKIPPED — binary not found"
+  if [ ! -f "$dll_dir/$dll_name" ]; then
+    echo "[dotnet] ERROR: $name binary not found at $dll_dir/$dll_name — aborting"
+    exit 1
   fi
+  (cd "$(dirname "$project")" && "$@" dotnet run --no-build --no-launch-profile --configuration Release) &
+  echo "[dotnet] $name launched (pid $!)"
 }
 
 if command -v dotnet &>/dev/null; then
   (
     set +e
     export ASPNETCORE_ENVIRONMENT=Production
-    GATEWAY_DLL="$ROOT/apps/gateway/Gateway.Api/bin/Release/net8.0/Gateway.Api.dll"
-    IDENTITY_DLL="$ROOT/apps/services/identity/Identity.Api/bin/Release/net8.0/Identity.Api.dll"
-    LIENS_DLL="$ROOT/apps/services/liens/Liens.Api/bin/Release/net8.0/Liens.Api.dll"
-    FLOW_DLL="$ROOT/apps/services/flow/backend/src/Flow.Api/bin/Release/net8.0/Flow.Api.dll"
 
-    if [ ! -f "$GATEWAY_DLL" ] || [ ! -f "$IDENTITY_DLL" ] || [ ! -f "$LIENS_DLL" ] || [ ! -f "$FLOW_DLL" ]; then
-      echo "[dotnet] Critical binaries missing — building now..."
-      dotnet restore "$ROOT/LegalSynq.sln" --verbosity minimal 2>&1 || true
-      dotnet build "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
-      dotnet build "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
-      dotnet build "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
-      dotnet build "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
-      dotnet build "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
-      dotnet build "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" --configuration Release --verbosity minimal 2>&1 || true
-      dotnet build "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
-      dotnet build "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" --configuration Release --verbosity minimal 2>&1 || true
-      # Flow has its own solution — restore and build are fail-fast so a
-      # compile error does not silently produce a missing binary.
-      dotnet restore "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --verbosity minimal \
-        || { echo "[dotnet] ERROR: Flow restore failed — aborting"; exit 1; }
-      dotnet build "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --configuration Release --verbosity minimal \
-        || { echo "[dotnet] ERROR: Flow build failed — aborting"; exit 1; }
-      if [ ! -f "$FLOW_DLL" ]; then
-        echo "[dotnet] ERROR: Flow binary not produced after build — aborting"
-        exit 1
+    # ── Single source of truth for all .NET services ─────────────────────────
+    # Add a new service by appending its .csproj path here.  The DLL check,
+    # build step, and post-build verification all derive from this list
+    # automatically — no other section needs updating for the build pipeline.
+    # Services are listed in launch order: backend services first, Gateway last
+    # so it only begins routing once all upstream services are started.
+    # New services should be inserted before Gateway.Api.csproj.
+    BUILD_PROJECTS=(
+      "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
+      "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
+      "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
+      "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
+      "$ROOT/apps/services/audit/PlatformAuditEventService.csproj"
+      "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
+      "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj"
+      "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj"
+      "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
+    )
+
+    # Derives the expected Release output DLL from a .csproj path.
+    # Uses the same convention as the launch_svc helper above.
+    dll_for_csproj() {
+      local csproj="$1"
+      echo "$(dirname "$csproj")/bin/Release/net8.0/$(basename "$csproj" .csproj).dll"
+    }
+
+    need_build=0
+    for csproj in "${BUILD_PROJECTS[@]}"; do
+      dll="$(dll_for_csproj "$csproj")"
+      if [ ! -f "$dll" ]; then
+        echo "[dotnet] Missing binary: $dll"
+        need_build=1
       fi
+    done
+
+    if [ "$need_build" -eq 1 ]; then
+      echo "[dotnet] One or more binaries missing — building all services now..."
+      for csproj in "${BUILD_PROJECTS[@]}"; do
+        svc_name="$(basename "$csproj" .csproj)"
+        echo "[dotnet] Building $svc_name..."
+        dotnet build "$csproj" --configuration Release --verbosity minimal \
+          || { echo "[dotnet] ERROR: $svc_name build failed — aborting"; exit 1; }
+      done
+
+      for csproj in "${BUILD_PROJECTS[@]}"; do
+        dll="$(dll_for_csproj "$csproj")"
+        if [ ! -f "$dll" ]; then
+          echo "[dotnet] ERROR: binary not produced after build: $dll — aborting"
+          exit 1
+        fi
+      done
     else
-      echo "[dotnet] Pre-built binaries found — skipping build"
+      echo "[dotnet] All service binaries present — skipping build"
     fi
 
     # ── Flow env-var pre-flight ───────────────────────────────────────────
@@ -122,18 +147,28 @@ if command -v dotnet &>/dev/null; then
     fi
 
     echo "[dotnet] Launching services..."
-    launch_svc "Identity API" "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
-    launch_svc "Fund API"     "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
-    launch_svc "CareConnect"  "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj"
-    launch_svc "Documents"    "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj"
-    launch_svc "Audit"        "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" \
-      env ASPNETCORE_URLS=http://0.0.0.0:5007
-    launch_svc "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" \
-      env ASPNETCORE_URLS=http://0.0.0.0:5008
-    launch_svc "Liens"        "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj"
-    launch_svc "Flow API"     "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" \
-      env ASPNETCORE_URLS=http://0.0.0.0:5012
-    launch_svc "Gateway"      "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
+    # Derived from BUILD_PROJECTS — every service that was built is launched.
+    # Per-service env vars (e.g. ASPNETCORE_URLS) are set via a case statement;
+    # the catch-all (*) ensures any new entry in BUILD_PROJECTS is launched
+    # automatically even if it has no special configuration.
+    for csproj in "${BUILD_PROJECTS[@]}"; do
+      svc_name="$(basename "$csproj" .csproj)"
+      case "$svc_name" in
+        PlatformAuditEventService)
+          launch_svc "Audit"         "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5007 ;;
+        Notifications.Api)
+          launch_svc "Notifications" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5008 ;;
+        Flow.Api)
+          launch_svc "Flow API"      "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5012 ;;
+        Gateway.Api)   launch_svc "Gateway"      "$csproj" ;;
+        Identity.Api)  launch_svc "Identity API" "$csproj" ;;
+        Fund.Api)      launch_svc "Fund API"      "$csproj" ;;
+        CareConnect.Api) launch_svc "CareConnect" "$csproj" ;;
+        Documents.Api) launch_svc "Documents"     "$csproj" ;;
+        Liens.Api)     launch_svc "Liens"         "$csproj" ;;
+        *)             launch_svc "$svc_name"     "$csproj" ;;
+      esac
+    done
 
     echo "[dotnet] Service launch complete"
 
