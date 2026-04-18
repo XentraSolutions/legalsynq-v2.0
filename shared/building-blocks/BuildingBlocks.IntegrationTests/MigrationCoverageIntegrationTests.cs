@@ -29,7 +29,8 @@ namespace BuildingBlocks.IntegrationTests;
 ///   - audit        (PlatformAuditEventService.csproj uses Sdk="Microsoft.NET.Sdk.Web";
 ///                   referencing a WebSdk project from a non-web test project causes
 ///                   dotnet restore to hang during project-graph resolution. Coverage
-///                   to be added in a dedicated host-adapter project — see task #73.)
+///                   is provided by AuditSchemaMigrationTests in the audit.Tests project
+///                   — see task #73.)
 ///   - notifications (no timestamped migration files; schema is created via EnsureCreated
 ///                   so the probe would trivially pass against an always-matching schema)
 ///   - documents    (snapshot-only Migrations folder with no timestamped migration files;

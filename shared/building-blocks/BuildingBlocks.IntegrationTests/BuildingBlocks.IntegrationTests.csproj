@@ -27,7 +27,8 @@
     Excluded services:
       - audit        (PlatformAuditEventService.csproj is Sdk.Web; referencing a
                       web-SDK project from a non-web test project causes dotnet
-                      restore to hang during project graph resolution)
+                      restore to hang during project graph resolution; covered by
+                      AuditSchemaMigrationTests in apps/services/audit.Tests — task #73)
       - notifications (no timestamped migration files; uses EnsureCreated)
       - documents    (snapshot-only in Migrations/, no timestamped migration files)
   -->

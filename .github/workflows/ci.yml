@@ -70,15 +70,20 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Restore dependencies
-        run: dotnet restore shared/building-blocks/BuildingBlocks.IntegrationTests/BuildingBlocks.IntegrationTests.csproj
+        run: |
+          dotnet restore shared/building-blocks/BuildingBlocks.IntegrationTests/BuildingBlocks.IntegrationTests.csproj
+          dotnet restore apps/services/audit.Tests/PlatformAuditEventService.Tests.csproj
 
-      - name: Build integration test project
+      - name: Build integration test projects
         run: |
           dotnet build shared/building-blocks/BuildingBlocks.IntegrationTests/BuildingBlocks.IntegrationTests.csproj \
             --no-restore \
             --configuration Release
+          dotnet build apps/services/audit.Tests/PlatformAuditEventService.Tests.csproj \
+            --no-restore \
+            --configuration Release
 
-      - name: Run schema-drift integration tests
+      - name: Run schema-drift integration tests (shared building blocks)
         run: |
           dotnet test shared/building-blocks/BuildingBlocks.IntegrationTests/ \
             --no-build \
@@ -87,9 +92,20 @@ jobs:
             --logger "trx;LogFileName=integration-test-results.trx" \
             --results-directory ./test-results
 
+      - name: Run schema-drift integration tests (audit service)
+        run: |
+          dotnet test apps/services/audit.Tests/ \
+            --no-build \
+            --configuration Release \
+            --filter "Category=Integration" \
+            --logger "trx;LogFileName=audit-integration-test-results.trx" \
+            --results-directory ./test-results
+
       - name: Upload integration-test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: integration-test-results
-          path: ./test-results/*.trx
+          path: |
+            ./test-results/integration-test-results.trx
+            ./test-results/audit-integration-test-results.trx

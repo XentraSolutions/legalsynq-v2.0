@@ -23,6 +23,9 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- MySQL schema-migration integration tests (Task #73) -->
+    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql"    Version="8.0.2" />
+    <PackageReference Include="Testcontainers.MySql"                Version="3.8.0" />
   </ItemGroup>
 
   <ItemGroup>
