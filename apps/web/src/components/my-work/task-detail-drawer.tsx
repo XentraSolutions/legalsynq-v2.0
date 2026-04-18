@@ -1,8 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '@/lib/api-client';
 import { tasksApi, type MyTask } from '@/lib/tasks';
+import { timelineApi, type TimelineEvent } from '@/lib/timeline';
+import { Timeline } from '@/components/timeline/timeline';
 import { useToast } from '@/lib/toast-context';
 import { TaskPriorityBadge } from './priority-badge';
 import { ReassignModal } from './reassign-modal';
@@ -239,6 +241,13 @@ export function TaskDetailDrawer({
                 {task.cancelledAt && <Field label="Cancelled" value={fmtDate(task.cancelledAt)} />}
               </Section>
 
+              {/* LS-FLOW-E16 — unified history sourced from the audit
+                  service via /workflow-tasks/{id}/timeline. Collapsible
+                  to keep the drawer scannable; lifecycle timestamps
+                  above remain the at-a-glance summary. */}
+              <TaskHistorySection taskId={task.taskId} />
+
+
               {/* LS-FLOW-E10.3 (task slice) — SLA / Timer panel. Rendered
                   only when the row carries a deadline; legacy / SLA-disabled
                   tasks stay clean. */}
@@ -314,6 +323,91 @@ function Field({ label, value, mono }: { label: string; value: string; mono?: bo
         {value}
       </dd>
     </div>
+  );
+}
+
+/**
+ * LS-FLOW-E16 — collapsible history section that lazy-loads the
+ * unified timeline only when expanded. Kept inside this file because
+ * the only consumer today is this drawer; promote to a shared
+ * component if/when reused.
+ */
+function TaskHistorySection({ taskId }: { taskId: string }) {
+  const [open, setOpen]           = useState(false);
+  const [events, setEvents]       = useState<TimelineEvent[]>([]);
+  const [truncated, setTruncated] = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+  const [loaded, setLoaded]       = useState(false);
+
+  // Sequence guard: when the user switches between tasks while the
+  // drawer is open (or closes/reopens before an in-flight fetch
+  // resolves), only the most recent fetch may commit state. Without
+  // this, a slow response for a previous taskId could overwrite the
+  // history of the currently displayed task — a confusing data leak
+  // between rows of the same tenant.
+  const fetchSeq = useRef(0);
+
+  // Reset history whenever the underlying task changes. The component
+  // is rendered inside a non-keyed drawer and is reused across rows,
+  // so without this hook a freshly opened task would briefly show the
+  // previous task's events.
+  useEffect(() => {
+    fetchSeq.current += 1;
+    setOpen(false);
+    setEvents([]);
+    setTruncated(false);
+    setLoading(false);
+    setError(null);
+    setLoaded(false);
+  }, [taskId]);
+
+  const handleToggle = useCallback(async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !loaded && !loading) {
+      const mySeq = ++fetchSeq.current;
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await timelineApi.getTaskTimeline(taskId);
+        if (mySeq !== fetchSeq.current) return; // stale — newer fetch in flight
+        setEvents(res.data.events);
+        setTruncated(res.data.truncated);
+        setLoaded(true);
+      } catch (err) {
+        if (mySeq !== fetchSeq.current) return;
+        // ApiError extends Error, so .message is always present.
+        setError(err instanceof Error ? err.message : 'Could not load history.');
+      } finally {
+        if (mySeq === fetchSeq.current) setLoading(false);
+      }
+    }
+  }, [open, loaded, loading, taskId]);
+
+  return (
+    <section>
+      <button
+        type="button"
+        onClick={handleToggle}
+        className="w-full flex items-center justify-between text-[11px] uppercase tracking-wide font-semibold text-gray-500 mb-2 hover:text-gray-700"
+        aria-expanded={open}
+      >
+        <span>History</span>
+        <span className="text-gray-400" aria-hidden="true">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="pl-1">
+          <Timeline
+            events={events}
+            loading={loading}
+            error={error}
+            truncated={truncated}
+            dense
+          />
+        </div>
+      )}
+    </section>
   );
 }
 

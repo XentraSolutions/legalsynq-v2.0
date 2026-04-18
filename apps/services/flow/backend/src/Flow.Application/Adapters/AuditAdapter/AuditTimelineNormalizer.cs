@@ -35,6 +35,19 @@ public static class AuditTimelineNormalizer
     private const string ActionPrefixWorkflowSla    = "workflow.sla";
     private const string ActionPrefixNotification   = "notification";
 
+    // E16 — task-scoped action constants. Two producers exist:
+    //   * WorkflowTaskAssignmentService (E14.2) writes
+    //     "workflow.task.claim" / "workflow.task.reassign" against
+    //     EntityType=WorkflowTask.
+    //   * FlowEventDispatcher (E11.4) writes "task.assigned" /
+    //     "task.completed" against EntityType=Task.
+    // Both ultimately surface on the unified timeline; categories
+    // below give the UI a stable bucket per producer.
+    private const string ActionTaskClaim    = "workflow.task.claim";
+    private const string ActionTaskReassign = "workflow.task.reassign";
+    private const string ActionTaskAssigned  = "task.assigned";
+    private const string ActionTaskCompleted = "task.completed";
+
     public static IReadOnlyList<TimelineEvent> Normalize(IEnumerable<AuditEventRecord> records)
     {
         // Deterministic ordering — ascending by OccurredAt, tie-broken
@@ -96,11 +109,26 @@ public static class AuditTimelineNormalizer
                 previousStatus = TryGet(metadata, "previousStatus");
                 newStatus      = TryGet(metadata, "newStatus");
                 break;
+
+            case ActionTaskClaim:
+            case ActionTaskReassign:
+                // E14.2 producer carries prevMode/newMode + role/user/org.
+                previousStatus = TryGet(metadata, "prevMode");
+                newStatus      = TryGet(metadata, "newMode");
+                break;
         }
 
         var actor = (r.ActorId is not null || r.ActorName is not null || r.ActorType is not null)
             ? new TimelineActor(r.ActorId, r.ActorName, r.ActorType)
             : null;
+
+        // E16 — deterministic fallback summary when the producer left
+        // r.Description blank (the legacy task.* producers usually do).
+        // Generated purely from action + metadata so the result is
+        // reproducible and never fabricates information not in audit.
+        var summary = !string.IsNullOrWhiteSpace(r.Description)
+            ? r.Description
+            : BuildFallbackSummary(action, metadata);
 
         return new TimelineEvent(
             EventId:        r.EventId,
@@ -111,10 +139,47 @@ public static class AuditTimelineNormalizer
             Source:         r.SourceSystem ?? "flow",
             Actor:          actor,
             PerformedBy:    actor?.Name ?? actor?.Id,
-            Summary:        r.Description,
+            Summary:        summary,
             PreviousStatus: previousStatus,
             NewStatus:      newStatus,
             Metadata:       metadata);
+    }
+
+    /// <summary>
+    /// E16 — produce a short, deterministic human summary for known
+    /// task / workflow actions when the upstream audit row carried no
+    /// <c>Description</c>. Returns <c>null</c> for unknown actions —
+    /// the UI then falls back to the raw <c>action</c> verb.
+    /// </summary>
+    private static string? BuildFallbackSummary(string action, IDictionary<string, string?> metadata) => action switch
+    {
+        ActionTaskClaim    => "Task claimed",
+        ActionTaskReassign => "Task reassigned",
+        ActionTaskAssigned => BuildTaskAssignedSummary(metadata),
+        ActionTaskCompleted          => "Task completed",
+        ActionWorkflowCreated        => "Workflow created",
+        ActionWorkflowCompleted      => "Workflow completed",
+        ActionAdminRetry             => "Workflow retried by admin",
+        ActionAdminForceComplete     => "Workflow force-completed by admin",
+        ActionAdminCancel            => "Workflow cancelled by admin",
+        "workflow.sla.dueSoon"       => "Task due soon",
+        "workflow.sla.overdue"       => "Task overdue",
+        "workflow.sla.escalated"     => "SLA escalated",
+        _ => null,
+    };
+
+    private static string BuildTaskAssignedSummary(IDictionary<string, string?> metadata)
+    {
+        // FlowEventDispatcher.task.assigned does not write metadata; if
+        // any of these keys are present (future producer enrichment),
+        // surface the most specific assignee. Otherwise stay generic.
+        var user = TryGet(metadata, "newAssignedUserId") ?? TryGet(metadata, "assignedUserId");
+        var role = TryGet(metadata, "newAssignedRole")   ?? TryGet(metadata, "assignedRole");
+        var org  = TryGet(metadata, "newAssignedOrgId")  ?? TryGet(metadata, "assignedOrgId");
+        if (!string.IsNullOrEmpty(user)) return $"Task assigned to user {user}";
+        if (!string.IsNullOrEmpty(role)) return $"Task assigned to role {role}";
+        if (!string.IsNullOrEmpty(org))  return $"Task assigned to org {org}";
+        return "Task assigned";
     }
 
     private static string ClassifyCategory(string action, string? eventCategory)
@@ -129,6 +194,10 @@ public static class AuditTimelineNormalizer
             ActionAdminRetry           => ActionAdminRetry,
             ActionAdminForceComplete   => ActionAdminForceComplete,
             ActionAdminCancel          => ActionAdminCancel,
+            ActionTaskClaim            => ActionTaskClaim,
+            ActionTaskReassign         => ActionTaskReassign,
+            ActionTaskAssigned         => ActionTaskAssigned,
+            ActionTaskCompleted        => ActionTaskCompleted,
             _ when action.StartsWith(ActionPrefixWorkflowSla,  StringComparison.Ordinal) => "workflow.sla",
             _ when action.StartsWith(ActionPrefixNotification, StringComparison.Ordinal) => "notification",
             _ when action.StartsWith("workflow.admin.",        StringComparison.Ordinal) => "workflow.admin",

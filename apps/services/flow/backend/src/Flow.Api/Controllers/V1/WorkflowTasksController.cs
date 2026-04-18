@@ -1,8 +1,11 @@
 using BuildingBlocks.Authorization;
+using Flow.Application.Adapters.AuditAdapter;
 using Flow.Application.DTOs;
 using Flow.Application.Interfaces;
+using Flow.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Flow.Api.Controllers.V1;
 
@@ -57,17 +60,26 @@ public sealed class WorkflowTasksController : ControllerBase
     private readonly IWorkflowTaskCompletionService _completion;
     private readonly IWorkflowTaskAssignmentService _assignment;
     private readonly IMyTasksService _read;
+    private readonly IFlowDbContext _db;
+    private readonly IAuditQueryAdapter _auditQuery;
+    private readonly ILogger<WorkflowTasksController> _logger;
 
     public WorkflowTasksController(
         IWorkflowTaskLifecycleService lifecycle,
         IWorkflowTaskCompletionService completion,
         IWorkflowTaskAssignmentService assignment,
-        IMyTasksService read)
+        IMyTasksService read,
+        IFlowDbContext db,
+        IAuditQueryAdapter auditQuery,
+        ILogger<WorkflowTasksController> logger)
     {
         _lifecycle = lifecycle;
         _completion = completion;
         _assignment = assignment;
         _read = read;
+        _db = db;
+        _auditQuery = auditQuery;
+        _logger = logger;
     }
 
     /// <summary>
@@ -214,6 +226,92 @@ public sealed class WorkflowTasksController : ControllerBase
         var result = await _assignment.ReassignAsync(id, body, ct);
         return Ok(result);
     }
+
+    /// <summary>
+    /// LS-FLOW-E16 — GET <c>/api/v1/workflow-tasks/{id}/timeline</c>.
+    /// Returns the unified, deterministically-ordered (ascending by
+    /// occurredAt, tie-broken by event id) audit history for a single
+    /// task: claim/reassign (E14.2), assigned/completed (E11.4),
+    /// SLA transitions if recorded (E10.3), and any admin actions on
+    /// the parent workflow that targeted this task.
+    ///
+    /// <para>
+    /// <b>Tenant safety:</b> the task lookup runs through the
+    /// <c>WorkflowTask</c> global query filter, so cross-tenant ids
+    /// surface as 404 (identical to a missing task — no existence
+    /// leakage). The audit query is then constrained to the task's
+    /// <c>TenantId</c>.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Producer entity-type drift:</b> the helper queries audit
+    /// for both <c>WorkflowTask</c> and <c>Task</c> entity types and
+    /// merges by event id, because the historical Flow producers used
+    /// different names. See <see cref="WorkflowHistoryQuery.GetForTaskAsync"/>.
+    /// </para>
+    /// </summary>
+    [HttpGet("{id:guid}/timeline")]
+    [ProducesResponseType(typeof(TaskTimelineResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Timeline(Guid id, CancellationToken ct)
+    {
+        // E16 — reuse the same per-user eligibility gate as GET
+        // /workflow-tasks/{id}: IMyTasksService.GetTaskDetailAsync
+        // requires platform-admin OR direct assignee OR holder of the
+        // task's role-queue role OR member of the task's org. Cross-
+        // tenant ids, missing ids, AND ineligible ids all collapse to
+        // 404 (NotFoundException → 404 via ExceptionHandlingMiddleware),
+        // matching the detail endpoint's no-existence-leakage contract.
+        // This prevents intra-tenant broken-access-control: a tenant
+        // user cannot read history for a task they cannot see.
+        var detail = await _read.GetTaskDetailAsync(id, ct);
+
+        // MyTaskDto does not carry TenantId (intentionally — the UI
+        // never needs it). Look it up via the tenant-query-filtered
+        // context as a defensive belt-and-braces filter for the audit
+        // call. The eligibility gate above has already proven the
+        // caller can see this row; FirstOrDefaultAsync (not First)
+        // covers the vanishingly rare race where the task is deleted
+        // between the two reads — we collapse to 404 to keep the
+        // contract identical to a missing/ineligible id rather than
+        // throwing a 500.
+        var tenantId = await _db.WorkflowTasks
+            .AsNoTracking()
+            .Where(t => t.Id == id)
+            .Select(t => t.TenantId)
+            .FirstOrDefaultAsync(ct);
+        if (tenantId is null) return NotFound();
+
+        var result = await WorkflowHistoryQuery.GetForTaskAsync(
+            _auditQuery, id, tenantId, ct);
+
+        _logger.LogInformation(
+            "WorkflowTasks.Timeline taskId={TaskId} tenant={TenantId} count={Count} truncated={Truncated}",
+            id, tenantId, result.Events.Count, result.Truncated);
+
+        return Ok(new TaskTimelineResponse
+        {
+            TaskId             = id,
+            WorkflowInstanceId = detail.WorkflowInstanceId,
+            TotalCount         = result.Events.Count,
+            Truncated          = result.Truncated,
+            Events             = result.Events,
+        });
+    }
+}
+
+/// <summary>
+/// LS-FLOW-E16 — response envelope for the task timeline endpoint.
+/// Mirrors <c>AdminWorkflowInstanceTimelineResponse</c> so all
+/// timeline endpoints return the same shape.
+/// </summary>
+public sealed record TaskTimelineResponse
+{
+    public Guid TaskId { get; init; }
+    public Guid WorkflowInstanceId { get; init; }
+    public int  TotalCount { get; init; }
+    public bool Truncated { get; init; }
+    public IReadOnlyList<TimelineEvent> Events { get; init; } = Array.Empty<TimelineEvent>();
 }
 
 /// <summary>

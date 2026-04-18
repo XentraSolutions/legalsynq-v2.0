@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using Flow.Application.Adapters.AuditAdapter;
 using Flow.Application.DTOs;
 using Flow.Application.Engines.WorkflowEngine;
 using Flow.Application.Exceptions;
@@ -30,15 +31,18 @@ public class WorkflowInstancesController : ControllerBase
 {
     private readonly IFlowDbContext _db;
     private readonly IWorkflowEngine _engine;
+    private readonly IAuditQueryAdapter _auditQuery;
     private readonly ILogger<WorkflowInstancesController> _logger;
 
     public WorkflowInstancesController(
         IFlowDbContext db,
         IWorkflowEngine engine,
+        IAuditQueryAdapter auditQuery,
         ILogger<WorkflowInstancesController> logger)
     {
         _db = db;
         _engine = engine;
+        _auditQuery = auditQuery;
         _logger = logger;
     }
 
@@ -160,4 +164,63 @@ public class WorkflowInstancesController : ControllerBase
             return Conflict(new { error = ex.Message, code = ex.Code });
         }
     }
+
+    /// <summary>
+    /// LS-FLOW-E16 — GET <c>/api/v1/workflow-instances/{id}/timeline</c>.
+    /// Tenant-portal variant of the existing E13.1 admin timeline
+    /// endpoint. Returns the unified, deterministically-ordered audit
+    /// history for a single workflow instance: lifecycle, state
+    /// transitions, admin actions, and SLA transitions if recorded.
+    ///
+    /// <para>
+    /// <b>Tenant safety:</b> the workflow lookup runs through the
+    /// <c>WorkflowInstance</c> global query filter on
+    /// <c>FlowDbContext</c>, so cross-tenant ids surface as 404
+    /// (identical to a missing instance — no existence leakage). The
+    /// admin counterpart at
+    /// <c>/api/v1/admin/workflow-instances/{id}/timeline</c> remains
+    /// the only path that can read across tenants.
+    /// </para>
+    /// </summary>
+    [HttpGet("{id:guid}/timeline")]
+    [ProducesResponseType(typeof(WorkflowInstanceTimelineResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Timeline(Guid id, CancellationToken ct)
+    {
+        var instance = await _db.WorkflowInstances
+            .AsNoTracking()
+            .Where(w => w.Id == id)
+            .Select(w => new { w.Id, w.TenantId })
+            .FirstOrDefaultAsync(ct);
+
+        if (instance is null) return NotFound();
+
+        var result = await WorkflowHistoryQuery.GetForWorkflowInstanceAsync(
+            _auditQuery, id, instance.TenantId, ct);
+
+        _logger.LogInformation(
+            "WorkflowInstances.Timeline id={InstanceId} tenant={TenantId} count={Count} truncated={Truncated}",
+            id, instance.TenantId, result.Events.Count, result.Truncated);
+
+        return Ok(new WorkflowInstanceTimelineResponse
+        {
+            WorkflowInstanceId = id,
+            TotalCount         = result.Events.Count,
+            Truncated          = result.Truncated,
+            Events             = result.Events,
+        });
+    }
+}
+
+/// <summary>
+/// LS-FLOW-E16 — response envelope for the tenant-portal workflow
+/// timeline endpoint. Mirrors <c>AdminWorkflowInstanceTimelineResponse</c>
+/// so admin and tenant clients consume the same shape.
+/// </summary>
+public sealed record WorkflowInstanceTimelineResponse
+{
+    public Guid WorkflowInstanceId { get; init; }
+    public int  TotalCount { get; init; }
+    public bool Truncated { get; init; }
+    public IReadOnlyList<TimelineEvent> Events { get; init; } = Array.Empty<TimelineEvent>();
 }
