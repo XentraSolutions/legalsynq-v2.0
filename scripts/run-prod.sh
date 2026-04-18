@@ -151,6 +151,7 @@ if command -v dotnet &>/dev/null; then
     # Per-service env vars (e.g. ASPNETCORE_URLS) are set via a case statement;
     # the catch-all (*) ensures any new entry in BUILD_PROJECTS is launched
     # automatically even if it has no special configuration.
+    SVC_PIDS=()
     for csproj in "${BUILD_PROJECTS[@]}"; do
       svc_name="$(basename "$csproj" .csproj)"
       case "$svc_name" in
@@ -168,9 +169,28 @@ if command -v dotnet &>/dev/null; then
         Liens.Api)     launch_svc "Liens"         "$csproj" ;;
         *)             launch_svc "$svc_name"     "$csproj" ;;
       esac
+      # $! is the PID of the dotnet process just backgrounded by launch_svc
+      SVC_PIDS+=("$!")
     done
 
     echo "[dotnet] Service launch complete"
+
+    # ── Early crash detection ─────────────────────────────────────────────
+    # Give each service a brief window to fail fast (bad config, missing
+    # env vars, port conflict, etc.) before we hand off to the health probes.
+    sleep 5
+    _dotnet_crashed=0
+    for _svc_pid in "${SVC_PIDS[@]}"; do
+      if ! kill -0 "$_svc_pid" 2>/dev/null; then
+        wait "$_svc_pid" 2>/dev/null; _svc_ec=$?
+        echo "[dotnet] ERROR: A .NET service (pid $_svc_pid) exited unexpectedly at launch with code $_svc_ec — check the output above for details"
+        _dotnet_crashed=1
+      fi
+    done
+    if [ "$_dotnet_crashed" -ne 0 ]; then
+      echo "[dotnet] ERROR: One or more .NET services crashed at launch — aborting"
+      exit 1
+    fi
 
     # ── Health-check probes for all .NET services ─────────────────────────
     # Each probe polls its /health (or /healthz for Flow) endpoint for up to
@@ -229,4 +249,19 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Wait for all background services and propagate failures visibly.
+# PID_DOTNET is appended last to ALL_PIDS, so `wait` returns its exit code
+# when it is the last process to be waited on.  We capture that code and emit
+# a clear diagnostic so operators do not have to guess why the script failed.
+set +e
 wait $ALL_PIDS
+_startup_ec=$?
+set -e
+if [ "$_startup_ec" -ne 0 ]; then
+  if [ -n "$PID_DOTNET" ]; then
+    echo "[dotnet] ERROR: The .NET services subshell exited with code $_startup_ec — one or more .NET services crashed at launch. Review the output above for details."
+  else
+    echo "[startup] ERROR: A service exited with code $_startup_ec. Review the output above for details."
+  fi
+  exit "$_startup_ec"
+fi
