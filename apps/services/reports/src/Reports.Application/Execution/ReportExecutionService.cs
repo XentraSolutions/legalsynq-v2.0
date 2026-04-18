@@ -25,6 +25,7 @@ public sealed class ReportExecutionService : IReportExecutionService
     private readonly IReportDataQueryAdapter _queryAdapter;
     private readonly IAuditAdapter _audit;
     private readonly IReportsMetrics _metrics;
+    private readonly ICurrentTenantContext _ctx;
     private readonly ILogger<ReportExecutionService> _log;
 
     public ReportExecutionService(
@@ -36,6 +37,7 @@ public sealed class ReportExecutionService : IReportExecutionService
         IReportDataQueryAdapter queryAdapter,
         IAuditAdapter audit,
         IReportsMetrics metrics,
+        ICurrentTenantContext ctx,
         ILogger<ReportExecutionService> log)
     {
         _executionRepo = executionRepo;
@@ -46,12 +48,18 @@ public sealed class ReportExecutionService : IReportExecutionService
         _queryAdapter = queryAdapter;
         _audit = audit;
         _metrics = metrics;
+        _ctx = ctx;
         _log = log;
     }
 
     public async Task<ServiceResult<ReportExecutionResponse>> ExecuteReportAsync(
         ExecuteReportRequest request, CancellationToken ct)
     {
+        // Actor identity is always server-derived — never trusted from request
+        var actorId = _ctx.UserId;
+        if (actorId is null)
+            return ServiceResult<ReportExecutionResponse>.Forbidden("No authenticated user context for execution.");
+
         var validation = ValidateRequest(request);
         if (validation is not null)
             return ServiceResult<ReportExecutionResponse>.BadRequest(validation);
@@ -106,7 +114,7 @@ public sealed class ReportExecutionService : IReportExecutionService
         {
             Id = Guid.NewGuid(),
             TenantId = tenantId,
-            UserId = request.RequestedByUserId.Trim(),
+            UserId = actorId,
             ReportTemplateId = templateId,
             TemplateVersionNumber = publishedVersion.VersionNumber,
             Status = "Pending"
@@ -118,7 +126,7 @@ public sealed class ReportExecutionService : IReportExecutionService
         try
         {
             await TryAuditAsync(AuditEventFactory.ExecutionStarted(
-                tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,
+                tenantId, actorId, execution.Id, templateId, template.Code,
                 publishedVersion.VersionNumber, template.ProductCode));
 
             execution.Status = "Running";
@@ -150,7 +158,7 @@ public sealed class ReportExecutionService : IReportExecutionService
                 await _executionRepo.UpdateAsync(execution, ct);
 
                 await TryAuditAsync(AuditEventFactory.ExecutionFailed(
-                    tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,
+                    tenantId, actorId, execution.Id, templateId, template.Code,
                     reason, template.ProductCode));
 
                 execSw.Stop();
@@ -188,7 +196,7 @@ public sealed class ReportExecutionService : IReportExecutionService
             _metrics.RecordExecutionDuration(tenantId, template.ProductCode, execSw.ElapsedMilliseconds);
 
             await TryAuditAsync(AuditEventFactory.ExecutionCompleted(
-                tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,
+                tenantId, actorId, execution.Id, templateId, template.Code,
                 resultSet.TotalRowCount, template.ProductCode));
 
             _log.LogInformation(
@@ -270,7 +278,7 @@ public sealed class ReportExecutionService : IReportExecutionService
             _metrics.RecordExecutionDuration(tenantId, template.ProductCode, execSw.ElapsedMilliseconds);
 
             await TryAuditAsync(AuditEventFactory.ExecutionFailed(
-                tenantId, request.RequestedByUserId.Trim(), execution.Id, templateId, template.Code,
+                tenantId, actorId, execution.Id, templateId, template.Code,
                 ex.Message, template.ProductCode));
 
             return ServiceResult<ReportExecutionResponse>.Fail(
@@ -347,8 +355,6 @@ public sealed class ReportExecutionService : IReportExecutionService
             return "ProductCode is required.";
         if (string.IsNullOrWhiteSpace(request.OrganizationType))
             return "OrganizationType is required.";
-        if (string.IsNullOrWhiteSpace(request.RequestedByUserId))
-            return "RequestedByUserId is required.";
         return null;
     }
 
