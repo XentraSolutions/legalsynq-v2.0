@@ -63,3 +63,32 @@ export interface UpdateWorkflowStageRequest {
 export interface ReorderStagesRequest {
   stages: { stageId: string; stageOrder: number }[];
 }
+
+export interface WorkflowTransitionDto {
+  id: string;
+  workflowConfigId: string;
+  fromStageId: string;
+  fromStageName?: string;
+  toStageId: string;
+  toStageName?: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface AddWorkflowTransitionRequest {
+  fromStageId: string;
+  toStageId: string;
+  sortOrder?: number;
+}
+
+export interface TransitionEntry {
+  fromStageId: string;
+  toStageId: string;
+  sortOrder?: number;
+}
+
+export interface SaveWorkflowTransitionsRequest {
+  transitions: TransitionEntry[];
+}

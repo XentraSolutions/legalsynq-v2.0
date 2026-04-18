@@ -4592,3 +4592,51 @@ if (actorId is null) return ServiceResult<T>.Forbidden("No authenticated user co
 
 ### Analysis
 `analysis/LS-REPORTS-08-002-report.md`
+
+## LS-LIENS-FLOW-005 — Workflow Transition Engine — 2026-04-18
+
+### Summary
+Lightweight per-tenant stage-transition rules for the Liens task workflow. Admins define which stage→stage moves are allowed; the runtime enforces the rules when tasks change stage. Works from both Tenant Product Settings and Control Center. Open-move mode (all transitions allowed) when no rules are configured.
+
+### Domain Layer
+- `LienWorkflowTransition` entity — `WorkflowConfigId`, `FromStageId`, `ToStageId`, `IsActive`, `SortOrder`, audit fields
+- `LienWorkflowConfig` — added `Transitions` nav collection and `BumpVersion()` helper
+- `LienWorkflowTransitionConfiguration` — EF config; FK to config (cascade), FK to stages (restrict); composite unique index `(WorkflowConfigId, FromStageId, ToStageId)`; compound index `(WorkflowConfigId, FromStageId)`
+
+### Application Layer
+- `ILienWorkflowConfigService` / `LienWorkflowConfigService` — 4 new methods: `GetTransitionsAsync`, `AddTransitionAsync`, `DeactivateTransitionAsync`, `SaveTransitionsAsync` (batch replace, returns `IReadOnlyList<WorkflowTransitionResponse>`)
+- Lazy auto-init: on first `GetByTenantAsync` with 2+ active stages, a linear default transition chain is created if no transitions exist
+- `IWorkflowTransitionValidationService` / `WorkflowTransitionValidationService` — `IsTransitionAllowedAsync` used by task service at runtime
+- `LienTaskService.UpdateAsync` — validates stage→stage moves via transition service; returns HTTP 422 with human-readable stage-name error when blocked; null→stage and stage→null always permitted
+
+### API Layer (`WorkflowConfigEndpoints.cs`)
+Tenant routes (under `/lien/api/liens/workflow-config/{id}/transitions`):
+- `GET` — list active transitions
+- `POST` — add single transition
+- `DELETE /{transitionId}` — deactivate transition
+- `POST /save` — batch replace
+
+Admin routes (under `/lien/api/liens/admin/workflow-config/tenants/{tenantId}/{id}/transitions`): same 4 methods
+
+### Infrastructure
+- `LiensDbContext` — `DbSet<LienWorkflowTransition>`
+- `ILienWorkflowConfigRepository` — 5 transition methods added
+- Migration `20260418200000_AddWorkflowTransitions` — creates `liens_WorkflowTransitions` table with FKs and indexes; model snapshot updated
+
+### Frontend
+- `lien-workflow.types.ts` — `WorkflowTransitionDto`, `AddWorkflowTransitionRequest`, `TransitionEntry`, `SaveWorkflowTransitionsRequest`
+- `lien-workflow.api.ts` — `getTransitions`, `addTransition`, `deactivateTransition` (DELETE), `saveTransitions` + admin variants
+- `lien/settings/workflow/page.tsx` — **Transition Rules** section: per-source-stage checkbox grid, open-move mode banner, Save button
+- `control-center/liens/workflow/page.tsx` — same Transition Rules section for admin view
+
+### Audit Events
+`liens.workflow_transition.created`, `.deactivated`, `.saved`, `.initialized`
+
+### Design Decisions
+- Open-move = no rows → any stage→stage move allowed (zero configuration tax)
+- Self-transitions blocked at entity level
+- Batch `save` deactivates all then re-creates; no partial state
+- Case/Lien stage not enforced (they don't use `WorkflowStageId`; task stage only)
+
+### Analysis
+`analysis/LS-LIENS-FLOW-005-report.md`

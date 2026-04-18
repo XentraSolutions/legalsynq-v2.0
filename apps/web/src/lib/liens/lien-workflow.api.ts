@@ -6,6 +6,9 @@ import type {
   AddWorkflowStageRequest,
   UpdateWorkflowStageRequest,
   ReorderStagesRequest,
+  WorkflowTransitionDto,
+  AddWorkflowTransitionRequest,
+  SaveWorkflowTransitionsRequest,
 } from './lien-workflow.types';
 
 const BASE = '/lien/api/liens/workflow-config';
@@ -100,5 +103,53 @@ export const lienWorkflowApi = {
       `/lien/api/liens/admin/workflow-config/tenants/${tenantId}/${id}/stages/reorder`, request
     );
     return data;
+  },
+
+  // Transition endpoints (tenant)
+  async getTransitions(id: string): Promise<WorkflowTransitionDto[]> {
+    const { data } = await apiClient.get<WorkflowTransitionDto[]>(`${BASE}/${id}/transitions`);
+    return data ?? [];
+  },
+
+  async addTransition(id: string, request: AddWorkflowTransitionRequest): Promise<WorkflowTransitionDto> {
+    const { data } = await apiClient.post<WorkflowTransitionDto>(`${BASE}/${id}/transitions`, request);
+    return data;
+  },
+
+  async deactivateTransition(id: string, transitionId: string): Promise<void> {
+    await apiClient.delete(`${BASE}/${id}/transitions/${transitionId}`);
+  },
+
+  async saveTransitions(id: string, request: SaveWorkflowTransitionsRequest): Promise<WorkflowTransitionDto[]> {
+    const { data } = await apiClient.post<WorkflowTransitionDto[]>(`${BASE}/${id}/transitions/save`, request);
+    return data ?? [];
+  },
+
+  // Transition endpoints (admin)
+  async adminGetTransitions(tenantId: string, id: string): Promise<WorkflowTransitionDto[]> {
+    const { data } = await apiClient.get<WorkflowTransitionDto[]>(
+      `/lien/api/liens/admin/workflow-config/tenants/${tenantId}/${id}/transitions`
+    );
+    return data ?? [];
+  },
+
+  async adminAddTransition(tenantId: string, id: string, request: AddWorkflowTransitionRequest): Promise<WorkflowTransitionDto> {
+    const { data } = await apiClient.post<WorkflowTransitionDto>(
+      `/lien/api/liens/admin/workflow-config/tenants/${tenantId}/${id}/transitions`, request
+    );
+    return data;
+  },
+
+  async adminDeactivateTransition(tenantId: string, id: string, transitionId: string): Promise<void> {
+    await apiClient.delete(
+      `/lien/api/liens/admin/workflow-config/tenants/${tenantId}/${id}/transitions/${transitionId}`
+    );
+  },
+
+  async adminSaveTransitions(tenantId: string, id: string, request: SaveWorkflowTransitionsRequest): Promise<WorkflowTransitionDto[]> {
+    const { data } = await apiClient.post<WorkflowTransitionDto[]>(
+      `/lien/api/liens/admin/workflow-config/tenants/${tenantId}/${id}/transitions/save`, request
+    );
+    return data ?? [];
   },
 };

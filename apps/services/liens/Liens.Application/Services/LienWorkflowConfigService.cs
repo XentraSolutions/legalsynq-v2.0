@@ -230,6 +230,24 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
 
     // ── Transition management (LS-LIENS-FLOW-005) ─────────────────────────────
 
+    public async Task<IReadOnlyList<WorkflowTransitionResponse>> GetTransitionsAsync(
+        Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        var entity = await RequireConfig(tenantId, id, ct);
+        var transitions = await _repo.GetActiveTransitionsAsync(entity.Id, ct);
+        return transitions.Select(t => new WorkflowTransitionResponse
+        {
+            Id               = t.Id,
+            WorkflowConfigId = t.WorkflowConfigId,
+            FromStageId      = t.FromStageId,
+            ToStageId        = t.ToStageId,
+            IsActive         = t.IsActive,
+            SortOrder        = t.SortOrder,
+            CreatedAtUtc     = t.CreatedAtUtc,
+            UpdatedAtUtc     = t.UpdatedAtUtc,
+        }).ToList();
+    }
+
     public async Task<WorkflowConfigResponse> AddTransitionAsync(
         Guid tenantId, Guid id, Guid actingUserId, AddWorkflowTransitionRequest request, CancellationToken ct = default)
     {
@@ -300,7 +318,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
         return MapToResponse(updated!);
     }
 
-    public async Task<WorkflowConfigResponse> SaveTransitionsAsync(
+    public async Task<IReadOnlyList<WorkflowTransitionResponse>> SaveTransitionsAsync(
         Guid tenantId, Guid id, Guid actingUserId, SaveWorkflowTransitionsRequest request, CancellationToken ct = default)
     {
         var entity = await RequireConfig(tenantId, id, ct);
@@ -366,8 +384,17 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityType:  "LienWorkflowConfig",
             entityId:    entity.Id.ToString());
 
-        var updated = await _repo.GetByIdAsync(tenantId, id, ct);
-        return MapToResponse(updated!);
+        return toCreate.Select(t => new WorkflowTransitionResponse
+        {
+            Id               = t.Id,
+            WorkflowConfigId = t.WorkflowConfigId,
+            FromStageId      = t.FromStageId,
+            ToStageId        = t.ToStageId,
+            IsActive         = t.IsActive,
+            SortOrder        = t.SortOrder,
+            CreatedAtUtc     = t.CreatedAtUtc,
+            UpdatedAtUtc     = t.UpdatedAtUtc,
+        }).ToList();
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -421,7 +448,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
                 workflowConfigId: entity.Id,
                 fromStageId:      activeStages[i].Id,
                 toStageId:        activeStages[i + 1].Id,
-                createdByUserId:  entity.CreatedByUserId,
+                createdByUserId:  entity.CreatedByUserId ?? Guid.Empty,
                 sortOrder:        i));
         }
 

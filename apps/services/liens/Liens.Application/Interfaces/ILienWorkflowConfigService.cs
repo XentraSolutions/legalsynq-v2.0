@@ -20,6 +20,8 @@ public interface ILienWorkflowConfigService
 
     // ── Transition methods (LS-LIENS-FLOW-005) ────────────────────────────────
 
+    Task<IReadOnlyList<WorkflowTransitionResponse>> GetTransitionsAsync(Guid tenantId, Guid id, CancellationToken ct = default);
+
     Task<WorkflowConfigResponse> AddTransitionAsync(Guid tenantId, Guid id, Guid actingUserId, AddWorkflowTransitionRequest request, CancellationToken ct = default);
 
     Task<WorkflowConfigResponse> DeactivateTransitionAsync(Guid tenantId, Guid id, Guid transitionId, Guid actingUserId, CancellationToken ct = default);
@@ -28,5 +30,5 @@ public interface ILienWorkflowConfigService
     /// Batch-replace all active transitions. Deactivates unlisted ones; creates missing ones.
     /// Updates workflow version and governance metadata.
     /// </summary>
-    Task<WorkflowConfigResponse> SaveTransitionsAsync(Guid tenantId, Guid id, Guid actingUserId, SaveWorkflowTransitionsRequest request, CancellationToken ct = default);
+    Task<IReadOnlyList<WorkflowTransitionResponse>> SaveTransitionsAsync(Guid tenantId, Guid id, Guid actingUserId, SaveWorkflowTransitionsRequest request, CancellationToken ct = default);
 }

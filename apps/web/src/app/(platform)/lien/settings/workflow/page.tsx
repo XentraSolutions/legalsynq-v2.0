@@ -7,6 +7,7 @@ import type {
   WorkflowStageDto,
   AddWorkflowStageRequest,
   UpdateWorkflowStageRequest,
+  WorkflowTransitionDto,
 } from '@/lib/liens/lien-workflow.types';
 import { PageHeader } from '@/components/lien/page-header';
 import { useLienStore } from '@/stores/lien-store';
@@ -27,6 +28,10 @@ const DEFAULT_STAGE: StageFormData = {
   isActive: true,
 };
 
+function transitionKey(fromId: string, toId: string) {
+  return `${fromId}|${toId}`;
+}
+
 export default function WorkflowSettingsPage() {
   const addToast = useLienStore((s) => s.addToast);
 
@@ -43,6 +48,13 @@ export default function WorkflowSettingsPage() {
   const [stageForm, setStageForm] = useState<StageFormData>(DEFAULT_STAGE);
   const [stageSaving, setStageSaving] = useState(false);
   const [deleteStageId, setDeleteStageId] = useState<string | null>(null);
+
+  // Transition state
+  const [transitions, setTransitions] = useState<WorkflowTransitionDto[]>([]);
+  const [pendingTransitions, setPendingTransitions] = useState<Set<string>>(new Set());
+  const [transitionsLoaded, setTransitionsLoaded] = useState(false);
+  const [transitionSaving, setTransitionSaving] = useState(false);
+  const [openMoveMode, setOpenMoveMode] = useState(false);
 
   const fetchConfig = useCallback(async () => {
     setLoading(true);
@@ -61,7 +73,24 @@ export default function WorkflowSettingsPage() {
     }
   }, []);
 
+  const fetchTransitions = useCallback(async (configId: string) => {
+    try {
+      const data = await lienWorkflowApi.getTransitions(configId);
+      setTransitions(data);
+      const activeTransitions = data.filter((t) => t.isActive);
+      setPendingTransitions(new Set(activeTransitions.map((t) => transitionKey(t.fromStageId, t.toStageId))));
+      setOpenMoveMode(activeTransitions.length === 0);
+      setTransitionsLoaded(true);
+    } catch {
+      setTransitionsLoaded(true);
+    }
+  }, []);
+
   useEffect(() => { fetchConfig(); }, [fetchConfig]);
+
+  useEffect(() => {
+    if (config?.id) fetchTransitions(config.id);
+  }, [config?.id, fetchTransitions]);
 
   async function handleSaveConfig() {
     setSaving(true);
@@ -154,6 +183,43 @@ export default function WorkflowSettingsPage() {
       addToast({ type: 'error', title: 'Failed to remove stage', description: err instanceof Error ? err.message : undefined });
     } finally {
       setDeleteStageId(null);
+    }
+  }
+
+  function toggleTransition(fromId: string, toId: string) {
+    const key = transitionKey(fromId, toId);
+    setPendingTransitions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    setOpenMoveMode(false);
+  }
+
+  function enableOpenMove() {
+    setPendingTransitions(new Set());
+    setOpenMoveMode(true);
+  }
+
+  async function handleSaveTransitions() {
+    if (!config) return;
+    setTransitionSaving(true);
+    try {
+      const transitionEntries = Array.from(pendingTransitions).map((key, idx) => {
+        const [fromStageId, toStageId] = key.split('|');
+        return { fromStageId, toStageId, sortOrder: idx };
+      });
+      const saved = await lienWorkflowApi.saveTransitions(config.id, { transitions: transitionEntries });
+      setTransitions(saved);
+      const active = saved.filter((t) => t.isActive);
+      setPendingTransitions(new Set(active.map((t) => transitionKey(t.fromStageId, t.toStageId))));
+      setOpenMoveMode(active.length === 0);
+      addToast({ type: 'success', title: 'Transition Rules Saved' });
+    } catch (err) {
+      addToast({ type: 'error', title: 'Failed to save transitions', description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setTransitionSaving(false);
     }
   }
 
@@ -254,7 +320,7 @@ export default function WorkflowSettingsPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {sortedStages.map((stage, idx) => (
+              {sortedStages.map((stage) => (
                 <div
                   key={stage.id}
                   className={`flex items-start gap-4 p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors ${deleteStageId === stage.id ? 'opacity-50' : ''}`}
@@ -294,6 +360,89 @@ export default function WorkflowSettingsPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Transition Rules */}
+      {config && sortedStages.length >= 2 && transitionsLoaded && (
+        <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <i className="ri-arrow-right-line text-primary" /> Transition Rules
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Check which stages a task can move to from each source stage. Leave all unchecked to allow any move.
+              </p>
+            </div>
+            <button
+              onClick={enableOpenMove}
+              className="text-xs text-gray-500 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50"
+            >
+              Allow all moves
+            </button>
+          </div>
+
+          {openMoveMode && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-sm text-amber-700">
+              <i className="ri-information-line" />
+              <span>Open-move mode — tasks can move to any stage. Define rules below to restrict movement.</span>
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-separate border-spacing-0">
+              <thead>
+                <tr>
+                  <th className="text-left text-xs font-medium text-gray-500 pb-2 pr-4 whitespace-nowrap">From ↓ / To →</th>
+                  {sortedStages.map((s) => (
+                    <th key={s.id} className="text-center text-xs font-medium text-gray-500 pb-2 px-2 whitespace-nowrap min-w-[80px]">
+                      {s.stageName}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedStages.map((fromStage) => (
+                  <tr key={fromStage.id} className="border-t border-gray-100">
+                    <td className="text-xs font-medium text-gray-700 py-3 pr-4 whitespace-nowrap">
+                      {fromStage.stageName}
+                    </td>
+                    {sortedStages.map((toStage) => {
+                      const isSelf = fromStage.id === toStage.id;
+                      const key = transitionKey(fromStage.id, toStage.id);
+                      const checked = pendingTransitions.has(key);
+                      return (
+                        <td key={toStage.id} className="text-center py-3 px-2">
+                          {isSelf ? (
+                            <span className="text-gray-200 text-base leading-none">—</span>
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleTransition(fromStage.id, toStage.id)}
+                              className="w-4 h-4 accent-primary cursor-pointer"
+                            />
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              onClick={handleSaveTransitions}
+              disabled={transitionSaving}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60"
+            >
+              {transitionSaving && <i className="ri-loader-4-line animate-spin" />}
+              Save Transition Rules
+            </button>
+          </div>
         </div>
       )}
 

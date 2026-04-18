@@ -1269,6 +1269,52 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.ToTable("liens_WorkflowStages", (string)null);
                 });
 
+            modelBuilder.Entity("Liens.Domain.Entities.LienWorkflowTransition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("FromStageId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ToStageId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("WorkflowConfigId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkflowConfigId", "FromStageId")
+                        .HasDatabaseName("IX_WorkflowTransitions_WorkflowId_FromStage");
+
+                    b.HasIndex("WorkflowConfigId", "FromStageId", "ToStageId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_WorkflowTransitions_Unique");
+
+                    b.ToTable("liens_WorkflowTransitions", (string)null);
+                });
+
             modelBuilder.Entity("Liens.Domain.Entities.LookupValue", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1485,9 +1531,36 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Liens.Domain.Entities.LienWorkflowTransition", b =>
+                {
+                    b.HasOne("Liens.Domain.Entities.LienWorkflowConfig", null)
+                        .WithMany("Transitions")
+                        .HasForeignKey("WorkflowConfigId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Liens.Domain.Entities.LienWorkflowStage", "FromStage")
+                        .WithMany()
+                        .HasForeignKey("FromStageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Liens.Domain.Entities.LienWorkflowStage", "ToStage")
+                        .WithMany()
+                        .HasForeignKey("ToStageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FromStage");
+
+                    b.Navigation("ToStage");
+                });
+
             modelBuilder.Entity("Liens.Domain.Entities.LienWorkflowConfig", b =>
                 {
                     b.Navigation("Stages");
+
+                    b.Navigation("Transitions");
                 });
 #pragma warning restore 612, 618
         }

@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { lienWorkflowApi } from '@/lib/liens/lien-workflow.api';
 import type {
   WorkflowConfigDto,
   WorkflowStageDto,
   AddWorkflowStageRequest,
   UpdateWorkflowStageRequest,
+  WorkflowTransitionDto,
 } from '@/lib/liens/lien-workflow.types';
 
 interface TenantWorkflowState {
@@ -33,6 +34,10 @@ const DEFAULT_STAGE: StageFormData = {
   isActive: true,
 };
 
+function transitionKey(fromId: string, toId: string) {
+  return `${fromId}|${toId}`;
+}
+
 export default function ControlCenterLienWorkflowPage() {
   const [tenantId, setTenantId] = useState('');
   const [tenantName, setTenantName] = useState('');
@@ -49,9 +54,32 @@ export default function ControlCenterLienWorkflowPage() {
   const [stageForm, setStageForm] = useState<StageFormData>(DEFAULT_STAGE);
   const [stageSaving, setStageSaving] = useState(false);
 
+  // Transition state
+  const [transitions, setTransitions] = useState<WorkflowTransitionDto[]>([]);
+  const [pendingTransitions, setPendingTransitions] = useState<Set<string>>(new Set());
+  const [transitionsLoaded, setTransitionsLoaded] = useState(false);
+  const [transitionSaving, setTransitionSaving] = useState(false);
+  const [openMoveMode, setOpenMoveMode] = useState(false);
+
+  const loadTransitions = useCallback(async (tid: string, configId: string) => {
+    try {
+      const data = await lienWorkflowApi.adminGetTransitions(tid, configId);
+      setTransitions(data);
+      const active = data.filter((t) => t.isActive);
+      setPendingTransitions(new Set(active.map((t) => transitionKey(t.fromStageId, t.toStageId))));
+      setOpenMoveMode(active.length === 0);
+      setTransitionsLoaded(true);
+    } catch {
+      setTransitionsLoaded(true);
+    }
+  }, []);
+
   async function handleSearch() {
     if (!tenantId.trim()) return;
     setSearching(true);
+    setTransitionsLoaded(false);
+    setTransitions([]);
+    setPendingTransitions(new Set());
     setTenantState({ tenantId, tenantName: tenantName || tenantId, config: null, loading: true, error: null });
     setSearched(true);
     try {
@@ -60,12 +88,15 @@ export default function ControlCenterLienWorkflowPage() {
       if (config) {
         setWorkflowName(config.workflowName);
         setIsActive(config.isActive);
+        await loadTransitions(tenantId, config.id);
       } else {
         setWorkflowName('');
         setIsActive(true);
+        setTransitionsLoaded(true);
       }
     } catch (err) {
       setTenantState({ tenantId, tenantName: tenantName || tenantId, config: null, loading: false, error: err instanceof Error ? err.message : 'Failed to load config' });
+      setTransitionsLoaded(true);
     } finally {
       setSearching(false);
     }
@@ -90,6 +121,9 @@ export default function ControlCenterLienWorkflowPage() {
         });
       }
       setTenantState((prev) => prev ? { ...prev, config: updated } : null);
+      if (!tenantState.config) {
+        await loadTransitions(tenantId, updated.id);
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -150,6 +184,42 @@ export default function ControlCenterLienWorkflowPage() {
       setTenantState((prev) => prev ? { ...prev, config: updated } : null);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to remove stage');
+    }
+  }
+
+  function toggleTransition(fromId: string, toId: string) {
+    const key = transitionKey(fromId, toId);
+    setPendingTransitions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    setOpenMoveMode(false);
+  }
+
+  function enableOpenMove() {
+    setPendingTransitions(new Set());
+    setOpenMoveMode(true);
+  }
+
+  async function handleSaveTransitions() {
+    if (!tenantState?.config) return;
+    setTransitionSaving(true);
+    try {
+      const transitionEntries = Array.from(pendingTransitions).map((key, idx) => {
+        const [fromStageId, toStageId] = key.split('|');
+        return { fromStageId, toStageId, sortOrder: idx };
+      });
+      const saved = await lienWorkflowApi.adminSaveTransitions(tenantId, tenantState.config.id, { transitions: transitionEntries });
+      setTransitions(saved);
+      const active = saved.filter((t) => t.isActive);
+      setPendingTransitions(new Set(active.map((t) => transitionKey(t.fromStageId, t.toStageId))));
+      setOpenMoveMode(active.length === 0);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save transitions');
+    } finally {
+      setTransitionSaving(false);
     }
   }
 
@@ -325,6 +395,89 @@ export default function ControlCenterLienWorkflowPage() {
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Transition Rules */}
+              {config && sortedStages.length >= 2 && transitionsLoaded && (
+                <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                        <i className="ri-arrow-right-line text-blue-600" /> Transition Rules
+                      </h2>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Check which stages a task can move to from each source stage. Leave all unchecked to allow any move.
+                      </p>
+                    </div>
+                    <button
+                      onClick={enableOpenMove}
+                      className="text-xs text-gray-500 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50"
+                    >
+                      Allow all moves
+                    </button>
+                  </div>
+
+                  {openMoveMode && (
+                    <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 text-sm text-amber-700">
+                      <i className="ri-information-line" />
+                      <span>Open-move mode — tasks can move to any stage. Define rules below to restrict movement.</span>
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-separate border-spacing-0">
+                      <thead>
+                        <tr>
+                          <th className="text-left text-xs font-medium text-gray-500 pb-2 pr-4 whitespace-nowrap">From ↓ / To →</th>
+                          {sortedStages.map((s) => (
+                            <th key={s.id} className="text-center text-xs font-medium text-gray-500 pb-2 px-2 whitespace-nowrap min-w-[80px]">
+                              {s.stageName}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedStages.map((fromStage) => (
+                          <tr key={fromStage.id} className="border-t border-gray-100">
+                            <td className="text-xs font-medium text-gray-700 py-3 pr-4 whitespace-nowrap">
+                              {fromStage.stageName}
+                            </td>
+                            {sortedStages.map((toStage) => {
+                              const isSelf = fromStage.id === toStage.id;
+                              const key = transitionKey(fromStage.id, toStage.id);
+                              const checked = pendingTransitions.has(key);
+                              return (
+                                <td key={toStage.id} className="text-center py-3 px-2">
+                                  {isSelf ? (
+                                    <span className="text-gray-200 text-base leading-none">—</span>
+                                  ) : (
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => toggleTransition(fromStage.id, toStage.id)}
+                                      className="w-4 h-4 accent-blue-600 cursor-pointer"
+                                    />
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleSaveTransitions}
+                      disabled={transitionSaving}
+                      className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      {transitionSaving && <i className="ri-loader-4-line animate-spin" />}
+                      Save Transition Rules
+                    </button>
+                  </div>
                 </div>
               )}
             </>

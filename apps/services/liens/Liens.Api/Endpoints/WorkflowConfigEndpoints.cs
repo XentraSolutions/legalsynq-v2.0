@@ -45,6 +45,9 @@ public static class WorkflowConfigEndpoints
             .RequirePermission(LiensPermissions.WorkflowManage);
 
         // ── Transition endpoints (LS-LIENS-FLOW-005) ──────────────────────────
+        group.MapGet("/{id:guid}/transitions", GetTransitions)
+            .RequirePermission(LiensPermissions.WorkflowManage);
+
         group.MapPost("/{id:guid}/transitions", AddTransition)
             .RequirePermission(LiensPermissions.WorkflowManage);
 
@@ -69,6 +72,8 @@ public static class WorkflowConfigEndpoints
         adminGroup.MapPost("/tenants/{tenantId:guid}/{id:guid}/stages/reorder", AdminReorderStages);
 
         // ── Admin transition endpoints (LS-LIENS-FLOW-005) ────────────────────
+        adminGroup.MapGet("/tenants/{tenantId:guid}/{id:guid}/transitions", AdminGetTransitions);
+
         adminGroup.MapPost("/tenants/{tenantId:guid}/{id:guid}/transitions", AdminAddTransition);
         adminGroup.MapDelete("/tenants/{tenantId:guid}/{id:guid}/transitions/{transitionId:guid}", AdminDeactivateTransition);
         adminGroup.MapPost("/tenants/{tenantId:guid}/{id:guid}/transitions/save", AdminSaveTransitions);
@@ -164,6 +169,16 @@ public static class WorkflowConfigEndpoints
     }
 
     // ── Transition endpoints (tenant-scoped) ──────────────────────────────────
+
+    private static async Task<IResult> GetTransitions(
+        Guid id,
+        ILienWorkflowConfigService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        return Results.Ok(await svc.GetTransitionsAsync(tenantId, id, ct));
+    }
 
     private static async Task<IResult> AddTransition(
         Guid id,
@@ -278,6 +293,14 @@ public static class WorkflowConfigEndpoints
     }
 
     // ── Admin transition endpoints ─────────────────────────────────────────────
+
+    private static async Task<IResult> AdminGetTransitions(
+        Guid tenantId, Guid id,
+        ILienWorkflowConfigService svc,
+        CancellationToken ct = default)
+    {
+        return Results.Ok(await svc.GetTransitionsAsync(tenantId, id, ct));
+    }
 
     private static async Task<IResult> AdminAddTransition(
         Guid tenantId, Guid id,
