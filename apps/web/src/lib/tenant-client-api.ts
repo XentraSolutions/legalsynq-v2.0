@@ -38,6 +38,9 @@ export const tenantClientApi = {
   updatePhone: (userId: string, phone: string | null) =>
     apiClient.patch<{ phone: string | null }>(`/identity/api/admin/users/${userId}/phone`, { phone }),
 
+  resetPassword: (userId: string) =>
+    apiClient.post<{ message: string }>(`/identity/api/admin/users/${userId}/reset-password`, {}),
+
   assignProduct: (tenantId: string, userId: string, productCode: string) =>
     apiClient.put<void>(`/identity/api/tenants/${tenantId}/users/${userId}/products/${productCode}`, {}),
 

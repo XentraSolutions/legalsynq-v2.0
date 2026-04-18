@@ -4708,3 +4708,32 @@ Adds per-row action menus to the Authorization → Users list. Each row gains a 
 
 ### Analysis
 `analysis/LS-ID-TNT-003-report.md`
+
+---
+
+## LS-ID-TNT-004 — Password Reset + Last Admin Protection (2026-04-18)
+
+Closes two high-risk security and operability gaps in tenant user administration. Incremental — no rewrites, no regressions to LS-ID-TNT-001/002/003.
+
+### Files Changed
+- `apps/web/src/lib/tenant-client-api.ts` — Added `resetPassword(userId)` → `POST /identity/api/admin/users/{id}/reset-password`
+- `apps/web/src/app/(platform)/tenant/authorization/users/AuthUserTable.tsx` — Added "Reset Password" to `RowActionsMenu`; added `resetPwdUser` state and `ConfirmDialog`; `handleResetPasswordConfirm` handler with error handling; `activeAdminCount` computed from full `users` array via `useMemo`; `isLastActiveAdmin(u)` helper; `handleDeactivateRequest` blocks deactivation with toast when target is last active TenantAdmin; passes `isLastAdmin` prop to `EditUserModal`
+- `apps/web/src/app/(platform)/tenant/authorization/users/EditUserModal.tsx` — Added `isLastAdmin?: boolean` prop; role-downgrade guard in `handleSave` prevents removing TenantAdmin role from the last active tenant administrator
+
+### Reset Password Contract
+- Backend: `POST /identity/api/admin/users/{id}/reset-password` returns `{ message: "Password reset email will be sent to the user." }`
+- No temporary password returned — the raw reset link is logged to server console in dev only
+- Success toast: "Password reset email sent to {email}."
+- Works on inactive users (no `IsActive` check in backend handler)
+
+### Last Admin Protection
+- Admin role identifier: hardcoded string `"TenantAdmin"` (from `AdminEndpoints.cs:394`)
+- Data source: `GET /api/users` (tenant-scoped, complete un-paginated list) → `users: TenantUser[]` — reliable
+- `activeAdminCount` = users in `users[]` where `u.isActive && u.roles.includes('TenantAdmin')`
+- **Deactivate guard**: if target is last active TenantAdmin → immediate toast, no confirm dialog
+- **Role-downgrade guard**: if last admin attempts to switch away from TenantAdmin in Edit modal → role field error
+- **Self-deactivation/self-role-downgrade**: both covered by same guards
+- **Backend gap**: backend has no last-admin protection — documented in `analysis/LS-ID-TNT-004-report.md §13`
+
+### Analysis
+`analysis/LS-ID-TNT-004-report.md`

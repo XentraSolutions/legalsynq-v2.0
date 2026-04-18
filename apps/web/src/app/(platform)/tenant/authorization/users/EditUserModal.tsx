@@ -12,10 +12,11 @@ interface Role {
 }
 
 interface EditUserModalProps {
-  open:      boolean;
-  user:      TenantUser;
-  onClose:   () => void;
-  onSuccess: () => void;
+  open:        boolean;
+  user:        TenantUser;
+  isLastAdmin?: boolean;
+  onClose:     () => void;
+  onSuccess:   () => void;
 }
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
@@ -29,7 +30,7 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function EditUserModal({ open, user, onClose, onSuccess }: EditUserModalProps) {
+export function EditUserModal({ open, user, isLastAdmin = false, onClose, onSuccess }: EditUserModalProps) {
   const { show: showToast } = useToast();
 
   const [roles,        setRoles]        = useState<Role[]>([]);
@@ -95,6 +96,15 @@ export function EditUserModal({ open, user, onClose, onSuccess }: EditUserModalP
 
     const roleChanged  = roleId  !== initialRoleId;
     const phoneChanged = phone.trim() !== initialPhone;
+
+    if (roleChanged && isLastAdmin) {
+      const selectedRoleName   = roles.find(r => r.id === roleId)?.name ?? '';
+      const userIsCurrentAdmin = (user.roles ?? []).includes('TenantAdmin');
+      if (userIsCurrentAdmin && selectedRoleName !== 'TenantAdmin') {
+        setRoleError('Cannot remove TenantAdmin from the last active tenant administrator. Assign another admin first.');
+        return;
+      }
+    }
 
     if (!roleChanged && !phoneChanged) {
       onClose();

@@ -13,6 +13,7 @@ type StatusFilter = 'All' | 'Active' | 'Inactive';
 type StatusAction = 'activate' | 'deactivate';
 
 const PAGE_SIZE = 15;
+const TENANT_ADMIN_ROLE = 'TenantAdmin';
 
 function initials(firstName?: string | null, lastName?: string | null): string {
   const f = (firstName ?? '').trim();
@@ -44,8 +45,8 @@ function StatusBadge({ isActive }: { isActive: boolean }) {
 
 function CountBadge({ count, color = 'gray' }: { count: number; color?: string }) {
   const colors: Record<string, string> = {
-    gray: 'bg-gray-100 text-gray-600',
-    blue: 'bg-blue-50 text-blue-700',
+    gray:   'bg-gray-100 text-gray-600',
+    blue:   'bg-blue-50 text-blue-700',
     indigo: 'bg-indigo-50 text-indigo-700',
     purple: 'bg-purple-50 text-purple-700',
   };
@@ -63,12 +64,14 @@ function RowActionsMenu({
   onEdit,
   onActivate,
   onDeactivate,
+  onResetPassword,
 }: {
-  user: TenantUser;
-  onView: () => void;
-  onEdit: () => void;
-  onActivate: () => void;
-  onDeactivate: () => void;
+  user:             TenantUser;
+  onView:           () => void;
+  onEdit:           () => void;
+  onActivate:       () => void;
+  onDeactivate:     () => void;
+  onResetPassword:  () => void;
 }) {
   const [open, setOpen] = useState(false);
   function close() { setOpen(false); }
@@ -89,7 +92,7 @@ function RowActionsMenu({
             className="fixed inset-0 z-10"
             onClick={(e) => { e.stopPropagation(); close(); }}
           />
-          <div className="absolute right-0 z-20 mt-1 w-44 bg-white rounded-lg border border-gray-200 shadow-lg py-1 text-sm">
+          <div className="absolute right-0 z-20 mt-1 w-48 bg-white rounded-lg border border-gray-200 shadow-lg py-1 text-sm">
             <button
               onClick={(e) => { e.stopPropagation(); close(); onView(); }}
               className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700 flex items-center gap-2"
@@ -103,6 +106,13 @@ function RowActionsMenu({
             >
               <i className="ri-edit-line text-gray-400" />
               Edit
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); close(); onResetPassword(); }}
+              className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700 flex items-center gap-2"
+            >
+              <i className="ri-lock-password-line text-gray-400" />
+              Reset Password
             </button>
             <div className="border-t border-gray-100 my-1" />
             {user.isActive ? (
@@ -133,14 +143,25 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
   const router = useRouter();
   const { show: showToast } = useToast();
 
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatus] = useState<StatusFilter>('All');
-  const [page, setPage] = useState(1);
+  const [search,       setSearch]       = useState('');
+  const [statusFilter, setStatus]       = useState<StatusFilter>('All');
+  const [page,         setPage]         = useState(1);
 
-  const [showAddUser,  setShowAddUser]  = useState(false);
-  const [editUser,     setEditUser]     = useState<TenantUser | null>(null);
-  const [confirmState, setConfirmState] = useState<{ user: TenantUser; action: StatusAction } | null>(null);
-  const [actioning,    setActioning]    = useState(false);
+  const [showAddUser,   setShowAddUser]   = useState(false);
+  const [editUser,      setEditUser]      = useState<TenantUser | null>(null);
+  const [confirmState,  setConfirmState]  = useState<{ user: TenantUser; action: StatusAction } | null>(null);
+  const [resetPwdUser,  setResetPwdUser]  = useState<TenantUser | null>(null);
+  const [actioning,     setActioning]     = useState(false);
+  const [resetting,     setResetting]     = useState(false);
+
+  const activeAdminCount = useMemo(
+    () => users.filter(u => u.isActive && (u.roles ?? []).includes(TENANT_ADMIN_ROLE)).length,
+    [users]
+  );
+
+  function isLastActiveAdmin(u: TenantUser): boolean {
+    return u.isActive && (u.roles ?? []).includes(TENANT_ADMIN_ROLE) && activeAdminCount <= 1;
+  }
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -162,21 +183,25 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
   }, [users, search, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const slice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const safePage   = Math.min(page, totalPages);
+  const slice      = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   function handleSearch(value: string) { setSearch(value); setPage(1); }
   function handleStatus(value: StatusFilter) { setStatus(value); setPage(1); }
 
-  const handleUserCreated = useCallback(() => {
-    setShowAddUser(false);
-    router.refresh();
-  }, [router]);
+  const handleUserCreated = useCallback(() => { setShowAddUser(false); router.refresh(); }, [router]);
+  const handleUserEdited  = useCallback(() => { setEditUser(null);    router.refresh(); }, [router]);
 
-  const handleUserEdited = useCallback(() => {
-    setEditUser(null);
-    router.refresh();
-  }, [router]);
+  function handleDeactivateRequest(u: TenantUser) {
+    if (isLastActiveAdmin(u)) {
+      showToast(
+        'Cannot deactivate the last active tenant administrator. Assign another administrator first.',
+        'error',
+      );
+      return;
+    }
+    setConfirmState({ user: u, action: 'deactivate' });
+  }
 
   async function handleStatusAction() {
     if (!confirmState) return;
@@ -206,12 +231,42 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
     }
   }
 
-  const productCount = (u: TenantUser) => u.productRoles?.filter((r) => !r.includes(':')).length ?? 0;
+  async function handleResetPasswordConfirm() {
+    if (!resetPwdUser) return;
+    setResetting(true);
+    try {
+      await tenantClientApi.resetPassword(resetPwdUser.id);
+      const email = (resetPwdUser.email ?? '').trim();
+      showToast(
+        email
+          ? `Password reset email sent to ${email}.`
+          : 'Password reset email sent.',
+        'success',
+      );
+      setResetPwdUser(null);
+    } catch (err) {
+      let msg = 'Something went wrong. Please try again.';
+      if (err instanceof ApiError) {
+        if (err.isForbidden) msg = 'You do not have permission to reset this user\'s password.';
+        else if (err.isNotFound) msg = 'User not found.';
+        else if (err.message) msg = err.message;
+      }
+      showToast(msg, 'error');
+      setResetPwdUser(null);
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  const productCount = (u: TenantUser) => u.productRoles?.filter(r => !r.includes(':')).length ?? 0;
   const roleCount    = (u: TenantUser) => u.roles?.length ?? 0;
 
-  const confirmUser     = confirmState?.user;
-  const confirmName     = confirmUser ? displayName(confirmUser) : '';
-  const isDeactivating  = confirmState?.action === 'deactivate';
+  const confirmUser    = confirmState?.user;
+  const confirmName    = confirmUser ? displayName(confirmUser) : '';
+  const isDeactivating = confirmState?.action === 'deactivate';
+
+  const resetPwdName  = resetPwdUser ? displayName(resetPwdUser) : '';
+  const resetPwdEmail = (resetPwdUser?.email ?? '').trim();
 
   return (
     <>
@@ -226,6 +281,7 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
         <EditUserModal
           open={!!editUser}
           user={editUser}
+          isLastAdmin={isLastActiveAdmin(editUser)}
           onClose={() => setEditUser(null)}
           onSuccess={handleUserEdited}
         />
@@ -244,6 +300,21 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
         }
         confirmLabel={isDeactivating ? 'Deactivate' : 'Activate'}
         confirmVariant={isDeactivating ? 'danger' : 'primary'}
+      />
+
+      <ConfirmDialog
+        open={!!resetPwdUser}
+        onClose={() => { if (!resetting) setResetPwdUser(null); }}
+        onConfirm={handleResetPasswordConfirm}
+        loading={resetting}
+        title={`Reset Password for ${resetPwdName}?`}
+        description={
+          resetPwdEmail
+            ? `A password reset link will be sent to ${resetPwdEmail}. Their existing password will remain valid until they complete the reset.`
+            : 'A password reset link will be sent to this user. Their existing password will remain valid until they complete the reset.'
+        }
+        confirmLabel="Send Reset Link"
+        confirmVariant="primary"
       />
 
       <div className="space-y-4">
@@ -340,8 +411,9 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
                         user={u}
                         onView={() => router.push(`/tenant/authorization/users/${u.id}`)}
                         onEdit={() => setEditUser(u)}
+                        onResetPassword={() => setResetPwdUser(u)}
                         onActivate={() => setConfirmState({ user: u, action: 'activate' })}
-                        onDeactivate={() => setConfirmState({ user: u, action: 'deactivate' })}
+                        onDeactivate={() => handleDeactivateRequest(u)}
                       />
                     </td>
                   </tr>
