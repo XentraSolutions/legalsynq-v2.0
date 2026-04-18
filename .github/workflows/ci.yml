@@ -5,6 +5,8 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  schedule:
+    - cron: '0 3 * * *'
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
@@ -15,6 +17,7 @@ jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
 
     steps:
       - uses: actions/checkout@v4
