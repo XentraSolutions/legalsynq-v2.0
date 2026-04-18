@@ -77,9 +77,12 @@ export function OrgQueueClient({ onOpenTask, refreshKey }: OrgQueueClientProps) 
         <EmptyState />
       ) : (
         <>
-          <p className="text-xs text-gray-500">
-            Showing {tasks.length} of {total} task{total === 1 ? '' : 's'}.
-          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <p className="text-xs text-gray-500">
+              Showing {tasks.length} of {total} task{total === 1 ? '' : 's'}.
+            </p>
+            <QueueUrgencySummary tasks={tasks} />
+          </div>
           <ul className="space-y-2">
             {tasks.map((t) => (
               <QueueTaskRow
@@ -92,6 +95,38 @@ export function OrgQueueClient({ onOpenTask, refreshKey }: OrgQueueClientProps) 
             ))}
           </ul>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * LS-FLOW-E18 — Urgency hint strip displayed above the task list.
+ * Shows counts of escalated/overdue and at-risk (DueSoon) tasks so
+ * the user can triage at a glance before scrolling. Renders nothing
+ * when the queue is fully on-track.
+ */
+function QueueUrgencySummary({ tasks }: { tasks: MyTask[] }) {
+  const overdue = tasks.filter(
+    (t) => t.slaStatus === 'Escalated' || t.slaStatus === 'Overdue',
+  ).length;
+  const atRisk = tasks.filter((t) => t.slaStatus === 'DueSoon').length;
+
+  if (overdue === 0 && atRisk === 0) return null;
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap" aria-label="Queue urgency summary">
+      {overdue > 0 && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200">
+          <i className="ri-alarm-warning-line" aria-hidden="true" />
+          {overdue} overdue
+        </span>
+      )}
+      {atRisk > 0 && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+          <i className="ri-time-line" aria-hidden="true" />
+          {atRisk} at risk
+        </span>
       )}
     </div>
   );

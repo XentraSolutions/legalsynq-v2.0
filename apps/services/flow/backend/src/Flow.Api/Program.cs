@@ -190,6 +190,9 @@ builder.Services.AddHealthChecks();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddTenantProvider<ClaimsTenantProvider>();
 builder.Services.AddApplicationServices();
+// LS-FLOW-E18 — work distribution intelligence configuration.
+builder.Services.Configure<Flow.Application.Options.WorkDistributionOptions>(
+    builder.Configuration.GetSection(Flow.Application.Options.WorkDistributionOptions.SectionKey));
 
 // ---------------------------------------------------------------------------
 // Platform integration adapters (audit + notifications) + internal events

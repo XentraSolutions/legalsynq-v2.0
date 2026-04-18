@@ -330,16 +330,60 @@ public sealed class MyTasksService : IMyTasksService
     };
 
     /// <summary>
-    /// Shared deterministic ordering: active tasks first (Open /
-    /// InProgress), then UpdatedAt DESC (falling back to CreatedAt
-    /// for never-modified rows), then Id as a stable tiebreaker.
+    /// LS-FLOW-E18 — shared deterministic ordering that places the most
+    /// urgent work at the top of every queue and task list surface.
+    ///
+    /// <para><b>Documented sort hierarchy (innermost → outermost):</b></para>
+    /// <list type="number">
+    ///   <item>Active tasks (Open / InProgress) before terminal ones.</item>
+    ///   <item>SLA urgency tier — Escalated (0) &gt; Overdue (1) &gt; DueSoon (2)
+    ///     &gt; OnTrack (3) &gt; unknown/null (4).</item>
+    ///   <item>Priority tier — Urgent (0) &gt; High (1) &gt; Normal (2) &gt; Low (3).</item>
+    ///   <item>DueAt ascending, nulls last — earlier deadline first; items with no deadline
+    ///     sort after items that have one.</item>
+    ///   <item>CreatedAt ascending — older items before newer within the same urgency.</item>
+    ///   <item>Id ascending — stable, deterministic tiebreaker; no randomness.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// Invariant: no task may outrank a more urgent task solely because of
+    /// recency. An Overdue-Normal task always appears above an OnTrack-Urgent
+    /// task. Within the same SLA+Priority bucket, earlier deadlines surface
+    /// first.
+    /// </para>
+    ///
+    /// <para>
+    /// EF Core translates the conditional expressions below to SQL
+    /// <c>CASE WHEN … THEN … END</c> clauses; MySQL evaluates them
+    /// efficiently on the tenant-scoped index.
+    /// </para>
     /// </summary>
     private static IQueryable<WorkflowTask> OrderActiveFirst(IQueryable<WorkflowTask> q) =>
-        q.OrderByDescending(t =>
+        q
+        // 1. Active (Open/InProgress) before terminal (Completed/Cancelled).
+        .OrderBy(t =>
             t.Status == WorkflowTaskStatus.Open ||
-            t.Status == WorkflowTaskStatus.InProgress)
-         .ThenByDescending(t => t.UpdatedAt ?? t.CreatedAt)
-         .ThenBy(t => t.Id);
+            t.Status == WorkflowTaskStatus.InProgress ? 0 : 1)
+        // 2. SLA urgency tier (ascending = more urgent first).
+        .ThenBy(t =>
+            t.SlaStatus == WorkflowSlaStatus.Escalated ? 0 :
+            t.SlaStatus == WorkflowSlaStatus.Overdue   ? 1 :
+            t.SlaStatus == WorkflowSlaStatus.DueSoon   ? 2 :
+            t.SlaStatus == WorkflowSlaStatus.OnTrack   ? 3 : 4)
+        // 3. Priority tier (ascending = higher priority first).
+        .ThenBy(t =>
+            t.Priority == WorkflowTaskPriority.Urgent ? 0 :
+            t.Priority == WorkflowTaskPriority.High   ? 1 :
+            t.Priority == WorkflowTaskPriority.Normal ? 2 :
+            t.Priority == WorkflowTaskPriority.Low    ? 3 : 2)
+        // 4. DueAt nulls last — items without a deadline sort after items with one.
+        .ThenBy(t => t.DueAt == null ? 1 : 0)
+        // 5. DueAt ascending — earliest deadline first among items that have one.
+        .ThenBy(t => t.DueAt)
+        // 6. CreatedAt ascending — older items before newer within the same urgency band.
+        .ThenBy(t => t.CreatedAt)
+        // 7. Id ascending — perfectly stable tiebreaker; no randomness, no instability.
+        .ThenBy(t => t.Id);
 
     private static (int Page, int PageSize) NormalizePage(int page, int pageSize)
     {

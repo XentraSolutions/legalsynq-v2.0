@@ -74,6 +74,13 @@ public static class DependencyInjection
         // IFlowDbContext for the atomic CAS UPDATE and IAuditAdapter
         // for fire-and-forget audit emission.
         services.AddScoped<IWorkflowTaskAssignmentService, WorkflowTaskAssignmentService>();
+        // LS-FLOW-E18 — work distribution intelligence layer.
+        // WorkloadService: active task counts per user (single GROUP BY query).
+        // TaskRecommendationService: deterministic, explainable recommendation engine.
+        // Both are scoped to the request so they share the per-request
+        // IFlowDbContext (tenant filter + transaction safety).
+        services.AddScoped<IWorkloadService, WorkloadService>();
+        services.AddScoped<ITaskRecommendationService, TaskRecommendationService>();
 
         return services;
     }
