@@ -11,7 +11,8 @@
 #
 # Required variables (either form accepted for the database connection):
 #   FLOW_DB_CONNECTION_STRING  — or —  ConnectionStrings__FlowDb
-#   ServiceToken__SigningKey
+#   FLOW_SERVICE_TOKEN_SECRET  (min 32 chars — HS256 key for service-to-service
+#                               auth; read by BuildingBlocks AddServiceTokenBearer)
 #
 # Optional variables (warnings only — missing values degrade functionality
 # but do not prevent startup):
@@ -31,11 +32,13 @@ check_flow_env_vars() {
     SKIP_FLOW=1
   fi
 
-  # ServiceToken__SigningKey — required in Production; Flow's Program.cs
+  # FLOW_SERVICE_TOKEN_SECRET — required in Production; Flow's Program.cs
   # calls AddServiceTokenBearer with failFastIfMissingSecret:true outside
-  # Development, so startup crashes if this key is absent.
-  if [ -z "${ServiceToken__SigningKey:-}" ]; then
-    echo "[flow] WARNING: ServiceToken__SigningKey is not set — Flow will be skipped (failFastIfMissingSecret is true in Production)"
+  # Development, so startup crashes if this secret is absent or shorter than
+  # 32 characters. The BuildingBlocks library reads this env var directly
+  # (ServiceTokenAuthenticationDefaults.SecretEnvVar).
+  if [ -z "${FLOW_SERVICE_TOKEN_SECRET:-}" ]; then
+    echo "[flow] WARNING: FLOW_SERVICE_TOKEN_SECRET is not set — Flow will be skipped (failFastIfMissingSecret is true in Production)"
     SKIP_FLOW=1
   fi
 
