@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Fund.Application\Fund.Application.csproj" />
     <ProjectReference Include="..\Fund.Infrastructure\Fund.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\..\shared\contracts\Contracts\Contracts.csproj" />
+    <ProjectReference Include="..\..\..\..\shared\building-blocks\BuildingBlocks\BuildingBlocks.csproj" />
   </ItemGroup>
 
   <ItemGroup>

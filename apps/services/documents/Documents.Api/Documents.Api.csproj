@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Documents.Application\Documents.Application.csproj" />
     <ProjectReference Include="..\Documents.Infrastructure\Documents.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\shared\building-blocks\BuildingBlocks\BuildingBlocks.csproj" />
   </ItemGroup>
 
   <ItemGroup>

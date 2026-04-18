@@ -42,6 +42,21 @@ using (var scope = app.Services.CreateScope())
             app.Logger.LogError(ex2, "Database creation also failed - service will start but DB operations will fail");
         }
     }
+
+    // ── Migration coverage self-test ─────────────────────────────────────
+    // Compares every EF-mapped column against the live schema and logs an
+    // ERROR if any are missing. Catches the class of bug behind Task #58:
+    // a migration committed without its [Migration] attribute (or otherwise
+    // un-applied) leaves the EF model and the live schema out of sync,
+    // which previously surfaced only as runtime "Unknown column" errors.
+    try
+    {
+        await BuildingBlocks.Diagnostics.MigrationCoverageProbe.RunAsync(db, app.Logger);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Migration coverage self-test could not run");
+    }
 }
 
 app.UseMiddleware<RawBodyMiddleware>();
