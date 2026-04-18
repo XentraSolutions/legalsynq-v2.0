@@ -4640,3 +4640,17 @@ Admin routes (under `/lien/api/liens/admin/workflow-config/tenants/{tenantId}/{i
 
 ### Analysis
 `analysis/LS-LIENS-FLOW-005-report.md`
+
+---
+
+## LS-ID-TNT-001 — Tenant Users List Stabilization (2026-04-18)
+
+Stabilized the Authorization → Users page (`/tenant/authorization/users`) for null safety, correct empty/error states, and loading UX.
+
+### Files Changed
+- `apps/web/src/app/(platform)/tenant/authorization/users/page.tsx` — Simplified error handling; error message unified to "Unable to load users right now." / "You do not have permission to view users."; error and data states split cleanly
+- `apps/web/src/app/(platform)/tenant/authorization/users/AuthUserTable.tsx` — Null-safe `initials()` and `displayName()` helpers (guard against null/undefined firstName/lastName); null-safe search filter (`?? ''` on all string fields); null-safe email display (renders `—` when empty); corrected empty-state copy to spec ("No users found for this tenant." / "No users match your current search or filters."); `!!u.isActive` coercion on StatusBadge
+- `apps/web/src/app/(platform)/tenant/authorization/users/loading.tsx` — **New** — route-segment loading state (Next.js convention) showing a spinner while the server fetch is in progress
+
+### Analysis
+`analysis/LS-ID-TNT-001-report.md`

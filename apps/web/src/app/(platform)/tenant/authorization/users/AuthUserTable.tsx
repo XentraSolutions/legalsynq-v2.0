@@ -8,8 +8,20 @@ type StatusFilter = 'All' | 'Active' | 'Inactive';
 
 const PAGE_SIZE = 15;
 
-function initials(firstName: string, lastName: string): string {
-  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+function initials(firstName?: string | null, lastName?: string | null): string {
+  const f = (firstName ?? '').trim();
+  const l = (lastName ?? '').trim();
+  if (!f && !l) return '?';
+  if (!f) return l.charAt(0).toUpperCase();
+  if (!l) return f.charAt(0).toUpperCase();
+  return `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
+}
+
+function displayName(u: TenantUser): string {
+  const f = (u.firstName ?? '').trim();
+  const l = (u.lastName ?? '').trim();
+  if (!f && !l) return (u.email ?? '').trim() || 'Unknown User';
+  return [f, l].filter(Boolean).join(' ');
 }
 
 function StatusBadge({ isActive }: { isActive: boolean }) {
@@ -50,15 +62,16 @@ export function AuthUserTable({ users }: { users: TenantUser[] }) {
     return users.filter((u) => {
       const matchesStatus =
         statusFilter === 'All' ||
-        (statusFilter === 'Active' && u.isActive) ||
+        (statusFilter === 'Active' && !!u.isActive) ||
         (statusFilter === 'Inactive' && !u.isActive);
       if (!matchesStatus) return false;
       if (!q) return true;
+      const fullName = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
       return (
-        u.email.toLowerCase().includes(q) ||
-        u.firstName.toLowerCase().includes(q) ||
-        u.lastName.toLowerCase().includes(q) ||
-        `${u.firstName} ${u.lastName}`.toLowerCase().includes(q)
+        (u.email ?? '').toLowerCase().includes(q) ||
+        (u.firstName ?? '').toLowerCase().includes(q) ||
+        (u.lastName ?? '').toLowerCase().includes(q) ||
+        fullName.toLowerCase().includes(q)
       );
     });
   }, [users, search, statusFilter]);
@@ -116,8 +129,8 @@ export function AuthUserTable({ users }: { users: TenantUser[] }) {
             <i className="ri-user-search-line text-3xl text-gray-300 mb-2 block" />
             <p className="text-sm text-gray-400">
               {search || statusFilter !== 'All'
-                ? 'No users match your filters.'
-                : 'No users found in this tenant.'}
+                ? 'No users match your current search or filters.'
+                : 'No users found for this tenant.'}
             </p>
           </div>
         ) : (
@@ -146,12 +159,12 @@ export function AuthUserTable({ users }: { users: TenantUser[] }) {
                         {initials(u.firstName, u.lastName)}
                       </span>
                       <span className="font-medium text-gray-900">
-                        {u.firstName} {u.lastName}
+                        {displayName(u)}
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-gray-600">{u.email}</td>
-                  <td className="px-4 py-3 whitespace-nowrap"><StatusBadge isActive={u.isActive} /></td>
+                  <td className="px-4 py-3 whitespace-nowrap text-gray-600">{u.email || '—'}</td>
+                  <td className="px-4 py-3 whitespace-nowrap"><StatusBadge isActive={!!u.isActive} /></td>
                   <td className="px-4 py-3 text-center"><CountBadge count={productCount(u)} color="blue" /></td>
                   <td className="px-4 py-3 text-center hidden md:table-cell"><CountBadge count={roleCount(u)} color="indigo" /></td>
                   <td className="px-4 py-3 text-center hidden lg:table-cell"><CountBadge count={0} color="purple" /></td>
