@@ -138,6 +138,8 @@ export function EditUserModal({ open, user, isLastAdmin = false, onClose, onSucc
           setApiError('You do not have permission to edit this user.');
         } else if (err.status === 400) {
           setApiError(err.message || 'Invalid data. Please check your input.');
+        } else if (err.status === 422) {
+          setApiError(err.message || 'This action is not allowed.');
         } else {
           setApiError('Something went wrong. Please try again.');
         }

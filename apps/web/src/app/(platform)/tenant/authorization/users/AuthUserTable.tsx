@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { TenantUser } from '@/types/tenant';
 import { AddUserModal } from './AddUserModal';
 import { EditUserModal } from './EditUserModal';
-import { ConfirmDialog } from '@/components/lien/modal';
+import { ConfirmDialog, Modal } from '@/components/lien/modal';
 import { tenantClientApi, ApiError } from '@/lib/tenant-client-api';
 import { useToast } from '@/lib/toast-context';
 
@@ -153,6 +153,8 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
   const [resetPwdUser,  setResetPwdUser]  = useState<TenantUser | null>(null);
   const [actioning,     setActioning]     = useState(false);
   const [resetting,     setResetting]     = useState(false);
+  const [resetResult,   setResetResult]   = useState<{ name: string; email: string; link: string } | null>(null);
+  const [copyLabel,     setCopyLabel]     = useState('Copy link');
 
   const activeAdminCount = useMemo(
     () => users.filter(u => u.isActive && (u.roles ?? []).includes(TENANT_ADMIN_ROLE)).length,
@@ -235,15 +237,25 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
     if (!resetPwdUser) return;
     setResetting(true);
     try {
-      await tenantClientApi.resetPassword(resetPwdUser.id);
+      const result = await tenantClientApi.resetPassword(resetPwdUser.id);
+      const name  = displayName(resetPwdUser);
       const email = (resetPwdUser.email ?? '').trim();
-      showToast(
-        email
-          ? `Password reset email sent to ${email}.`
-          : 'Password reset email sent.',
-        'success',
-      );
       setResetPwdUser(null);
+      // LS-ID-TNT-005: Non-production environments return a resetToken so the admin
+      // can hand-deliver the link without reading server logs.  In production only
+      // the message is returned (email delivery is future infrastructure).
+      if (result.data?.resetToken) {
+        const link = `${window.location.origin}/reset-password?token=${encodeURIComponent(result.data.resetToken)}`;
+        setResetResult({ name, email, link });
+        setCopyLabel('Copy link');
+      } else {
+        showToast(
+          email
+            ? `Password reset email sent to ${email}.`
+            : 'Password reset email sent.',
+          'success',
+        );
+      }
     } catch (err) {
       let msg = 'Something went wrong. Please try again.';
       if (err instanceof ApiError) {
@@ -316,6 +328,55 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
         confirmLabel="Send Reset Link"
         confirmVariant="primary"
       />
+
+      {/* LS-ID-TNT-005: Dev/non-production reset link delivery modal */}
+      <Modal
+        open={!!resetResult}
+        onClose={() => setResetResult(null)}
+        title="Password Reset Link"
+        size="sm"
+      >
+        {resetResult && (
+          <div className="space-y-4 py-1">
+            <p className="text-sm text-gray-600">
+              A reset link has been generated for <span className="font-medium text-gray-900">{resetResult.name}</span>
+              {resetResult.email && <> ({resetResult.email})</>}.
+              Share this link with them to complete the password reset.
+            </p>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <i className="ri-information-line text-[15px] text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[13px] text-amber-700 leading-snug">
+                  <span className="font-medium">Non-production only.</span> In production this link is delivered via email. Do not share this link in an insecure channel.
+                </p>
+              </div>
+              <a
+                href={resetResult.link}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-orange-600 underline underline-offset-2 break-all"
+              >
+                <i className="ri-lock-password-line text-[14px] shrink-0" />
+                {resetResult.link}
+              </a>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(resetResult.link).catch(() => {});
+                setCopyLabel('Copied!');
+                setTimeout(() => setCopyLabel('Copy link'), 2500);
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            >
+              <i className={`${copyLabel === 'Copied!' ? 'ri-check-line text-green-600' : 'ri-file-copy-line'} text-[15px]`} />
+              {copyLabel}
+            </button>
+          </div>
+        )}
+      </Modal>
 
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">

@@ -7,6 +7,7 @@ using Identity.Infrastructure.Services;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -1377,6 +1378,26 @@ public static class AdminEndpoints
         // UIX-003-01: TenantAdmin may only deactivate users within their own tenant.
         if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
 
+        // LS-ID-TNT-005: Backend last-admin protection.
+        // Block deactivation if the target user is the only remaining active TenantAdmin
+        // for this tenant.  This guard applies to all callers (tenant UI, platform admin
+        // tools, direct API calls, self-targeted actions) — not just the frontend path.
+        var isTenantAdmin = await db.ScopedRoleAssignments
+            .AnyAsync(s => s.IsActive
+                        && s.UserId == user.Id
+                        && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
+                        && s.Role!.Name == "TenantAdmin", ct);
+        if (isTenantAdmin)
+        {
+            var otherActiveAdmins = await CountOtherActiveTenantAdmins(db, user.Id, user.TenantId, ct);
+            if (otherActiveAdmins == 0)
+                return Results.UnprocessableEntity(new
+                {
+                    error = "This action is not allowed because the user is the last active tenant administrator.",
+                    code  = "LAST_ACTIVE_ADMIN",
+                });
+        }
+
         // Deactivate() is idempotent — returns false if already inactive.
         var changed = user.Deactivate();
         if (!changed) return Results.NoContent();
@@ -1717,12 +1738,13 @@ public static class AdminEndpoints
     /// Emits identity.user.password_reset_triggered audit event.
     /// </summary>
     private static async Task<IResult> AdminResetPassword(
-        Guid              id,
-        ClaimsPrincipal   caller,
-        IdentityDbContext db,
-        IAuditEventClient auditClient,
-        ILoggerFactory loggerFactory,
-        CancellationToken ct)
+        Guid                id,
+        ClaimsPrincipal     caller,
+        IdentityDbContext   db,
+        IAuditEventClient   auditClient,
+        ILoggerFactory      loggerFactory,
+        IWebHostEnvironment env,
+        CancellationToken   ct)
     {
         var logger = loggerFactory.CreateLogger(nameof(AdminEndpoints));
 
@@ -1753,13 +1775,23 @@ public static class AdminEndpoints
         db.PasswordResetTokens.Add(resetToken);
         await db.SaveChangesAsync(ct);
 
-        // In dev: log the raw token so it can be used without email infrastructure.
-        // In production this would trigger an email to the user.
-        logger.LogInformation(
-            "[UIX-003-03] Password reset triggered for user {UserId} ({Email}) in tenant {TenantId}. " +
-            "Reset token (dev only — never log in production): {RawToken}. " +
-            "Token expires at {ExpiresAt:O}.",
-            user.Id, user.Email, user.TenantId, rawToken, resetToken.ExpiresAtUtc);
+        // LS-ID-TNT-005: Log the raw token ONLY in non-production environments.
+        // In production we never expose the raw token — email delivery is future work.
+        if (!env.IsProduction())
+        {
+            logger.LogInformation(
+                "[LS-ID-TNT-005] Password reset triggered for user {UserId} ({Email}) in tenant {TenantId}. " +
+                "Reset token (NON-PRODUCTION ONLY — never expose in production): {RawToken}. " +
+                "Token expires at {ExpiresAt:O}.",
+                user.Id, user.Email, user.TenantId, rawToken, resetToken.ExpiresAtUtc);
+        }
+        else
+        {
+            logger.LogInformation(
+                "[UIX-003-03] Admin password reset triggered for user {UserId} in tenant {TenantId}. " +
+                "Token expires at {ExpiresAt:O}.",
+                user.Id, user.TenantId, resetToken.ExpiresAtUtc);
+        }
 
         var now = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
@@ -1788,6 +1820,18 @@ public static class AdminEndpoints
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.password_reset_triggered", user.Id.ToString()),
             Tags = ["user-management", "security", "password-reset"],
         });
+
+        // LS-ID-TNT-005: Return the raw reset token in non-production environments only.
+        // This gives admins a direct path to the reset link without reading server logs.
+        // In production the token is withheld — email delivery is future infrastructure.
+        if (!env.IsProduction())
+        {
+            return Results.Ok(new
+            {
+                message    = "Password reset initiated. Use the reset token below to complete the flow (non-production only).",
+                resetToken = rawToken,
+            });
+        }
 
         return Results.Ok(new { message = "Password reset email will be sent to the user." });
     }
@@ -3255,6 +3299,22 @@ public static class AdminEndpoints
             return Results.NotFound(new { error = $"Role '{roleId}' is not assigned to user '{id}'." });
 
         var roleName = sra.Role?.Name ?? roleId.ToString();
+
+        // LS-ID-TNT-005: Backend last-admin protection.
+        // Block removal of the TenantAdmin role if this user is the only remaining
+        // active TenantAdmin for their tenant.  The user must currently be active
+        // for their admin status to count toward the tenant minimum.
+        if (roleName == "TenantAdmin" && user.IsActive)
+        {
+            var otherActiveAdmins = await CountOtherActiveTenantAdmins(db, id, user.TenantId);
+            if (otherActiveAdmins == 0)
+                return Results.UnprocessableEntity(new
+                {
+                    error = "This action is not allowed because the user is the last active tenant administrator.",
+                    code  = "LAST_ACTIVE_ADMIN",
+                });
+        }
+
         sra.Deactivate();
 
         await db.SaveChangesAsync();
@@ -4475,6 +4535,31 @@ public static class AdminEndpoints
         var raw = caller.FindFirstValue("tenant_id");
         return raw is null || !Guid.TryParse(raw, out var callerTid) || callerTid != targetTenantId;
     }
+
+    /// <summary>
+    /// LS-ID-TNT-005: Count active TenantAdmin SRAs in <paramref name="tenantId"/>
+    /// that belong to users OTHER than <paramref name="excludeUserId"/>.
+    ///
+    /// Used by DeactivateUser and RevokeRole to enforce the last-active-admin
+    /// protection server-side.  A return value of 0 means the excluded user is
+    /// the sole remaining active TenantAdmin for that tenant.
+    /// </summary>
+    private static Task<int> CountOtherActiveTenantAdmins(
+        IdentityDbContext db,
+        Guid              excludeUserId,
+        Guid              tenantId,
+        CancellationToken ct = default) =>
+        (from sra  in db.ScopedRoleAssignments
+         join role in db.Roles on sra.RoleId equals role.Id
+         join u    in db.Users on sra.UserId equals u.Id
+         where sra.IsActive
+            && sra.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
+            && sra.UserId != excludeUserId
+            && role.Name == "TenantAdmin"
+            && u.TenantId == tenantId
+            && u.IsActive
+         select sra.Id)
+        .CountAsync(ct);
 
     // ── UIX-003: Organizations list ──────────────────────────────────────────
 

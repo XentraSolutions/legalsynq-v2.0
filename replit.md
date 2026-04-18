@@ -4733,7 +4733,34 @@ Closes two high-risk security and operability gaps in tenant user administration
 - **Deactivate guard**: if target is last active TenantAdmin → immediate toast, no confirm dialog
 - **Role-downgrade guard**: if last admin attempts to switch away from TenantAdmin in Edit modal → role field error
 - **Self-deactivation/self-role-downgrade**: both covered by same guards
-- **Backend gap**: backend has no last-admin protection — documented in `analysis/LS-ID-TNT-004-report.md §13`
+- **Backend gap**: backend has no last-admin protection — CLOSED in LS-ID-TNT-005
 
 ### Analysis
 `analysis/LS-ID-TNT-004-report.md`
+
+---
+
+## LS-ID-TNT-005 — Backend Security Hardening (2026-04-18)
+
+Moves last-admin protection from frontend-only into authoritative backend enforcement, and closes the password reset delivery gap. Incremental — no rewrites, no regressions to LS-ID-TNT-001 through LS-ID-TNT-004.
+
+### Files Changed
+- `apps/services/identity/Identity.Api/Endpoints/AdminEndpoints.cs` — Added `using Microsoft.AspNetCore.Hosting`; added `CountOtherActiveTenantAdmins` private static helper (LINQ join over SRA × Roles × Users); added last-admin guard to `DeactivateUser` (422 if target is last active TenantAdmin); added last-admin guard to `RevokeRole` (422 if role is TenantAdmin and user is last active admin); updated `AdminResetPassword` signature to inject `IWebHostEnvironment env`; env-gated token logging and response (`{ message, resetToken }` in non-production, `{ message }` in production)
+- `apps/web/src/lib/tenant-client-api.ts` — Updated `resetPassword` return type: `{ message: string; resetToken?: string }`
+- `apps/web/src/app/(platform)/tenant/authorization/users/AuthUserTable.tsx` — Added `Modal` import; added `resetResult` + `copyLabel` states; updated `handleResetPasswordConfirm` to detect `resetToken` → construct reset link → show `resetResult` modal; added `ResetLinkModal` inline JSX (amber warning panel, clickable link, copy button with 2.5s feedback)
+- `apps/web/src/app/(platform)/tenant/authorization/users/EditUserModal.tsx` — Added `err.status === 422` branch to `handleSave` catch block, surfaces backend last-admin-block message in the error banner
+
+### Backend Last Admin Protection Contract
+- **Blocked response**: HTTP 422 Unprocessable Entity, `{ error: "This action is not allowed because the user is the last active tenant administrator.", code: "LAST_ACTIVE_ADMIN" }`
+- **Protected paths**: `PATCH /api/admin/users/{id}/deactivate` + `DELETE /api/admin/users/{id}/roles/{roleId}` (TenantAdmin role only)
+- **Not protected** (no risk): activate, assign role, phone update
+- **Audit**: no success event emitted for blocked actions (SaveChangesAsync never called)
+- **Frontend frontend guard**: remains as defense-in-depth; backend is now authoritative
+
+### Password Reset Delivery Contract
+- **Non-production** (`IsDevelopment() == true`): `{ message: "...", resetToken: "<raw>" }` — frontend shows modal with clickable link + copy button
+- **Production** (`IsProduction() == true`): `{ message: "Password reset email will be sent to the user." }` — no token in response
+- **Dev log**: raw token logged only in non-production environments
+
+### Analysis
+`analysis/LS-ID-TNT-005-report.md`

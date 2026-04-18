@@ -39,7 +39,7 @@ export const tenantClientApi = {
     apiClient.patch<{ phone: string | null }>(`/identity/api/admin/users/${userId}/phone`, { phone }),
 
   resetPassword: (userId: string) =>
-    apiClient.post<{ message: string }>(`/identity/api/admin/users/${userId}/reset-password`, {}),
+    apiClient.post<{ message: string; resetToken?: string }>(`/identity/api/admin/users/${userId}/reset-password`, {}),
 
   assignProduct: (tenantId: string, userId: string, productCode: string) =>
     apiClient.put<void>(`/identity/api/tenants/${tenantId}/users/${userId}/products/${productCode}`, {}),
