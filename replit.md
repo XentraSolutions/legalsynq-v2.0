@@ -4654,3 +4654,29 @@ Stabilized the Authorization → Users page (`/tenant/authorization/users`) for 
 
 ### Analysis
 `analysis/LS-ID-TNT-001-report.md`
+
+---
+
+## LS-ID-TNT-002 — Add User Flow (2026-04-18)
+
+Adds a modal-based Add User flow to the Authorization → Users page. Tenant admins can create new users directly from the list without navigating away. Incremental — no rewrites, no changes to Groups / Access / Simulator tabs.
+
+### Files Changed
+- `apps/web/src/lib/tenant-client-api.ts` — Added `CreateUserBody` interface, `createUser(body)` (POST `/identity/api/users` via BFF proxy), and `getRoles()` (GET `/identity/api/admin/roles` via BFF proxy)
+- `apps/web/src/app/(platform)/tenant/authorization/users/page.tsx` — Passes `tenantId={session.tenantId}` (from `requireTenantAdmin()` → `PlatformSession`) to `AuthUserTable`
+- `apps/web/src/app/(platform)/tenant/authorization/users/AuthUserTable.tsx` — Accepts `tenantId: string` prop; "Add User" primary button (top-right of filter bar); modal open/close state; `handleUserCreated` callback calls `router.refresh()` to re-fetch the server list
+- `apps/web/src/app/(platform)/tenant/authorization/users/AddUserModal.tsx` — **New** — `Modal`-based form with First Name, Last Name, Email, Role (dropdown, fetched from `/identity/api/admin/roles`), and Temporary Password; client-side validation with inline errors; API error displayed in banner (modal stays open on failure, form preserved); success triggers `useToast().show()` + `onSuccess()` callback
+
+### API Contract
+- Endpoint: `POST /identity/api/users`
+- Body: `{ tenantId, email, password, firstName, lastName, roleIds? }`
+- Backend enforces: `request.TenantId === caller JWT tenant_id` (403 on mismatch)
+- TenantId sourced server-side from `PlatformSession` — never user-supplied
+
+### Tenant Isolation
+- `tenantId` flows: JWT → `PlatformSession.tenantId` → server prop → client modal
+- Backend double-validates: `tenant_id` claim must match `request.TenantId`
+- No cross-tenant creation possible
+
+### Analysis
+`analysis/LS-ID-TNT-002-report.md`

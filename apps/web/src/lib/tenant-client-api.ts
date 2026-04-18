@@ -1,5 +1,6 @@
 import { apiClient, ApiError } from '@/lib/api-client';
 import type {
+  TenantUser,
   TenantGroup,
   AccessDebugResponse,
   SimulationRequest,
@@ -8,7 +9,22 @@ import type {
 
 export { ApiError };
 
+export interface CreateUserBody {
+  tenantId:  string;
+  email:     string;
+  password:  string;
+  firstName: string;
+  lastName:  string;
+  roleIds?:  string[];
+}
+
 export const tenantClientApi = {
+  createUser: (body: CreateUserBody) =>
+    apiClient.post<TenantUser>('/identity/api/users', body),
+
+  getRoles: () =>
+    apiClient.get<{ id: string; name: string }[]>('/identity/api/admin/roles'),
+
   assignProduct: (tenantId: string, userId: string, productCode: string) =>
     apiClient.put<void>(`/identity/api/tenants/${tenantId}/users/${userId}/products/${productCode}`, {}),
 

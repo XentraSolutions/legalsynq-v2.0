@@ -4,7 +4,7 @@ import { AuthUserTable } from './AuthUserTable';
 import type { TenantUser } from '@/types/tenant';
 
 export default async function AuthorizationUsersPage() {
-  await requireTenantAdmin();
+  const session = await requireTenantAdmin();
 
   let users: TenantUser[] = [];
   let fetchError: string | null = null;
@@ -30,7 +30,7 @@ export default async function AuthorizationUsersPage() {
 
   return (
     <div className="space-y-4">
-      <AuthUserTable users={users} />
+      <AuthUserTable users={users} tenantId={session.tenantId} />
     </div>
   );
 }
