@@ -1213,3 +1213,78 @@ export type WorkflowTimelineEventCategory =
   | 'Lifecycle'
   | 'Task'
   | 'Other';
+
+// ── Outbox (E17) ──────────────────────────────────────────────────────────────
+
+/**
+ * E17 — outbox item status values, mirroring OutboxStatus constants on the
+ * Flow backend.
+ */
+export type OutboxStatus =
+  | 'Pending'
+  | 'Processing'
+  | 'Succeeded'
+  | 'Failed'
+  | 'DeadLettered';
+
+/**
+ * E17 — single row from the outbox list endpoint. LastError is truncated to
+ * 200 chars server-side; use OutboxDetail for the full error.
+ */
+export interface OutboxListItem {
+  id:                  string;
+  tenantId:            string;
+  workflowInstanceId?: string | null;
+  eventType:           string;
+  status:              OutboxStatus;
+  attemptCount:        number;
+  createdAt:           string;
+  updatedAt?:          string | null;
+  nextAttemptAt:       string;
+  processedAt?:        string | null;
+  lastError?:          string | null;
+}
+
+/**
+ * E17 — full detail for a single outbox item including the complete last
+ * error, a truncated payload summary, and the retry eligibility flag.
+ */
+export interface OutboxDetail extends OutboxListItem {
+  payloadSummary?:  string | null;
+  isRetryEligible:  boolean;
+}
+
+/**
+ * E17 — lightweight grouped counts for the summary cards on the outbox page.
+ */
+export interface OutboxSummary {
+  pendingCount:      number;
+  processingCount:   number;
+  failedCount:       number;
+  deadLetteredCount: number;
+  succeededCount:    number;
+}
+
+/**
+ * E17 — paged list response envelope for the outbox list endpoint.
+ */
+export interface OutboxListResponse {
+  items:      OutboxListItem[];
+  totalCount: number;
+  page:       number;
+  pageSize:   number;
+}
+
+/**
+ * E17 — structured result returned by the manual retry endpoint. Mirrors
+ * AdminOutboxRetryResult on the Flow side.
+ */
+export interface OutboxRetryResult {
+  outboxId:       string;
+  eventType:      string;
+  previousStatus: string;
+  newStatus:      string;
+  performedBy:    string;
+  timestamp:      string;
+  reason:         string;
+}

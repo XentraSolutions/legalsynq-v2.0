@@ -107,7 +107,8 @@ export const CC_NAV: NavSection[] = [
     heading: 'OPERATIONS',
     items: [
       { href: '/workflows',            label: 'Workflows',          icon: 'ri-flow-chart',              badge: 'LIVE' },
-      { href: '/workflows/exceptions', label: 'Workflow exceptions', icon: 'ri-error-warning-line',     badge: 'NEW'  },
+      { href: '/workflows/exceptions', label: 'Workflow exceptions', icon: 'ri-error-warning-line',     badge: 'LIVE'  },
+      { href: '/operations/outbox',    label: 'Async Outbox',        icon: 'ri-inbox-archive-line',     badge: 'LIVE' },
       { href: '/support',    label: 'Support Tools', icon: 'ri-customer-service-2-line', badge: 'IN PROGRESS' },
       { href: '/audit-logs', label: 'Audit Logs',    icon: 'ri-file-list-3-line',        badge: 'LIVE' },
       { href: '/monitoring', label: 'Monitoring',    icon: 'ri-pulse-line',              badge: 'IN PROGRESS' },

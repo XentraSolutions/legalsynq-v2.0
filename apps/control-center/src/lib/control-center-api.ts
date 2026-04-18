@@ -149,6 +149,11 @@ import type {
   WorkflowTimelineResponse,
   WorkflowTimelineSeverity,
   WorkflowTimelineActor,
+  OutboxListItem,
+  OutboxDetail,
+  OutboxListResponse,
+  OutboxSummary,
+  OutboxRetryResult,
 }                                       from '@/types/control-center';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -295,6 +300,36 @@ function mapWorkflowTimelineResponse(
     totalCount:         Number(r.totalCount ?? events.length) || 0,
     truncated:          Boolean(r.truncated ?? false),
     events,
+  };
+}
+
+// ── E17 Outbox mappers ────────────────────────────────────────────────────────
+
+function mapOutboxListItem(raw: unknown): OutboxListItem {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return {
+    id:                  String(r.id                  ?? ''),
+    tenantId:            String(r.tenantId            ?? '').toLowerCase(),
+    workflowInstanceId:  r.workflowInstanceId != null ? String(r.workflowInstanceId) : null,
+    eventType:           String(r.eventType           ?? ''),
+    status:              String(r.status              ?? 'Pending') as OutboxListItem['status'],
+    attemptCount:        Number(r.attemptCount        ?? 0) || 0,
+    createdAt:           String(r.createdAt           ?? ''),
+    updatedAt:           r.updatedAt  != null ? String(r.updatedAt)  : null,
+    nextAttemptAt:       String(r.nextAttemptAt       ?? ''),
+    processedAt:         r.processedAt != null ? String(r.processedAt) : null,
+    lastError:           r.lastError   != null ? String(r.lastError)   : null,
+  };
+}
+
+function mapOutboxDetail(raw: unknown): OutboxDetail {
+  const base = mapOutboxListItem(raw);
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return {
+    ...base,
+    lastError:       r.lastError      != null ? String(r.lastError)      : null,
+    payloadSummary:  r.payloadSummary  != null ? String(r.payloadSummary)  : null,
+    isRetryEligible: Boolean(r.isRetryEligible ?? false),
   };
 }
 
@@ -2238,6 +2273,114 @@ export const controlCenterServerApi = {
         if (isNotFound(err)) return null;
         throw err;
       }
+    },
+  },
+
+  outbox: {
+    /**
+     * E17 — list outbox items with optional filters. Calls the Flow admin
+     * endpoint and returns a normalised response.
+     */
+    list: async (params: {
+      page?:               number;
+      pageSize?:           number;
+      status?:             string;
+      eventType?:          string;
+      tenantId?:           string;
+      workflowInstanceId?: string;
+      search?:             string;
+    } = {}): Promise<import('@/types/control-center').OutboxListResponse> => {
+      const qs = toQs({
+        page:               params.page     ?? 1,
+        pageSize:           params.pageSize ?? 20,
+        status:             params.status,
+        eventType:          params.eventType,
+        tenantId:           params.tenantId,
+        workflowInstanceId: params.workflowInstanceId,
+        search:             params.search,
+      });
+      const raw = await apiClient.get<{
+        items?:      unknown[];
+        totalCount?: number;
+        page?:       number;
+        pageSize?:   number;
+      }>(
+        `/flow/api/v1/admin/outbox${qs}`,
+        0,
+        ['cc:outbox'],
+      );
+      return {
+        items:      (raw?.items ?? []).map(mapOutboxListItem),
+        totalCount: raw?.totalCount ?? 0,
+        page:       raw?.page       ?? (params.page     ?? 1),
+        pageSize:   raw?.pageSize   ?? (params.pageSize ?? 20),
+      };
+    },
+
+    /**
+     * E17 — lightweight counts by status for the summary cards.
+     */
+    summary: async (): Promise<import('@/types/control-center').OutboxSummary> => {
+      const raw = await apiClient.get<{
+        pendingCount?:      number;
+        processingCount?:   number;
+        failedCount?:       number;
+        deadLetteredCount?: number;
+        succeededCount?:    number;
+      }>(
+        `/flow/api/v1/admin/outbox/summary`,
+        0,
+        ['cc:outbox'],
+      );
+      return {
+        pendingCount:      raw?.pendingCount      ?? 0,
+        processingCount:   raw?.processingCount   ?? 0,
+        failedCount:       raw?.failedCount       ?? 0,
+        deadLetteredCount: raw?.deadLetteredCount ?? 0,
+        succeededCount:    raw?.succeededCount    ?? 0,
+      };
+    },
+
+    /**
+     * E17 — fetch full detail for a single outbox item. Returns null on 404.
+     */
+    getById: async (id: string): Promise<import('@/types/control-center').OutboxDetail | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/flow/api/v1/admin/outbox/${encodeURIComponent(id)}`,
+          0,
+          ['cc:outbox'],
+        );
+        return mapOutboxDetail(raw);
+      } catch (err) {
+        if (isNotFound(err)) return null;
+        throw err;
+      }
+    },
+
+    /**
+     * E17 — perform a governed manual retry on an outbox item. Throws on
+     * non-2xx responses; the BFF route translates the throw into a JSON
+     * error for the drawer.
+     */
+    retry: async (
+      id:     string,
+      reason: string,
+    ): Promise<import('@/types/control-center').OutboxRetryResult> => {
+      const raw = await apiClient.post<unknown>(
+        `/flow/api/v1/admin/outbox/${encodeURIComponent(id)}/retry`,
+        { reason },
+      );
+      const r = (raw ?? {}) as Record<string, unknown>;
+      return {
+        outboxId:       String(r.outboxId       ?? id),
+        eventType:      String(r.eventType      ?? ''),
+        previousStatus: String(r.previousStatus ?? ''),
+        newStatus:      String(r.newStatus      ?? ''),
+        performedBy:    String(r.performedBy    ?? ''),
+        timestamp:      String(r.timestamp      ?? ''),
+        reason:         String(r.reason         ?? reason),
+      };
     },
   },
 
