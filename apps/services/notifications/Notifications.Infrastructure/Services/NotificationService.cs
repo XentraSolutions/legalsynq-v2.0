@@ -12,6 +12,8 @@ public class NotificationServiceImpl : INotificationService
 {
     private readonly INotificationRepository _notificationRepo;
     private readonly INotificationAttemptRepository _attemptRepo;
+    private readonly INotificationEventRepository _eventRepo;
+    private readonly IDeliveryIssueRepository _deliveryIssueRepo;
     private readonly IProviderRoutingService _routingService;
     private readonly IContactEnforcementService _contactEnforcement;
     private readonly IUsageEvaluationService _usageEvaluation;
@@ -28,6 +30,8 @@ public class NotificationServiceImpl : INotificationService
     public NotificationServiceImpl(
         INotificationRepository notificationRepo,
         INotificationAttemptRepository attemptRepo,
+        INotificationEventRepository eventRepo,
+        IDeliveryIssueRepository deliveryIssueRepo,
         IProviderRoutingService routingService,
         IContactEnforcementService contactEnforcement,
         IUsageEvaluationService usageEvaluation,
@@ -41,25 +45,28 @@ public class NotificationServiceImpl : INotificationService
         IAuditEventClient auditClient,
         ILogger<NotificationServiceImpl> logger)
     {
-        _notificationRepo = notificationRepo;
-        _attemptRepo = attemptRepo;
-        _routingService = routingService;
-        _contactEnforcement = contactEnforcement;
-        _usageEvaluation = usageEvaluation;
-        _metering = metering;
-        _templateResolution = templateResolution;
-        _templateRendering = templateRendering;
-        _brandingResolution = brandingResolution;
-        _sendGridAdapter = sendGridAdapter;
-        _twilioAdapter = twilioAdapter;
-        _recipientResolver = recipientResolver;
-        _auditClient = auditClient;
-        _logger = logger;
+        _notificationRepo    = notificationRepo;
+        _attemptRepo         = attemptRepo;
+        _eventRepo           = eventRepo;
+        _deliveryIssueRepo   = deliveryIssueRepo;
+        _routingService      = routingService;
+        _contactEnforcement  = contactEnforcement;
+        _usageEvaluation     = usageEvaluation;
+        _metering            = metering;
+        _templateResolution  = templateResolution;
+        _templateRendering   = templateRendering;
+        _brandingResolution  = brandingResolution;
+        _sendGridAdapter     = sendGridAdapter;
+        _twilioAdapter       = twilioAdapter;
+        _recipientResolver   = recipientResolver;
+        _auditClient         = auditClient;
+        _logger              = logger;
     }
+
+    // ─── Submit ──────────────────────────────────────────────────────────────
 
     public async Task<NotificationResultDto> SubmitAsync(Guid tenantId, SubmitNotificationDto request)
     {
-        // Parse the recipient envelope to detect role/org fan-out modes.
         var recipientJson = JsonSerializer.Serialize(request.Recipient);
         JsonElement recipientEl;
         try { recipientEl = JsonDocument.Parse(recipientJson).RootElement.Clone(); }
@@ -73,14 +80,6 @@ public class NotificationServiceImpl : INotificationService
         if (!isFanOut)
             return await DispatchSingleAsync(tenantId, request, recipientJson);
 
-        // Role/Org/Batch fan-out: resolver expands every envelope (single
-        // object or array) and dedupes the union by StableKey, then we
-        // persist a parent "fan-out summary" notification capturing how
-        // many users were resolved, delivered, blocked, or skipped — and
-        // why — so operators can diagnose envelopes that unexpectedly
-        // delivered to nobody. The idempotency key applies to the parent;
-        // re-submitting must return the existing parent rather than
-        // violating the (TenantId, IdempotencyKey) unique index.
         if (!string.IsNullOrEmpty(request.IdempotencyKey))
         {
             var existing = await _notificationRepo.FindByIdempotencyKeyAsync(tenantId, request.IdempotencyKey);
@@ -141,214 +140,458 @@ public class NotificationServiceImpl : INotificationService
         catch { /* audit best-effort */ }
 
         if (resolved.Count == 0)
-        {
             _logger.LogWarning("Notification fan-out resolved 0 recipients for tenant {TenantId} mode {Mode}", tenantId, fanOutMode);
-        }
 
         return BuildFanOutResult(parent, summary, dispatched);
     }
 
-    // Skip members that cannot be reached on the requested channel so the
-    // fan-out summary records a clear reason instead of a doomed dispatch.
-    // SMS now consults the phone surfaced by the membership-lookup so members
-    // with a phone on file are dispatched and only those genuinely missing
-    // one are skipped with reason "no_phone_on_file".
-    private static string? ClassifySkipReason(string channel, ResolvedRecipient r)
+    // ─── List / Get ───────────────────────────────────────────────────────────
+
+    public async Task<NotificationDto?> GetByIdAsync(Guid tenantId, Guid id)
     {
-        var ch = channel?.Trim().ToLowerInvariant();
-        return ch switch
+        var n = await _notificationRepo.GetByIdAndTenantAsync(id, tenantId);
+        return n != null ? MapToDto(n) : null;
+    }
+
+    public async Task<List<NotificationDto>> ListAsync(Guid tenantId, int limit = 50, int offset = 0)
+    {
+        var list = await _notificationRepo.GetByTenantAsync(tenantId, limit, offset);
+        return list.Select(MapToDto).ToList();
+    }
+
+    public async Task<PagedNotificationsResponse> ListPagedAsync(Guid tenantId, NotificationListQuery query)
+    {
+        var (items, total) = await _notificationRepo.GetPagedAsync(tenantId, query);
+        var pageSize = Math.Clamp(query.PageSize, 1, 200);
+        var page     = Math.Max(1, query.Page);
+        var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+
+        return new PagedNotificationsResponse
         {
-            "email"          => string.IsNullOrWhiteSpace(r.Email)  ? "no_email_on_file" : null,
-            "sms"            => string.IsNullOrWhiteSpace(r.Phone)  ? "no_phone_on_file" : null,
-            "push"           => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_push" : null,
-            "in-app" or "inapp" => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_inapp" : null,
-            _                => null,
+            Items      = items.Select(MapToDto).ToList(),
+            Page       = page,
+            PageSize   = pageSize,
+            TotalCount = total,
+            TotalPages = totalPages,
+            AppliedFilters = new AppliedFiltersDto
+            {
+                Status        = query.Status,
+                Channel       = query.Channel,
+                Provider      = query.Provider,
+                Recipient     = query.Recipient,
+                ProductKey    = query.ProductKey,
+                From          = query.From,
+                To            = query.To,
+                SortBy        = query.SortBy,
+                SortDirection = query.SortDirection,
+            },
         };
     }
 
-    private async Task<Notification> PersistFanOutParentAsync(
-        Guid tenantId, SubmitNotificationDto request, string recipientJson, FanOutSummary summary)
+    // ─── Stats ────────────────────────────────────────────────────────────────
+
+    public async Task<NotificationStatsDto> GetStatsAsync(Guid tenantId, NotificationStatsQuery query)
     {
-        // Merge summary into MetadataJson under "fanout" so the UI can read
-        // it without a schema migration; producer keys are preserved.
-        Dictionary<string, object?> metaDict;
-        if (request.Metadata != null)
+        var data = await _notificationRepo.GetStatsAsync(tenantId, query);
+
+        var queued = (data.StatusCounts.GetValueOrDefault("accepted", 0)
+                    + data.StatusCounts.GetValueOrDefault("processing", 0));
+
+        return new NotificationStatsDto
+        {
+            TotalCount        = data.TotalCount,
+            QueuedCount       = queued,
+            SentCount         = data.StatusCounts.GetValueOrDefault("sent", 0),
+            DeliveredCount    = data.DeliveredCount,
+            FailedCount       = data.StatusCounts.GetValueOrDefault("failed", 0),
+            SuppressedCount   = data.StatusCounts.GetValueOrDefault("blocked", 0),
+            PartialCount      = data.StatusCounts.GetValueOrDefault("partial", 0),
+            ChannelBreakdown  = data.ChannelCounts,
+            ProviderBreakdown = data.ProviderCounts,
+            StatusDistribution = data.StatusCounts,
+            RecentTrend       = data.Trend,
+            AppliedFilters    = new AppliedFiltersDto
+            {
+                Channel    = query.Channel,
+                Status     = query.Status,
+                Provider   = query.Provider,
+                ProductKey = query.ProductKey,
+                From       = query.From,
+                To         = query.To,
+            },
+        };
+    }
+
+    // ─── Events ───────────────────────────────────────────────────────────────
+
+    public async Task<List<NotificationEventDto>> GetEventsAsync(Guid tenantId, Guid id)
+    {
+        var notification = await _notificationRepo.GetByIdAndTenantAsync(id, tenantId);
+        if (notification == null) return new List<NotificationEventDto>();
+
+        var events = new List<NotificationEventDto>();
+
+        // Synthesize lifecycle event: notification created
+        events.Add(new NotificationEventDto
+        {
+            Id          = id,
+            EventType   = "created",
+            Source      = "system",
+            Timestamp   = notification.CreatedAt,
+            Description = $"Notification accepted (channel={notification.Channel}, status={notification.Status})",
+        });
+
+        // Synthesize attempt events from NotificationAttempt records
+        var attempts = await _attemptRepo.GetByNotificationIdAsync(id);
+        foreach (var attempt in attempts)
+        {
+            events.Add(new NotificationEventDto
+            {
+                Id          = attempt.Id,
+                EventType   = attempt.IsFailover ? "failover_attempted" : "attempted",
+                Source      = "system",
+                Timestamp   = attempt.CreatedAt,
+                Description = $"Attempt #{attempt.AttemptNumber} via {attempt.Provider} — status: {attempt.Status}",
+                Provider    = attempt.Provider,
+                ProviderMessageId = attempt.ProviderMessageId,
+            });
+
+            if (attempt.CompletedAt.HasValue && attempt.Status != "sending")
+            {
+                events.Add(new NotificationEventDto
+                {
+                    Id          = attempt.Id,
+                    EventType   = attempt.Status == "sent" ? "sent" : "attempt_failed",
+                    Source      = "system",
+                    Timestamp   = attempt.CompletedAt.Value,
+                    Description = attempt.Status == "sent"
+                        ? $"Sent via {attempt.Provider}"
+                        : $"Attempt #{attempt.AttemptNumber} failed: {attempt.ErrorMessage ?? attempt.FailureCategory}",
+                    Provider    = attempt.Provider,
+                    ProviderMessageId = attempt.ProviderMessageId,
+                });
+            }
+        }
+
+        // Provider webhook events (delivered, bounced, etc.)
+        var providerEvents = await _eventRepo.GetByNotificationIdAsync(id);
+        foreach (var evt in providerEvents)
+        {
+            events.Add(new NotificationEventDto
+            {
+                Id          = evt.Id,
+                EventType   = evt.NormalizedEventType,
+                Source      = $"provider:{evt.Provider}",
+                Timestamp   = evt.EventTimestamp,
+                Description = $"Provider event: {evt.RawEventType} (normalized: {evt.NormalizedEventType})",
+                Provider    = evt.Provider,
+                ProviderMessageId = evt.ProviderMessageId,
+                MetadataJson = evt.MetadataJson,
+            });
+        }
+
+        // Final state synthetic event if notification is terminal
+        if (notification.Status is "blocked" or "failed" or "partial")
+        {
+            events.Add(new NotificationEventDto
+            {
+                Id          = notification.Id,
+                EventType   = notification.Status,
+                Source      = "system",
+                Timestamp   = notification.UpdatedAt,
+                Description = notification.LastErrorMessage
+                    ?? $"Notification reached terminal status: {notification.Status}",
+            });
+        }
+
+        return events.OrderBy(e => e.Timestamp).ThenBy(e => e.EventType).ToList();
+    }
+
+    // ─── Issues ───────────────────────────────────────────────────────────────
+
+    public async Task<List<NotificationIssueDto>> GetIssuesAsync(Guid tenantId, Guid id)
+    {
+        // Verify tenant ownership
+        var notification = await _notificationRepo.GetByIdAndTenantAsync(id, tenantId);
+        if (notification == null) return new List<NotificationIssueDto>();
+
+        var issues = await _deliveryIssueRepo.GetByNotificationIdAsync(id);
+        return issues.Select(i => new NotificationIssueDto
+        {
+            Id                = i.Id,
+            IssueType         = i.IssueType,
+            Channel           = i.Channel,
+            Provider          = string.IsNullOrEmpty(i.Provider) ? null : i.Provider,
+            RecommendedAction = i.RecommendedAction,
+            DetailsJson       = i.DetailsJson,
+            IsResolved        = i.IsResolved,
+            ResolvedAt        = i.ResolvedAt,
+            CreatedAt         = i.CreatedAt,
+        }).ToList();
+    }
+
+    // ─── Retry ────────────────────────────────────────────────────────────────
+
+    private static readonly HashSet<string> RetryableFailureCategories = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "retryable_provider_failure",
+        "provider_unavailable",
+        "auth_config_failure",
+    };
+
+    public async Task<RetryResultDto?> RetryAsync(Guid tenantId, Guid id)
+    {
+        var notification = await _notificationRepo.GetByIdAndTenantAsync(id, tenantId);
+        if (notification == null) return null;
+
+        if (notification.Status != "failed")
+            return new RetryResultDto
+            {
+                NotificationId = id,
+                PreviousStatus = notification.Status,
+                NewStatus      = notification.Status,
+                FailureCategory = "not_retryable",
+                LastErrorMessage = $"Notification is not in a retryable state (current status: {notification.Status})",
+                RetriedAt      = DateTime.UtcNow,
+            };
+
+        if (!string.IsNullOrEmpty(notification.FailureCategory) &&
+            !RetryableFailureCategories.Contains(notification.FailureCategory))
+            return new RetryResultDto
+            {
+                NotificationId = id,
+                PreviousStatus = notification.Status,
+                NewStatus      = notification.Status,
+                FailureCategory = notification.FailureCategory,
+                LastErrorMessage = $"Failure category '{notification.FailureCategory}' is not retryable",
+                RetriedAt      = DateTime.UtcNow,
+            };
+
+        var previousStatus = notification.Status;
+
+        // Determine base attempt number from existing attempts
+        var existingAttempts = await _attemptRepo.GetByNotificationIdAsync(id);
+        var baseAttemptNumber = existingAttempts.Count;
+
+        notification.Status = "processing";
+        notification.FailureCategory = null;
+        notification.LastErrorMessage = null;
+        await _notificationRepo.UpdateAsync(notification);
+
+        await ExecuteSendLoopAsync(tenantId, notification, baseAttemptNumber);
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "notification.retry",
+                Action       = "notification.retry",
+                SourceSystem = "notifications",
+                Description  = $"Operator-triggered retry for notification {id}; previous status: {previousStatus}; new status: {notification.Status}",
+                Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() }
+            });
+        }
+        catch { /* audit best-effort */ }
+
+        return new RetryResultDto
+        {
+            NotificationId   = id,
+            PreviousStatus   = previousStatus,
+            NewStatus        = notification.Status,
+            ProviderUsed     = notification.ProviderUsed,
+            FailureCategory  = notification.FailureCategory,
+            LastErrorMessage = notification.LastErrorMessage,
+            RetriedAt        = DateTime.UtcNow,
+        };
+    }
+
+    // ─── Resend ───────────────────────────────────────────────────────────────
+
+    public async Task<ResendResultDto?> ResendAsync(Guid tenantId, Guid id)
+    {
+        var original = await _notificationRepo.GetByIdAndTenantAsync(id, tenantId);
+        if (original == null) return null;
+
+        // Build metadata with resendOf link
+        Dictionary<string, object?> metaDict = new();
+        if (!string.IsNullOrEmpty(original.MetadataJson))
+        {
+            try { metaDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(original.MetadataJson) ?? new(); }
+            catch { metaDict = new(); }
+        }
+        metaDict["resendOf"] = original.Id.ToString();
+        var newMetaJson = JsonSerializer.Serialize(metaDict);
+
+        // Rebuild original message/recipient from stored JSON
+        object recipient;
+        object message;
+        try { recipient = JsonSerializer.Deserialize<object>(original.RecipientJson) ?? new(); } catch { recipient = new(); }
+        try { message   = JsonSerializer.Deserialize<object>(original.MessageJson)   ?? new(); } catch { message   = new(); }
+
+        var resendRequest = new SubmitNotificationDto
+        {
+            Channel        = original.Channel,
+            Recipient      = recipient,
+            Message        = message,
+            Metadata       = JsonSerializer.Deserialize<object>(newMetaJson),
+            IdempotencyKey = null,            // Force fresh dispatch
+            TemplateKey    = original.TemplateKey,
+            Severity       = original.Severity,
+            Category       = original.Category,
+        };
+
+        var result = await SubmitAsync(tenantId, resendRequest);
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "notification.resend",
+                Action       = "notification.resend",
+                SourceSystem = "notifications",
+                Description  = $"Operator-triggered resend of notification {id}; new notification {result.Id}",
+                Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() }
+            });
+        }
+        catch { /* audit best-effort */ }
+
+        return new ResendResultDto
+        {
+            OriginalNotificationId = id,
+            NewNotificationId      = result.Id,
+            Status                 = result.Status,
+            CreatedAt              = DateTime.UtcNow,
+        };
+    }
+
+    // ─── Send loop (shared by initial dispatch and retry) ────────────────────
+
+    private async Task ExecuteSendLoopAsync(Guid tenantId, Notification notification, int baseAttemptNumber = 0)
+    {
+        var contactValue = ExtractContactValue(notification.Channel, notification.RecipientJson);
+        var routes = await _routingService.ResolveRoutesAsync(tenantId, notification.Channel);
+
+        string? subject = notification.RenderedSubject;
+        string? body    = notification.RenderedBody;
+        string? html    = null;
+
+        if (string.IsNullOrEmpty(subject) || string.IsNullOrEmpty(body))
         {
             try
             {
-                var existing = JsonSerializer.Serialize(request.Metadata);
-                metaDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(existing) ?? new();
+                var msg = JsonSerializer.Deserialize<JsonElement>(notification.MessageJson);
+                subject ??= msg.TryGetProperty("subject", out var s) ? s.GetString() : "";
+                body    ??= msg.TryGetProperty("body",    out var b) ? b.GetString() : "";
+                html      = msg.TryGetProperty("html",    out var h) ? h.GetString() : null;
             }
-            catch { metaDict = new(); }
+            catch { /* use whatever we have */ }
         }
-        else
+
+        foreach (var route in routes)
         {
-            metaDict = new();
+            var attemptNumber = baseAttemptNumber + routes.IndexOf(route) + 1;
+            var attempt = await _attemptRepo.CreateAsync(new NotificationAttempt
+            {
+                TenantId            = tenantId,
+                NotificationId      = notification.Id,
+                Channel             = notification.Channel,
+                Provider            = route.ProviderType,
+                Status              = "sending",
+                AttemptNumber       = attemptNumber,
+                ProviderOwnershipMode = route.OwnershipMode,
+                ProviderConfigId    = route.TenantProviderConfigId,
+                IsFailover          = route.IsFailover
+            });
+
+            _ = _metering.MeterAsync(new MeterEventInput
+            {
+                TenantId = tenantId,
+                UsageUnit = notification.Channel == "email" ? "email_attempt" : "sms_attempt",
+                Channel = notification.Channel,
+                NotificationId = notification.Id,
+                NotificationAttemptId = attempt.Id,
+                Provider = route.ProviderType,
+                ProviderOwnershipMode = route.OwnershipMode,
+                ProviderConfigId = route.TenantProviderConfigId
+            });
+
+            bool success;
+            string? providerMessageId = null;
+            ProviderFailure? failure = null;
+
+            if (notification.Channel == "email")
+            {
+                var result = await _sendGridAdapter.SendAsync(new EmailSendPayload
+                {
+                    To = contactValue ?? "", Subject = subject ?? "", Body = body ?? "", Html = html
+                });
+                success = result.Success;
+                providerMessageId = result.ProviderMessageId;
+                failure = result.Failure;
+            }
+            else
+            {
+                var result = await _twilioAdapter.SendAsync(new SmsSendPayload
+                {
+                    To = contactValue ?? "", Body = body ?? ""
+                });
+                success = result.Success;
+                providerMessageId = result.ProviderMessageId;
+                failure = result.Failure;
+            }
+
+            if (success)
+            {
+                attempt.Status = "sent";
+                attempt.ProviderMessageId = providerMessageId;
+                attempt.CompletedAt = DateTime.UtcNow;
+                await _attemptRepo.UpdateAsync(attempt);
+
+                notification.Status              = "sent";
+                notification.ProviderUsed        = route.ProviderType;
+                notification.ProviderOwnershipMode = route.OwnershipMode;
+                notification.ProviderConfigId    = route.TenantProviderConfigId;
+                notification.PlatformFallbackUsed = route.IsPlatformFallback;
+                await _notificationRepo.UpdateAsync(notification);
+
+                _ = _metering.MeterAsync(new MeterEventInput
+                {
+                    TenantId = tenantId,
+                    UsageUnit = notification.Channel == "email" ? "email_sent" : "sms_sent",
+                    Channel = notification.Channel,
+                    NotificationId = notification.Id,
+                    NotificationAttemptId = attempt.Id,
+                    Provider = route.ProviderType,
+                    ProviderOwnershipMode = route.OwnershipMode
+                });
+                try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.sent", Action = "notification.sent", SourceSystem = "notifications", Description = "Notification sent successfully", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+                return;
+            }
+
+            attempt.Status = "failed";
+            attempt.FailureCategory = failure?.Category;
+            attempt.ErrorMessage = failure?.Message;
+            attempt.CompletedAt = DateTime.UtcNow;
+            await _attemptRepo.UpdateAsync(attempt);
+
+            if (route.IsFailover)
+                _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "provider_failover_attempt", Channel = notification.Channel, NotificationId = notification.Id, NotificationAttemptId = attempt.Id, Provider = route.ProviderType });
+
+            if (failure?.Retryable != true) break;
         }
-        // CamelCase so the web UI can read predictable JSON keys.
-        var camelOpts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-        var summaryJson = JsonSerializer.Serialize(summary, camelOpts);
-        metaDict["fanout"] = JsonSerializer.Deserialize<JsonElement>(summaryJson);
 
-        var status =
-            summary.TotalResolved == 0                              ? "blocked" :
-            summary.SentCount     == summary.TotalResolved          ? "sent"    :
-            summary.SentCount     == 0 && summary.FailedCount  == 0 ? "blocked" :
-            summary.SentCount     == 0                              ? "failed"  :
-                                                                      "partial";
-
-        var parent = new Notification
-        {
-            TenantId = tenantId,
-            Channel  = request.Channel,
-            Status   = status,
-            RecipientJson = recipientJson,
-            MessageJson   = JsonSerializer.Serialize(request.Message),
-            MetadataJson  = JsonSerializer.Serialize(metaDict),
-            IdempotencyKey = request.IdempotencyKey,
-            TemplateKey    = request.TemplateKey,
-            BlockedByPolicy = status == "blocked",
-            BlockedReasonCode = summary.TotalResolved == 0 ? "recipient_set_empty" : null,
-            // Only surface a "last error" string for non-successful outcomes;
-            // fan-out counts always live in MetadataJson.fanout for the UI.
-            LastErrorMessage = status == "sent"
-                ? null
-                : $"fanout: resolved={summary.TotalResolved} sent={summary.SentCount} " +
-                  $"failed={summary.FailedCount} blocked={summary.BlockedCount} skipped={summary.SkippedCount}",
-            Severity = request.Severity,
-            Category = request.Category,
-        };
-        return await _notificationRepo.CreateAsync(parent);
+        notification.Status = "failed";
+        notification.FailureCategory = routes.Count > 0 ? "retryable_provider_failure" : "auth_config_failure";
+        notification.LastErrorMessage = "All provider routes exhausted";
+        await _notificationRepo.UpdateAsync(notification);
+        try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.failed", Action = "notification.failed", SourceSystem = "notifications", Description = "Notification failed - all routes exhausted", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
     }
 
-    private static FanOutSummary BuildFanOutSummary(
-        string? mode, string? roleKey, string? orgId, string channel,
-        int totalResolved, List<FanOutPerRecipient> perRecipient)
-    {
-        var sent    = perRecipient.Count(p => p.Status == "sent");
-        var failed  = perRecipient.Count(p => p.Status == "failed");
-        var blocked = perRecipient.Count(p => p.Status == "blocked");
-        var skipped = perRecipient.Count(p => p.Status == "skipped");
-
-        var skippedByReason = perRecipient
-            .Where(p => p.Status == "skipped" && !string.IsNullOrEmpty(p.Reason))
-            .GroupBy(p => p.Reason!)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        var blockedByReason = perRecipient
-            .Where(p => p.Status == "blocked" && !string.IsNullOrEmpty(p.Reason))
-            .GroupBy(p => p.Reason!)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        return new FanOutSummary
-        {
-            Mode = mode,
-            RoleKey = roleKey,
-            OrgId = orgId,
-            Channel = channel,
-            TotalResolved = totalResolved,
-            SentCount = sent,
-            FailedCount = failed,
-            BlockedCount = blocked,
-            SkippedCount = skipped,
-            DeliveredByChannel = sent > 0
-                ? new Dictionary<string, int> { [channel] = sent }
-                : new Dictionary<string, int>(),
-            SkippedByReason = skippedByReason,
-            BlockedByReason = blockedByReason,
-            Recipients = perRecipient,
-        };
-    }
-
-    private static NotificationResultDto BuildFanOutResult(
-        Notification parent, FanOutSummary summary, List<NotificationResultDto> dispatched) => new()
-    {
-        Id = parent.Id,
-        Status = parent.Status,
-        ProviderUsed = dispatched.FirstOrDefault(r => !string.IsNullOrEmpty(r.ProviderUsed))?.ProviderUsed,
-        PlatformFallbackUsed = dispatched.Any(r => r.PlatformFallbackUsed),
-        BlockedByPolicy = parent.BlockedByPolicy || summary.BlockedCount > 0,
-        BlockedReasonCode = parent.BlockedReasonCode
-            ?? dispatched.FirstOrDefault(r => !string.IsNullOrEmpty(r.BlockedReasonCode))?.BlockedReasonCode,
-        OverrideUsed = dispatched.Any(r => r.OverrideUsed),
-        FailureCategory = dispatched.FirstOrDefault(r => !string.IsNullOrEmpty(r.FailureCategory))?.FailureCategory,
-        LastErrorMessage = parent.LastErrorMessage,
-    };
-
-    private static string? ReadRecipientField(JsonElement obj, string name)
-    {
-        if (obj.ValueKind != JsonValueKind.Object) return null;
-        foreach (var prop in obj.EnumerateObject())
-        {
-            if (string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase))
-                return prop.Value.ValueKind == JsonValueKind.String ? prop.Value.GetString() : null;
-        }
-        return null;
-    }
-
-    private static SubmitNotificationDto ClonePerRecipient(SubmitNotificationDto src, ResolvedRecipient r)
-    {
-        var dict = new Dictionary<string, string?>
-        {
-            ["mode"] = !string.IsNullOrEmpty(r.UserId) ? "UserId" : "Email",
-        };
-        if (!string.IsNullOrEmpty(r.UserId)) dict["userId"] = r.UserId;
-        if (!string.IsNullOrEmpty(r.Email))  dict["email"]  = r.Email;
-        // Forward the resolved phone so ExtractContactValue can populate the
-        // SMS dispatch destination — without it the per-recipient envelope
-        // would have no phone and Twilio would be invoked with an empty "to".
-        if (!string.IsNullOrEmpty(r.Phone))  dict["phone"]  = r.Phone;
-        if (!string.IsNullOrEmpty(r.OrgId))  dict["orgId"]  = r.OrgId;
-
-        return new SubmitNotificationDto
-        {
-            Channel = src.Channel,
-            Recipient = dict,
-            Message = src.Message,
-            Metadata = src.Metadata,
-            // Per-recipient idempotency suffix preserves the producer's grouping intent.
-            IdempotencyKey = string.IsNullOrEmpty(src.IdempotencyKey)
-                ? null : $"{src.IdempotencyKey}:{r.StableKey}",
-            TemplateKey = src.TemplateKey,
-            TemplateData = src.TemplateData,
-            ProductType = src.ProductType,
-            BrandedRendering = src.BrandedRendering,
-            OverrideSuppression = src.OverrideSuppression,
-            OverrideReason = src.OverrideReason,
-        };
-    }
-
-    /// <summary>Snapshot of a Role/Org fan-out, persisted under MetadataJson.fanout.</summary>
-    public sealed class FanOutSummary
-    {
-        public string? Mode { get; set; }
-        public string? RoleKey { get; set; }
-        public string? OrgId { get; set; }
-        public string Channel { get; set; } = string.Empty;
-        public int TotalResolved { get; set; }
-        public int SentCount { get; set; }
-        public int FailedCount { get; set; }
-        public int BlockedCount { get; set; }
-        public int SkippedCount { get; set; }
-        public Dictionary<string, int> DeliveredByChannel { get; set; } = new();
-        public Dictionary<string, int> SkippedByReason { get; set; } = new();
-        public Dictionary<string, int> BlockedByReason { get; set; } = new();
-        public List<FanOutPerRecipient> Recipients { get; set; } = new();
-    }
-
-    public sealed class FanOutPerRecipient
-    {
-        public string? UserId { get; set; }
-        public string? Email { get; set; }
-        public string? OrgId { get; set; }
-        public string Status { get; set; } = string.Empty;
-        public string? Reason { get; set; }
-        public string? NotificationId { get; set; }
-    }
+    // ─── Single dispatch ─────────────────────────────────────────────────────
 
     private async Task<NotificationResultDto> DispatchSingleAsync(Guid tenantId, SubmitNotificationDto request, string recipientJson)
     {
-        var messageJson = JsonSerializer.Serialize(request.Message);
+        var messageJson  = JsonSerializer.Serialize(request.Message);
         var metadataJson = request.Metadata != null ? JsonSerializer.Serialize(request.Metadata) : null;
 
         if (!string.IsNullOrEmpty(request.IdempotencyKey))
@@ -425,24 +668,24 @@ public class NotificationServiceImpl : INotificationService
                 }
 
                 renderedSubject = rendered.Subject;
-                renderedBody = rendered.Body;
-                renderedText = rendered.Text;
+                renderedBody    = rendered.Body;
+                renderedText    = rendered.Text;
 
                 _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "template_render", Channel = request.Channel, NotificationId = notification.Id });
             }
         }
 
-        notification.TemplateId = templateId;
+        notification.TemplateId        = templateId;
         notification.TemplateVersionId = templateVersionId;
-        notification.RenderedSubject = renderedSubject;
-        notification.RenderedBody = renderedBody;
-        notification.RenderedText = renderedText;
-        notification.Status = "processing";
+        notification.RenderedSubject   = renderedSubject;
+        notification.RenderedBody      = renderedBody;
+        notification.RenderedText      = renderedText;
+        notification.Status            = "processing";
 
         notification = await _notificationRepo.CreateAsync(notification);
         _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "api_notification_request", Channel = request.Channel, NotificationId = notification.Id });
 
-        // In-app deliveries have no provider — the persisted Notification record is the delivery.
+        // In-app deliveries have no provider — the persisted Notification is the delivery.
         if (string.Equals(request.Channel, "in-app", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(request.Channel, "inapp",  StringComparison.OrdinalIgnoreCase))
         {
@@ -452,97 +695,194 @@ public class NotificationServiceImpl : INotificationService
             return MapToResult(notification);
         }
 
-        var routes = await _routingService.ResolveRoutesAsync(tenantId, request.Channel);
-
-        var msg = JsonSerializer.Deserialize<JsonElement>(messageJson);
-        var subject = renderedSubject ?? (msg.TryGetProperty("subject", out var s) ? s.GetString() : "");
-        var body = renderedBody ?? (msg.TryGetProperty("body", out var b) ? b.GetString() : "");
-        var html = msg.TryGetProperty("html", out var h) ? h.GetString() : null;
-
-        foreach (var route in routes)
-        {
-            var attemptNumber = routes.IndexOf(route) + 1;
-            var attempt = await _attemptRepo.CreateAsync(new NotificationAttempt
-            {
-                TenantId = tenantId, NotificationId = notification.Id,
-                Channel = request.Channel, Provider = route.ProviderType,
-                Status = "sending", AttemptNumber = attemptNumber,
-                ProviderOwnershipMode = route.OwnershipMode,
-                ProviderConfigId = route.TenantProviderConfigId,
-                IsFailover = route.IsFailover
-            });
-
-            _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = request.Channel == "email" ? "email_attempt" : "sms_attempt", Channel = request.Channel, NotificationId = notification.Id, NotificationAttemptId = attempt.Id, Provider = route.ProviderType, ProviderOwnershipMode = route.OwnershipMode, ProviderConfigId = route.TenantProviderConfigId });
-
-            bool success;
-            string? providerMessageId = null;
-            ProviderFailure? failure = null;
-
-            if (request.Channel == "email")
-            {
-                var result = await _sendGridAdapter.SendAsync(new EmailSendPayload { To = contactValue ?? "", Subject = subject ?? "", Body = body ?? "", Html = html });
-                success = result.Success;
-                providerMessageId = result.ProviderMessageId;
-                failure = result.Failure;
-            }
-            else
-            {
-                var result = await _twilioAdapter.SendAsync(new SmsSendPayload { To = contactValue ?? "", Body = body ?? "" });
-                success = result.Success;
-                providerMessageId = result.ProviderMessageId;
-                failure = result.Failure;
-            }
-
-            if (success)
-            {
-                attempt.Status = "sent";
-                attempt.ProviderMessageId = providerMessageId;
-                attempt.CompletedAt = DateTime.UtcNow;
-                await _attemptRepo.UpdateAsync(attempt);
-
-                notification.Status = "sent";
-                notification.ProviderUsed = route.ProviderType;
-                notification.ProviderOwnershipMode = route.OwnershipMode;
-                notification.ProviderConfigId = route.TenantProviderConfigId;
-                notification.PlatformFallbackUsed = route.IsPlatformFallback;
-                await _notificationRepo.UpdateAsync(notification);
-
-                _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = request.Channel == "email" ? "email_sent" : "sms_sent", Channel = request.Channel, NotificationId = notification.Id, NotificationAttemptId = attempt.Id, Provider = route.ProviderType, ProviderOwnershipMode = route.OwnershipMode });
-                try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.sent", Action = "notification.sent", SourceSystem = "notifications", Description = "Notification sent successfully", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
-                return MapToResult(notification);
-            }
-
-            attempt.Status = "failed";
-            attempt.FailureCategory = failure?.Category;
-            attempt.ErrorMessage = failure?.Message;
-            attempt.CompletedAt = DateTime.UtcNow;
-            await _attemptRepo.UpdateAsync(attempt);
-
-            if (route.IsFailover)
-                _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "provider_failover_attempt", Channel = request.Channel, NotificationId = notification.Id, NotificationAttemptId = attempt.Id, Provider = route.ProviderType });
-
-            if (failure?.Retryable != true) break;
-        }
-
-        notification.Status = "failed";
-        notification.FailureCategory = routes.Count > 0 ? "retryable_provider_failure" : "auth_config_failure";
-        notification.LastErrorMessage = "All provider routes exhausted";
-        await _notificationRepo.UpdateAsync(notification);
-        try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.failed", Action = "notification.failed", SourceSystem = "notifications", Description = "Notification failed - all routes exhausted", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+        await ExecuteSendLoopAsync(tenantId, notification);
         return MapToResult(notification);
     }
 
-    public async Task<NotificationDto?> GetByIdAsync(Guid tenantId, Guid id)
+    // ─── Fan-out helpers ──────────────────────────────────────────────────────
+
+    private static string? ClassifySkipReason(string channel, ResolvedRecipient r)
     {
-        var n = await _notificationRepo.GetByIdAndTenantAsync(id, tenantId);
-        return n != null ? MapToDto(n) : null;
+        var ch = channel?.Trim().ToLowerInvariant();
+        return ch switch
+        {
+            "email"                 => string.IsNullOrWhiteSpace(r.Email)  ? "no_email_on_file"  : null,
+            "sms"                   => string.IsNullOrWhiteSpace(r.Phone)  ? "no_phone_on_file"  : null,
+            "push"                  => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_push"  : null,
+            "in-app" or "inapp"     => string.IsNullOrWhiteSpace(r.UserId) ? "no_user_for_inapp" : null,
+            _                       => null,
+        };
     }
 
-    public async Task<List<NotificationDto>> ListAsync(Guid tenantId, int limit = 50, int offset = 0)
+    private async Task<Notification> PersistFanOutParentAsync(
+        Guid tenantId, SubmitNotificationDto request, string recipientJson, FanOutSummary summary)
     {
-        var list = await _notificationRepo.GetByTenantAsync(tenantId, limit, offset);
-        return list.Select(MapToDto).ToList();
+        Dictionary<string, object?> metaDict;
+        if (request.Metadata != null)
+        {
+            try
+            {
+                var existing = JsonSerializer.Serialize(request.Metadata);
+                metaDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(existing) ?? new();
+            }
+            catch { metaDict = new(); }
+        }
+        else { metaDict = new(); }
+
+        var camelOpts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        var summaryJson = JsonSerializer.Serialize(summary, camelOpts);
+        metaDict["fanout"] = JsonSerializer.Deserialize<JsonElement>(summaryJson);
+
+        var status =
+            summary.TotalResolved == 0                               ? "blocked" :
+            summary.SentCount     == summary.TotalResolved           ? "sent"    :
+            summary.SentCount     == 0 && summary.FailedCount == 0   ? "blocked" :
+            summary.SentCount     == 0                               ? "failed"  :
+                                                                       "partial";
+
+        var parent = new Notification
+        {
+            TenantId      = tenantId,
+            Channel       = request.Channel,
+            Status        = status,
+            RecipientJson = recipientJson,
+            MessageJson   = JsonSerializer.Serialize(request.Message),
+            MetadataJson  = JsonSerializer.Serialize(metaDict),
+            IdempotencyKey = request.IdempotencyKey,
+            TemplateKey   = request.TemplateKey,
+            BlockedByPolicy = status == "blocked",
+            BlockedReasonCode = summary.TotalResolved == 0 ? "recipient_set_empty" : null,
+            LastErrorMessage = status == "sent"
+                ? null
+                : $"fanout: resolved={summary.TotalResolved} sent={summary.SentCount} " +
+                  $"failed={summary.FailedCount} blocked={summary.BlockedCount} skipped={summary.SkippedCount}",
+            Severity = request.Severity,
+            Category = request.Category,
+        };
+        return await _notificationRepo.CreateAsync(parent);
     }
+
+    private static FanOutSummary BuildFanOutSummary(
+        string? mode, string? roleKey, string? orgId, string channel,
+        int totalResolved, List<FanOutPerRecipient> perRecipient)
+    {
+        var sent    = perRecipient.Count(p => p.Status == "sent");
+        var failed  = perRecipient.Count(p => p.Status == "failed");
+        var blocked = perRecipient.Count(p => p.Status == "blocked");
+        var skipped = perRecipient.Count(p => p.Status == "skipped");
+
+        var skippedByReason = perRecipient
+            .Where(p => p.Status == "skipped" && !string.IsNullOrEmpty(p.Reason))
+            .GroupBy(p => p.Reason!)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var blockedByReason = perRecipient
+            .Where(p => p.Status == "blocked" && !string.IsNullOrEmpty(p.Reason))
+            .GroupBy(p => p.Reason!)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        return new FanOutSummary
+        {
+            Mode          = mode,
+            RoleKey       = roleKey,
+            OrgId         = orgId,
+            Channel       = channel,
+            TotalResolved = totalResolved,
+            SentCount     = sent,
+            FailedCount   = failed,
+            BlockedCount  = blocked,
+            SkippedCount  = skipped,
+            DeliveredByChannel = sent > 0 ? new Dictionary<string, int> { [channel] = sent } : new(),
+            SkippedByReason = skippedByReason,
+            BlockedByReason = blockedByReason,
+            Recipients    = perRecipient,
+        };
+    }
+
+    private static NotificationResultDto BuildFanOutResult(
+        Notification parent, FanOutSummary summary, List<NotificationResultDto> dispatched) => new()
+    {
+        Id = parent.Id,
+        Status = parent.Status,
+        ProviderUsed = dispatched.FirstOrDefault(r => !string.IsNullOrEmpty(r.ProviderUsed))?.ProviderUsed,
+        PlatformFallbackUsed = dispatched.Any(r => r.PlatformFallbackUsed),
+        BlockedByPolicy = parent.BlockedByPolicy || summary.BlockedCount > 0,
+        BlockedReasonCode = parent.BlockedReasonCode
+            ?? dispatched.FirstOrDefault(r => !string.IsNullOrEmpty(r.BlockedReasonCode))?.BlockedReasonCode,
+        OverrideUsed = dispatched.Any(r => r.OverrideUsed),
+        FailureCategory = dispatched.FirstOrDefault(r => !string.IsNullOrEmpty(r.FailureCategory))?.FailureCategory,
+        LastErrorMessage = parent.LastErrorMessage,
+    };
+
+    private static string? ReadRecipientField(JsonElement obj, string name)
+    {
+        if (obj.ValueKind != JsonValueKind.Object) return null;
+        foreach (var prop in obj.EnumerateObject())
+        {
+            if (string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase))
+                return prop.Value.ValueKind == JsonValueKind.String ? prop.Value.GetString() : null;
+        }
+        return null;
+    }
+
+    private static SubmitNotificationDto ClonePerRecipient(SubmitNotificationDto src, ResolvedRecipient r)
+    {
+        var dict = new Dictionary<string, string?>
+        {
+            ["mode"] = !string.IsNullOrEmpty(r.UserId) ? "UserId" : "Email",
+        };
+        if (!string.IsNullOrEmpty(r.UserId)) dict["userId"] = r.UserId;
+        if (!string.IsNullOrEmpty(r.Email))  dict["email"]  = r.Email;
+        if (!string.IsNullOrEmpty(r.Phone))  dict["phone"]  = r.Phone;
+        if (!string.IsNullOrEmpty(r.OrgId))  dict["orgId"]  = r.OrgId;
+
+        return new SubmitNotificationDto
+        {
+            Channel        = src.Channel,
+            Recipient      = dict,
+            Message        = src.Message,
+            Metadata       = src.Metadata,
+            IdempotencyKey = string.IsNullOrEmpty(src.IdempotencyKey)
+                ? null : $"{src.IdempotencyKey}:{r.StableKey}",
+            TemplateKey    = src.TemplateKey,
+            TemplateData   = src.TemplateData,
+            ProductType    = src.ProductType,
+            BrandedRendering  = src.BrandedRendering,
+            OverrideSuppression = src.OverrideSuppression,
+            OverrideReason = src.OverrideReason,
+        };
+    }
+
+    // ─── Fan-out nested types ─────────────────────────────────────────────────
+
+    public sealed class FanOutSummary
+    {
+        public string? Mode { get; set; }
+        public string? RoleKey { get; set; }
+        public string? OrgId { get; set; }
+        public string Channel { get; set; } = string.Empty;
+        public int TotalResolved { get; set; }
+        public int SentCount { get; set; }
+        public int FailedCount { get; set; }
+        public int BlockedCount { get; set; }
+        public int SkippedCount { get; set; }
+        public Dictionary<string, int> DeliveredByChannel { get; set; } = new();
+        public Dictionary<string, int> SkippedByReason { get; set; } = new();
+        public Dictionary<string, int> BlockedByReason { get; set; } = new();
+        public List<FanOutPerRecipient> Recipients { get; set; } = new();
+    }
+
+    public sealed class FanOutPerRecipient
+    {
+        public string? UserId { get; set; }
+        public string? Email { get; set; }
+        public string? OrgId { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public string? Reason { get; set; }
+        public string? NotificationId { get; set; }
+    }
+
+    // ─── Mappers ──────────────────────────────────────────────────────────────
 
     private static NotificationResultDto MapToResult(Notification n) => new()
     {
@@ -567,12 +907,6 @@ public class NotificationServiceImpl : INotificationService
         CreatedAt = n.CreatedAt, UpdatedAt = n.UpdatedAt
     };
 
-    /// <summary>
-    /// Reads the recipient mode tolerating both string ("Role") and numeric (2)
-    /// JSON representations of <see cref="Contracts.Notifications.RecipientMode"/>.
-    /// Producers may serialize the enum either way depending on their JSON
-    /// options; the resolver layer must accept both.
-    /// </summary>
     private static string? ReadRecipientMode(JsonElement recipient)
     {
         if (recipient.ValueKind != JsonValueKind.Object) return null;
@@ -602,7 +936,7 @@ public class NotificationServiceImpl : INotificationService
         {
             var doc = JsonDocument.Parse(recipientJson);
             if (channel == "email") return doc.RootElement.TryGetProperty("email", out var e) ? e.GetString() : null;
-            if (channel == "sms") return doc.RootElement.TryGetProperty("phone", out var p) ? p.GetString() : null;
+            if (channel == "sms")   return doc.RootElement.TryGetProperty("phone", out var p) ? p.GetString() : null;
             return null;
         }
         catch { return null; }

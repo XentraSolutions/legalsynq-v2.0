@@ -5097,3 +5097,42 @@ Makes product UI permission-aware so the UI reflects the backend authorization m
 
 ### Analysis
 `analysis/LS-ID-TNT-015-report.md`
+
+## LS-NOTIF-CORE-001 — Operational API Completion & Contract Alignment (2026-04-19)
+
+Completes the Notifications microservice operational API surface. Pre-existing service had only POST /submit, GET /{id}, and GET / (basic list). This task adds stats, event timeline, delivery issues, retry, resend, and upgrades the list endpoint to structured paged responses.
+
+### New / upgraded endpoints
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/notifications` (upgraded) | Now supports paging, filtering (status, channel, provider, recipient, productKey, from, to), sorting; backward-compatible with old `limit`/`offset` params |
+| GET | `/v1/notifications/stats` | Aggregated metrics: total, queued, sent, delivered, failed, suppressed, partial; channel/provider/status breakdowns; daily trend |
+| GET | `/v1/notifications/{id}/events` | Chronological event timeline: synthesized lifecycle events (created, attempted, sent/failed) + provider webhook events |
+| GET | `/v1/notifications/{id}/issues` | Delivery issues for a notification (bounces, invalid contacts, provider rejections, suppressions) |
+| POST | `/v1/notifications/{id}/retry` | Retry a failed notification in-place (retryable categories only); creates new attempt records; audit trail |
+| POST | `/v1/notifications/{id}/resend` | Create a new linked notification from original; `resendOf` in metadata; full audit trail |
+
+### Architecture changes
+**`ExecuteSendLoopAsync` extracted** — routing+attempt+provider dispatch loop extracted from private `DispatchSingleAsync` into a shared `ExecuteSendLoopAsync(tenantId, notification, baseAttemptNumber)`. Both initial dispatch and retry use this method. No functional change to existing dispatch path.
+
+**Two new constructor deps** — `NotificationServiceImpl` now takes `INotificationEventRepository` and `IDeliveryIssueRepository` (both were already registered in DI, so no DI change needed).
+
+### Files changed
+- `Notifications.Application/DTOs/OperationalDtos.cs` — new (query models, paged response, stats, event/issue/retry/resend DTOs)
+- `Notifications.Application/Interfaces/INotificationRepository.cs` — added `GetPagedAsync`, `GetStatsAsync`
+- `Notifications.Application/Interfaces/INotificationService.cs` — added 6 new method signatures
+- `Notifications.Infrastructure/Repositories/NotificationRepository.cs` — implemented `GetPagedAsync` (filtered/sorted/paged EF query), `GetStatsAsync` (in-memory aggregation on lightweight projection)
+- `Notifications.Infrastructure/Services/NotificationService.cs` — extracted send loop; implemented `ListPagedAsync`, `GetStatsAsync`, `GetEventsAsync`, `GetIssuesAsync`, `RetryAsync`, `ResendAsync`
+- `Notifications.Api/Endpoints/NotificationEndpoints.cs` — upgraded list; added 5 new routes
+
+### Design decisions
+- **productKey filter → `Category` column** — `SubmitNotificationDto.ProductType` is used for template resolution but not persisted. `Category` is the stored field.
+- **Stats delivered count** — sourced from `ntf_NotificationEvents` where `NormalizedEventType = "delivered"` (provider webhook events), not from notification status
+- **Retry = in-place update** — original notification record updated; new attempt records created; no duplicate notification created
+- **Resend = new notification** — new notification created with `resendOf: originalId` in metadata; original untouched
+- **Retry eligibility** — `failed` status with `failureCategory ∈ {retryable_provider_failure, provider_unavailable, auth_config_failure}`
+- **Backward compatibility** — old GET / with `limit`/`offset` params still returns raw array; new paged params trigger structured envelope
+- **Tenant isolation preserved** — all endpoints enforce TenantId from `X-Tenant-Id` middleware header
+
+### Analysis
+`analysis/LS-NOTIF-CORE-001-report.md`

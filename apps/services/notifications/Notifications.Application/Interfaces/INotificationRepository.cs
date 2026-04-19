@@ -1,3 +1,4 @@
+using Notifications.Application.DTOs;
 using Notifications.Domain;
 
 namespace Notifications.Application.Interfaces;
@@ -11,4 +12,7 @@ public interface INotificationRepository
     Task<Notification> CreateAsync(Notification notification);
     Task UpdateAsync(Notification notification);
     Task UpdateStatusAsync(Guid id, string status, string? providerUsed = null, string? failureCategory = null, string? lastErrorMessage = null);
+
+    Task<(List<Notification> Items, int Total)> GetPagedAsync(Guid tenantId, NotificationListQuery query);
+    Task<NotificationStatsData> GetStatsAsync(Guid tenantId, NotificationStatsQuery query);
 }
