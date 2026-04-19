@@ -55,8 +55,13 @@ public class SendGridAdapter : IEmailProviderAdapter
 
             if (statusCode == 202)
             {
-                _logger.LogInformation("SendGrid: email sent successfully to {To}", payload.To);
-                return new EmailSendResult { Success = true };
+                // Extract the provider message ID from the X-Message-Id response header.
+                // This ID is required to correlate incoming webhook events (delivered,
+                // bounced, opened, etc.) back to the correct NotificationAttempt record.
+                response.Headers.TryGetValues("X-Message-Id", out var msgIdValues);
+                var providerMessageId = msgIdValues?.FirstOrDefault();
+                _logger.LogInformation("SendGrid: email sent successfully to {To}, messageId={MessageId}", payload.To, providerMessageId ?? "none");
+                return new EmailSendResult { Success = true, ProviderMessageId = providerMessageId };
             }
 
             var category = ClassifyError(statusCode, responseBody);
