@@ -12,6 +12,8 @@ public static class AppointmentEndpoints
 {
     public static void MapAppointmentEndpoints(this WebApplication app)
     {
+        // LS-ID-TNT-012: appointment mutations gated on specific capability claims.
+        // Filter-level (JWT) check runs before handler; handler also validates via IEffectivePermissionService.
         app.MapPost("/api/appointments", async (
             [FromBody] CreateAppointmentRequest request,
             IAppointmentService service,
@@ -26,7 +28,8 @@ public static class AppointmentEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
+        .RequirePermission(PermissionCodes.AppointmentCreate);
 
         // LSCC-002: Org-participant scoping — mirrors referral list scoping:
         // receivers filter by receiving org; all others filter by referring org.
@@ -95,7 +98,8 @@ public static class AppointmentEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
+        .RequirePermission(PermissionCodes.AppointmentUpdate);
 
         app.MapPost("/api/appointments/{id:guid}/confirm", async (
             Guid id,
@@ -114,7 +118,8 @@ public static class AppointmentEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
+        .RequirePermission(PermissionCodes.AppointmentManage);
 
         app.MapPost("/api/appointments/{id:guid}/complete", async (
             Guid id,
@@ -133,7 +138,8 @@ public static class AppointmentEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
+        .RequirePermission(PermissionCodes.AppointmentManage);
 
         app.MapPost("/api/appointments/{id:guid}/cancel", async (
             Guid id,
@@ -152,7 +158,8 @@ public static class AppointmentEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
+        .RequirePermission(PermissionCodes.AppointmentManage);
 
         app.MapPost("/api/appointments/{id:guid}/reschedule", async (
             Guid id,
@@ -171,7 +178,8 @@ public static class AppointmentEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
+        .RequirePermission(PermissionCodes.AppointmentManage);
 
         app.MapGet("/api/appointments/{id:guid}/history", async (
             Guid id,

@@ -4926,3 +4926,43 @@ Introduces the **tenant-level permission catalog** as the authoritative RBAC lay
 
 ### Analysis
 `analysis/LS-ID-TNT-011-report.md`
+
+## LS-ID-TNT-012 — Backend Permission Enforcement (TENANT.* checks on mutation endpoints) (2026-04-19)
+
+Activates the TENANT.* permission model (established in LS-ID-TNT-011) by gating all Identity and CareConnect mutation endpoints with `RequirePermissionFilter` from BuildingBlocks. TenantAdmin / PlatformAdmin bypass unchanged. StandardUsers with an explicit `TENANT.*` claim in their JWT now gain access to specific mutations. Tenant isolation checks in handlers are preserved as a secondary layer.
+
+### Endpoints Gated
+
+**Identity — GroupEndpoints (9 mutations)**
+- `POST/PATCH/DELETE /api/tenants/{id}/groups[/{id}]` → `TENANT.groups:manage`
+- Members add/remove → `TENANT.groups:manage`
+- Products grant/revoke → `TENANT.products:assign`
+- Role assign/remove → `TENANT.roles:assign`
+
+**Identity — AdminEndpoints (12 mutations)**
+- Deactivate / activate / lock / unlock / phone → `TENANT.users:manage`
+- Invite / resend-invite → `TENANT.invitations:manage`
+- Role assign / revoke → `TENANT.roles:assign`
+- Membership assign / set-primary / remove → `TENANT.users:manage`
+
+**CareConnect — AppointmentEndpoints (6 mutations)**
+- Create / update / confirm / complete / cancel / reschedule → `CARECONNECT.appointments:create/update/manage`
+
+**CareConnect — ReferralEndpoints (3 mutations)**
+- Create / resend-email / revoke-token → `CARECONNECT.referrals:create`
+
+Fund and Liens services were already enforced (LS-COR-AUT-010) — no changes.
+
+### Implementation Notes
+- `using PermCodes = BuildingBlocks.Authorization.PermissionCodes;` alias used in AdminEndpoints to avoid namespace collision with `Identity.Domain.OrgType` and `Identity.Domain.ProductCodes`
+- `CanMutateTenant(ctx, tenantId, permissionCode)` in GroupEndpoints updated to check `user.HasPermission(code)` as an alternative to TenantAdmin role (tenant isolation enforced first)
+- `PUT /api/referrals/{id}` retains in-handler dynamic permission check only (permission code is status-dependent)
+
+### Files Changed
+- `Identity.Api/Endpoints/AdminEndpoints.cs` — `PermCodes` alias; `.RequirePermission(...)` on 12 mutations
+- `Identity.Api/Endpoints/GroupEndpoints.cs` — `CanMutateTenant` updated; `.RequirePermission(...)` on 9 mutations
+- `CareConnect.Api/Endpoints/AppointmentEndpoints.cs` — `.RequirePermission(...)` on 6 mutations
+- `CareConnect.Api/Endpoints/ReferralEndpoints.cs` — `.RequirePermission(...)` on 3 mutations
+
+### Analysis
+`analysis/LS-ID-TNT-012-report.md`

@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 
@@ -9,23 +11,37 @@ public static class GroupEndpoints
     public static IEndpointRouteBuilder MapGroupEndpoints(this IEndpointRouteBuilder routes)
     {
         routes.MapGet("/api/tenants/{tenantId:guid}/groups", ListGroups);
-        routes.MapPost("/api/tenants/{tenantId:guid}/groups", CreateGroup);
+
+        // LS-ID-TNT-012: group mutation routes gated on TENANT.groups:manage permission.
+        // RequirePermissionFilter: TenantAdmin/PlatformAdmin bypass, JWT claim check for StandardUsers.
+        routes.MapPost("/api/tenants/{tenantId:guid}/groups", CreateGroup)
+            .RequirePermission(PermissionCodes.TenantGroupsManage);
         routes.MapGet("/api/tenants/{tenantId:guid}/groups/{groupId:guid}", GetGroup);
-        routes.MapPatch("/api/tenants/{tenantId:guid}/groups/{groupId:guid}", UpdateGroup);
-        routes.MapDelete("/api/tenants/{tenantId:guid}/groups/{groupId:guid}", ArchiveGroup);
+        routes.MapPatch("/api/tenants/{tenantId:guid}/groups/{groupId:guid}", UpdateGroup)
+            .RequirePermission(PermissionCodes.TenantGroupsManage);
+        routes.MapDelete("/api/tenants/{tenantId:guid}/groups/{groupId:guid}", ArchiveGroup)
+            .RequirePermission(PermissionCodes.TenantGroupsManage);
 
         routes.MapGet("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/members", ListMembers);
-        routes.MapPost("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/members", AddMember);
-        routes.MapDelete("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/members/{userId:guid}", RemoveMember);
+        routes.MapPost("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/members", AddMember)
+            .RequirePermission(PermissionCodes.TenantGroupsManage);
+        routes.MapDelete("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/members/{userId:guid}", RemoveMember)
+            .RequirePermission(PermissionCodes.TenantGroupsManage);
         routes.MapGet("/api/tenants/{tenantId:guid}/users/{userId:guid}/groups", ListUserGroups);
 
         routes.MapGet("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/products", ListGroupProducts);
-        routes.MapPut("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/products/{productCode}", GrantGroupProduct);
-        routes.MapDelete("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/products/{productCode}", RevokeGroupProduct);
+        // LS-ID-TNT-012: product assignment on groups gated on TENANT.products:assign.
+        routes.MapPut("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/products/{productCode}", GrantGroupProduct)
+            .RequirePermission(PermissionCodes.TenantProductsAssign);
+        routes.MapDelete("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/products/{productCode}", RevokeGroupProduct)
+            .RequirePermission(PermissionCodes.TenantProductsAssign);
 
         routes.MapGet("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/roles", ListGroupRoles);
-        routes.MapPost("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/roles", AssignGroupRole);
-        routes.MapDelete("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/roles/{assignmentId:guid}", RemoveGroupRole);
+        // LS-ID-TNT-012: role assignment on groups gated on TENANT.roles:assign.
+        routes.MapPost("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/roles", AssignGroupRole)
+            .RequirePermission(PermissionCodes.TenantRolesAssign);
+        routes.MapDelete("/api/tenants/{tenantId:guid}/groups/{groupId:guid}/roles/{assignmentId:guid}", RemoveGroupRole)
+            .RequirePermission(PermissionCodes.TenantRolesAssign);
 
         return routes;
     }
@@ -51,11 +67,14 @@ public static class GroupEndpoints
         return GetActorTenantId(ctx) == tenantId;
     }
 
-    private static bool CanMutateTenant(HttpContext ctx, Guid tenantId)
+    // LS-ID-TNT-012: permissionCode is the TENANT.* code already resolved in the JWT
+    // (e.g. PermissionCodes.TenantGroupsManage).  TenantAdmin retains full access;
+    // StandardUsers whose JWT contains the specific claim are also allowed.
+    private static bool CanMutateTenant(HttpContext ctx, Guid tenantId, string permissionCode)
     {
         if (IsPlatformAdmin(ctx)) return true;
-        if (!ctx.User.IsInRole("TenantAdmin")) return false;
-        return GetActorTenantId(ctx) == tenantId;
+        if (GetActorTenantId(ctx) != tenantId) return false;
+        return ctx.User.IsInRole("TenantAdmin") || ctx.User.HasPermission(permissionCode);
     }
 
     private static async Task<IResult> ListGroups(Guid tenantId, IGroupService svc, HttpContext ctx)
@@ -67,7 +86,7 @@ public static class GroupEndpoints
 
     private static async Task<IResult> CreateGroup(Guid tenantId, CreateGroupRequest body, IGroupService svc, HttpContext ctx)
     {
-        if (!CanMutateTenant(ctx, tenantId)) return Results.Forbid();
+        if (!CanMutateTenant(ctx, tenantId, PermissionCodes.TenantGroupsManage)) return Results.Forbid();
         if (string.IsNullOrWhiteSpace(body.Name)) return Results.BadRequest(new { error = "Name is required." });
 
         try
@@ -88,7 +107,7 @@ public static class GroupEndpoints
 
     private static async Task<IResult> UpdateGroup(Guid tenantId, Guid groupId, UpdateGroupRequest body, IGroupService svc, HttpContext ctx)
     {
-        if (!CanMutateTenant(ctx, tenantId)) return Results.Forbid();
+        if (!CanMutateTenant(ctx, tenantId, PermissionCodes.TenantGroupsManage)) return Results.Forbid();
         if (string.IsNullOrWhiteSpace(body.Name)) return Results.BadRequest(new { error = "Name is required." });
 
         try
@@ -101,7 +120,7 @@ public static class GroupEndpoints
 
     private static async Task<IResult> ArchiveGroup(Guid tenantId, Guid groupId, IGroupService svc, HttpContext ctx)
     {
-        if (!CanMutateTenant(ctx, tenantId)) return Results.Forbid();
+        if (!CanMutateTenant(ctx, tenantId, PermissionCodes.TenantGroupsManage)) return Results.Forbid();
         var archived = await svc.ArchiveAsync(tenantId, groupId, GetActorUserId(ctx));
         return archived ? Results.NoContent() : Results.NotFound();
     }
@@ -120,7 +139,7 @@ public static class GroupEndpoints
 
     private static async Task<IResult> AddMember(Guid tenantId, Guid groupId, AddMemberRequest body, IGroupMembershipService svc, HttpContext ctx)
     {
-        if (!CanMutateTenant(ctx, tenantId)) return Results.Forbid();
+        if (!CanMutateTenant(ctx, tenantId, PermissionCodes.TenantGroupsManage)) return Results.Forbid();
         if (body.UserId == Guid.Empty) return Results.BadRequest(new { error = "UserId is required." });
 
         try
@@ -137,7 +156,7 @@ public static class GroupEndpoints
 
     private static async Task<IResult> RemoveMember(Guid tenantId, Guid groupId, Guid userId, IGroupMembershipService svc, HttpContext ctx)
     {
-        if (!CanMutateTenant(ctx, tenantId)) return Results.Forbid();
+        if (!CanMutateTenant(ctx, tenantId, PermissionCodes.TenantGroupsManage)) return Results.Forbid();
         var removed = await svc.RemoveMemberAsync(tenantId, groupId, userId, GetActorUserId(ctx));
         return removed ? Results.NoContent() : Results.NotFound();
     }
@@ -168,7 +187,7 @@ public static class GroupEndpoints
 
     private static async Task<IResult> GrantGroupProduct(Guid tenantId, Guid groupId, string productCode, IGroupProductAccessService svc, HttpContext ctx)
     {
-        if (!CanMutateTenant(ctx, tenantId)) return Results.Forbid();
+        if (!CanMutateTenant(ctx, tenantId, PermissionCodes.TenantProductsAssign)) return Results.Forbid();
         try
         {
             var result = await svc.GrantAsync(tenantId, groupId, productCode, GetActorUserId(ctx));
@@ -183,7 +202,7 @@ public static class GroupEndpoints
 
     private static async Task<IResult> RevokeGroupProduct(Guid tenantId, Guid groupId, string productCode, IGroupProductAccessService svc, HttpContext ctx)
     {
-        if (!CanMutateTenant(ctx, tenantId)) return Results.Forbid();
+        if (!CanMutateTenant(ctx, tenantId, PermissionCodes.TenantProductsAssign)) return Results.Forbid();
         var revoked = await svc.RevokeAsync(tenantId, groupId, productCode, GetActorUserId(ctx));
         return revoked ? Results.NoContent() : Results.NotFound();
     }
@@ -202,7 +221,7 @@ public static class GroupEndpoints
 
     private static async Task<IResult> AssignGroupRole(Guid tenantId, Guid groupId, AssignGroupRoleRequest body, IGroupRoleAssignmentService svc, HttpContext ctx)
     {
-        if (!CanMutateTenant(ctx, tenantId)) return Results.Forbid();
+        if (!CanMutateTenant(ctx, tenantId, PermissionCodes.TenantRolesAssign)) return Results.Forbid();
         if (string.IsNullOrWhiteSpace(body.RoleCode)) return Results.BadRequest(new { error = "RoleCode is required." });
 
         try
@@ -219,7 +238,7 @@ public static class GroupEndpoints
 
     private static async Task<IResult> RemoveGroupRole(Guid tenantId, Guid groupId, Guid assignmentId, IGroupRoleAssignmentService svc, HttpContext ctx)
     {
-        if (!CanMutateTenant(ctx, tenantId)) return Results.Forbid();
+        if (!CanMutateTenant(ctx, tenantId, PermissionCodes.TenantRolesAssign)) return Results.Forbid();
         var removed = await svc.RemoveAsync(tenantId, groupId, assignmentId, GetActorUserId(ctx));
         return removed ? Results.NoContent() : Results.NotFound();
     }

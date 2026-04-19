@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
+using BuildingBlocks.Authorization.Filters;
+using PermCodes = BuildingBlocks.Authorization.PermissionCodes;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
@@ -102,23 +104,32 @@ public static class AdminEndpoints
 
         // ── User lifecycle ────────────────────────────────────────────────────
         // Step 27 (Phase B): user deactivation — emits identity.user.deactivated.
-        routes.MapPatch("/api/admin/users/{id:guid}/deactivate",            DeactivateUser);
+        // LS-ID-TNT-012: TenantAdmin/PlatformAdmin bypass via RequirePermissionFilter;
+        // StandardUsers with explicit TENANT.users:manage grant are also allowed.
+        routes.MapPatch("/api/admin/users/{id:guid}/deactivate",            DeactivateUser)
+            .RequirePermission(PermCodes.TenantUsersManage);
 
         // UIX-002: activate user
-        routes.MapPost("/api/admin/users/{id:guid}/activate",               ActivateUser);
+        routes.MapPost("/api/admin/users/{id:guid}/activate",               ActivateUser)
+            .RequirePermission(PermCodes.TenantUsersManage);
 
         // UIX-002: invite user
-        routes.MapPost("/api/admin/users/invite",                           InviteUser);
+        routes.MapPost("/api/admin/users/invite",                           InviteUser)
+            .RequirePermission(PermCodes.TenantInvitationsManage);
 
         // UIX-002: resend invite
-        routes.MapPost("/api/admin/users/{id:guid}/resend-invite",          ResendInvite);
+        routes.MapPost("/api/admin/users/{id:guid}/resend-invite",          ResendInvite)
+            .RequirePermission(PermCodes.TenantInvitationsManage);
 
         // Admin can edit a user's primary phone number on file.
-        routes.MapPatch("/api/admin/users/{id:guid}/phone",                 UpdateUserPhone);
+        routes.MapPatch("/api/admin/users/{id:guid}/phone",                 UpdateUserPhone)
+            .RequirePermission(PermCodes.TenantUsersManage);
 
         // UIX-003-03: security / session admin actions
-        routes.MapPost("/api/admin/users/{id:guid}/lock",                   LockUser);
-        routes.MapPost("/api/admin/users/{id:guid}/unlock",                 UnlockUser);
+        routes.MapPost("/api/admin/users/{id:guid}/lock",                   LockUser)
+            .RequirePermission(PermCodes.TenantUsersManage);
+        routes.MapPost("/api/admin/users/{id:guid}/unlock",                 UnlockUser)
+            .RequirePermission(PermCodes.TenantUsersManage);
         routes.MapPost("/api/admin/users/{id:guid}/reset-password",         AdminResetPassword);
         routes.MapPost("/api/admin/users/{id:guid}/set-password",           AdminSetPassword);
         routes.MapPost("/api/admin/users/{id:guid}/force-logout",           ForceLogout);
@@ -132,8 +143,11 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/users/{id:guid}/provision-careconnect",  ProvisionForCareConnect);
 
         // ── Role assignment ───────────────────────────────────────────────────
-        routes.MapPost("/api/admin/users/{id:guid}/roles",                  AssignRole);
-        routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}",  RevokeRole);
+        // LS-ID-TNT-012: role assignment gated on TENANT.roles:assign.
+        routes.MapPost("/api/admin/users/{id:guid}/roles",                  AssignRole)
+            .RequirePermission(PermCodes.TenantRolesAssign);
+        routes.MapDelete("/api/admin/users/{id:guid}/roles/{roleId:guid}",  RevokeRole)
+            .RequirePermission(PermCodes.TenantRolesAssign);
 
         // UIX-002-C: assignable roles with eligibility metadata
         routes.MapGet("/api/admin/users/{id:guid}/assignable-roles",        GetAssignableRoles);
@@ -143,9 +157,13 @@ public static class AdminEndpoints
 
         // ── Memberships ───────────────────────────────────────────────────────
         // UIX-002: assign user to organization, set primary, remove (scaffold)
-        routes.MapPost("/api/admin/users/{id:guid}/memberships",                                   AssignMembership);
-        routes.MapPost("/api/admin/users/{id:guid}/memberships/{membershipId:guid}/set-primary",   SetPrimaryMembership);
-        routes.MapDelete("/api/admin/users/{id:guid}/memberships/{membershipId:guid}",             RemoveMembership);
+        // LS-ID-TNT-012: membership mutations gated on TENANT.users:manage.
+        routes.MapPost("/api/admin/users/{id:guid}/memberships",                                   AssignMembership)
+            .RequirePermission(PermCodes.TenantUsersManage);
+        routes.MapPost("/api/admin/users/{id:guid}/memberships/{membershipId:guid}/set-primary",   SetPrimaryMembership)
+            .RequirePermission(PermCodes.TenantUsersManage);
+        routes.MapDelete("/api/admin/users/{id:guid}/memberships/{membershipId:guid}",             RemoveMembership)
+            .RequirePermission(PermCodes.TenantUsersManage);
 
 
         // ── Permissions catalog ───────────────────────────────────────────────

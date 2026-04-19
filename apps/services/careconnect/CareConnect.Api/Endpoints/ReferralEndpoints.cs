@@ -163,6 +163,7 @@ public static class ReferralEndpoints
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect);
 
+        // LS-ID-TNT-012: filter-level JWT permission check; handler also validates via IEffectivePermissionService.
         group.MapPost("/", async (
             [FromBody] CreateReferralRequest request,
             IReferralService service,
@@ -178,7 +179,8 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
+        .RequirePermission(PermissionCodes.ReferralCreate);
 
         group.MapPut("/{id:guid}", async (
             Guid id,
@@ -248,7 +250,8 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
+        .RequirePermission(PermissionCodes.ReferralCreate);
 
         // POST /api/referrals/{id}/revoke-token — invalidate all previously issued view tokens
         group.MapPost("/{id:guid}/revoke-token", async (
@@ -273,7 +276,8 @@ public static class ReferralEndpoints
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
         .RequireProductAccess(ProductCodes.SynqCareConnect)
-        .RequireOrgProductAccess(ProductCodes.SynqCareConnect);
+        .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
+        .RequirePermission(PermissionCodes.ReferralCreate);
 
         // GET /api/referrals/{id}/audit — operational audit timeline (LSCC-005-02)
         // Returns status-history + notification events merged and sorted chronologically.
