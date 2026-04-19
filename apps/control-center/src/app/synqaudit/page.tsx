@@ -74,6 +74,13 @@ export default async function SynqAuditOverviewPage() {
       color: 'border-blue-200 hover:border-blue-400',
     },
     {
+      href:  '/synqaudit/permissions',
+      icon:  'ri-key-2-line',
+      title: 'Permissions',
+      desc:  'Browse permission-change events — role, group, and product assignments with before/after state.',
+      color: 'border-indigo-200 hover:border-indigo-400',
+    },
+    {
       href:  '/synqaudit/legal-holds',
       icon:  'ri-scales-3-line',
       title: 'Legal Holds',

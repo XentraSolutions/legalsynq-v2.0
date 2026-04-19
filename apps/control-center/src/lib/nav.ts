@@ -89,6 +89,7 @@ export const CC_NAV: NavSection[] = [
       { href: '/synqaudit',                  label: 'Overview',       icon: 'ri-shield-check-line',   badge: 'LIVE' },
       { href: '/synqaudit/user-activity',    label: 'User Activity',  icon: 'ri-user-heart-line',     badge: 'LIVE' },
       { href: '/synqaudit/investigation',    label: 'Investigation',  icon: 'ri-search-eye-line',     badge: 'LIVE' },
+      { href: '/synqaudit/permissions',     label: 'Permissions',    icon: 'ri-key-2-line',          badge: 'LIVE' },
       { href: '/synqaudit/trace',            label: 'Trace Viewer',   icon: 'ri-git-branch-line',     badge: 'LIVE' },
       { href: '/synqaudit/exports',          label: 'Exports',        icon: 'ri-download-cloud-line', badge: 'LIVE' },
       { href: '/synqaudit/integrity',        label: 'Integrity',      icon: 'ri-fingerprint-line',    badge: 'LIVE' },
