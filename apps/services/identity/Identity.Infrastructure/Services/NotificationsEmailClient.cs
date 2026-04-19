@@ -1,35 +1,49 @@
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using BuildingBlocks.Notifications;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Identity.Infrastructure.Services;
 
 /// <summary>
-/// LS-ID-TNT-006: Sends transactional emails via the Notifications service
-/// internal HTTP endpoint (<c>POST /internal/send-email</c>).
+/// LS-NOTIF-CORE-024: Sends transactional identity emails via the canonical
+/// Notifications service endpoint (<c>POST /v1/notifications</c>).
 ///
-/// Mirrors the pattern of <see cref="NotificationsCacheClient"/> — uses the
-/// same <c>IHttpClientFactory("NotificationsService")</c> named client and
-/// the same <c>X-Internal-Service-Token</c> header for internal auth.
+/// <para>
+/// Replaces the old <c>POST /internal/send-email</c> passthrough. Identity
+/// is now a first-class Notifications producer:
+/// <list type="bullet">
+///   <item><c>productKey = "identity"</c>, <c>sourceSystem = "identity-service"</c></item>
+///   <item><c>eventKey</c> = <c>identity.user.password.reset</c> or <c>identity.user.invite.sent</c></item>
+///   <item>Auth via <c>NotificationsAuthDelegatingHandler</c> (service JWT when configured,
+///         legacy <c>X-Tenant-Id</c> fallback otherwise)</item>
+/// </list>
+/// </para>
 ///
-/// When <c>NotificationsService:BaseUrl</c> or <c>NotificationsService:PortalBaseUrl</c>
-/// is not configured, the method returns <c>EmailConfigured = false</c> so the caller
-/// can apply the appropriate fallback without treating it as a delivery failure.
+/// <para>
+/// Identity remains responsible for token generation, link construction, and
+/// inline HTML rendering. Notifications handles delivery, retry, provider
+/// routing, and observability.
+/// </para>
+///
+/// <para>
+/// When <c>NotificationsService:BaseUrl</c> is not configured, both methods
+/// return <c>EmailConfigured = false</c> so callers can apply the appropriate
+/// fallback without treating it as a delivery failure.
+/// </para>
 /// </summary>
 public interface INotificationsEmailClient
 {
     /// <summary>
     /// Dispatches a password-reset email to <paramref name="toEmail"/>.
     /// </summary>
-    /// <returns>
-    /// A tuple where <c>EmailConfigured</c> indicates whether the integration
-    /// is set up; <c>Success</c> indicates whether dispatch succeeded;
-    /// <c>Error</c> contains a human-readable reason on failure.
-    /// </returns>
     Task<(bool EmailConfigured, bool Success, string? Error)> SendPasswordResetEmailAsync(
         string            toEmail,
         string            displayName,
         string            resetLink,
+        Guid              tenantId,
         CancellationToken ct = default);
 
     /// <summary>
@@ -37,25 +51,30 @@ public interface INotificationsEmailClient
     /// Contains the activation link the invitee uses to set their password and
     /// activate their account via <c>POST /api/auth/accept-invite</c>.
     /// </summary>
-    /// <returns>
-    /// A tuple where <c>EmailConfigured</c> indicates whether the integration
-    /// is set up; <c>Success</c> indicates whether dispatch succeeded;
-    /// <c>Error</c> contains a human-readable reason on failure.
-    /// </returns>
     Task<(bool EmailConfigured, bool Success, string? Error)> SendInviteEmailAsync(
         string            toEmail,
         string            displayName,
         string            activationLink,
+        Guid              tenantId,
         CancellationToken ct = default);
 }
 
 public sealed class NotificationsEmailClient : INotificationsEmailClient
 {
-    private const string TokenHeader = "X-Internal-Service-Token";
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
 
-    private readonly IHttpClientFactory                  _httpClientFactory;
-    private readonly NotificationsServiceOptions         _options;
-    private readonly ILogger<NotificationsEmailClient>   _logger;
+    private const string PasswordResetEventKey = "identity.user.password.reset";
+    private const string InviteEventKey        = "identity.user.invite.sent";
+    private const string PasswordResetSubject  = "Reset your LegalSynq password";
+    private const string InviteSubject         = "You've been invited to LegalSynq";
+
+    private readonly IHttpClientFactory                _httpClientFactory;
+    private readonly NotificationsServiceOptions       _options;
+    private readonly ILogger<NotificationsEmailClient> _logger;
 
     public NotificationsEmailClient(
         IHttpClientFactory                    httpClientFactory,
@@ -67,87 +86,88 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
         _logger            = logger;
     }
 
-    public async Task<(bool EmailConfigured, bool Success, string? Error)> SendPasswordResetEmailAsync(
+    public Task<(bool EmailConfigured, bool Success, string? Error)> SendPasswordResetEmailAsync(
         string            toEmail,
         string            displayName,
         string            resetLink,
+        Guid              tenantId,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(_options.BaseUrl) ||
-            string.IsNullOrWhiteSpace(_options.PortalBaseUrl))
+        var body = new
         {
-            _logger.LogDebug(
-                "NotificationsService:BaseUrl or PortalBaseUrl not configured; " +
-                "password-reset email for {Email} will use the non-production token fallback.",
-                toEmail);
-            return (EmailConfigured: false, Success: false, Error: null);
-        }
+            type    = PasswordResetEventKey,
+            subject = PasswordResetSubject,
+            body    = BuildPasswordResetHtmlBody(displayName, resetLink),
+        };
 
-        try
+        var templateData = new Dictionary<string, string>
         {
-            using var client = _httpClientFactory.CreateClient("NotificationsService");
-            client.BaseAddress = new Uri(_options.BaseUrl.TrimEnd('/') + "/");
-            client.Timeout     = TimeSpan.FromSeconds(_options.TimeoutSeconds);
+            ["displayName"] = displayName,
+            ["resetLink"]   = resetLink,
+            ["subject"]     = PasswordResetSubject,
+        };
 
-            if (!string.IsNullOrWhiteSpace(_options.InternalServiceToken))
-            {
-                client.DefaultRequestHeaders.TryAddWithoutValidation(
-                    TokenHeader, _options.InternalServiceToken);
-            }
-
-            var payload = new
-            {
-                to      = toEmail,
-                subject = "Reset your LegalSynq password",
-                body    = BuildTextBody(displayName, resetLink),
-                html    = BuildHtmlBody(displayName, resetLink),
-            };
-
-            using var response = await client.PostAsJsonAsync("internal/send-email", payload, ct);
-
-            if (response.IsSuccessStatusCode)
-            {
-                _logger.LogInformation(
-                    "[LS-ID-TNT-006] Password reset email dispatched to {Email}.",
-                    toEmail);
-                return (EmailConfigured: true, Success: true, Error: null);
-            }
-
-            var responseBody = await response.Content.ReadAsStringAsync(ct);
-            _logger.LogWarning(
-                "[LS-ID-TNT-006] Password reset email failed for {Email}: " +
-                "notifications returned HTTP {Status}. Body: {Body}",
-                toEmail, (int)response.StatusCode, responseBody);
-            return (
-                EmailConfigured: true,
-                Success:         false,
-                Error:           $"Notifications service returned HTTP {(int)response.StatusCode}.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "[LS-ID-TNT-006] Password reset email dispatch threw for {Email}.",
-                toEmail);
-            return (
-                EmailConfigured: true,
-                Success:         false,
-                Error:           $"Email delivery error: {ex.GetType().Name}.");
-        }
+        return SubmitAsync(
+            eventKey:     PasswordResetEventKey,
+            subject:      PasswordResetSubject,
+            toEmail:      toEmail,
+            tenantId:     tenantId,
+            body:         body,
+            templateData: templateData,
+            logTag:       "LS-NOTIF-CORE-024/password-reset",
+            ct:           ct);
     }
 
-    public async Task<(bool EmailConfigured, bool Success, string? Error)> SendInviteEmailAsync(
+    public Task<(bool EmailConfigured, bool Success, string? Error)> SendInviteEmailAsync(
         string            toEmail,
         string            displayName,
         string            activationLink,
+        Guid              tenantId,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(_options.BaseUrl) ||
-            string.IsNullOrWhiteSpace(_options.PortalBaseUrl))
+        var body = new
+        {
+            type    = InviteEventKey,
+            subject = InviteSubject,
+            body    = BuildInviteHtmlBody(displayName, activationLink),
+        };
+
+        var templateData = new Dictionary<string, string>
+        {
+            ["displayName"]    = displayName,
+            ["activationLink"] = activationLink,
+            ["subject"]        = InviteSubject,
+        };
+
+        return SubmitAsync(
+            eventKey:     InviteEventKey,
+            subject:      InviteSubject,
+            toEmail:      toEmail,
+            tenantId:     tenantId,
+            body:         body,
+            templateData: templateData,
+            logTag:       "LS-NOTIF-CORE-024/invite",
+            ct:           ct);
+    }
+
+    // ── Core submission ───────────────────────────────────────────────────────
+
+    private async Task<(bool EmailConfigured, bool Success, string? Error)> SubmitAsync(
+        string            eventKey,
+        string            subject,
+        string            toEmail,
+        Guid              tenantId,
+        object            body,
+        Dictionary<string, string> templateData,
+        string            logTag,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(_options.BaseUrl))
         {
             _logger.LogDebug(
-                "NotificationsService:BaseUrl or PortalBaseUrl not configured; " +
-                "invitation email for {Email} will use the non-production token fallback.",
-                toEmail);
+                "[{Tag}] NotificationsService:BaseUrl not configured; " +
+                "email for {Email} will use the non-production fallback.",
+                logTag, toEmail);
             return (EmailConfigured: false, Success: false, Error: null);
         }
 
@@ -157,35 +177,44 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
             client.BaseAddress = new Uri(_options.BaseUrl.TrimEnd('/') + "/");
             client.Timeout     = TimeSpan.FromSeconds(_options.TimeoutSeconds);
 
-            if (!string.IsNullOrWhiteSpace(_options.InternalServiceToken))
+            var request = new NotificationsProducerRequest
             {
-                client.DefaultRequestHeaders.TryAddWithoutValidation(
-                    TokenHeader, _options.InternalServiceToken);
-            }
-
-            var payload = new
-            {
-                to      = toEmail,
-                subject = "You've been invited to LegalSynq",
-                body    = BuildInviteTextBody(displayName, activationLink),
-                html    = BuildInviteHtmlBody(displayName, activationLink),
+                Channel        = NotificationTaxonomy.Channels.Email,
+                ProductKey     = NotificationTaxonomy.Identity.ProductKey,
+                EventKey       = eventKey,
+                SourceSystem   = NotificationTaxonomy.Identity.SourceSystem,
+                IdempotencyKey = Guid.NewGuid().ToString("N"),
+                Recipient      = new NotificationsRecipient
+                {
+                    Email    = toEmail,
+                    TenantId = tenantId.ToString(),
+                },
+                Message        = body,
+                TemplateData   = templateData,
+                Metadata       = new Dictionary<string, string>
+                {
+                    ["tenantId"] = tenantId.ToString(),
+                },
             };
 
-            using var response = await client.PostAsJsonAsync("internal/send-email", payload, ct);
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "v1/notifications");
+            httpRequest.Headers.Add("X-Tenant-Id", tenantId.ToString());
+            httpRequest.Content = JsonContent.Create(request, options: JsonOpts);
+
+            using var response = await client.SendAsync(httpRequest, ct);
 
             if (response.IsSuccessStatusCode)
             {
                 _logger.LogInformation(
-                    "[LS-ID-TNT-007] Invitation email dispatched to {Email}.",
-                    toEmail);
+                    "[{Tag}] Email dispatched to {Email} (tenant={TenantId}).",
+                    logTag, toEmail, tenantId);
                 return (EmailConfigured: true, Success: true, Error: null);
             }
 
             var responseBody = await response.Content.ReadAsStringAsync(ct);
             _logger.LogWarning(
-                "[LS-ID-TNT-007] Invitation email failed for {Email}: " +
-                "notifications returned HTTP {Status}. Body: {Body}",
-                toEmail, (int)response.StatusCode, responseBody);
+                "[{Tag}] Notifications service returned HTTP {Status} for {Email} (tenant={TenantId}). Body: {Body}",
+                logTag, (int)response.StatusCode, toEmail, tenantId, responseBody);
             return (
                 EmailConfigured: true,
                 Success:         false,
@@ -194,8 +223,8 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "[LS-ID-TNT-007] Invitation email dispatch threw for {Email}.",
-                toEmail);
+                "[{Tag}] Email dispatch threw for {Email} (tenant={TenantId}).",
+                logTag, toEmail, tenantId);
             return (
                 EmailConfigured: true,
                 Success:         false,
@@ -203,25 +232,11 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
         }
     }
 
-    // ── Email templates ───────────────────────────────────────────────────────
+    // ── Inline HTML templates ─────────────────────────────────────────────────
+    // Identity owns template rendering until tenant templates are registered
+    // in the Notifications template catalog (LS-NOTIF-CORE-022 follow-up).
 
-    private static string BuildTextBody(string name, string link) =>
-        $"""
-        Hello {name},
-
-        An administrator has requested a password reset for your LegalSynq account.
-
-        Use the link below to set a new password. This link is valid for 24 hours.
-
-          {link}
-
-        If you did not expect this email, you can safely ignore it. Your password
-        will not change unless you follow the link above.
-
-        — The LegalSynq Team
-        """;
-
-    private static string BuildHtmlBody(string name, string link)
+    private static string BuildPasswordResetHtmlBody(string name, string link)
     {
         var safeName = HtmlEncode(name);
         var safeLink = HtmlEncode(link);
@@ -289,20 +304,6 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
         </html>
         """;
     }
-
-    private static string BuildInviteTextBody(string name, string link) =>
-        $"""
-        Hello {name},
-
-        You've been invited to join LegalSynq. Click the link below to set your
-        password and activate your account. This link is valid for 72 hours.
-
-          {link}
-
-        If you were not expecting this invitation, you can safely ignore this email.
-
-        — The LegalSynq Team
-        """;
 
     private static string BuildInviteHtmlBody(string name, string link)
     {
@@ -372,7 +373,6 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
         """;
     }
 
-    /// <summary>Minimal HTML encoding — avoids taking a System.Web dependency.</summary>
     private static string HtmlEncode(string value) =>
         value
             .Replace("&",  "&amp;")

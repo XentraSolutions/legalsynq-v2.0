@@ -1857,7 +1857,7 @@ public static class AdminEndpoints
             if (string.IsNullOrWhiteSpace(displayName)) displayName = user.Email;
 
             var (emailConfigured, delivered, deliveryError) =
-                await notificationsEmail.SendPasswordResetEmailAsync(user.Email, displayName, resetLink, ct);
+                await notificationsEmail.SendPasswordResetEmailAsync(user.Email, displayName, resetLink, user.TenantId, ct);
 
             if (emailConfigured)
             {
@@ -3737,7 +3737,7 @@ public static class AdminEndpoints
         if (!string.IsNullOrWhiteSpace(activationLink))
         {
             var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
-                emailLower, displayNameStr, activationLink, ct);
+                emailLower, displayNameStr, activationLink, body.TenantId, ct);
 
             if (emailConfigured && !emailSuccess)
             {
@@ -3822,7 +3822,7 @@ public static class AdminEndpoints
         if (!string.IsNullOrWhiteSpace(activationLink))
         {
             var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
-                user.Email, displayNameStr, activationLink, ct);
+                user.Email, displayNameStr, activationLink, user.TenantId, ct);
 
             if (emailConfigured && !emailSuccess)
             {

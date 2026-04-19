@@ -1,5 +1,7 @@
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using BuildingBlocks.Notifications;
 using Identity.Application;
 using Identity.Application.Interfaces;
 using Identity.Application.Services;
@@ -81,12 +83,26 @@ public static class DependencyInjection
         // waiting for the notifications service's TTL-based cache to expire.
         services.AddOptions<NotificationsServiceOptions>()
                 .Bind(configuration.GetSection(NotificationsServiceOptions.SectionName));
-        services.AddHttpClient("NotificationsService");
 
-        // LS-ID-TNT-006: Transactional email client — calls POST /internal/send-email
-        // on the notifications service to deliver password-reset emails.
-        // Always registered; handles unconfigured BaseUrl/PortalBaseUrl internally
-        // by returning EmailConfigured=false so the handler applies the correct fallback.
+        // LS-NOTIF-CORE-024: Service-JWT auth for outbound Notifications calls.
+        // Sources the signing key from FLOW_SERVICE_TOKEN_SECRET env var (same
+        // secret used by the Notifications service for inbound token validation).
+        // When the secret is absent (dev/unconfigured), NotificationsAuthDelegatingHandler
+        // is a no-op and requests fall through to the legacy X-Tenant-Id path.
+        services.AddServiceTokenIssuer(configuration, "identity");
+        services.AddTransient<NotificationsAuthDelegatingHandler>();
+
+        // LS-NOTIF-CORE-024: Wire the auth handler onto the named HTTP client so
+        // all callers — both the transactional email client and the cache client —
+        // automatically include a service JWT when FLOW_SERVICE_TOKEN_SECRET is set.
+        services.AddHttpClient("NotificationsService")
+                .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
+
+        // LS-ID-TNT-006 / LS-NOTIF-CORE-024: Transactional email client — calls
+        // POST /v1/notifications on the Notifications service to deliver
+        // password-reset and invitation emails.  Returns EmailConfigured=false when
+        // NotificationsService:BaseUrl is not set so callers can apply the correct
+        // non-email fallback without treating the absence as a delivery failure.
         services.AddScoped<INotificationsEmailClient, NotificationsEmailClient>();
         var notificationsBaseUrl = configuration[$"{NotificationsServiceOptions.SectionName}:BaseUrl"];
         if (!string.IsNullOrWhiteSpace(notificationsBaseUrl))
