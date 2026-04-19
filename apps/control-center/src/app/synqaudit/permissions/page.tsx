@@ -139,7 +139,7 @@ export default async function PermissionsAuditPage({ searchParams }: Props) {
  * audit query API.  When scope is empty or unrecognised, no eventType filter
  * is applied (all events are returned, subject to tenant isolation).
  */
-export const SCOPE_TO_EVENT_TYPE: Record<string, string> = {
+const SCOPE_TO_EVENT_TYPE: Record<string, string> = {
   'user-role-assigned':       'identity.user.role.assigned',
   'user-role-revoked':        'identity.user.role.revoked',
   'user-product-assigned':    'identity.user.product.assigned',
