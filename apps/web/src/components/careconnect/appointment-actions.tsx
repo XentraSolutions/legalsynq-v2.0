@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 import { useToast } from '@/lib/toast-context';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
+import { PermissionTooltip } from '@/components/ui/permission-tooltip';
+import { DisabledReasons } from '@/lib/disabled-reasons';
 import { AvailabilityList } from './availability-list';
 import type { AppointmentDetail, AvailabilitySlot, ProviderAvailabilityResponse } from '@/types/careconnect';
 
@@ -34,26 +39,49 @@ function formatDateTime(iso: string): string {
 /**
  * Appointment action buttons for the detail page.
  *
- * Receiver (provider) only — requires AppointmentManage capability:
+ * Receiver (provider) only — actions available by status:
  *   - Confirm         → POST /api/appointments/{id}/confirm
  *   - Mark Completed  → POST /api/appointments/{id}/complete
  *   - Mark NoShow     → PUT  /api/appointments/{id}   { status: 'NoShow' }
  *   - Reschedule      → POST /api/appointments/{id}/reschedule { newAppointmentSlotId, notes? }
  *
  * Cancel is handled separately by AppointmentCancelButton.
+ *
+ * LS-ID-TNT-015-001: Permission gates layered on top of role + status gates:
+ *   - Confirm / Complete / NoShow  → CC.AppointmentUpdate
+ *   - Reschedule                   → CC.AppointmentManage (higher-privilege operation)
+ *
+ * Partial-permission scenario: when the receiver has status access but only
+ * some permissions are held, blocked actions are shown as disabled-with-tooltip.
+ * ForbiddenBanner is shown only when ALL action permissions are absent.
  */
-export function AppointmentActions({ appointment, isReceiver, isReferrer }: AppointmentActionsProps) {
+export function AppointmentActions({ appointment, isReceiver, isReferrer: _isReferrer }: AppointmentActionsProps) {
   const router = useRouter();
   const { show: showToast } = useToast();
+
+  // LS-ID-TNT-015-001: Permission checks (UX layer only; backend enforces authoritatively).
+  const canApptUpdatePerm = usePermission(PermissionCodes.CC.AppointmentUpdate);
+  const canApptManagePerm = usePermission(PermissionCodes.CC.AppointmentManage);
 
   const status     = appointment.status;
   const providerId = appointment.providerId;
 
-  const isTerminal   = ['Cancelled', 'Completed', 'NoShow'].includes(status);
-  const canConfirm   = isReceiver && ['Scheduled', 'Pending', 'Rescheduled'].includes(status);
-  const canComplete  = isReceiver && status === 'Confirmed';
-  const canNoShow    = isReceiver && status === 'Confirmed';
-  const canReschedule= isReceiver && ['Scheduled', 'Pending', 'Confirmed'].includes(status);
+  const isTerminal = ['Cancelled', 'Completed', 'NoShow'].includes(status);
+
+  // ── Role + status gates ───────────────────────────────────────────────────
+  const roleCanConfirm    = isReceiver && ['Scheduled', 'Pending', 'Rescheduled'].includes(status);
+  const roleCanComplete   = isReceiver && status === 'Confirmed';
+  const roleCanNoShow     = isReceiver && status === 'Confirmed';
+  const roleCanReschedule = isReceiver && ['Scheduled', 'Pending', 'Confirmed'].includes(status);
+
+  // ── Permission gates ──────────────────────────────────────────────────────
+  const canConfirm    = roleCanConfirm    && canApptUpdatePerm;
+  const canComplete   = roleCanComplete   && canApptUpdatePerm;
+  const canNoShow     = roleCanNoShow     && canApptUpdatePerm;
+  const canReschedule = roleCanReschedule && canApptManagePerm;
+
+  const hasAnyRoleAccess = roleCanConfirm || roleCanComplete || roleCanNoShow || roleCanReschedule;
+  const hasAnyPermAccess = canConfirm     || canComplete     || canNoShow     || canReschedule;
 
   const [loading,  setLoading]  = useState<string | null>(null);
   const [error,    setError]    = useState<string | null>(null);
@@ -90,7 +118,7 @@ export function AppointmentActions({ appointment, isReceiver, isReferrer }: Appo
   }, [showReschedule, availability, loadSlots]);
 
   if (isTerminal) return null;
-  if (!canConfirm && !canComplete && !canNoShow && !canReschedule) return null;
+  if (!hasAnyRoleAccess) return null;
 
   // ── Mutation helpers ───────────────────────────────────────────────────────
   async function doConfirm() {
@@ -204,51 +232,80 @@ export function AppointmentActions({ appointment, isReceiver, isReferrer }: Appo
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-3">
-          {canConfirm && (
-            <button
-              onClick={doConfirm}
-              disabled={!!loading}
-              className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-60 transition-colors"
-            >
-              {loading === 'Confirmed' ? 'Confirming…' : 'Confirm Appointment'}
-            </button>
-          )}
+        {/*
+          LS-ID-TNT-015-001: ForbiddenBanner when role qualifies for ALL actions
+          but ALL permissions are absent. Individual disabled-with-tooltip when
+          only some permissions are absent and at least one action is enabled.
+        */}
+        {!hasAnyPermAccess ? (
+          <ForbiddenBanner action="manage this appointment" />
+        ) : (
+          <div className="flex flex-wrap items-center gap-3">
+            {roleCanConfirm && (
+              <PermissionTooltip
+                show={!canConfirm}
+                message={DisabledReasons.noPermission('confirm this appointment').message}
+              >
+                <button
+                  onClick={doConfirm}
+                  disabled={!!loading || !canConfirm}
+                  className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading === 'Confirmed' ? 'Confirming…' : 'Confirm Appointment'}
+                </button>
+              </PermissionTooltip>
+            )}
 
-          {canComplete && (
-            <button
-              onClick={doComplete}
-              disabled={!!loading}
-              className="bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-60 transition-colors"
-            >
-              {loading === 'Completed' ? 'Completing…' : 'Mark Completed'}
-            </button>
-          )}
+            {roleCanComplete && (
+              <PermissionTooltip
+                show={!canComplete}
+                message={DisabledReasons.noPermission('mark this appointment as completed').message}
+              >
+                <button
+                  onClick={doComplete}
+                  disabled={!!loading || !canComplete}
+                  className="bg-blue-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading === 'Completed' ? 'Completing…' : 'Mark Completed'}
+                </button>
+              </PermissionTooltip>
+            )}
 
-          {canNoShow && (
-            <button
-              onClick={doNoShow}
-              disabled={!!loading}
-              className="border border-orange-300 text-orange-600 text-sm font-medium px-4 py-2 rounded-md hover:bg-orange-50 disabled:opacity-60 transition-colors"
-            >
-              {loading === 'NoShow' ? 'Marking…' : 'Mark No-Show'}
-            </button>
-          )}
+            {roleCanNoShow && (
+              <PermissionTooltip
+                show={!canNoShow}
+                message={DisabledReasons.noPermission('mark this appointment as no-show').message}
+              >
+                <button
+                  onClick={doNoShow}
+                  disabled={!!loading || !canNoShow}
+                  className="border border-orange-300 text-orange-600 text-sm font-medium px-4 py-2 rounded-md hover:bg-orange-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading === 'NoShow' ? 'Marking…' : 'Mark No-Show'}
+                </button>
+              </PermissionTooltip>
+            )}
 
-          {canReschedule && (
-            <button
-              onClick={() => setShowReschedule(true)}
-              disabled={!!loading}
-              className="border border-gray-300 text-gray-700 text-sm font-medium px-4 py-2 rounded-md hover:bg-gray-50 disabled:opacity-60 transition-colors"
-            >
-              Reschedule
-            </button>
-          )}
-        </div>
+            {roleCanReschedule && (
+              <PermissionTooltip
+                show={!canReschedule}
+                message={DisabledReasons.noPermission('reschedule this appointment').message}
+              >
+                <button
+                  onClick={() => { if (canReschedule) setShowReschedule(true); }}
+                  disabled={!!loading || !canReschedule}
+                  className="border border-gray-300 text-gray-700 text-sm font-medium px-4 py-2 rounded-md hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Reschedule
+                </button>
+              </PermissionTooltip>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* ── Reschedule modal ───────────────────────────────────────────────── */}
-      {showReschedule && (
+      {/* ── Reschedule modal — only reachable when canReschedule is true ───── */}
+      {showReschedule && canReschedule && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div
             className="fixed inset-0 bg-black/30 backdrop-blur-sm"

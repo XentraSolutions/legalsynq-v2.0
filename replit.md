@@ -5098,6 +5098,75 @@ Makes product UI permission-aware so the UI reflects the backend authorization m
 ### Analysis
 `analysis/LS-ID-TNT-015-report.md`
 
+## LS-ID-TNT-015-004 — Disabled State Explainability (2026-04-19)
+
+Adds disabled-with-tooltip semantics for partial-permission scenarios where role qualifies but not all permissions are held. Prevents blank-screen / silent 403 dead-ends and communicates actionable context to the user.
+
+### What was built
+- **`lib/disabled-reasons.ts`** — `DisabledReasons.noPermission(action)` and `DisabledReasons.workflowState(reason)` reason factories. Canonical messages used across components.
+- **`components/ui/permission-tooltip.tsx`** — Hydration-safe tooltip wrapper (`PermissionTooltip`). Always renders a wrapper `<span>` to avoid SSR/client hydration tree mismatch. Shows Radix `TooltipContent` when `show` is true. Used in any component that needs a disabled-with-reason button.
+- **`ActionMenu` `disabledReason` field** — Each `ActionMenuItem` can carry an optional `disabledReason: string`. When present the item is rendered disabled with `PermissionTooltip`.
+- **`ReferralStatusActions` partial-perm fixes** — individual accept/decline/cancel/update-status buttons disabled-with-tooltip when one perm missing, `ForbiddenBanner` only when all absent.
+- **`ReviewDecisionPanel` partial-perm fixes** — same pattern for funder actions.
+- **Provider detail CTA upgrade** — "Create Referral" button uses `PermissionTooltip` for workflow-state block (e.g., referral already active).
+
+### Files Changed
+- `apps/web/src/lib/disabled-reasons.ts` — new
+- `apps/web/src/components/ui/permission-tooltip.tsx` — new (hydration-safe)
+- `apps/web/src/components/careconnect/referral-status-actions.tsx` — partial-perm disabled-with-tooltip
+- `apps/web/src/components/fund/review-decision-panel.tsx` — partial-perm disabled-with-tooltip
+- `apps/web/src/app/(platform)/careconnect/providers/[id]/page.tsx` — CTA upgraded
+
+### Analysis
+`analysis/LS-ID-TNT-015-004-report.md`
+
+## LS-ID-TNT-015-001 — Full UI Coverage for Permission-Aware Product UX (2026-04-19)
+
+Extends permission gating to the remaining high-value client-component action surfaces across CareConnect and Fund that were role-only gated. All surfaces reuse the shared primitives from LS-ID-TNT-015-004.
+
+### What was built
+
+**CareConnect — AppointmentActions** (`components/careconnect/appointment-actions.tsx`)
+- Added `usePermission(CC.AppointmentUpdate)` → gates Confirm, Mark Completed, Mark No-Show
+- Added `usePermission(CC.AppointmentManage)` → gates Reschedule
+- Role-split variables: `roleCanXxx` (pure status+role) vs `canXxx` (role+perm)
+- `ForbiddenBanner` shown when all role conditions pass but ALL permissions absent
+- Per-button `PermissionTooltip` for partial-permission scenarios
+- Reschedule modal guarded — cannot open when perm absent
+
+**CareConnect — AppointmentCancelButton** (`components/careconnect/appointment-cancel-button.tsx`)
+- Added `usePermission(CC.AppointmentUpdate)` → gates Cancel
+- Cancel section always visible (feature discovery); button disabled-with-tooltip when perm absent
+- `onClick` guard prevents opening confirmation dialog via keyboard when perm absent
+
+**CareConnect — BookingPanel** (`components/careconnect/booking-panel.tsx`)
+- Added `usePermission(CC.AppointmentCreate)` → gates "Confirm Booking" submit
+- Form and slot details remain fully visible/fillable; only submit is blocked
+- `PermissionTooltip` on submit button
+
+**Fund — SubmitApplicationPanel** (`components/fund/submit-application-panel.tsx`)
+- Added `usePermission(Fund.ApplicationRefer)` → gates "Submit to Funder"
+- Panel and funder-ID form remain visible; only submit is blocked
+- `PermissionTooltip` on submit button
+
+### Intentionally NOT changed
+- **Lien/Case action surfaces** — `useRoleAccess().can()` is self-consistent and already granular; dual-gating would diverge
+- **Server-rendered list CTAs** (Appointments "Book Appointment", Applications "New Application") — `usePermission` is a client hook; role gate from `requireOrg()` is the correct layer for server components
+- **Fund payouts/processing/underwriting** — `BlankPage` stubs with no action surfaces
+- **Insights** — No `PermissionCodes.Insights` entries defined; cannot gate without backend permission definitions
+
+### Permission code mapping
+| Surface | Permission code |
+|---|---|
+| AppointmentActions Confirm/Complete/NoShow | `CC.AppointmentUpdate` |
+| AppointmentActions Reschedule | `CC.AppointmentManage` |
+| AppointmentCancelButton Cancel | `CC.AppointmentUpdate` |
+| BookingPanel Confirm Booking | `CC.AppointmentCreate` |
+| SubmitApplicationPanel Submit to Funder | `Fund.ApplicationRefer` |
+
+### Analysis
+`analysis/LS-ID-TNT-015-001-report.md`
+
 ## LS-NOTIF-CORE-001 — Operational API Completion & Contract Alignment (2026-04-19)
 
 Completes the Notifications microservice operational API surface. Pre-existing service had only POST /submit, GET /{id}, and GET / (basic list). This task adds stats, event timeline, delivery issues, retry, resend, and upgrades the list endpoint to structured paged responses.

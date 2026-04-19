@@ -4,6 +4,10 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { PermissionTooltip } from '@/components/ui/permission-tooltip';
+import { DisabledReasons } from '@/lib/disabled-reasons';
 import type { AvailabilitySlot, CreateAppointmentRequest, ReferralDetail } from '@/types/careconnect';
 
 interface BookingPanelProps {
@@ -25,6 +29,15 @@ function formatDateTime(iso: string): string {
   });
 }
 
+/**
+ * Booking form modal — presented after the referrer selects an availability slot.
+ *
+ * LS-ID-TNT-015-001: Permission gate added — CC.AppointmentCreate controls
+ * whether the "Confirm Booking" submit button is active. The form remains
+ * visible so the referrer can review the slot details, but submitting requires
+ * the permission. The button shows a tooltip explaining the restriction when
+ * the permission is absent.
+ */
 export function BookingPanel({
   providerId,
   providerName,
@@ -33,6 +46,9 @@ export function BookingPanel({
   onClose,
 }: BookingPanelProps) {
   const router = useRouter();
+
+  // LS-ID-TNT-015-001: Permission check (UX layer only; backend enforces authoritatively).
+  const canBookPerm = usePermission(PermissionCodes.CC.AppointmentCreate);
 
   // Pre-populate from referral context
   const [clientFirstName, setClientFirstName] = useState(referral?.clientFirstName ?? '');
@@ -247,13 +263,23 @@ export function BookingPanel({
               >
                 Cancel
               </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-md hover:opacity-90 disabled:opacity-60 transition-opacity"
+              {/*
+                LS-ID-TNT-015-001: Disable-with-tooltip when CC.AppointmentCreate
+                permission is absent. The form remains fillable so the user can
+                review the booking details, but submitting requires the permission.
+              */}
+              <PermissionTooltip
+                show={!canBookPerm}
+                message={DisabledReasons.noPermission('book appointments').message}
               >
-                {loading ? 'Booking…' : 'Confirm Booking'}
-              </button>
+                <button
+                  type="submit"
+                  disabled={loading || !canBookPerm}
+                  className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-md hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
+                >
+                  {loading ? 'Booking…' : 'Confirm Booking'}
+                </button>
+              </PermissionTooltip>
             </div>
           </form>
         </div>

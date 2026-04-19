@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 import { useToast } from '@/lib/toast-context';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { PermissionTooltip } from '@/components/ui/permission-tooltip';
+import { DisabledReasons } from '@/lib/disabled-reasons';
 import type { AppointmentDetail } from '@/types/careconnect';
 
 interface AppointmentCancelButtonProps {
@@ -18,10 +22,18 @@ interface AppointmentCancelButtonProps {
  * Shows a confirmation dialog with an optional notes field.
  * Shows a toast notification on success or failure.
  * Only rendered for non-terminal statuses.
+ *
+ * LS-ID-TNT-015-001: Permission gate added — CC.AppointmentUpdate controls
+ * whether the cancel button is interactive. The button is shown as
+ * disabled-with-tooltip when the role qualifies but the permission is absent,
+ * so the user understands the feature exists and who to contact.
  */
 export function AppointmentCancelButton({ appointment }: AppointmentCancelButtonProps) {
   const router = useRouter();
   const { show: showToast } = useToast();
+
+  // LS-ID-TNT-015-001: Permission check (UX layer only; backend enforces authoritatively).
+  const canCancelPerm = usePermission(PermissionCodes.CC.AppointmentUpdate);
 
   const isTerminal = ['Cancelled', 'Completed', 'NoShow'].includes(appointment.status);
   const [confirming, setConfirming] = useState(false);
@@ -62,13 +74,24 @@ export function AppointmentCancelButton({ appointment }: AppointmentCancelButton
         </div>
       )}
 
+      {/*
+        LS-ID-TNT-015-001: Disable-with-tooltip when permission is absent.
+        The cancel section is always visible (not hidden) so the user
+        understands cancellation is a feature and knows to contact their admin.
+      */}
       {!confirming ? (
-        <button
-          onClick={() => setConfirming(true)}
-          className="border border-red-300 text-red-600 text-sm font-medium px-4 py-2 rounded-md hover:bg-red-50 transition-colors"
+        <PermissionTooltip
+          show={!canCancelPerm}
+          message={DisabledReasons.noPermission('cancel this appointment').message}
         >
-          Cancel Appointment
-        </button>
+          <button
+            onClick={() => { if (canCancelPerm) setConfirming(true); }}
+            disabled={!canCancelPerm}
+            className="border border-red-300 text-red-600 text-sm font-medium px-4 py-2 rounded-md hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            Cancel Appointment
+          </button>
+        </PermissionTooltip>
       ) : (
         <div className="space-y-3 border border-red-100 rounded-md p-3 bg-red-50">
           <p className="text-sm font-medium text-red-800">

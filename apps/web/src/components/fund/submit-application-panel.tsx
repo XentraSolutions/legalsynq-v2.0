@@ -4,6 +4,10 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { fundApi } from '@/lib/fund-api';
 import { ApiError } from '@/lib/api-client';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { PermissionTooltip } from '@/components/ui/permission-tooltip';
+import { DisabledReasons } from '@/lib/disabled-reasons';
 import type { FundingApplicationDetail } from '@/types/fund';
 
 interface SubmitApplicationPanelProps {
@@ -19,9 +23,20 @@ interface SubmitApplicationPanelProps {
  *
  * Phase 1: funder org is a free-text UUID field.
  * Phase 2: replace with an org-picker that queries /fund/api/funders.
+ *
+ * LS-ID-TNT-015-001: Permission gate added — Fund.ApplicationRefer controls
+ * whether the "Submit to Funder" button is active. The panel is visible to
+ * the referrer whenever the application is in Draft status, but the submit
+ * action requires Fund.ApplicationRefer. When the permission is absent the
+ * button shows a disabled-with-tooltip state so the user understands why
+ * and who to contact.
  */
 export function SubmitApplicationPanel({ application, onUpdated }: SubmitApplicationPanelProps) {
   const router  = useRouter();
+
+  // LS-ID-TNT-015-001: Permission check (UX layer only; backend enforces authoritatively).
+  const canReferPerm = usePermission(PermissionCodes.Fund.ApplicationRefer);
+
   const [funderId, setFunderId] = useState(application.funderId ?? '');
   const [loading, setLoading]   = useState(false);
   const [error,   setError]     = useState<string | null>(null);
@@ -81,13 +96,24 @@ export function SubmitApplicationPanel({ application, onUpdated }: SubmitApplica
         </div>
 
         <div className="flex items-center gap-3 pt-1">
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-md hover:opacity-90 disabled:opacity-60 transition-opacity"
+          {/*
+            LS-ID-TNT-015-001: Disable-with-tooltip when Fund.ApplicationRefer
+            permission is absent. The panel and form remain visible so the
+            referrer can review the application, but submitting requires the
+            specific permission.
+          */}
+          <PermissionTooltip
+            show={!canReferPerm}
+            message={DisabledReasons.noPermission('submit applications to funders').message}
           >
-            {loading ? 'Submitting…' : 'Submit to Funder'}
-          </button>
+            <button
+              type="submit"
+              disabled={loading || !canReferPerm}
+              className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-md hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
+            >
+              {loading ? 'Submitting…' : 'Submit to Funder'}
+            </button>
+          </PermissionTooltip>
         </div>
       </form>
     </div>
