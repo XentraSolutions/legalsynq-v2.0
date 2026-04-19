@@ -22,9 +22,9 @@ export default async function NotificationDetailPage(props: Props) {
 
   try {
     [notification, events, issues] = await Promise.all([
-      notifClient.get<NotifDetail>(`/notifications/${params.id}`),
-      notifClient.get<NotifEvent[]>(`/notifications/${params.id}/events`).catch(() => []),
-      notifClient.get<NotifIssue[]>(`/notifications/${params.id}/issues`).catch(() => []),
+      notifClient.get<NotifDetail>(`/admin/notifications/${params.id}`),
+      notifClient.get<NotifEvent[]>(`/admin/notifications/${params.id}/events`).catch(() => []),
+      notifClient.get<NotifIssue[]>(`/admin/notifications/${params.id}/issues`).catch(() => []),
     ]);
   } catch (err) {
     if (err instanceof ApiError && err.isNotFound) {

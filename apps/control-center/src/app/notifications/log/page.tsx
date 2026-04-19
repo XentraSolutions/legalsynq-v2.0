@@ -3,7 +3,7 @@ import { CCShell }                           from '@/components/shell/cc-shell';
 import { NotificationStatusBadge }          from '@/components/notifications/status-badge';
 import { ChannelBadge }                      from '@/components/notifications/channel-badge';
 import { notifClient, NOTIF_CACHE_TAGS }    from '@/lib/notifications-api';
-import type { NotifListResponse }           from '@/lib/notifications-api';
+import type { AdminNotifListResponse }     from '@/lib/notifications-api';
 
 interface Props {
   searchParams: Promise<{
@@ -44,17 +44,17 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
   const page    = Math.max(1, parseInt(sp.page ?? '1', 10));
 
   const qs = new URLSearchParams();
-  qs.set('limit',  String(PAGE_SIZE));
-  qs.set('offset', String((page - 1) * PAGE_SIZE));
+  qs.set('page',     String(page));
+  qs.set('pageSize', String(PAGE_SIZE));
   if (status)  qs.set('status',  status);
   if (channel) qs.set('channel', channel);
 
-  let data:       NotifListResponse | null = null;
-  let fetchError: string | null            = null;
+  let data:       AdminNotifListResponse | null = null;
+  let fetchError: string | null                 = null;
 
   try {
-    data = await notifClient.get<NotifListResponse>(
-      `/notifications?${qs.toString()}`,
+    data = await notifClient.get<AdminNotifListResponse>(
+      `/admin/notifications?${qs.toString()}`,
       0,
       [NOTIF_CACHE_TAGS.notifications],
     );
@@ -62,8 +62,8 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
     fetchError = err instanceof Error ? err.message : 'Failed to load notifications.';
   }
 
-  const items      = data?.data      ?? [];
-  const totalCount = data?.meta?.total ?? 0;
+  const items      = data?.items      ?? [];
+  const totalCount = data?.totalCount ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   const statusOptions  = ['', 'accepted', 'processing', 'sent', 'failed', 'blocked'];

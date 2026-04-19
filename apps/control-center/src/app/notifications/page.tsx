@@ -2,8 +2,8 @@ import { requirePlatformAdmin }   from '@/lib/auth-guards';
 import { CCShell }                 from '@/components/shell/cc-shell';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type {
-  NotifListResponse,
-  NotifStats,
+  AdminNotifListResponse,
+  AdminNotifStatsDto,
   NotifProviderConfig,
 } from '@/lib/notifications-api';
 import { NotificationStatusBadge } from '@/components/notifications/status-badge';
@@ -21,43 +21,44 @@ function parseRecipient(recipientJson: string): string {
 export default async function NotificationsOverviewPage() {
   const session = await requirePlatformAdmin();
 
-  let recent:         NotifListResponse | null = null;
-  let stats:          NotifStats | null        = null;
-  let providerHealth: NotifProviderConfig[]    = [];
-  let fetchError:     string | null            = null;
+  let recent:         AdminNotifListResponse | null = null;
+  let adminStats:     AdminNotifStatsDto | null     = null;
+  let providerHealth: NotifProviderConfig[]         = [];
+  let fetchError:     string | null                 = null;
 
   try {
     [
       recent,
       providerHealth,
     ] = await Promise.all([
-      notifClient.get<NotifListResponse>('/notifications?limit=8', 10, [NOTIF_CACHE_TAGS.notifications]),
+      notifClient.get<AdminNotifListResponse>('/admin/notifications?pageSize=8', 10, [NOTIF_CACHE_TAGS.notifications]),
       notifClient.get<NotifProviderConfig[]>('/providers/configs', 15, [NOTIF_CACHE_TAGS.providers]).catch(() => []),
     ]);
 
-    stats = await notifClient
-      .get<{ data: NotifStats }>('/notifications/stats', 30, [NOTIF_CACHE_TAGS.notifications])
-      .then(r => r.data)
+    adminStats = await notifClient
+      .get<AdminNotifStatsDto>('/admin/notifications/stats', 30, [NOTIF_CACHE_TAGS.notifications])
       .catch(() => null);
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Could not reach the notifications service.';
   }
 
-  const items      = recent?.data ?? [];
-  const totalCount = stats?.total ?? recent?.meta?.total ?? 0;
+  const items      = recent?.items ?? [];
+  const totalCount = adminStats?.totalCount ?? recent?.totalCount ?? 0;
+
+  const last24hTrend = adminStats?.recentTrend?.at(-1) ?? null;
 
   const statCards = [
-    { label: 'Total (all time)', value: totalCount.toLocaleString(),                           color: 'text-indigo-700' },
-    { label: 'Sent',             value: (stats?.byStatus?.sent    ?? 0).toLocaleString(),       color: 'text-green-700'  },
-    { label: 'Failed',           value: (stats?.byStatus?.failed  ?? 0).toLocaleString(),       color: 'text-red-700'    },
-    { label: 'Blocked',          value: (stats?.byStatus?.blocked ?? 0).toLocaleString(),       color: 'text-amber-700'  },
+    { label: 'Total (all time)', value: totalCount.toLocaleString(),                                          color: 'text-indigo-700' },
+    { label: 'Sent',             value: (adminStats?.sentCount      ?? 0).toLocaleString(),                   color: 'text-green-700'  },
+    { label: 'Failed',           value: (adminStats?.failedCount    ?? 0).toLocaleString(),                   color: 'text-red-700'    },
+    { label: 'Blocked',          value: (adminStats?.statusDistribution?.['blocked'] ?? 0).toLocaleString(),  color: 'text-amber-700'  },
   ];
 
-  const last24hCards = stats ? [
-    { label: 'Last 24h — total',   value: stats.last24h.total.toLocaleString(),   color: 'text-gray-800'   },
-    { label: 'Last 24h — sent',    value: stats.last24h.sent.toLocaleString(),    color: 'text-green-700'  },
-    { label: 'Last 24h — failed',  value: stats.last24h.failed.toLocaleString(),  color: 'text-red-700'    },
-    { label: 'Last 24h — blocked', value: stats.last24h.blocked.toLocaleString(), color: 'text-amber-700'  },
+  const last24hCards = last24hTrend ? [
+    { label: 'Last 24h — total',   value: last24hTrend.total.toLocaleString(),   color: 'text-gray-800'   },
+    { label: 'Last 24h — sent',    value: last24hTrend.sent.toLocaleString(),    color: 'text-green-700'  },
+    { label: 'Last 24h — failed',  value: last24hTrend.failed.toLocaleString(),  color: 'text-red-700'    },
+    { label: 'Last 24h — blocked', value: last24hTrend.blocked.toLocaleString(), color: 'text-amber-700'  },
   ] : [];
 
   const quickNav = [
@@ -107,7 +108,7 @@ export default async function NotificationsOverviewPage() {
           </div>
         </div>
 
-        {/* Stat cards — last 24h */}
+        {/* Stat cards — last 24h (derived from trend data) */}
         {last24hCards.length > 0 && (
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Last 24 hours</p>
@@ -123,9 +124,9 @@ export default async function NotificationsOverviewPage() {
         )}
 
         {/* Channel breakdown */}
-        {stats && Object.keys(stats.byChannel).length > 0 && (
+        {adminStats && Object.keys(adminStats.channelBreakdown ?? {}).length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {Object.entries(stats.byChannel).map(([ch, count]) => (
+            {Object.entries(adminStats.channelBreakdown).map(([ch, count]) => (
               <div key={ch} className="rounded-lg border border-gray-200 bg-white px-4 py-3">
                 <p className="text-xs text-gray-500 mb-1 capitalize">{ch} (all time)</p>
                 <p className="text-2xl font-bold text-sky-700">{count.toLocaleString()}</p>

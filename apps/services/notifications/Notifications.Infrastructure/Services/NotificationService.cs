@@ -480,6 +480,13 @@ public class NotificationServiceImpl : INotificationService
 
     // ─── Admin cross-tenant operations ───────────────────────────────────────
 
+    public async Task<NotificationDto?> AdminGetByIdAsync(Guid notificationId, string actorUserId)
+    {
+        var n = await _notificationRepo.GetByIdAsync(notificationId);
+        if (n == null) return null;
+        return MapToDto(n);
+    }
+
     public async Task<PagedNotificationsResponse> AdminListPagedAsync(Guid? tenantId, NotificationListQuery query, string actorUserId)
     {
         var query2 = new NotificationListQuery

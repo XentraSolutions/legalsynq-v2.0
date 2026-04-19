@@ -48,6 +48,17 @@ public static class AdminNotificationEndpoints
             return Results.Ok(result);
         });
 
+        // ── GET /v1/admin/notifications/{id} ──────────────────────────────────
+        group.MapGet("/{id:guid}", async (
+            HttpContext context,
+            INotificationService service,
+            Guid id) =>
+        {
+            var actorUserId = context.GetUserContext().UserId;
+            var result      = await service.AdminGetByIdAsync(id, actorUserId);
+            return result != null ? Results.Ok(result) : Results.NotFound();
+        });
+
         // ── GET /v1/admin/notifications ───────────────────────────────────────
         group.MapGet("/", async (
             HttpContext context,

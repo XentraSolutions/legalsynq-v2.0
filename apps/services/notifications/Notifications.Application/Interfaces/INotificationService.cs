@@ -26,6 +26,9 @@ public interface INotificationService
     /// <param name="tenantId">When null, queries across all tenants.</param>
     Task<PagedNotificationsResponse> AdminListPagedAsync(Guid? tenantId, NotificationListQuery query, string actorUserId);
 
+    /// <summary>Returns a single notification by ID regardless of tenant (platform-admin use).</summary>
+    Task<NotificationDto?> AdminGetByIdAsync(Guid notificationId, string actorUserId);
+
     /// <param name="tenantId">When null, aggregates across all tenants.</param>
     Task<NotificationStatsDto> AdminGetStatsAsync(Guid? tenantId, NotificationStatsQuery query, string actorUserId);
 

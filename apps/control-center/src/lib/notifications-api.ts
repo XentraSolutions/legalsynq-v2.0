@@ -207,6 +207,29 @@ export interface NotifStats {
   last7d:  { total: number; sent: number; failed: number; blocked: number };
 }
 
+// ── Admin cross-tenant response types (platform-admin endpoints) ───────────────
+
+export interface AdminNotifListResponse {
+  items:      NotifSummary[];
+  page:       number;
+  pageSize:   number;
+  totalCount: number;
+  totalPages: number;
+}
+
+export interface AdminNotifStatsDto {
+  totalCount:         number;
+  sentCount:          number;
+  deliveredCount:     number;
+  failedCount:        number;
+  queuedCount:        number;
+  suppressedCount:    number;
+  partialCount:       number;
+  channelBreakdown:   Record<string, number>;
+  statusDistribution: Record<string, number>;
+  recentTrend: Array<{ date: string; total: number; sent: number; failed: number; blocked: number }>;
+}
+
 export interface NotifTemplate {
   id:               string;
   tenantId:         string | null;
