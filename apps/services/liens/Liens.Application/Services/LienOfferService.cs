@@ -127,7 +127,7 @@ public sealed class LienOfferService : ILienOfferService
             entityType: "LienOffer",
             entityId: entity.Id.ToString());
 
-        _ = _notifications.PublishAsync("lienoffer.submitted", tenantId, new Dictionary<string, string>
+        _ = _notifications.PublishAsync("lien.offer.submitted", tenantId, new Dictionary<string, string>
         {
             ["offerId"] = entity.Id.ToString(),
             ["lienId"] = entity.LienId.ToString(),

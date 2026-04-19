@@ -131,7 +131,7 @@ public sealed class LienTaskService : ILienTaskService
 
         if (entity.AssignedUserId.HasValue)
         {
-            _ = _notifications.PublishAsync("task.assigned", tenantId, new Dictionary<string, string>
+            _ = _notifications.PublishAsync("liens.task.assigned", tenantId, new Dictionary<string, string>
             {
                 ["taskId"]        = entity.Id.ToString(),
                 ["taskTitle"]     = entity.Title,
@@ -242,7 +242,7 @@ public sealed class LienTaskService : ILienTaskService
 
         if (request.AssignedUserId.HasValue)
         {
-            var notifKey = isReassignment ? "task.reassigned" : "task.assigned";
+            var notifKey = isReassignment ? "liens.task.reassigned" : "liens.task.assigned";
             _ = _notifications.PublishAsync(notifKey, tenantId, new Dictionary<string, string>
             {
                 ["taskId"]     = entity.Id.ToString(),

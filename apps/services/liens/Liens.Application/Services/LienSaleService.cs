@@ -201,12 +201,12 @@ public sealed class LienSaleService : ILienSaleService
                 ["userId"] = actingUserId.ToString(),
             };
 
-            _ = _notifications.PublishAsync("lienoffer.accepted", tenantId, saleData, ct);
+            _ = _notifications.PublishAsync("lien.offer.accepted", tenantId, saleData, ct);
             _ = _notifications.PublishAsync("lien.sale.finalized", tenantId, saleData, ct);
 
             foreach (var (rejectedOfferId, rejectedBuyerOrgId) in rejectedOfferIds)
             {
-                _ = _notifications.PublishAsync("lienoffer.rejected", tenantId, new Dictionary<string, string>
+                _ = _notifications.PublishAsync("lien.offer.rejected", tenantId, new Dictionary<string, string>
                 {
                     ["offerId"] = rejectedOfferId.ToString(),
                     ["lienId"] = lien.Id.ToString(),
@@ -240,7 +240,7 @@ public sealed class LienSaleService : ILienSaleService
                     "SaleFinalization: document attached — BOS={BosId} DocumentId={DocumentId}",
                     bos.Id, documentId.Value);
 
-                _ = _notifications.PublishAsync("billofsale.document.generated", tenantId, new Dictionary<string, string>
+                _ = _notifications.PublishAsync("lien.sale.document.generated", tenantId, new Dictionary<string, string>
                 {
                     ["billOfSaleId"] = bos.Id.ToString(),
                     ["billOfSaleNumber"] = bos.BillOfSaleNumber,
