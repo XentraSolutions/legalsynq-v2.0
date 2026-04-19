@@ -426,6 +426,17 @@ function EventDetailPanel({
         {e.after  && <JsonSection label="After State"  raw={e.after}  />}
         {e.metadata && <JsonSection label="Metadata"   raw={e.metadata} />}
 
+        {/* Correlation engine — Related Events */}
+        <a
+          href={`/synqaudit/related/${encodeURIComponent(e.id)}`}
+          className="mt-1 flex items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-800 font-medium transition-colors"
+        >
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+          </svg>
+          Find related events
+        </a>
+
         {/* Link to trace view */}
         {e.correlationId && (
           <a

@@ -127,6 +127,7 @@ import type {
   IntegrityCheckpoint,
   LegalHold,
   AuditIngestPayload,
+  RelatedEventsData,
   OrgSummary,
   AccessGroupSummary,
   AccessGroupMember,
@@ -1335,6 +1336,43 @@ export const controlCenterServerApi = {
         return { items: paged.items, totalCount: paged.totalCount };
       } catch {
         return { items: [], totalCount: 0 };
+      }
+    },
+
+    /**
+     * GET /audit-service/audit/events/{auditId}/related
+     *
+     * Correlation engine: returns events related to the given anchor event using
+     * a four-tier cascade (correlationId → sessionId → actor+entity+4h → actor+2h).
+     * Each result carries a matchedBy label explaining which key linked it.
+     * Never throws — returns null on error or when the anchor is not found.
+     */
+    relatedEvents: async (auditId: string): Promise<RelatedEventsData | null> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/audit-service/audit/events/${encodeURIComponent(auditId)}/related`,
+          0,
+          [CACHE_TAGS.auditCanonical],
+        );
+        if (!raw) return null;
+        const data = unwrapApiResponse(raw) as Record<string, unknown>;
+        const relatedRaw = Array.isArray(data['related']) ? data['related'] as unknown[] : [];
+        return {
+          anchorId:        data['anchorId']        as string,
+          anchorEventType: data['anchorEventType'] as string,
+          strategyUsed:    (data['strategyUsed']   as RelatedEventsData['strategyUsed']) ?? 'none',
+          totalRelated:    (data['totalRelated']    as number) ?? 0,
+          related: relatedRaw.map((r) => {
+            const item = r as Record<string, unknown>;
+            return {
+              matchedBy: item['matchedBy'] as RelatedEventsData['related'][0]['matchedBy'],
+              matchKey:  item['matchKey']  as string,
+              event:     mapCanonicalAuditEvent(item['event']),
+            };
+          }),
+        };
+      } catch {
+        return null;
       }
     },
   },

@@ -147,6 +147,64 @@ public sealed class AuditEventQueryController : ControllerBase
         return Ok(ApiResponse<AuditEventRecordResponse>.Ok(record, traceId: traceId));
     }
 
+    // ── GET /audit/events/{auditId}/related ──────────────────────────────────
+
+    /// <summary>
+    /// Correlation engine: returns audit events related to the given anchor event.
+    ///
+    /// Applies a deterministic four-tier correlation cascade:
+    ///   Tier 1 — CorrelationId exact match       (matchedBy: "correlation_id")
+    ///   Tier 2 — SessionId exact match           (matchedBy: "session_id")
+    ///   Tier 3 — ActorId + EntityId + ±4 h       (matchedBy: "actor_entity_window")
+    ///   Tier 4 — ActorId + ±2 h (fallback only)  (matchedBy: "actor_window")
+    ///
+    /// Tiers 1–3 are additive; results are merged and deduplicated by AuditId.
+    /// Tier 4 runs only when tiers 1–3 collectively yield zero results.
+    /// The anchor event itself is excluded from the result set.
+    /// All queries are scoped to the caller's effective tenant.
+    /// </summary>
+    /// <param name="auditId">The stable public AuditId of the anchor event.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">Correlation complete. Body contains related events (may be empty).</response>
+    /// <response code="401">No valid credentials were presented.</response>
+    /// <response code="403">Caller's scope is insufficient.</response>
+    /// <response code="404">No anchor event exists with the given AuditId.</response>
+    [HttpGet("events/{auditId:guid}/related")]
+    [ProducesResponseType(typeof(ApiResponse<RelatedEventsResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>),                StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse<object>),                StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiResponse<object>),                StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetRelatedEvents(Guid auditId, CancellationToken ct)
+    {
+        var probeQuery = new AuditEventQueryRequest();
+        var deny = AuthorizeQuery(probeQuery);
+        if (deny is not null) return deny;
+
+        var traceId = TraceIdAccessor.Current();
+        var caller  = GetCaller();
+
+        var result = await _correlationService.GetRelatedAsync(
+            anchorAuditId:  auditId,
+            callerTenantId: caller.TenantId,
+            ct:             ct);
+
+        if (result is null)
+        {
+            return NotFound(ApiResponse<object>.Fail(
+                $"Audit event with id '{auditId}' was not found.",
+                traceId: traceId));
+        }
+
+        LogAuditAccess(
+            "GET /audit/events/{auditId}/related",
+            caller,
+            result.TotalRelated,
+            traceId,
+            contextId: auditId.ToString());
+
+        return Ok(ApiResponse<RelatedEventsResponse>.Ok(result, traceId: traceId));
+    }
+
     // ── GET /audit/entity/{entityType}/{entityId} ─────────────────────────────
 
     /// <summary>

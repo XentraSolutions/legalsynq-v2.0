@@ -5263,3 +5263,45 @@ Route group `/v1/admin/notifications`, policy: `AdminOnly` (PlatformAdmin only):
 
 ### Analysis
 `analysis/LS-NOTIF-CORE-008-report.md`
+
+## LS-ID-TNT-017-006 — Audit Correlation Engine (2026-04-19)
+
+Four-tier correlation cascade engine. Given any audit event, deterministically finds related events across correlation keys and returns them with tier labels. Reuses all existing query/auth infrastructure; no schema changes.
+
+### Cascade Strategy
+| Tier | Key | Label | Window | Cap | Additive? |
+|------|-----|-------|--------|-----|-----------|
+| 1 | `CorrelationId` exact | `correlation_id` | — | 200 | Yes |
+| 2 | `SessionId` exact | `session_id` | — | 200 | Yes |
+| 3 | `ActorId` + `EntityId` + time | `actor_entity_window` | ±4 h | 200 | Yes |
+| 4 | `ActorId` + time (fallback) | `actor_window` | ±2 h | 20 | Only if 1–3 all empty |
+
+Dedup by `AuditId`; anchor event excluded; highest-priority tier label wins per event; tenant-scoped via caller's effective `TenantId`.
+
+### New backend files
+- `apps/services/audit/DTOs/Correlation/RelatedAuditEventResult.cs` — per-event DTO (`MatchedBy`, `MatchKey`, `Event`)
+- `apps/services/audit/DTOs/Correlation/RelatedEventsResponse.cs` — envelope (`AnchorId`, `AnchorEventType`, `StrategyUsed`, `TotalRelated`, `Related[]`)
+- `apps/services/audit/Services/IAuditCorrelationService.cs` — interface
+- `apps/services/audit/Services/AuditCorrelationService.cs` — implementation
+
+### New endpoint
+`GET /audit/events/{auditId:guid}/related` — 200 (with `RelatedEventsResponse`), 404, 401/403.
+
+### Modified backend files
+- `AuditEventQueryController.cs` — injected `IAuditCorrelationService`; added `GetRelatedEvents` action
+- `Program.cs` — `AddScoped<IAuditCorrelationService, AuditCorrelationService>()`
+
+### New frontend files
+- `apps/control-center/src/app/synqaudit/related/[auditId]/page.tsx` — server-rendered related events page
+- `apps/control-center/src/components/synqaudit/related-events-timeline.tsx` — client timeline with tier badges + navigation links
+
+### Modified frontend files
+- `types/control-center.ts` — `RelatedAuditEvent`, `RelatedEventsData` interfaces
+- `lib/control-center-api.ts` — `auditCanonical.relatedEvents(auditId)` method + `RelatedEventsData` import
+- `investigation-workspace.tsx` — "Find related events" link in `EventDetailPanel` → `/synqaudit/related/{id}`
+
+### Navigation flow
+Investigation Workspace → EventDetailPanel → "Find related events" → `/synqaudit/related/{auditId}` → RelatedEventsTimeline → each row → "Related chain →" (recursive) | "Trace ID" → TraceTimeline
+
+### Analysis
+`analysis/Identity/LS-ID-TNT-017-006-report.md`

@@ -229,6 +229,10 @@ try
     // Applies QueryAuth options (page-size cap, hash exposure) and maps entities → response DTOs.
     builder.Services.AddScoped<IAuditEventQueryService, AuditEventQueryService>();
 
+    // Correlation engine — discovers related events via four-tier cascade.
+    // Depends on IAuditEventQueryService; scoped to match request lifetime.
+    builder.Services.AddScoped<IAuditCorrelationService, AuditCorrelationService>();
+
     // ── Step 23: Legal hold service ──────────────────────────────────────────
     // Scoped — depends on ILegalHoldRepository which is Scoped.
     builder.Services.AddScoped<ILegalHoldService, LegalHoldService>();

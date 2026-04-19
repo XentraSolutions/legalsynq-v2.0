@@ -476,6 +476,29 @@ export interface CanonicalAuditEvent {
   hash?:          string;
 }
 
+// ── SynqAudit — Correlation Engine ───────────────────────────────────────────
+
+/**
+ * A single related audit event returned by GET /audit/events/{auditId}/related.
+ * Includes the match label that explains why this event was correlated.
+ */
+export interface RelatedAuditEvent {
+  matchedBy: 'correlation_id' | 'session_id' | 'actor_entity_window' | 'actor_window';
+  matchKey:  string;
+  event:     CanonicalAuditEvent;
+}
+
+/**
+ * Full response from GET /audit/events/{auditId}/related.
+ */
+export interface RelatedEventsData {
+  anchorId:       string;
+  anchorEventType: string;
+  strategyUsed:   'correlation_id' | 'session_id' | 'actor_entity_window' | 'actor_window' | 'none';
+  totalRelated:   number;
+  related:        RelatedAuditEvent[];
+}
+
 // ── SynqAudit — Event Ingest (server-side canonical emission) ─────────────────
 
 /** Payload for POST /audit-service/audit/ingest — used by CC server actions. */
