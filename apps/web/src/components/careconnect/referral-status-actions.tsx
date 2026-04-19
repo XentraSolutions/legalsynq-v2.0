@@ -8,6 +8,8 @@ import { useToast } from '@/lib/toast-context';
 import { usePermission } from '@/hooks/use-permission';
 import { PermissionCodes } from '@/lib/permission-codes';
 import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
+import { PermissionTooltip } from '@/components/ui/permission-tooltip';
+import { DisabledReasons } from '@/lib/disabled-reasons';
 import type { ReferralDetail } from '@/types/careconnect';
 
 interface ReferralStatusActionsProps {
@@ -37,8 +39,14 @@ const STATUS_LABELS: Record<string, string> = {
  * Accepted → Completed is blocked; the receiver must explicitly mark In Progress first.
  * Appointment booking is decoupled from referral status and handled separately.
  *
- * LS-ID-TNT-015: Actions are now permission-gated. Checks are UX-only — the
+ * LS-ID-TNT-015: Actions are permission-gated. Checks are UX-only — the
  * backend (LS-ID-TNT-012) remains authoritative for all protected operations.
+ *
+ * LS-ID-TNT-015-004: Partial permission scenario — when the user has the role
+ * to perform an action but lacks the specific permission, the button is shown
+ * as disabled with an explanatory tooltip instead of being hidden. The
+ * ForbiddenBanner is retained only for the fully-blocked case (no permissions
+ * at all for the current role + status context).
  *
  * Uses PUT /api/referrals/{id} which routes through ReferralWorkflowRules.
  * All actions show toast notifications on success or failure.
@@ -96,26 +104,26 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
     }
   }
 
-  // Role + status gates (unchanged from before)
+  // ── Role + status gates (unchanged from LS-ID-TNT-015) ───────────────────────
   const roleCanAccept         = isReceiver && ['New', 'NewOpened', 'Received', 'Contacted'].includes(currentStatus);
   // LSCC-01-001-01: receiver can mark In Progress once referral is Accepted
   const roleCanMarkInProgress = isReceiver && currentStatus === 'Accepted';
   const roleCanDecline        = isReceiver && ['New', 'NewOpened', 'Received', 'Contacted', 'Accepted'].includes(currentStatus);
   const roleCanCancel         = (isReferrer || isReceiver) && !['Completed', 'Cancelled', 'Declined'].includes(currentStatus);
 
-  // LS-ID-TNT-015: Permission gates layered on top of role + status gates.
+  // ── LS-ID-TNT-015: Permission gates layered on top of role + status gates ───
   const canAccept         = roleCanAccept         && canAcceptPerm;
   const canMarkInProgress = roleCanMarkInProgress && canUpdateStatusPerm;
   const canDecline        = roleCanDecline        && canDeclinePerm;
   const canCancel         = roleCanCancel         && canCancelPerm;
 
-  // A user has the role but is missing all action permissions — show a notice
-  // instead of an empty panel. The backend will still deny any direct API calls.
+  // A user has no role-level access at all — don't render the panel.
   const hasAnyRoleAccess = roleCanAccept || roleCanMarkInProgress || roleCanDecline || roleCanCancel;
-  const hasAnyPermAccess = canAccept     || canMarkInProgress     || canDecline     || canCancel;
-
   if (!hasAnyRoleAccess) return null;
 
+  // A user has the role but ALL permissions are absent — show a single clear
+  // notice instead of a group of disabled buttons (LS-ID-TNT-015-004).
+  const hasAnyPermAccess = canAccept || canMarkInProgress || canDecline || canCancel;
   if (!hasAnyPermAccess) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 space-y-3">
@@ -124,6 +132,10 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
       </div>
     );
   }
+
+  // ── Partial-permission: at least one perm exists — render all role-applicable
+  // buttons, disabling those whose specific permission is missing with tooltip. ──
+  const hasReceiverSection = roleCanAccept || roleCanMarkInProgress || roleCanDecline;
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 space-y-3">
@@ -136,41 +148,59 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
       )}
 
       {/* Receiver: Accept / Mark In Progress / Decline */}
-      {(canAccept || canMarkInProgress || canDecline) && (
+      {hasReceiverSection && (
         <div className="space-y-3">
           <div className="flex items-center gap-3 flex-wrap">
-            {canAccept && !showDeclineNotes && (
-              <button
-                onClick={() => doUpdate('Accepted')}
-                disabled={!!loading}
-                className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-60 transition-colors"
+            {/* Accept — disabled-with-tooltip when perm missing (LS-ID-TNT-015-004) */}
+            {roleCanAccept && !showDeclineNotes && (
+              <PermissionTooltip
+                show={!canAccept}
+                message={DisabledReasons.noPermission('accept this referral').message}
               >
-                {loading === 'Accepted' ? 'Accepting…' : 'Accept Referral'}
-              </button>
+                <button
+                  onClick={() => doUpdate('Accepted')}
+                  disabled={!!loading || !canAccept}
+                  className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading === 'Accepted' ? 'Accepting…' : 'Accept Referral'}
+                </button>
+              </PermissionTooltip>
             )}
 
-            {canMarkInProgress && !showDeclineNotes && (
-              <button
-                onClick={() => doUpdate('InProgress')}
-                disabled={!!loading}
-                className="bg-amber-500 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-amber-600 disabled:opacity-60 transition-colors"
+            {/* Mark In Progress — disabled-with-tooltip when perm missing */}
+            {roleCanMarkInProgress && !showDeclineNotes && (
+              <PermissionTooltip
+                show={!canMarkInProgress}
+                message={DisabledReasons.noPermission('update this referral status').message}
               >
-                {loading === 'InProgress' ? 'Updating…' : 'Mark In Progress'}
-              </button>
+                <button
+                  onClick={() => doUpdate('InProgress')}
+                  disabled={!!loading || !canMarkInProgress}
+                  className="bg-amber-500 text-white text-sm font-medium px-4 py-2 rounded-md hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {loading === 'InProgress' ? 'Updating…' : 'Mark In Progress'}
+                </button>
+              </PermissionTooltip>
             )}
 
-            {canDecline && !showDeclineNotes && (
-              <button
-                onClick={() => setShowDeclineNotes(true)}
-                disabled={!!loading}
-                className="border border-red-300 text-red-600 text-sm font-medium px-4 py-2 rounded-md hover:bg-red-50 disabled:opacity-60 transition-colors"
+            {/* Decline — disabled-with-tooltip when perm missing */}
+            {roleCanDecline && !showDeclineNotes && (
+              <PermissionTooltip
+                show={!canDecline}
+                message={DisabledReasons.noPermission('decline this referral').message}
               >
-                Decline
-              </button>
+                <button
+                  onClick={() => setShowDeclineNotes(true)}
+                  disabled={!!loading || !canDecline}
+                  className="border border-red-300 text-red-600 text-sm font-medium px-4 py-2 rounded-md hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Decline
+                </button>
+              </PermissionTooltip>
             )}
           </div>
 
-          {/* Decline with optional notes */}
+          {/* Decline with optional notes — only reachable when canDecline is true */}
           {showDeclineNotes && (
             <div className="space-y-2 border border-red-100 rounded-md p-3 bg-red-50">
               <label className="block text-xs font-medium text-red-700">
@@ -204,17 +234,22 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
         </div>
       )}
 
-      {/* Cancel — with inline confirmation dialog */}
-      {canCancel && (
+      {/* Cancel — with inline confirmation; disabled-with-tooltip when perm missing */}
+      {roleCanCancel && (
         <div className="pt-1 border-t border-gray-100">
           {!showCancelConfirm ? (
-            <button
-              onClick={() => setShowCancelConfirm(true)}
-              disabled={!!loading}
-              className="text-sm text-gray-500 hover:text-gray-800 transition-colors disabled:opacity-50"
+            <PermissionTooltip
+              show={!canCancel}
+              message={DisabledReasons.noPermission('cancel this referral').message}
             >
-              Cancel Referral
-            </button>
+              <button
+                onClick={() => { if (canCancel) setShowCancelConfirm(true); }}
+                disabled={!!loading || !canCancel}
+                className="text-sm text-gray-500 hover:text-gray-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Cancel Referral
+              </button>
+            </PermissionTooltip>
           ) : (
             <div className="space-y-2 border border-gray-200 rounded-md p-3 bg-gray-50">
               <p className="text-sm font-medium text-gray-800">

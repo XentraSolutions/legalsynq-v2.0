@@ -10,6 +10,8 @@ import { useSettings } from '@/contexts/settings-context';
 import { ProviderDetailCard } from '@/components/careconnect/provider-detail-card';
 import { CreateReferralForm } from '@/components/careconnect/create-referral-form';
 import { ProviderAvailabilityPreview } from '@/components/careconnect/provider-availability-preview';
+import { PermissionTooltip } from '@/components/ui/permission-tooltip';
+import { DisabledReasons } from '@/lib/disabled-reasons';
 import type { ProviderDetail } from '@/types/careconnect';
 
 /**
@@ -113,18 +115,22 @@ export default function ProviderDetailPage() {
       {/* Create Referral CTA — only for referrers */}
       {canRefer && (
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowForm(true)}
-            disabled={!provider.acceptingReferrals}
-            title={
-              !provider.acceptingReferrals
-                ? 'This provider is not currently accepting referrals'
-                : undefined
-            }
-            className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-md hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+          {/*
+            LS-ID-TNT-015-004: Upgraded from native `title` to PermissionTooltip so
+            the explanation is consistently styled and keyboard-accessible.
+          */}
+          <PermissionTooltip
+            show={!provider.acceptingReferrals}
+            message={DisabledReasons.externalBlock('This provider is not currently accepting referrals.').message}
           >
-            Create Referral
-          </button>
+            <button
+              onClick={() => setShowForm(true)}
+              disabled={!provider.acceptingReferrals}
+              className="bg-primary text-white text-sm font-medium px-5 py-2 rounded-md hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+            >
+              Create Referral
+            </button>
+          </PermissionTooltip>
 
           {!provider.acceptingReferrals && (
             <span className="text-sm text-gray-400">
