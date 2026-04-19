@@ -8,6 +8,8 @@ export interface ActionMenuItem {
   onClick: () => void;
   variant?: 'default' | 'danger';
   disabled?: boolean;
+  /** LS-ID-TNT-015-004: Short explanation shown below a disabled item. */
+  disabledReason?: string;
   divider?: boolean;
 }
 
@@ -39,14 +41,23 @@ export function ActionMenu({ items, triggerIcon = 'ri-more-2-fill' }: ActionMenu
               {item.divider && i > 0 && <div className="border-t border-gray-100 my-1" />}
               <button
                 role="menuitem"
-                onClick={(e) => { e.stopPropagation(); item.onClick(); setOpen(false); }}
+                onClick={(e) => { e.stopPropagation(); if (!item.disabled) { item.onClick(); setOpen(false); } }}
                 disabled={item.disabled}
-                className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                aria-disabled={item.disabled}
+                className={`w-full text-left px-3 py-2 text-sm flex items-start gap-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                   item.variant === 'danger' ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                {item.icon && <i className={`${item.icon} text-base`} />}
-                {item.label}
+                {item.icon && <i className={`${item.icon} text-base mt-px shrink-0`} />}
+                <span className="flex flex-col gap-0.5 text-left">
+                  <span>{item.label}</span>
+                  {/* LS-ID-TNT-015-004: Inline reason hint for disabled items */}
+                  {item.disabled && item.disabledReason && (
+                    <span className="text-xs text-gray-400 font-normal leading-tight">
+                      {item.disabledReason}
+                    </span>
+                  )}
+                </span>
               </button>
             </div>
           ))}

@@ -7,6 +7,8 @@ import { ApiError } from '@/lib/api-client';
 import { usePermission } from '@/hooks/use-permission';
 import { PermissionCodes } from '@/lib/permission-codes';
 import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
+import { PermissionTooltip } from '@/components/ui/permission-tooltip';
+import { DisabledReasons } from '@/lib/disabled-reasons';
 import type { FundingApplicationDetail } from '@/types/fund';
 
 interface ReviewDecisionPanelProps {
@@ -22,11 +24,16 @@ type Mode = 'idle' | 'approving' | 'denying';
  * - Submitted:  shows "Begin Review" button only.
  * - InReview:   shows Approve / Deny actions.
  *
- * LS-ID-TNT-015: Actions are now permission-gated:
+ * LS-ID-TNT-015: Actions are permission-gated:
  *   - Begin Review requires SYNQ_FUND.application:evaluate
  *   - Approve requires SYNQ_FUND.application:approve
  *   - Deny requires SYNQ_FUND.application:decline
  * Permission checks are UX-only — backend enforcement (LS-ID-TNT-012) is authoritative.
+ *
+ * LS-ID-TNT-015-004: Partial permission scenario — when one of Approve / Deny is
+ * permitted but the other is not, the unavailable button is shown as disabled with
+ * an explanatory tooltip instead of being hidden. The ForbiddenBanner is retained
+ * only for the fully-blocked case (neither action is permitted).
  */
 export function ReviewDecisionPanel({ application, onUpdated }: ReviewDecisionPanelProps) {
   const router = useRouter();
@@ -113,14 +120,14 @@ export function ReviewDecisionPanel({ application, onUpdated }: ReviewDecisionPa
 
   const { status } = application;
 
-  // Determine whether any action is available given the application status + permissions.
-  const showBeginReview = status === 'Submitted' && canEvaluate;
-  const showDecisions   = status === 'InReview'  && (canApprove || canDecline);
+  // Begin Review: gated on a single permission — ForbiddenBanner when blocked.
+  const showBeginReview          = status === 'Submitted' && canEvaluate;
+  const beginReviewFullyBlocked  = status === 'Submitted' && !canEvaluate;
 
-  // Panel is displayed (by parent) but no action is permitted — show read-only notice.
-  const neitherActionAvailable =
-    (status === 'Submitted' && !canEvaluate) ||
-    (status === 'InReview'  && !canApprove && !canDecline);
+  // Decisions (InReview): always render both Approve + Deny so partial permission
+  // is visible. ForbiddenBanner is shown only when BOTH are blocked (LS-ID-TNT-015-004).
+  const showDecisions             = status === 'InReview';
+  const decisionsFullyBlocked     = status === 'InReview' && !canApprove && !canDecline;
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">
@@ -132,15 +139,13 @@ export function ReviewDecisionPanel({ application, onUpdated }: ReviewDecisionPa
         </div>
       )}
 
-      {/* Permission-denied notice when role qualifies but permissions are absent */}
-      {neitherActionAvailable && (
-        <ForbiddenBanner
-          action={
-            status === 'Submitted'
-              ? 'begin reviewing this application'
-              : 'approve or deny this application'
-          }
-        />
+      {/* Permission-denied notice — shown when role qualifies but ALL permissions absent */}
+      {beginReviewFullyBlocked && (
+        <ForbiddenBanner action="begin reviewing this application" />
+      )}
+
+      {decisionsFullyBlocked && (
+        <ForbiddenBanner action="approve or deny this application" />
       )}
 
       {/* Submitted: only Begin Review */}
@@ -159,25 +164,38 @@ export function ReviewDecisionPanel({ application, onUpdated }: ReviewDecisionPa
         </div>
       )}
 
-      {/* InReview: approve or deny */}
-      {showDecisions && mode === 'idle' && (
+      {/*
+        InReview: Approve + Deny — both always rendered so partial-permission users
+        see what's available and why the other action is blocked (LS-ID-TNT-015-004).
+        Hidden entirely (decisionsFullyBlocked) when neither permission is held.
+      */}
+      {showDecisions && !decisionsFullyBlocked && mode === 'idle' && (
         <div className="flex items-center gap-3">
-          {canApprove && (
+          <PermissionTooltip
+            show={!canApprove}
+            message={DisabledReasons.noPermission('approve this application').message}
+          >
             <button
               onClick={() => { setMode('approving'); setError(null); }}
-              className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+              disabled={!canApprove}
+              className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
             >
               Approve
             </button>
-          )}
-          {canDecline && (
+          </PermissionTooltip>
+
+          <PermissionTooltip
+            show={!canDecline}
+            message={DisabledReasons.noPermission('deny this application').message}
+          >
             <button
               onClick={() => { setMode('denying'); setError(null); }}
-              className="bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+              disabled={!canDecline}
+              className="bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
             >
               Deny
             </button>
-          )}
+          </PermissionTooltip>
         </div>
       )}
 
