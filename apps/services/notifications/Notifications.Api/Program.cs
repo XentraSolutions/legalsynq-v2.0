@@ -148,12 +148,33 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
+        // If the schema already existed before EF migrations were introduced the
+        // __EFMigrationsHistory table may be empty even though InitialCreate (and
+        // AddRetryFields) have already been applied.  MigrateAsync() would then
+        // try to re-run InitialCreate, fail with "table already exists", and
+        // abort — leaving AddCategoryAndSeverity (and any future migrations) never
+        // applied.  We detect this condition and seed the history so that
+        // MigrateAsync() only executes the genuinely pending migrations.
+        await SeedMigrationHistoryIfNeededAsync(db, app.Logger);
         await db.Database.MigrateAsync();
         app.Logger.LogInformation("Notifications database migrated successfully");
     }
     catch (Exception ex)
     {
         app.Logger.LogWarning(ex, "Could not apply Notifications database migrations on startup — schema may be out of sync.");
+    }
+
+    // Safety net: ensure columns added by AddCategoryAndSeverity actually exist
+    // in the database even if EF's history already records the migration as applied
+    // (which can happen when the migration was aborted mid-run but still committed
+    // to __EFMigrationsHistory).
+    try
+    {
+        await EnsureNotificationsSchemaColumnsAsync(db, app.Logger);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Could not ensure notification schema columns — queries may fail");
     }
 
     try
@@ -192,3 +213,111 @@ app.MapBrandingEndpoints();
 app.MapInternalEndpoints();
 
 app.Run();
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext db, ILogger logger)
+{
+    // Use raw ADO.NET so we stay in control of the SQL and avoid EF query-wrapping quirks.
+    var conn = db.Database.GetDbConnection();
+    var dbName = conn.Database;
+    var opened = false;
+
+    try
+    {
+        if (conn.State != System.Data.ConnectionState.Open)
+        {
+            await conn.OpenAsync();
+            opened = true;
+        }
+
+        // All columns that may be missing: from AddRetryFields and AddCategoryAndSeverity.
+        var columnsToAdd = new[]
+        {
+            ("RetryCount",  "int NOT NULL DEFAULT 0"),
+            ("MaxRetries",  "int NOT NULL DEFAULT 3"),
+            ("NextRetryAt", "datetime(6) NULL"),
+            ("Category",    "varchar(100) CHARACTER SET utf8mb4 NULL"),
+            ("Severity",    "varchar(50)  CHARACTER SET utf8mb4 NULL"),
+        };
+
+        foreach (var (col, colDef) in columnsToAdd)
+        {
+            // Check column existence via INFORMATION_SCHEMA.
+            using var checkCmd = conn.CreateCommand();
+            checkCmd.CommandText =
+                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
+                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_Notifications' AND COLUMN_NAME = '{col}'";
+            var count = Convert.ToInt32(await checkCmd.ExecuteScalarAsync());
+
+            if (count == 0)
+            {
+                using var alterCmd = conn.CreateCommand();
+                alterCmd.CommandText = $"ALTER TABLE `ntf_Notifications` ADD COLUMN `{col}` {colDef}";
+                await alterCmd.ExecuteNonQueryAsync();
+                logger.LogInformation("Added missing column ntf_Notifications.{Column}", col);
+            }
+            else
+            {
+                logger.LogDebug("Column ntf_Notifications.{Column} already exists", col);
+            }
+        }
+
+        // Also ensure the retry index exists (idempotent via INFORMATION_SCHEMA check).
+        using var idxCheckCmd = conn.CreateCommand();
+        idxCheckCmd.CommandText =
+            $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS " +
+            $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = 'ntf_Notifications' " +
+            $"AND INDEX_NAME = 'IX_Notifications_Status_NextRetryAt'";
+        var idxCount = Convert.ToInt32(await idxCheckCmd.ExecuteScalarAsync());
+        if (idxCount == 0)
+        {
+            using var idxCmd = conn.CreateCommand();
+            idxCmd.CommandText =
+                "CREATE INDEX `IX_Notifications_Status_NextRetryAt` ON `ntf_Notifications` (`Status`, `NextRetryAt`)";
+            await idxCmd.ExecuteNonQueryAsync();
+            logger.LogInformation("Created missing index IX_Notifications_Status_NextRetryAt");
+        }
+
+        logger.LogInformation("EnsureNotificationsSchemaColumns complete");
+    }
+    finally
+    {
+        if (opened) await conn.CloseAsync();
+    }
+}
+
+static async Task SeedMigrationHistoryIfNeededAsync(NotificationsDbContext db, ILogger logger)
+{
+    // These are the migrations whose DDL was applied to the DB before EF
+    // migrations were tracking history.  If the history table exists but does
+    // not contain them we insert them so MigrateAsync skips re-running them.
+    var alreadyApplied = new[]
+    {
+        ("20260418043535_InitialCreate",   "8.0.2"),
+        ("20260419000001_AddRetryFields",  "8.0.2"),
+    };
+
+    try
+    {
+        // Ensure the history table exists (idempotent).
+        await db.Database.ExecuteSqlRawAsync(
+            "CREATE TABLE IF NOT EXISTS `__EFMigrationsHistory` (" +
+            "`MigrationId` varchar(150) CHARACTER SET utf8mb4 NOT NULL," +
+            "`ProductVersion` varchar(32) CHARACTER SET utf8mb4 NOT NULL," +
+            "PRIMARY KEY (`MigrationId`)) CHARACTER SET=utf8mb4;");
+
+        foreach (var (id, ver) in alreadyApplied)
+        {
+            var inserted = await db.Database.ExecuteSqlRawAsync(
+                "INSERT IGNORE INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`) VALUES ({0}, {1})",
+                id, ver);
+            if (inserted > 0)
+                logger.LogInformation("Seeded migration history for {MigrationId}", id);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Could not seed migration history — proceeding anyway");
+    }
+}
