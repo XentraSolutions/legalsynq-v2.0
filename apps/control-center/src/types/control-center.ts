@@ -576,6 +576,54 @@ export interface AuditAnomalyItem {
   drillDownPath:     string;
 }
 
+// ── SynqAudit — Audit Alerts ──────────────────────────────────────────────────
+
+export type AlertStatus      = 'Open' | 'Acknowledged' | 'Resolved';
+export type AuditAlertSeverity = 'High' | 'Medium' | 'Low';
+
+/** A single alert record from the alerting engine. */
+export interface AuditAlertItem {
+  alertId:            string;
+  ruleKey:            string;
+  scopeType:          string;
+  tenantId:           string | null;
+  severity:           AuditAlertSeverity;
+  status:             AlertStatus;
+  title:              string;
+  description:        string;
+  drillDownPath:      string | null;
+  contextJson:        string | null;
+  firstDetectedAtUtc: string;
+  lastDetectedAtUtc:  string;
+  detectionCount:     number;
+  acknowledgedAtUtc:  string | null;
+  acknowledgedBy:     string | null;
+  resolvedAtUtc:      string | null;
+  resolvedBy:         string | null;
+}
+
+/** Response from GET /audit/analytics/alerts. */
+export interface AuditAlertListData {
+  statusFilter:      string | null;
+  effectiveTenantId: string | null;
+  totalReturned:     number;
+  openCount:         number;
+  acknowledgedCount: number;
+  resolvedCount:     number;
+  alerts:            AuditAlertItem[];
+}
+
+/** Response from POST /audit/analytics/alerts/evaluate. */
+export interface AuditEvaluateAlertsData {
+  evaluatedAt:        string;
+  effectiveTenantId:  string | null;
+  anomaliesDetected:  number;
+  alertsCreated:      number;
+  alertsRefreshed:    number;
+  alertsSuppressed:   number;
+  activeAlerts:       AuditAlertItem[];
+}
+
 /** Full response from GET /audit/analytics/anomalies. */
 export interface AuditAnomalyData {
   evaluatedAt:        string;

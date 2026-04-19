@@ -30,6 +30,7 @@ namespace PlatformAuditEventService.Data;
 ///   IngestSourceRegistrations — advisory source registry
 ///   LegalHolds               — compliance-driven retention holds
 ///   OutboxMessages           — transactional outbox for durable event forwarding
+///   AuditAlerts              — durable alert records generated from anomaly detection
 /// </summary>
 public sealed class AuditEventDbContext : DbContext
 {
@@ -58,6 +59,9 @@ public sealed class AuditEventDbContext : DbContext
 
     /// <summary>Transactional outbox messages pending delivery to downstream brokers.</summary>
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    /// <summary>Durable alert records created from anomaly detection results.</summary>
+    public DbSet<AuditAlert> AuditAlerts => Set<AuditAlert>();
 
     // ── Model configuration ────────────────────────────────────────────────────
 

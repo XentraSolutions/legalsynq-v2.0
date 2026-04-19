@@ -131,6 +131,9 @@ import type {
   AuditAnalyticsSummary,
   AuditAnalyticsRequest,
   AuditAnomalyData,
+  AuditAlertItem,
+  AuditAlertListData,
+  AuditEvaluateAlertsData,
   OrgSummary,
   AccessGroupSummary,
   AccessGroupMember,
@@ -1452,6 +1455,91 @@ export const controlCenterServerApi = {
         };
       } catch {
         return null;
+      }
+    },
+  },
+
+  // ── SynqAudit — Audit Alerts ──────────────────────────────────────────────
+
+  auditAlerts: {
+    /**
+     * GET /audit-service/audit/analytics/alerts
+     *
+     * Returns alert records with optional status / tenantId / limit filters.
+     */
+    list: async (params: { status?: string; tenantId?: string; limit?: number } = {}): Promise<AuditAlertListData | null> => {
+      try {
+        const qs = new URLSearchParams();
+        if (params.status)   qs.set('status',   params.status);
+        if (params.tenantId) qs.set('tenantId', params.tenantId);
+        if (params.limit)    qs.set('limit',    String(params.limit));
+        const url = `/audit-service/audit/analytics/alerts${qs.size > 0 ? `?${qs.toString()}` : ''}`;
+        const raw = await apiClient.get<unknown>(url, 0, [CACHE_TAGS.auditCanonical]);
+        if (!raw) return null;
+        const data = unwrapApiResponse(raw) as Record<string, unknown>;
+        return {
+          statusFilter:      (data['statusFilter']      as string | null) ?? null,
+          effectiveTenantId: (data['effectiveTenantId'] as string | null) ?? null,
+          totalReturned:     (data['totalReturned']     as number) ?? 0,
+          openCount:         (data['openCount']         as number) ?? 0,
+          acknowledgedCount: (data['acknowledgedCount'] as number) ?? 0,
+          resolvedCount:     (data['resolvedCount']     as number) ?? 0,
+          alerts:            Array.isArray(data['alerts']) ? (data['alerts'] as AuditAlertItem[]) : [],
+        };
+      } catch {
+        return null;
+      }
+    },
+
+    /**
+     * POST /audit-service/audit/analytics/alerts/evaluate
+     *
+     * Runs anomaly detection and upserts alert records for all firing rules.
+     * Deduplication prevents alert storms.
+     */
+    evaluate: async (params: { tenantId?: string } = {}): Promise<AuditEvaluateAlertsData | null> => {
+      try {
+        const qs = new URLSearchParams();
+        if (params.tenantId) qs.set('tenantId', params.tenantId);
+        const url = `/audit-service/audit/analytics/alerts/evaluate${qs.size > 0 ? `?${qs.toString()}` : ''}`;
+        const raw = await apiClient.post<unknown>(url, {});
+        if (!raw) return null;
+        const data = unwrapApiResponse(raw) as Record<string, unknown>;
+        return {
+          evaluatedAt:       (data['evaluatedAt']       as string) ?? '',
+          effectiveTenantId: (data['effectiveTenantId'] as string | null) ?? null,
+          anomaliesDetected: (data['anomaliesDetected'] as number) ?? 0,
+          alertsCreated:     (data['alertsCreated']     as number) ?? 0,
+          alertsRefreshed:   (data['alertsRefreshed']   as number) ?? 0,
+          alertsSuppressed:  (data['alertsSuppressed']  as number) ?? 0,
+          activeAlerts:      Array.isArray(data['activeAlerts']) ? (data['activeAlerts'] as AuditAlertItem[]) : [],
+        };
+      } catch {
+        return null;
+      }
+    },
+
+    /**
+     * POST /audit-service/audit/analytics/alerts/{id}/acknowledge
+     */
+    acknowledge: async (alertId: string): Promise<boolean> => {
+      try {
+        await apiClient.post<unknown>(`/audit-service/audit/analytics/alerts/${alertId}/acknowledge`, {});
+        return true;
+      } catch {
+        return false;
+      }
+    },
+
+    /**
+     * POST /audit-service/audit/analytics/alerts/{id}/resolve
+     */
+    resolve: async (alertId: string): Promise<boolean> => {
+      try {
+        await apiClient.post<unknown>(`/audit-service/audit/analytics/alerts/${alertId}/resolve`, {});
+        return true;
+      } catch {
+        return false;
       }
     },
   },

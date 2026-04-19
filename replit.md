@@ -5414,3 +5414,59 @@ Deterministic, rule-based anomaly detection layer over the existing audit event 
 
 ### Analysis
 `analysis/Identity/LS-ID-TNT-017-008-01-report.md`
+
+---
+
+## LS-ID-TNT-017-008-02 — Audit Alerting Engine (2026-04-19)
+
+### What was built
+Durable, deduplicated alert record layer that converts the 7 anomaly detection rules into persistent `AuditAlert` entities with a full lifecycle (Open → Acknowledged → Resolved). SHA-256 fingerprint deduplication prevents alert storms; a 1-hour post-resolution cooldown preserves episode history while suppressing noise. Five REST endpoints expose evaluate, list, get, acknowledge, and resolve operations. The Control Center surfaces alerts with severity/status indicators, action buttons, and drill-down links.
+
+### Fingerprint formula
+```
+SHA256_hex("{RuleKey}|{ScopeType}|{TenantId??''}|{AffectedActorId??''}|{AffectedTenantId??''}|{AffectedEventType??''}")
+```
+
+### Alert lifecycle
+- **Created** — anomaly detected, no prior alert (or cooldown elapsed)
+- **Refreshed** — anomaly re-detected, existing Open/Acknowledged alert; increments `DetectionCount`
+- **Suppressed** — anomaly re-detected within 1-hour post-resolve cooldown; skipped
+- **Acknowledged** — operator has seen it; condition may still be active
+- **Resolved** — operator closed it; 1-hour cooldown starts
+
+### Backend (apps/services/audit/)
+**New files:**
+- `Models/Entities/AuditAlert.cs` — alert entity + `AlertStatus` enum (Open/Acknowledged/Resolved)
+- `Models/Entities/AuditAlertConfiguration.cs` — EF Core fluent config, table `aud_AuditAlerts`, unique fingerprint index
+- `Services/IAuditAlertService.cs` + `Services/AuditAlertService.cs` — fingerprint, upsert, lifecycle engine
+- `DTOs/Alerts/AuditAlertDto.cs`, `AuditAlertListDto.cs`, `EvaluateAlertsDto.cs`, `AlertActionResultDto.cs`
+- `Controllers/AuditAlertController.cs` — 5 endpoints (POST /evaluate, GET /, GET /{id}, POST /{id}/acknowledge, POST /{id}/resolve)
+- `Data/Migrations/20260419130000_AddAuditAlerts.cs` — MySQL migration
+
+**Modified:**
+- `Data/AuditEventDbContext.cs` — `DbSet<AuditAlert>` + `AuditAlertConfiguration` applied
+- `Program.cs` — `AddScoped<IAuditAlertService, AuditAlertService>()`
+
+### Frontend (apps/control-center/)
+**New files:**
+- `app/synqaudit/alerts/page.tsx` — server component; loads initial alert list, passes to panel
+- `components/synqaudit/audit-alert-panel.tsx` — status counters, alert cards with Acknowledge/Resolve buttons, Evaluate Now trigger, drill-down links, lifecycle guide accordion
+
+**Modified:**
+- `types/control-center.ts` — `AlertStatus`, `AuditAlertSeverity` (separate from monitoring `AlertSeverity`), `AuditAlertItem`, `AuditAlertListData`, `AuditEvaluateAlertsData`
+- `lib/control-center-api.ts` — `auditAlerts.list/evaluate/acknowledge/resolve` methods
+- `components/shell/synqaudit-nav.tsx` — "Alerts" nav item (between Anomalies and Exports)
+
+**UI sections:**
+1. Filter bar — status dropdown, tenant ID input, Filter (router push), "Evaluate Now" POST trigger
+2. Summary counters — Total / Open (red) / Acknowledged (amber) / Resolved (green)
+3. Alert cards — severity left-border, severity badge, status pill, rule key chip, detection count, context metadata, timeline, action buttons (Acknowledge / Resolve), drill-down + Anomaly View links
+4. Empty state — shield-check icon + evaluate prompt
+5. Lifecycle guide — collapsible accordion explaining deduplication and cooldown
+
+### Deferred
+- External notifications (webhook/email) — future ticket
+- Automated scheduling of evaluation (cron) — future ticket
+
+### Analysis
+`analysis/LS-ID-TNT-017-008-02-report.md`
