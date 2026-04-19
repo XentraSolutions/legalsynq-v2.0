@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using PlatformAuditEventService.Authorization;
 using PlatformAuditEventService.DTOs;
+using PlatformAuditEventService.DTOs.Correlation;
 using PlatformAuditEventService.DTOs.Ingest;
 using PlatformAuditEventService.Enums;
 using PlatformAuditEventService.Services;
@@ -44,6 +45,7 @@ namespace PlatformAuditEventService.Controllers;
 public sealed class AuditEventQueryController : ControllerBase
 {
     private readonly IAuditEventQueryService             _queryService;
+    private readonly IAuditCorrelationService            _correlationService;
     private readonly IAuditEventIngestionService         _ingestionService;
     private readonly IQueryAuthorizer                    _authorizer;
     private readonly IValidator<AuditEventQueryRequest>  _queryValidator;
@@ -51,16 +53,18 @@ public sealed class AuditEventQueryController : ControllerBase
 
     public AuditEventQueryController(
         IAuditEventQueryService            queryService,
+        IAuditCorrelationService           correlationService,
         IAuditEventIngestionService        ingestionService,
         IQueryAuthorizer                   authorizer,
         IValidator<AuditEventQueryRequest> queryValidator,
         ILogger<AuditEventQueryController> logger)
     {
-        _queryService     = queryService;
-        _ingestionService = ingestionService;
-        _authorizer       = authorizer;
-        _queryValidator   = queryValidator;
-        _logger           = logger;
+        _queryService       = queryService;
+        _correlationService = correlationService;
+        _ingestionService   = ingestionService;
+        _authorizer         = authorizer;
+        _queryValidator     = queryValidator;
+        _logger             = logger;
     }
 
     // ── GET /audit/events ─────────────────────────────────────────────────────
