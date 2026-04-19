@@ -324,6 +324,14 @@ public class AuthService : IAuthService
                 .ToList();
         }
 
+        // LS-ID-TNT-015: Extract effective permission codes from the JWT so the frontend
+        // can perform permission-aware UI rendering without a separate API call.
+        // Permissions are embedded at login time from role→permission assignments.
+        // Frontend checks are UX-only; backend enforcement (LS-ID-TNT-012) is authoritative.
+        var permissions = principal.FindAll("permissions")
+            .Select(c => c.Value)
+            .ToList();
+
         return new AuthMeResponse(
             UserId:                 userId,
             Email:                  email,
@@ -339,7 +347,8 @@ public class AuthService : IAuthService
             AvatarDocumentId:       avatarDocumentId,
             EnabledProducts:        enabledProducts,
             Phone:                  phone,
-            UserProducts:           userProducts);
+            UserProducts:           userProducts,
+            Permissions:            permissions);
     }
 
     // Maps the DB product Code column → the frontend ProductCode (TypeScript).

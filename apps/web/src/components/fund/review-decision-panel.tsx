@@ -4,6 +4,9 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { fundApi } from '@/lib/fund-api';
 import { ApiError } from '@/lib/api-client';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
 import type { FundingApplicationDetail } from '@/types/fund';
 
 interface ReviewDecisionPanelProps {
@@ -18,6 +21,12 @@ type Mode = 'idle' | 'approving' | 'denying';
  *
  * - Submitted:  shows "Begin Review" button only.
  * - InReview:   shows Approve / Deny actions.
+ *
+ * LS-ID-TNT-015: Actions are now permission-gated:
+ *   - Begin Review requires SYNQ_FUND.application:evaluate
+ *   - Approve requires SYNQ_FUND.application:approve
+ *   - Deny requires SYNQ_FUND.application:decline
+ * Permission checks are UX-only — backend enforcement (LS-ID-TNT-012) is authoritative.
  */
 export function ReviewDecisionPanel({ application, onUpdated }: ReviewDecisionPanelProps) {
   const router = useRouter();
@@ -27,6 +36,12 @@ export function ReviewDecisionPanel({ application, onUpdated }: ReviewDecisionPa
   const [denialReason,   setDenialReason]   = useState('');
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState<string | null>(null);
+
+  // LS-ID-TNT-015: Permission checks (UX layer only; backend enforces authoritatively).
+  // Fail-open when permissions array is empty (old token) — backend will deny if needed.
+  const canEvaluate = usePermission(PermissionCodes.Fund.ApplicationEvaluate);
+  const canApprove  = usePermission(PermissionCodes.Fund.ApplicationApprove);
+  const canDecline  = usePermission(PermissionCodes.Fund.ApplicationDecline);
 
   async function handleBeginReview() {
     setError(null);
@@ -98,6 +113,15 @@ export function ReviewDecisionPanel({ application, onUpdated }: ReviewDecisionPa
 
   const { status } = application;
 
+  // Determine whether any action is available given the application status + permissions.
+  const showBeginReview = status === 'Submitted' && canEvaluate;
+  const showDecisions   = status === 'InReview'  && (canApprove || canDecline);
+
+  // Panel is displayed (by parent) but no action is permitted — show read-only notice.
+  const neitherActionAvailable =
+    (status === 'Submitted' && !canEvaluate) ||
+    (status === 'InReview'  && !canApprove && !canDecline);
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">
       <h3 className="text-sm font-semibold text-gray-900 mb-3">Funder Actions</h3>
@@ -108,8 +132,19 @@ export function ReviewDecisionPanel({ application, onUpdated }: ReviewDecisionPa
         </div>
       )}
 
+      {/* Permission-denied notice when role qualifies but permissions are absent */}
+      {neitherActionAvailable && (
+        <ForbiddenBanner
+          action={
+            status === 'Submitted'
+              ? 'begin reviewing this application'
+              : 'approve or deny this application'
+          }
+        />
+      )}
+
       {/* Submitted: only Begin Review */}
-      {status === 'Submitted' && mode === 'idle' && (
+      {showBeginReview && mode === 'idle' && (
         <div className="space-y-2">
           <p className="text-sm text-gray-500">
             Start reviewing this application to unlock the approve / deny decisions.
@@ -125,20 +160,24 @@ export function ReviewDecisionPanel({ application, onUpdated }: ReviewDecisionPa
       )}
 
       {/* InReview: approve or deny */}
-      {status === 'InReview' && mode === 'idle' && (
+      {showDecisions && mode === 'idle' && (
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => { setMode('approving'); setError(null); }}
-            className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
-          >
-            Approve
-          </button>
-          <button
-            onClick={() => { setMode('denying'); setError(null); }}
-            className="bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
-          >
-            Deny
-          </button>
+          {canApprove && (
+            <button
+              onClick={() => { setMode('approving'); setError(null); }}
+              className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+            >
+              Approve
+            </button>
+          )}
+          {canDecline && (
+            <button
+              onClick={() => { setMode('denying'); setError(null); }}
+              className="bg-red-600 text-white text-sm font-medium px-4 py-2 rounded-md hover:opacity-90 transition-opacity"
+            >
+              Deny
+            </button>
+          )}
         </div>
       )}
 

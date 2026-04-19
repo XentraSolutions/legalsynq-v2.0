@@ -5051,3 +5051,49 @@ All mutations reuse existing `POST/DELETE /api/admin/roles/{id}/permissions` end
 
 ### Analysis
 `analysis/LS-ID-TNT-014-report.md`
+
+## LS-ID-TNT-015 — Permission-Aware Product UI (2026-04-19)
+
+Makes product UI permission-aware so the UI reflects the backend authorization model (LS-ID-TNT-012): hiding unavailable actions, showing read-only states, and reducing avoidable 403 dead ends.
+
+### What was built
+
+**Session pipeline extended** — `GetCurrentUserAsync` now extracts `permissions` multi-value claims from the JWT and includes them in `AuthMeResponse.Permissions` (optional, non-breaking). `PlatformSession` gains `permissions?: string[]`. Session provider maps `me.permissions ?? []` into the session.
+
+**`lib/permission-codes.ts`** (new) — Frontend mirror of `BuildingBlocks.Authorization.PermissionCodes`. Canonical string constants for CareConnect (CC.*), SynqLien (Lien.*), SynqFund (Fund.*), and Tenant (Tenant.*) permissions. Prevents magic strings in components.
+
+**`hooks/use-permission.ts`** (new) — `usePermission(code)`, `usePermissions()`, `useAllPermissions(...codes)`, `useAnyPermission(...codes)`. Key semantics: fail-open when `permissions` array is empty (stale/old token), admin bypass (`isPlatformAdmin || isTenantAdmin`), unauthenticated returns false.
+
+**`components/ui/forbidden-banner.tsx`** (new) — Shared amber inline notice for "you don't have permission to [action]." Used when role qualifies a panel but permission is absent.
+
+**CareConnect `ReferralStatusActions`** — Permission-gates Accept (`referral:accept`), Decline (`referral:decline`), Cancel (`referral:cancel`), Mark In Progress (`referral:update_status`). Shows `ForbiddenBanner` when role qualifies but all permissions are absent.
+
+**SynqFund `ReviewDecisionPanel`** — Permission-gates Begin Review (`application:evaluate`), Approve (`application:approve`), Deny (`application:decline`). Shows `ForbiddenBanner` when funder has role but no action permissions for the current status.
+
+**Pre-existing bug fix** — `PermissionsClient.tsx` was accessing `data.permissions` on an `ApiResponse<{...}>` wrapper (should be `data.data.permissions`). Fixed during TypeScript compilation check.
+
+### Design decisions
+- **Hide** actions when permission is absent (not disable) — avoids ambiguity between status and permission as the blocker
+- **ForbiddenBanner** when role qualifies the panel but no action permissions exist for the current status
+- **Fail-open**: empty permissions array → show actions → backend enforces. Prevents false negatives for users with old tokens
+- **Backend remains authoritative**: all existing 403 handlers preserved; frontend guards are UX-only
+
+### Files Changed
+- `apps/services/identity/Identity.Application/DTOs/AuthMeResponse.cs` — added `List<string>? Permissions = null`
+- `apps/services/identity/Identity.Application/Services/AuthService.cs` — extract `permissions` from JWT; pass to AuthMeResponse
+- `apps/web/src/types/index.ts` — `PlatformSession.permissions?: string[]`
+- `apps/web/src/providers/session-provider.tsx` — map `me.permissions` to session
+- `apps/web/src/lib/permission-codes.ts` — new
+- `apps/web/src/hooks/use-permission.ts` — new
+- `apps/web/src/components/ui/forbidden-banner.tsx` — new
+- `apps/web/src/components/careconnect/referral-status-actions.tsx` — permission-gated actions
+- `apps/web/src/components/fund/review-decision-panel.tsx` — permission-gated actions
+- `apps/web/src/app/(platform)/tenant/authorization/permissions/PermissionsClient.tsx` — pre-existing ApiResponse destructuring bug fix
+
+### Coverage (this iteration)
+- ✅ CareConnect referral actions (Accept, Decline, Cancel, Mark In Progress)
+- ✅ SynqFund application funder actions (Begin Review, Approve, Deny)
+- Deferred: SynqLien (role-based `can()` already accurate), Insights (no catalog codes yet), CC appointments
+
+### Analysis
+`analysis/LS-ID-TNT-015-report.md`

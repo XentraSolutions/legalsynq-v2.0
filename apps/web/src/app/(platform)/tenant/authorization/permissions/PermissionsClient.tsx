@@ -55,7 +55,7 @@ export function PermissionsClient({ tenantPermissions, roles, isTenantAdmin }: P
     setPendingAdd(new Set());
     setPendingRemove(new Set());
     try {
-      const data = await tenantClientApi.getRolePermissions(roleId);
+      const { data } = await tenantClientApi.getRolePermissions(roleId);
       setRolePermissions(
         data.permissions.filter(p => p.productCode === 'SYNQ_PLATFORM'),
       );

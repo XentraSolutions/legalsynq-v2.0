@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 import { useToast } from '@/lib/toast-context';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
 import type { ReferralDetail } from '@/types/careconnect';
 
 interface ReferralStatusActionsProps {
@@ -34,12 +37,22 @@ const STATUS_LABELS: Record<string, string> = {
  * Accepted → Completed is blocked; the receiver must explicitly mark In Progress first.
  * Appointment booking is decoupled from referral status and handled separately.
  *
+ * LS-ID-TNT-015: Actions are now permission-gated. Checks are UX-only — the
+ * backend (LS-ID-TNT-012) remains authoritative for all protected operations.
+ *
  * Uses PUT /api/referrals/{id} which routes through ReferralWorkflowRules.
  * All actions show toast notifications on success or failure.
  */
 export function ReferralStatusActions({ referral, isReceiver, isReferrer }: ReferralStatusActionsProps) {
   const router = useRouter();
   const { show: showToast } = useToast();
+
+  // LS-ID-TNT-015: Permission checks (UX layer only; backend enforces authoritatively).
+  // Fail-open when permissions array is empty (old token) — backend will deny if needed.
+  const canAcceptPerm       = usePermission(PermissionCodes.CC.ReferralAccept);
+  const canDeclinePerm      = usePermission(PermissionCodes.CC.ReferralDecline);
+  const canCancelPerm       = usePermission(PermissionCodes.CC.ReferralCancel);
+  const canUpdateStatusPerm = usePermission(PermissionCodes.CC.ReferralUpdateStatus);
 
   const [optimisticStatus, setOptimisticStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
@@ -83,13 +96,34 @@ export function ReferralStatusActions({ referral, isReceiver, isReferrer }: Refe
     }
   }
 
-  const canAccept         = isReceiver && ['New', 'NewOpened', 'Received', 'Contacted'].includes(currentStatus);
+  // Role + status gates (unchanged from before)
+  const roleCanAccept         = isReceiver && ['New', 'NewOpened', 'Received', 'Contacted'].includes(currentStatus);
   // LSCC-01-001-01: receiver can mark In Progress once referral is Accepted
-  const canMarkInProgress = isReceiver && currentStatus === 'Accepted';
-  const canDecline        = isReceiver && ['New', 'NewOpened', 'Received', 'Contacted', 'Accepted'].includes(currentStatus);
-  const canCancel         = (isReferrer || isReceiver) && !['Completed', 'Cancelled', 'Declined'].includes(currentStatus);
+  const roleCanMarkInProgress = isReceiver && currentStatus === 'Accepted';
+  const roleCanDecline        = isReceiver && ['New', 'NewOpened', 'Received', 'Contacted', 'Accepted'].includes(currentStatus);
+  const roleCanCancel         = (isReferrer || isReceiver) && !['Completed', 'Cancelled', 'Declined'].includes(currentStatus);
 
-  if (!canAccept && !canMarkInProgress && !canDecline && !canCancel) return null;
+  // LS-ID-TNT-015: Permission gates layered on top of role + status gates.
+  const canAccept         = roleCanAccept         && canAcceptPerm;
+  const canMarkInProgress = roleCanMarkInProgress && canUpdateStatusPerm;
+  const canDecline        = roleCanDecline        && canDeclinePerm;
+  const canCancel         = roleCanCancel         && canCancelPerm;
+
+  // A user has the role but is missing all action permissions — show a notice
+  // instead of an empty panel. The backend will still deny any direct API calls.
+  const hasAnyRoleAccess = roleCanAccept || roleCanMarkInProgress || roleCanDecline || roleCanCancel;
+  const hasAnyPermAccess = canAccept     || canMarkInProgress     || canDecline     || canCancel;
+
+  if (!hasAnyRoleAccess) return null;
+
+  if (!hasAnyPermAccess) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 space-y-3">
+        <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</h3>
+        <ForbiddenBanner action="manage this referral" />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-5 py-4 space-y-3">

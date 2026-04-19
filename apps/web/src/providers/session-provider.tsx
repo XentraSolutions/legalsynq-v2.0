@@ -112,6 +112,7 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
         orgName:               me.orgName,
         productRoles:          me.productRoles          ?? [],
         systemRoles:           me.systemRoles           ?? [],
+        permissions:           me.permissions           ?? [],
         enabledProducts:       me.enabledProducts       ?? [],
         userProducts:          me.userProducts          ?? [],
         isPlatformAdmin:       (me.systemRoles ?? []).includes('PlatformAdmin'),

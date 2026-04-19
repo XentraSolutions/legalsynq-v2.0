@@ -75,6 +75,15 @@ export interface PlatformSession {
   expiresAt:             Date;
   sessionTimeoutMinutes: number;
 
+  // Permissions
+  /**
+   * LS-ID-TNT-015: Effective permission codes for the authenticated user.
+   * Populated from the JWT `permissions` claim via /auth/me.
+   * Use usePermission(code) or usePermissions() rather than accessing this directly.
+   * Frontend checks are UX-only — backend enforcement remains authoritative.
+   */
+  permissions?: string[];
+
   // Products
   enabledProducts?: string[];
   /**

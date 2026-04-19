@@ -38,4 +38,12 @@ public record AuthMeResponse(
     /// stale-token protection. Use this — not <c>EnabledProducts</c> — to filter the
     /// product switcher by what the user can actually access.
     /// </summary>
-    List<string>? UserProducts = null);
+    List<string>? UserProducts = null,
+    /// <summary>
+    /// LS-ID-TNT-015: Effective permission codes for the authenticated user, derived from
+    /// the role→permission assignments resolved at login time and embedded in the JWT
+    /// <c>permissions</c> claim. Exposed here so the frontend can perform permission-aware
+    /// UI rendering (hide/disable unavailable actions) without a separate API call.
+    /// Frontend checks are UX-only — backend enforcement (LS-ID-TNT-012) remains authoritative.
+    /// </summary>
+    List<string>? Permissions = null);
