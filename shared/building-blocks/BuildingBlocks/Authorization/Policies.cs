@@ -7,6 +7,11 @@ public static class Policies
     public const string AdminOnly             = "AdminOnly";
     public const string PlatformOrTenantAdmin = "PlatformOrTenantAdmin";
 
+    // LS-NOTIF-CORE-021 — service-to-service submission gate on POST /v1/notifications.
+    // Accepts authenticated callers (user or service JWT) OR legacy unauthenticated
+    // callers that supply a valid X-Tenant-Id header (backward-compat transition).
+    public const string ServiceSubmission = "ServiceSubmission";
+
     // Capability-based policies (coarse product role gates — use for route groups)
     public const string CanReferCareConnect   = "CanReferCareConnect";
     public const string CanReceiveCareConnect = "CanReceiveCareConnect";

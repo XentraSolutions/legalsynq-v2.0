@@ -1,3 +1,4 @@
+using BuildingBlocks.Notifications;
 using Flow.Application.Adapters.AuditAdapter;
 using Flow.Application.Adapters.NotificationAdapter;
 using Flow.Application.Events;
@@ -83,7 +84,13 @@ public static class PlatformAdapterRegistration
         }
 
         // ----- Notifications --------------------------------------------
+        // LS-NOTIF-CORE-021: NotificationsAuthDelegatingHandler mints a service
+        // JWT (using Flow's existing IServiceTokenIssuer) before each POST to
+        // /v1/notifications so the call is authenticated rather than anonymous.
+        // IServiceTokenIssuer is registered in Flow.Api/Program.cs via
+        // AddServiceTokenIssuer(config, "flow").
         services.AddSingleton<LoggingNotificationAdapter>();
+        services.AddTransient<NotificationsAuthDelegatingHandler>();
         var notifBaseUrl = configuration["Notifications:BaseUrl"];
 
         if (!string.IsNullOrWhiteSpace(notifBaseUrl))
@@ -92,7 +99,8 @@ public static class PlatformAdapterRegistration
             {
                 client.BaseAddress = new Uri(EnsureTrailingSlash(notifBaseUrl));
                 client.Timeout = TimeSpan.FromSeconds(5);
-            });
+            })
+            .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
 
             services.AddScoped<INotificationAdapter>(sp => new HttpNotificationAdapter(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(HttpNotificationAdapter)),

@@ -68,7 +68,18 @@ public sealed class HttpNotificationAdapter : INotificationAdapter
                     : null,
             };
 
-            using var resp = await _http.PostAsJsonAsync("v1/notifications", notificationRequest, JsonOpts, cancellationToken);
+            // LS-NOTIF-CORE-021: add X-Tenant-Id header so the
+            // NotificationsAuthDelegatingHandler can mint a service JWT
+            // (when FLOW_SERVICE_TOKEN_SECRET is configured) or the server
+            // can fall back to the legacy header path.
+            using var notifReq = new HttpRequestMessage(HttpMethod.Post, "v1/notifications")
+            {
+                Content = JsonContent.Create(notificationRequest, options: JsonOpts),
+            };
+            if (!string.IsNullOrEmpty(message.TenantId))
+                notifReq.Headers.Add("X-Tenant-Id", message.TenantId);
+
+            using var resp = await _http.SendAsync(notifReq, cancellationToken);
             if (!resp.IsSuccessStatusCode)
             {
                 _log.LogWarning(

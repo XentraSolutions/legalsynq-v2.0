@@ -58,9 +58,11 @@ public class TenantMiddleware
             return;
         }
 
-        // ── Unauthenticated / internal-service requests — header fallback ─────
-        // POST /v1/notifications is AllowAnonymous to preserve backward compat
-        // with internal callers (Comms, Liens, Reports) that send X-Tenant-Id.
+        // ── Unauthenticated / legacy-service requests — header fallback ──────
+        // LS-NOTIF-CORE-021: the ServiceSubmission policy on POST /v1/notifications
+        // already checked and succeeded for legacy requests that carry a valid
+        // X-Tenant-Id header.  Log a structured warning here so log dashboards
+        // can track remaining un-migrated callers.
         var tenantIdHeader = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
         if (string.IsNullOrEmpty(tenantIdHeader) || !Guid.TryParse(tenantIdHeader, out var tenantId))
         {
@@ -68,6 +70,14 @@ public class TenantMiddleware
             await context.Response.WriteAsJsonAsync(new { error = "Missing or invalid X-Tenant-Id header" });
             return;
         }
+
+        _logger.LogWarning(
+            "[LEGACY SUBMISSION] Unauthenticated request resolved tenant from X-Tenant-Id header. " +
+            "TenantId={TenantId} Path={Path} RemoteIp={RemoteIp}. " +
+            "Migrate caller to service-token authentication (LS-NOTIF-CORE-021).",
+            tenantId,
+            context.Request.Path,
+            context.Connection.RemoteIpAddress?.ToString());
 
         context.Items["TenantId"] = tenantId;
         await _next(context);

@@ -1,4 +1,6 @@
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Context;
+using BuildingBlocks.Notifications;
 using LegalSynq.AuditClient;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
@@ -76,12 +78,19 @@ public static class DependencyInjection
         services.AddAuditEventClient(configuration);
         services.AddScoped<IAuditPublisher, AuditPublisher>();
 
+        // LS-NOTIF-CORE-021 — service token issuer for Notifications calls.
+        // Mints HS256 JWTs (audience: notifications-service) so POST /v1/notifications
+        // is authenticated rather than relying on the legacy X-Tenant-Id header.
+        services.AddServiceTokenIssuer(configuration, "liens-service");
+        services.AddTransient<NotificationsAuthDelegatingHandler>();
+
         var notifBaseUrl = configuration["Services:NotificationsUrl"] ?? "http://localhost:5008";
         services.AddHttpClient("NotificationsService", client =>
         {
             client.BaseAddress = new Uri(notifBaseUrl);
             client.Timeout = TimeSpan.FromSeconds(10);
-        });
+        })
+        .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
         services.AddScoped<INotificationPublisher, NotificationPublisher>();
 
         return services;

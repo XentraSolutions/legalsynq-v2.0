@@ -13,8 +13,10 @@ public static class NotificationEndpoints
         var group = app.MapGroup("/v1/notifications").WithTags("Notifications");
 
         // ── POST /v1/notifications ────────────────────────────────────────────
-        // AllowAnonymous — preserves backward compatibility with internal service
-        // callers (Comms, Liens, Reports) that use X-Tenant-Id header without JWT.
+        // LS-NOTIF-CORE-021: Secured via ServiceSubmission policy.
+        // Accepts authenticated callers (user or service JWT) OR legacy
+        // unauthenticated callers supplying a valid X-Tenant-Id header
+        // (backward-compat transition — logged as LEGACY SUBMISSION warning).
         group.MapPost("/", async (HttpContext context, INotificationService service, SubmitNotificationDto request) =>
         {
             var tenantId = context.GetTenantId();
@@ -23,7 +25,7 @@ public static class NotificationEndpoints
                 ? Results.Json(result, statusCode: 422)
                 : Results.Created($"/v1/notifications/{result.Id}", result);
         })
-        .AllowAnonymous();
+        .RequireAuthorization(Policies.ServiceSubmission);
 
         // ── GET /v1/notifications/stats ───────────────────────────────────────
         // Must be registered BEFORE /{id:guid} to avoid routing ambiguity

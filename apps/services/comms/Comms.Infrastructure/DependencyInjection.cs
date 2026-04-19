@@ -1,4 +1,6 @@
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Context;
+using BuildingBlocks.Notifications;
 using LegalSynq.AuditClient;
 using Comms.Application.Interfaces;
 using Comms.Application.Repositories;
@@ -70,12 +72,17 @@ public static class DependencyInjection
         services.AddScoped<IMentionService, MentionService>();
         services.AddScoped<IOperationalViewService, OperationalViewService>();
 
+        // LS-NOTIF-CORE-021 — service token issuer for Notifications calls.
+        services.AddServiceTokenIssuer(configuration, "comms-service");
+        services.AddTransient<NotificationsAuthDelegatingHandler>();
+
         var notifBaseUrl = configuration["Services:NotificationsUrl"] ?? "http://localhost:5008";
         services.AddHttpClient("NotificationsService", client =>
         {
             client.BaseAddress = new Uri(notifBaseUrl);
             client.Timeout = TimeSpan.FromSeconds(30);
-        });
+        })
+        .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
         services.AddScoped<INotificationsServiceClient, NotificationsServiceClient>();
 
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";

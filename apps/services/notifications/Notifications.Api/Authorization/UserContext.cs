@@ -5,18 +5,32 @@ namespace Notifications.Api.Authorization;
 /// <summary>
 /// Strongly-typed projection of the authenticated caller's JWT claims,
 /// resolved per request from <see cref="ClaimsPrincipal"/>.
+///
+/// <para>
+/// LS-NOTIF-CORE-021: <see cref="ServiceName"/> is populated from the
+/// <c>svc</c> claim present in service tokens minted by
+/// <c>ServiceTokenIssuer</c>.  It is <c>null</c> for ordinary user JWTs.
+/// </para>
 /// </summary>
 public sealed record UserContext(
     string UserId,
     Guid TenantId,
     List<string> Roles,
-    bool IsPlatformAdmin)
+    bool IsPlatformAdmin,
+    string? ServiceName = null)
 {
     public static readonly UserContext Empty = new(
         UserId: string.Empty,
         TenantId: Guid.Empty,
         Roles: [],
-        IsPlatformAdmin: false);
+        IsPlatformAdmin: false,
+        ServiceName: null);
+
+    /// <summary>
+    /// Returns <c>true</c> when the caller authenticated via a service
+    /// token (i.e. a machine-to-machine JWT with a <c>svc</c> claim).
+    /// </summary>
+    public bool IsServiceCaller => !string.IsNullOrEmpty(ServiceName);
 }
 
 /// <summary>
@@ -55,7 +69,11 @@ public static class HttpContextAuthExtensions
 
         var isPlatformAdmin = roles.Contains("PlatformAdmin", StringComparer.Ordinal);
 
-        var resolved = new UserContext(userId, tenantId, roles, isPlatformAdmin);
+        // LS-NOTIF-CORE-021: extract service identity from the svc claim
+        // (present in tokens minted by ServiceTokenIssuer).
+        var serviceName = user.FindFirst("svc")?.Value;
+
+        var resolved = new UserContext(userId, tenantId, roles, isPlatformAdmin, serviceName);
         context.Items[UserContextKey] = resolved;
         return resolved;
     }
