@@ -218,11 +218,15 @@ Based on code analysis:
 
 ## Validation Performed
 
-- `dotnet build` on Liens, Comms, Reports, CareConnect, Notifications, BuildingBlocks — **0 errors**
-- Grep confirmed all nonconforming event keys replaced in source
-- Grep confirmed `NotificationTaxonomy` constants match all keys used at call sites
-- Template key changes do not affect delivery logic (templateKey is optional; missing template falls through to inline message)
-- Existing tests still compile (no test mocks reference event key strings)
+- `dotnet build Liens.Api.csproj` — **0 errors**
+- `dotnet build Comms.Api.csproj` — **0 errors**
+- `dotnet build Reports.Infrastructure.csproj` — **0 errors** (Reports.Api.csproj has a pre-existing `MigrateAsync` build error in `Program.cs` unrelated to this ticket)
+- `dotnet build BuildingBlocks.csproj` — **0 errors** (`NotificationTaxonomy.cs` compiles cleanly)
+- Grep confirmed all nonconforming event keys eliminated from producer call sites
+- Grep confirmed all canonical replacement keys are present at producer call sites
+- Grep sweep: two `task.assigned` references remain in Flow's `AuditTimelineNormalizer.cs` and `FlowEventDispatcher.cs` — these are audit-service event type strings, NOT notification event keys submitted to the Notifications service; intentionally unchanged
+- Template key changes are non-breaking: `templateKey` is optional on the Notifications service — if no template is registered for the new key, the service falls through to inline message rendering with a warning log
+- No test mocks reference event key string literals (confirmed by grep)
 
 ---
 

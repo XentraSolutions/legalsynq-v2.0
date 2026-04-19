@@ -84,7 +84,7 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
                     ProductKey   = "reports",
                     EventKey     = "report.delivery",
                     SourceSystem = "reports-service",
-                    TemplateKey  = "report.delivery",
+                    TemplateKey  = "report-delivery-email",
                     IdempotencyKey = idempotencyKey,
                     TemplateData = new Dictionary<string, string>
                     {

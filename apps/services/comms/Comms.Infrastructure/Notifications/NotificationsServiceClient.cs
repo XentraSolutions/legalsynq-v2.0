@@ -57,9 +57,9 @@ public sealed class NotificationsServiceClient : INotificationsServiceClient
             {
                 Channel      = "email",
                 ProductKey   = "comms",
-                EventKey     = "comms.outbound_email",
+                EventKey     = "comms.email.outbound",
                 SourceSystem = "comms-service",
-                TemplateKey  = payload.TemplateKey ?? "comms_outbound_email",
+                TemplateKey  = payload.TemplateKey ?? "comms-outbound-email",
                 TemplateData = templateData,
                 IdempotencyKey = payload.IdempotencyKey,
                 Recipient    = new NotificationsRecipient
@@ -164,9 +164,9 @@ public sealed class NotificationsServiceClient : INotificationsServiceClient
             {
                 Channel      = "internal",
                 ProductKey   = "comms",
-                EventKey     = $"comms.sla_alert.{payload.TriggerType}",
+                EventKey     = $"comms.sla.alert.{payload.TriggerType}",
                 SourceSystem = "comms-service",
-                TemplateKey  = payload.TriggerType,
+                TemplateKey  = "comms-sla-alert-internal",
                 TemplateData = templateData,
                 IdempotencyKey = payload.IdempotencyKey,
                 Recipient    = new NotificationsRecipient
