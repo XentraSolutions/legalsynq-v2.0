@@ -8,6 +8,8 @@ public static class WebhookEndpoints
     {
         var group = app.MapGroup("/v1/webhooks").WithTags("Webhooks");
 
+        // Webhooks are verified by their own provider-specific signature (ECDSA for
+        // SendGrid, HMAC for Twilio) — they must not require a JWT.
         group.MapPost("/sendgrid", async (HttpContext context, IWebhookIngestionService service) =>
         {
             var rawBody = context.Items["RawBody"] as string ?? "";
@@ -17,7 +19,7 @@ public static class WebhookEndpoints
 
             var result = await service.HandleSendGridAsync(rawBody, headers);
             return result.Accepted ? Results.Ok(new { status = "accepted" }) : Results.Json(new { error = result.RejectedReason }, statusCode: 401);
-        });
+        }).AllowAnonymous();
 
         group.MapPost("/twilio", async (HttpContext context, IWebhookIngestionService service) =>
         {
@@ -40,6 +42,6 @@ public static class WebhookEndpoints
 
             var result = await service.HandleTwilioAsync(rawBody, headers, requestUrl, formParams);
             return result.Accepted ? Results.Ok(new { status = "accepted" }) : Results.Json(new { error = result.RejectedReason }, statusCode: 401);
-        });
+        }).AllowAnonymous();
     }
 }
