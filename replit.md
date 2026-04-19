@@ -4966,3 +4966,43 @@ Fund and Liens services were already enforced (LS-COR-AUT-010) — no changes.
 
 ### Analysis
 `analysis/LS-ID-TNT-012-report.md`
+
+## LS-ID-TNT-013 — Tenant Portal Permission Management UI (2026-04-19)
+
+Adds a **Permissions** tab to the Tenant Portal Authorization section, giving tenant admins a full UI to view the tenant permission catalog and manage which TENANT.* permissions are assigned to each tenant role.
+
+### What was built
+
+**New Permissions tab** (`/tenant/authorization/permissions`) with two views:
+- **Role Permissions** — roles list (left) + permission checklist for selected role (right). Editable for non-system, non-product roles. System roles shown as read-only with a platform-managed governance notice.
+- **Permission Catalog** — read-only reference of all 8 TENANT.* permissions grouped by category (code + name + description). Footer explicitly notes that product permissions are not shown here.
+
+**User effective permission inspection** — existing user detail page and Access Explainability tab already surface effective permissions; no new surface added per scope boundary.
+
+### New backend endpoint
+`GET /api/tenants/{tenantId}/permissions/tenant-catalog`
+- Returns only `SYNQ_PLATFORM` (TENANT.*) permissions
+- TenantAdmin: own tenant only (JWT `tenant_id` claim validated); PlatformAdmin: any tenant
+- 8 permissions returned (matching LS-ID-TNT-011 seed data)
+
+### Reused (no changes needed)
+- `POST /api/admin/roles/{id}/permissions` — assign permission (TenantAdmin OK for non-system roles)
+- `DELETE /api/admin/roles/{id}/permissions/{permId}` — revoke permission (same guard)
+- Existing guards (`IsSystemRole` check + `IsCrossTenantAccess`) prevent TenantAdmin from modifying system roles or cross-tenant roles
+
+### Files Changed
+- `Identity.Api/Endpoints/PermissionCatalogEndpoints.cs` — new `GetTenantPermissionCatalog` handler; `using System.Security.Claims` added
+- `apps/web/src/types/tenant.ts` — `TenantPermissionCatalogItem`, `TenantPermissionCatalogResponse`, `RolePermissionEntry`, `RolePermissionsResponse`, `TenantRoleItem`
+- `apps/web/src/lib/tenant-api.ts` — `getTenantPermissionCatalog(tenantId)` server-side method; `getRoles()` typed to `TenantRoleItem[]`
+- `apps/web/src/lib/tenant-client-api.ts` — `getRolePermissions`, `assignRolePermission`, `revokeRolePermission`
+- `apps/web/src/components/tenant/authorization-nav.tsx` — added Permissions tab (`ri-key-2-line`)
+- `apps/web/src/app/(platform)/tenant/authorization/permissions/page.tsx` — **created** Server Component
+- `apps/web/src/app/(platform)/tenant/authorization/permissions/PermissionsClient.tsx` — **created** Client Component (view switcher, pending-change tracking, save/cancel/toast, 403 handling)
+
+### Governance boundaries
+- TENANT Portal: shows and edits TENANT.* (SYNQ_PLATFORM) permissions only
+- System roles: visible but read-only in Tenant Portal (platform governance)
+- Product permissions: not shown in Tenant Portal UI
+
+### Analysis
+`analysis/LS-ID-TNT-013-report.md`

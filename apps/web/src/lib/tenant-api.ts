@@ -13,6 +13,9 @@ import type {
   TenantSlaSummary,
   TenantQueueSummary,
   TenantWorkflowThroughput,
+  TenantPermissionCatalogResponse,
+  RolePermissionsResponse,
+  TenantRoleItem,
 } from '@/types/tenant';
 
 export { ServerApiError };
@@ -31,7 +34,13 @@ export const tenantServerApi = {
     serverApi.get<AssignableRolesResponse>(`/identity/api/admin/users/${userId}/assignable-roles`),
 
   getRoles: () =>
-    serverApi.get<{ id: string; name: string }[]>('/identity/api/admin/roles'),
+    serverApi.get<TenantRoleItem[]>('/identity/api/admin/roles'),
+
+  // ── LS-ID-TNT-013: Tenant-level permission catalog ───────────────────────
+  getTenantPermissionCatalog: (tenantId: string) =>
+    serverApi.get<TenantPermissionCatalogResponse>(
+      `/identity/api/tenants/${tenantId}/permissions/tenant-catalog`
+    ),
 
   getGroups: (tenantId: string) =>
     serverApi.get<TenantGroup[]>(`/identity/api/tenants/${tenantId}/groups`),

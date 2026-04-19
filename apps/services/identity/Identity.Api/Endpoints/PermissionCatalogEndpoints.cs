@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using BuildingBlocks.Authorization;
 using Identity.Application.Interfaces;
 using Identity.Infrastructure.Data;
@@ -27,6 +28,12 @@ public static class PermissionCatalogEndpoints
         // ── Admin: role → permission assignments (system roles) ──────────────
         // Returns the current TenantAdmin / StandardUser role → permission seed mappings.
         routes.MapGet("/api/admin/permissions/role-assignments", GetRolePermissionAssignments);
+
+        // ── Tenant: tenant-level permission catalog ───────────────────────────
+        // Returns only SYNQ_PLATFORM (TENANT.*) permissions for a specific tenant.
+        // Accessible by TenantAdmin of that tenant or PlatformAdmin.
+        // LS-ID-TNT-013: Used by Tenant Portal Permission Management UI.
+        routes.MapGet("/api/tenants/{tenantId:guid}/permissions/tenant-catalog", GetTenantPermissionCatalog);
 
         // ── Tenant: effective permissions for caller ──────────────────────────
         // Returns tenant + product permissions for the authenticated user.
@@ -122,6 +129,44 @@ public static class PermissionCatalogEndpoints
             TotalMappings = rows.Count,
             RoleCount = grouped.Count,
             Roles = grouped,
+        });
+    }
+
+    // ── LS-ID-TNT-013: Tenant-scoped permission catalog ──────────────────────
+    // Returns only SYNQ_PLATFORM (TENANT.*) permissions.
+    // TenantAdmin: own tenant only. PlatformAdmin: any tenant.
+    private static async Task<IResult> GetTenantPermissionCatalog(
+        Guid              tenantId,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct)
+    {
+        if (!caller.IsInRole("PlatformAdmin"))
+        {
+            var raw = caller.FindFirstValue("tenant_id");
+            if (raw is null || !Guid.TryParse(raw, out var callerTid) || callerTid != tenantId)
+                return Results.Forbid();
+        }
+
+        var permissions = await db.Permissions
+            .Where(p => p.IsActive && p.Product.Code == ProductCodes.SynqPlatform)
+            .OrderBy(p => p.Category)
+            .ThenBy(p => p.Code)
+            .Select(p => new
+            {
+                p.Id,
+                p.Code,
+                p.Name,
+                p.Description,
+                p.Category,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new
+        {
+            TenantId    = tenantId,
+            Permissions = permissions,
+            TotalCount  = permissions.Count,
         });
     }
 

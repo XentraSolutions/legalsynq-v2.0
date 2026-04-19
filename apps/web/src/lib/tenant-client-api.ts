@@ -125,4 +125,22 @@ export const tenantClientApi = {
 
   simulateAuthorization: (body: SimulationRequest) =>
     apiClient.post<SimulationResult>('/identity/api/admin/authorization/simulate', body),
+
+  // ── LS-ID-TNT-013: Permission management (tenant-level) ──────────────────
+
+  getRolePermissions: (roleId: string) =>
+    apiClient.get<{ roleId: string; roleName: string; permissions: { id: string; code: string; name: string; productCode: string }[] }>(
+      `/identity/api/admin/roles/${roleId}/permissions`
+    ),
+
+  assignRolePermission: (roleId: string, permissionId: string) =>
+    apiClient.post<{ roleId: string; permissionId: string }>(
+      `/identity/api/admin/roles/${roleId}/permissions`,
+      { permissionId }
+    ),
+
+  revokeRolePermission: (roleId: string, permissionId: string) =>
+    apiClient.delete<void>(
+      `/identity/api/admin/roles/${roleId}/permissions/${permissionId}`
+    ),
 };

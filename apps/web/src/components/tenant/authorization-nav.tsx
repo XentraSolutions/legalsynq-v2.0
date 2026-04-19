@@ -5,10 +5,11 @@ import { usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
 
 const TABS = [
-  { href: '/tenant/authorization/users', label: 'Users', icon: 'ri-user-line' },
-  { href: '/tenant/authorization/groups', label: 'Groups', icon: 'ri-group-line' },
-  { href: '/tenant/authorization/access', label: 'Access', icon: 'ri-shield-keyhole-line' },
-  { href: '/tenant/authorization/simulator', label: 'Simulator', icon: 'ri-test-tube-line' },
+  { href: '/tenant/authorization/users',       label: 'Users',       icon: 'ri-user-line' },
+  { href: '/tenant/authorization/groups',      label: 'Groups',      icon: 'ri-group-line' },
+  { href: '/tenant/authorization/access',      label: 'Access',      icon: 'ri-shield-keyhole-line' },
+  { href: '/tenant/authorization/permissions', label: 'Permissions', icon: 'ri-key-2-line' },
+  { href: '/tenant/authorization/simulator',   label: 'Simulator',   icon: 'ri-test-tube-line' },
 ] as const;
 
 export function AuthorizationNav() {

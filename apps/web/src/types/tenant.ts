@@ -322,3 +322,41 @@ export interface TenantWorkflowThroughput {
   avgDurationHours: number | null;
   completionRate:   number;
 }
+
+// ── LS-ID-TNT-013 Permission Management ─────────────────────────────────────
+
+export interface TenantPermissionCatalogItem {
+  id:           string;
+  code:         string;
+  name:         string;
+  description?: string;
+  category?:    string;
+}
+
+export interface TenantPermissionCatalogResponse {
+  tenantId:    string;
+  permissions: TenantPermissionCatalogItem[];
+  totalCount:  number;
+}
+
+export interface RolePermissionEntry {
+  id:          string;
+  code:        string;
+  name:        string;
+  productCode: string;
+}
+
+export interface RolePermissionsResponse {
+  roleId:      string;
+  roleName:    string;
+  permissions: RolePermissionEntry[];
+}
+
+export interface TenantRoleItem {
+  id:            string;
+  name:          string;
+  isSystemRole:  boolean;
+  isProductRole: boolean;
+  productCode?:  string;
+  productName?:  string;
+}
