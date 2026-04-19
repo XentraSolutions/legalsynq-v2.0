@@ -33,20 +33,20 @@ public class ReferralEmailService : IReferralEmailService
     private const int TokenExpiryDays      = 30;
     private const string DevFallbackSecret = "LEGALSYNQ-DEV-REFERRAL-TOKEN-SECRET-2026";
 
-    private readonly INotificationRepository _notifications;
-    private readonly ISmtpEmailSender        _smtp;
+    private readonly INotificationRepository      _notifications;
+    private readonly INotificationsProducer       _producer;
     private readonly ILogger<ReferralEmailService> _logger;
     private readonly string _tokenSecret;
     private readonly string _appBaseUrl;
 
     public ReferralEmailService(
-        INotificationRepository notifications,
-        ISmtpEmailSender smtp,
-        IConfiguration configuration,
+        INotificationRepository  notifications,
+        INotificationsProducer   producer,
+        IConfiguration           configuration,
         ILogger<ReferralEmailService> logger)
     {
         _notifications = notifications;
-        _smtp          = smtp;
+        _producer      = producer;
         _logger        = logger;
         _tokenSecret   = configuration["ReferralToken:Secret"] ?? DevFallbackSecret;
         _appBaseUrl    = (configuration["AppBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
@@ -634,7 +634,7 @@ public class ReferralEmailService : IReferralEmailService
         await TrySendAndUpdateAsync(notification, toAddress, subject, body, ct, nextRetryAfterUtcOnFailure);
     }
 
-    // ── Internal: send + update notification status ───────────────────────────
+    // ── Internal: submit to Notifications service + update domain status ─────
 
     private async Task TrySendAndUpdateAsync(
         CareConnectNotification notification,
@@ -644,19 +644,35 @@ public class ReferralEmailService : IReferralEmailService
         CancellationToken ct,
         DateTime? nextRetryAfterUtcOnFailure = null)
     {
+        var eventKey       = NotificationTypeToEventKey(notification.NotificationType);
+        var idempotencyKey = notification.DedupeKey ?? notification.Id.ToString();
+        var correlationId  = notification.RelatedEntityId.ToString();
+
         try
         {
-            await _smtp.SendAsync(toAddress, subject, body, ct);
+            // LS-NOTIF-CORE-023: route through platform Notifications service.
+            // Submission success → mark domain record Sent.
+            // Actual delivery and per-delivery retry are owned by Notifications service.
+            await _producer.SubmitAsync(
+                tenantId:      notification.TenantId,
+                eventKey:      eventKey,
+                toAddress:     toAddress,
+                subject:       subject,
+                htmlBody:      body,
+                idempotencyKey: idempotencyKey,
+                correlationId:  correlationId,
+                ct:            ct);
+
             notification.MarkSent();
             await _notifications.UpdateAsync(notification, ct);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "Failed to send email notification {NotificationId} to {Recipient}. " +
-                "Notification marked as Failed.",
-                notification.Id, toAddress);
-            // LSCC-005-02: pass nextRetryAfterUtc so the retry worker knows when to pick this up
+                "Notification submission failed for {NotificationId} (event={EventKey}) to {Recipient}. " +
+                "Domain record marked Failed; ReferralEmailRetryWorker will re-submit.",
+                notification.Id, eventKey, toAddress);
+            // LSCC-005-02: pass nextRetryAfterUtc so the retry worker knows when to re-submit
             notification.MarkFailed(ex.Message, nextRetryAfterUtcOnFailure);
             try { await _notifications.UpdateAsync(notification, ct); }
             catch (Exception saveEx)
@@ -667,6 +683,26 @@ public class ReferralEmailService : IReferralEmailService
             }
         }
     }
+
+    /// <summary>
+    /// LS-NOTIF-CORE-023: Maps a CareConnect domain NotificationType constant to the
+    /// canonical eventKey used in the platform Notifications service producer contract.
+    /// </summary>
+    private static string NotificationTypeToEventKey(string notificationType) =>
+        notificationType switch
+        {
+            NotificationType.ReferralCreated          => "referral.created",
+            NotificationType.ReferralEmailResent      => "referral.invite.resent",
+            NotificationType.ReferralEmailAutoRetry   => "referral.invite.retry",
+            NotificationType.ReferralAcceptedProvider => "referral.accepted.provider",
+            NotificationType.ReferralAcceptedReferrer => "referral.accepted.referrer",
+            NotificationType.ReferralAcceptedClient   => "referral.accepted.client",
+            NotificationType.ReferralRejectedProvider => "referral.declined.provider",
+            NotificationType.ReferralRejectedReferrer => "referral.declined.referrer",
+            NotificationType.ReferralCancelledProvider => "referral.cancelled.provider",
+            NotificationType.ReferralCancelledReferrer => "referral.cancelled.referrer",
+            _                                          => "careconnect.notification",
+        };
 
     // ── HTML email templates ──────────────────────────────────────────────────
 

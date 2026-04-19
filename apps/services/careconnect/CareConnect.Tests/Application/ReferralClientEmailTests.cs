@@ -97,16 +97,18 @@ public class ReferralClientEmailTests
     public async Task SendAcceptanceConfirmationsAsync_WithClientEmail_PersistsClientNotification()
     {
         // Arrange
-        var notifRepo  = new Mock<INotificationRepository>();
-        var smtpSender = new Mock<ISmtpEmailSender>();
+        var notifRepo = new Mock<INotificationRepository>();
+        var producer  = new Mock<INotificationsProducer>();
 
-        // SMTP throws so we can test that the notification record was still persisted.
-        smtpSender.Setup(s => s.SendAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+        // Producer throws so we can test that the notification record was still persisted.
+        producer.Setup(p => p.SubmitAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(),
             It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("SMTP unavailable in test"));
+            .ThrowsAsync(new InvalidOperationException("Notifications service unavailable in test"));
 
-        var svc = BuildEmailService(notifRepo.Object, smtpSender.Object);
+        var svc = BuildEmailService(notifRepo.Object, producer.Object);
 
         var referral = BuildReferral(clientEmail: "client@example.com");
         var provider = BuildProvider(email: "provider@example.org");
@@ -128,10 +130,10 @@ public class ReferralClientEmailTests
     public async Task SendAcceptanceConfirmationsAsync_WithoutClientEmail_DoesNotPersistClientNotification()
     {
         // Arrange
-        var notifRepo  = new Mock<INotificationRepository>();
-        var smtpSender = new Mock<ISmtpEmailSender>();
+        var notifRepo = new Mock<INotificationRepository>();
+        var producer  = new Mock<INotificationsProducer>();
 
-        var svc      = BuildEmailService(notifRepo.Object, smtpSender.Object);
+        var svc      = BuildEmailService(notifRepo.Object, producer.Object);
         var referral = BuildReferral(clientEmail: "");   // empty → skip
         var provider = BuildProvider(email: "provider@example.org");
 
@@ -153,21 +155,25 @@ public class ReferralClientEmailTests
     public async Task SendAcceptanceConfirmationsAsync_WithClientEmail_SendsToClientAddress()
     {
         // Arrange
-        var notifRepo  = new Mock<INotificationRepository>();
-        var smtpSender = new Mock<ISmtpEmailSender>();
+        var notifRepo = new Mock<INotificationRepository>();
+        var producer  = new Mock<INotificationsProducer>();
 
-        var svc      = BuildEmailService(notifRepo.Object, smtpSender.Object);
+        var svc      = BuildEmailService(notifRepo.Object, producer.Object);
         var referral = BuildReferral(clientEmail: "client@lawcase.com");
         var provider = BuildProvider(email: "provider@clinic.com");
 
         // Act
         await svc.SendAcceptanceConfirmationsAsync(referral, provider);
 
-        // Assert — SMTP was called with the client's address
-        smtpSender.Verify(s => s.SendAsync(
+        // Assert — producer was called with the client's address
+        producer.Verify(p => p.SubmitAsync(
+            It.IsAny<Guid>(),
+            It.IsAny<string>(),
             "client@lawcase.com",
             It.IsAny<string>(),
             It.IsAny<string>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
             It.IsAny<CancellationToken>()),
             Times.Once);
     }
@@ -176,10 +182,10 @@ public class ReferralClientEmailTests
     public async Task SendAcceptanceConfirmationsAsync_WithAllEmails_SendsThreeEmails()
     {
         // Provider, Referrer, and Client all have addresses → three SMTP sends.
-        var notifRepo  = new Mock<INotificationRepository>();
-        var smtpSender = new Mock<ISmtpEmailSender>();
+        var notifRepo = new Mock<INotificationRepository>();
+        var producer  = new Mock<INotificationsProducer>();
 
-        var svc = BuildEmailService(notifRepo.Object, smtpSender.Object);
+        var svc = BuildEmailService(notifRepo.Object, producer.Object);
 
         var referral = BuildReferral(
             clientEmail:  "client@example.com",
@@ -188,8 +194,10 @@ public class ReferralClientEmailTests
 
         await svc.SendAcceptanceConfirmationsAsync(referral, provider);
 
-        smtpSender.Verify(s => s.SendAsync(
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+        producer.Verify(p => p.SubmitAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(),
             It.IsAny<CancellationToken>()),
             Times.Exactly(3));
     }
@@ -198,7 +206,7 @@ public class ReferralClientEmailTests
 
     private static ReferralEmailService BuildEmailService(
         INotificationRepository notifRepo,
-        ISmtpEmailSender        smtp)
+        INotificationsProducer  producer)
     {
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -210,7 +218,7 @@ public class ReferralClientEmailTests
 
         return new ReferralEmailService(
             notifRepo,
-            smtp,
+            producer,
             config,
             NullLogger<ReferralEmailService>.Instance);
     }

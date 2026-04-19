@@ -3,7 +3,7 @@ using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
-using CareConnect.Infrastructure.Email;
+using CareConnect.Infrastructure.Notifications;
 using CareConnect.Infrastructure.Repositories;
 using CareConnect.Infrastructure.Services;
 using CareConnect.Infrastructure.Workers;
@@ -76,9 +76,11 @@ public static class DependencyInjection
         // LSCC-01-005: Referral performance metrics
         services.AddScoped<IReferralPerformanceService, ReferralPerformanceService>();
 
-        // LSCC-005: Email notification dispatch via platform Notifications service (SendGrid)
+        // LS-NOTIF-CORE-023: Canonical notification producer — routes outbound emails
+        // through POST /v1/notifications on the platform Notifications service.
+        // HTTP client already registered above via AddHttpClient("NotificationsService").
         services.AddHttpClient("NotificationsService");
-        services.AddScoped<ISmtpEmailSender, NotificationsServiceEmailSender>();
+        services.AddScoped<INotificationsProducer, NotificationsProducerClient>();
         services.AddScoped<IReferralEmailService, ReferralEmailService>();
 
         // LSCC-005-02: Automatic email retry background worker

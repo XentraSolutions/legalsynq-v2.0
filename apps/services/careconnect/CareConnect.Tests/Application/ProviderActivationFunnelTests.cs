@@ -66,7 +66,7 @@ public class ProviderActivationFunnelTests
 
         return new ReferralEmailService(
             new Mock<INotificationRepository>().Object,
-            new Mock<ISmtpEmailSender>().Object,
+            new Mock<INotificationsProducer>().Object,
             config,
             NullLogger<ReferralEmailService>.Instance);
     }
