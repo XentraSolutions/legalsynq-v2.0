@@ -8,6 +8,10 @@ import { reportsService } from '@/lib/reports/reports.service';
 import { ExportModal } from '@/components/reports/export-modal';
 import type { ExportFormat } from '@/lib/reports/reports.types';
 import { useSessionContext } from '@/providers/session-provider';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { PermissionTooltip } from '@/components/ui/permission-tooltip';
+import { DisabledReasons } from '@/lib/disabled-reasons';
 
 export function ReportsCatalogClient() {
   const router = useRouter();
@@ -20,6 +24,11 @@ export function ReportsCatalogClient() {
 
   const tenantId = session?.tenantId ?? '';
   const userId = session?.userId ?? '';
+
+  // LS-ID-TNT-022-002: Permission gates (UX layer; backend enforces authoritatively).
+  const canExport   = usePermission(PermissionCodes.Insights.ReportsExport);
+  const canBuild    = usePermission(PermissionCodes.Insights.ReportsBuild);
+  const canSchedule = usePermission(PermissionCodes.Insights.SchedulesManage);
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -144,6 +153,7 @@ export function ReportsCatalogClient() {
                         </p>
                       )}
                       <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100">
+                        {/* Run — navigates to viewer; accessible to all with ReportsView */}
                         <button
                           onClick={() => router.push(`/insights/reports/${report.templateId}`)}
                           className="text-xs font-medium text-primary hover:text-primary/80 inline-flex items-center gap-1"
@@ -151,30 +161,57 @@ export function ReportsCatalogClient() {
                           <i className="ri-play-line" />
                           Run
                         </button>
+
                         <span className="w-px h-3 bg-gray-200" />
-                        <button
-                          onClick={() => setExportTarget(report)}
-                          className="text-xs font-medium text-gray-600 hover:text-gray-800 inline-flex items-center gap-1"
+
+                        {/* Export — requires ReportsExport */}
+                        <PermissionTooltip
+                          show={!canExport}
+                          message={DisabledReasons.noPermission('export this report').message}
                         >
-                          <i className="ri-download-2-line" />
-                          Export
-                        </button>
+                          <button
+                            onClick={() => { if (canExport) setExportTarget(report); }}
+                            disabled={!canExport}
+                            className="text-xs font-medium text-gray-600 hover:text-gray-800 inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <i className="ri-download-2-line" />
+                            Export
+                          </button>
+                        </PermissionTooltip>
+
                         <span className="w-px h-3 bg-gray-200" />
-                        <button
-                          onClick={() => router.push(`/insights/reports/${report.templateId}/builder`)}
-                          className="text-xs font-medium text-gray-600 hover:text-gray-800 inline-flex items-center gap-1"
+
+                        {/* Customize — requires ReportsBuild */}
+                        <PermissionTooltip
+                          show={!canBuild}
+                          message={DisabledReasons.noPermission('customize this report').message}
                         >
-                          <i className="ri-tools-line" />
-                          Customize
-                        </button>
+                          <button
+                            onClick={() => { if (canBuild) router.push(`/insights/reports/${report.templateId}/builder`); }}
+                            disabled={!canBuild}
+                            className="text-xs font-medium text-gray-600 hover:text-gray-800 inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <i className="ri-tools-line" />
+                            Customize
+                          </button>
+                        </PermissionTooltip>
+
                         <span className="w-px h-3 bg-gray-200" />
-                        <button
-                          onClick={() => router.push(`/insights/schedules/new?templateId=${report.templateId}`)}
-                          className="text-xs font-medium text-gray-600 hover:text-gray-800 inline-flex items-center gap-1"
+
+                        {/* Schedule — requires SchedulesManage */}
+                        <PermissionTooltip
+                          show={!canSchedule}
+                          message={DisabledReasons.noPermission('schedule this report').message}
                         >
-                          <i className="ri-calendar-schedule-line" />
-                          Schedule
-                        </button>
+                          <button
+                            onClick={() => { if (canSchedule) router.push(`/insights/schedules/new?templateId=${report.templateId}`); }}
+                            disabled={!canSchedule}
+                            className="text-xs font-medium text-gray-600 hover:text-gray-800 inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <i className="ri-calendar-schedule-line" />
+                            Schedule
+                          </button>
+                        </PermissionTooltip>
                       </div>
                     </div>
                   ))}

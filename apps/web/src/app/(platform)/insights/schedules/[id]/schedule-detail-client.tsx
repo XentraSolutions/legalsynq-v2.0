@@ -6,6 +6,9 @@ import { reportsService } from '@/lib/reports/reports.service';
 import { ScheduleForm } from '@/components/reports/schedule-form';
 import type { ScheduleDto, ScheduleRunDto } from '@/lib/reports/reports.types';
 import { useSessionContext } from '@/providers/session-provider';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
 
 function parseCronToFormData(schedule: ScheduleDto) {
   const parts = schedule.cronExpression.split(' ');
@@ -76,6 +79,10 @@ export function ScheduleDetailClient({ scheduleId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'settings' | 'history'>('settings');
   const [templateError, setTemplateError] = useState<string | null>(null);
+
+  // LS-ID-TNT-022-002: Creating or editing a schedule requires SchedulesManage.
+  // The Run History tab shows read-only data and remains accessible to all.
+  const canManage = usePermission(PermissionCodes.Insights.SchedulesManage);
 
   const load = useCallback(async () => {
     if (isNew) return;
@@ -213,12 +220,23 @@ export function ScheduleDetailClient({ scheduleId }: Props) {
 
         {(isNew || tab === 'settings') && (
           <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <ScheduleForm
-              initial={schedule ? parseCronToFormData(schedule) : undefined}
-              onSubmit={handleSubmit}
-              onCancel={() => router.push('/insights/schedules')}
-              submitLabel={isNew ? 'Create Schedule' : 'Update Schedule'}
-            />
+            {/*
+              LS-ID-TNT-022-002: SchedulesManage gate on the settings form.
+              ForbiddenBanner replaces the form for unauthorized users.
+              Run History tab (if not isNew) remains accessible regardless.
+            */}
+            {!canManage ? (
+              <ForbiddenBanner
+                action={isNew ? 'create schedules' : 'edit schedule settings'}
+              />
+            ) : (
+              <ScheduleForm
+                initial={schedule ? parseCronToFormData(schedule) : undefined}
+                onSubmit={handleSubmit}
+                onCancel={() => router.push('/insights/schedules')}
+                submitLabel={isNew ? 'Create Schedule' : 'Update Schedule'}
+              />
+            )}
           </div>
         )}
 

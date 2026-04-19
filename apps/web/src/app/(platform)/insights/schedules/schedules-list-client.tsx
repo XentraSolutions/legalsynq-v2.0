@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation';
 import type { ScheduleDto } from '@/lib/reports/reports.types';
 import { reportsService } from '@/lib/reports/reports.service';
 import { useSessionContext } from '@/providers/session-provider';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { PermissionTooltip } from '@/components/ui/permission-tooltip';
+import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
+import { DisabledReasons } from '@/lib/disabled-reasons';
 
 export function SchedulesListClient() {
   const router = useRouter();
@@ -14,6 +19,13 @@ export function SchedulesListClient() {
   const [error, setError] = useState<string | null>(null);
 
   const tenantId = session?.tenantId ?? '';
+
+  // LS-ID-TNT-022-002: Permission gates (UX layer; backend enforces authoritatively).
+  const canManage = usePermission(PermissionCodes.Insights.SchedulesManage);
+  const canRun    = usePermission(PermissionCodes.Insights.SchedulesRun);
+
+  // ForbiddenBanner shown when user has neither manage nor run access.
+  const hasAnyScheduleAccess = canManage || canRun;
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -59,14 +71,35 @@ export function SchedulesListClient() {
               Manage automated report generation and delivery
             </p>
           </div>
-          <button
-            onClick={() => router.push('/insights/schedules/new')}
-            className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 inline-flex items-center gap-2"
+
+          {/* New Schedule — requires SchedulesManage */}
+          <PermissionTooltip
+            show={!canManage}
+            message={DisabledReasons.noPermission('create schedules').message}
           >
-            <i className="ri-add-line" />
-            New Schedule
-          </button>
+            <button
+              onClick={() => { if (canManage) router.push('/insights/schedules/new'); }}
+              disabled={!canManage}
+              className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            >
+              <i className="ri-add-line" />
+              New Schedule
+            </button>
+          </PermissionTooltip>
         </div>
+
+        {/*
+          LS-ID-TNT-022-002: ForbiddenBanner when the user has neither SchedulesManage
+          nor SchedulesRun. The schedule list table is still shown below so the user
+          can see what schedules exist (informational read-only value), but all action
+          columns are disabled-with-tooltip.
+        */}
+        {!hasAnyScheduleAccess && !loading && (
+          <ForbiddenBanner
+            action="manage or run schedules"
+            className="mb-6"
+          />
+        )}
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-5 py-4 mb-6">
@@ -82,12 +115,15 @@ export function SchedulesListClient() {
           <div className="bg-white border border-gray-200 rounded-lg px-6 py-12 text-center">
             <i className="ri-calendar-schedule-line text-4xl text-gray-300" />
             <p className="text-sm text-gray-500 mt-3">No schedules created yet.</p>
-            <button
-              onClick={() => router.push('/insights/schedules/new')}
-              className="text-sm text-primary font-medium mt-3 hover:text-primary/80"
-            >
-              Create your first schedule
-            </button>
+            {/* Only show the CTA if the user can actually create schedules */}
+            {canManage && (
+              <button
+                onClick={() => router.push('/insights/schedules/new')}
+                className="text-sm text-primary font-medium mt-3 hover:text-primary/80"
+              >
+                Create your first schedule
+              </button>
+            )}
           </div>
         ) : (
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -135,27 +171,44 @@ export function SchedulesListClient() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleRunNow(s.scheduleId)}
-                          className="text-xs text-primary hover:text-primary/80"
-                          title="Run now"
+                        {/* Run now — requires SchedulesRun */}
+                        <PermissionTooltip
+                          show={!canRun}
+                          message={DisabledReasons.noPermission('run this schedule').message}
                         >
-                          <i className="ri-play-line" />
-                        </button>
+                          <button
+                            onClick={() => { if (canRun) handleRunNow(s.scheduleId); }}
+                            disabled={!canRun}
+                            className="text-xs text-primary hover:text-primary/80 disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={canRun ? 'Run now' : undefined}
+                          >
+                            <i className="ri-play-line" />
+                          </button>
+                        </PermissionTooltip>
+
+                        {/* Edit — navigates to detail; accessible for run history viewing */}
                         <button
                           onClick={() => router.push(`/insights/schedules/${s.scheduleId}`)}
                           className="text-xs text-gray-500 hover:text-gray-700"
-                          title="Edit"
+                          title="View / Edit"
                         >
                           <i className="ri-edit-line" />
                         </button>
-                        <button
-                          onClick={() => handleDeactivate(s.scheduleId)}
-                          className="text-xs text-gray-500 hover:text-red-500"
-                          title="Deactivate"
+
+                        {/* Deactivate — requires SchedulesManage */}
+                        <PermissionTooltip
+                          show={!canManage}
+                          message={DisabledReasons.noPermission('deactivate this schedule').message}
                         >
-                          <i className="ri-delete-bin-line" />
-                        </button>
+                          <button
+                            onClick={() => { if (canManage) handleDeactivate(s.scheduleId); }}
+                            disabled={!canManage}
+                            className="text-xs text-gray-500 hover:text-red-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={canManage ? 'Deactivate' : undefined}
+                          >
+                            <i className="ri-delete-bin-line" />
+                          </button>
+                        </PermissionTooltip>
                       </div>
                     </td>
                   </tr>

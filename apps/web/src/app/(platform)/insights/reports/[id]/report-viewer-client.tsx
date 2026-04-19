@@ -12,6 +12,10 @@ import type {
   ReportViewDto,
 } from '@/lib/reports/reports.types';
 import { useSessionContext } from '@/providers/session-provider';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { PermissionTooltip } from '@/components/ui/permission-tooltip';
+import { DisabledReasons } from '@/lib/disabled-reasons';
 
 interface Props {
   templateId: string;
@@ -33,6 +37,11 @@ export function ReportViewerClient({ templateId }: Props) {
 
   const tenantId = session?.tenantId ?? '';
   const userId = session?.userId ?? '';
+
+  // LS-ID-TNT-022-002: Permission gates (UX layer; backend enforces authoritatively).
+  const canRun    = usePermission(PermissionCodes.Insights.ReportsRun);
+  const canExport = usePermission(PermissionCodes.Insights.ReportsExport);
+  const canBuild  = usePermission(PermissionCodes.Insights.ReportsBuild);
 
   const loadReport = useCallback(async () => {
     if (!tenantId) return;
@@ -187,41 +196,62 @@ export function ReportViewerClient({ templateId }: Props) {
               </div>
             )}
 
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleRun}
-                disabled={executing}
-                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 inline-flex items-center gap-2"
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Run Report — requires ReportsRun */}
+              <PermissionTooltip
+                show={!canRun}
+                message={DisabledReasons.noPermission('run this report').message}
               >
-                {executing ? (
-                  <>
-                    <i className="ri-loader-4-line animate-spin" />
-                    Running...
-                  </>
-                ) : (
-                  <>
-                    <i className="ri-play-line" />
-                    Run Report
-                  </>
-                )}
-              </button>
+                <button
+                  onClick={() => { if (canRun) handleRun(); }}
+                  disabled={executing || !canRun}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                >
+                  {executing ? (
+                    <>
+                      <i className="ri-loader-4-line animate-spin" />
+                      Running...
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-play-line" />
+                      Run Report
+                    </>
+                  )}
+                </button>
+              </PermissionTooltip>
 
               {execution && (
                 <>
-                  <button
-                    onClick={() => setExportOpen(true)}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 inline-flex items-center gap-2"
+                  {/* Export — requires ReportsExport */}
+                  <PermissionTooltip
+                    show={!canExport}
+                    message={DisabledReasons.noPermission('export this report').message}
                   >
-                    <i className="ri-download-2-line" />
-                    Export
-                  </button>
-                  <button
-                    onClick={() => router.push(`/insights/reports/${templateId}/builder`)}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 inline-flex items-center gap-2"
+                    <button
+                      onClick={() => { if (canExport) setExportOpen(true); }}
+                      disabled={!canExport}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                    >
+                      <i className="ri-download-2-line" />
+                      Export
+                    </button>
+                  </PermissionTooltip>
+
+                  {/* Customize — requires ReportsBuild */}
+                  <PermissionTooltip
+                    show={!canBuild}
+                    message={DisabledReasons.noPermission('customize this report').message}
                   >
-                    <i className="ri-tools-line" />
-                    Customize
-                  </button>
+                    <button
+                      onClick={() => { if (canBuild) router.push(`/insights/reports/${templateId}/builder`); }}
+                      disabled={!canBuild}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                    >
+                      <i className="ri-tools-line" />
+                      Customize
+                    </button>
+                  </PermissionTooltip>
                 </>
               )}
             </div>

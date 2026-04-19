@@ -6,6 +6,9 @@ import { reportsService } from '@/lib/reports/reports.service';
 import { ReportBuilder } from '@/components/reports/report-builder';
 import type { ColumnConfig, FilterRule, EffectiveReportDto, FormulaDefinition, ColumnFormattingRule } from '@/lib/reports/reports.types';
 import { useSessionContext } from '@/providers/session-provider';
+import { usePermission } from '@/hooks/use-permission';
+import { PermissionCodes } from '@/lib/permission-codes';
+import { ForbiddenBanner } from '@/components/ui/forbidden-banner';
 
 interface Props {
   templateId: string;
@@ -21,6 +24,11 @@ export function ReportBuilderClient({ templateId }: Props) {
 
   const tenantId = session?.tenantId ?? '';
   const userId = session?.userId ?? '';
+
+  // LS-ID-TNT-022-002: Builder page requires ReportsBuild. Without it the report
+  // definition is still loaded and displayed for reference, but the ReportBuilder
+  // form is hidden and a ForbiddenBanner explains the restriction.
+  const canBuild = usePermission(PermissionCodes.Insights.ReportsBuild);
 
   const load = useCallback(async () => {
     if (!tenantId) return;
@@ -131,7 +139,17 @@ export function ReportBuilderClient({ templateId }: Props) {
           </div>
         )}
 
-        {report && !saved && (
+        {/*
+          LS-ID-TNT-022-002: ReportsBuild gate.
+          Without the permission the builder form is replaced by a ForbiddenBanner.
+          The page itself remains accessible so the URL entry (e.g. from a bookmark)
+          gives a useful explanation rather than a silent 404-style failure.
+        */}
+        {!canBuild && !saved && (
+          <ForbiddenBanner action="build or customize reports" className="mb-6" />
+        )}
+
+        {canBuild && report && !saved && (
           <ReportBuilder
             availableFields={availableFields}
             initialColumns={availableFields.filter((f) => f.visible !== false)}
