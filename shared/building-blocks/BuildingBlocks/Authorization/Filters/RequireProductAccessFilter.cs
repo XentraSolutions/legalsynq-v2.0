@@ -1,4 +1,8 @@
+using System.Text.Json;
 using BuildingBlocks.Exceptions;
+using LegalSynq.AuditClient;
+using LegalSynq.AuditClient.DTOs;
+using LegalSynq.AuditClient.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -41,6 +45,8 @@ public sealed class RequireProductAccessFilter : IEndpointFilter
             LogAuthzDecision(httpContext, "DENY", userId, tenantId, path, method,
                 _productCode, null, "NoProductAccess", accessVersion);
 
+            EmitProductAccessDenied(httpContext, userId, tenantId, _productCode, "NoProductAccess", path, method);
+
             return ProductAccessDeniedResult.Create(
                 ProductAccessDeniedException.NoProductAccess(_productCode));
         }
@@ -71,6 +77,67 @@ public sealed class RequireProductAccessFilter : IEndpointFilter
                 "AuthzDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} product={Product} source={Source} accessVersion={AccessVersion}",
                 result, userId, tenantId, method, path, product, source, accessVersion);
         }
+    }
+
+    // ── Canonical audit emit ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Emits a <c>security.product.access.denied</c> canonical audit event.
+    ///
+    /// Fail-safe: <see cref="IAuditEventClient"/> is resolved optionally from DI.
+    /// If it is not registered in the service container, this method returns without
+    /// throwing. The Task is discarded (fire-and-observe). The denial flow is never
+    /// gated on audit publish success.
+    /// </summary>
+    private static void EmitProductAccessDenied(
+        HttpContext httpContext,
+        string?     userId,
+        string?     tenantId,
+        string      productCode,
+        string      denialReason,
+        string?     endpoint,
+        string      method)
+    {
+        var auditClient = httpContext.RequestServices.GetService(typeof(IAuditEventClient)) as IAuditEventClient;
+        if (auditClient is null) return;
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "security.product.access.denied",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "authorization",
+            SourceService = "require-product-access-filter",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = tenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId,
+                Type = ActorType.User,
+                Name = userId,
+            },
+            Entity      = new AuditEventEntityDto { Type = "Product", Id = productCode },
+            Action      = "ProductAccessDenied",
+            Description = $"Product access denied for product '{productCode}' — reason: {denialReason}.",
+            Outcome     = "Failure",
+            Metadata    = JsonSerializer.Serialize(new
+            {
+                productCode,
+                denialReason,
+                endpoint,
+                method,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                now, "authorization", "security.product.access.denied",
+                $"{userId}:{productCode}"),
+            Tags = ["security", "access-denied", "product"],
+        });
     }
 }
 
@@ -114,6 +181,8 @@ public sealed class RequireProductRoleFilter : IEndpointFilter
             LogAuthzDecision(httpContext, "DENY", userId, tenantId, path, method,
                 _productCode, rolesStr, "NoProductAccess", accessVersion);
 
+            EmitProductDenied(httpContext, userId, tenantId, _productCode, rolesStr, "NoProductAccess", path, method, "security.product.access.denied");
+
             return ProductAccessDeniedResult.Create(
                 ProductAccessDeniedException.NoProductAccess(_productCode));
         }
@@ -122,6 +191,8 @@ public sealed class RequireProductRoleFilter : IEndpointFilter
         {
             LogAuthzDecision(httpContext, "DENY", userId, tenantId, path, method,
                 _productCode, rolesStr, "InsufficientRole", accessVersion);
+
+            EmitProductDenied(httpContext, userId, tenantId, _productCode, rolesStr, "InsufficientRole", path, method, "security.product.role.denied");
 
             return ProductAccessDeniedResult.Create(
                 ProductAccessDeniedException.InsufficientProductRole(_productCode, _requiredRoles));
@@ -153,6 +224,66 @@ public sealed class RequireProductRoleFilter : IEndpointFilter
                 "AuthzDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} product={Product} requiredRoles=[{RequiredRoles}] source={Source} accessVersion={AccessVersion}",
                 result, userId, tenantId, method, path, product, requiredRoles, source, accessVersion);
         }
+    }
+
+    /// <summary>
+    /// Emits a canonical denied-access event (product access or role insufficiency).
+    /// Fire-and-observe, IAuditEventClient resolved optionally.
+    /// </summary>
+    private static void EmitProductDenied(
+        HttpContext httpContext,
+        string?     userId,
+        string?     tenantId,
+        string      productCode,
+        string      requiredRoles,
+        string      denialReason,
+        string?     endpoint,
+        string      method,
+        string      eventType)
+    {
+        var auditClient = httpContext.RequestServices.GetService(typeof(IAuditEventClient)) as IAuditEventClient;
+        if (auditClient is null) return;
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = eventType,
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "authorization",
+            SourceService = "require-product-role-filter",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = tenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId,
+                Type = ActorType.User,
+                Name = userId,
+            },
+            Entity      = new AuditEventEntityDto { Type = "Product", Id = productCode },
+            Action      = denialReason == "InsufficientRole" ? "ProductRoleDenied" : "ProductAccessDenied",
+            Description = denialReason == "InsufficientRole"
+                ? $"Product role access denied for product '{productCode}' — required roles: [{requiredRoles}]."
+                : $"Product access denied for product '{productCode}' — reason: {denialReason}.",
+            Outcome     = "Failure",
+            Metadata    = JsonSerializer.Serialize(new
+            {
+                productCode,
+                requiredRoles,
+                denialReason,
+                endpoint,
+                method,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                now, "authorization", eventType,
+                $"{userId}:{productCode}:{denialReason}"),
+            Tags = ["security", "access-denied", "product", "role"],
+        });
     }
 }
 
@@ -192,6 +323,8 @@ public sealed class RequireOrgProductAccessFilter : IEndpointFilter
         {
             LogAuthzDecision(httpContext, "DENY", userId, tenantId, path, method,
                 _productCode, "NoProductAccess", accessVersion);
+
+            EmitProductAccessDenied(httpContext, userId, tenantId, _productCode, "NoProductAccess", path, method);
 
             return ProductAccessDeniedResult.Create(
                 ProductAccessDeniedException.NoProductAccess(_productCode));
@@ -239,6 +372,61 @@ public sealed class RequireOrgProductAccessFilter : IEndpointFilter
                 result, userId, tenantId, method, path, product, source, accessVersion);
         }
     }
+
+    /// <summary>
+    /// Emits <c>security.product.access.denied</c> for NoProductAccess denials.
+    /// OrgContextMissing is a configuration issue, not a user access denial, so it is excluded.
+    /// </summary>
+    private static void EmitProductAccessDenied(
+        HttpContext httpContext,
+        string?     userId,
+        string?     tenantId,
+        string      productCode,
+        string      denialReason,
+        string?     endpoint,
+        string      method)
+    {
+        var auditClient = httpContext.RequestServices.GetService(typeof(IAuditEventClient)) as IAuditEventClient;
+        if (auditClient is null) return;
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "security.product.access.denied",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "authorization",
+            SourceService = "require-org-product-access-filter",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = tenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId,
+                Type = ActorType.User,
+                Name = userId,
+            },
+            Entity      = new AuditEventEntityDto { Type = "Product", Id = productCode },
+            Action      = "ProductAccessDenied",
+            Description = $"Org-scoped product access denied for product '{productCode}' — reason: {denialReason}.",
+            Outcome     = "Failure",
+            Metadata    = JsonSerializer.Serialize(new
+            {
+                productCode,
+                denialReason,
+                endpoint,
+                method,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                now, "authorization", "security.product.access.denied",
+                $"{userId}:{productCode}"),
+            Tags = ["security", "access-denied", "product", "org"],
+        });
+    }
 }
 
 public sealed class RequirePermissionFilter : IEndpointFilter
@@ -283,6 +471,9 @@ public sealed class RequirePermissionFilter : IEndpointFilter
                 LogPermissionDecision(httpContext, "DENY", userId, tenantId, path, method,
                     _permissionCode, $"PolicyDenied:{policyResult.Reason}", accessVersion);
 
+                EmitPermissionDenied(httpContext, userId, tenantId, _permissionCode,
+                    $"PolicyDenied:{policyResult.Reason}", path, method, "security.permission.policy.denied");
+
                 return ProductAccessDeniedResult.Create(
                     "POLICY_DENIED",
                     $"Permission '{_permissionCode}' denied by policy: {policyResult.Reason}",
@@ -307,6 +498,9 @@ public sealed class RequirePermissionFilter : IEndpointFilter
 
         LogPermissionDecision(httpContext, "DENY", userId, tenantId, path, method,
             _permissionCode, "MissingPermission", accessVersion);
+
+        EmitPermissionDenied(httpContext, userId, tenantId, _permissionCode,
+            "MissingPermission", path, method, "security.permission.denied");
 
         return ProductAccessDeniedResult.Create(
             ProductAccessDeniedException.MissingPermission(_permissionCode));
@@ -419,5 +613,64 @@ public sealed class RequirePermissionFilter : IEndpointFilter
                 "PermissionDecision: result={Result} user={UserId} tenant={TenantId} method={Method} endpoint={Path} permission={Permission} source={Source} accessVersion={AccessVersion}",
                 result, userId, tenantId, method, path, permission, source, accessVersion);
         }
+    }
+
+    /// <summary>
+    /// Emits a <c>security.permission.denied</c> or <c>security.permission.policy.denied</c>
+    /// canonical audit event when a permission check fails.
+    ///
+    /// Fail-safe: IAuditEventClient is resolved optionally from DI.
+    /// Fire-and-observe: the Task is discarded; the denial response is never gated on audit success.
+    /// </summary>
+    private static void EmitPermissionDenied(
+        HttpContext httpContext,
+        string?     userId,
+        string?     tenantId,
+        string      permissionCode,
+        string      denialReason,
+        string?     endpoint,
+        string      method,
+        string      eventType)
+    {
+        var auditClient = httpContext.RequestServices.GetService(typeof(IAuditEventClient)) as IAuditEventClient;
+        if (auditClient is null) return;
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = eventType,
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "authorization",
+            SourceService = "require-permission-filter",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = tenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId,
+                Type = ActorType.User,
+                Name = userId,
+            },
+            Entity      = new AuditEventEntityDto { Type = "Permission", Id = permissionCode },
+            Action      = "PermissionDenied",
+            Description = $"Permission '{permissionCode}' denied — reason: {denialReason}.",
+            Outcome     = "Failure",
+            Metadata    = JsonSerializer.Serialize(new
+            {
+                permissionCode,
+                denialReason,
+                endpoint,
+                method,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                now, "authorization", eventType,
+                $"{userId}:{permissionCode}"),
+            Tags = ["security", "access-denied", "permission"],
+        });
     }
 }

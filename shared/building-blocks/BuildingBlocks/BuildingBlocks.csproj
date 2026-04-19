@@ -21,4 +21,14 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.0" />
   </ItemGroup>
 
+  <!-- LS-ID-TNT-017-002 — User Access Audit:
+       Lightweight fire-and-observe audit client used by the shared authorization
+       filters (RequireProductAccessFilter, RequirePermissionFilter) to emit
+       denied-access canonical events to the Platform Audit Event Service.
+       Resolution is always optional (GetService) so services that do not register
+       the client simply skip audit emission with no failure. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\audit-client\LegalSynq.AuditClient\LegalSynq.AuditClient.csproj" />
+  </ItemGroup>
+
 </Project>

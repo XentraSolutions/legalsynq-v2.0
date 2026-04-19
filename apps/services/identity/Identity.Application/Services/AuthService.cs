@@ -298,6 +298,7 @@ public class AuthService : IAuthService
                 && int.TryParse(sessionVersionClaim, out var tokenVersion)
                 && tokenVersion < user.SessionVersion)
             {
+                EmitSessionInvalidated(userId, tenantId, email);
                 throw new UnauthorizedAccessException("Session has been invalidated.");
             }
 
@@ -308,6 +309,7 @@ public class AuthService : IAuthService
                 && int.TryParse(accessVersionClaim, out var tokenAccessVersion)
                 && tokenAccessVersion < user.AccessVersion)
             {
+                EmitAccessVersionStale(userId, tenantId, email, user.AccessVersion, tokenAccessVersion);
                 throw new UnauthorizedAccessException("Access has been updated. Please re-authenticate.");
             }
         }
@@ -414,6 +416,90 @@ public class AuthService : IAuthService
             }),
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.login.failed", email),
             Tags = ["auth", "login", "failure", "security"],
+        });
+    }
+
+    /// <summary>
+    /// LS-ID-TNT-017-002: emits <c>identity.session.invalidated</c> when a JWT's
+    /// <c>session_version</c> is older than the DB value (e.g. after a force-logout).
+    /// Fire-and-observe. Never throws, never gates the rejection response.
+    /// </summary>
+    private void EmitSessionInvalidated(string userId, string tenantId, string email)
+    {
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.session.invalidated",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "auth-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = tenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId,
+                Type = ActorType.User,
+                Name = email,
+            },
+            Entity      = new AuditEventEntityDto { Type = "User", Id = userId },
+            Action      = "SessionInvalidated",
+            Description = $"Session invalidated for user '{email}' — JWT session_version is stale (force-logout or account lock).",
+            Metadata    = JsonSerializer.Serialize(new { reason = "SessionVersionStale" }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                now, "identity-service", "identity.session.invalidated", userId),
+            Tags = ["auth", "session", "invalidated", "security"],
+        });
+    }
+
+    /// <summary>
+    /// LS-ID-TNT-017-002: emits <c>identity.access.version.stale</c> when a JWT's
+    /// <c>access_version</c> is older than the DB value (e.g. after a permission change).
+    /// Signals that the user must re-authenticate to acquire a fresh JWT with updated claims.
+    /// Fire-and-observe. Never throws, never gates the rejection response.
+    /// </summary>
+    private void EmitAccessVersionStale(
+        string userId, string tenantId, string email,
+        int currentAccessVersion, int tokenAccessVersion)
+    {
+        var now = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.access.version.stale",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "identity-service",
+            SourceService = "auth-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = tenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = userId,
+                Type = ActorType.User,
+                Name = email,
+            },
+            Entity      = new AuditEventEntityDto { Type = "User", Id = userId },
+            Action      = "AccessVersionStale",
+            Description = $"Stale access_version detected for user '{email}' — re-authentication required (permission change since last login).",
+            Metadata    = JsonSerializer.Serialize(new
+            {
+                reason               = "AccessVersionStale",
+                tokenAccessVersion,
+                currentAccessVersion,
+            }),
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                now, "identity-service", "identity.access.version.stale", userId),
+            Tags = ["auth", "access-version", "stale", "security", "re-auth"],
         });
     }
 
