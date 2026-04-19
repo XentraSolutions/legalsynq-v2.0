@@ -5136,3 +5136,61 @@ Completes the Notifications microservice operational API surface. Pre-existing s
 
 ### Analysis
 `analysis/LS-NOTIF-CORE-001-report.md`
+
+## LS-NOTIF-CORE-008 — Notifications Access Model & Authorization Hardening (2026-04-19)
+
+Adds JWT-based authentication and authorization enforcement to the Notifications microservice. All user-facing tenant endpoints are now secured; a new `/v1/admin/notifications/*` route group is added for platform-admin cross-tenant access. Backward compatibility with existing internal service callers is fully preserved.
+
+### Authorization model
+- JWT emitted by `Identity.Infrastructure.Services.JwtTokenService` with claims: `sub` (userId), `tenant_id`, `ClaimTypes.Role` (`PlatformAdmin` / `TenantAdmin` / `StandardUser`)
+- `isPlatformAdmin` derived from role == `PlatformAdmin` (no separate boolean claim)
+- Policies registered: `AuthenticatedUser` (any valid JWT), `AdminOnly` (PlatformAdmin role)
+- Pattern matches Fund service: `AddAuthentication(JwtBearerDefaults).AddJwtBearer(...)` + `AddAuthorization(...)` + `UseAuthentication()` + `UseAuthorization()`
+
+### Tenant endpoint security (GET/operational)
+All tenant endpoints now require `AuthenticatedUser` JWT:
+- GET `/v1/notifications` — tenant from JWT `tenant_id` claim
+- GET `/v1/notifications/stats` — tenant from JWT
+- GET `/v1/notifications/{id}` — tenant from JWT
+- GET `/v1/notifications/{id}/events` — tenant from JWT
+- GET `/v1/notifications/{id}/issues` — tenant from JWT
+- POST `/v1/notifications/{id}/retry` — tenant from JWT; actorUserId embedded in audit
+- POST `/v1/notifications/{id}/resend` — tenant from JWT; actorUserId embedded in audit
+
+### Exempt from JWT (backward compat)
+- POST `/v1/notifications` — `.AllowAnonymous()` — internal callers (Comms, Liens, Reports) use `X-Tenant-Id` header with no JWT
+
+### Admin endpoints (new)
+Route group `/v1/admin/notifications`, policy: `AdminOnly` (PlatformAdmin only):
+- GET `/v1/admin/notifications` — cross-tenant paged list; optional `tenantId` filter
+- GET `/v1/admin/notifications/stats` — cross-tenant stats
+- GET `/v1/admin/notifications/{id}/events` — event timeline (no tenant filter)
+- GET `/v1/admin/notifications/{id}/issues` — delivery issues (no tenant filter)
+- POST `/v1/admin/notifications/{id}/retry` — admin retry any notification
+- POST `/v1/admin/notifications/{id}/resend` — admin resend any notification
+
+### Audit enhancements
+- Retry/resend now embed `actorUserId` (JWT `sub`) in audit description + `AuditEventScopeDto.UserId`
+- Admin operations emit `admin.notification.*` event types with `ScopeType.Platform`
+
+### TenantMiddleware behavior change
+- Authenticated requests → tenantId from JWT `tenant_id` claim (ignores `X-Tenant-Id` header)
+- Unauthenticated requests → tenantId from `X-Tenant-Id` header (backward compat)
+- Admin `/v1/admin/*` paths → bypass TenantMiddleware entirely (handler reads optional query param)
+- Pipeline order: `UseAuthentication()` → `UseAuthorization()` → `UseMiddleware<TenantMiddleware>()`
+
+### Files changed
+- `Notifications.Api/Authorization/UserContext.cs` — new: `UserContext` record + `HttpContextAuthExtensions`
+- `Notifications.Api/appsettings.json` — added `Jwt` section
+- `Notifications.Api/appsettings.Development.json` — added `Jwt` section (dev key)
+- `Notifications.Api/Program.cs` — JWT auth, authorization policies, middleware order
+- `Notifications.Api/Middleware/TenantMiddleware.cs` — JWT-claim-first tenant resolution
+- `Notifications.Api/Endpoints/NotificationEndpoints.cs` — RequireAuthorization + AllowAnonymous on POST
+- `Notifications.Api/Endpoints/AdminNotificationEndpoints.cs` — new: 6 admin endpoints
+- `Notifications.Application/Interfaces/INotificationService.cs` — actorUserId on retry/resend; 6 admin methods
+- `Notifications.Application/Interfaces/INotificationRepository.cs` — GetPagedAdminAsync, GetStatsAdminAsync
+- `Notifications.Infrastructure/Repositories/NotificationRepository.cs` — admin variants implemented
+- `Notifications.Infrastructure/Services/NotificationService.cs` — admin methods; shared BuildEventTimelineAsync/BuildStatsDto helpers
+
+### Analysis
+`analysis/LS-NOTIF-CORE-008-report.md`

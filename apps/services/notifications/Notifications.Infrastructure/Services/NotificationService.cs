@@ -339,7 +339,7 @@ public class NotificationServiceImpl : INotificationService
         "auth_config_failure",
     };
 
-    public async Task<RetryResultDto?> RetryAsync(Guid tenantId, Guid id)
+    public async Task<RetryResultDto?> RetryAsync(Guid tenantId, Guid id, string? actorUserId = null)
     {
         var notification = await _notificationRepo.GetByIdAndTenantAsync(id, tenantId);
         if (notification == null) return null;
@@ -387,8 +387,8 @@ public class NotificationServiceImpl : INotificationService
                 EventType    = "notification.retry",
                 Action       = "notification.retry",
                 SourceSystem = "notifications",
-                Description  = $"Operator-triggered retry for notification {id}; previous status: {previousStatus}; new status: {notification.Status}",
-                Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() }
+                Description  = $"Operator-triggered retry for notification {id}; previous status: {previousStatus}; new status: {notification.Status}; actor: {actorUserId ?? "internal"}",
+                Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString(), UserId = actorUserId }
             });
         }
         catch { /* audit best-effort */ }
@@ -407,7 +407,7 @@ public class NotificationServiceImpl : INotificationService
 
     // ─── Resend ───────────────────────────────────────────────────────────────
 
-    public async Task<ResendResultDto?> ResendAsync(Guid tenantId, Guid id)
+    public async Task<ResendResultDto?> ResendAsync(Guid tenantId, Guid id, string? actorUserId = null)
     {
         var original = await _notificationRepo.GetByIdAndTenantAsync(id, tenantId);
         if (original == null) return null;
@@ -449,8 +449,8 @@ public class NotificationServiceImpl : INotificationService
                 EventType    = "notification.resend",
                 Action       = "notification.resend",
                 SourceSystem = "notifications",
-                Description  = $"Operator-triggered resend of notification {id}; new notification {result.Id}",
-                Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() }
+                Description  = $"Operator-triggered resend of notification {id}; new notification {result.Id}; actor: {actorUserId ?? "internal"}",
+                Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString(), UserId = actorUserId }
             });
         }
         catch { /* audit best-effort */ }
@@ -461,6 +461,423 @@ public class NotificationServiceImpl : INotificationService
             NewNotificationId      = result.Id,
             Status                 = result.Status,
             CreatedAt              = DateTime.UtcNow,
+        };
+    }
+
+    // ─── Admin cross-tenant operations ───────────────────────────────────────
+
+    public async Task<PagedNotificationsResponse> AdminListPagedAsync(Guid? tenantId, NotificationListQuery query, string actorUserId)
+    {
+        var query2 = new NotificationListQuery
+        {
+            Page          = query.Page == 0 ? 1 : query.Page,
+            PageSize      = query.PageSize == 0 ? 50 : query.PageSize,
+            Status        = query.Status,
+            Channel       = query.Channel,
+            Provider      = query.Provider,
+            Recipient     = query.Recipient,
+            ProductKey    = query.ProductKey,
+            From          = query.From,
+            To            = query.To,
+            SortBy        = query.SortBy,
+            SortDirection = query.SortDirection,
+        };
+
+        var (items, total) = await _notificationRepo.GetPagedAdminAsync(tenantId, query2);
+
+        _logger.LogInformation(
+            "Admin list query by {ActorUserId}: tenantFilter={TenantId} page={Page} pageSize={PageSize} total={Total}",
+            actorUserId, tenantId?.ToString() ?? "ALL", query2.Page, query2.PageSize, total);
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "admin.notification.list",
+                Action       = "admin.notification.list",
+                SourceSystem = "notifications",
+                Description  = $"Admin list query by {actorUserId}; tenantFilter={tenantId?.ToString() ?? "ALL"}; total={total}",
+                Scope        = new AuditEventScopeDto
+                {
+                    ScopeType = LegalSynq.AuditClient.Enums.ScopeType.Platform,
+                    TenantId  = tenantId?.ToString(),
+                    UserId    = actorUserId,
+                }
+            });
+        }
+        catch { /* audit best-effort */ }
+
+        var pageSize = Math.Clamp(query2.PageSize, 1, 200);
+        return new PagedNotificationsResponse
+        {
+            Items          = items.Select(MapToDto).ToList(),
+            TotalCount     = total,
+            Page           = query2.Page,
+            PageSize       = pageSize,
+            TotalPages     = (int)Math.Ceiling((double)total / pageSize),
+            AppliedFilters = new AppliedFiltersDto
+            {
+                Status        = query2.Status,
+                Channel       = query2.Channel,
+                Provider      = query2.Provider,
+                Recipient     = query2.Recipient,
+                ProductKey    = query2.ProductKey,
+                From          = query2.From,
+                To            = query2.To,
+                SortBy        = query2.SortBy,
+                SortDirection = query2.SortDirection,
+            },
+        };
+    }
+
+    public async Task<NotificationStatsDto> AdminGetStatsAsync(Guid? tenantId, NotificationStatsQuery query, string actorUserId)
+    {
+        var data = await _notificationRepo.GetStatsAdminAsync(tenantId, query);
+
+        _logger.LogInformation(
+            "Admin stats query by {ActorUserId}: tenantFilter={TenantId}",
+            actorUserId, tenantId?.ToString() ?? "ALL");
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "admin.notification.stats",
+                Action       = "admin.notification.stats",
+                SourceSystem = "notifications",
+                Description  = $"Admin stats query by {actorUserId}; tenantFilter={tenantId?.ToString() ?? "ALL"}; total={data.TotalCount}",
+                Scope        = new AuditEventScopeDto
+                {
+                    ScopeType = LegalSynq.AuditClient.Enums.ScopeType.Platform,
+                    TenantId  = tenantId?.ToString(),
+                    UserId    = actorUserId,
+                }
+            });
+        }
+        catch { /* audit best-effort */ }
+
+        return BuildStatsDto(data, query);
+    }
+
+    public async Task<List<NotificationEventDto>> AdminGetEventsAsync(Guid notificationId, string actorUserId)
+    {
+        var notification = await _notificationRepo.GetByIdAsync(notificationId);
+        if (notification == null) return new List<NotificationEventDto>();
+
+        _logger.LogInformation(
+            "Admin events lookup by {ActorUserId}: notificationId={NotificationId} tenantId={TenantId}",
+            actorUserId, notificationId, notification.TenantId);
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "admin.notification.events",
+                Action       = "admin.notification.events",
+                SourceSystem = "notifications",
+                Description  = $"Admin events lookup by {actorUserId}; notificationId={notificationId}; tenantId={notification.TenantId}",
+                Scope        = new AuditEventScopeDto
+                {
+                    ScopeType = LegalSynq.AuditClient.Enums.ScopeType.Platform,
+                    TenantId  = notification.TenantId.ToString(),
+                    UserId    = actorUserId,
+                }
+            });
+        }
+        catch { /* audit best-effort */ }
+
+        return await BuildEventTimelineAsync(notification);
+    }
+
+    public async Task<List<NotificationIssueDto>> AdminGetIssuesAsync(Guid notificationId, string actorUserId)
+    {
+        var notification = await _notificationRepo.GetByIdAsync(notificationId);
+        if (notification == null) return new List<NotificationIssueDto>();
+
+        _logger.LogInformation(
+            "Admin issues lookup by {ActorUserId}: notificationId={NotificationId} tenantId={TenantId}",
+            actorUserId, notificationId, notification.TenantId);
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "admin.notification.issues",
+                Action       = "admin.notification.issues",
+                SourceSystem = "notifications",
+                Description  = $"Admin issues lookup by {actorUserId}; notificationId={notificationId}; tenantId={notification.TenantId}",
+                Scope        = new AuditEventScopeDto
+                {
+                    ScopeType = LegalSynq.AuditClient.Enums.ScopeType.Platform,
+                    TenantId  = notification.TenantId.ToString(),
+                    UserId    = actorUserId,
+                }
+            });
+        }
+        catch { /* audit best-effort */ }
+
+        var issues = await _deliveryIssueRepo.GetByNotificationIdAsync(notificationId);
+        return issues.Select(i => new NotificationIssueDto
+        {
+            Id                = i.Id,
+            IssueType         = i.IssueType,
+            Channel           = i.Channel,
+            Provider          = string.IsNullOrEmpty(i.Provider) ? null : i.Provider,
+            RecommendedAction = i.RecommendedAction,
+            DetailsJson       = i.DetailsJson,
+            IsResolved        = i.IsResolved,
+            ResolvedAt        = i.ResolvedAt,
+            CreatedAt         = i.CreatedAt,
+        }).ToList();
+    }
+
+    public async Task<RetryResultDto?> AdminRetryAsync(Guid notificationId, string actorUserId)
+    {
+        var notification = await _notificationRepo.GetByIdAsync(notificationId);
+        if (notification == null) return null;
+
+        var tenantId = notification.TenantId.GetValueOrDefault();
+
+        if (notification.Status != "failed")
+            return new RetryResultDto
+            {
+                NotificationId   = notificationId,
+                PreviousStatus   = notification.Status,
+                NewStatus        = notification.Status,
+                FailureCategory  = "not_retryable",
+                LastErrorMessage = $"Notification is not in a retryable state (current status: {notification.Status})",
+                RetriedAt        = DateTime.UtcNow,
+            };
+
+        if (!string.IsNullOrEmpty(notification.FailureCategory) &&
+            !RetryableFailureCategories.Contains(notification.FailureCategory))
+            return new RetryResultDto
+            {
+                NotificationId   = notificationId,
+                PreviousStatus   = notification.Status,
+                NewStatus        = notification.Status,
+                FailureCategory  = notification.FailureCategory,
+                LastErrorMessage = $"Failure category '{notification.FailureCategory}' is not retryable",
+                RetriedAt        = DateTime.UtcNow,
+            };
+
+        var previousStatus = notification.Status;
+        var existingAttempts = await _attemptRepo.GetByNotificationIdAsync(notificationId);
+        var baseAttemptNumber = existingAttempts.Count;
+
+        notification.Status = "processing";
+        notification.FailureCategory = null;
+        notification.LastErrorMessage = null;
+        await _notificationRepo.UpdateAsync(notification);
+
+        await ExecuteSendLoopAsync(tenantId, notification, baseAttemptNumber);
+
+        _logger.LogInformation(
+            "Admin retry by {ActorUserId}: notificationId={NotificationId} tenantId={TenantId} previousStatus={Prev} newStatus={New}",
+            actorUserId, notificationId, tenantId, previousStatus, notification.Status);
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "admin.notification.retry",
+                Action       = "admin.notification.retry",
+                SourceSystem = "notifications",
+                Description  = $"Admin retry by {actorUserId}; notificationId={notificationId}; tenantId={tenantId}; previousStatus={previousStatus}; newStatus={notification.Status}",
+                Scope        = new AuditEventScopeDto
+                {
+                    ScopeType = LegalSynq.AuditClient.Enums.ScopeType.Platform,
+                    TenantId  = tenantId.ToString(),
+                    UserId    = actorUserId,
+                }
+            });
+        }
+        catch { /* audit best-effort */ }
+
+        return new RetryResultDto
+        {
+            NotificationId   = notificationId,
+            PreviousStatus   = previousStatus,
+            NewStatus        = notification.Status,
+            ProviderUsed     = notification.ProviderUsed,
+            FailureCategory  = notification.FailureCategory,
+            LastErrorMessage = notification.LastErrorMessage,
+            RetriedAt        = DateTime.UtcNow,
+        };
+    }
+
+    public async Task<ResendResultDto?> AdminResendAsync(Guid notificationId, string actorUserId)
+    {
+        var original = await _notificationRepo.GetByIdAsync(notificationId);
+        if (original == null) return null;
+
+        var tenantId = original.TenantId.GetValueOrDefault();
+
+        Dictionary<string, object?> metaDict = new();
+        if (!string.IsNullOrEmpty(original.MetadataJson))
+        {
+            try { metaDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(original.MetadataJson) ?? new(); }
+            catch { metaDict = new(); }
+        }
+        metaDict["resendOf"]    = original.Id.ToString();
+        metaDict["adminResend"] = actorUserId;
+        var newMetaJson = JsonSerializer.Serialize(metaDict);
+
+        object recipient;
+        object message;
+        try { recipient = JsonSerializer.Deserialize<object>(original.RecipientJson) ?? new(); } catch { recipient = new(); }
+        try { message   = JsonSerializer.Deserialize<object>(original.MessageJson)   ?? new(); } catch { message   = new(); }
+
+        var resendRequest = new SubmitNotificationDto
+        {
+            Channel        = original.Channel,
+            Recipient      = recipient,
+            Message        = message,
+            Metadata       = JsonSerializer.Deserialize<object>(newMetaJson),
+            IdempotencyKey = null,
+            TemplateKey    = original.TemplateKey,
+            Severity       = original.Severity,
+            Category       = original.Category,
+        };
+
+        var result = await SubmitAsync(tenantId, resendRequest);
+
+        _logger.LogInformation(
+            "Admin resend by {ActorUserId}: originalId={OriginalId} tenantId={TenantId} newId={NewId}",
+            actorUserId, notificationId, tenantId, result.Id);
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "admin.notification.resend",
+                Action       = "admin.notification.resend",
+                SourceSystem = "notifications",
+                Description  = $"Admin resend by {actorUserId}; originalId={notificationId}; tenantId={tenantId}; newId={result.Id}",
+                Scope        = new AuditEventScopeDto
+                {
+                    ScopeType = LegalSynq.AuditClient.Enums.ScopeType.Platform,
+                    TenantId  = tenantId.ToString(),
+                    UserId    = actorUserId,
+                }
+            });
+        }
+        catch { /* audit best-effort */ }
+
+        return new ResendResultDto
+        {
+            OriginalNotificationId = notificationId,
+            NewNotificationId      = result.Id,
+            Status                 = result.Status,
+            CreatedAt              = DateTime.UtcNow,
+        };
+    }
+
+    // ─── Shared helpers ───────────────────────────────────────────────────────
+
+    private async Task<List<NotificationEventDto>> BuildEventTimelineAsync(Notification notification)
+    {
+        var events = new List<NotificationEventDto>();
+
+        events.Add(new NotificationEventDto
+        {
+            Id          = notification.Id,
+            EventType   = "created",
+            Source      = "system",
+            Timestamp   = notification.CreatedAt,
+            Description = $"Notification accepted (channel={notification.Channel}, status={notification.Status})",
+        });
+
+        var attempts = await _attemptRepo.GetByNotificationIdAsync(notification.Id);
+        foreach (var attempt in attempts)
+        {
+            events.Add(new NotificationEventDto
+            {
+                Id          = attempt.Id,
+                EventType   = attempt.IsFailover ? "failover_attempted" : "attempted",
+                Source      = "system",
+                Timestamp   = attempt.CreatedAt,
+                Description = $"Attempt #{attempt.AttemptNumber} via {attempt.Provider} — status: {attempt.Status}",
+                Provider    = attempt.Provider,
+                ProviderMessageId = attempt.ProviderMessageId,
+            });
+
+            if (attempt.CompletedAt.HasValue && attempt.Status != "sending")
+            {
+                events.Add(new NotificationEventDto
+                {
+                    Id          = attempt.Id,
+                    EventType   = attempt.Status == "sent" ? "sent" : "attempt_failed",
+                    Source      = "system",
+                    Timestamp   = attempt.CompletedAt.Value,
+                    Description = attempt.Status == "sent"
+                        ? $"Sent via {attempt.Provider}"
+                        : $"Attempt #{attempt.AttemptNumber} failed: {attempt.ErrorMessage ?? attempt.FailureCategory}",
+                    Provider    = attempt.Provider,
+                    ProviderMessageId = attempt.ProviderMessageId,
+                });
+            }
+        }
+
+        var providerEvents = await _eventRepo.GetByNotificationIdAsync(notification.Id);
+        foreach (var evt in providerEvents)
+        {
+            events.Add(new NotificationEventDto
+            {
+                Id          = evt.Id,
+                EventType   = evt.NormalizedEventType,
+                Source      = $"provider:{evt.Provider}",
+                Timestamp   = evt.EventTimestamp,
+                Description = $"Provider event: {evt.RawEventType} (normalized: {evt.NormalizedEventType})",
+                Provider    = evt.Provider,
+                ProviderMessageId = evt.ProviderMessageId,
+                MetadataJson = evt.MetadataJson,
+            });
+        }
+
+        if (notification.Status is "blocked" or "failed" or "partial")
+        {
+            events.Add(new NotificationEventDto
+            {
+                Id          = notification.Id,
+                EventType   = notification.Status,
+                Source      = "system",
+                Timestamp   = notification.UpdatedAt,
+                Description = notification.LastErrorMessage
+                    ?? $"Notification reached terminal status: {notification.Status}",
+            });
+        }
+
+        return events.OrderBy(e => e.Timestamp).ThenBy(e => e.EventType).ToList();
+    }
+
+    private static NotificationStatsDto BuildStatsDto(NotificationStatsData data, NotificationStatsQuery? query = null)
+    {
+        var queued = data.StatusCounts.GetValueOrDefault("accepted", 0)
+                   + data.StatusCounts.GetValueOrDefault("processing", 0);
+
+        return new NotificationStatsDto
+        {
+            TotalCount         = data.TotalCount,
+            QueuedCount        = queued,
+            SentCount          = data.StatusCounts.GetValueOrDefault("sent", 0),
+            DeliveredCount     = data.DeliveredCount,
+            FailedCount        = data.StatusCounts.GetValueOrDefault("failed", 0),
+            SuppressedCount    = data.StatusCounts.GetValueOrDefault("blocked", 0),
+            PartialCount       = data.StatusCounts.GetValueOrDefault("partial", 0),
+            ChannelBreakdown   = data.ChannelCounts,
+            ProviderBreakdown  = data.ProviderCounts,
+            StatusDistribution = data.StatusCounts,
+            RecentTrend        = data.Trend,
+            AppliedFilters     = new AppliedFiltersDto
+            {
+                Channel    = query?.Channel,
+                Status     = query?.Status,
+                Provider   = query?.Provider,
+                ProductKey = query?.ProductKey,
+                From       = query?.From,
+                To         = query?.To,
+            },
         };
     }
 

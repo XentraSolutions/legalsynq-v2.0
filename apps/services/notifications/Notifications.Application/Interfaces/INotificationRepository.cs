@@ -13,6 +13,11 @@ public interface INotificationRepository
     Task UpdateAsync(Notification notification);
     Task UpdateStatusAsync(Guid id, string status, string? providerUsed = null, string? failureCategory = null, string? lastErrorMessage = null);
 
+    // Tenant-scoped paged queries
     Task<(List<Notification> Items, int Total)> GetPagedAsync(Guid tenantId, NotificationListQuery query);
     Task<NotificationStatsData> GetStatsAsync(Guid tenantId, NotificationStatsQuery query);
+
+    // Admin cross-tenant queries (tenantId == null → all tenants)
+    Task<(List<Notification> Items, int Total)> GetPagedAdminAsync(Guid? tenantId, NotificationListQuery query);
+    Task<NotificationStatsData> GetStatsAdminAsync(Guid? tenantId, NotificationStatsQuery query);
 }
