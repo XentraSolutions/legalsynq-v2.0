@@ -5358,3 +5358,59 @@ An operational analytics layer over the canonical audit event store. Turns the a
 
 ### Analysis
 `analysis/Identity/LS-ID-TNT-017-008-report.md`
+
+---
+
+## LS-ID-TNT-017-008-01 — Audit Anomaly Detection (2026-04-19)
+
+### What was built
+Deterministic, rule-based anomaly detection layer over the existing audit event store and analytics infrastructure. Detects unusual patterns in denial rates, actor/tenant concentration, governance bursts, export spikes, and severity escalation. No ML, no background jobs, no schema changes.
+
+### Detection windows
+- **Recent window:** `[now - 24h, now)` — observation window
+- **Baseline window:** `[now - 8d, now - 1d)` — 7-day prior period; daily average = baseline_total / 7
+
+### Rules (7 deterministic)
+| Rule Key | Trigger | Severity |
+|----------|---------|----------|
+| `DENIAL_SPIKE` | Denial events 3× 7-day daily average AND ≥5 | High |
+| `ACTOR_CONCENTRATION` | One actor ≥30% of all events AND ≥20 | Medium |
+| `TENANT_CONCENTRATION` | One tenant ≥40% of platform events AND ≥50 (PA only) | Medium |
+| `GOVERNANCE_BURST` | Governance events 3× daily average AND ≥3 | Medium |
+| `EXPORT_SPIKE` | Audit access/export events 3× daily average AND ≥5 | Medium |
+| `SEVERITY_ESCALATION` | Critical/Alert events >10 absolute OR ≥10% of total | High |
+| `EVENTTYPE_CONCENTRATION` | One event type ≥50% of all events AND ≥30 | Low |
+
+### Backend (apps/services/audit/)
+**New files:**
+- `DTOs/Analytics/AuditAnomalyRequest.cs` — optional tenantId filter
+- `DTOs/Analytics/AuditAnomalyItem.cs` — ruleKey, title, description, severity, metric values, drill-down path
+- `DTOs/Analytics/AuditAnomalyResponse.cs` — window metadata + anomaly list
+- `Services/IAuditAnomalyService.cs` — service interface
+- `Services/AuditAnomalyService.cs` — 7-rule evaluation, two bounded windows, tenant-scoped
+
+**Modified:**
+- `Controllers/AuditAnalyticsController.cs` — added `GET /audit/analytics/anomalies` (existing controller extended)
+- `Program.cs` — `AddScoped<IAuditAnomalyService, AuditAnomalyService>()`
+
+**Endpoint:** `GET /audit/analytics/anomalies?tenantId=` (date params omitted — always current windows)
+
+### Frontend (apps/control-center/)
+**New files:**
+- `app/synqaudit/anomalies/page.tsx` — server component, fetches on load
+- `components/synqaudit/audit-anomaly-panel.tsx` — summary bar, anomaly cards with severity badges, empty state, rule documentation accordion
+
+**Modified:**
+- `types/control-center.ts` — `AuditAnomalyItem`, `AuditAnomalyData` interfaces
+- `lib/control-center-api.ts` — `auditCanonical.anomalies(params)` method
+- `lib/nav.ts` — "Anomalies" nav item (after Analytics in SYNQAUDIT section)
+
+**UI sections:**
+1. Filter bar — tenant ID scoping + refresh button with evaluation timestamp
+2. Summary bar — total / High / Medium / Low anomaly counts
+3. Anomaly cards — severity badge, title, plain-English description, metric values (Recent 24h / Baseline / Actual / Threshold), context tags, drill-down link
+4. Empty state — "No anomalies detected" green card
+5. Rule documentation accordion — all 7 rules listed with fire state indicators
+
+### Analysis
+`analysis/Identity/LS-ID-TNT-017-008-01-report.md`

@@ -130,6 +130,7 @@ import type {
   RelatedEventsData,
   AuditAnalyticsSummary,
   AuditAnalyticsRequest,
+  AuditAnomalyData,
   OrgSummary,
   AccessGroupSummary,
   AccessGroupMember,
@@ -1416,6 +1417,38 @@ export const controlCenterServerApi = {
           topTenants:           Array.isArray(data['topTenants'])
                                   ? (data['topTenants'] as AuditAnalyticsSummary['topTenants'])
                                   : null,
+        };
+      } catch {
+        return null;
+      }
+    },
+
+    /**
+     * GET /audit-service/audit/analytics/anomalies
+     *
+     * Evaluates deterministic anomaly detection rules over the last 24h
+     * compared to a 7-day baseline. Returns all firing anomaly items.
+     * An empty anomalies array is a valid response (no anomalies detected).
+     */
+    anomalies: async (params: { tenantId?: string } = {}): Promise<AuditAnomalyData | null> => {
+      try {
+        const qs  = new URLSearchParams();
+        if (params.tenantId) qs.set('tenantId', params.tenantId);
+        const url = `/audit-service/audit/analytics/anomalies${qs.size > 0 ? `?${qs.toString()}` : ''}`;
+        const raw = await apiClient.get<unknown>(url, 0, [CACHE_TAGS.auditCanonical]);
+        if (!raw) return null;
+        const data = unwrapApiResponse(raw) as Record<string, unknown>;
+        return {
+          evaluatedAt:        (data['evaluatedAt']        as string) ?? '',
+          recentWindowFrom:   (data['recentWindowFrom']   as string) ?? '',
+          recentWindowTo:     (data['recentWindowTo']     as string) ?? '',
+          baselineWindowFrom: (data['baselineWindowFrom'] as string) ?? '',
+          baselineWindowTo:   (data['baselineWindowTo']   as string) ?? '',
+          effectiveTenantId:  (data['effectiveTenantId']  as string | null) ?? null,
+          totalAnomalies:     (data['totalAnomalies']     as number) ?? 0,
+          anomalies:          Array.isArray(data['anomalies'])
+                                ? (data['anomalies'] as AuditAnomalyData['anomalies'])
+                                : [],
         };
       } catch {
         return null;

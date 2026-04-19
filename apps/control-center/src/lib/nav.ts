@@ -95,6 +95,7 @@ export const CC_NAV: NavSection[] = [
       { href: '/synqaudit/integrity',        label: 'Integrity',      icon: 'ri-fingerprint-line',    badge: 'LIVE' },
       { href: '/synqaudit/legal-holds',      label: 'Legal Holds',    icon: 'ri-scales-3-line',       badge: 'LIVE' },
       { href: '/synqaudit/analytics',        label: 'Analytics',      icon: 'ri-bar-chart-box-line',  badge: 'LIVE' },
+      { href: '/synqaudit/anomalies',        label: 'Anomalies',      icon: 'ri-alarm-warning-line',  badge: 'LIVE' },
     ],
   },
 

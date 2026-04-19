@@ -233,6 +233,7 @@ try
     // Depends on IAuditEventQueryService; scoped to match request lifetime.
     builder.Services.AddScoped<IAuditCorrelationService, AuditCorrelationService>();
     builder.Services.AddScoped<IAuditAnalyticsService,   AuditAnalyticsService>();
+    builder.Services.AddScoped<IAuditAnomalyService,     AuditAnomalyService>();
 
     // ── Step 23: Legal hold service ──────────────────────────────────────────
     // Scoped — depends on ILegalHoldRepository which is Scoped.

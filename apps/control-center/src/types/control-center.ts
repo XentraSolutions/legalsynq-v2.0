@@ -557,6 +557,37 @@ export interface AuditAnalyticsSummary {
   topTenants:            AuditTopTenantItem[] | null;
 }
 
+// ── SynqAudit — Audit Anomaly Detection ──────────────────────────────────────
+
+/** A single firing anomaly from the rule-based detection engine. */
+export interface AuditAnomalyItem {
+  ruleKey:           string;
+  title:             string;
+  description:       string;
+  severity:          'High' | 'Medium' | 'Low';
+  recentValue:       number;
+  baselineValue:     number | null;
+  threshold:         number;
+  actualValue:       number;
+  affectedActorId:   string | null;
+  affectedActorName: string | null;
+  affectedTenantId:  string | null;
+  affectedEventType: string | null;
+  drillDownPath:     string;
+}
+
+/** Full response from GET /audit/analytics/anomalies. */
+export interface AuditAnomalyData {
+  evaluatedAt:        string;
+  recentWindowFrom:   string;
+  recentWindowTo:     string;
+  baselineWindowFrom: string;
+  baselineWindowTo:   string;
+  effectiveTenantId:  string | null;
+  totalAnomalies:     number;
+  anomalies:          AuditAnomalyItem[];
+}
+
 /** Filter params for the analytics summary request. */
 export interface AuditAnalyticsRequest {
   from?:     string;
