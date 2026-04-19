@@ -943,7 +943,7 @@ public class NotificationServiceImpl : INotificationService
                 IsFailover          = route.IsFailover
             });
 
-            _ = _metering.MeterAsync(new MeterEventInput
+            await _metering.MeterAsync(new MeterEventInput
             {
                 TenantId = tenantId,
                 UsageUnit = notification.Channel == "email" ? "email_attempt" : "sms_attempt",
@@ -994,7 +994,7 @@ public class NotificationServiceImpl : INotificationService
                 notification.PlatformFallbackUsed = route.IsPlatformFallback;
                 await _notificationRepo.UpdateAsync(notification);
 
-                _ = _metering.MeterAsync(new MeterEventInput
+                await _metering.MeterAsync(new MeterEventInput
                 {
                     TenantId = tenantId,
                     UsageUnit = notification.Channel == "email" ? "email_sent" : "sms_sent",
@@ -1015,7 +1015,7 @@ public class NotificationServiceImpl : INotificationService
             await _attemptRepo.UpdateAsync(attempt);
 
             if (route.IsFailover)
-                _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "provider_failover_attempt", Channel = notification.Channel, NotificationId = notification.Id, NotificationAttemptId = attempt.Id, Provider = route.ProviderType });
+                await _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "provider_failover_attempt", Channel = notification.Channel, NotificationId = notification.Id, NotificationAttemptId = attempt.Id, Provider = route.ProviderType });
 
             if (failure?.Retryable != true) break;
         }
@@ -1211,7 +1211,7 @@ public class NotificationServiceImpl : INotificationService
         var rateCheck = await _usageEvaluation.CheckRequestAllowedAsync(tenantId, request.Channel);
         if (!rateCheck.Allowed)
         {
-            _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "api_notification_request_rejected", Channel = request.Channel });
+            await _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "api_notification_request_rejected", Channel = request.Channel });
             return new NotificationResultDto { Status = "blocked", BlockedByPolicy = true, BlockedReasonCode = rateCheck.Code, LastErrorMessage = rateCheck.Reason };
         }
 
@@ -1245,7 +1245,7 @@ public class NotificationServiceImpl : INotificationService
         {
             notification.Status = "blocked";
             notification = await _notificationRepo.CreateAsync(notification);
-            _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "suppressed_notification_request_rejected", Channel = request.Channel, NotificationId = notification.Id });
+            await _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "suppressed_notification_request_rejected", Channel = request.Channel, NotificationId = notification.Id });
             return MapToResult(notification);
         }
 
@@ -1281,7 +1281,7 @@ public class NotificationServiceImpl : INotificationService
                 renderedBody    = rendered.Body;
                 renderedText    = rendered.Text;
 
-                _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "template_render", Channel = request.Channel, NotificationId = notification.Id });
+                await _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "template_render", Channel = request.Channel, NotificationId = notification.Id });
             }
         }
 
@@ -1293,7 +1293,7 @@ public class NotificationServiceImpl : INotificationService
         notification.Status            = "processing";
 
         notification = await _notificationRepo.CreateAsync(notification);
-        _ = _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "api_notification_request", Channel = request.Channel, NotificationId = notification.Id });
+        await _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "api_notification_request", Channel = request.Channel, NotificationId = notification.Id });
 
         // In-app deliveries have no provider — the persisted Notification is the delivery.
         if (string.Equals(request.Channel, "in-app", StringComparison.OrdinalIgnoreCase) ||
