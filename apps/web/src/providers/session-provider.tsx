@@ -25,6 +25,28 @@ const PLATFORM_DEFAULT_TIMEOUT_MINUTES = 30;
 const WARNING_LEAD_SECONDS = 60;
 
 /**
+ * How often to re-validate the session against /auth/me while the tab is
+ * visible.  The Identity service compares the JWT's access_version claim
+ * against the database; if an admin has changed roles/permissions/products
+ * since the user logged in, the response is 401 → redirect to re-login with
+ * reason=access_updated.  This bounds the stale-session window to ~60 s for
+ * active-tab users rather than leaving it at the full JWT lifetime.
+ *
+ * LS-ID-TNT-015-008: Permission Sync — periodic access-version poll.
+ */
+const PERMISSION_SYNC_INTERVAL_MS = 60_000;
+
+/**
+ * BroadcastChannel name for same-origin multi-tab coordination.
+ * When one tab detects a stale session (401) it notifies other open tabs so
+ * they immediately reconcile rather than waiting for the next poll cycle.
+ * Only works across tabs that share the same origin (protocol + host + port).
+ * Cross-origin coordination (e.g. web ↔ control-center on different ports) is
+ * not attempted — polling covers that gap.
+ */
+const SESSION_BROADCAST_CHANNEL = 'platform_session_sync';
+
+/**
  * Fetches session from the BFF /api/auth/me route on mount.
  *
  * The BFF route reads the platform_session HttpOnly cookie, forwards it
@@ -66,8 +88,14 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
 
   const idleTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warningTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef      = useRef<PlatformSession | null>(seeded);
   const showWarningRef  = useRef(false);
+
+  // ── LS-ID-TNT-015-008: BroadcastChannel ref ──────────────────────────────
+  // Declared before fetchSession so the callback can reference broadcastRef.current.
+  // BroadcastChannel is only available in browser environments; the ref starts null.
+  const broadcastRef = useRef<BroadcastChannel | null>(null);
 
   const fetchSession = useCallback(async () => {
     // Only show the loading spinner when we have no session at all yet.
@@ -88,6 +116,14 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
           const hadSession = !!sessionRef.current;
           setSession(null);
           sessionRef.current = null;
+
+          // ── LS-ID-TNT-015-008: Cross-tab notification ──────────────────────
+          // Inform other same-origin tabs immediately so they reconcile without
+          // waiting for their own next poll cycle.
+          if (hadSession) {
+            broadcastRef.current?.postMessage({ type: 'session:invalidated' });
+          }
+
           if (typeof window !== 'undefined') {
             // hadSession=true means user was previously authenticated but access changed.
             // hadSession=false means cold load with no valid session.
@@ -146,6 +182,76 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [fetchSession]);
+
+  // ── LS-ID-TNT-015-008: Periodic background poll ───────────────────────────
+  // While a session is active, poll /auth/me every PERMISSION_SYNC_INTERVAL_MS
+  // (60 s) when the tab is visible.  This bounds the stale-session window for
+  // users who never switch tabs:
+  //   - access_version mismatch → 401 → redirect to re-login (existing behavior)
+  //   - no mismatch → session state silently re-hydrated (no-op if unchanged)
+  //
+  // The poll is paused automatically when the tab is hidden (visibilityState
+  // check inside the interval callback) so hidden-tab background activity is
+  // avoided.  On tab-return, the visibilitychange handler above fires
+  // immediately before the next interval tick, so there is no extra delay.
+  //
+  // The interval is started/stopped in response to `session` state so that it
+  // is only running while the user is authenticated.
+  useEffect(() => {
+    if (!session) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
+
+    if (pollIntervalRef.current) return; // already running
+
+    pollIntervalRef.current = setInterval(() => {
+      if (document.visibilityState === 'visible' && sessionRef.current) {
+        void fetchSession();
+      }
+    }, PERMISSION_SYNC_INTERVAL_MS);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [session, fetchSession]);
+
+  // ── LS-ID-TNT-015-008: BroadcastChannel — same-origin multi-tab sync ──────
+  // Opens a BroadcastChannel that all web-app tabs of this origin share.
+  // When any tab detects a stale/invalidated session it posts
+  // { type: 'session:invalidated' }; other tabs immediately call fetchSession()
+  // rather than waiting for their own next poll tick.
+  //
+  // BroadcastChannel is only available in secure browser contexts (HTTPS or
+  // localhost). The typeof guard makes this safe for SSR and environments that
+  // do not support the API.
+  //
+  // Cross-origin tabs (e.g. control-center on a different port or subdomain)
+  // are NOT reached by this channel — polling covers that gap for those users.
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return;
+
+    const channel = new BroadcastChannel(SESSION_BROADCAST_CHANNEL);
+    broadcastRef.current = channel;
+
+    channel.onmessage = (event: MessageEvent<{ type: string }>) => {
+      if (event.data?.type === 'session:invalidated' && sessionRef.current) {
+        // Another tab detected a stale session; refresh immediately.
+        void fetchSession();
+      }
+    };
+
+    return () => {
+      channel.close();
+      broadcastRef.current = null;
+    };
   }, [fetchSession]);
 
   const clearSession = useCallback(() => {
