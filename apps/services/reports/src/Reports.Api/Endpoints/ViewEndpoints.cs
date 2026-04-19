@@ -10,36 +10,53 @@ public static class ViewEndpoints
 {
     public static void MapViewEndpoints(this IEndpointRouteBuilder routes)
     {
-        // LS-ID-TNT-010: apply product-access enforcement for SynqInsights.
+        // LS-ID-TNT-010: product-access enforcement for SynqInsights.
+        // LS-ID-TNT-022-003: create/update/delete views require ReportsBuild;
+        //                     list/read views require ReportsView.
         var viewGroup = routes.MapGroup("/api/v1/tenant-templates/{templateId:guid}/views")
             .WithTags("Tenant Report Views")
             .RequireAuthorization()
             .RequireProductAccess(ProductCodes.SynqInsights);
 
+        // Create a view (save-as-view in builder) → requires ReportsBuild.
         viewGroup.MapPost("/", CreateView)
             .WithName("CreateTenantReportView")
+            .RequirePermission(PermissionCodes.InsightsReportsBuild)
             .Produces<TenantReportViewResponse>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
+        // Update a view → requires ReportsBuild.
         viewGroup.MapPut("/{viewId:guid}", UpdateView)
             .WithName("UpdateTenantReportView")
+            .RequirePermission(PermissionCodes.InsightsReportsBuild)
             .Produces<TenantReportViewResponse>()
             .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
+        // Read a single view → requires ReportsView.
         viewGroup.MapGet("/{viewId:guid}", GetViewById)
             .WithName("GetTenantReportView")
+            .RequirePermission(PermissionCodes.InsightsReportsView)
             .Produces<TenantReportViewResponse>()
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
+        // List views for a template → requires ReportsView (used by report viewer).
         viewGroup.MapGet("/", ListViews)
             .WithName("ListTenantReportViews")
-            .Produces<IReadOnlyList<TenantReportViewResponse>>();
+            .RequirePermission(PermissionCodes.InsightsReportsView)
+            .Produces<IReadOnlyList<TenantReportViewResponse>>()
+            .Produces(StatusCodes.Status403Forbidden);
 
+        // Delete a view → requires ReportsBuild.
         viewGroup.MapDelete("/{viewId:guid}", DeleteView)
             .WithName("DeleteTenantReportView")
+            .RequirePermission(PermissionCodes.InsightsReportsBuild)
             .Produces<TenantReportViewResponse>()
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
     }
 

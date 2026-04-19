@@ -65,4 +65,15 @@ public static class PermissionCodes
     public const string ApplicationStatusView      = "SYNQ_FUND.application:status:view";
     public const string PartyCreate                = "SYNQ_FUND.party:create";
     public const string PartyReadOwn               = "SYNQ_FUND.party:read:own";
+
+    // ── SynqInsights ─────────────────────────────────────────────────────────
+    // LS-ID-TNT-022-001: Insights permission catalog.
+    // LS-ID-TNT-022-003: Backend constants to match the seeded catalog codes.
+    public const string InsightsDashboardView   = "SYNQ_INSIGHTS.dashboard:view";
+    public const string InsightsReportsView     = "SYNQ_INSIGHTS.reports:view";
+    public const string InsightsReportsRun      = "SYNQ_INSIGHTS.reports:run";
+    public const string InsightsReportsExport   = "SYNQ_INSIGHTS.reports:export";
+    public const string InsightsReportsBuild    = "SYNQ_INSIGHTS.reports:build";
+    public const string InsightsSchedulesManage = "SYNQ_INSIGHTS.schedules:manage";
+    public const string InsightsSchedulesRun    = "SYNQ_INSIGHTS.schedules:run";
 }

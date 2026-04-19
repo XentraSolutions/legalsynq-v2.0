@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using Reports.Application.Assignments;
 using Reports.Application.Assignments.DTOs;
 using Reports.Application.Templates.DTOs;
@@ -9,6 +10,8 @@ public static class AssignmentEndpoints
 {
     public static void MapAssignmentEndpoints(this IEndpointRouteBuilder routes)
     {
+        // Template assignment management — platform/tenant admin only.
+        // No additional permission gate required; PlatformOrTenantAdmin implies full access.
         var assignmentGroup = routes.MapGroup("/api/v1/templates/{templateId:guid}/assignments")
             .WithTags("Template Assignments")
             .RequireAuthorization(Policies.PlatformOrTenantAdmin);
@@ -37,14 +40,21 @@ public static class AssignmentEndpoints
             .Produces<TemplateAssignmentResponse>()
             .Produces(StatusCodes.Status404NotFound);
 
+        // ── Tenant report catalog ─────────────────────────────────────────────
+        // LS-ID-TNT-022-003: Catalog endpoint now requires SynqInsights product access
+        //   and the ReportsView permission. This closes the gap where any authenticated
+        //   user could query the tenant's report catalog without Insights access.
         var catalogGroup = routes.MapGroup("/api/v1/tenant-templates")
             .WithTags("Tenant Template Catalog")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireProductAccess(ProductCodes.SynqInsights)
+            .RequirePermission(PermissionCodes.InsightsReportsView);
 
         catalogGroup.MapGet("/", ResolveTenantCatalog)
             .WithName("ResolveTenantCatalog")
             .Produces<IReadOnlyList<TenantTemplateCatalogItemResponse>>()
-            .Produces(StatusCodes.Status400BadRequest);
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden);
     }
 
     private static async Task<IResult> CreateAssignment(

@@ -10,22 +10,29 @@ public static class ExecutionEndpoints
 {
     public static void MapExecutionEndpoints(this IEndpointRouteBuilder routes)
     {
-        // LS-ID-TNT-010: apply product-access enforcement for SynqInsights.
+        // LS-ID-TNT-010: product-access enforcement for SynqInsights.
+        // LS-ID-TNT-022-003: per-action permission enforcement added.
         var group = routes.MapGroup("/api/v1/report-executions")
             .WithTags("Report Executions")
             .RequireAuthorization()
             .RequireProductAccess(ProductCodes.SynqInsights);
 
+        // Execute (run) a report → requires ReportsRun.
         group.MapPost("/", ExecuteReport)
             .WithName("ExecuteReport")
+            .RequirePermission(PermissionCodes.InsightsReportsRun)
             .Produces<ReportExecutionResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status500InternalServerError);
 
+        // Read an existing execution result → requires ReportsView.
         group.MapGet("/{executionId:guid}", GetExecution)
             .WithName("GetExecution")
+            .RequirePermission(PermissionCodes.InsightsReportsView)
             .Produces<ReportExecutionSummaryResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
     }
 

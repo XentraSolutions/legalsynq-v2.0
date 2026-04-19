@@ -1,3 +1,5 @@
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
 using Reports.Application.Scheduling;
 using Reports.Application.Scheduling.DTOs;
 using Reports.Application.Templates.DTOs;
@@ -8,49 +10,72 @@ public static class ScheduleEndpoints
 {
     public static void MapScheduleEndpoints(this IEndpointRouteBuilder routes)
     {
+        // LS-ID-TNT-010: product-access enforcement for SynqInsights.
+        //   Previously missing — ScheduleEndpoints had only RequireAuthorization().
+        //   Fixed in LS-ID-TNT-022-003.
+        // LS-ID-TNT-022-003: per-action permission enforcement for schedule mutations
+        //   and run-now. List/read endpoints remain at product access only because
+        //   no `schedules:view` permission code exists in the current catalog.
         var group = routes.MapGroup("/api/v1/report-schedules")
             .WithTags("Report Schedules")
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .RequireProductAccess(ProductCodes.SynqInsights);
 
+        // Create a schedule → requires SchedulesManage.
         group.MapPost("/", CreateSchedule)
             .WithName("CreateSchedule")
+            .RequirePermission(PermissionCodes.InsightsSchedulesManage)
             .Produces<ReportScheduleResponse>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
+        // Update a schedule → requires SchedulesManage.
         group.MapPut("/{scheduleId:guid}", UpdateSchedule)
             .WithName("UpdateSchedule")
+            .RequirePermission(PermissionCodes.InsightsSchedulesManage)
             .Produces<ReportScheduleResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
+        // Read a single schedule → product access only (no schedules:view code defined).
         group.MapGet("/{scheduleId:guid}", GetSchedule)
             .WithName("GetSchedule")
             .Produces<ReportScheduleResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
+        // List schedules → product access only.
         group.MapGet("/", ListSchedules)
             .WithName("ListSchedules")
             .Produces<IReadOnlyList<ReportScheduleResponse>>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status400BadRequest);
 
+        // Deactivate a schedule → requires SchedulesManage.
         group.MapDelete("/{scheduleId:guid}", DeactivateSchedule)
             .WithName("DeactivateSchedule")
+            .RequirePermission(PermissionCodes.InsightsSchedulesManage)
             .Produces<ReportScheduleResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
 
+        // List runs for a schedule → product access only (read-only, history view).
         group.MapGet("/{scheduleId:guid}/runs", ListRuns)
             .WithName("ListScheduleRuns")
             .Produces<IReadOnlyList<ReportScheduleRunResponse>>(StatusCodes.Status200OK);
 
+        // Read a single run → product access only (read-only, history view).
         group.MapGet("/runs/{runId:guid}", GetRun)
             .WithName("GetScheduleRun")
             .Produces<ReportScheduleRunResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
+        // Trigger an immediate run → requires SchedulesRun.
         group.MapPost("/{scheduleId:guid}/run-now", RunNow)
             .WithName("RunScheduleNow")
+            .RequirePermission(PermissionCodes.InsightsSchedulesRun)
             .Produces<ReportScheduleRunResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status404NotFound);
     }
 
