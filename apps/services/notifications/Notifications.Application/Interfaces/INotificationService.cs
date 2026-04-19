@@ -34,4 +34,12 @@ public interface INotificationService
 
     Task<RetryResultDto?>  AdminRetryAsync(Guid notificationId, string actorUserId);
     Task<ResendResultDto?> AdminResendAsync(Guid notificationId, string actorUserId);
+
+    // ── Background worker operations ─────────────────────────────────────────
+
+    /// <summary>Called by NotificationWorker. Re-attempts a notification in 'retrying' status.</summary>
+    Task ProcessAutoRetryAsync(Guid notificationId);
+
+    /// <summary>Called by StatusSyncWorker. Reconciles stalled 'processing' notifications.</summary>
+    Task ReconcileStalledAsync();
 }

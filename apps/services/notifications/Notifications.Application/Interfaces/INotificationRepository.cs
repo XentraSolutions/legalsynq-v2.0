@@ -20,4 +20,8 @@ public interface INotificationRepository
     // Admin cross-tenant queries (tenantId == null → all tenants)
     Task<(List<Notification> Items, int Total)> GetPagedAdminAsync(Guid? tenantId, NotificationListQuery query);
     Task<NotificationStatsData> GetStatsAdminAsync(Guid? tenantId, NotificationStatsQuery query);
+
+    // Worker queries
+    Task<List<Notification>> GetEligibleForRetryAsync(int batchSize = 10);
+    Task<List<Notification>> GetStalledProcessingAsync(TimeSpan threshold, int batchSize = 20);
 }

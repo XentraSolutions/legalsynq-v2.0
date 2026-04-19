@@ -30,6 +30,11 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         builder.Property(e => e.OverrideUsed).HasDefaultValue(false);
         builder.Property(e => e.Severity).HasMaxLength(50);
         builder.Property(e => e.Category).HasMaxLength(100);
+        builder.Property(e => e.RetryCount).HasDefaultValue(0);
+        builder.Property(e => e.MaxRetries).HasDefaultValue(3);
+
+        builder.HasIndex(e => new { e.Status, e.NextRetryAt })
+            .HasDatabaseName("IX_Notifications_Status_NextRetryAt");
 
         builder.HasIndex(e => new { e.TenantId, e.IdempotencyKey })
             .HasDatabaseName("UX_Notifications_TenantId_IdempotencyKey")

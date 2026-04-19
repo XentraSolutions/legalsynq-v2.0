@@ -222,6 +222,23 @@ public class NotificationRepository : INotificationRepository
         };
     }
 
+    public async Task<List<Notification>> GetEligibleForRetryAsync(int batchSize = 10)
+        => await _db.Notifications
+            .Where(n => n.Status == "retrying" && n.NextRetryAt != null && n.NextRetryAt <= DateTime.UtcNow)
+            .OrderBy(n => n.NextRetryAt)
+            .Take(batchSize)
+            .ToListAsync();
+
+    public async Task<List<Notification>> GetStalledProcessingAsync(TimeSpan threshold, int batchSize = 20)
+    {
+        var cutoff = DateTime.UtcNow - threshold;
+        return await _db.Notifications
+            .Where(n => n.Status == "processing" && n.UpdatedAt < cutoff)
+            .OrderBy(n => n.UpdatedAt)
+            .Take(batchSize)
+            .ToListAsync();
+    }
+
     public async Task<NotificationStatsData> GetStatsAsync(Guid tenantId, NotificationStatsQuery query)
     {
         var q = _db.Notifications.Where(n => n.TenantId == tenantId);

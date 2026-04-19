@@ -180,12 +180,20 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.Property<string>("LastErrorMessage")
                         .HasColumnType("text");
 
+                    b.Property<int>("MaxRetries")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(3);
+
                     b.Property<string>("MessageJson")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("MetadataJson")
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("NextRetryAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<bool>("OverrideUsed")
                         .ValueGeneratedOnAdd()
@@ -221,6 +229,11 @@ namespace Notifications.Infrastructure.Data.Migrations
                     b.Property<string>("RenderedText")
                         .HasColumnType("text");
 
+                    b.Property<int>("RetryCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("Severity")
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
@@ -249,6 +262,9 @@ namespace Notifications.Infrastructure.Data.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Status", "NextRetryAt")
+                        .HasDatabaseName("IX_Notifications_Status_NextRetryAt");
 
                     b.HasIndex("TenantId", "IdempotencyKey")
                         .IsUnique()

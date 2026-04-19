@@ -195,7 +195,8 @@ public class NotificationServiceImpl : INotificationService
         var data = await _notificationRepo.GetStatsAsync(tenantId, query);
 
         var queued = (data.StatusCounts.GetValueOrDefault("accepted", 0)
-                    + data.StatusCounts.GetValueOrDefault("processing", 0));
+                    + data.StatusCounts.GetValueOrDefault("processing", 0)
+                    + data.StatusCounts.GetValueOrDefault("retrying", 0));
 
         return new NotificationStatsDto
         {
@@ -203,7 +204,8 @@ public class NotificationServiceImpl : INotificationService
             QueuedCount       = queued,
             SentCount         = data.StatusCounts.GetValueOrDefault("sent", 0),
             DeliveredCount    = data.DeliveredCount,
-            FailedCount       = data.StatusCounts.GetValueOrDefault("failed", 0),
+            FailedCount       = data.StatusCounts.GetValueOrDefault("failed", 0)
+                              + data.StatusCounts.GetValueOrDefault("dead-letter", 0),
             SuppressedCount   = data.StatusCounts.GetValueOrDefault("blocked", 0),
             PartialCount      = data.StatusCounts.GetValueOrDefault("partial", 0),
             ChannelBreakdown  = data.ChannelCounts,
@@ -290,8 +292,8 @@ public class NotificationServiceImpl : INotificationService
             });
         }
 
-        // Final state synthetic event if notification is terminal
-        if (notification.Status is "blocked" or "failed" or "partial")
+        // Final/intermediate state synthetic event for non-sent outcomes
+        if (notification.Status is "blocked" or "failed" or "partial" or "dead-letter")
         {
             events.Add(new NotificationEventDto
             {
@@ -301,6 +303,18 @@ public class NotificationServiceImpl : INotificationService
                 Timestamp   = notification.UpdatedAt,
                 Description = notification.LastErrorMessage
                     ?? $"Notification reached terminal status: {notification.Status}",
+            });
+        }
+        else if (notification.Status == "retrying")
+        {
+            events.Add(new NotificationEventDto
+            {
+                Id          = notification.Id,
+                EventType   = "retrying",
+                Source      = "system",
+                Timestamp   = notification.UpdatedAt,
+                Description = notification.LastErrorMessage
+                    ?? $"Notification scheduled for retry #{notification.RetryCount}",
             });
         }
 
@@ -854,7 +868,8 @@ public class NotificationServiceImpl : INotificationService
     private static NotificationStatsDto BuildStatsDto(NotificationStatsData data, NotificationStatsQuery? query = null)
     {
         var queued = data.StatusCounts.GetValueOrDefault("accepted", 0)
-                   + data.StatusCounts.GetValueOrDefault("processing", 0);
+                   + data.StatusCounts.GetValueOrDefault("processing", 0)
+                   + data.StatusCounts.GetValueOrDefault("retrying", 0);
 
         return new NotificationStatsDto
         {
@@ -862,7 +877,8 @@ public class NotificationServiceImpl : INotificationService
             QueuedCount        = queued,
             SentCount          = data.StatusCounts.GetValueOrDefault("sent", 0),
             DeliveredCount     = data.DeliveredCount,
-            FailedCount        = data.StatusCounts.GetValueOrDefault("failed", 0),
+            FailedCount        = data.StatusCounts.GetValueOrDefault("failed", 0)
+                               + data.StatusCounts.GetValueOrDefault("dead-letter", 0),
             SuppressedCount    = data.StatusCounts.GetValueOrDefault("blocked", 0),
             PartialCount       = data.StatusCounts.GetValueOrDefault("partial", 0),
             ChannelBreakdown   = data.ChannelCounts,
@@ -997,11 +1013,157 @@ public class NotificationServiceImpl : INotificationService
             if (failure?.Retryable != true) break;
         }
 
-        notification.Status = "failed";
-        notification.FailureCategory = routes.Count > 0 ? "retryable_provider_failure" : "auth_config_failure";
-        notification.LastErrorMessage = "All provider routes exhausted";
+        var isRetryable = routes.Count > 0;
+        if (!isRetryable)
+        {
+            notification.Status = "failed";
+            notification.FailureCategory = "auth_config_failure";
+            notification.LastErrorMessage = "No provider routes configured";
+            await _notificationRepo.UpdateAsync(notification);
+            try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.failed", Action = "notification.failed", SourceSystem = "notifications", Description = "Notification failed - no provider routes", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+        }
+        else if (notification.RetryCount >= notification.MaxRetries)
+        {
+            notification.Status = "dead-letter";
+            notification.FailureCategory = "max_retries_exhausted";
+            notification.LastErrorMessage = $"Delivery failed after {notification.RetryCount} retries - all routes exhausted";
+            await _notificationRepo.UpdateAsync(notification);
+            await CreateDeadLetterIssueAsync(notification);
+            try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.dead_letter", Action = "notification.dead_letter", SourceSystem = "notifications", Description = $"Notification moved to dead-letter after {notification.RetryCount} retries", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+        }
+        else
+        {
+            notification.RetryCount++;
+            notification.NextRetryAt = ComputeNextRetryAt(notification.RetryCount);
+            notification.Status = "retrying";
+            notification.FailureCategory = "retryable_provider_failure";
+            notification.LastErrorMessage = $"All routes exhausted - retry #{notification.RetryCount} scheduled at {notification.NextRetryAt:u}";
+            await _notificationRepo.UpdateAsync(notification);
+            try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.retrying", Action = "notification.retrying", SourceSystem = "notifications", Description = $"Notification scheduled for retry #{notification.RetryCount}", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+        }
+    }
+
+    private static DateTime ComputeNextRetryAt(int retryCount) => retryCount switch
+    {
+        1 => DateTime.UtcNow.AddMinutes(1),
+        2 => DateTime.UtcNow.AddMinutes(5),
+        _ => DateTime.UtcNow.AddMinutes(30),
+    };
+
+    private async Task CreateDeadLetterIssueAsync(Notification notification)
+    {
+        try
+        {
+            await _deliveryIssueRepo.CreateIfNotExistsAsync(new DeliveryIssue
+            {
+                TenantId             = notification.TenantId.GetValueOrDefault(),
+                NotificationId       = notification.Id,
+                Channel              = notification.Channel,
+                Provider             = notification.ProviderUsed ?? "unknown",
+                IssueType            = "max_retries_exhausted",
+                RecommendedAction    = "Notification exceeded maximum retry attempts. Manual intervention or resend required.",
+                DetailsJson          = JsonSerializer.Serialize(new
+                {
+                    retryCount       = notification.RetryCount,
+                    maxRetries       = notification.MaxRetries,
+                    failureCategory  = notification.FailureCategory,
+                    lastErrorMessage = notification.LastErrorMessage,
+                })
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create dead-letter issue for notification {Id}", notification.Id);
+        }
+    }
+
+    // ─── Worker operations ────────────────────────────────────────────────────
+
+    public async Task ProcessAutoRetryAsync(Guid notificationId)
+    {
+        var notification = await _notificationRepo.GetByIdAsync(notificationId);
+        if (notification == null)
+        {
+            _logger.LogWarning("ProcessAutoRetryAsync: notification {Id} not found", notificationId);
+            return;
+        }
+
+        if (notification.Status != "retrying")
+        {
+            _logger.LogWarning("ProcessAutoRetryAsync: notification {Id} is not in retrying status (current: {Status}) — skipping", notificationId, notification.Status);
+            return;
+        }
+
+        var tenantId = notification.TenantId.GetValueOrDefault();
+        var existingAttempts = await _attemptRepo.GetByNotificationIdAsync(notificationId);
+        var baseAttemptNumber = existingAttempts.Count;
+
+        notification.Status = "processing";
+        notification.NextRetryAt = null;
         await _notificationRepo.UpdateAsync(notification);
-        try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.failed", Action = "notification.failed", SourceSystem = "notifications", Description = "Notification failed - all routes exhausted", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+
+        _logger.LogInformation("ProcessAutoRetryAsync: executing retry #{RetryCount} for notification {Id}", notification.RetryCount, notificationId);
+
+        await ExecuteSendLoopAsync(tenantId, notification, baseAttemptNumber);
+
+        try
+        {
+            await _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType    = "notification.auto_retry",
+                Action       = "notification.auto_retry",
+                SourceSystem = "notifications",
+                Description  = $"Worker auto-retry #{notification.RetryCount} for notification {notificationId}; result: {notification.Status}",
+                Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() }
+            });
+        }
+        catch { /* audit best-effort */ }
+    }
+
+    public async Task ReconcileStalledAsync()
+    {
+        var stalled = await _notificationRepo.GetStalledProcessingAsync(TimeSpan.FromMinutes(5), batchSize: 20);
+        if (stalled.Count == 0) return;
+
+        _logger.LogWarning("ReconcileStalledAsync: found {Count} stalled processing notifications", stalled.Count);
+
+        foreach (var notification in stalled)
+        {
+            var tenantId = notification.TenantId.GetValueOrDefault();
+
+            if (notification.RetryCount < notification.MaxRetries)
+            {
+                notification.RetryCount++;
+                notification.NextRetryAt = ComputeNextRetryAt(notification.RetryCount);
+                notification.Status = "retrying";
+                notification.FailureCategory = "stalled_processing";
+                notification.LastErrorMessage = $"Notification stalled in processing state — retry #{notification.RetryCount} scheduled";
+                await _notificationRepo.UpdateAsync(notification);
+                _logger.LogInformation("Stalled notification {Id} scheduled for retry #{Retry}", notification.Id, notification.RetryCount);
+            }
+            else
+            {
+                notification.Status = "dead-letter";
+                notification.FailureCategory = "max_retries_exhausted";
+                notification.LastErrorMessage = $"Delivery failed: stalled after {notification.RetryCount} retries";
+                await _notificationRepo.UpdateAsync(notification);
+                await CreateDeadLetterIssueAsync(notification);
+                _logger.LogWarning("Stalled notification {Id} moved to dead-letter after {Retries} retries", notification.Id, notification.RetryCount);
+            }
+
+            try
+            {
+                await _auditClient.IngestAsync(new IngestAuditEventRequest
+                {
+                    EventType    = "notification.stalled_reconciled",
+                    Action       = "notification.stalled_reconciled",
+                    SourceSystem = "notifications",
+                    Description  = $"Stalled notification {notification.Id} reconciled to status '{notification.Status}'",
+                    Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() }
+                });
+            }
+            catch { /* audit best-effort */ }
+        }
     }
 
     // ─── Single dispatch ─────────────────────────────────────────────────────
