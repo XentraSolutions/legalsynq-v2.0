@@ -48,7 +48,7 @@ export async function deleteProviderConfig(configId: string): Promise<ActionResu
 
 export async function testProviderConfig(
   configId: string,
-  payload?: { toEmail?: string; subject?: string; body?: string }
+  payload?: { toEmail?: string; toPhone?: string; subject?: string; body?: string }
 ): Promise<ActionResult & { message?: string }> {
   await requirePlatformAdmin();
   try {

@@ -63,6 +63,7 @@ export default async function NotificationsOverviewPage() {
 
   const quickNav = [
     { href: '/notifications/log',                icon: 'ri-mail-send-line',       title: 'Delivery Log',    desc: 'Browse and filter all outbound notifications.' },
+    { href: '/notifications/test',               icon: 'ri-flask-line',           title: 'Test Outbound',   desc: 'Send a live test message through an active provider.' },
     { href: '/notifications/templates',          icon: 'ri-file-text-line',       title: 'Templates',       desc: 'Manage message templates and version history.'  },
     { href: '/notifications/templates/global',   icon: 'ri-layout-masonry-line',  title: 'Global Templates', desc: 'Product-aware global templates with WYSIWYG editor.' },
     { href: '/notifications/branding',           icon: 'ri-palette-line',         title: 'Tenant Branding',  desc: 'Manage per-tenant, per-product brand configuration.' },
