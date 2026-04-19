@@ -1,4 +1,4 @@
-import { requireAdmin }                from '@/lib/auth-guards';
+import { requirePlatformAdmin }        from '@/lib/auth-guards';
 import { controlCenterServerApi }     from '@/lib/control-center-api';
 import { CCShell }                    from '@/components/shell/cc-shell';
 import { PermissionCatalogTable }     from '@/components/users/permission-catalog-table';
@@ -11,7 +11,7 @@ interface PermissionsPageProps {
 
 export default async function PermissionsPage(props: PermissionsPageProps) {
   const searchParams = await props.searchParams;
-  const session    = await requireAdmin();
+  const session    = await requirePlatformAdmin();
   const search     = searchParams?.search ?? '';
   const productId  = searchParams?.product ?? '';
 
@@ -46,12 +46,18 @@ export default async function PermissionsPage(props: PermissionsPageProps) {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Permission Catalog</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Manage platform permissions across products
+              Product and platform permissions — platform governance only
             </p>
           </div>
           <PermissionCreateDialog
             products={allProducts.map(p => ({ code: p.code, name: p.name }))}
           />
+        </div>
+
+        {/* Governance boundary notice */}
+        <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3 text-sm text-indigo-700">
+          This catalog covers product and platform permissions only. Tenant-level permissions (TENANT.*)
+          are managed per-tenant in the Tenant Portal — they are not editable from Control Center.
         </div>
 
         {allProducts.length > 0 && (

@@ -1165,7 +1165,7 @@ export const controlCenterServerApi = {
     assignPermission: async (id: string, capabilityId: string): Promise<void> => {
       await apiClient.post(
         `/identity/api/admin/roles/${encodeURIComponent(id)}/permissions`,
-        { capabilityId },
+        { permissionId: capabilityId },
       );
       revalidateTag(CACHE_TAGS.roles);
     },

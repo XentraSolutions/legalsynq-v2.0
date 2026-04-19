@@ -3,12 +3,12 @@
  *
  * BFF proxy — revoke a capability permission from a role.
  *
- * Access: PlatformAdmin or TenantAdmin (boundary enforced by Identity service).
- * UIX-005-01: Widened from requirePlatformAdmin → requireAdmin.
- *             The Identity service enforces system-role and cross-tenant guards.
+ * Access: PlatformAdmin only (LS-ID-TNT-014 governance hardening).
+ *         Product role → permission mapping is a platform governance action.
+ *         Tenant Portal manages tenant roles via its own BFF.
  */
 import { type NextRequest, NextResponse } from 'next/server';
-import { requireAdmin }                   from '@/lib/auth-guards';
+import { requirePlatformAdmin }           from '@/lib/auth-guards';
 import { controlCenterServerApi }         from '@/lib/control-center-api';
 
 type Ctx = { params: Promise<{ id: string; capabilityId: string }> };
@@ -18,7 +18,7 @@ export async function DELETE(
   { params }: Ctx,
 ): Promise<NextResponse> {
   const { id, capabilityId } = await params;
-  try { await requireAdmin(); }
+  try { await requirePlatformAdmin(); }
   catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
 
   try {

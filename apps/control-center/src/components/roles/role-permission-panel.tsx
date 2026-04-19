@@ -7,19 +7,26 @@ import type { RoleCapabilityItem, PermissionCatalogItem } from '@/types/control-
 interface RolePermissionPanelProps {
   roleId:           string;
   isSystemRole:     boolean;
+  /** True when the role is a product-defined role (not a system or custom tenant role). */
+  isProductRole?:   boolean;
+  /**
+   * When set (product role), the Assign picker is scoped to this product's permissions only.
+   * Governance boundary: product roles should only receive permissions from their own product.
+   */
+  productCode?:     string | null;
+  productName?:     string | null;
   assignedItems:    RoleCapabilityItem[];
   catalog:          PermissionCatalogItem[];
-  /** Pass true when the caller is a TenantAdmin — adjusts context text. */
-  isTenantAdmin?:   boolean;
 }
 
+const PRODUCT_BADGE_COLORS: Record<string, string> = {
+  'CareConnect': 'bg-teal-50 text-teal-700 border-teal-100',
+  'SynqLien':    'bg-amber-50 text-amber-700 border-amber-100',
+  'SynqFund':    'bg-violet-50 text-violet-700 border-violet-100',
+};
+
 function ProductBadge({ name }: { name: string }) {
-  const colors: Record<string, string> = {
-    'CareConnect': 'bg-teal-50 text-teal-700 border-teal-100',
-    'SynqLien':    'bg-amber-50 text-amber-700 border-amber-100',
-    'SynqFund':    'bg-violet-50 text-violet-700 border-violet-100',
-  };
-  const cls = colors[name] ?? 'bg-gray-50 text-gray-600 border-gray-200';
+  const cls = PRODUCT_BADGE_COLORS[name] ?? 'bg-gray-50 text-gray-600 border-gray-200';
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${cls}`}>
       {name}
@@ -30,9 +37,11 @@ function ProductBadge({ name }: { name: string }) {
 export function RolePermissionPanel({
   roleId,
   isSystemRole,
+  isProductRole = false,
+  productCode   = null,
+  productName   = null,
   assignedItems,
   catalog,
-  isTenantAdmin = false,
 }: RolePermissionPanelProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -46,30 +55,35 @@ export function RolePermissionPanel({
 
   const assignedIds = new Set(assignedItems.map(i => i.id));
 
-  // Unassigned capabilities available to add
-  const available = catalog.filter(c =>
+  // ── Governance scoping ────────────────────────────────────────────────────────
+  // For product roles: only show permissions for the role's own product in the picker.
+  // This prevents cross-product capability leakage (e.g., assigning CareConnect
+  // permissions to a SynqLien role) and keeps TENANT.* permissions out of product roles.
+  // For non-product roles: show full catalog (PlatformAdmin governance scope).
+  const scopedCatalog = (isProductRole && productCode)
+    ? catalog.filter(c => c.productCode === productCode)
+    : catalog;
+
+  const available = scopedCatalog.filter(c =>
     !assignedIds.has(c.id) &&
     (pickerSearch === '' ||
      c.code.toLowerCase().includes(pickerSearch.toLowerCase()) ||
      c.name.toLowerCase().includes(pickerSearch.toLowerCase()))
   );
 
-  // Group available by product
   const availableByProduct = available.reduce<Record<string, PermissionCatalogItem[]>>((acc, c) => {
     if (!acc[c.productName]) acc[c.productName] = [];
     acc[c.productName].push(c);
     return acc;
   }, {});
 
-  // Group assigned by product
   const assignedByProduct = assignedItems.reduce<Record<string, RoleCapabilityItem[]>>((acc, c) => {
     if (!acc[c.productName]) acc[c.productName] = [];
     acc[c.productName].push(c);
     return acc;
   }, {});
 
-  // TenantAdmin cannot modify system roles (enforced by backend too)
-  const canEdit = !isSystemRole && (!isTenantAdmin || !isSystemRole);
+  const canEdit = !isSystemRole;
 
   function showSuccess(msg: string) {
     setSuccessBanner(msg);
@@ -152,16 +166,28 @@ export function RolePermissionPanel({
         )}
       </div>
 
-      {/* System role notice — context-aware copy for TenantAdmin vs PlatformAdmin */}
+      {/* System role notice */}
       {isSystemRole && (
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
           <svg className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
           </svg>
           <span>
-            {isTenantAdmin
-              ? 'This is a platform-managed system role. You can view its permissions but cannot modify them. Contact your platform administrator for changes.'
-              : 'System roles cannot be modified. Permissions for this role are managed by the platform engineering team.'}
+            System roles cannot be modified. Permissions for this role are managed by the platform engineering team.
+          </span>
+        </div>
+      )}
+
+      {/* Product governance notice — shown for product roles when picker is scoped */}
+      {!isSystemRole && isProductRole && productName && (
+        <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
+          <svg className="h-4 w-4 mt-0.5 shrink-0 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z" clipRule="evenodd" />
+          </svg>
+          <span>
+            This is a <strong>{productName}</strong> product role. The permission picker is scoped to{' '}
+            <strong>{productName}</strong> capabilities only, preserving product governance boundaries.
+            Platform-level and tenant-level permissions are not available for product roles.
           </span>
         </div>
       )}
@@ -196,7 +222,10 @@ export function RolePermissionPanel({
               type="text"
               value={pickerSearch}
               onChange={e => setPickerSearch(e.target.value)}
-              placeholder="Search permissions…"
+              placeholder={isProductRole && productName
+                ? `Search ${productName} permissions…`
+                : 'Search permissions…'
+              }
               className="flex-1 text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
               autoFocus
             />
@@ -211,7 +240,12 @@ export function RolePermissionPanel({
           </div>
           {available.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-4">
-              {pickerSearch ? 'No matching permissions found.' : 'All permissions are already assigned.'}
+              {pickerSearch
+                ? 'No matching permissions found.'
+                : isProductRole
+                  ? `All ${productName ?? 'product'} permissions are already assigned.`
+                  : 'All permissions are already assigned.'
+              }
             </p>
           ) : (
             <div className="max-h-64 overflow-y-auto space-y-3">

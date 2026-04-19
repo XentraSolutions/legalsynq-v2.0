@@ -5006,3 +5006,48 @@ Adds a **Permissions** tab to the Tenant Portal Authorization section, giving te
 
 ### Analysis
 `analysis/LS-ID-TNT-013-report.md`
+
+## LS-ID-TNT-014 — Control Center Product Permission Governance UI (2026-04-19)
+
+Completes the Control Center product governance surface for platform administrators: permission catalog viewer, product-role → permission mapping editor, and product-grouped roles list. Implemented as targeted fixes and enhancements on top of existing CC infrastructure.
+
+### What was built
+
+**Bug fix** — Critical: `controlCenterServerApi.roles.assignPermission()` was sending `{ capabilityId }` but the backend `AssignRolePermissionRequest` binds `{ permissionId }`. All permission assignments from Control Center were silently failing. Fixed by changing the CC API client to send `{ permissionId: capabilityId }`.
+
+**Auth hardening** — Changed `/permissions` page and `/roles/[id]` page from `requireAdmin()` to `requirePlatformAdmin()`. Same change on the CC BFF routes for `GET/POST /api/identity/admin/roles/[id]/permissions` and `DELETE /api/identity/admin/roles/[id]/permissions/[capabilityId]`.
+
+**Governance scoping** — `RolePermissionPanel` now filters the permission picker to the role's own product when `isProductRole=true` (prevents TENANT.* and cross-product permissions from appearing in a product role's picker). A blue info notice explains the scoping.
+
+**Product-grouped roles list** — The "Product Roles" section in the roles list now renders per-product sub-sections (`ProductRoleGroup` component) instead of a flat undifferentiated table. Each product group shows a color-coded badge header with total permissions.
+
+**Governance boundary notices** — Added explicit banners to `/permissions` and `/roles` pages stating that product/platform governance is in Control Center and TENANT.* governance is in the Tenant Portal.
+
+**Nav badges** — Permissions and Roles nav items now marked `LIVE`.
+
+### No new backend endpoints
+All mutations reuse existing `POST/DELETE /api/admin/roles/{id}/permissions` endpoints.
+
+### Files Changed
+- `apps/control-center/src/lib/control-center-api.ts` — `{ capabilityId }` → `{ permissionId: capabilityId }` in `assignPermission`
+- `apps/control-center/src/lib/nav.ts` — Permissions + Roles badges → LIVE
+- `apps/control-center/src/app/permissions/page.tsx` — `requirePlatformAdmin()`; governance notice
+- `apps/control-center/src/app/roles/page.tsx` — governance notice updated
+- `apps/control-center/src/app/roles/[id]/page.tsx` — `requirePlatformAdmin()`; passes `isProductRole`, `productCode`, `productName` to panel
+- `apps/control-center/src/app/api/identity/admin/roles/[id]/permissions/route.ts` — `requirePlatformAdmin()`
+- `apps/control-center/src/app/api/identity/admin/roles/[id]/permissions/[capabilityId]/route.ts` — `requirePlatformAdmin()`
+- `apps/control-center/src/components/roles/role-permission-panel.tsx` — product-scoped picker; governance notice; removed `isTenantAdmin` (CC is PlatformAdmin only)
+- `apps/control-center/src/components/roles/role-list-table.tsx` — per-product `ProductRoleGroup` sub-sections
+
+### Governance boundaries
+- Control Center: product + platform permissions only; PlatformAdmin only
+- Tenant Portal: TENANT.* permissions only; TenantAdmin only
+- No mixing of surfaces; explicit notices in both
+
+### Deferred
+- Product role create/edit/archive (no backend CRUD for role entities)
+- Backend-level cross-product permission assignment guard
+- `/products` page integration (remains MOCKUP)
+
+### Analysis
+`analysis/LS-ID-TNT-014-report.md`

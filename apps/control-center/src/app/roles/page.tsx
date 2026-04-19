@@ -36,15 +36,16 @@ export default async function RolesPage() {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Roles & Permissions</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Platform-level roles that govern Control Center access
+              Product and platform roles — manage capabilities per product role
             </p>
           </div>
         </div>
 
-        {/* Info banner */}
+        {/* Governance boundary notice */}
         <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3 text-sm text-indigo-700">
-          System roles are platform-managed. Product roles are auto-provisioned from product definitions
-          and enforce org-type eligibility and product enablement rules during assignment.
+          System roles are platform-managed and read-only. Product roles are provisioned from product
+          definitions — select a product role to manage its permission mappings. Tenant-level roles and
+          their permissions are managed in the Tenant Portal, not here.
         </div>
 
         {/* Error banner */}

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireAdmin }            from '@/lib/auth-guards';
+import { requirePlatformAdmin }    from '@/lib/auth-guards';
 import { controlCenterServerApi }  from '@/lib/control-center-api';
 import { Routes }                  from '@/lib/routes';
 import { CCShell }                 from '@/components/shell/cc-shell';
@@ -13,18 +13,16 @@ interface RoleDetailPageProps {
 /**
  * /roles/[id] — Role detail page.
  *
- * Access: PlatformAdmin only.
+ * Access: PlatformAdmin only (LS-ID-TNT-014 governance hardening).
  *
  * Loads:
- *   - Role detail (id, name, description, userCount, isSystemRole)
+ *   - Role detail (id, name, description, userCount, isSystemRole, isProductRole, productCode)
  *   - Current capability assignments for the role
  *   - Full permissions catalog (for the "Assign Permission" picker)
- *
- * UIX-005: RolePermissionPanel wired — assign / revoke capabilities.
+ *     — RolePermissionPanel will scope the picker to the role's product when isProductRole=true
  */
 export default async function RoleDetailPage({ params }: RoleDetailPageProps) {
-  const session       = await requireAdmin();
-  const isTenantAdmin = session.isTenantAdmin;
+  const session = await requirePlatformAdmin();
   const { id }  = await params;
 
   let role = null;
@@ -36,7 +34,6 @@ export default async function RoleDetailPage({ params }: RoleDetailPageProps) {
     fetchError = err instanceof Error ? err.message : 'Failed to load role.';
   }
 
-  // Load permissions data only if role was found — failures are non-fatal
   const [permissionsResult, catalogResult] = await Promise.allSettled([
     role ? controlCenterServerApi.roles.getPermissions(id) : Promise.resolve([]),
     controlCenterServerApi.permissions.list(),
@@ -93,6 +90,11 @@ export default async function RoleDetailPage({ params }: RoleDetailPageProps) {
                 <p className="text-sm text-gray-500">{role.description}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {role.isProductRole && role.productName && (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-semibold border bg-purple-50 text-purple-700 border-purple-200">
+                    {role.productName}
+                  </span>
+                )}
                 {role.isSystemRole !== false && (
                   <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-semibold border bg-gray-100 text-gray-600 border-gray-200">
                     System-defined
@@ -119,9 +121,11 @@ export default async function RoleDetailPage({ params }: RoleDetailPageProps) {
               <RolePermissionPanel
                 roleId={id}
                 isSystemRole={role.isSystemRole ?? false}
+                isProductRole={role.isProductRole ?? false}
+                productCode={role.productCode ?? null}
+                productName={role.productName ?? null}
                 assignedItems={assignedPermissions}
                 catalog={catalog}
-                isTenantAdmin={isTenantAdmin}
               />
             )}
           </>
