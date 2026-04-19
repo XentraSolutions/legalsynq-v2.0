@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Notifications.Application.Constants;
 using Notifications.Application.DTOs;
 using Notifications.Application.Interfaces;
 using Notifications.Domain;
@@ -99,10 +100,26 @@ public class TenantProviderConfigServiceImpl : ITenantProviderConfigService
         return MapToDto(config);
     }
 
+    public async Task<List<TenantProviderConfigDto>> ListPlatformAsync(string? channel = null)
+    {
+        var configs = channel != null
+            ? await _configRepo.GetByTenantAndChannelAsync(PlatformProvider.PlatformTenantId, channel)
+            : await _configRepo.GetByTenantAsync(PlatformProvider.PlatformTenantId);
+        return configs.Select(MapToDto).ToList();
+    }
+
+    public async Task<TenantProviderConfigDto?> GetPlatformByIdAsync(Guid id)
+    {
+        var config = await _configRepo.GetByIdAsync(id);
+        if (config == null || config.TenantId != PlatformProvider.PlatformTenantId) return null;
+        return MapToDto(config);
+    }
+
     private static TenantProviderConfigDto MapToDto(TenantProviderConfig c) => new()
     {
         Id = c.Id, TenantId = c.TenantId, Channel = c.Channel, ProviderType = c.ProviderType,
         DisplayName = c.DisplayName, SettingsJson = c.SettingsJson ?? "{}", Status = c.Status,
+        OwnershipMode = c.TenantId == PlatformProvider.PlatformTenantId ? "platform" : "tenant",
         ValidationStatus = c.ValidationStatus, ValidationMessage = c.ValidationMessage,
         LastValidatedAt = c.LastValidatedAt, HealthStatus = c.HealthStatus,
         LastHealthCheckAt = c.LastHealthCheckAt, HealthCheckLatencyMs = c.HealthCheckLatencyMs,

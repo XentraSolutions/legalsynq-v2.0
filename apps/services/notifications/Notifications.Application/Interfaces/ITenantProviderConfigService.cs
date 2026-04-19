@@ -11,4 +11,10 @@ public interface ITenantProviderConfigService
     Task DeleteAsync(Guid tenantId, Guid id);
     Task<TenantProviderConfigDto> ValidateAsync(Guid tenantId, Guid id);
     Task<TenantProviderConfigDto> HealthCheckAsync(Guid tenantId, Guid id);
+
+    // ── Platform-level provider access (no tenant scope required) ───────────────
+    /// <summary>Lists all platform-owned provider configs (i.e. not tied to any tenant).</summary>
+    Task<List<TenantProviderConfigDto>> ListPlatformAsync(string? channel = null);
+    /// <summary>Gets a platform-owned config by its ID, or null if it does not exist or belongs to a tenant.</summary>
+    Task<TenantProviderConfigDto?> GetPlatformByIdAsync(Guid id);
 }

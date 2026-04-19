@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -187,6 +188,23 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// ── Platform provider seeding ─────────────────────────────────────────────────
+// On every startup, ensure the platform-level SendGrid provider config exists.
+// This is stored with the sentinel TenantId 00000000-0000-0000-0000-000000000001
+// so the control center can list/use it without a real tenant context.
+try
+{
+    using var seedScope = app.Services.CreateScope();
+    await SeedPlatformSendGridProviderAsync(
+        seedScope.ServiceProvider,
+        app.Configuration,
+        app.Logger);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Platform SendGrid provider seeding failed — providers page may show empty");
+}
+
 // ── Middleware pipeline ───────────────────────────────────────────────────────
 // Order matters: Authentication → Authorization → custom middleware → endpoints.
 // TenantMiddleware is placed AFTER UseAuthentication so it can read context.User
@@ -279,6 +297,40 @@ static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext d
             logger.LogInformation("Created missing index IX_Notifications_Status_NextRetryAt");
         }
 
+        // Ensure all columns exist on ntf_TenantProviderConfigs — some may be missing on DBs
+        // where the migration was pre-seeded as already-applied without actually running DDL.
+        // Note: TEXT columns cannot have DEFAULT values on all MySQL versions, so use NULL for those.
+        var providerColumnsToAdd = new[]
+        {
+            ("ntf_TenantProviderConfigs", "CredentialsJson",     "longtext CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TenantProviderConfigs", "SettingsJson",        "longtext CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TenantProviderConfigs", "ValidationStatus",    "varchar(30) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TenantProviderConfigs", "ValidationMessage",   "text CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TenantProviderConfigs", "LastValidatedAt",     "datetime(6) NULL"),
+            ("ntf_TenantProviderConfigs", "HealthStatus",        "varchar(20) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TenantProviderConfigs", "LastHealthCheckAt",   "datetime(6) NULL"),
+            ("ntf_TenantProviderConfigs", "HealthCheckLatencyMs","int NULL"),
+            ("ntf_TenantProviderConfigs", "OwnershipMode",       "varchar(20) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TenantProviderConfigs", "Priority",            "int NULL"),
+        };
+
+        foreach (var (table, col, colDef) in providerColumnsToAdd)
+        {
+            using var checkCmd2 = conn.CreateCommand();
+            checkCmd2.CommandText =
+                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
+                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = '{table}' AND COLUMN_NAME = '{col}'";
+            var count2 = Convert.ToInt32(await checkCmd2.ExecuteScalarAsync());
+
+            if (count2 == 0)
+            {
+                using var alterCmd2 = conn.CreateCommand();
+                alterCmd2.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{col}` {colDef}";
+                await alterCmd2.ExecuteNonQueryAsync();
+                logger.LogInformation("Added missing column {Table}.{Column}", table, col);
+            }
+        }
+
         logger.LogInformation("EnsureNotificationsSchemaColumns complete");
     }
     finally
@@ -320,4 +372,54 @@ static async Task SeedMigrationHistoryIfNeededAsync(NotificationsDbContext db, I
     {
         logger.LogWarning(ex, "Could not seed migration history — proceeding anyway");
     }
+}
+
+// ── Platform SendGrid provider seeder ─────────────────────────────────────────
+// Ensures a single platform-level SendGrid config exists so the control-center
+// "Test Outbound Message" page and the providers list work for platform admins
+// without any manual setup step.
+static async Task SeedPlatformSendGridProviderAsync(
+    IServiceProvider services,
+    IConfiguration configuration,
+    ILogger logger)
+{
+    var sgApiKey = configuration["SENDGRID_API_KEY"];
+    if (string.IsNullOrWhiteSpace(sgApiKey))
+    {
+        logger.LogInformation("SENDGRID_API_KEY not set — skipping platform provider seed");
+        return;
+    }
+
+    var repo = services.GetRequiredService<Notifications.Application.Interfaces.ITenantProviderConfigRepository>();
+
+    var platformId   = Notifications.Application.Constants.PlatformProvider.PlatformTenantId;
+    var existing     = await repo.GetByTenantAndChannelAsync(platformId, "email");
+    var alreadyHasSg = existing.Any(c => c.ProviderType.Equals("sendgrid", StringComparison.OrdinalIgnoreCase));
+
+    if (alreadyHasSg)
+    {
+        logger.LogInformation("Platform SendGrid provider config already exists — skipping seed");
+        return;
+    }
+
+    var fromEmail = configuration["SENDGRID_FROM_EMAIL"] ?? "noreply@legalsynq.com";
+    var fromName  = configuration["SENDGRID_FROM_NAME"]  ?? "LegalSynq";
+
+    var config = new Notifications.Domain.TenantProviderConfig
+    {
+        Id              = Guid.NewGuid(),
+        TenantId        = platformId,
+        Channel         = "email",
+        ProviderType    = "sendgrid",
+        DisplayName     = "SendGrid (Platform Default)",
+        CredentialsJson = JsonSerializer.Serialize(new { apiKey = sgApiKey }),
+        SettingsJson    = JsonSerializer.Serialize(new { fromEmail, fromName }),
+        Status          = "active",
+        ValidationStatus = "valid",
+        HealthStatus    = "unknown",
+        Priority        = 1,
+    };
+
+    await repo.CreateAsync(config);
+    logger.LogInformation("Platform SendGrid provider config seeded with id={Id}", config.Id);
 }

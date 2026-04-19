@@ -9,6 +9,8 @@ public class TenantProviderConfigDto
     public string DisplayName { get; set; } = string.Empty;
     public string SettingsJson { get; set; } = "{}";
     public string Status { get; set; } = string.Empty;
+    /// <summary>"platform" for platform-level providers, "tenant" for tenant-owned configs.</summary>
+    public string OwnershipMode { get; set; } = "tenant";
     public string ValidationStatus { get; set; } = string.Empty;
     public string? ValidationMessage { get; set; }
     public DateTime? LastValidatedAt { get; set; }

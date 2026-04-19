@@ -1,4 +1,5 @@
 using Notifications.Api.Middleware;
+using Notifications.Application.Constants;
 using Notifications.Application.DTOs;
 using Notifications.Application.Interfaces;
 
@@ -44,18 +45,28 @@ public static class ProviderEndpoints
 
         // ── Configs ────────────────────────────────────────────────────────────────
 
+        // When called without a tenant context (platform-admin), return the
+        // platform-level provider configs stored under the sentinel TenantId.
+        // Tenant calls still receive their own configs as before.
         group.MapGet("/configs", async (HttpContext context, ITenantProviderConfigService service, string? channel) =>
         {
             var tenantId = context.TryGetTenantId();
-            if (tenantId == null) return Results.Ok(Array.Empty<TenantProviderConfigDto>());
-            var result = await service.ListAsync(tenantId.Value, channel);
+            var result = tenantId.HasValue
+                ? await service.ListAsync(tenantId.Value, channel)
+                : await service.ListPlatformAsync(channel);
             return Results.Ok(result);
         });
 
         group.MapGet("/configs/{id:guid}", async (HttpContext context, ITenantProviderConfigService service, Guid id) =>
         {
             var tenantId = context.TryGetTenantId();
-            if (tenantId == null) return Results.NotFound();
+
+            if (tenantId == null)
+            {
+                var dto = await service.GetPlatformByIdAsync(id);
+                return dto != null ? Results.Ok(dto) : Results.NotFound();
+            }
+
             var result = await service.GetByIdAsync(tenantId.Value, id);
             return result != null ? Results.Ok(result) : Results.NotFound();
         });
@@ -83,16 +94,101 @@ public static class ProviderEndpoints
 
         group.MapPost("/configs/{id:guid}/validate", async (HttpContext context, ITenantProviderConfigService service, Guid id) =>
         {
-            var tenantId = context.GetTenantId();
-            var result = await service.ValidateAsync(tenantId, id);
+            var tenantId = context.TryGetTenantId();
+            if (tenantId == null)
+            {
+                var dto = await service.GetPlatformByIdAsync(id);
+                return dto != null ? Results.Ok(dto) : Results.NotFound();
+            }
+            var result = await service.ValidateAsync(tenantId.Value, id);
             return Results.Ok(result);
         });
 
         group.MapPost("/configs/{id:guid}/health-check", async (HttpContext context, ITenantProviderConfigService service, Guid id) =>
         {
-            var tenantId = context.GetTenantId();
-            var result = await service.HealthCheckAsync(tenantId, id);
+            var tenantId = context.TryGetTenantId();
+            if (tenantId == null)
+            {
+                var dto = await service.GetPlatformByIdAsync(id);
+                return dto != null ? Results.Ok(dto) : Results.NotFound();
+            }
+            var result = await service.HealthCheckAsync(tenantId.Value, id);
             return Results.Ok(result);
+        });
+
+        // ── Provider test ──────────────────────────────────────────────────────────
+        // Sends a real message through the specified provider config so platform
+        // admins can verify end-to-end outbound delivery.
+        group.MapPost("/configs/{id:guid}/test", async (
+            HttpContext context,
+            ITenantProviderConfigRepository repo,
+            IEmailProviderAdapter emailAdapter,
+            ISmsProviderAdapter smsAdapter,
+            Guid id,
+            TestProviderRequest? request) =>
+        {
+            var tenantId = context.TryGetTenantId();
+
+            var config = await repo.GetByIdAsync(id);
+            if (config == null) return Results.NotFound(new { error = "Provider config not found." });
+
+            // Allow access: must be the caller's own tenant config OR a platform config.
+            var isPlatform = config.TenantId == PlatformProvider.PlatformTenantId;
+            var isOwnTenant = tenantId.HasValue && config.TenantId == tenantId.Value;
+            if (!isPlatform && !isOwnTenant)
+                return Results.Forbid();
+
+            if (config.Channel.Equals("email", StringComparison.OrdinalIgnoreCase))
+            {
+                var toEmail = request?.ToEmail;
+                if (string.IsNullOrWhiteSpace(toEmail))
+                    return Results.BadRequest(new { error = "toEmail is required for email provider test." });
+
+                var result = await emailAdapter.SendAsync(new EmailSendPayload
+                {
+                    To      = toEmail,
+                    Subject = request?.Subject ?? "Test message from LegalSynq Platform",
+                    Body    = request?.Body    ?? "This is a test notification sent from the LegalSynq platform admin panel.",
+                    Html    = request?.Body,
+                });
+
+                return Results.Ok(new
+                {
+                    data = new
+                    {
+                        success = result.Success,
+                        message = result.Success
+                            ? $"Test email sent to {toEmail}."
+                            : result.Failure?.Message ?? "Send failed.",
+                    }
+                });
+            }
+
+            if (config.Channel.Equals("sms", StringComparison.OrdinalIgnoreCase))
+            {
+                var toPhone = request?.ToPhone;
+                if (string.IsNullOrWhiteSpace(toPhone))
+                    return Results.BadRequest(new { error = "toPhone is required for SMS provider test." });
+
+                var result = await smsAdapter.SendAsync(new SmsSendPayload
+                {
+                    To   = toPhone,
+                    Body = request?.Body ?? "Test SMS from LegalSynq Platform.",
+                });
+
+                return Results.Ok(new
+                {
+                    data = new
+                    {
+                        success = result.Success,
+                        message = result.Success
+                            ? $"Test SMS sent to {toPhone}."
+                            : result.Failure?.Message ?? "Send failed.",
+                    }
+                });
+            }
+
+            return Results.Ok(new { data = new { success = false, message = $"Test not supported for channel '{config.Channel}'." } });
         });
 
         // ── Channel settings ───────────────────────────────────────────────────────
@@ -149,4 +245,13 @@ public static class ProviderEndpoints
             return Results.Ok(result);
         });
     }
+}
+
+/// <summary>Payload for the provider test endpoint.</summary>
+public class TestProviderRequest
+{
+    public string? ToEmail { get; set; }
+    public string? ToPhone { get; set; }
+    public string? Subject { get; set; }
+    public string? Body { get; set; }
 }
