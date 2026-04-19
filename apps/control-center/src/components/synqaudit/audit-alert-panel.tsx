@@ -3,7 +3,7 @@
 import { useState, useTransition }   from 'react';
 import { useRouter }                 from 'next/navigation';
 import type { AuditAlertItem, AuditAlertListData, AlertStatus, AuditAlertSeverity } from '@/types/control-center';
-import { controlCenterServerApi }    from '@/lib/control-center-api';
+import { auditAlertsClientApi }      from '@/lib/audit-alerts-client-api';
 
 // ── Style maps ─────────────────────────────────────────────────────────────────
 
@@ -215,14 +215,14 @@ export function AuditAlertPanel({ initialData, initialStatus, initialTenantId }:
     setActionBusy(true);
     setEvalResult(null);
     try {
-      const result = await controlCenterServerApi.auditAlerts.evaluate({ tenantId: tenantId || undefined });
+      const result = await auditAlertsClientApi.evaluate({ tenantId: tenantId || undefined });
       if (result) {
         setEvalResult(
           `Evaluation complete — ${result.anomaliesDetected} anomalies detected. ` +
           `${result.alertsCreated} created, ${result.alertsRefreshed} refreshed, ${result.alertsSuppressed} suppressed.`
         );
         // Reload alert list
-        const refreshed = await controlCenterServerApi.auditAlerts.list({
+        const refreshed = await auditAlertsClientApi.list({
           status: statusFilt || undefined,
           tenantId: tenantId || undefined,
           limit: 100,
@@ -239,8 +239,8 @@ export function AuditAlertPanel({ initialData, initialStatus, initialTenantId }:
   async function handleAcknowledge(alertId: string) {
     setActionBusy(true);
     try {
-      await controlCenterServerApi.auditAlerts.acknowledge(alertId);
-      const refreshed = await controlCenterServerApi.auditAlerts.list({
+      await auditAlertsClientApi.acknowledge(alertId);
+      const refreshed = await auditAlertsClientApi.list({
         status: statusFilt || undefined,
         tenantId: tenantId || undefined,
         limit: 100,
@@ -256,8 +256,8 @@ export function AuditAlertPanel({ initialData, initialStatus, initialTenantId }:
   async function handleResolve(alertId: string) {
     setActionBusy(true);
     try {
-      await controlCenterServerApi.auditAlerts.resolve(alertId);
-      const refreshed = await controlCenterServerApi.auditAlerts.list({
+      await auditAlertsClientApi.resolve(alertId);
+      const refreshed = await auditAlertsClientApi.list({
         status: statusFilt || undefined,
         tenantId: tenantId || undefined,
         limit: 100,

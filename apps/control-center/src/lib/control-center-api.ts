@@ -50,8 +50,19 @@
  * TODO: add request deduplication
  */
 
-import { revalidateTag }               from 'next/cache';
 import { apiClient, CACHE_TAGS }       from '@/lib/api-client';
+
+/**
+ * Dynamically loads revalidateTag so the static import never appears at
+ * module level.  This keeps the file importable from the pages/ router
+ * (where next/cache is not available) while still busting caches when
+ * called from an App Router Server Action or Route Handler.
+ */
+function safeRevalidateTag(tag: string): void {
+  void (import('next/cache') as Promise<{ revalidateTag: (tag: string) => void }>)
+    .then(({ revalidateTag }) => revalidateTag(tag))
+    .catch(() => { /* no-op when running outside App Router */ });
+}
 import {
   mapTenantSummary,
   mapTenantDetail,
@@ -429,7 +440,7 @@ export const controlCenterServerApi = {
         { enabled },
       );
       const result = mapEntitlementResponse(raw);
-      revalidateTag(CACHE_TAGS.tenants);
+      safeRevalidateTag(CACHE_TAGS.tenants);
       return result;
     },
 
@@ -447,7 +458,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/tenants/${encodeURIComponent(tenantId)}/session-settings`,
         { sessionTimeoutMinutes },
       );
-      revalidateTag(CACHE_TAGS.tenants);
+      safeRevalidateTag(CACHE_TAGS.tenants);
     },
 
     /**
@@ -489,7 +500,7 @@ export const controlCenterServerApi = {
         provisioningStatus?: string;
         hostname?:           string;
       }>('/identity/api/admin/tenants', body);
-      revalidateTag(CACHE_TAGS.tenants);
+      safeRevalidateTag(CACHE_TAGS.tenants);
       return raw;
     },
 
@@ -505,7 +516,7 @@ export const controlCenterServerApi = {
         hostname?:          string;
         error?:             string;
       }>(`/identity/api/admin/tenants/${tenantId}/provisioning/retry`, {});
-      revalidateTag(CACHE_TAGS.tenants);
+      safeRevalidateTag(CACHE_TAGS.tenants);
       return raw;
     },
 
@@ -523,7 +534,7 @@ export const controlCenterServerApi = {
         error?:             string;
         failureStage?:      string;
       }>(`/identity/api/admin/tenants/${tenantId}/verification/retry`, {});
-      revalidateTag(CACHE_TAGS.tenants);
+      safeRevalidateTag(CACHE_TAGS.tenants);
       return raw;
     },
   },
@@ -600,7 +611,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/users/${encodeURIComponent(id)}/activate`,
         {},
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -612,7 +623,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/users/${encodeURIComponent(id)}/deactivate`,
         {},
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -628,7 +639,7 @@ export const controlCenterServerApi = {
       memberRole?:    string;
     }): Promise<void> => {
       await apiClient.post<unknown>('/identity/api/admin/users/invite', payload);
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -640,7 +651,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/users/${encodeURIComponent(id)}/resend-invite`,
         {},
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -652,7 +663,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/users/${encodeURIComponent(id)}/lock`,
         {},
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -664,7 +675,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/users/${encodeURIComponent(id)}/unlock`,
         {},
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -680,7 +691,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/users/${encodeURIComponent(id)}/phone`,
         { phone: phone && phone.trim() !== '' ? phone.trim() : null },
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
       return { phone: raw?.phone ?? null };
     },
 
@@ -770,7 +781,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/users/${encodeURIComponent(id)}/memberships`,
         payload,
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -782,7 +793,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/users/${encodeURIComponent(id)}/memberships/${encodeURIComponent(membershipId)}/set-primary`,
         {},
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -793,7 +804,7 @@ export const controlCenterServerApi = {
       await apiClient.del<unknown>(
         `/identity/api/admin/users/${encodeURIComponent(id)}/memberships/${encodeURIComponent(membershipId)}`,
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -805,7 +816,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/users/${encodeURIComponent(id)}/roles`,
         { roleId },
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -838,7 +849,7 @@ export const controlCenterServerApi = {
       await apiClient.del<unknown>(
         `/identity/api/admin/users/${encodeURIComponent(id)}/roles/${encodeURIComponent(roleId)}`,
       );
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     /**
@@ -950,7 +961,7 @@ export const controlCenterServerApi = {
         '/identity/api/admin/permissions',
         payload,
       );
-      revalidateTag(CACHE_TAGS.roles);
+      safeRevalidateTag(CACHE_TAGS.roles);
       return mapPermissionCatalogItem(raw);
     },
 
@@ -963,7 +974,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/permissions/${encodeURIComponent(id)}`,
         payload,
       );
-      revalidateTag(CACHE_TAGS.roles);
+      safeRevalidateTag(CACHE_TAGS.roles);
       return mapPermissionCatalogItem(raw);
     },
 
@@ -971,7 +982,7 @@ export const controlCenterServerApi = {
       await apiClient.del(
         `/identity/api/admin/permissions/${encodeURIComponent(id)}`,
       );
-      revalidateTag(CACHE_TAGS.roles);
+      safeRevalidateTag(CACHE_TAGS.roles);
     },
   },
 
@@ -1015,7 +1026,7 @@ export const controlCenterServerApi = {
         '/identity/api/admin/policies',
         payload,
       );
-      revalidateTag(CACHE_TAGS.policies);
+      safeRevalidateTag(CACHE_TAGS.policies);
       return mapPolicySummary(raw);
     },
 
@@ -1028,7 +1039,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/policies/${encodeURIComponent(id)}`,
         payload,
       );
-      revalidateTag(CACHE_TAGS.policies);
+      safeRevalidateTag(CACHE_TAGS.policies);
       return mapPolicySummary(raw);
     },
 
@@ -1036,7 +1047,7 @@ export const controlCenterServerApi = {
       await apiClient.del(
         `/identity/api/admin/policies/${encodeURIComponent(id)}`,
       );
-      revalidateTag(CACHE_TAGS.policies);
+      safeRevalidateTag(CACHE_TAGS.policies);
     },
 
     createRule: async (policyId: string, payload: {
@@ -1050,7 +1061,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/policies/${encodeURIComponent(policyId)}/rules`,
         { ...payload, logicalGroup: payload.logicalGroup ?? 'And' },
       );
-      revalidateTag(CACHE_TAGS.policies);
+      safeRevalidateTag(CACHE_TAGS.policies);
       return raw;
     },
 
@@ -1058,7 +1069,7 @@ export const controlCenterServerApi = {
       await apiClient.del(
         `/identity/api/admin/policies/${encodeURIComponent(policyId)}/rules/${encodeURIComponent(ruleId)}`,
       );
-      revalidateTag(CACHE_TAGS.policies);
+      safeRevalidateTag(CACHE_TAGS.policies);
     },
 
     getSupportedFields: async (): Promise<SupportedFieldsResponse> => {
@@ -1092,7 +1103,7 @@ export const controlCenterServerApi = {
         '/identity/api/admin/permission-policies',
         { permissionCode: payload.permissionCode, policyId: payload.policyId },
       );
-      revalidateTag(CACHE_TAGS.policies);
+      safeRevalidateTag(CACHE_TAGS.policies);
       return raw;
     },
 
@@ -1100,7 +1111,7 @@ export const controlCenterServerApi = {
       await apiClient.del(
         `/identity/api/admin/permission-policies/${encodeURIComponent(id)}`,
       );
-      revalidateTag(CACHE_TAGS.policies);
+      safeRevalidateTag(CACHE_TAGS.policies);
     },
   },
 
@@ -1174,7 +1185,7 @@ export const controlCenterServerApi = {
         `/identity/api/admin/roles/${encodeURIComponent(id)}/permissions`,
         { permissionId: capabilityId },
       );
-      revalidateTag(CACHE_TAGS.roles);
+      safeRevalidateTag(CACHE_TAGS.roles);
     },
 
     /**
@@ -1186,7 +1197,7 @@ export const controlCenterServerApi = {
       await apiClient.del(
         `/identity/api/admin/roles/${encodeURIComponent(id)}/permissions/${encodeURIComponent(capabilityId)}`,
       );
-      revalidateTag(CACHE_TAGS.roles);
+      safeRevalidateTag(CACHE_TAGS.roles);
     },
   },
 
@@ -1722,7 +1733,7 @@ export const controlCenterServerApi = {
       );
       const result = mapSetting(raw);
       // Purge settings cache so UI shows the new value immediately
-      revalidateTag(CACHE_TAGS.settings);
+      safeRevalidateTag(CACHE_TAGS.settings);
       return result;
     },
   },
@@ -1847,7 +1858,7 @@ export const controlCenterServerApi = {
       const raw = await apiClient.post<unknown>('/identity/api/admin/support', data);
       const result = mapSupportCaseDetail(raw);
       // Purge support cache so the new case is visible immediately
-      revalidateTag(CACHE_TAGS.support);
+      safeRevalidateTag(CACHE_TAGS.support);
       return result;
     },
 
@@ -1869,7 +1880,7 @@ export const controlCenterServerApi = {
       );
       const result = mapSupportNote(raw);
       // Purge so case detail reflects the new note immediately
-      revalidateTag(CACHE_TAGS.support);
+      safeRevalidateTag(CACHE_TAGS.support);
       return result;
     },
 
@@ -1891,7 +1902,7 @@ export const controlCenterServerApi = {
       );
       const result = mapSupportCase(raw);
       // Purge so updated status is visible in list and detail immediately
-      revalidateTag(CACHE_TAGS.support);
+      safeRevalidateTag(CACHE_TAGS.support);
       return result;
     },
   },
@@ -2186,8 +2197,8 @@ export const controlCenterServerApi = {
         `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups`,
         body,
       );
-      revalidateTag(CACHE_TAGS.accessGroups);
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.accessGroups);
+      safeRevalidateTag(CACHE_TAGS.users);
       return mapAccessGroupSummary(raw);
     },
 
@@ -2199,7 +2210,7 @@ export const controlCenterServerApi = {
         `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}`,
         body,
       );
-      revalidateTag(CACHE_TAGS.accessGroups);
+      safeRevalidateTag(CACHE_TAGS.accessGroups);
       return mapAccessGroupSummary(raw);
     },
 
@@ -2207,8 +2218,8 @@ export const controlCenterServerApi = {
       await apiClient.del<unknown>(
         `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}`,
       );
-      revalidateTag(CACHE_TAGS.accessGroups);
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.accessGroups);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     listMembers: async (tenantId: string, groupId: string): Promise<AccessGroupMember[]> => {
@@ -2226,16 +2237,16 @@ export const controlCenterServerApi = {
         `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/members`,
         { userId },
       );
-      revalidateTag(CACHE_TAGS.accessGroups);
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.accessGroups);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     removeMember: async (tenantId: string, groupId: string, userId: string): Promise<void> => {
       await apiClient.del<unknown>(
         `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
       );
-      revalidateTag(CACHE_TAGS.accessGroups);
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.accessGroups);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     listProducts: async (tenantId: string, groupId: string): Promise<GroupProductAccess[]> => {
@@ -2253,16 +2264,16 @@ export const controlCenterServerApi = {
         `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/products/${encodeURIComponent(productCode)}`,
         {},
       );
-      revalidateTag(CACHE_TAGS.accessGroups);
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.accessGroups);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     revokeProduct: async (tenantId: string, groupId: string, productCode: string): Promise<void> => {
       await apiClient.del<unknown>(
         `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/products/${encodeURIComponent(productCode)}`,
       );
-      revalidateTag(CACHE_TAGS.accessGroups);
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.accessGroups);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     listRoles: async (tenantId: string, groupId: string): Promise<GroupRoleAssignment[]> => {
@@ -2284,16 +2295,16 @@ export const controlCenterServerApi = {
         `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/roles`,
         body,
       );
-      revalidateTag(CACHE_TAGS.accessGroups);
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.accessGroups);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     removeRole: async (tenantId: string, groupId: string, assignmentId: string): Promise<void> => {
       await apiClient.del<unknown>(
         `/identity/api/tenants/${encodeURIComponent(tenantId)}/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(assignmentId)}`,
       );
-      revalidateTag(CACHE_TAGS.accessGroups);
-      revalidateTag(CACHE_TAGS.users);
+      safeRevalidateTag(CACHE_TAGS.accessGroups);
+      safeRevalidateTag(CACHE_TAGS.users);
     },
 
     listUserGroups: async (tenantId: string, userId: string): Promise<AccessGroupMember[]> => {
