@@ -1,7 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
+using PlatformAuditEventService.Authorization;
 using PlatformAuditEventService.DTOs;
+using PlatformAuditEventService.DTOs.Ingest;
 using PlatformAuditEventService.DTOs.LegalHold;
+using PlatformAuditEventService.Enums;
 using PlatformAuditEventService.Services;
+using PlatformAuditEventService.Utilities;
+
+using IngestRequest = PlatformAuditEventService.DTOs.Ingest.IngestAuditEventRequest;
 
 namespace PlatformAuditEventService.Controllers;
 
@@ -22,6 +28,11 @@ namespace PlatformAuditEventService.Controllers;
 ///   All hold creation and release operations are logged at WARNING level for
 ///   compliance audit trail purposes. The log lines include HoldId, AuditId,
 ///   LegalAuthority, and the identity of the requester.
+///
+/// LS-ID-TNT-017-003:
+///   Legal hold create and release now also emit canonical compliance audit events
+///   (<c>audit.legal_hold.created</c>, <c>audit.legal_hold.released</c>) via the
+///   centralized ingestion pipeline. Fire-and-observe; mutation never gated on audit publish.
 /// </summary>
 [ApiController]
 [Route("audit/legal-holds")]
@@ -29,14 +40,17 @@ namespace PlatformAuditEventService.Controllers;
 public sealed class LegalHoldController : ControllerBase
 {
     private readonly ILegalHoldService                _holdService;
+    private readonly IAuditEventIngestionService      _ingestionService;
     private readonly ILogger<LegalHoldController>     _logger;
 
     public LegalHoldController(
         ILegalHoldService             holdService,
+        IAuditEventIngestionService   ingestionService,
         ILogger<LegalHoldController>  logger)
     {
-        _holdService = holdService;
-        _logger      = logger;
+        _holdService      = holdService;
+        _ingestionService = ingestionService;
+        _logger           = logger;
     }
 
     // ── POST /audit/legal-holds/{auditId} ─────────────────────────────────────
@@ -65,10 +79,19 @@ public sealed class LegalHoldController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ApiResponse<object>.Fail("Invalid request"));
 
+        var traceId = TraceIdAccessor.Current();
+        var caller  = HttpContext.Items[QueryCallerContext.ItemKey] as IQueryCallerContext
+                      ?? QueryCallerContext.Anonymous();
+
         try
         {
             var userId = ResolveCallerId();
             var hold   = await _holdService.CreateHoldAsync(auditId, userId, request, ct);
+
+            // ── Canonical audit: audit.legal_hold.created ─────────────────────
+            // LS-ID-TNT-017-003: Fire-and-observe — the 201 response is never gated
+            // on audit publish success.
+            LogLegalHoldCreated(caller, hold, traceId);
 
             return StatusCode(StatusCodes.Status201Created,
                 ApiResponse<LegalHoldResponse>.Ok(hold));
@@ -102,10 +125,20 @@ public sealed class LegalHoldController : ControllerBase
         [FromBody] ReleaseLegalHoldRequest request,
         CancellationToken ct)
     {
+        var traceId = TraceIdAccessor.Current();
+        var caller  = HttpContext.Items[QueryCallerContext.ItemKey] as IQueryCallerContext
+                      ?? QueryCallerContext.Anonymous();
+
         try
         {
             var userId = ResolveCallerId();
             var hold   = await _holdService.ReleaseHoldAsync(holdId, userId, request, ct);
+
+            // ── Canonical audit: audit.legal_hold.released ────────────────────
+            // LS-ID-TNT-017-003: Fire-and-observe — the 200 response is never gated
+            // on audit publish success.
+            LogLegalHoldReleased(caller, hold, traceId);
+
             return Ok(ApiResponse<LegalHoldResponse>.Ok(hold));
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("already released"))
@@ -152,5 +185,136 @@ public sealed class LegalHoldController : ControllerBase
 
         // Fallback for dev mode (Mode=None — no JWT)
         return "system:dev-caller";
+    }
+
+    /// <summary>
+    /// Emits <c>audit.legal_hold.created</c> after a legal hold is successfully placed.
+    ///
+    /// LS-ID-TNT-017-003: Governance Mutation Audit.
+    ///
+    /// Fire-and-observe: Task is discarded. The 201 response is returned regardless
+    /// of audit publish outcome.
+    ///
+    /// Scope: Platform — legal hold operations are PlatformAdmin/ComplianceOfficer actions.
+    /// Actor: Resolved from QueryAuthMiddleware-populated IQueryCallerContext in HttpContext.Items.
+    /// Metadata: LegalAuthority (structured reference) included. Request Notes excluded
+    ///   (may contain free-form legal content inappropriate for audit metadata).
+    /// </summary>
+    private void LogLegalHoldCreated(
+        IQueryCallerContext caller,
+        LegalHoldResponse   hold,
+        string?             traceId)
+    {
+        _logger.LogWarning(
+            "LegalHold CREATED: HoldId={HoldId} AuditId={AuditId} Authority={Authority} " +
+            "HeldBy={UserId} CallerScope={Scope} TraceId={TraceId}",
+            hold.HoldId, hold.AuditId, hold.LegalAuthority,
+            hold.HeldByUserId, caller.Scope, traceId ?? "(no-trace)");
+
+        _ = _ingestionService.IngestSingleAsync(new IngestRequest
+        {
+            EventType       = "audit.legal_hold.created",
+            EventCategory   = EventCategory.Compliance,
+            SourceSystem    = "audit",
+            SourceService   = "legal-hold-api",
+            Visibility      = VisibilityScope.Platform,
+            Severity        = SeverityLevel.Warn,
+            OccurredAtUtc   = hold.HeldAtUtc,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Platform,
+                TenantId  = caller.TenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = caller.UserId ?? hold.HeldByUserId,
+                Type = ActorType.User,
+                Name = caller.UserId ?? hold.HeldByUserId,
+            },
+            Entity = new AuditEventEntityDto
+            {
+                Type = "LegalHold",
+                Id   = hold.HoldId.ToString(),
+            },
+            Action      = "LegalHoldPlaced",
+            Description = $"Legal hold placed on audit record {hold.AuditId} — authority: {hold.LegalAuthority}.",
+            Metadata    = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                holdId        = hold.HoldId,
+                auditId       = hold.AuditId,
+                legalAuthority= hold.LegalAuthority,
+                heldByUserId  = hold.HeldByUserId,
+                heldAtUtc     = hold.HeldAtUtc,
+                callerScope   = caller.Scope.ToString(),
+                callerAuthMode= caller.AuthMode,
+                traceId       = traceId ?? "(none)",
+            }),
+            CorrelationId  = traceId,
+            IdempotencyKey = $"legal-hold-created:{hold.HoldId}",
+            Tags           = ["governance", "legal-hold", "retention-control"],
+        });
+    }
+
+    /// <summary>
+    /// Emits <c>audit.legal_hold.released</c> after a legal hold is successfully released.
+    ///
+    /// LS-ID-TNT-017-003: Governance Mutation Audit.
+    ///
+    /// Fire-and-observe: Task is discarded. The 200 response is returned regardless
+    /// of audit publish outcome.
+    /// </summary>
+    private void LogLegalHoldReleased(
+        IQueryCallerContext caller,
+        LegalHoldResponse   hold,
+        string?             traceId)
+    {
+        _logger.LogWarning(
+            "LegalHold RELEASED: HoldId={HoldId} AuditId={AuditId} Authority={Authority} " +
+            "ReleasedBy={ReleasedBy} ReleasedAt={ReleasedAt} CallerScope={Scope} TraceId={TraceId}",
+            hold.HoldId, hold.AuditId, hold.LegalAuthority,
+            hold.ReleasedByUserId, hold.ReleasedAtUtc, caller.Scope, traceId ?? "(no-trace)");
+
+        _ = _ingestionService.IngestSingleAsync(new IngestRequest
+        {
+            EventType       = "audit.legal_hold.released",
+            EventCategory   = EventCategory.Compliance,
+            SourceSystem    = "audit",
+            SourceService   = "legal-hold-api",
+            Visibility      = VisibilityScope.Platform,
+            Severity        = SeverityLevel.Warn,
+            OccurredAtUtc   = hold.ReleasedAtUtc ?? DateTimeOffset.UtcNow,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Platform,
+                TenantId  = caller.TenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = caller.UserId ?? hold.ReleasedByUserId ?? "(unknown)",
+                Type = ActorType.User,
+                Name = caller.UserId ?? hold.ReleasedByUserId ?? "(unknown)",
+            },
+            Entity = new AuditEventEntityDto
+            {
+                Type = "LegalHold",
+                Id   = hold.HoldId.ToString(),
+            },
+            Action      = "LegalHoldReleased",
+            Description = $"Legal hold {hold.HoldId} released on audit record {hold.AuditId} — authority: {hold.LegalAuthority}.",
+            Metadata    = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                holdId          = hold.HoldId,
+                auditId         = hold.AuditId,
+                legalAuthority  = hold.LegalAuthority,
+                releasedByUserId= hold.ReleasedByUserId,
+                releasedAtUtc   = hold.ReleasedAtUtc,
+                callerScope     = caller.Scope.ToString(),
+                callerAuthMode  = caller.AuthMode,
+                traceId         = traceId ?? "(none)",
+            }),
+            CorrelationId  = traceId,
+            IdempotencyKey = $"legal-hold-released:{hold.HoldId}",
+            Tags           = ["governance", "legal-hold", "retention-control"],
+        });
     }
 }

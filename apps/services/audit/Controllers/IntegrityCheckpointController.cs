@@ -1,9 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using PlatformAuditEventService.Authorization;
 using PlatformAuditEventService.DTOs;
+using PlatformAuditEventService.DTOs.Ingest;
 using PlatformAuditEventService.DTOs.Integrity;
+using PlatformAuditEventService.Enums;
 using PlatformAuditEventService.Services;
 using PlatformAuditEventService.Utilities;
+
+using IngestRequest = PlatformAuditEventService.DTOs.Ingest.IngestAuditEventRequest;
 
 namespace PlatformAuditEventService.Controllers;
 
@@ -21,6 +25,11 @@ namespace PlatformAuditEventService.Controllers;
 ///
 /// Checkpoints are append-only. A generation request always creates a new record;
 /// existing checkpoint records are never updated or deleted.
+///
+/// LS-ID-TNT-017-003:
+///   Successful checkpoint generation now emits <c>audit.integrity.checkpoint.generated</c>
+///   via the centralized ingestion pipeline. Fire-and-observe; the 201 response is never
+///   gated on audit publish success.
 /// </summary>
 [ApiController]
 [Route("audit/integrity")]
@@ -28,14 +37,17 @@ namespace PlatformAuditEventService.Controllers;
 public sealed class IntegrityCheckpointController : ControllerBase
 {
     private readonly IIntegrityCheckpointService              _service;
+    private readonly IAuditEventIngestionService              _ingestionService;
     private readonly ILogger<IntegrityCheckpointController>   _logger;
 
     public IntegrityCheckpointController(
         IIntegrityCheckpointService             service,
+        IAuditEventIngestionService             ingestionService,
         ILogger<IntegrityCheckpointController>  logger)
     {
-        _service = service;
-        _logger  = logger;
+        _service          = service;
+        _ingestionService = ingestionService;
+        _logger           = logger;
     }
 
     // ── GET /audit/integrity/checkpoints ──────────────────────────────────────
@@ -118,11 +130,21 @@ public sealed class IntegrityCheckpointController : ControllerBase
                 traceId: traceId));
         }
 
+        var caller = HttpContext.Items.TryGetValue(QueryCallerContext.ItemKey, out var raw)
+                  && raw is IQueryCallerContext ctx
+                     ? ctx
+                     : QueryCallerContext.Anonymous();
+
         var result = await _service.GenerateAsync(request, ct);
 
         _logger.LogInformation(
             "Checkpoint generated on demand. Id={Id} Type={Type} RecordCount={Count} TraceId={TraceId}",
             result.Id, result.CheckpointType, result.RecordCount, traceId);
+
+        // ── Canonical audit: audit.integrity.checkpoint.generated ─────────────
+        // LS-ID-TNT-017-003: Fire-and-observe — the 201 response is never gated
+        // on audit publish success.
+        LogCheckpointGenerated(caller, result, request, traceId);
 
         return StatusCode(
             StatusCodes.Status201Created,
@@ -178,5 +200,75 @@ public sealed class IntegrityCheckpointController : ControllerBase
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Emits <c>audit.integrity.checkpoint.generated</c> after a checkpoint is successfully
+    /// generated and persisted.
+    ///
+    /// LS-ID-TNT-017-003: Governance Mutation Audit.
+    ///
+    /// Fire-and-observe: Task is discarded. The 201 response is returned regardless
+    /// of audit publish outcome.
+    ///
+    /// Scope: Platform — checkpoint generation is PlatformAdmin only.
+    /// Actor: Resolved from QueryAuthMiddleware-populated IQueryCallerContext.
+    /// Metadata: Includes checkpoint type, time window bounds, record count, and a
+    ///   16-character prefix of the AggregateHash for reference. The full hash is
+    ///   stored in the IntegrityCheckpoint record and accessible via the list endpoint.
+    /// </summary>
+    private void LogCheckpointGenerated(
+        IQueryCallerContext          caller,
+        IntegrityCheckpointResponse  result,
+        GenerateCheckpointRequest    request,
+        string?                      traceId)
+    {
+        var hashPrefix = result.AggregateHash.Length >= 16
+            ? result.AggregateHash[..16] + "..."
+            : result.AggregateHash;
+
+        _ = _ingestionService.IngestSingleAsync(new IngestRequest
+        {
+            EventType       = "audit.integrity.checkpoint.generated",
+            EventCategory   = EventCategory.Compliance,
+            SourceSystem    = "audit",
+            SourceService   = "integrity-api",
+            Visibility      = VisibilityScope.Platform,
+            Severity        = SeverityLevel.Notice,
+            OccurredAtUtc   = result.CreatedAtUtc,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Platform,
+                TenantId  = caller.TenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = caller.UserId ?? "system",
+                Type = ActorType.User,
+                Name = caller.UserId ?? "system",
+            },
+            Entity = new AuditEventEntityDto
+            {
+                Type = "IntegrityCheckpoint",
+                Id   = result.Id.ToString(),
+            },
+            Action      = "CheckpointGenerated",
+            Description = $"Integrity checkpoint generated — {result.RecordCount} record(s), type={result.CheckpointType}.",
+            Metadata    = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                checkpointId        = result.Id,
+                checkpointType      = result.CheckpointType,
+                fromRecordedAtUtc   = request.FromRecordedAtUtc,
+                toRecordedAtUtc     = request.ToRecordedAtUtc,
+                recordCount         = result.RecordCount,
+                aggregateHashPrefix = hashPrefix,
+                callerScope         = caller.Scope.ToString(),
+                callerAuthMode      = caller.AuthMode,
+                traceId             = traceId ?? "(none)",
+            }),
+            CorrelationId  = traceId,
+            IdempotencyKey = $"integrity-checkpoint:{result.Id}",
+            Tags           = ["governance", "integrity", "compliance-verification"],
+        });
     }
 }
