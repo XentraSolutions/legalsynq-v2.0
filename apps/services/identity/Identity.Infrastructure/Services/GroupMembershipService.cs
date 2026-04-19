@@ -55,6 +55,11 @@ public class GroupMembershipService : IGroupMembershipService
             _db.AccessGroupMemberships.Remove(existing);
         }
 
+        // Capture the before-state when we are re-activating a previously removed membership.
+        var beforeJson = existing != null
+            ? JsonSerializer.Serialize(new { existing.MembershipStatus, existing.AddedAtUtc, existing.RemovedAtUtc })
+            : null;
+
         var membership = AccessGroupMembership.Create(tenantId, groupId, userId, actorUserId);
         _db.AccessGroupMemberships.Add(membership);
 
@@ -67,7 +72,8 @@ public class GroupMembershipService : IGroupMembershipService
             $"User {userId} added to group '{group.Name}' in tenant {tenantId}.",
             tenantId, actorUserId,
             "AccessGroupMembership", membership.Id.ToString(),
-            after: JsonSerializer.Serialize(new { membership.GroupId, membership.UserId }));
+            before: beforeJson,
+            after: JsonSerializer.Serialize(new { membership.GroupId, membership.UserId, membership.MembershipStatus }));
 
         // Adding a user to a group changes their effective role membership
         // (groups grant roles via GroupRoleAssignment) — refresh notifications.
@@ -88,6 +94,8 @@ public class GroupMembershipService : IGroupMembershipService
                                      && m.MembershipStatus == MembershipStatus.Active, ct);
         if (membership == null) return false;
 
+        // Capture before-state prior to mutation so the audit trail shows the full diff.
+        var beforeJson = JsonSerializer.Serialize(new { membership.MembershipStatus, membership.AddedAtUtc });
         membership.Remove(actorUserId);
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
@@ -100,7 +108,8 @@ public class GroupMembershipService : IGroupMembershipService
             $"User {userId} removed from group {groupId} in tenant {tenantId}.",
             tenantId, actorUserId,
             "AccessGroupMembership", membership.Id.ToString(),
-            after: JsonSerializer.Serialize(new { membership.GroupId, membership.UserId, membership.MembershipStatus }));
+            before: beforeJson,
+            after: JsonSerializer.Serialize(new { membership.GroupId, membership.UserId, membership.MembershipStatus, membership.RemovedAtUtc }));
 
         // Removing a user from a group strips group-granted roles — refresh
         // notifications so role-addressed alerts drop the user immediately.
