@@ -68,10 +68,21 @@ export const PermissionCodes = {
     AuditView:         'TENANT.audit:view',
     InvitationsManage: 'TENANT.invitations:manage',
   },
+
+  Insights: {
+    DashboardView:   'SYNQ_INSIGHTS.dashboard:view',
+    ReportsView:     'SYNQ_INSIGHTS.reports:view',
+    ReportsRun:      'SYNQ_INSIGHTS.reports:run',
+    ReportsExport:   'SYNQ_INSIGHTS.reports:export',
+    ReportsBuild:    'SYNQ_INSIGHTS.reports:build',
+    SchedulesManage: 'SYNQ_INSIGHTS.schedules:manage',
+    SchedulesRun:    'SYNQ_INSIGHTS.schedules:run',
+  },
 } as const;
 
 export type PermissionCode =
   | typeof PermissionCodes.CC[keyof typeof PermissionCodes.CC]
   | typeof PermissionCodes.Lien[keyof typeof PermissionCodes.Lien]
   | typeof PermissionCodes.Fund[keyof typeof PermissionCodes.Fund]
-  | typeof PermissionCodes.Tenant[keyof typeof PermissionCodes.Tenant];
+  | typeof PermissionCodes.Tenant[keyof typeof PermissionCodes.Tenant]
+  | typeof PermissionCodes.Insights[keyof typeof PermissionCodes.Insights];

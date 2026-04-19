@@ -112,4 +112,17 @@ internal static class SeedIds
     public static readonly Guid PermTenantSettingsManage     = new("60000000-0000-0000-0000-000000000035");
     public static readonly Guid PermTenantAuditView          = new("60000000-0000-0000-0000-000000000036");
     public static readonly Guid PermTenantInvitationsManage  = new("60000000-0000-0000-0000-000000000037");
+
+    // ── LS-ID-TNT-022-001: Products — SynqInsights ───────────────────────────────
+    public static readonly Guid ProductSynqInsights = new("10000000-0000-0000-0000-000000000007");
+
+    // ── LS-ID-TNT-022-001: Permissions — Insights (SYNQ_INSIGHTS) ────────────────
+    // IDs 0038-0044, continuing the sequential decimal-in-UUID naming convention.
+    public static readonly Guid PermInsightsDashboardView   = new("60000000-0000-0000-0000-000000000038");
+    public static readonly Guid PermInsightsReportsView     = new("60000000-0000-0000-0000-000000000039");
+    public static readonly Guid PermInsightsReportsRun      = new("60000000-0000-0000-0000-000000000040");
+    public static readonly Guid PermInsightsReportsExport   = new("60000000-0000-0000-0000-000000000041");
+    public static readonly Guid PermInsightsReportsBuild    = new("60000000-0000-0000-0000-000000000042");
+    public static readonly Guid PermInsightsSchedulesManage = new("60000000-0000-0000-0000-000000000043");
+    public static readonly Guid PermInsightsSchedulesRun    = new("60000000-0000-0000-0000-000000000044");
 }

@@ -1045,9 +1045,10 @@ public static class AdminEndpoints
     // Keeps the two representations decoupled without touching the DB schema.
     private static readonly Dictionary<string, string> FrontendToDbProductCode = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["SynqFund"]    = "SYNQ_FUND",
-        ["SynqLien"]    = "SYNQ_LIENS",
-        ["CareConnect"] = "SYNQ_CARECONNECT",
+        ["SynqFund"]      = "SYNQ_FUND",
+        ["SynqLien"]      = "SYNQ_LIENS",
+        ["CareConnect"]   = "SYNQ_CARECONNECT",
+        ["SynqInsights"]  = "SYNQ_INSIGHTS",
     };
 
     // Maps the DB product Code column → the frontend ProductCode (TypeScript).
@@ -1056,6 +1057,7 @@ public static class AdminEndpoints
         ["SYNQ_FUND"]        = "SynqFund",
         ["SYNQ_LIENS"]       = "SynqLien",
         ["SYNQ_CARECONNECT"] = "CareConnect",
+        ["SYNQ_INSIGHTS"]    = "SynqInsights",
     };
 
     private static async Task<IResult> UpdateEntitlement(
