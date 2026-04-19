@@ -5305,3 +5305,56 @@ Investigation Workspace → EventDetailPanel → "Find related events" → `/syn
 
 ### Analysis
 `analysis/Identity/LS-ID-TNT-017-006-report.md`
+
+---
+
+## LS-ID-TNT-017-008 — Audit Analytics (2026-04-19)
+
+### What was built
+An operational analytics layer over the canonical audit event store. Turns the audit system from forensic/investigative into operational/analytical. Zero schema changes — runs entirely over indexed existing fields.
+
+### Backend (apps/services/audit/)
+**New files:**
+- `DTOs/Analytics/` — 7 DTO files: `AuditAnalyticsSummaryRequest`, `AuditAnalyticsSummaryResponse`, `AuditVolumeByDayItem`, `AuditCategoryBreakdownItem`, `AuditSeverityBreakdownItem`, `AuditTopEventTypeItem`, `AuditTopActorItem`, `AuditTopTenantItem`
+- `Services/IAuditAnalyticsService.cs` — service interface
+- `Services/AuditAnalyticsService.cs` — EF Core GroupBy implementation over `AuditEventDbContext`
+- `Controllers/AuditAnalyticsController.cs` — `GET /audit/analytics/summary`
+
+**Modified:**
+- `Program.cs` — `AddScoped<IAuditAnalyticsService, AuditAnalyticsService>()`
+
+**Endpoint:** `GET /audit/analytics/summary?from=&to=&tenantId=&category=`
+
+**Analytics included:**
+- `TotalEvents`, `SecurityEventCount`, `DenialEventCount`, `GovernanceEventCount` (scalar KPIs)
+- `VolumeByDay` — event count per calendar day (UTC), chronological
+- `ByCategory` — count per `EventCategory` (9 values), all indexed
+- `BySeverity` — count per `SeverityLevel` (7 values)
+- `TopEventTypes` — top 15 by count, indexed on `EventType`
+- `TopActors` — top 10 by count, indexed on `ActorId`
+- `TopTenants` — top 10 by count, indexed on `TenantId` — **null for non-platform-admin callers** (tenant isolation enforced)
+
+**Performance guardrails:** Default window 30 days; max 90 days; all queries bounded by date range + indexed fields; Top-N capped at 10-15 rows; `AsNoTracking()` throughout.
+
+### Frontend (apps/control-center/)
+**New files:**
+- `app/synqaudit/analytics/page.tsx` — server component, fetches default 30-day window, passes to client component
+- `components/synqaudit/audit-analytics-dashboard.tsx` — rich client component
+
+**Modified:**
+- `types/control-center.ts` — 7 analytics type interfaces (`AuditAnalyticsSummary`, sub-items)
+- `lib/control-center-api.ts` — `auditCanonical.analyticsSummary(params)` method
+- `lib/nav.ts` — "Analytics" nav item added to SYNQAUDIT section
+
+**Dashboard UI sections:**
+1. Filter bar (from/to date pickers, category selector, tenant ID field, Apply button)
+2. KPI cards (Total Events, Security Events, Access Denials, Governance Actions)
+3. Volume by day — CSS bar chart (no external chart library)
+4. Category + Severity breakdowns — percentage-bar rows
+5. Top Event Types — ranked table with links to Investigation filtered view
+6. Top Actors — ranked table with links to Investigation filtered view
+7. Top Tenants — ranked table (platform admin only; locked state for tenant callers)
+8. Investigation links footer — quick-nav to related audit tools
+
+### Analysis
+`analysis/Identity/LS-ID-TNT-017-008-report.md`

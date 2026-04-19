@@ -128,6 +128,8 @@ import type {
   LegalHold,
   AuditIngestPayload,
   RelatedEventsData,
+  AuditAnalyticsSummary,
+  AuditAnalyticsRequest,
   OrgSummary,
   AccessGroupSummary,
   AccessGroupMember,
@@ -1370,6 +1372,50 @@ export const controlCenterServerApi = {
               event:     mapCanonicalAuditEvent(item['event']),
             };
           }),
+        };
+      } catch {
+        return null;
+      }
+    },
+    /**
+     * GET /audit-service/audit/analytics/summary
+     *
+     * Returns the aggregated analytics summary for the specified window.
+     * Passes optional from/to/tenantId/category filters as query params.
+     * Cache: short TTL (no-store in practice — analytics data changes frequently).
+     */
+    analyticsSummary: async (params: AuditAnalyticsRequest = {}): Promise<AuditAnalyticsSummary | null> => {
+      try {
+        const qs = new URLSearchParams();
+        if (params.from)     qs.set('from',     params.from);
+        if (params.to)       qs.set('to',       params.to);
+        if (params.tenantId) qs.set('tenantId', params.tenantId);
+        if (params.category) qs.set('category', params.category);
+
+        const url = `/audit-service/audit/analytics/summary${qs.size > 0 ? `?${qs.toString()}` : ''}`;
+        const raw = await apiClient.get<unknown>(url, 0, [CACHE_TAGS.auditCanonical]);
+        if (!raw) return null;
+        const data = unwrapApiResponse(raw) as Record<string, unknown>;
+
+        const mapList = <T>(key: string): T[] =>
+          Array.isArray(data[key]) ? (data[key] as T[]) : [];
+
+        return {
+          from:                 (data['from']  as string)  ?? '',
+          to:                   (data['to']    as string)  ?? '',
+          effectiveTenantId:    (data['effectiveTenantId'] as string | null) ?? null,
+          totalEvents:          (data['totalEvents']        as number) ?? 0,
+          securityEventCount:   (data['securityEventCount'] as number) ?? 0,
+          denialEventCount:     (data['denialEventCount']   as number) ?? 0,
+          governanceEventCount: (data['governanceEventCount'] as number) ?? 0,
+          volumeByDay:          mapList('volumeByDay'),
+          byCategory:           mapList('byCategory'),
+          bySeverity:           mapList('bySeverity'),
+          topEventTypes:        mapList('topEventTypes'),
+          topActors:            mapList('topActors'),
+          topTenants:           Array.isArray(data['topTenants'])
+                                  ? (data['topTenants'] as AuditAnalyticsSummary['topTenants'])
+                                  : null,
         };
       } catch {
         return null;

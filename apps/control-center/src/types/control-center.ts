@@ -499,6 +499,72 @@ export interface RelatedEventsData {
   related:        RelatedAuditEvent[];
 }
 
+// ── SynqAudit — Audit Analytics ──────────────────────────────────────────────
+
+/** Event count for a single calendar day. */
+export interface AuditVolumeByDayItem {
+  date:  string; // "yyyy-MM-dd"
+  count: number;
+}
+
+/** Event count for a single EventCategory. */
+export interface AuditCategoryBreakdownItem {
+  category:      string;
+  categoryValue: number;
+  count:         number;
+}
+
+/** Event count for a single SeverityLevel. */
+export interface AuditSeverityBreakdownItem {
+  severity:      string;
+  severityValue: number;
+  count:         number;
+}
+
+/** A single event type ranked by count. */
+export interface AuditTopEventTypeItem {
+  eventType: string;
+  count:     number;
+}
+
+/** An actor ranked by event count. */
+export interface AuditTopActorItem {
+  actorId:   string;
+  actorName: string | null;
+  count:     number;
+}
+
+/** A tenant ranked by event count (platform admin only). */
+export interface AuditTopTenantItem {
+  tenantId: string;
+  count:    number;
+}
+
+/** Full analytics summary from GET /audit/analytics/summary. */
+export interface AuditAnalyticsSummary {
+  from:                  string; // ISO-8601
+  to:                    string;
+  effectiveTenantId:     string | null;
+  totalEvents:           number;
+  securityEventCount:    number;
+  denialEventCount:      number;
+  governanceEventCount:  number;
+  volumeByDay:           AuditVolumeByDayItem[];
+  byCategory:            AuditCategoryBreakdownItem[];
+  bySeverity:            AuditSeverityBreakdownItem[];
+  topEventTypes:         AuditTopEventTypeItem[];
+  topActors:             AuditTopActorItem[];
+  topTenants:            AuditTopTenantItem[] | null;
+}
+
+/** Filter params for the analytics summary request. */
+export interface AuditAnalyticsRequest {
+  from?:     string;
+  to?:       string;
+  tenantId?: string;
+  category?: string;
+}
+
 // ── SynqAudit — Event Ingest (server-side canonical emission) ─────────────────
 
 /** Payload for POST /audit-service/audit/ingest — used by CC server actions. */
