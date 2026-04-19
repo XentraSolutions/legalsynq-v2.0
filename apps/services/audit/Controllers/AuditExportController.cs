@@ -5,8 +5,13 @@ using PlatformAuditEventService.Authorization;
 using PlatformAuditEventService.Configuration;
 using PlatformAuditEventService.DTOs;
 using PlatformAuditEventService.DTOs.Export;
+using PlatformAuditEventService.DTOs.Ingest;
+using PlatformAuditEventService.Enums;
 using PlatformAuditEventService.Services;
 using PlatformAuditEventService.Utilities;
+
+// Disambiguate internal ingest DTO from external client DTO aliases.
+using IngestRequest = PlatformAuditEventService.DTOs.Ingest.IngestAuditEventRequest;
 
 namespace PlatformAuditEventService.Controllers;
 
@@ -39,6 +44,10 @@ namespace PlatformAuditEventService.Controllers;
 /// Step 21 hardening:
 ///   All error paths now return the ApiResponse&lt;T&gt; envelope for client-contract
 ///   consistency. Raw anonymous objects have been replaced throughout.
+///
+/// LS-ID-TNT-017-002-01:
+///   Successful export submission emits <c>audit.log.exported</c> via the canonical
+///   ingestion pipeline (fire-and-observe, same pattern as AuditEventQueryController).
 /// </summary>
 [ApiController]
 [Route("audit")]
@@ -46,20 +55,23 @@ namespace PlatformAuditEventService.Controllers;
 public sealed class AuditExportController : ControllerBase
 {
     private readonly IAuditExportService                _exportService;
+    private readonly IAuditEventIngestionService        _ingestionService;
     private readonly IValidator<ExportRequest>          _validator;
     private readonly ExportOptions                      _exportOpts;
     private readonly ILogger<AuditExportController>     _logger;
 
     public AuditExportController(
         IAuditExportService             exportService,
+        IAuditEventIngestionService     ingestionService,
         IValidator<ExportRequest>       validator,
         IOptions<ExportOptions>         exportOpts,
         ILogger<AuditExportController>  logger)
     {
-        _exportService = exportService;
-        _validator     = validator;
-        _exportOpts    = exportOpts.Value;
-        _logger        = logger;
+        _exportService    = exportService;
+        _ingestionService = ingestionService;
+        _validator        = validator;
+        _exportOpts       = exportOpts.Value;
+        _logger           = logger;
     }
 
     // ── POST /audit/exports ───────────────────────────────────────────────────
@@ -115,6 +127,13 @@ public sealed class AuditExportController : ControllerBase
         try
         {
             var result = await _exportService.SubmitAsync(request, caller, ct);
+
+            // ── Canonical audit: audit.log.exported ───────────────────────────
+            // LS-ID-TNT-017-002-01: Emit a governance access event capturing who
+            // initiated this audit log data export. Fire-and-observe — the 202 response
+            // is never gated on audit publish success.
+            LogAuditExport(caller, result, traceId);
+
             return StatusCode(StatusCodes.Status202Accepted,
                 ApiResponse<ExportStatusResponse>.Ok(result, traceId: traceId));
         }
@@ -192,5 +211,78 @@ public sealed class AuditExportController : ControllerBase
 
         result = null;
         return true;
+    }
+
+    /// <summary>
+    /// Emits a <c>audit.log.exported</c> canonical audit event when an audit log
+    /// export job is successfully submitted.
+    ///
+    /// LS-ID-TNT-017-002-01: Selective Successful Access Audit.
+    ///
+    /// Fire-and-observe: the returned Task is discarded. This method never throws,
+    /// and the 202 response is always returned regardless of audit publish outcome.
+    ///
+    /// Mirrors the <c>LogAuditAccess</c> pattern from <see cref="AuditEventQueryController"/>:
+    ///   - same ingestion service
+    ///   - same EventCategory.Access
+    ///   - same VisibilityScope.Platform
+    ///   - same tenant isolation via caller.TenantId
+    /// </summary>
+    private void LogAuditExport(
+        IQueryCallerContext  caller,
+        ExportStatusResponse result,
+        string?              traceId)
+    {
+        _logger.LogInformation(
+            "AuditExport: ExportId={ExportId} Scope={Scope} AuthMode={AuthMode} Format={Format} RecordCount={RecordCount} TraceId={TraceId}",
+            result.ExportId,
+            caller.Scope,
+            caller.AuthMode,
+            result.Format,
+            result.RecordCount ?? 0,
+            traceId ?? "(no-trace)");
+
+        var now = DateTimeOffset.UtcNow;
+        _ = _ingestionService.IngestSingleAsync(new IngestRequest
+        {
+            EventType       = "audit.log.exported",
+            EventCategory   = EventCategory.Access,
+            SourceSystem    = "audit",
+            SourceService   = "audit-export-api",
+            Visibility      = VisibilityScope.Platform,
+            Severity        = SeverityLevel.Warn,
+            OccurredAtUtc   = now,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = caller.TenantId,
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = caller.UserId,
+                Type = ActorType.User,
+                Name = caller.UserId ?? "(anonymous)",
+            },
+            Entity = new AuditEventEntityDto
+            {
+                Type = "AuditExport",
+                Id   = result.ExportId.ToString(),
+            },
+            Action      = "ExportSubmitted",
+            Description = $"Audit log export submitted — {result.RecordCount ?? 0} record(s), format={result.Format}.",
+            Metadata    = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                endpoint       = "POST /audit/exports",
+                exportId       = result.ExportId,
+                format         = result.Format,
+                recordCount    = result.RecordCount ?? 0,
+                callerScope    = caller.Scope.ToString(),
+                callerAuthMode = caller.AuthMode,
+                traceId        = traceId ?? "(none)",
+            }),
+            CorrelationId  = traceId,
+            IdempotencyKey = $"audit-export:{result.ExportId}",
+            Tags           = ["audit-of-audit", "export", "data-egress"],
+        });
     }
 }
