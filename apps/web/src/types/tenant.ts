@@ -360,3 +360,10 @@ export interface TenantRoleItem {
   productCode?:  string;
   productName?:  string;
 }
+
+export interface TenantRolesListResponse {
+  items:      TenantRoleItem[];
+  totalCount: number;
+  page:       number;
+  pageSize:   number;
+}

@@ -22,7 +22,7 @@ export default async function PermissionsPage() {
     }
 
     if (rolesResult.status === 'fulfilled') {
-      roles = rolesResult.value;
+      roles = rolesResult.value?.items ?? [];
     }
 
     if (catalogResult.status === 'rejected' && rolesResult.status === 'rejected') {

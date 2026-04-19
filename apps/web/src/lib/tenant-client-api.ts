@@ -7,6 +7,7 @@ import type {
   AccessDebugResponse,
   SimulationRequest,
   SimulationResult,
+  TenantRolesListResponse,
 } from '@/types/tenant';
 
 export { ApiError };
@@ -47,7 +48,7 @@ export const tenantClientApi = {
       `/identity/api/admin/users/${userId}/resend-invite`, {}),
 
   getRoles: () =>
-    apiClient.get<{ id: string; name: string; isSystemRole: boolean; isProductRole: boolean; productCode?: string; productName?: string }[]>('/identity/api/admin/roles'),
+    apiClient.get<TenantRolesListResponse>('/identity/api/admin/roles'),
 
   getUserDetail: (userId: string) =>
     apiClient.get<TenantUserDetail>(`/identity/api/admin/users/${userId}`),

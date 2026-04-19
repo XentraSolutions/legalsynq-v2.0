@@ -35,7 +35,7 @@ export default async function AccessPage() {
     users = results[0].status === 'fulfilled' ? results[0].value.items : [];
     groups = results[1].status === 'fulfilled' ? results[1].value : [];
     permissions = results[2].status === 'fulfilled' ? results[2].value.items : [];
-    roles = results[3].status === 'fulfilled' ? results[3].value : [];
+    roles = results[3].status === 'fulfilled' ? (results[3].value?.items ?? []) : [];
 
     if (results[0].status === 'rejected' && results[1].status === 'rejected') {
       fetchError = 'Failed to load access data. Is the identity service running?';

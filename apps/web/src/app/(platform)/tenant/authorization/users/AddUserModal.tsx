@@ -79,7 +79,7 @@ export function AddUserModal({ open, tenantId, onClose, onSuccess }: AddUserModa
     setRolesError(null);
     try {
       const { data } = await tenantClientApi.getRoles();
-      setRoles((data ?? []).filter(isTenantRelevantRole));
+      setRoles((data?.items ?? []).filter(isTenantRelevantRole));
     } catch {
       setRolesError('Unable to load roles right now.');
     } finally {

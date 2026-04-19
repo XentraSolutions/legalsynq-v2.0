@@ -45,7 +45,7 @@ export default async function GroupDetailPage({ params }: Props) {
     products = results[1].status === 'fulfilled' ? results[1].value : [];
     roles = results[2].status === 'fulfilled' ? results[2].value : [];
     allUsers = results[3].status === 'fulfilled' ? results[3].value : [];
-    allRoles = results[4].status === 'fulfilled' ? results[4].value : [];
+    allRoles = results[4].status === 'fulfilled' ? (results[4].value?.items ?? []) : [];
   }
 
   if (fetchError || !group) {
