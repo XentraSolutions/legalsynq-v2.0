@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BuildingBlocks.Notifications;
 using Liens.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -35,27 +36,28 @@ public sealed class NotificationPublisher : INotificationPublisher
         {
             var client = _httpClientFactory.CreateClient("NotificationsService");
 
-            var payload = new
+            var request = new NotificationsProducerRequest
             {
-                channel = "event",
-                templateKey = notificationType,
-                templateData = data,
-                productType = "synqliens",
-                recipient = new { tenantId = tenantId.ToString() },
-                message = new { type = notificationType },
-                metadata = new Dictionary<string, string>
+                Channel      = "event",
+                ProductKey   = "liens",
+                EventKey     = notificationType,
+                SourceSystem = "liens-service",
+                TemplateKey  = notificationType,
+                TemplateData = data,
+                Recipient    = new NotificationsRecipient { TenantId = tenantId.ToString() },
+                Message      = new { type = notificationType },
+                Metadata     = new Dictionary<string, string>
                 {
-                    ["source"] = "liens-service",
                     ["notificationType"] = notificationType,
-                    ["tenantId"] = tenantId.ToString(),
+                    ["tenantId"]         = tenantId.ToString(),
                 },
             };
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/notifications");
-            request.Headers.Add("X-Tenant-Id", tenantId.ToString());
-            request.Content = JsonContent.Create(payload, options: JsonOpts);
+            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/v1/notifications");
+            httpRequest.Headers.Add("X-Tenant-Id", tenantId.ToString());
+            httpRequest.Content = JsonContent.Create(request, options: JsonOpts);
 
-            var response = await client.SendAsync(request, CancellationToken.None);
+            var response = await client.SendAsync(httpRequest, CancellationToken.None);
 
             if (response.IsSuccessStatusCode)
             {

@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BuildingBlocks.Notifications;
 using Microsoft.Extensions.Logging;
 using Comms.Application.Interfaces;
 
@@ -34,14 +35,14 @@ public sealed class NotificationsServiceClient : INotificationsServiceClient
 
             var templateData = new Dictionary<string, string>
             {
-                ["subject"] = payload.Subject,
-                ["bodyText"] = payload.BodyText ?? string.Empty,
-                ["bodyHtml"] = payload.BodyHtml ?? string.Empty,
-                ["fromEmail"] = payload.FromEmail,
-                ["fromDisplayName"] = payload.FromDisplayName,
-                ["internetMessageId"] = payload.InternetMessageId,
-                ["inReplyToMessageId"] = payload.InReplyToMessageId ?? string.Empty,
-                ["referencesHeader"] = payload.ReferencesHeader ?? string.Empty,
+                ["subject"]              = payload.Subject,
+                ["bodyText"]             = payload.BodyText ?? string.Empty,
+                ["bodyHtml"]             = payload.BodyHtml ?? string.Empty,
+                ["fromEmail"]            = payload.FromEmail,
+                ["fromDisplayName"]      = payload.FromDisplayName,
+                ["internetMessageId"]    = payload.InternetMessageId,
+                ["inReplyToMessageId"]   = payload.InReplyToMessageId ?? string.Empty,
+                ["referencesHeader"]     = payload.ReferencesHeader ?? string.Empty,
             };
             if (!string.IsNullOrWhiteSpace(payload.ReplyToEmail))
                 templateData["replyToEmail"] = payload.ReplyToEmail;
@@ -52,55 +53,45 @@ public sealed class NotificationsServiceClient : INotificationsServiceClient
                     templateData[kvp.Key] = kvp.Value;
             }
 
-            var metadata = new Dictionary<string, string>
+            var notificationRequest = new NotificationsProducerRequest
             {
-                ["source"] = "comms-service",
-                ["internetMessageId"] = payload.InternetMessageId,
-                ["tenantId"] = payload.TenantId.ToString(),
-            };
-            if (!string.IsNullOrWhiteSpace(payload.TemplateKey))
-                metadata["templateKey"] = payload.TemplateKey;
-
-            var notificationPayload = new
-            {
-                channel = "email",
-                templateKey = payload.TemplateKey ?? "comms_outbound_email",
-                templateData,
-                productType = "commss",
-                recipient = new
+                Channel      = "email",
+                ProductKey   = "comms",
+                EventKey     = "comms.outbound_email",
+                SourceSystem = "comms-service",
+                TemplateKey  = payload.TemplateKey ?? "comms_outbound_email",
+                TemplateData = templateData,
+                IdempotencyKey = payload.IdempotencyKey,
+                Recipient    = new NotificationsRecipient
                 {
-                    tenantId = payload.TenantId.ToString(),
-                    email = payload.ToAddresses,
-                    cc = payload.CcAddresses,
-                    bcc = payload.BccAddresses,
+                    TenantId = payload.TenantId.ToString(),
+                    Email    = payload.ToAddresses,
+                    Cc       = payload.CcAddresses,
+                    Bcc      = payload.BccAddresses,
                 },
-                sender = new
+                Message      = new
                 {
-                    email = payload.FromEmail,
-                    displayName = payload.FromDisplayName,
-                    replyTo = payload.ReplyToEmail,
+                    type        = "outbound_email",
+                    subject     = payload.Subject,
+                    body        = payload.BodyHtml ?? payload.BodyText ?? string.Empty,
+                    textBody    = payload.BodyText,
+                    sender      = new
+                    {
+                        email       = payload.FromEmail,
+                        displayName = payload.FromDisplayName,
+                        replyTo     = payload.ReplyToEmail,
+                    },
                 },
-                message = new
+                Metadata     = new Dictionary<string, string>
                 {
-                    type = "outbound_email",
-                    subject = payload.Subject,
-                    body = payload.BodyHtml ?? payload.BodyText ?? string.Empty,
-                    textBody = payload.BodyText,
+                    ["internetMessageId"] = payload.InternetMessageId,
+                    ["tenantId"]         = payload.TenantId.ToString(),
                 },
-                attachments = payload.Attachments?.Select(a => new
-                {
-                    documentId = a.DocumentId.ToString(),
-                    fileName = a.FileName,
-                    contentType = a.ContentType,
-                    fileSizeBytes = a.FileSizeBytes,
-                }).ToArray(),
-                metadata,
-                idempotencyKey = payload.IdempotencyKey,
             };
 
             using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/notifications");
             request.Headers.Add("X-Tenant-Id", payload.TenantId.ToString());
-            request.Content = JsonContent.Create(notificationPayload, options: JsonOpts);
+            request.Content = JsonContent.Create(notificationRequest, options: JsonOpts);
 
             var response = await client.SendAsync(request, ct);
             var responseBody = await response.Content.ReadAsStringAsync(ct);
@@ -159,48 +150,47 @@ public sealed class NotificationsServiceClient : INotificationsServiceClient
 
             var templateData = new Dictionary<string, string>
             {
-                ["triggerType"] = payload.TriggerType,
-                ["conversationId"] = payload.ConversationId.ToString(),
-                ["priority"] = payload.Priority,
-                ["dueAtUtc"] = payload.DueAtUtc.ToString("O"),
-                ["conversationSubject"] = payload.ConversationSubject ?? string.Empty,
+                ["triggerType"]          = payload.TriggerType,
+                ["conversationId"]       = payload.ConversationId.ToString(),
+                ["priority"]             = payload.Priority,
+                ["dueAtUtc"]             = payload.DueAtUtc.ToString("O"),
+                ["conversationSubject"]  = payload.ConversationSubject ?? string.Empty,
             };
 
             if (payload.QueueId.HasValue)
                 templateData["queueId"] = payload.QueueId.Value.ToString();
 
-            var metadata = new Dictionary<string, string>
+            var notificationRequest = new NotificationsProducerRequest
             {
-                ["source"] = "comms-service",
-                ["tenantId"] = payload.TenantId.ToString(),
-                ["triggerType"] = payload.TriggerType,
-                ["conversationId"] = payload.ConversationId.ToString(),
-            };
-
-            var notificationPayload = new
-            {
-                channel = "internal",
-                templateKey = payload.TriggerType,
-                templateData,
-                productType = "commss",
-                recipient = new
+                Channel      = "internal",
+                ProductKey   = "comms",
+                EventKey     = $"comms.sla_alert.{payload.TriggerType}",
+                SourceSystem = "comms-service",
+                TemplateKey  = payload.TriggerType,
+                TemplateData = templateData,
+                IdempotencyKey = payload.IdempotencyKey,
+                Recipient    = new NotificationsRecipient
                 {
-                    tenantId = payload.TenantId.ToString(),
-                    userId = payload.TargetUserId.ToString(),
+                    TenantId = payload.TenantId.ToString(),
+                    UserId   = payload.TargetUserId.ToString(),
                 },
-                message = new
+                Message      = new
                 {
-                    type = "operational_alert",
+                    type    = "operational_alert",
                     subject = $"SLA Alert: {payload.TriggerType}",
-                    body = $"SLA {payload.TriggerType} for conversation {payload.ConversationSubject ?? payload.ConversationId.ToString()}. Priority: {payload.Priority}. Due: {payload.DueAtUtc:O}",
+                    body    = $"SLA {payload.TriggerType} for conversation {payload.ConversationSubject ?? payload.ConversationId.ToString()}. Priority: {payload.Priority}. Due: {payload.DueAtUtc:O}",
                 },
-                metadata,
-                idempotencyKey = payload.IdempotencyKey,
+                Metadata     = new Dictionary<string, string>
+                {
+                    ["triggerType"]    = payload.TriggerType,
+                    ["conversationId"] = payload.ConversationId.ToString(),
+                    ["tenantId"]       = payload.TenantId.ToString(),
+                },
             };
 
             using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/notifications");
             request.Headers.Add("X-Tenant-Id", payload.TenantId.ToString());
-            request.Content = JsonContent.Create(notificationPayload, options: JsonOpts);
+            request.Content = JsonContent.Create(notificationRequest, options: JsonOpts);
 
             var response = await client.SendAsync(request, ct);
             var responseBody = await response.Content.ReadAsStringAsync(ct);

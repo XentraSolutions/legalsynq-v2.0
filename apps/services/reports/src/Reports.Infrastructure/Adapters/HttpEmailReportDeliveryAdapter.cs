@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using BuildingBlocks.Notifications;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Reports.Contracts.Configuration;
@@ -63,7 +64,9 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
             }
         }
 
-        var notificationId = Guid.NewGuid().ToString("N");
+        // Stable idempotency key for this delivery attempt — prevents duplicate
+        // sends when the client-side retry loop fires after a server-side transient error.
+        var idempotencyKey = Guid.NewGuid().ToString("N");
         int attempt = 0;
         int maxAttempts = Math.Max(1, _settings.MaxRetries + 1);
         Exception? lastException = null;
@@ -75,29 +78,45 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
             {
                 var client = _httpClientFactory.CreateClient("EmailDelivery");
 
-                var payload = new
+                var notificationRequest = new NotificationsProducerRequest
                 {
-                    channel = "email",
-                    templateKey = "report.delivery",
-                    templateData = new Dictionary<string, string>
+                    Channel      = "email",
+                    ProductKey   = "reports",
+                    EventKey     = "report.delivery",
+                    SourceSystem = "reports-service",
+                    TemplateKey  = "report.delivery",
+                    IdempotencyKey = idempotencyKey,
+                    TemplateData = new Dictionary<string, string>
                     {
                         ["recipients"] = recipients,
-                        ["subject"] = subject ?? $"Report: {fileName}",
-                        ["message"] = message ?? $"Your report '{fileName}' is attached.",
-                        ["fileName"] = fileName,
-                        ["fileSize"] = fileContent.Length.ToString(),
+                        ["subject"]    = subject ?? $"Report: {fileName}",
+                        ["message"]    = message ?? $"Your report '{fileName}' is attached.",
+                        ["fileName"]   = fileName,
+                        ["fileSize"]   = fileContent.Length.ToString(),
                     },
-                    productType = "reports",
-                    recipient = new { email = recipients },
-                    message = new { type = "report.delivery" },
-                    metadata = new Dictionary<string, string>
+                    Recipient    = new NotificationsRecipient { Email = recipients },
+                    Message      = new { type = "report.delivery" },
+                    Metadata     = new Dictionary<string, string>
                     {
-                        ["source"] = "reports-service",
-                        ["notificationType"] = "report.delivery",
-                        ["notificationId"] = notificationId,
                         ["fileName"] = fileName,
                     },
-                    attachment = new
+                };
+
+                // Attachment is outside the canonical contract — passed as an extra field
+                // because the Notifications service supports arbitrary JSON on the request.
+                var payloadWithAttachment = new
+                {
+                    channel        = notificationRequest.Channel,
+                    productKey     = notificationRequest.ProductKey,
+                    eventKey       = notificationRequest.EventKey,
+                    sourceSystem   = notificationRequest.SourceSystem,
+                    templateKey    = notificationRequest.TemplateKey,
+                    idempotencyKey = notificationRequest.IdempotencyKey,
+                    templateData   = notificationRequest.TemplateData,
+                    recipient      = notificationRequest.Recipient,
+                    message        = notificationRequest.Message,
+                    metadata       = notificationRequest.Metadata,
+                    attachment     = new
                     {
                         fileName,
                         contentType,
@@ -110,7 +129,7 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
                     request.Headers.Add("X-Tenant-Id", tenantId);
                 if (!string.IsNullOrEmpty(_settings.ServiceToken))
                     request.Headers.Add("Authorization", $"Bearer {_settings.ServiceToken}");
-                request.Content = JsonContent.Create(payload, options: JsonOpts);
+                request.Content = JsonContent.Create(payloadWithAttachment, options: JsonOpts);
 
                 var response = await client.SendAsync(request, ct);
 
@@ -119,8 +138,8 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
                 if (response.IsSuccessStatusCode)
                 {
                     _log.LogInformation(
-                        "Email delivery success: file={FileName} recipients={Recipients} notificationId={NotificationId} durationMs={DurationMs}",
-                        fileName, recipients, notificationId, sw.ElapsedMilliseconds);
+                        "Email delivery success: file={FileName} recipients={Recipients} idempotencyKey={IdempotencyKey} durationMs={DurationMs}",
+                        fileName, recipients, idempotencyKey, sw.ElapsedMilliseconds);
 
                     return new DeliveryResult
                     {
@@ -128,9 +147,9 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
                         Method = MethodName,
                         Message = $"Email delivered to {recipients} with attachment {fileName}.",
                         DeliveredAtUtc = DateTimeOffset.UtcNow,
-                        ExternalReferenceId = notificationId,
+                        ExternalReferenceId = idempotencyKey,
                         DurationMs = sw.ElapsedMilliseconds,
-                        DetailJson = JsonSerializer.Serialize(new { recipients, fileName, fileSize = fileContent.Length, notificationId }),
+                        DetailJson = JsonSerializer.Serialize(new { recipients, fileName, fileSize = fileContent.Length, idempotencyKey }),
                     };
                 }
 
@@ -157,7 +176,7 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
                     Method = MethodName,
                     Message = $"Email delivery failed: HTTP {(int)response.StatusCode} — {body}",
                     DeliveredAtUtc = DateTimeOffset.UtcNow,
-                    ExternalReferenceId = notificationId,
+                    ExternalReferenceId = idempotencyKey,
                     DurationMs = sw.ElapsedMilliseconds,
                     IsRetryable = isServerError,
                     DetailJson = JsonSerializer.Serialize(new { recipients, fileName, statusCode = (int)response.StatusCode, error = body, attempts = attempt }),
@@ -185,7 +204,7 @@ public sealed class HttpEmailReportDeliveryAdapter : IReportDeliveryAdapter
             Method = MethodName,
             Message = $"Email delivery failed after {attempt} attempt(s): {lastException?.Message}",
             DeliveredAtUtc = DateTimeOffset.UtcNow,
-            ExternalReferenceId = notificationId,
+            ExternalReferenceId = idempotencyKey,
             DurationMs = sw.ElapsedMilliseconds,
             IsRetryable = lastException is HttpRequestException or TimeoutException,
             DetailJson = JsonSerializer.Serialize(new { recipients, fileName, error = lastException?.Message, attempts = attempt }),

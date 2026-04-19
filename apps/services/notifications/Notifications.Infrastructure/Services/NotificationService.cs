@@ -1170,8 +1170,29 @@ public class NotificationServiceImpl : INotificationService
 
     private async Task<NotificationResultDto> DispatchSingleAsync(Guid tenantId, SubmitNotificationDto request, string recipientJson)
     {
-        var messageJson  = JsonSerializer.Serialize(request.Message);
-        var metadataJson = request.Metadata != null ? JsonSerializer.Serialize(request.Metadata) : null;
+        var messageJson = JsonSerializer.Serialize(request.Message);
+
+        // Merge canonical producer context fields into metadata (LS-NOTIF-CORE-020).
+        // Producer-supplied metadata is preserved; canonical fields are added as
+        // fallback keys so they never overwrite intentional metadata values.
+        Dictionary<string, object?> metaDict;
+        if (request.Metadata != null)
+        {
+            try
+            {
+                var raw = JsonSerializer.Serialize(request.Metadata);
+                metaDict = JsonSerializer.Deserialize<Dictionary<string, object?>>(raw) ?? new();
+            }
+            catch { metaDict = new(); }
+        }
+        else { metaDict = new(); }
+
+        if (!string.IsNullOrEmpty(request.EventKey))      metaDict.TryAdd("eventKey",      request.EventKey);
+        if (!string.IsNullOrEmpty(request.SourceSystem))  metaDict.TryAdd("sourceSystem",  request.SourceSystem);
+        if (!string.IsNullOrEmpty(request.CorrelationId)) metaDict.TryAdd("correlationId", request.CorrelationId);
+        if (!string.IsNullOrEmpty(request.RequestedBy))   metaDict.TryAdd("requestedBy",   request.RequestedBy);
+
+        var metadataJson = metaDict.Count > 0 ? JsonSerializer.Serialize(metaDict) : null;
 
         if (!string.IsNullOrEmpty(request.IdempotencyKey))
         {
@@ -1198,6 +1219,9 @@ public class NotificationServiceImpl : INotificationService
             });
         }
 
+        // Canonical product key: prefer ProductKey, fall back to legacy ProductType.
+        var effectiveProductKey = request.ProductKey ?? request.ProductType;
+
         var notification = new Notification
         {
             TenantId = tenantId, Channel = request.Channel, Status = "accepted",
@@ -1207,7 +1231,7 @@ public class NotificationServiceImpl : INotificationService
             BlockedReasonCode = enforcement is { Allowed: false } ? enforcement.ReasonCode : null,
             OverrideUsed = enforcement?.OverrideUsed ?? false,
             Severity = request.Severity,
-            Category = request.Category
+            Category = request.Category ?? effectiveProductKey
         };
 
         if (enforcement is { Allowed: false })
@@ -1224,8 +1248,8 @@ public class NotificationServiceImpl : INotificationService
         if (!string.IsNullOrEmpty(request.TemplateKey) && request.TemplateData != null)
         {
             ResolvedTemplate? resolved;
-            if (!string.IsNullOrEmpty(request.ProductType))
-                resolved = await _templateResolution.ResolveByProductAsync(tenantId, request.TemplateKey, request.Channel, request.ProductType);
+            if (!string.IsNullOrEmpty(effectiveProductKey))
+                resolved = await _templateResolution.ResolveByProductAsync(tenantId, request.TemplateKey, request.Channel, effectiveProductKey);
             else
                 resolved = await _templateResolution.ResolveAsync(tenantId, request.TemplateKey, request.Channel);
 
@@ -1235,9 +1259,9 @@ public class NotificationServiceImpl : INotificationService
                 templateVersionId = resolved.Version.Id;
 
                 RenderResult rendered;
-                if (request.BrandedRendering == true && !string.IsNullOrEmpty(request.ProductType))
+                if (request.BrandedRendering == true && !string.IsNullOrEmpty(effectiveProductKey))
                 {
-                    var branding = await _brandingResolution.ResolveAsync(tenantId, request.ProductType);
+                    var branding = await _brandingResolution.ResolveAsync(tenantId, effectiveProductKey);
                     var tokens = _brandingResolution.BuildBrandingTokens(branding);
                     rendered = _templateRendering.RenderBranded(resolved.Version.SubjectTemplate, resolved.Version.BodyTemplate, resolved.Version.TextTemplate, request.TemplateData, tokens);
                 }
@@ -1336,7 +1360,7 @@ public class NotificationServiceImpl : INotificationService
                 : $"fanout: resolved={summary.TotalResolved} sent={summary.SentCount} " +
                   $"failed={summary.FailedCount} blocked={summary.BlockedCount} skipped={summary.SkippedCount}",
             Severity = request.Severity,
-            Category = request.Category,
+            Category = request.Category ?? request.ProductKey ?? request.ProductType,
         };
         return await _notificationRepo.CreateAsync(parent);
     }
@@ -1426,9 +1450,17 @@ public class NotificationServiceImpl : INotificationService
             TemplateKey    = src.TemplateKey,
             TemplateData   = src.TemplateData,
             ProductType    = src.ProductType,
+            ProductKey     = src.ProductKey,
+            EventKey       = src.EventKey,
+            SourceSystem   = src.SourceSystem,
+            CorrelationId  = src.CorrelationId,
+            RequestedBy    = src.RequestedBy,
+            Priority       = src.Priority,
             BrandedRendering  = src.BrandedRendering,
             OverrideSuppression = src.OverrideSuppression,
             OverrideReason = src.OverrideReason,
+            Severity       = src.Severity,
+            Category       = src.Category,
         };
     }
 
