@@ -6,21 +6,57 @@ namespace Notifications.Api.Endpoints;
 
 public static class ProviderEndpoints
 {
+    // Platform-default routing priority (mirrors ProviderRoutingService.PlatformProviderPriority)
+    private static readonly Dictionary<string, string[]> PlatformPriority = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["email"] = new[] { "sendgrid", "smtp" },
+        ["sms"]   = new[] { "twilio" },
+        ["push"]  = Array.Empty<string>(),
+    };
+
+    private static readonly Dictionary<string, string> ProviderDisplayNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["sendgrid"] = "SendGrid",
+        ["smtp"]     = "SMTP",
+        ["twilio"]   = "Twilio",
+    };
+
     public static void MapProviderEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/v1/providers").WithTags("Providers");
 
+        // ── Catalog ────────────────────────────────────────────────────────────────
+        // Static list of all provider types supported by the platform.
+        // No auth / tenant scope needed — this is purely informational.
+        group.MapGet("/catalog", () =>
+        {
+            var catalog = PlatformPriority
+                .SelectMany(kv => kv.Value.Select(providerType => new
+                {
+                    providerType,
+                    channel     = kv.Key,
+                    displayName = ProviderDisplayNames.TryGetValue(providerType, out var name) ? name : providerType,
+                }))
+                .ToArray();
+
+            return Results.Ok(catalog);
+        });
+
+        // ── Configs ────────────────────────────────────────────────────────────────
+
         group.MapGet("/configs", async (HttpContext context, ITenantProviderConfigService service, string? channel) =>
         {
-            var tenantId = context.GetTenantId();
-            var result = await service.ListAsync(tenantId, channel);
+            var tenantId = context.TryGetTenantId();
+            if (tenantId == null) return Results.Ok(Array.Empty<TenantProviderConfigDto>());
+            var result = await service.ListAsync(tenantId.Value, channel);
             return Results.Ok(result);
         });
 
         group.MapGet("/configs/{id:guid}", async (HttpContext context, ITenantProviderConfigService service, Guid id) =>
         {
-            var tenantId = context.GetTenantId();
-            var result = await service.GetByIdAsync(tenantId, id);
+            var tenantId = context.TryGetTenantId();
+            if (tenantId == null) return Results.NotFound();
+            var result = await service.GetByIdAsync(tenantId.Value, id);
             return result != null ? Results.Ok(result) : Results.NotFound();
         });
 
@@ -59,18 +95,42 @@ public static class ProviderEndpoints
             return Results.Ok(result);
         });
 
+        // ── Channel settings ───────────────────────────────────────────────────────
+
         group.MapGet("/channel-settings", async (HttpContext context, ITenantChannelProviderSettingRepository repo) =>
         {
-            var tenantId = context.GetTenantId();
-            var settings = await repo.GetByTenantAsync(tenantId);
-            return Results.Ok(settings.Select(s => new TenantChannelSettingDto
+            var tenantId = context.TryGetTenantId();
+            var settings = tenantId.HasValue
+                ? await repo.GetByTenantAsync(tenantId.Value)
+                : Enumerable.Empty<Domain.TenantChannelProviderSetting>();
+
+            var response = settings.Select(s =>
             {
-                Id = s.Id, TenantId = s.TenantId, Channel = s.Channel, ProviderMode = s.ProviderMode,
-                PrimaryTenantProviderConfigId = s.PrimaryTenantProviderConfigId,
-                FallbackTenantProviderConfigId = s.FallbackTenantProviderConfigId,
-                AllowPlatformFallback = s.AllowPlatformFallback, AllowAutomaticFailover = s.AllowAutomaticFailover,
-                CreatedAt = s.CreatedAt, UpdatedAt = s.UpdatedAt
-            }));
+                // Resolve human-readable provider names from the platform priority list
+                // when the channel operates in platform-managed mode.
+                PlatformPriority.TryGetValue(s.Channel, out var priorityList);
+                var primaryProvider  = priorityList is { Length: > 0 } ? priorityList[0] : null;
+                var fallbackProvider = priorityList is { Length: > 1 } ? priorityList[1] : null;
+
+                return new
+                {
+                    id                             = s.Id,
+                    tenantId                       = s.TenantId,
+                    channel                        = s.Channel,
+                    mode                           = s.ProviderMode,   // alias expected by UI
+                    providerMode                   = s.ProviderMode,
+                    primaryProvider,
+                    fallbackProvider,
+                    primaryTenantProviderConfigId  = s.PrimaryTenantProviderConfigId,
+                    fallbackTenantProviderConfigId = s.FallbackTenantProviderConfigId,
+                    allowPlatformFallback          = s.AllowPlatformFallback,
+                    allowAutomaticFailover         = s.AllowAutomaticFailover,
+                    createdAt                      = s.CreatedAt,
+                    updatedAt                      = s.UpdatedAt,
+                };
+            });
+
+            return Results.Ok(response);
         });
 
         group.MapPut("/channel-settings/{channel}", async (HttpContext context, ITenantChannelProviderSettingRepository repo, string channel, UpdateChannelSettingDto request) =>

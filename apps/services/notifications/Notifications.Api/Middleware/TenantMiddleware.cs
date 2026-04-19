@@ -16,9 +16,10 @@ public class TenantMiddleware
     public async Task InvokeAsync(HttpContext context)
     {
         // Paths that bypass tenant resolution entirely
-        if (context.Request.Path.StartsWithSegments("/health") ||
-            context.Request.Path.StartsWithSegments("/info")   ||
-            context.Request.Path.StartsWithSegments("/v1/webhooks"))
+        if (context.Request.Path.StartsWithSegments("/health")              ||
+            context.Request.Path.StartsWithSegments("/info")                ||
+            context.Request.Path.StartsWithSegments("/v1/webhooks")         ||
+            context.Request.Path.StartsWithSegments("/v1/providers/catalog"))
         {
             await _next(context);
             return;
@@ -41,6 +42,14 @@ public class TenantMiddleware
         // ── Authenticated requests — derive tenant from JWT claims ────────────
         if (context.User?.Identity?.IsAuthenticated == true)
         {
+            // Platform administrators operate without a tenant scope.
+            // Their JWT carries the "PlatformAdmin" role but no tenant_id claim.
+            if (context.User.IsInRole("PlatformAdmin"))
+            {
+                await _next(context);
+                return;
+            }
+
             var tenantIdClaim = context.User.FindFirst("tenant_id")?.Value;
             if (string.IsNullOrEmpty(tenantIdClaim) || !Guid.TryParse(tenantIdClaim, out var claimTenantId))
             {
@@ -97,5 +106,16 @@ public static class TenantMiddlewareExtensions
         if (context.Items.TryGetValue("TenantId", out var tenantId) && tenantId is Guid id)
             return id;
         throw new InvalidOperationException("TenantId not found in request context");
+    }
+
+    /// <summary>
+    /// Returns the TenantId if present, or <c>null</c> for platform-scoped
+    /// requests where no tenant is in context (e.g. platform admin calls).
+    /// </summary>
+    public static Guid? TryGetTenantId(this HttpContext context)
+    {
+        if (context.Items.TryGetValue("TenantId", out var tenantId) && tenantId is Guid id)
+            return id;
+        return null;
     }
 }
