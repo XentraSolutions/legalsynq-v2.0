@@ -98,7 +98,8 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
         {
             type    = PasswordResetEventKey,
             subject = PasswordResetSubject,
-            body    = BuildPasswordResetHtmlBody(displayName, resetLink),
+            html    = BuildPasswordResetHtmlBody(displayName, resetLink),
+            body    = $"Reset your LegalSynq password\n\nHello {displayName},\n\nClick the link below to reset your password (expires in 24 hours):\n{resetLink}\n\nIf you didn't request a password reset, you can safely ignore this email.",
         };
 
         var templateData = new Dictionary<string, string>
@@ -130,7 +131,8 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
         {
             type    = InviteEventKey,
             subject = InviteSubject,
-            body    = BuildInviteHtmlBody(displayName, activationLink),
+            html    = BuildInviteHtmlBody(displayName, activationLink),
+            body    = $"You've been invited to LegalSynq\n\nHello {displayName},\n\nAn administrator has invited you to join LegalSynq. Click the link below to accept (expires in 72 hours):\n{activationLink}\n\nIf you weren't expecting this invitation, you can safely ignore this email.",
         };
 
         var templateData = new Dictionary<string, string>

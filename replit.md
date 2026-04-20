@@ -5618,3 +5618,32 @@ MySQL does not support `CREATE TABLE IF NOT EXISTS` for columns — only for tab
 SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '...' AND COLUMN_NAME = '...'
 ```
 then run `ALTER TABLE` only if count = 0. See `EnsureLiensSchemaTablesAsync` for the canonical C# implementation.
+
+---
+
+## PROD-INVITE-EMAIL Fix (2026-04-20)
+Tenant invite emails (and password-reset emails) were not being delivered to recipients in production.
+
+### Root causes
+
+**Bug 1 — HTML body sent as `text/plain` (critical)**  
+`NotificationsEmailClient.SendInviteEmailAsync` / `SendPasswordResetEmailAsync` constructed the notification message with the fully-rendered HTML in a `"body"` key. `ExecuteSendLoopAsync` extracts `"body"` as the plain-text part and `"html"` as the HTML part. Since `"html"` was absent, `SendGridAdapter.SendAsync` sent only a single `text/plain` MIME part containing raw HTML markup. Most spam filters immediately flag this pattern; recipients who do receive it see raw `<html>...` tags in their inbox.
+
+**Bug 2 — 5-second HTTP timeout too short (secondary)**  
+`NotificationsServiceOptions.TimeoutSeconds` defaulted to 5 s. The synchronous send path (identity → notifications DB write → SendGrid HTTP call) can exceed 5 s under load, causing `TaskCanceledException` in the identity-side HTTP client. Identity then returns HTTP 502 to the CC BFF (→ 500 to the invite form), and the admin sees a failure even though the email may eventually be dispatched.
+
+### Fix
+
+**`apps/services/identity/Identity.Infrastructure/Services/NotificationsEmailClient.cs`**
+- Changed `body = BuildInviteHtmlBody(...)` → `html = BuildInviteHtmlBody(...)` (HTML goes into the `"html"` field that `ExecuteSendLoopAsync` correctly routes to `EmailSendPayload.Html`)
+- Added plain-text `body` fallback for the `text/plain` MIME part in both invite and password-reset messages
+- Same fix applied to `SendPasswordResetEmailAsync`
+
+**`apps/services/identity/Identity.Infrastructure/Services/NotificationsCacheClient.cs`**
+- `NotificationsServiceOptions.TimeoutSeconds` default raised from 5 → 30 seconds
+
+### Result
+SendGrid now receives a properly-structured MIME multipart email with both `text/plain` and `text/html` content parts, which passes spam filters and renders correctly in all email clients. Timeout headroom prevents spurious 502 errors when notifications service latency spikes.
+
+### Analysis
+Full root-cause analysis: `analysis/Notifications/invite-email-not-dispatched-report.md`

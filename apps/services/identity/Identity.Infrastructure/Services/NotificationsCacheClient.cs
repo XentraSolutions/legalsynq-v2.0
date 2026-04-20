@@ -10,7 +10,7 @@ namespace Identity.Infrastructure.Services;
 ///
 ///   "NotificationsService": {
 ///     "BaseUrl":              "http://notifications-service:5005",
-///     "TimeoutSeconds":       5,
+///     "TimeoutSeconds":       30,
 ///     "InternalServiceToken": "shared-secret-here"   // matches notifications' INTERNAL_SERVICE_TOKEN
 ///   }
 ///
@@ -25,7 +25,7 @@ public sealed class NotificationsServiceOptions
     public const string SectionName = "NotificationsService";
 
     public string? BaseUrl              { get; set; }
-    public int     TimeoutSeconds       { get; set; } = 5;
+    public int     TimeoutSeconds       { get; set; } = 30;
     public string? InternalServiceToken { get; set; }
 
     /// <summary>
