@@ -5582,3 +5582,22 @@ Platform-standard dual-scheme JWT:
 - Bearer JWT path not runtime-validated in dev (placeholder `Jwt:SigningKey`; real key from `Jwt__SigningKey` env var)
 - RS256 stubs remain; safe to delete in a future cleanup
 - Reports service not running in dev (correctly detected as Down + Critical alert)
+
+---
+
+## PROD-LIENS-TASK-500 Fix (2026-04-20)
+HTTP 500 on Create Task in production (`liens-company.demo.legalsynq.com`).
+
+### Root cause
+Migration `20260420000002_AddTaskFlowLinkage` was recorded in `__EFMigrationsHistory` but its DDL (adding `WorkflowInstanceId` and `WorkflowStepKey` columns to `liens_Tasks`) never ran in the production DB — same schema-drift pattern as the previous `liens_WorkflowTransitions` incident. Every task INSERT included those columns, MySQL threw "Unknown column 'WorkflowInstanceId'", unhandled exception → HTTP 500.
+
+### Fix
+- **`Liens.Api/Program.cs`** — Extended `EnsureLiensSchemaTablesAsync` to also guard `liens_Tasks.WorkflowInstanceId` + `WorkflowStepKey`. Uses `information_schema.COLUMNS` check (MySQL has no `ADD COLUMN IF NOT EXISTS`) then runs `ALTER TABLE liens_Tasks ADD COLUMN ...` only when columns are absent; also creates `IX_Tasks_TenantId_WorkflowInstanceId` index. Idempotent on every restart.
+- **`apps/web/src/lib/api-client.ts`** — Error message extraction now also unwraps nested `error.message` (used by Liens/Identity middleware) so users see the actual error instead of the raw "HTTP 500".
+
+### Schema-drift guard pattern (Liens service)
+MySQL does not support `CREATE TABLE IF NOT EXISTS` for columns — only for tables. Column guards must use:
+```sql
+SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '...' AND COLUMN_NAME = '...'
+```
+then run `ALTER TABLE` only if count = 0. See `EnsureLiensSchemaTablesAsync` for the canonical C# implementation.

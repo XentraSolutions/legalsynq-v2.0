@@ -64,10 +64,11 @@ async function request<T>(
       // Only accept string values — object/array values would render as "[object Object]".
       const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
       message =
-        str(errBody?.message) ??
-        str(errBody?.error)   ??
-        str(errBody?.detail)  ??
-        str(errBody?.title)   ??
+        str(errBody?.message)              ??
+        str(errBody?.error)                ??
+        str(errBody?.error?.message)       ??
+        str(errBody?.detail)               ??
+        str(errBody?.title)                ??
         message;
     } catch {
       // non-JSON error body — keep default message

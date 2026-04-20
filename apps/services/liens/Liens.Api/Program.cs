@@ -244,4 +244,41 @@ static async Task EnsureLiensSchemaTablesAsync(LiensDbContext db, ILogger logger
     cmd.CommandText = createTaskGovernanceSettings;
     await cmd.ExecuteNonQueryAsync();
     logger.LogInformation("EnsureLiensSchemaTablesAsync: liens_TaskGovernanceSettings ensured.");
+
+    // LS-LIENS-FLOW-007 — liens_Tasks.WorkflowInstanceId + WorkflowStepKey columns
+    // Added by migration 20260420000002_AddTaskFlowLinkage. MySQL does not support
+    // ADD COLUMN IF NOT EXISTS, so we guard via information_schema.
+    cmd.CommandText = """
+        SELECT COUNT(*) FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME   = 'liens_Tasks'
+          AND COLUMN_NAME  = 'WorkflowInstanceId'
+        """;
+    var hasWorkflowInstanceId = Convert.ToInt64(await cmd.ExecuteScalarAsync()) > 0;
+
+    if (!hasWorkflowInstanceId)
+    {
+        cmd.CommandText = """
+            ALTER TABLE `liens_Tasks`
+                ADD COLUMN `WorkflowInstanceId` char(36)     NULL COLLATE ascii_general_ci,
+                ADD COLUMN `WorkflowStepKey`    varchar(200) NULL
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Added WorkflowInstanceId/WorkflowStepKey to liens_Tasks.");
+
+        try
+        {
+            cmd.CommandText = "CREATE INDEX `IX_Tasks_TenantId_WorkflowInstanceId` ON `liens_Tasks` (`TenantId`, `WorkflowInstanceId`)";
+            await cmd.ExecuteNonQueryAsync();
+            logger.LogInformation("EnsureLiensSchemaTablesAsync: Created IX_Tasks_TenantId_WorkflowInstanceId.");
+        }
+        catch (Exception idxEx)
+        {
+            logger.LogWarning(idxEx, "EnsureLiensSchemaTablesAsync: Could not create IX_Tasks_TenantId_WorkflowInstanceId (may already exist).");
+        }
+    }
+    else
+    {
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: liens_Tasks flow-linkage columns already present.");
+    }
 }
