@@ -12,7 +12,6 @@ import { TaskPanel } from '@/components/lien/task-panel';
 
 import { ConfirmDialog } from '@/components/lien/modal';
 import { LayoutSplit, type PanelMode } from '@/components/lien/layout-split';
-import { WorkflowPanel } from '@/components/workflow';
 import { useCaseWorkflows } from '@/hooks/use-case-workflows';
 import { workflowApi, type WorkflowInstanceDetail } from '@/lib/workflow';
 import { lienCaseNotesService, type CaseNoteResponse, type CaseNoteCategory } from '@/lib/liens/lien-case-notes.service';
@@ -619,15 +618,7 @@ function DetailsTab({ d, panelMode, onPanelModeChange, canEdit, onCaseUpdated }:
   const rightContent = (
     <div className="space-y-4">
       <CollapsibleSection title="Tasks" icon="ri-task-line">
-        <WorkflowPanel
-          caseId={d.id}
-          productKey="synqlien"
-          productLabel="workflow"
-          canView={ra.can('workflow:view')}
-          canStart={ra.can('workflow:start')}
-          canAdvance={ra.can('workflow:advance')}
-          canComplete={ra.can('workflow:complete')}
-        />
+        <TaskPanel caseId={d.id} />
       </CollapsibleSection>
 
       <CollapsibleSection title="Email" icon="ri-mail-send-line">
