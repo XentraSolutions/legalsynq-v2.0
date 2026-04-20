@@ -3663,6 +3663,7 @@ public static class AdminEndpoints
         IOptions<NotificationsServiceOptions> notifOptions,
         INotificationsEmailClient             emailClient,
         IWebHostEnvironment                   env,
+        ILoggerFactory                        loggerFactory,
         CancellationToken                     ct)
     {
         if (string.IsNullOrWhiteSpace(body.Email))
@@ -3730,23 +3731,46 @@ public static class AdminEndpoints
         });
 
         // LS-ID-TNT-007: Send invitation email when PortalBaseUrl is configured.
+        var logger         = loggerFactory.CreateLogger("AdminEndpoints.InviteUser");
         var portalBase     = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
-        var activationLink = !string.IsNullOrWhiteSpace(portalBase)
-            ? $"{portalBase}/accept-invite?token={Uri.EscapeDataString(rawToken)}"
-            : string.Empty;
 
-        var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();
-        if (!string.IsNullOrWhiteSpace(activationLink))
+        if (string.IsNullOrWhiteSpace(portalBase))
         {
-            var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
-                emailLower, displayNameStr, activationLink, body.TenantId, ct);
+            logger.LogError(
+                "[LS-ID-TNT-007] PortalBaseUrl is not configured. " +
+                "Invitation email for user {UserId} ({Email}, tenant={TenantId}) cannot be sent. " +
+                "Set NotificationsService:PortalBaseUrl in configuration.",
+                user.Id, emailLower, body.TenantId);
+            return Results.Problem(
+                "User created but invitation email could not be sent: PortalBaseUrl is not configured. " +
+                "Configure NotificationsService:PortalBaseUrl so invitation links can be generated.",
+                statusCode: 503);
+        }
 
-            if (emailConfigured && !emailSuccess)
-            {
-                return Results.Problem(
-                    $"User created but invitation email could not be sent: {emailError}",
-                    statusCode: 502);
-            }
+        var activationLink = $"{portalBase}/accept-invite?token={Uri.EscapeDataString(rawToken)}";
+        var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();
+
+        var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
+            emailLower, displayNameStr, activationLink, body.TenantId, ct);
+
+        if (!emailConfigured)
+        {
+            logger.LogError(
+                "[LS-ID-TNT-007] NotificationsService:BaseUrl is not configured. " +
+                "Invitation email for user {UserId} ({Email}, tenant={TenantId}) was not sent. " +
+                "Set NotificationsService:BaseUrl in configuration.",
+                user.Id, emailLower, body.TenantId);
+            return Results.Problem(
+                "User created but invitation email could not be sent: the Notifications service is not configured. " +
+                "Configure NotificationsService:BaseUrl so emails can be dispatched.",
+                statusCode: 503);
+        }
+
+        if (!emailSuccess)
+        {
+            return Results.Problem(
+                $"User created but invitation email could not be sent: {emailError}",
+                statusCode: 502);
         }
 
         // Non-production: return raw token so the admin can hand-deliver the link.
@@ -3775,6 +3799,7 @@ public static class AdminEndpoints
         IOptions<NotificationsServiceOptions> notifOptions,
         INotificationsEmailClient             emailClient,
         IWebHostEnvironment                   env,
+        ILoggerFactory                        loggerFactory,
         CancellationToken                     ct)
     {
         var user = await db.Users.FindAsync([id], ct);
@@ -3815,23 +3840,46 @@ public static class AdminEndpoints
         });
 
         // LS-ID-TNT-007: Send invitation email when PortalBaseUrl is configured.
-        var portalBase     = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
-        var activationLink = !string.IsNullOrWhiteSpace(portalBase)
-            ? $"{portalBase}/accept-invite?token={Uri.EscapeDataString(rawToken)}"
-            : string.Empty;
+        var logger     = loggerFactory.CreateLogger("AdminEndpoints.ResendInvite");
+        var portalBase = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
 
-        var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();
-        if (!string.IsNullOrWhiteSpace(activationLink))
+        if (string.IsNullOrWhiteSpace(portalBase))
         {
-            var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
-                user.Email, displayNameStr, activationLink, user.TenantId, ct);
+            logger.LogError(
+                "[LS-ID-TNT-007] PortalBaseUrl is not configured. " +
+                "Resend-invite email for user {UserId} ({Email}, tenant={TenantId}) cannot be sent. " +
+                "Set NotificationsService:PortalBaseUrl in configuration.",
+                id, user.Email, user.TenantId);
+            return Results.Problem(
+                "Invitation refreshed but email could not be sent: PortalBaseUrl is not configured. " +
+                "Configure NotificationsService:PortalBaseUrl so invitation links can be generated.",
+                statusCode: 503);
+        }
 
-            if (emailConfigured && !emailSuccess)
-            {
-                return Results.Problem(
-                    $"Invitation refreshed but email could not be sent: {emailError}",
-                    statusCode: 502);
-            }
+        var activationLink = $"{portalBase}/accept-invite?token={Uri.EscapeDataString(rawToken)}";
+        var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();
+
+        var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
+            user.Email, displayNameStr, activationLink, user.TenantId, ct);
+
+        if (!emailConfigured)
+        {
+            logger.LogError(
+                "[LS-ID-TNT-007] NotificationsService:BaseUrl is not configured. " +
+                "Resend-invite email for user {UserId} ({Email}, tenant={TenantId}) was not sent. " +
+                "Set NotificationsService:BaseUrl in configuration.",
+                id, user.Email, user.TenantId);
+            return Results.Problem(
+                "Invitation refreshed but email could not be sent: the Notifications service is not configured. " +
+                "Configure NotificationsService:BaseUrl so emails can be dispatched.",
+                statusCode: 503);
+        }
+
+        if (!emailSuccess)
+        {
+            return Results.Problem(
+                $"Invitation refreshed but email could not be sent: {emailError}",
+                statusCode: 502);
         }
 
         // Non-production: return raw token for hand-delivery.

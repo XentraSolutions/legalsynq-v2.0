@@ -133,10 +133,13 @@ function RowActionsMenu({
             {isInvited ? (
               <button
                 onClick={(e) => { e.stopPropagation(); close(); onResendInvite(); }}
-                className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-700 flex items-center gap-2"
+                className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-700 flex items-start gap-2"
               >
-                <i className="ri-mail-send-line" />
-                Resend Invite
+                <i className="ri-mail-send-line mt-0.5" />
+                <span>
+                  <span className="block">Resend Invite</span>
+                  <span className="block text-xs text-amber-500 font-normal leading-snug">Use if the user did not receive the original email</span>
+                </span>
               </button>
             ) : (
               <button
@@ -411,8 +414,8 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
         title={`Resend Invite to ${resendInviteName}?`}
         description={
           resendInviteEmail
-            ? `A new invitation link will be created and sent to ${resendInviteEmail}. The previous invitation will be invalidated.`
-            : 'A new invitation link will be created. The previous invitation will be invalidated.'
+            ? `A new invitation link will be created and sent to ${resendInviteEmail}. The previous invitation will be invalidated. Use this if the user did not receive the original invitation email.`
+            : 'A new invitation link will be created and the previous invitation will be invalidated. Use this if the user did not receive their original invitation email.'
         }
         confirmLabel="Resend Invite"
         confirmVariant="primary"

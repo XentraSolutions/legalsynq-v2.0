@@ -28,6 +28,27 @@ var signingKey   = jwtSection["SigningKey"]
 var issuer       = jwtSection["Issuer"]   ?? "legalsynq-identity";
 var audience     = jwtSection["Audience"] ?? "legalsynq-platform";
 
+// ── Email delivery pre-flight checks ─────────────────────────────────────────
+// Both values must be present for invitation emails to work.  Failing at startup
+// (in non-development environments) prevents silent runtime drops where user
+// records are created but invites never reach the new user.
+var notifSection   = builder.Configuration.GetSection("NotificationsService");
+var notifBaseUrl   = notifSection["BaseUrl"];
+var portalBaseUrl  = notifSection["PortalBaseUrl"];
+
+if (!builder.Environment.IsDevelopment())
+{
+    if (string.IsNullOrWhiteSpace(notifBaseUrl))
+        throw new InvalidOperationException(
+            "NotificationsService:BaseUrl is not configured. " +
+            "Set this value so the Identity service can dispatch invitation and password-reset emails.");
+
+    if (string.IsNullOrWhiteSpace(portalBaseUrl))
+        throw new InvalidOperationException(
+            "NotificationsService:PortalBaseUrl is not configured. " +
+            "Set this value so invitation and password-reset links point to the correct tenant portal URL.");
+}
+
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

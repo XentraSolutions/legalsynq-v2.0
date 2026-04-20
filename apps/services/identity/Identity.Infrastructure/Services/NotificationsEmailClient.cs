@@ -30,8 +30,9 @@ namespace Identity.Infrastructure.Services;
 ///
 /// <para>
 /// When <c>NotificationsService:BaseUrl</c> is not configured, both methods
-/// return <c>EmailConfigured = false</c> so callers can apply the appropriate
-/// fallback without treating it as a delivery failure.
+/// return <c>EmailConfigured = false</c> and log an Error-level entry so the
+/// misconfiguration is visible in aggregated logs. Callers should surface this
+/// as an error rather than a silent fallback.
 /// </para>
 /// </summary>
 public interface INotificationsEmailClient
@@ -164,11 +165,12 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
     {
         if (string.IsNullOrWhiteSpace(_options.BaseUrl))
         {
-            _logger.LogDebug(
-                "[{Tag}] NotificationsService:BaseUrl not configured; " +
-                "email for {Email} will use the non-production fallback.",
-                logTag, toEmail);
-            return (EmailConfigured: false, Success: false, Error: null);
+            _logger.LogError(
+                "[{Tag}] NotificationsService:BaseUrl is not configured. " +
+                "Invitation/reset email for {Email} (tenant={TenantId}) will NOT be delivered. " +
+                "Set NotificationsService:BaseUrl in configuration to enable email delivery.",
+                logTag, toEmail, tenantId);
+            return (EmailConfigured: false, Success: false, Error: "NotificationsService:BaseUrl is not configured.");
         }
 
         try

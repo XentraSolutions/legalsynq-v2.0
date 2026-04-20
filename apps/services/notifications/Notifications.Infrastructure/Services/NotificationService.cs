@@ -927,6 +927,8 @@ public class NotificationServiceImpl : INotificationService
             catch { /* use whatever we have */ }
         }
 
+        ProviderFailure? lastFailure = null;
+
         foreach (var route in routes)
         {
             var attemptNumber = baseAttemptNumber + routes.IndexOf(route) + 1;
@@ -1014,6 +1016,8 @@ public class NotificationServiceImpl : INotificationService
             attempt.CompletedAt = DateTime.UtcNow;
             await _attemptRepo.UpdateAsync(attempt);
 
+            lastFailure = failure;
+
             if (route.IsFailover)
                 await _metering.MeterAsync(new MeterEventInput { TenantId = tenantId, UsageUnit = "provider_failover_attempt", Channel = notification.Channel, NotificationId = notification.Id, NotificationAttemptId = attempt.Id, Provider = route.ProviderType });
 
@@ -1037,6 +1041,17 @@ public class NotificationServiceImpl : INotificationService
             await _notificationRepo.UpdateAsync(notification);
             await CreateDeadLetterIssueAsync(notification);
             try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.dead_letter", Action = "notification.dead_letter", SourceSystem = "notifications", Description = $"Notification moved to dead-letter after {notification.RetryCount} retries", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+        }
+        else if (lastFailure?.Retryable == false)
+        {
+            // Non-retryable provider failure (e.g. auth_config_failure, invalid_recipient).
+            // Surface the actual failure category on the notification so operators can
+            // diagnose on the detail page without reading raw logs.
+            notification.Status = "failed";
+            notification.FailureCategory = lastFailure.Category;
+            notification.LastErrorMessage = lastFailure.Message ?? $"Non-retryable provider failure: {lastFailure.Category}";
+            await _notificationRepo.UpdateAsync(notification);
+            try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.failed", Action = "notification.failed", SourceSystem = "notifications", Description = $"Notification failed with non-retryable error: {lastFailure.Category}", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
         }
         else
         {
