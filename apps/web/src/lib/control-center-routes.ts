@@ -84,6 +84,9 @@ export const CCRoutes = {
 
   /** /control-center/liens/task-automation */
   liensTaskAutomation:      cc('/liens/task-automation'),
+
+  /** /control-center/liens/task-governance */
+  liensTaskGovernance:      cc('/liens/task-governance'),
 } as const;
 
 export type CCRoutePath = typeof CCRoutes[keyof typeof CCRoutes];

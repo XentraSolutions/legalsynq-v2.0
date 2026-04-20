@@ -26,6 +26,8 @@ public class LiensDbContext : DbContext
     public DbSet<LienGeneratedTaskMetadata> LienGeneratedTaskMetadatas => Set<LienGeneratedTaskMetadata>();
     public DbSet<LienTaskNote> LienTaskNotes => Set<LienTaskNote>();
     public DbSet<LienCaseNote> LienCaseNotes => Set<LienCaseNote>();
+    // LS-LIENS-FLOW-006 — Task governance settings
+    public DbSet<LienTaskGovernanceSettings> LienTaskGovernanceSettings => Set<LienTaskGovernanceSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

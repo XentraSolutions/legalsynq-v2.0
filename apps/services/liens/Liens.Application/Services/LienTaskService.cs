@@ -2,6 +2,7 @@ using BuildingBlocks.Exceptions;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
+using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -15,8 +16,10 @@ public sealed class LienTaskService : ILienTaskService
     private readonly ILienRepository        _lienRepo;
     private readonly IAuditPublisher        _audit;
     private readonly INotificationPublisher _notifications;
-    private readonly ILienWorkflowConfigRepository _workflowRepo;
-    private readonly IWorkflowTransitionValidationService _transitionValidator;
+    private readonly ILienWorkflowConfigRepository         _workflowRepo;
+    private readonly IWorkflowTransitionValidationService  _transitionValidator;
+    // LS-LIENS-FLOW-006 — governance enforcement
+    private readonly ILienTaskGovernanceSettingsRepository _governanceRepo;
     private readonly ILogger<LienTaskService> _logger;
 
     public LienTaskService(
@@ -27,6 +30,7 @@ public sealed class LienTaskService : ILienTaskService
         INotificationPublisher notifications,
         ILienWorkflowConfigRepository workflowRepo,
         IWorkflowTransitionValidationService transitionValidator,
+        ILienTaskGovernanceSettingsRepository governanceRepo,
         ILogger<LienTaskService> logger)
     {
         _taskRepo            = taskRepo;
@@ -36,6 +40,7 @@ public sealed class LienTaskService : ILienTaskService
         _notifications       = notifications;
         _workflowRepo        = workflowRepo;
         _transitionValidator = transitionValidator;
+        _governanceRepo      = governanceRepo;
         _logger              = logger;
     }
 
@@ -90,6 +95,7 @@ public sealed class LienTaskService : ILienTaskService
     public async Task<TaskResponse> CreateAsync(
         Guid tenantId, Guid actingUserId, CreateTaskRequest request, CancellationToken ct = default)
     {
+        // ── Basic field validation ─────────────────────────────────────────────
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(request.Title))
             errors.Add("title", ["Title is required."]);
@@ -98,15 +104,48 @@ public sealed class LienTaskService : ILienTaskService
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing.", errors);
 
+        // ── LS-LIENS-FLOW-006: Governance enforcement ─────────────────────────
+        // System-generated tasks still go through governance — the engine must
+        // satisfy rules or the task is skipped with an audit log entry.
+        var governance = await _governanceRepo.GetByTenantProductAsync(
+            tenantId, LiensPermissions.ProductCode, ct);
+
+        var effectiveAssignedUserId = request.AssignedUserId;
+        var effectiveCaseId         = request.CaseId;
+        var effectiveWorkflowStageId = request.WorkflowStageId;
+
+        if (governance is not null)
+        {
+            // 1. Assignee requirement
+            if (governance.RequireAssigneeOnCreate && !effectiveAssignedUserId.HasValue)
+                errors.Add("assignedUserId", ["Task assignee is required."]);
+
+            // 2. Case link requirement
+            if (governance.RequireCaseLinkOnCreate && !effectiveCaseId.HasValue)
+                errors.Add("caseId", ["Task must be linked to a case."]);
+
+            // 3. Workflow stage requirement — auto-derive when not provided
+            if (governance.RequireWorkflowStageOnCreate && !effectiveWorkflowStageId.HasValue)
+            {
+                effectiveWorkflowStageId = await DeriveStartStageAsync(tenantId, governance, ct);
+                if (!effectiveWorkflowStageId.HasValue)
+                    errors.Add("workflowStageId", ["A valid workflow stage is required for task creation. Configure at least one active stage in your workflow settings."]);
+            }
+
+            if (errors.Count > 0)
+                throw new ValidationException("Task creation does not satisfy governance requirements.", errors);
+        }
+
+        // ── Create entity ──────────────────────────────────────────────────────
         var entity = LienTask.Create(
             tenantId:              tenantId,
             title:                 request.Title,
             createdByUserId:       actingUserId,
             description:           request.Description,
             priority:              request.Priority,
-            assignedUserId:        request.AssignedUserId,
-            caseId:                request.CaseId,
-            workflowStageId:       request.WorkflowStageId,
+            assignedUserId:        effectiveAssignedUserId,
+            caseId:                effectiveCaseId,
+            workflowStageId:       effectiveWorkflowStageId,
             dueDate:               request.DueDate,
             sourceType:            request.SourceType,
             generationRuleId:      request.GenerationRuleId,
@@ -129,14 +168,20 @@ public sealed class LienTaskService : ILienTaskService
 
         await PublishCaseAuditAsync(entity, links, "liens.task.created", "create", $"Task '{entity.Title}' created", actingUserId, ct);
 
+        // LS-LIENS-FLOW-006: Use distinct event key for create-with-assignee
+        // to prevent template confusion with standalone assignment emails.
         if (entity.AssignedUserId.HasValue)
         {
-            _ = _notifications.PublishAsync("liens.task.assigned", tenantId, new Dictionary<string, string>
+            _ = _notifications.PublishAsync("liens.task.created_assigned", tenantId, new Dictionary<string, string>
             {
-                ["taskId"]        = entity.Id.ToString(),
-                ["taskTitle"]     = entity.Title,
-                ["assignedTo"]    = entity.AssignedUserId.Value.ToString(),
-                ["assignedBy"]    = actingUserId.ToString(),
+                ["taskId"]          = entity.Id.ToString(),
+                ["taskTitle"]       = entity.Title,
+                ["assignedTo"]      = entity.AssignedUserId.Value.ToString(),
+                ["assignedBy"]      = actingUserId.ToString(),
+                ["caseId"]          = entity.CaseId?.ToString() ?? string.Empty,
+                ["priority"]        = entity.Priority,
+                ["workflowStageId"] = entity.WorkflowStageId?.ToString() ?? string.Empty,
+                ["dueDate"]         = entity.DueDate?.ToString("yyyy-MM-dd") ?? string.Empty,
             }, ct);
         }
 
@@ -245,10 +290,14 @@ public sealed class LienTaskService : ILienTaskService
             var notifKey = isReassignment ? "liens.task.reassigned" : "liens.task.assigned";
             _ = _notifications.PublishAsync(notifKey, tenantId, new Dictionary<string, string>
             {
-                ["taskId"]     = entity.Id.ToString(),
-                ["taskTitle"]  = entity.Title,
-                ["assignedTo"] = request.AssignedUserId.Value.ToString(),
-                ["assignedBy"] = actingUserId.ToString(),
+                ["taskId"]          = entity.Id.ToString(),
+                ["taskTitle"]       = entity.Title,
+                ["assignedTo"]      = request.AssignedUserId.Value.ToString(),
+                ["assignedBy"]      = actingUserId.ToString(),
+                ["caseId"]          = entity.CaseId?.ToString() ?? string.Empty,
+                ["priority"]        = entity.Priority,
+                ["workflowStageId"] = entity.WorkflowStageId?.ToString() ?? string.Empty,
+                ["dueDate"]         = entity.DueDate?.ToString("yyyy-MM-dd") ?? string.Empty,
             }, ct);
         }
 
@@ -329,6 +378,36 @@ public sealed class LienTaskService : ILienTaskService
             $"Task '{entity.Title}' cancelled", actingUserId, ct);
 
         return MapToResponse(entity, links);
+    }
+
+    // ── LS-LIENS-FLOW-006: Start-stage derivation ─────────────────────────────
+    private async Task<Guid?> DeriveStartStageAsync(
+        Guid tenantId,
+        LienTaskGovernanceSettings governance,
+        CancellationToken ct)
+    {
+        if (governance.DefaultStartStageMode == StartStageMode.ExplicitStage
+            && governance.ExplicitStartStageId.HasValue)
+        {
+            var explicit_ = await _workflowRepo.GetStageGlobalAsync(governance.ExplicitStartStageId.Value, ct);
+            if (explicit_ is { IsActive: true })
+                return explicit_.Id;
+            // Fall through to FIRST_ACTIVE_STAGE if explicit stage is invalid
+            _logger.LogWarning(
+                "Governance ExplicitStartStageId {StageId} is inactive or missing; falling back to FIRST_ACTIVE_STAGE.",
+                governance.ExplicitStartStageId.Value);
+        }
+
+        // FIRST_ACTIVE_STAGE — lowest StageOrder active stage
+        var config = await _workflowRepo.GetByTenantProductAsync(tenantId, LiensPermissions.ProductCode, ct);
+        if (config is null) return null;
+
+        var firstStage = config.Stages
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.StageOrder)
+            .FirstOrDefault();
+
+        return firstStage?.Id;
     }
 
     private async Task<LienTask> RequireTask(Guid tenantId, Guid id, CancellationToken ct)

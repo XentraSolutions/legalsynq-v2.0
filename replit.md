@@ -4643,6 +4643,59 @@ Admin routes (under `/lien/api/liens/admin/workflow-config/tenants/{tenantId}/{i
 
 ---
 
+## LS-LIENS-FLOW-006 — Task Creation Governance + Email Notifications (2026-04-20)
+
+Per-tenant task creation governance with dual-path API, governance-aware form updates, and corrected notification event keys to prevent duplicate emails.
+
+### What Was Implemented
+- **Domain entity**: `LienTaskGovernanceSettings` — per-tenant governance flags (requireAssignee, requireCaseLink, requireWorkflowStage, allowMultipleAssignees, defaultStartStageMode, explicitStartStageId) with version/audit metadata following `LienWorkflowConfig` pattern
+- **Governance enforcement in `LienTaskService.CreateAsync`**: loads governance settings and validates assignee, case-link, and workflow stage requirements; auto-derives start stage via `FIRST_ACTIVE_STAGE` or `EXPLICIT_STAGE` mode
+- **Email notification fix**: create-with-assignee changed from `liens.task.assigned` → `liens.task.created_assigned` to avoid template confusion with standalone assignment; `liens.task.assigned` / `liens.task.reassigned` remain for post-create flows
+- **Dual-path API**: tenant (`/api/liens/task-governance`) requiring `workflow:manage`, admin (`/api/liens/admin/task-governance/tenants/{tenantId}`) requiring `PlatformOrTenantAdmin`
+- **EF migration**: `20260420000001_AddTaskGovernanceSettings` + `EnsureLiensSchemaTablesAsync` safety-net for `liens_TaskGovernanceSettings`
+- **DI registrations**: `ILienTaskGovernanceSettingsRepository` + `ILienTaskGovernanceService`
+- **Tenant settings page**: `/lien/settings/task-governance` — toggle cards for all governance flags, start stage mode selector, explicit stage picker
+- **Control center page**: `/control-center/liens/task-governance` — admin view with tenant selection via `?tenantId=...` query param
+- **Task creation form updated**: governance-aware assignee picker (required marker when `requireAssigneeOnCreate`), case ID input (required when `requireCaseLinkOnCreate` and no prefill), field-level error display from server validation
+- **Navigation**: Task Governance added to tenant settings nav and control center Liens section
+
+### Files Changed (Backend)
+- `Liens.Domain/Entities/LienTaskGovernanceSettings.cs` — New entity
+- `Liens.Domain/Enums/StartStageMode.cs` — New enum (`FIRST_ACTIVE_STAGE`, `EXPLICIT_STAGE`)
+- `Liens.Application/DTOs/TaskGovernanceDto.cs` — Request/response DTOs
+- `Liens.Application/Interfaces/ILienTaskGovernanceService.cs` — Service interface
+- `Liens.Application/Repositories/ILienTaskGovernanceSettingsRepository.cs` — Repository interface
+- `Liens.Application/Services/LienTaskGovernanceService.cs` — Service impl
+- `Liens.Application/Services/LienTaskService.cs` — Governance enforcement + notification key fix
+- `Liens.Infrastructure/Repositories/LienTaskGovernanceSettingsRepository.cs` — EF repository
+- `Liens.Infrastructure/Persistence/Configurations/LienTaskGovernanceSettingsConfiguration.cs` — EF config
+- `Liens.Infrastructure/Persistence/LiensDbContext.cs` — `DbSet<LienTaskGovernanceSettings>`
+- `Liens.Infrastructure/DependencyInjection.cs` — Service registrations
+- `Liens.Infrastructure/Persistence/Migrations/20260420000001_AddTaskGovernanceSettings.cs` — EF migration
+- `Liens.Api/Endpoints/TaskGovernanceEndpoints.cs` — Dual-path REST endpoints
+- `Liens.Api/Program.cs` — Endpoint mapping + schema safety-net
+
+### Files Changed (Frontend)
+- `apps/web/src/lib/liens/lien-tasks.types.ts` — `TaskGovernanceSettings`, `UpdateTaskGovernanceRequest` types
+- `apps/web/src/lib/liens/lien-task-governance.service.ts` — API service (new)
+- `apps/web/src/app/(platform)/lien/settings/task-governance/page.tsx` — Tenant settings page (new)
+- `apps/web/src/app/(control-center)/control-center/liens/task-governance/page.tsx` — Admin settings page (new)
+- `apps/web/src/components/lien/forms/create-edit-task-form.tsx` — Governance-aware task form
+- `apps/web/src/lib/nav.ts` — Task Governance nav item
+- `apps/web/src/lib/control-center-nav.ts` — CC Liens section item
+- `apps/web/src/lib/control-center-routes.ts` — `CCRoutes.liensTaskGovernance`
+
+### Design Decisions
+- Governance is enforced at `LienTaskService.CreateAsync` — automation via `LienTaskGenerationEngine` inherits enforcement automatically; governance failure on automation → `liens.task.auto_generation_skipped` audit
+- `allowMultipleAssignees` is stored but always false — single-assignee model only; deferred for future expansion
+- No `skipGovernance` bypass flag — governance is always enforced, by design
+- `EXPLICIT_STAGE` falls back to `FIRST_ACTIVE_STAGE` if explicit stage is deactivated at create time
+
+### Analysis
+`analysis/LS-LIENS-FLOW-006-report.md`
+
+---
+
 ## LS-ID-TNT-001 — Tenant Users List Stabilization (2026-04-18)
 
 Stabilized the Authorization → Users page (`/tenant/authorization/users`) for null safety, correct empty/error states, and loading UX.

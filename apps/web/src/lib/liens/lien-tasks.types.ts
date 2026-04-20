@@ -1,3 +1,37 @@
+export type StartStageMode = 'FIRST_ACTIVE_STAGE' | 'EXPLICIT_STAGE';
+export type GovernanceUpdateSource = 'TENANT_PRODUCT_SETTINGS' | 'CONTROL_CENTER';
+
+export interface TaskGovernanceSettings {
+  id: string;
+  tenantId: string;
+  productCode: string;
+  requireAssigneeOnCreate: boolean;
+  requireCaseLinkOnCreate: boolean;
+  allowMultipleAssignees: boolean;
+  requireWorkflowStageOnCreate: boolean;
+  defaultStartStageMode: StartStageMode;
+  explicitStartStageId?: string;
+  version: number;
+  lastUpdatedAt: string;
+  lastUpdatedByUserId?: string;
+  lastUpdatedByName?: string;
+  lastUpdatedSource: GovernanceUpdateSource;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface UpdateTaskGovernanceRequest {
+  requireAssigneeOnCreate: boolean;
+  requireCaseLinkOnCreate: boolean;
+  allowMultipleAssignees: boolean;
+  requireWorkflowStageOnCreate: boolean;
+  defaultStartStageMode: StartStageMode;
+  explicitStartStageId?: string;
+  updateSource: GovernanceUpdateSource;
+  version: number;
+  updatedByName?: string;
+}
+
 export type TaskStatus = 'NEW' | 'IN_PROGRESS' | 'WAITING_BLOCKED' | 'COMPLETED' | 'CANCELLED';
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 
