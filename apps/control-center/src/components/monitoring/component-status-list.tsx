@@ -1,14 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { IntegrationStatus, MonitoringStatus, SystemAlert } from '@/types/control-center';
 import type { StatusFilter } from './monitoring-filter-section';
+import type { InternalLatencyResponse, LatencyBucket } from '@/app/api/monitoring/latency/route';
 import { StatusBadge } from './system-health-card';
+import { LatencySparkline } from './latency-sparkline';
 
 interface ComponentStatusListProps {
-  integrations:           IntegrationStatus[];
-  alerts?:                SystemAlert[];
-  externalFilter?:        StatusFilter;
+  integrations:            IntegrationStatus[];
+  alerts?:                 SystemAlert[];
+  externalFilter?:         StatusFilter;
   onExternalFilterChange?: (f: StatusFilter) => void;
 }
 
@@ -45,6 +47,11 @@ function toStatusFilter(f: FilterValue): StatusFilter {
   }
 }
 
+// ── Latency data cache (per-component name → buckets) ─────────────────────────
+
+type LatencyCache = Map<string, LatencyBucket[]>;
+type LatencyFetchState = 'idle' | 'loading' | 'done' | 'error';
+
 /**
  * ComponentStatusList — unified, filterable list of all monitored entities.
  *
@@ -55,6 +62,10 @@ function toStatusFilter(f: FilterValue): StatusFilter {
  * When externalFilter + onExternalFilterChange are provided the component operates
  * in controlled mode: the banner drives the filter and the internal buttons stay
  * in sync. Without them the component is fully self-contained (backward-compatible).
+ *
+ * MON-INT-04-004: Each row can be expanded to reveal a 24-hour latency sparkline.
+ * Latency data is fetched once from /api/monitoring/latency on first expansion
+ * and shared across all rows.
  */
 export function ComponentStatusList({
   integrations,
@@ -63,6 +74,9 @@ export function ComponentStatusList({
   onExternalFilterChange,
 }: ComponentStatusListProps) {
   const [internalFilter, setInternalFilter] = useState<FilterValue>('All');
+  const [expandedNames,  setExpandedNames]  = useState<Set<string>>(new Set());
+  const [latencyCache,   setLatencyCache]   = useState<LatencyCache>(new Map());
+  const [latencyState,   setLatencyState]   = useState<LatencyFetchState>('idle');
 
   const controlled     = externalFilter !== undefined && !!onExternalFilterChange;
   const activeFilter   = controlled ? toFilterValue(externalFilter!) : internalFilter;
@@ -70,11 +84,42 @@ export function ComponentStatusList({
   function handleFilterClick(f: FilterValue) {
     const sf = toStatusFilter(f);
     if (controlled) {
-      // Toggle: clicking the active filter resets to 'all'
       onExternalFilterChange!(activeFilter === f ? 'all' : sf);
     } else {
       setInternalFilter(activeFilter === f ? 'All' : f);
     }
+  }
+
+  // Fetch the full latency payload once (batched for all components)
+  const fetchLatency = useCallback(async () => {
+    if (latencyState !== 'idle') return;
+    setLatencyState('loading');
+    try {
+      const res = await fetch('/api/monitoring/latency', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: InternalLatencyResponse = await res.json();
+      const cache: LatencyCache = new Map(
+        data.components.map(c => [c.name, c.buckets])
+      );
+      setLatencyCache(cache);
+      setLatencyState('done');
+    } catch {
+      setLatencyState('error');
+    }
+  }, [latencyState]);
+
+  function toggleExpanded(name: string) {
+    setExpandedNames(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+        // Trigger fetch on first expansion
+        fetchLatency();
+      }
+      return next;
+    });
   }
 
   // Build set of entity names that have active alerts (for 'Alerts' filter)
@@ -148,7 +193,15 @@ export function ComponentStatusList({
       ) : (
         <div className="divide-y divide-gray-100">
           {visible.map(item => (
-            <ComponentRow key={item.name} item={item} showCategory={hasCategory} />
+            <ComponentRow
+              key={item.name}
+              item={item}
+              showCategory={hasCategory}
+              expanded={expandedNames.has(item.name)}
+              onToggle={() => toggleExpanded(item.name)}
+              latencyBuckets={latencyCache.get(item.name) ?? null}
+              latencyState={latencyState}
+            />
           ))}
         </div>
       )}
@@ -161,9 +214,17 @@ export function ComponentStatusList({
 function ComponentRow({
   item,
   showCategory,
+  expanded,
+  onToggle,
+  latencyBuckets,
+  latencyState,
 }: {
-  item:         IntegrationStatus;
-  showCategory: boolean;
+  item:            IntegrationStatus;
+  showCategory:    boolean;
+  expanded:        boolean;
+  onToggle:        () => void;
+  latencyBuckets:  LatencyBucket[] | null;
+  latencyState:    LatencyFetchState;
 }) {
   const latency = item.latencyMs !== undefined ? `${item.latencyMs} ms` : '—';
   const latencyColor =
@@ -176,37 +237,72 @@ function ComponentRow({
   const catLabel = item.category ? (CATEGORY_LABELS[item.category] ?? item.category) : null;
 
   return (
-    <div className="flex items-center gap-3 px-5 py-3.5">
+    <div>
+      {/* Main row */}
+      <div className="flex items-center gap-3 px-5 py-3.5">
 
-      {/* Status dot */}
-      <StatusDot status={item.status} />
+        {/* Expand/collapse toggle */}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={expanded ? `Collapse ${item.name} latency chart` : `Expand ${item.name} latency chart`}
+          aria-expanded={expanded}
+          className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-300 hover:text-gray-500 hover:bg-gray-100 transition-colors"
+        >
+          <svg
+            className={`w-3 h-3 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+            viewBox="0 0 12 12"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path d="M4 2.5L7.5 6 4 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
 
-      {/* Name */}
-      <span className="flex-1 text-sm font-medium text-gray-900 truncate min-w-0">
-        {item.name}
-      </span>
+        {/* Status dot */}
+        <StatusDot status={item.status} />
 
-      {/* Category chip (only if any row has a category) */}
-      {showCategory && (
-        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 w-14 text-right hidden md:block shrink-0">
-          {catLabel ?? '—'}
+        {/* Name */}
+        <span className="flex-1 text-sm font-medium text-gray-900 truncate min-w-0">
+          {item.name}
         </span>
-      )}
 
-      {/* Latency */}
-      <span className={`text-xs tabular-nums w-20 text-right shrink-0 ${latencyColor}`}>
-        {latency}
-      </span>
+        {/* Category chip (only if any row has a category) */}
+        {showCategory && (
+          <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 w-14 text-right hidden md:block shrink-0">
+            {catLabel ?? '—'}
+          </span>
+        )}
 
-      {/* Last checked */}
-      <span className="text-xs text-gray-400 w-24 text-right hidden sm:block shrink-0">
-        {checked}
-      </span>
+        {/* Latency */}
+        <span className={`text-xs tabular-nums w-20 text-right shrink-0 ${latencyColor}`}>
+          {latency}
+        </span>
 
-      {/* Badge */}
-      <div className="w-20 flex justify-end shrink-0">
-        <StatusBadge status={item.status} />
+        {/* Last checked */}
+        <span className="text-xs text-gray-400 w-24 text-right hidden sm:block shrink-0">
+          {checked}
+        </span>
+
+        {/* Badge */}
+        <div className="w-20 flex justify-end shrink-0">
+          <StatusBadge status={item.status} />
+        </div>
       </div>
+
+      {/* Expandable latency panel */}
+      {expanded && (
+        <div className="px-8 pb-4 pt-1 bg-gray-50 border-t border-gray-100">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">
+            Response Time — last 24 h
+          </p>
+          <LatencySparkline
+            buckets={latencyBuckets ?? []}
+            loading={latencyState === 'loading'}
+            error={latencyState === 'error' ? 'Latency unavailable' : null}
+          />
+        </div>
+      )}
     </div>
   );
 }
