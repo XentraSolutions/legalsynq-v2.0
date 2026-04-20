@@ -2,7 +2,7 @@ import { requirePlatformAdmin }           from '@/lib/auth-guards';
 import { CCShell }                        from '@/components/shell/cc-shell';
 import { NotificationStatusBadge }       from '@/components/notifications/status-badge';
 import { ChannelBadge }                   from '@/components/notifications/channel-badge';
-import { notifClient }                    from '@/lib/notifications-api';
+import { notifClient, formatFailureCategory } from '@/lib/notifications-api';
 import type { NotifDetail, NotifEvent, NotifIssue } from '@/lib/notifications-api';
 import { ApiError }                       from '@/lib/api-client';
 
@@ -88,7 +88,7 @@ export default async function NotificationDetailPage(props: Props) {
                 {[
                   ['Provider Used',     notification.providerUsed ?? '—'],
                   ['Template Key',      notification.templateKey  ?? '—'],
-                  ['Failure Category',  notification.failureCategory ?? '—'],
+                  ['Failure Category',  formatFailureCategory(notification.failureCategory)],
                   ['Last Error',        notification.lastErrorMessage ?? '—'],
                   ['Blocked by Policy', notification.blockedByPolicy ? 'Yes' : 'No'],
                   ['Block Reason',      notification.blockedReasonCode ?? '—'],

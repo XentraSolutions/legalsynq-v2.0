@@ -11,7 +11,7 @@ import {
   type NotifFanOutSummary,
   type NotifFanOutRecipient,
 } from '@/lib/notifications-server-api';
-import { PRODUCT_TYPE_LABELS, type ProductType } from '@/lib/notifications-shared';
+import { PRODUCT_TYPE_LABELS, formatFailureCategory, type ProductType } from '@/lib/notifications-shared';
 import DeliveryActionsClient from './delivery-actions-client';
 
 const STATUS_CLS: Record<string, string> = {
@@ -331,7 +331,7 @@ function FailureReasonPanel({ notification }: { notification: NotifDetail }) {
       <dl className="space-y-2">
         {notification.failureCategory && (
           <InfoRow label="Category">
-            <span className="font-medium">{notification.failureCategory}</span>
+            <span className="font-medium">{formatFailureCategory(notification.failureCategory)}</span>
           </InfoRow>
         )}
         {notification.lastErrorMessage && (
