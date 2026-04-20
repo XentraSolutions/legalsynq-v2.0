@@ -26,6 +26,12 @@ public class LienTask : AuditableEntity
     public Guid?  GenerationRuleId     { get; private set; }
     public Guid?  GeneratingTemplateId { get; private set; }
 
+    // LS-LIENS-FLOW-007 — soft linkage to the Flow workflow instance active at task creation.
+    // Flow owns workflow instance execution; Liens stores only a read-only reference.
+    // Null when no CaseId is present, no active instance exists, or Flow lookup fails.
+    public Guid?   WorkflowInstanceId { get; private set; }
+    public string? WorkflowStepKey    { get; private set; }
+
     private LienTask() { }
 
     public static LienTask Create(
@@ -130,4 +136,19 @@ public class LienTask : AuditableEntity
 
     public void Complete(Guid updatedByUserId) => TransitionStatus(TaskStatuses.Completed, updatedByUserId);
     public void Cancel(Guid updatedByUserId)   => TransitionStatus(TaskStatuses.Cancelled, updatedByUserId);
+
+    /// <summary>
+    /// LS-LIENS-FLOW-007 — records the Flow workflow instance this task was linked to at creation time.
+    /// The link is a soft reference: no FK constraint to Flow, and task operations never fail
+    /// if the Flow instance later changes or disappears.
+    /// LS-LIENS-FLOW-008 will build step-synchronization on top of this linkage.
+    /// </summary>
+    public void SetWorkflowLink(Guid workflowInstanceId, string? workflowStepKey)
+    {
+        if (workflowInstanceId == Guid.Empty)
+            throw new ArgumentException("WorkflowInstanceId must not be empty.", nameof(workflowInstanceId));
+        WorkflowInstanceId = workflowInstanceId;
+        WorkflowStepKey    = workflowStepKey?.Trim();
+        UpdatedAtUtc       = DateTime.UtcNow;
+    }
 }

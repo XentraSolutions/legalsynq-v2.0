@@ -459,6 +459,32 @@ function ManualTaskDetails({ task }: { task: TaskDto }) {
       {task.workflowStageId && (
         <DetailRow icon="ri-flow-chart" label="Workflow Stage" value={task.workflowStageId} mono />
       )}
+      {task.workflowInstanceId && (
+        <LinkedWorkflowSection instanceId={task.workflowInstanceId} stepKey={task.workflowStepKey} />
+      )}
+    </div>
+  );
+}
+
+function LinkedWorkflowSection({ instanceId, stepKey }: { instanceId: string; stepKey?: string }) {
+  return (
+    <div className="mt-2 rounded-xl border border-blue-100 bg-blue-50 p-3 space-y-2">
+      <div className="flex items-center gap-2 mb-1">
+        <i className="ri-links-line text-blue-600" />
+        <p className="text-xs font-semibold text-blue-800">Linked Workflow Instance</p>
+      </div>
+      <div className="space-y-1 text-xs">
+        <div>
+          <p className="text-blue-600 mb-0.5">Instance ID</p>
+          <p className="font-mono text-blue-900 break-all">{instanceId}</p>
+        </div>
+        {stepKey && (
+          <div>
+            <p className="text-blue-600 mb-0.5">Flow Step</p>
+            <p className="font-mono text-blue-900">{stepKey}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -22,6 +22,10 @@ public sealed class TaskResponse
     public bool   IsSystemGenerated    { get; init; }
     public Guid?  GenerationRuleId     { get; init; }
     public Guid?  GeneratingTemplateId { get; init; }
+
+    // LS-LIENS-FLOW-007 — Flow workflow instance linked at task creation time
+    public Guid?   WorkflowInstanceId { get; init; }
+    public string? WorkflowStepKey    { get; init; }
 }
 
 public sealed class TaskLienLinkResponse

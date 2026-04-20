@@ -45,6 +45,10 @@ public class LienTaskConfiguration : IEntityTypeConfiguration<LienTask>
         builder.Property(t => t.GenerationRuleId);
         builder.Property(t => t.GeneratingTemplateId);
 
+        // LS-LIENS-FLOW-007 — Flow instance linkage (soft reference, no FK)
+        builder.Property(t => t.WorkflowInstanceId);
+        builder.Property(t => t.WorkflowStepKey).HasMaxLength(200);
+
         builder.Property(t => t.CreatedByUserId).IsRequired();
         builder.Property(t => t.UpdatedByUserId);
         builder.Property(t => t.CreatedAtUtc).IsRequired();
@@ -61,5 +65,9 @@ public class LienTaskConfiguration : IEntityTypeConfiguration<LienTask>
 
         builder.HasIndex(t => new { t.TenantId, t.CreatedAtUtc })
             .HasDatabaseName("IX_Tasks_TenantId_CreatedAtUtc");
+
+        // LS-LIENS-FLOW-007 — enables querying all tasks linked to a specific Flow instance
+        builder.HasIndex(t => new { t.TenantId, t.WorkflowInstanceId })
+            .HasDatabaseName("IX_Tasks_TenantId_WorkflowInstanceId");
     }
 }

@@ -20,6 +20,8 @@ public sealed class LienTaskService : ILienTaskService
     private readonly IWorkflowTransitionValidationService  _transitionValidator;
     // LS-LIENS-FLOW-006 — governance enforcement
     private readonly ILienTaskGovernanceSettingsRepository _governanceRepo;
+    // LS-LIENS-FLOW-007 — Flow instance linkage resolver
+    private readonly IFlowInstanceResolver _flowResolver;
     private readonly ILogger<LienTaskService> _logger;
 
     public LienTaskService(
@@ -31,6 +33,7 @@ public sealed class LienTaskService : ILienTaskService
         ILienWorkflowConfigRepository workflowRepo,
         IWorkflowTransitionValidationService transitionValidator,
         ILienTaskGovernanceSettingsRepository governanceRepo,
+        IFlowInstanceResolver flowResolver,
         ILogger<LienTaskService> logger)
     {
         _taskRepo            = taskRepo;
@@ -41,6 +44,7 @@ public sealed class LienTaskService : ILienTaskService
         _workflowRepo        = workflowRepo;
         _transitionValidator = transitionValidator;
         _governanceRepo      = governanceRepo;
+        _flowResolver        = flowResolver;
         _logger              = logger;
     }
 
@@ -154,6 +158,28 @@ public sealed class LienTaskService : ILienTaskService
         await _taskRepo.AddAsync(entity, ct);
 
         var links = await SaveLienLinksAsync(entity.Id, request.LienIds, actingUserId, ct);
+
+        // ── LS-LIENS-FLOW-007: Attempt to link the active Flow workflow instance ────
+        // Non-blocking: any Flow lookup failure is caught inside the resolver.
+        // The task is already persisted — this is a best-effort enrichment step.
+        if (entity.CaseId.HasValue)
+        {
+            var (instanceId, stepKey) = await _flowResolver.ResolveAsync(entity.CaseId.Value, ct);
+            if (instanceId.HasValue)
+            {
+                entity.SetWorkflowLink(instanceId.Value, stepKey);
+                await _taskRepo.UpdateAsync(entity, ct);
+
+                _audit.Publish(
+                    eventType:   "liens.task.workflow_linked",
+                    action:      "update",
+                    description: $"Task '{entity.Title}' linked to Flow instance {instanceId.Value} (step: {stepKey ?? "N/A"})",
+                    tenantId:    tenantId,
+                    actorUserId: actingUserId,
+                    entityType:  "LienTask",
+                    entityId:    entity.Id.ToString());
+            }
+        }
 
         _logger.LogInformation("Task created: {TaskId} Tenant={TenantId}", entity.Id, tenantId);
 
@@ -500,6 +526,8 @@ public sealed class LienTaskService : ILienTaskService
             IsSystemGenerated     = entity.SourceType == Domain.Enums.TaskSourceType.SystemGenerated,
             GenerationRuleId      = entity.GenerationRuleId,
             GeneratingTemplateId  = entity.GeneratingTemplateId,
+            WorkflowInstanceId    = entity.WorkflowInstanceId,
+            WorkflowStepKey       = entity.WorkflowStepKey,
             LinkedLiens           = links.Select(l => new TaskLienLinkResponse
             {
                 TaskId       = l.TaskId,

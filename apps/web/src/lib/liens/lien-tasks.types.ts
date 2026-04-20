@@ -64,6 +64,8 @@ export interface TaskDto {
   isSystemGenerated?: boolean;
   createdAtUtc: string;
   updatedAtUtc: string;
+  workflowInstanceId?: string;
+  workflowStepKey?: string;
 }
 
 export interface PaginatedTasksDto {
