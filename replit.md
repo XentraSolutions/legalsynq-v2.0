@@ -5674,3 +5674,28 @@ Note: `AuditPublisher.Publish()`'s `ContinueWith(OnlyOnFaulted)` continuation is
 
 ### Analysis
 Full root-cause analysis: `analysis/SynqLiens/liens-task-bugs-report.md`
+
+---
+
+## PROD-CC-MONITORING-500 Fix (2026-04-20)
+CC `/monitoring` page showed "Monitoring unavailable — Health probe failed: 500".
+
+### Root causes
+
+**RC-1 (primary) — Loopback self-request returned HTTP 500**  
+`monitoring/page.tsx` called `http://127.0.0.1:5004/api/monitoring/summary` (a fetch to its own route handler). During the startup window, the route module may not yet be compiled; Next.js returns 500 before the route's own `try/catch` can execute, bypassing the 503 error response. The page caught this 500, threw `"Health probe failed: 500"`, and rendered the error banner.
+
+**RC-2 (secondary) — Test entity inflated system status to "Down"**  
+`DeriveSystemStatus` in `MonitoringReadEndpoints.cs` included all entities regardless of scope. `ServiceToken-Test-Entity` (scope=`test`, permanently Down) drove `system.status = "Down"` even when all production services were healthy.
+
+**RC-3 (contributing) — No fetch timeout on gateway call**  
+`serviceGetMonitoringSummary()` had no `AbortController` timeout. A slow/hung gateway call could block indefinitely and eventually surface as a non-503 error from Next.js infrastructure.
+
+### Fix
+
+- **`apps/control-center/src/app/monitoring/page.tsx`** — Removed `fetchMonitoringSummary()` loopback self-request. Page now calls `getMonitoringSummary()` directly (Server Component → no HTTP hop). Eliminates the 500 race and IPv4/IPv6 ambiguity.
+- **`apps/services/monitoring/Monitoring.Api/Endpoints/MonitoringReadEndpoints.cs`** — `DeriveSystemStatus` now filters to `productive` (non-test-scope) entities before aggregating status and timestamp. Test entities remain visible in the integrations list but cannot affect system health.
+- **`apps/control-center/src/lib/monitoring-source.ts`** — Added 10-second `AbortController` timeout around the gateway `fetch()`. Network errors and timeouts now throw a clear descriptive error message instead of leaking raw Node.js errors.
+
+### Analysis
+Full root-cause analysis: `analysis/Monitoring/monitoring-500-report.md`

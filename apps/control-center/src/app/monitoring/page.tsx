@@ -1,4 +1,3 @@
-import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { CCShell } from '@/components/shell/cc-shell';
@@ -6,21 +5,10 @@ import { StatusSummaryBannerError } from '@/components/monitoring/status-summary
 import { SystemHealthCard } from '@/components/monitoring/system-health-card';
 import { MonitoringFilterSection } from '@/components/monitoring/monitoring-filter-section';
 import { AlertsPanel } from '@/components/monitoring/alerts-panel';
+import { getMonitoringSummary } from '@/lib/monitoring-source';
 import type { MonitoringSummary } from '@/types/control-center';
 
 export const dynamic = 'force-dynamic';
-
-async function fetchMonitoringSummary(): Promise<MonitoringSummary> {
-  const base = process.env.CONTROL_CENTER_SELF_URL ?? 'http://127.0.0.1:5004';
-  const cookieStore = await cookies();
-  const cookieHeader = cookieStore.getAll().map(c => `${c.name}=${c.value}`).join('; ');
-  const res = await fetch(`${base}/api/monitoring/summary`, {
-    cache: 'no-store',
-    headers: { cookie: cookieHeader },
-  });
-  if (!res.ok) throw new Error(`Health probe failed: ${res.status}`);
-  return res.json();
-}
 
 export default async function MonitoringPage() {
   const session = await requirePlatformAdmin();
@@ -29,7 +17,7 @@ export default async function MonitoringPage() {
   let fetchError: string | null           = null;
 
   try {
-    data = await fetchMonitoringSummary();
+    data = await getMonitoringSummary();
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load monitoring data.';
   }

@@ -112,24 +112,33 @@ public static class MonitoringReadEndpoints
     /// <summary>
     /// Derives the aggregate system status from the set of entity statuses.
     /// Down beats Degraded beats Healthy. An empty set is reported as Healthy.
+    /// Entities with scope "test" are excluded — they exist only for internal
+    /// verification and must not influence the production health signal.
     /// </summary>
     private static MonitoringSystemStatusResponse DeriveSystemStatus(
         IReadOnlyList<MonitoringStatusResponse> integrations)
     {
         var now = DateTime.UtcNow;
 
-        if (integrations.Count == 0)
+        // Exclude test-scope entities from system-level aggregation so that
+        // internal probe entities (e.g. ServiceToken-Test-Entity) never drive
+        // the overall status to "Down" or "Degraded".
+        var productive = integrations
+            .Where(i => !string.Equals(i.Scope, "test", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (productive.Count == 0)
         {
             return new MonitoringSystemStatusResponse("Healthy", now);
         }
 
         string status;
 
-        if (integrations.Any(i => i.Status == "Down"))
+        if (productive.Any(i => i.Status == "Down"))
         {
             status = "Down";
         }
-        else if (integrations.Any(i => i.Status == "Degraded"))
+        else if (productive.Any(i => i.Status == "Degraded"))
         {
             status = "Degraded";
         }
@@ -139,7 +148,8 @@ public static class MonitoringReadEndpoints
         }
 
         // Use the most recent check timestamp as the system-level timestamp.
-        var lastChecked = integrations
+        // Based on productive entities only, consistent with the status above.
+        var lastChecked = productive
             .Where(i => i.LastCheckedAtUtc.HasValue)
             .Select(i => i.LastCheckedAtUtc!.Value)
             .DefaultIfEmpty(now)

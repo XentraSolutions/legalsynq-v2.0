@@ -188,10 +188,27 @@ async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
   // is the actual service path.
   const url = `${gatewayBase}/monitoring/monitoring/summary`;
 
-  const res = await fetch(url, {
-    cache:   'no-store',
-    headers: { 'Accept': 'application/json' },
-  });
+  const controller = new AbortController();
+  const timeout    = setTimeout(() => controller.abort(), 10_000);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      cache:   'no-store',
+      headers: { 'Accept': 'application/json' },
+      signal:  controller.signal,
+    });
+  } catch (err) {
+    const reason = err instanceof Error && err.name === 'AbortError'
+      ? `timed out after 10 s`
+      : `network error: ${err instanceof Error ? err.message : String(err)}`;
+    throw new Error(
+      `[monitoring-source] Cannot reach Monitoring Service at ${url} — ${reason}. ` +
+      `Verify the gateway is running and ConnectionStrings__MonitoringDb is set.`,
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
     throw new Error(
