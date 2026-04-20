@@ -102,6 +102,14 @@ public static class UserEndpoints
                 .Select(g => new { userId = g.Key, count = g.Count() })
                 .ToDictionaryAsync(x => x.userId, x => x.count, ct);
 
+            var pendingInviteeList = await db.UserInvitations
+                .Where(inv => userIds.Contains(inv.UserId)
+                           && inv.TenantId == tenantId
+                           && inv.Status == UserInvitation.Statuses.Pending)
+                .Select(inv => inv.UserId)
+                .ToListAsync(ct);
+            var pendingInvitees = new HashSet<Guid>(pendingInviteeList);
+
             var enriched = users.Select(u => new
             {
                 id           = u.Id,
@@ -110,6 +118,9 @@ public static class UserEndpoints
                 firstName    = u.FirstName,
                 lastName     = u.LastName,
                 isActive     = u.IsActive,
+                status       = pendingInvitees.Contains(u.Id) ? "Invited"
+                             : u.IsActive                     ? "Active"
+                                                              : "Inactive",
                 roles        = u.Roles,
                 productRoles = u.ProductRoles,
                 groupCount   = groupCounts.GetValueOrDefault(u.Id, 0),
