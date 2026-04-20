@@ -223,7 +223,112 @@ Returns validation errors with field-level messages:
 
 ---
 
-## 7. Task Governance Behavior
+## 7. Flow Service Alignment
+
+### Architecture Reality (as of 2026-04-20)
+
+This section documents the honest transitional state of the Flow service boundary for Synq Liens, as required by the specification.
+
+---
+
+### 7.1 What is Flow-Owned at Runtime
+
+The **Flow service** (`apps/services/flow/`) is a live, production workflow instance engine. It owns:
+
+| Concern | Detail |
+|---------|--------|
+| Case/lien **process workflow instances** | When a tenant starts a case workflow (e.g., "Process Lien Application"), Flow creates a `WorkflowInstance` that tracks the case through a multi-step process definition |
+| Workflow step advancement | `IFlowClient.AdvanceWorkflowAsync` / `AdvanceProductWorkflowAsync` move an instance from one defined step to the next |
+| Workflow completion | `IFlowClient.CompleteWorkflowAsync` / `CompleteProductWorkflowAsync` |
+| Workflow definition listing | `IFlowClient.ListDefinitionsAsync` — used by tenant portal to show "Start workflow" modal |
+| Product-scoped workflow passthroughs | `IFlowClient.GetProductWorkflowAsync` — atomic ownership-validated access for each product (SynqLien, CareConnect, SynqFund) |
+
+Synq Liens already has a live `WorkflowEndpoints.cs` (`/api/liens/cases/{id}/workflows`) that routes to Flow. Product slug `"synqlien"` is registered. Case workflows **already run through Flow**.
+
+---
+
+### 7.2 What is Synq Liens-Owned at Runtime
+
+The **Liens service** owns all of the following directly:
+
+| Concern | Detail |
+|---------|--------|
+| **My Tasks** (LienTask) | Individual operational tasks ("Follow up with owner", "Prepare documents") |
+| Task workflow stages | `LienWorkflowConfig`, `LienWorkflowStage`, `LienWorkflowTransition` — a lightweight Liens-local staging system for task progress |
+| Task assignment | `LienTask.AssignedUserId` — single-assignee model |
+| Task templates | `LienTaskTemplate` — pre-filled task blueprints |
+| Task automation rules | `LienTaskGenerationRule` + `LienTaskGenerationEngine` — event-triggered generation |
+| Task governance settings | `LienTaskGovernanceSettings` (added in this feature) |
+| Case/lien context linkage | `LienTask.CaseId`, `LienTaskLienLink` |
+
+The `IFlowClient` interface has **no task management methods** (`CreateTaskAsync`, `AssignTaskAsync`, etc.). Flow manages workflow instances (case-level processes); it does not manage individual operational work items.
+
+---
+
+### 7.3 Explicit Boundary Map
+
+```
+Flow Service                          Synq Liens Service
+─────────────────────────────         ──────────────────────────────────────────
+WorkflowInstance (per case)           LienTask (individual work items)
+WorkflowDefinition                    LienWorkflowConfig (task staging)
+AdvanceWorkflow                       LienWorkflowStage + Transitions
+CompleteWorkflow                      Task Status (NEW → IN_PROGRESS → COMPLETED)
+Product-scoped auth checks            Task assignment (single AssignedUserId)
+                                      Task templates + automation
+                                      Task governance settings (this feature)
+                                      Case/lien context linkage
+```
+
+**Synq Liens calls Flow** to manage case process workflows.  
+**Flow does not call Liens** for task management.  
+These are two separate concern planes — they coexist, not replace each other.
+
+---
+
+### 7.4 What This Feature Aligns to Flow Direction
+
+This feature does NOT add any new permanent Liens-local divergence. It does the following that aligns correctly with the Flow direction:
+
+1. **Governance validation runs in the Liens service** — correct, because task creation belongs in Liens. There is no Flow API surface for individual task intake. Running governance in Liens is not a workaround; it is the right boundary.
+
+2. **Workflow stage derivation uses Liens-local `LienWorkflowConfig`** — this is the correct stage configuration for My Tasks, and is separate from Flow's `WorkflowDefinition` stages (which are for case-level process execution). These are different granularity concerns.
+
+3. **`StartStageMode.FIRST_ACTIVE_STAGE`** defaults to the same implicit first-step semantics that Flow uses when starting a workflow instance.
+
+4. **No new `IFlowClient` calls were added** for task creation — this is correct. Flow does not accept individual task creation requests. Adding such calls would be incorrect architecture.
+
+5. **`liens.task.created_assigned` / `liens.task.assigned` / `liens.task.reassigned` notification events** — fire through the shared Notifications service, which is also how Flow-side events publish notifications. The event taxonomy is consistent with the platform notification pattern.
+
+---
+
+### 7.5 Transitional Boundaries (Honest Documentation)
+
+The following remain transitional and should be addressed in future platform work:
+
+| Transitional Item | Current State | Preferred Direction |
+|-------------------|--------------|---------------------|
+| Task workflow stages in Liens | Liens-local `LienWorkflowConfig` | Long-term: evaluate whether My Tasks stages should map to Flow workflow steps. Requires Flow to expose a task-level API, which it does not currently. |
+| Task creation stays in Liens | Task service is Liens-owned | Long-term: if Flow adds a product task management module, Liens tasks could become Flow-managed work items scoped to a workflow instance |
+| Task governance settings in Liens | Settings entity in Liens DB | Remains correct as a product-facing configuration layer regardless of runtime changes |
+| Automation (FLOW-003) | `LienTaskGenerationEngine` in Liens | Already uses Liens task service; governance enforcement added in this feature. Will naturally inherit any future Flow task routing if task creation is ever moved |
+
+**Critically: this feature does not introduce any new permanent Liens-only divergence from the platform direction.** The Liens-local task system is the correct current runtime owner, and this governance layer is placed at the correct boundary — the task creation gate.
+
+---
+
+### 7.6 Governance as the Flow-Synq Liens Bridge
+
+The governance settings (`requireCaseLinkOnCreate`) ensure that every task created in Synq Liens is linked to a `CaseId`. This is the same case entity that already has a Flow `WorkflowInstance` running against it. The linkage means:
+
+- A task in My Tasks is always traceable to a case that may have a live Flow workflow
+- Future versions could use `CaseId` as the `SourceEntityId` to read the current Flow instance state and use it during task creation (e.g., auto-setting the task stage to match the current Flow workflow step)
+
+This makes the governance feature a **foundation for deeper Flow alignment** in future releases.
+
+---
+
+## 8. Task Governance Behavior
 
 ### Create-Time Validation Rules
 ```
@@ -253,7 +358,7 @@ IF requireWorkflowStageOnCreate = true AND workflowStageId not supplied
 
 ---
 
-## 8. Notifications / Email Integration
+## 9. Notifications / Email Integration
 
 ### Event Keys
 | Event | Trigger | Description |
@@ -288,7 +393,7 @@ Notification publish is fire-and-forget (`_ = _notifications.PublishAsync(...)`)
 
 ---
 
-## 9. Permissions / Security
+## 10. Permissions / Security
 
 ### Reused Permissions
 | Action | Permission |
@@ -309,7 +414,7 @@ No new permission was introduced — task governance settings are a natural exte
 
 ---
 
-## 10. Audit Integration
+## 11. Audit Integration
 
 ### Governance Settings Events
 | Event | Trigger |
@@ -325,7 +430,7 @@ When automation skips a task because governance validation fails, the existing `
 
 ---
 
-## 11. Validation Results
+## 12. Validation Results
 
 ### Backend Build
 - Both Liens.Api and Liens.Infrastructure compile cleanly
@@ -344,17 +449,20 @@ When automation skips a task because governance validation fails, the existing `
 
 ---
 
-## 12. Known Gaps / Risks
+## 13. Known Gaps / Risks
 
 1. **Assignee existence validation**: `assignedUserId` is checked for presence but not confirmed to be a valid user in the tenant. A future improvement is an `IIdentityClient.UserExistsInTenantAsync` check.
 2. **`allowMultipleAssignees`**: Stored in settings but not enforced — single-assignee is the only supported model. When the domain is extended to support multi-assignee, this flag will gate the behavior.
 3. **Explicit stage validation**: When `EXPLICIT_STAGE` mode is used, the stage is validated to be active at governance setting save time, but not re-validated at task creation time if the stage is later deactivated. A task creation that references a now-deactivated explicit stage will fall through to the `FIRST_ACTIVE_STAGE` fallback.
 4. **Automation assignee gap**: Auto-generated tasks with `AssignmentMode.LeaveUnassigned` will fail governance when `requireAssigneeOnCreate=true`. Tenants must configure automation rules with `AssignEventActor` or role-based assignment to meet governance. This is by design — documented behavior.
 5. **No governance bypass flag**: There is no `skipGovernance` flag for internal or system calls. This is intentional — governance is always enforced.
+6. **Flow task management module**: The `IFlowClient` has no `CreateTask` or `AssignTask` methods. My Tasks in Liens remains Liens-local. If the Flow service adds a product task management API in the future, task creation should be re-evaluated to route through Flow rather than the Liens-local service. When that happens, the `LienTaskGovernanceSettings` configuration layer would remain Liens-owned, and Flow would become the execution owner.
+7. **Task-to-workflow-instance correlation**: Tasks linked to a `CaseId` could theoretically be correlated with the active Flow `WorkflowInstance` for that case to inherit stage context. This is not currently implemented — it would require a synchronous `IFlowClient.ListBySourceEntityAsync` call on every task creation to look up the active instance, which is deferred to avoid latency on the create path.
+8. **Assignee display names**: The task creation form shows users by userId in the assignee dropdown when user list fails to load. A future improvement is a user roster cache that enriches display names across the Liens module.
 
 ---
 
-## 13. Run Instructions
+## 14. Run Instructions
 
 ### Migration
 The migration `20260420000001_AddTaskGovernanceSettings` is included as a code file. EF Core's `MigrateAsync()` in `Program.cs` will apply it on startup. The `EnsureLiensSchemaTablesAsync` safety-net also handles the table creation.

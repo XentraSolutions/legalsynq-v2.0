@@ -174,14 +174,17 @@ public sealed class LienTaskService : ILienTaskService
         {
             _ = _notifications.PublishAsync("liens.task.created_assigned", tenantId, new Dictionary<string, string>
             {
+                ["tenantId"]        = tenantId.ToString(),
                 ["taskId"]          = entity.Id.ToString(),
                 ["taskTitle"]       = entity.Title,
                 ["assignedTo"]      = entity.AssignedUserId.Value.ToString(),
                 ["assignedBy"]      = actingUserId.ToString(),
                 ["caseId"]          = entity.CaseId?.ToString() ?? string.Empty,
+                ["lienIds"]         = string.Join(",", links.Select(l => l.LienId.ToString())),
                 ["priority"]        = entity.Priority,
                 ["workflowStageId"] = entity.WorkflowStageId?.ToString() ?? string.Empty,
                 ["dueDate"]         = entity.DueDate?.ToString("yyyy-MM-dd") ?? string.Empty,
+                ["sourceType"]      = entity.SourceType ?? string.Empty,
             }, ct);
         }
 
@@ -290,14 +293,17 @@ public sealed class LienTaskService : ILienTaskService
             var notifKey = isReassignment ? "liens.task.reassigned" : "liens.task.assigned";
             _ = _notifications.PublishAsync(notifKey, tenantId, new Dictionary<string, string>
             {
-                ["taskId"]          = entity.Id.ToString(),
-                ["taskTitle"]       = entity.Title,
-                ["assignedTo"]      = request.AssignedUserId.Value.ToString(),
-                ["assignedBy"]      = actingUserId.ToString(),
-                ["caseId"]          = entity.CaseId?.ToString() ?? string.Empty,
-                ["priority"]        = entity.Priority,
-                ["workflowStageId"] = entity.WorkflowStageId?.ToString() ?? string.Empty,
-                ["dueDate"]         = entity.DueDate?.ToString("yyyy-MM-dd") ?? string.Empty,
+                ["tenantId"]            = tenantId.ToString(),
+                ["taskId"]              = entity.Id.ToString(),
+                ["taskTitle"]           = entity.Title,
+                ["assignedTo"]          = request.AssignedUserId.Value.ToString(),
+                ["assignedBy"]          = actingUserId.ToString(),
+                ["previousAssigneeId"]  = previousAssignee?.ToString() ?? string.Empty,
+                ["caseId"]              = entity.CaseId?.ToString() ?? string.Empty,
+                ["lienIds"]             = string.Join(",", links.Select(l => l.LienId.ToString())),
+                ["priority"]            = entity.Priority,
+                ["workflowStageId"]     = entity.WorkflowStageId?.ToString() ?? string.Empty,
+                ["dueDate"]             = entity.DueDate?.ToString("yyyy-MM-dd") ?? string.Empty,
             }, ct);
         }
 

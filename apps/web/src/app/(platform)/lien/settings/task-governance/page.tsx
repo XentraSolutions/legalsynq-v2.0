@@ -109,7 +109,7 @@ export default function TaskGovernancePage() {
       };
       const updated = await lienTaskGovernanceService.update(req);
       setSettings(updated);
-      addToast({ type: 'success', message: 'Task governance settings saved.' });
+      addToast({ type: 'success', title: 'Settings Saved', description: 'Task governance settings saved.' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save settings.';
       setError(msg);
@@ -130,8 +130,7 @@ export default function TaskGovernancePage() {
     <div className="max-w-2xl mx-auto py-6 space-y-6">
       <PageHeader
         title="Task Governance"
-        description="Control what information is required when tasks are created in Synq Liens."
-        icon="ri-shield-check-line"
+        subtitle="Control what information is required when tasks are created in Synq Liens."
       />
 
       {error && (
