@@ -2,9 +2,9 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { CCShell } from '@/components/shell/cc-shell';
-import { StatusSummaryBanner, StatusSummaryBannerError } from '@/components/monitoring/status-summary-banner';
+import { StatusSummaryBannerError } from '@/components/monitoring/status-summary-banner';
 import { SystemHealthCard } from '@/components/monitoring/system-health-card';
-import { ComponentStatusList } from '@/components/monitoring/component-status-list';
+import { MonitoringFilterSection } from '@/components/monitoring/monitoring-filter-section';
 import { AlertsPanel } from '@/components/monitoring/alerts-panel';
 import type { MonitoringSummary } from '@/types/control-center';
 
@@ -82,19 +82,18 @@ export default async function MonitoringPage() {
           ) : data ? (
             <div className="space-y-5">
 
-              <StatusSummaryBanner
+              <MonitoringFilterSection
                 systemStatus={data.system.status}
                 total={totalServices}
                 healthy={healthyCount}
                 degraded={degradedCount}
                 down={downCount}
-                alerts={data.alerts.length}
                 lastCheckedAt={data.system.lastCheckedAtUtc}
+                integrations={data.integrations}
+                alerts={data.alerts}
               />
 
               <SystemHealthCard summary={data.system} />
-
-              <ComponentStatusList integrations={data.integrations} />
 
               {hasAlerts ? (
                 <AlertsPanel alerts={data.alerts} integrations={data.integrations} />

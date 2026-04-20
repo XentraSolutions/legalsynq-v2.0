@@ -1,13 +1,18 @@
+'use client';
+
 import type { MonitoringStatus } from '@/types/control-center';
+import type { StatusFilter } from './monitoring-filter-section';
 
 interface StatusSummaryBannerProps {
-  systemStatus:  MonitoringStatus;
-  total:         number;
-  healthy:       number;
-  degraded:      number;
-  down:          number;
-  alerts:        number;
-  lastCheckedAt: string;
+  systemStatus:    MonitoringStatus;
+  total:           number;
+  healthy:         number;
+  degraded:        number;
+  down:            number;
+  alerts:          number;
+  lastCheckedAt:   string;
+  statusFilter?:   StatusFilter;
+  onFilterChange?: (f: StatusFilter) => void;
 }
 
 const STATUS_STYLES: Record<MonitoringStatus, {
@@ -26,8 +31,8 @@ const STATUS_STYLES: Record<MonitoringStatus, {
  * StatusSummaryBanner — compact horizontal status strip.
  *
  * Shows overall system status + per-level service counts + active alert count.
- * Placed above the detailed SystemHealthCard on the monitoring page.
- * Pure server component; no client interactivity.
+ * When statusFilter + onFilterChange are provided the count pills become
+ * clickable filter controls. Clicking an active filter resets to 'all'.
  */
 export function StatusSummaryBanner({
   systemStatus,
@@ -37,9 +42,14 @@ export function StatusSummaryBanner({
   down,
   alerts,
   lastCheckedAt,
+  statusFilter,
+  onFilterChange,
 }: StatusSummaryBannerProps) {
-  const cfg   = STATUS_STYLES[systemStatus];
-  const since = formatTime(lastCheckedAt);
+  const cfg      = STATUS_STYLES[systemStatus];
+  const since    = formatTime(lastCheckedAt);
+  const isActive = (f: StatusFilter) => statusFilter === f;
+  const toggle   = (f: StatusFilter) => onFilterChange?.(statusFilter === f ? 'all' : f);
+  const interactive = !!onFilterChange;
 
   return (
     <div
@@ -58,14 +68,49 @@ export function StatusSummaryBanner({
 
       {/* Service counts */}
       <div className="flex items-center gap-4 flex-wrap">
-        <StatPill value={total}   label="total"    color="text-gray-700"  />
-        <StatPill value={healthy}  label="healthy"  color="text-green-700" />
+
+        <StatPill
+          value={total}
+          label="total"
+          color="text-gray-700"
+          interactive={false}
+        />
+
+        <StatPill
+          value={healthy}
+          label="healthy"
+          color="text-green-700"
+          interactive={interactive}
+          active={isActive('healthy')}
+          activeRing="ring-green-400"
+          onClick={() => toggle('healthy')}
+        />
+
         {degraded > 0 && (
-          <StatPill value={degraded} label="degraded" color="text-amber-700" />
+          <StatPill
+            value={degraded}
+            label="degraded"
+            color="text-amber-700"
+            interactive={interactive}
+            active={isActive('degraded')}
+            activeRing="ring-amber-400"
+            onClick={() => toggle('degraded')}
+          />
         )}
+
         {down > 0 && (
-          <StatPill value={down} label="down" color="text-red-700" bold />
+          <StatPill
+            value={down}
+            label="down"
+            color="text-red-700"
+            bold
+            interactive={interactive}
+            active={isActive('down')}
+            activeRing="ring-red-400"
+            onClick={() => toggle('down')}
+          />
         )}
+
         {alerts > 0 && (
           <>
             <span className="h-3 w-px bg-gray-300 hidden sm:block shrink-0" />
@@ -74,9 +119,14 @@ export function StatusSummaryBanner({
               label={alerts === 1 ? 'alert' : 'alerts'}
               color="text-red-700"
               bold
+              interactive={interactive}
+              active={isActive('alerts')}
+              activeRing="ring-red-400"
+              onClick={() => toggle('alerts')}
             />
           </>
         )}
+
       </div>
 
       {/* Spacer */}
@@ -116,17 +166,48 @@ function StatPill({
   label,
   color,
   bold,
+  interactive,
+  active,
+  activeRing,
+  onClick,
 }: {
-  value: number;
-  label: string;
-  color: string;
-  bold?: boolean;
+  value:        number;
+  label:        string;
+  color:        string;
+  bold?:        boolean;
+  interactive?: boolean;
+  active?:      boolean;
+  activeRing?:  string;
+  onClick?:     () => void;
 }) {
+  const base = `text-xs tabular-nums ${color} ${bold ? 'font-semibold' : ''}`;
+
+  if (!interactive) {
+    return (
+      <span className={base}>
+        <span className={`text-sm font-semibold ${color}`}>{value}</span>
+        {' '}{label}
+      </span>
+    );
+  }
+
   return (
-    <span className={`text-xs tabular-nums ${color} ${bold ? 'font-semibold' : ''}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={[
+        'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5',
+        'transition-all focus:outline-none focus-visible:ring-2',
+        active
+          ? `bg-white/70 ring-2 ${activeRing} shadow-sm`
+          : 'hover:bg-white/50',
+        base,
+      ].join(' ')}
+    >
       <span className={`text-sm font-semibold ${color}`}>{value}</span>
       {' '}{label}
-    </span>
+    </button>
   );
 }
 

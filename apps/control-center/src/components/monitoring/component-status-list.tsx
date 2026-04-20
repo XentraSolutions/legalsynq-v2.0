@@ -1,16 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import type { IntegrationStatus, MonitoringStatus } from '@/types/control-center';
+import type { IntegrationStatus, MonitoringStatus, SystemAlert } from '@/types/control-center';
+import type { StatusFilter } from './monitoring-filter-section';
 import { StatusBadge } from './system-health-card';
 
 interface ComponentStatusListProps {
-  integrations: IntegrationStatus[];
+  integrations:           IntegrationStatus[];
+  alerts?:                SystemAlert[];
+  externalFilter?:        StatusFilter;
+  onExternalFilterChange?: (f: StatusFilter) => void;
 }
 
-type FilterValue = 'All' | MonitoringStatus;
+type FilterValue = 'All' | MonitoringStatus | 'Alerts';
 
-const FILTERS: FilterValue[] = ['All', 'Healthy', 'Degraded', 'Down'];
+const FILTERS: FilterValue[] = ['All', 'Healthy', 'Degraded', 'Down', 'Alerts'];
 
 const STATUS_ORDER: Record<MonitoringStatus, number> = { Down: 0, Degraded: 1, Healthy: 2 };
 
@@ -19,15 +23,64 @@ const CATEGORY_LABELS: Record<string, string> = {
   product:        'Product',
 };
 
+// Map shared StatusFilter (lowercase) to internal FilterValue (capitalized)
+function toFilterValue(f: StatusFilter): FilterValue {
+  switch (f) {
+    case 'healthy':  return 'Healthy';
+    case 'degraded': return 'Degraded';
+    case 'down':     return 'Down';
+    case 'alerts':   return 'Alerts';
+    default:         return 'All';
+  }
+}
+
+// Map internal FilterValue back to shared StatusFilter
+function toStatusFilter(f: FilterValue): StatusFilter {
+  switch (f) {
+    case 'Healthy':  return 'healthy';
+    case 'Degraded': return 'degraded';
+    case 'Down':     return 'down';
+    case 'Alerts':   return 'alerts';
+    default:         return 'all';
+  }
+}
+
 /**
  * ComponentStatusList — unified, filterable list of all monitored entities.
  *
  * Replaces the two split IntegrationStatusTable cards (Platform Services / Products).
  * Client component: filter state is local; no additional API calls are made.
  * Data comes directly from MonitoringSummary.integrations — no status recomputation.
+ *
+ * When externalFilter + onExternalFilterChange are provided the component operates
+ * in controlled mode: the banner drives the filter and the internal buttons stay
+ * in sync. Without them the component is fully self-contained (backward-compatible).
  */
-export function ComponentStatusList({ integrations }: ComponentStatusListProps) {
-  const [activeFilter, setActiveFilter] = useState<FilterValue>('All');
+export function ComponentStatusList({
+  integrations,
+  alerts = [],
+  externalFilter,
+  onExternalFilterChange,
+}: ComponentStatusListProps) {
+  const [internalFilter, setInternalFilter] = useState<FilterValue>('All');
+
+  const controlled     = externalFilter !== undefined && !!onExternalFilterChange;
+  const activeFilter   = controlled ? toFilterValue(externalFilter!) : internalFilter;
+
+  function handleFilterClick(f: FilterValue) {
+    const sf = toStatusFilter(f);
+    if (controlled) {
+      // Toggle: clicking the active filter resets to 'all'
+      onExternalFilterChange!(activeFilter === f ? 'all' : sf);
+    } else {
+      setInternalFilter(activeFilter === f ? 'All' : f);
+    }
+  }
+
+  // Build set of entity names that have active alerts (for 'Alerts' filter)
+  const alertEntityNames = new Set(
+    alerts.filter(a => !a.resolvedAtUtc && a.entityName).map(a => a.entityName!)
+  );
 
   const sorted = [...integrations].sort((a, b) => {
     const diff = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
@@ -35,9 +88,9 @@ export function ComponentStatusList({ integrations }: ComponentStatusListProps) 
   });
 
   const visible =
-    activeFilter === 'All'
-      ? sorted
-      : sorted.filter(i => i.status === activeFilter);
+    activeFilter === 'All'     ? sorted :
+    activeFilter === 'Alerts'  ? sorted.filter(i => alertEntityNames.has(i.name)) :
+                                 sorted.filter(i => i.status === activeFilter);
 
   const hasCategory = integrations.some(i => i.category);
 
@@ -47,7 +100,13 @@ export function ComponentStatusList({ integrations }: ComponentStatusListProps) 
     Healthy:  integrations.filter(i => i.status === 'Healthy').length,
     Degraded: integrations.filter(i => i.status === 'Degraded').length,
     Down:     integrations.filter(i => i.status === 'Down').length,
+    Alerts:   alertEntityNames.size,
   };
+
+  function emptyMessage(): string {
+    if (activeFilter === 'Alerts') return 'No active alerts.';
+    return `No ${activeFilter.toLowerCase()} components.`;
+  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -66,15 +125,18 @@ export function ComponentStatusList({ integrations }: ComponentStatusListProps) 
 
         {/* Filter buttons */}
         <div className="flex items-center gap-1.5 flex-wrap shrink-0" role="group" aria-label="Filter by status">
-          {FILTERS.map(f => (
-            <FilterButton
-              key={f}
-              label={f}
-              count={counts[f]}
-              active={activeFilter === f}
-              onClick={() => setActiveFilter(f)}
-            />
-          ))}
+          {FILTERS.map(f => {
+            if (f === 'Alerts' && counts.Alerts === 0) return null;
+            return (
+              <FilterButton
+                key={f}
+                label={f}
+                count={counts[f]}
+                active={activeFilter === f}
+                onClick={() => handleFilterClick(f)}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -82,7 +144,7 @@ export function ComponentStatusList({ integrations }: ComponentStatusListProps) 
       {integrations.length === 0 ? (
         <EmptyState message="No monitored components." />
       ) : visible.length === 0 ? (
-        <EmptyState message={`No ${activeFilter.toLowerCase()} components.`} />
+        <EmptyState message={emptyMessage()} />
       ) : (
         <div className="divide-y divide-gray-100">
           {visible.map(item => (
@@ -167,12 +229,14 @@ function FilterButton({
     Healthy:  'bg-green-600 text-white  border-green-600',
     Degraded: 'bg-amber-500 text-white  border-amber-500',
     Down:     'bg-red-600   text-white  border-red-600',
+    Alerts:   'bg-red-600   text-white  border-red-600',
   };
   const idleStyles: Record<FilterValue, string> = {
     All:      'bg-white text-gray-600 border-gray-200 hover:bg-gray-50',
     Healthy:  'bg-white text-green-700 border-gray-200 hover:bg-green-50',
     Degraded: 'bg-white text-amber-700 border-gray-200 hover:bg-amber-50',
     Down:     'bg-white text-red-700   border-gray-200 hover:bg-red-50',
+    Alerts:   'bg-white text-red-700   border-gray-200 hover:bg-red-50',
   };
 
   return (
