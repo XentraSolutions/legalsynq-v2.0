@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   FAILURE_CATEGORY_LABELS,
   formatFailureCategory,
-} from '../notifications-shared';
+} from '../../../../../packages/notifications-utils';
 
 test('formatFailureCategory returns the correct label + hint for auth_config_failure', () => {
   const result = formatFailureCategory('auth_config_failure');
