@@ -44,20 +44,6 @@ export function TaskPanel({ caseId, lienId, workflowStageId, title = 'Tasks' }: 
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
-  async function handleComplete(id: string) {
-    try {
-      await lienTasksService.completeTask(id);
-      fetchTasks();
-    } catch { /* silent */ }
-  }
-
-  async function handleCancel(id: string) {
-    try {
-      await lienTasksService.cancelTask(id);
-      fetchTasks();
-    } catch { /* silent */ }
-  }
-
   const filteredTasks = statusFilter === 'active'
     ? tasks.filter((t) => ACTIVE_TASK_STATUSES.includes(t.status as never))
     : tasks;
@@ -129,8 +115,6 @@ export function TaskPanel({ caseId, lienId, workflowStageId, title = 'Tasks' }: 
             <TaskCard
               key={task.id}
               task={task}
-              onComplete={handleComplete}
-              onCancel={handleCancel}
               onClick={(t) => setSelectedTask(t)}
               compact
             />

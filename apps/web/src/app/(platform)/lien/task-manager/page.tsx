@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { lienTasksService } from '@/lib/liens/lien-tasks.service';
+import { apiClient } from '@/lib/api-client';
 import type { TaskDto, TaskStatus, TaskPriority, TasksQuery } from '@/lib/liens/lien-tasks.types';
 import {
   TASK_STATUS_LABELS,
@@ -11,6 +12,7 @@ import {
   BOARD_COLUMNS,
   ALL_TASK_STATUSES,
 } from '@/lib/liens/lien-tasks.types';
+import type { TenantUser } from '@/types/tenant';
 import { useLienStore } from '@/stores/lien-store';
 import { PageHeader } from '@/components/lien/page-header';
 import { CreateEditTaskForm } from '@/components/lien/forms/create-edit-task-form';
@@ -19,6 +21,25 @@ import { TaskDetailDrawer } from '@/components/lien/task-detail-drawer';
 
 type ViewMode = 'board' | 'list';
 type AssignmentScope = 'all' | 'me' | 'others' | 'unassigned';
+
+const PRIORITY_LABELS: Record<string, string> = {
+  LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High', URGENT: 'Urgent',
+};
+
+const AVATAR_COLORS = [
+  'bg-violet-500', 'bg-blue-500', 'bg-teal-500',
+  'bg-indigo-500', 'bg-pink-500', 'bg-amber-500',
+];
+
+function avatarColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
+function getInitials(first: string, last: string): string {
+  return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
+}
 
 function formatDate(val?: string | null): string {
   if (!val) return '\u2014';
@@ -33,24 +54,39 @@ function isOverdue(dueDate?: string | null, status?: string): boolean {
   return new Date(dueDate) < new Date();
 }
 
+function shortCaseId(caseId: string): string {
+  return caseId.length > 8 ? caseId.slice(0, 8).toUpperCase() : caseId.toUpperCase();
+}
+
 export default function TaskManagerPage() {
   const addToast = useLienStore((s) => s.addToast);
 
-  const [tasks, setTasks] = useState<TaskDto[]>([]);
+  const [tasks, setTasks]           = useState<TaskDto[]>([]);
   const [totalCount, setTotalCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>('board');
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+  const [viewMode, setViewMode]     = useState<ViewMode>('board');
+  const [usersById, setUsersById]   = useState<Map<string, TenantUser>>(new Map());
 
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<TaskStatus | ''>('');
-  const [priorityFilter, setPriorityFilter] = useState<TaskPriority | ''>('');
+  const [search, setSearch]                   = useState('');
+  const [statusFilter, setStatusFilter]       = useState<TaskStatus | ''>('');
+  const [priorityFilter, setPriorityFilter]   = useState<TaskPriority | ''>('');
   const [assignmentScope, setAssignmentScope] = useState<AssignmentScope>('all');
 
-  const [showCreate, setShowCreate] = useState(false);
-  const [editTask, setEditTask] = useState<TaskDto | undefined>();
-  const [detailTask, setDetailTask] = useState<TaskDto | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [showCreate, setShowCreate]   = useState(false);
+  const [editTask, setEditTask]       = useState<TaskDto | undefined>();
+  const [detailTask, setDetailTask]   = useState<TaskDto | null>(null);
+
+  /* Fetch tenant users once for name resolution */
+  useEffect(() => {
+    apiClient.get<TenantUser[]>('/identity/api/users')
+      .then(({ data }) => {
+        const map = new Map<string, TenantUser>();
+        (data ?? []).forEach((u) => map.set(u.id, u));
+        setUsersById(map);
+      })
+      .catch(() => { /* best-effort — cards fall back to avatar icon */ });
+  }, []);
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
@@ -75,32 +111,6 @@ export default function TaskManagerPage() {
   }, [search, statusFilter, priorityFilter, assignmentScope]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
-
-  async function handleComplete(id: string) {
-    setActionLoading(id);
-    try {
-      await lienTasksService.completeTask(id);
-      addToast({ type: 'success', title: 'Task Completed' });
-      fetchTasks();
-    } catch {
-      addToast({ type: 'error', title: 'Failed to complete task' });
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function handleCancel(id: string) {
-    setActionLoading(id);
-    try {
-      await lienTasksService.cancelTask(id);
-      addToast({ type: 'info', title: 'Task Cancelled' });
-      fetchTasks();
-    } catch {
-      addToast({ type: 'error', title: 'Failed to cancel task' });
-    } finally {
-      setActionLoading(null);
-    }
-  }
 
   const kpis = useMemo(() => ({
     total:      tasks.length,
@@ -151,11 +161,11 @@ export default function TaskManagerPage() {
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
-          { label: 'Total',       value: kpis.total,      icon: 'ri-task-line',             color: 'text-gray-600'  },
-          { label: 'New',         value: kpis.new_,        icon: 'ri-time-line',             color: 'text-gray-500'  },
-          { label: 'In Progress', value: kpis.inProgress,  icon: 'ri-loader-4-line',         color: 'text-blue-600'  },
-          { label: 'Blocked',     value: kpis.blocked,     icon: 'ri-pause-circle-line',     color: 'text-amber-600' },
-          { label: 'Overdue',     value: kpis.overdue,     icon: 'ri-alarm-warning-line',    color: 'text-red-600'   },
+          { label: 'Total',       value: kpis.total,      icon: 'ri-task-line',          color: 'text-gray-600'  },
+          { label: 'New',         value: kpis.new_,        icon: 'ri-time-line',          color: 'text-gray-500'  },
+          { label: 'In Progress', value: kpis.inProgress,  icon: 'ri-loader-4-line',      color: 'text-blue-600'  },
+          { label: 'Blocked',     value: kpis.blocked,     icon: 'ri-pause-circle-line',  color: 'text-amber-600' },
+          { label: 'Overdue',     value: kpis.overdue,     icon: 'ri-alarm-warning-line', color: 'text-red-600'   },
         ].map((k) => (
           <div key={k.label} className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-100">
             <div className={`flex items-center gap-1.5 text-xs font-medium ${k.color} mb-1`}>
@@ -205,7 +215,7 @@ export default function TaskManagerPage() {
         >
           <option value="">All Priorities</option>
           {(['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as TaskPriority[]).map((p) => (
-            <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>
+            <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
           ))}
         </select>
       </div>
@@ -226,6 +236,7 @@ export default function TaskManagerPage() {
           <p className="text-sm text-gray-400 mt-2">Loading tasks...</p>
         </div>
       ) : viewMode === 'board' ? (
+        /* ── Board view ─────────────────────────────────────────────────── */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {boardColumns.map((col) => (
             <div key={col.status} className={`bg-gray-50 rounded-xl border border-gray-200 border-t-4 ${col.borderColor} min-h-[200px]`}>
@@ -237,15 +248,13 @@ export default function TaskManagerPage() {
               </div>
               <div className="p-3 space-y-2">
                 {col.items.map((task) => (
-                  <div key={task.id} className={actionLoading === task.id ? 'opacity-50' : ''}>
-                    <TaskCard
-                      task={task}
-                      onComplete={handleComplete}
-                      onCancel={handleCancel}
-                      onClick={(t) => setDetailTask(t)}
-                      compact
-                    />
-                  </div>
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    onClick={(t) => setDetailTask(t)}
+                    compact
+                    assigneeUser={task.assignedUserId ? (usersById.get(task.assignedUserId) ?? null) : null}
+                  />
                 ))}
                 {col.items.length === 0 && (
                   <div className="text-center py-6 text-xs text-gray-300">No tasks</div>
@@ -255,6 +264,7 @@ export default function TaskManagerPage() {
           ))}
         </div>
       ) : (
+        /* ── List view ──────────────────────────────────────────────────── */
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-100">
@@ -264,83 +274,87 @@ export default function TaskManagerPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Priority</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Assignee</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Case</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Liens</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Due</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Updated</th>
-                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {tasks.map((task) => (
-                  <tr
-                    key={task.id}
-                    className={`hover:bg-gray-50 cursor-pointer ${actionLoading === task.id ? 'opacity-50' : ''}`}
-                    onClick={() => setDetailTask(task)}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <i className={`${TASK_PRIORITY_ICONS[task.priority]} text-sm ${TASK_PRIORITY_COLORS[task.priority]}`} />
-                        <span className="text-sm font-medium text-gray-800 line-clamp-1">{task.title}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full
-                        ${task.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-                          task.status === 'CANCELLED' ? 'bg-red-100 text-red-700' :
-                          task.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
-                          task.status === 'WAITING_BLOCKED' ? 'bg-amber-100 text-amber-700' :
-                          'bg-gray-100 text-gray-600'}`}>
-                        {TASK_STATUS_LABELS[task.status]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-medium ${TASK_PRIORITY_COLORS[task.priority]}`}>
-                        {task.priority.charAt(0) + task.priority.slice(1).toLowerCase()}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {task.assignedUserId ? (
-                        <span className="flex items-center gap-1 text-xs"><i className="ri-user-line" />Assigned</span>
-                      ) : <span className="text-gray-300 text-xs">\u2014</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      {task.linkedLiens.length > 0 ? (
-                        <span className="bg-purple-50 text-purple-700 text-xs rounded px-1.5 py-0.5">
-                          {task.linkedLiens.length}
+                {tasks.map((task) => {
+                  const assignee = task.assignedUserId ? usersById.get(task.assignedUserId) : undefined;
+                  return (
+                    <tr
+                      key={task.id}
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => setDetailTask(task)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <i className={`${TASK_PRIORITY_ICONS[task.priority]} text-sm ${TASK_PRIORITY_COLORS[task.priority]}`} />
+                          <span className="text-sm font-medium text-gray-800 line-clamp-1">{task.title}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full
+                          ${task.status === 'COMPLETED'       ? 'bg-green-100 text-green-700' :
+                            task.status === 'CANCELLED'       ? 'bg-red-100 text-red-700' :
+                            task.status === 'IN_PROGRESS'     ? 'bg-blue-100 text-blue-700' :
+                            task.status === 'WAITING_BLOCKED' ? 'bg-amber-100 text-amber-700' :
+                                                                'bg-gray-100 text-gray-600'}`}>
+                          {TASK_STATUS_LABELS[task.status]}
                         </span>
-                      ) : <span className="text-gray-300 text-xs">\u2014</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs ${isOverdue(task.dueDate, task.status) ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-                        {formatDate(task.dueDate)}
-                        {isOverdue(task.dueDate, task.status) && <i className="ri-error-warning-line ml-1" />}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{formatDate(task.updatedAtUtc)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {task.status !== 'COMPLETED' && task.status !== 'CANCELLED' && (
-                          <>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleComplete(task.id); }}
-                              className="p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50 rounded"
-                              title="Complete"
-                            >
-                              <i className="ri-checkbox-circle-line" />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleCancel(task.id); }}
-                              className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
-                              title="Cancel"
-                            >
-                              <i className="ri-close-circle-line" />
-                            </button>
-                          </>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-medium ${TASK_PRIORITY_COLORS[task.priority]}`}>
+                          {PRIORITY_LABELS[task.priority] ?? task.priority}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {assignee ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0 ${avatarColor(task.assignedUserId!)}`}>
+                              {getInitials(assignee.firstName, assignee.lastName)}
+                            </div>
+                            <span className="text-sm text-gray-700 whitespace-nowrap">
+                              {assignee.firstName} {assignee.lastName}
+                            </span>
+                          </div>
+                        ) : task.assignedUserId ? (
+                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                            <i className="ri-user-line" />Assigned
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">&mdash;</span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3">
+                        {task.caseId ? (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200 rounded px-1.5 py-0.5">
+                            <i className="ri-briefcase-line text-[10px]" />
+                            {shortCaseId(task.caseId)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">&mdash;</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {task.linkedLiens.length > 0 ? (
+                          <span className="bg-purple-50 text-purple-700 text-xs rounded px-1.5 py-0.5">
+                            {task.linkedLiens.length}
+                          </span>
+                        ) : <span className="text-gray-300 text-xs">&mdash;</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs ${isOverdue(task.dueDate, task.status) ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+                          {formatDate(task.dueDate)}
+                          {isOverdue(task.dueDate, task.status) && <i className="ri-error-warning-line ml-1" />}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-400">{formatDate(task.updatedAtUtc)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
