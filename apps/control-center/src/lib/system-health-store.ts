@@ -204,6 +204,12 @@ function parseDotNetConnString(raw: string): PoolOptions | null {
   };
 }
 
+// TODO: DEPRECATE — MON-INT-01-001
+// resolvePoolOptions / getPool / ensureSchemaAndSeed own a direct MySQL connection
+// to monitoring_db. This direct DB dependency should not expand. Once the Monitoring
+// Service is integrated, the service registry (which URLs to probe, categories) will
+// be managed by the Monitoring Service and read via its REST API. At that point, this
+// entire DB pool can be removed from the Control Center process.
 function resolvePoolOptions(): PoolOptions | null {
   const url = process.env.SYSTEM_HEALTH_DB_URL;
   if (url && url.trim()) {
