@@ -2,6 +2,7 @@ import type { IntegrationStatus, MonitoringStatus } from '@/types/control-center
 import type { PublicUptimeBucket } from '@/app/api/monitoring/uptime/route';
 import type { SupportedWindow } from '@/lib/uptime-aggregation';
 import { AvailabilityBars, AvailabilityLegend } from './availability-bars';
+import { PublicLatencySparkline } from './public-latency-sparkline';
 
 interface PublicComponentListProps {
   integrations: IntegrationStatus[];
@@ -42,10 +43,11 @@ const WINDOW_LABELS: Record<SupportedWindow, string> = {
  *   - status (Healthy / Degraded / Down) via an external-friendly label
  *   - last checked timestamp
  *   - optional availability bar strip (when uptimeByName is provided)
+ *   - optional latency sparkline (when buckets contain avgLatencyMs)
  *
  * Does NOT expose:
- *   - latency (internal performance metric)
  *   - internal entity IDs
+ *   - maxLatencyMs or raw check counts
  *   - admin controls
  *   - filter controls
  */
@@ -100,6 +102,10 @@ function ComponentRow({
   const cfg     = STATUS_CONFIG[item.status];
   const checked = formatTimestamp(item.lastCheckedAtUtc);
 
+  const hasLatency = uptime?.buckets.some(
+    b => b.avgLatencyMs !== null && !b.insufficientData,
+  ) ?? false;
+
   return (
     <div className="px-5 py-3">
       {/* Top row: dot, name, timestamp, badge */}
@@ -134,6 +140,13 @@ function ComponentRow({
       {uptime && uptime.buckets.length === 0 && (
         <div className="mt-1.5 ml-5">
           <p className="text-[11px] text-gray-400">History unavailable</p>
+        </div>
+      )}
+
+      {/* Latency sparkline — only when at least one bucket has valid avgLatencyMs */}
+      {uptime && uptime.buckets.length > 0 && hasLatency && (
+        <div className="mt-2 ml-5">
+          <PublicLatencySparkline buckets={uptime.buckets} />
         </div>
       )}
     </div>

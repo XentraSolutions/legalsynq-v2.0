@@ -23,6 +23,7 @@
  *   - uptimePercent (rounded to 2dp)
  *   - hourly/daily bucket dominant status (Healthy | Degraded | Down | Unknown)
  *   - bucket uptimePercent
+ *   - bucket avgLatencyMs (aggregated trend — safe to expose publicly)
  *   - insufficientData flag
  *   - window string
  *   - totalBars (bar count for the selected window)
@@ -31,7 +32,7 @@
  *
  *   - entityId (internal UUID — stripped at this layer)
  *   - raw check counts
- *   - latency aggregates (internal metric)
+ *   - maxLatencyMs (internal diagnostic metric)
  *   - backend URLs or service tokens
  */
 
@@ -40,6 +41,7 @@ import {
   resolveWindow,
   totalBarsForWindow,
   aggregateUptimeToDaily,
+  aggregateLatencyToDaily,
   type SupportedWindow,
 } from '@/lib/uptime-aggregation';
 
@@ -66,6 +68,7 @@ interface HistoryBucket {
   uptimePercent:    number;
   dominantStatus:   string;
   insufficientData: boolean;
+  avgLatencyMs:     number | null;
 }
 
 interface HistoryResponse {
@@ -79,6 +82,7 @@ export interface PublicUptimeBucket {
   dominantStatus:   'Healthy' | 'Degraded' | 'Down' | 'Unknown';
   uptimePercent:    number;
   insufficientData: boolean;
+  avgLatencyMs:     number | null;
 }
 
 export interface PublicUptimeComponent {
@@ -98,6 +102,11 @@ export interface PublicUptimeResponse {
 function sanitizeStatus(raw: string): 'Healthy' | 'Degraded' | 'Down' | 'Unknown' {
   if (raw === 'Healthy' || raw === 'Degraded' || raw === 'Down') return raw;
   return 'Unknown';
+}
+
+function safeLatency(val: unknown): number | null {
+  if (typeof val !== 'number' || !isFinite(val) || val < 0) return null;
+  return Math.round(val * 10) / 10;
 }
 
 async function fetchRollups(window: SupportedWindow): Promise<RollupsComponent[]> {
@@ -145,13 +154,29 @@ export async function GET(request: Request): Promise<NextResponse> {
       let buckets: PublicUptimeBucket[];
 
       if (isMultiDay) {
-        // Aggregate hourly → daily
+        // Aggregate hourly → daily uptime
         const daily = aggregateUptimeToDaily(rawBuckets, bars);
+
+        // Aggregate hourly → daily latency (separate pass, same raw data)
+        const dailyLatency = aggregateLatencyToDaily(
+          rawBuckets.map(b => ({
+            bucketStartUtc:   b.bucketStartUtc,
+            avgLatencyMs:     safeLatency(b.avgLatencyMs),
+            maxLatencyMs:     null,
+            insufficientData: b.insufficientData,
+          })),
+          bars,
+        );
+        const latencyByDay = new Map(
+          dailyLatency.map(d => [d.bucketStartUtc, d.avgLatencyMs]),
+        );
+
         buckets = daily.map(d => ({
           bucketStartUtc:   d.bucketStartUtc,
           dominantStatus:   d.dominantStatus,
           uptimePercent:    d.uptimePercent ?? 0,
           insufficientData: d.insufficientData,
+          avgLatencyMs:     latencyByDay.get(d.bucketStartUtc) ?? null,
         }));
       } else {
         // 24h: pass hourly buckets through as before
@@ -160,6 +185,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           dominantStatus:   sanitizeStatus(b.dominantStatus),
           uptimePercent:    Math.round(b.uptimePercent * 100) / 100,
           insufficientData: b.insufficientData,
+          avgLatencyMs:     safeLatency(b.avgLatencyMs),
         }));
       }
 
