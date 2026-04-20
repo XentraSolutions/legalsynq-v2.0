@@ -3,6 +3,7 @@ import { PublicComponentList } from '@/components/monitoring/public-component-li
 import { PublicIncidentsPanel } from '@/components/monitoring/public-incidents-panel';
 import type { MonitoringSummary } from '@/types/control-center';
 import type { PublicUptimeResponse } from '@/app/api/monitoring/uptime/route';
+import { resolveWindow, type SupportedWindow } from '@/lib/uptime-aggregation';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,10 +16,10 @@ async function fetchMonitoringSummary(): Promise<MonitoringSummary> {
   return res.json();
 }
 
-async function fetchUptimeHistory(): Promise<PublicUptimeResponse | null> {
+async function fetchUptimeHistory(window: SupportedWindow): Promise<PublicUptimeResponse | null> {
   try {
     const base = process.env.CONTROL_CENTER_SELF_URL ?? 'http://127.0.0.1:5004';
-    const res = await fetch(`${base}/api/monitoring/uptime`, {
+    const res = await fetch(`${base}/api/monitoring/uptime?window=${window}`, {
       cache: 'no-store',
     });
     if (!res.ok) return null;
@@ -35,11 +36,15 @@ async function fetchUptimeHistory(): Promise<PublicUptimeResponse | null> {
  * sourced from the existing internal summary API. No admin controls, no
  * internal IDs, and no operator-only metadata are exposed.
  *
+ * MON-INT-05-001: Supports ?window=24h|7d|30d query param to switch the
+ * availability bars to a different historical view. Defaults to 24h.
+ *
  * Fields exposed publicly:
  *   - system.status, system.lastCheckedAtUtc (overall health)
  *   - integration.name, integration.status, integration.lastCheckedAtUtc
  *   - alert.severity, alert.message, alert.entityName, alert.createdAtUtc
  *   - uptime bucket: dominantStatus, uptimePercent, insufficientData (no entityId)
+ *   - window: selected time window label
  *
  * Fields intentionally excluded:
  *   - alert.id (internal UUID)
@@ -47,7 +52,15 @@ async function fetchUptimeHistory(): Promise<PublicUptimeResponse | null> {
  *   - integration.category (not relevant to external users)
  *   - monitored entity UUIDs (stripped by /api/monitoring/uptime BFF layer)
  */
-export default async function StatusPage() {
+export default async function StatusPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const rawWindow = typeof params.window === 'string' ? params.window : '24h';
+  const selectedWindow = resolveWindow(rawWindow);
+
   let data:       MonitoringSummary | null = null;
   let fetchError: boolean                 = false;
 
@@ -56,7 +69,7 @@ export default async function StatusPage() {
   try {
     [data, uptimeData] = await Promise.all([
       fetchMonitoringSummary(),
-      fetchUptimeHistory(),
+      fetchUptimeHistory(selectedWindow),
     ]);
   } catch {
     fetchError = true;
@@ -64,6 +77,7 @@ export default async function StatusPage() {
   }
 
   const uptimeByName = buildUptimeMap(uptimeData);
+  const totalBars    = uptimeData?.totalBars ?? 24;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -91,12 +105,15 @@ export default async function StatusPage() {
       {/* Main */}
       <main className="max-w-3xl mx-auto px-6 py-10 w-full flex-1">
 
-        {/* Page title */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900">System Status</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Current platform availability and active incidents.
-          </p>
+        {/* Page title + window selector */}
+        <div className="mb-8 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">System Status</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Current platform availability and active incidents.
+            </p>
+          </div>
+          <WindowSelector selected={selectedWindow} />
         </div>
 
         {fetchError ? (
@@ -104,7 +121,12 @@ export default async function StatusPage() {
         ) : data ? (
           <div className="space-y-5">
             <SystemHealthCard summary={data.system} />
-            <PublicComponentList integrations={data.integrations} uptimeByName={uptimeByName} />
+            <PublicComponentList
+              integrations={data.integrations}
+              uptimeByName={uptimeByName}
+              totalBars={totalBars}
+              window={selectedWindow}
+            />
             <PublicIncidentsPanel alerts={data.alerts} />
             {data.alerts.filter(a => !a.resolvedAtUtc).length === 0 && (
               <NoActiveIncidents />
@@ -125,6 +147,43 @@ export default async function StatusPage() {
         </div>
       </footer>
 
+    </div>
+  );
+}
+
+// ── WindowSelector ────────────────────────────────────────────────────────────
+
+const WINDOW_OPTIONS: { value: SupportedWindow; label: string }[] = [
+  { value: '24h', label: '24h' },
+  { value: '7d',  label: '7d'  },
+  { value: '30d', label: '30d' },
+];
+
+function WindowSelector({ selected }: { selected: SupportedWindow }) {
+  return (
+    <div
+      className="inline-flex items-center gap-px rounded-lg border border-gray-200 bg-white overflow-hidden shrink-0"
+      role="group"
+      aria-label="Select history window"
+    >
+      {WINDOW_OPTIONS.map(({ value, label }) => {
+        const isActive = value === selected;
+        return (
+          <a
+            key={value}
+            href={`?window=${value}`}
+            aria-pressed={isActive}
+            aria-label={`Show ${label} history`}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+              isActive
+                ? 'bg-indigo-600 text-white'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {label}
+          </a>
+        );
+      })}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import type { IntegrationStatus, MonitoringStatus, SystemAlert } from '@/types/control-center';
 import type { StatusFilter } from './monitoring-filter-section';
 import type { InternalLatencyResponse, LatencyBucket } from '@/app/api/monitoring/latency/route';
+import type { SupportedWindow } from '@/lib/uptime-aggregation';
 import { StatusBadge } from './system-health-card';
 import { LatencySparkline } from './latency-sparkline';
 
@@ -52,6 +53,18 @@ function toStatusFilter(f: FilterValue): StatusFilter {
 type LatencyCache = Map<string, LatencyBucket[]>;
 type LatencyFetchState = 'idle' | 'loading' | 'done' | 'error';
 
+const WINDOW_OPTIONS: { value: SupportedWindow; label: string }[] = [
+  { value: '24h', label: '24h' },
+  { value: '7d',  label: '7d'  },
+  { value: '30d', label: '30d' },
+];
+
+const WINDOW_LABELS: Record<SupportedWindow, string> = {
+  '24h': 'last 24 hours',
+  '7d':  'last 7 days',
+  '30d': 'last 30 days',
+};
+
 /**
  * ComponentStatusList — unified, filterable list of all monitored entities.
  *
@@ -63,9 +76,10 @@ type LatencyFetchState = 'idle' | 'loading' | 'done' | 'error';
  * in controlled mode: the banner drives the filter and the internal buttons stay
  * in sync. Without them the component is fully self-contained (backward-compatible).
  *
- * MON-INT-04-004: Each row can be expanded to reveal a 24-hour latency sparkline.
- * Latency data is fetched once from /api/monitoring/latency on first expansion
- * and shared across all rows.
+ * MON-INT-04-004: Each row can be expanded to reveal a latency sparkline.
+ * MON-INT-05-001: Window selector (24h / 7d / 30d) drives the sparkline data.
+ *   Latency data is fetched once per window selection from /api/monitoring/latency
+ *   and shared across all rows.
  */
 export function ComponentStatusList({
   integrations,
@@ -75,6 +89,9 @@ export function ComponentStatusList({
 }: ComponentStatusListProps) {
   const [internalFilter, setInternalFilter] = useState<FilterValue>('All');
   const [expandedNames,  setExpandedNames]  = useState<Set<string>>(new Set());
+
+  // Latency state — scoped to selected window
+  const [selectedWindow, setSelectedWindow] = useState<SupportedWindow>('24h');
   const [latencyCache,   setLatencyCache]   = useState<LatencyCache>(new Map());
   const [latencyState,   setLatencyState]   = useState<LatencyFetchState>('idle');
 
@@ -90,12 +107,12 @@ export function ComponentStatusList({
     }
   }
 
-  // Fetch the full latency payload once (batched for all components)
-  const fetchLatency = useCallback(async () => {
-    if (latencyState !== 'idle') return;
+  // Fetch the full latency payload for a given window (called once per window)
+  const fetchLatency = useCallback(async (window: SupportedWindow) => {
     setLatencyState('loading');
+    setLatencyCache(new Map());
     try {
-      const res = await fetch('/api/monitoring/latency', { cache: 'no-store' });
+      const res = await fetch(`/api/monitoring/latency?window=${window}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: InternalLatencyResponse = await res.json();
       const cache: LatencyCache = new Map(
@@ -106,7 +123,20 @@ export function ComponentStatusList({
     } catch {
       setLatencyState('error');
     }
-  }, [latencyState]);
+  }, []);
+
+  function handleWindowChange(window: SupportedWindow) {
+    if (window === selectedWindow) return;
+    setSelectedWindow(window);
+    // Only re-fetch if there are expanded rows
+    if (expandedNames.size > 0) {
+      fetchLatency(window);
+    } else {
+      // Reset so next expansion fetches fresh data
+      setLatencyState('idle');
+      setLatencyCache(new Map());
+    }
+  }
 
   function toggleExpanded(name: string) {
     setExpandedNames(prev => {
@@ -115,8 +145,10 @@ export function ComponentStatusList({
         next.delete(name);
       } else {
         next.add(name);
-        // Trigger fetch on first expansion
-        fetchLatency();
+        // Trigger fetch on first expansion (or if window changed since last fetch)
+        if (latencyState === 'idle') {
+          fetchLatency(selectedWindow);
+        }
       }
       return next;
     });
@@ -201,6 +233,8 @@ export function ComponentStatusList({
               onToggle={() => toggleExpanded(item.name)}
               latencyBuckets={latencyCache.get(item.name) ?? null}
               latencyState={latencyState}
+              selectedWindow={selectedWindow}
+              onWindowChange={handleWindowChange}
             />
           ))}
         </div>
@@ -218,6 +252,8 @@ function ComponentRow({
   onToggle,
   latencyBuckets,
   latencyState,
+  selectedWindow,
+  onWindowChange,
 }: {
   item:            IntegrationStatus;
   showCategory:    boolean;
@@ -225,6 +261,8 @@ function ComponentRow({
   onToggle:        () => void;
   latencyBuckets:  LatencyBucket[] | null;
   latencyState:    LatencyFetchState;
+  selectedWindow:  SupportedWindow;
+  onWindowChange:  (w: SupportedWindow) => void;
 }) {
   const latency = item.latencyMs !== undefined ? `${item.latencyMs} ms` : '—';
   const latencyColor =
@@ -292,10 +330,39 @@ function ComponentRow({
 
       {/* Expandable latency panel */}
       {expanded && (
-        <div className="px-8 pb-4 pt-1 bg-gray-50 border-t border-gray-100">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">
-            Response Time — last 24 h
-          </p>
+        <div className="px-8 pb-4 pt-2 bg-gray-50 border-t border-gray-100">
+          {/* Panel header: title + window selector */}
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+              Response Time · {WINDOW_LABELS[selectedWindow]}
+            </p>
+            {/* Window selector — inline pill buttons */}
+            <div
+              className="inline-flex items-center gap-px rounded-md border border-gray-200 bg-white overflow-hidden"
+              role="group"
+              aria-label="Select latency window"
+            >
+              {WINDOW_OPTIONS.map(({ value, label }) => {
+                const isActive = value === selectedWindow;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => onWindowChange(value)}
+                    aria-pressed={isActive}
+                    className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                      isActive
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <LatencySparkline
             buckets={latencyBuckets ?? []}
             loading={latencyState === 'loading'}

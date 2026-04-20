@@ -1,5 +1,6 @@
 import type { IntegrationStatus, MonitoringStatus } from '@/types/control-center';
 import type { PublicUptimeBucket } from '@/app/api/monitoring/uptime/route';
+import type { SupportedWindow } from '@/lib/uptime-aggregation';
 import { AvailabilityBars, AvailabilityLegend } from './availability-bars';
 
 interface PublicComponentListProps {
@@ -9,6 +10,10 @@ interface PublicComponentListProps {
    * against IntegrationStatus.name). Omit or pass empty map to hide bars.
    */
   uptimeByName?: Map<string, { uptimePercent: number | null; buckets: PublicUptimeBucket[] }>;
+  /** Total bars to render (24 for 24h, 7 for 7d, 30 for 30d). Default 24. */
+  totalBars?:    number;
+  /** Selected time window — used in the section subtitle label. */
+  window?:       SupportedWindow;
 }
 
 const STATUS_ORDER: Record<MonitoringStatus, number> = { Down: 0, Degraded: 1, Healthy: 2 };
@@ -23,6 +28,12 @@ const STATUS_CONFIG: Record<MonitoringStatus, {
   Down:     { dot: 'bg-red-600',    badge: 'bg-red-50    text-red-700    ring-red-200',    label: 'Outage'      },
 };
 
+const WINDOW_LABELS: Record<SupportedWindow, string> = {
+  '24h': 'last 24 hours',
+  '7d':  'last 7 days',
+  '30d': 'last 30 days',
+};
+
 /**
  * PublicComponentList — simplified, read-only list of monitored service statuses.
  *
@@ -30,7 +41,7 @@ const STATUS_CONFIG: Record<MonitoringStatus, {
  *   - component name (safe display name, not internal ID)
  *   - status (Healthy / Degraded / Down) via an external-friendly label
  *   - last checked timestamp
- *   - optional 24-hour availability bar strip (when uptimeByName is provided)
+ *   - optional availability bar strip (when uptimeByName is provided)
  *
  * Does NOT expose:
  *   - latency (internal performance metric)
@@ -38,7 +49,7 @@ const STATUS_CONFIG: Record<MonitoringStatus, {
  *   - admin controls
  *   - filter controls
  */
-export function PublicComponentList({ integrations, uptimeByName }: PublicComponentListProps) {
+export function PublicComponentList({ integrations, uptimeByName, totalBars = 24, window = '24h' }: PublicComponentListProps) {
   if (integrations.length === 0) {
     return (
       <Section title="Components">
@@ -53,15 +64,20 @@ export function PublicComponentList({ integrations, uptimeByName }: PublicCompon
   });
 
   const showBars = uptimeByName && uptimeByName.size > 0;
+  const windowLabel = WINDOW_LABELS[window] ?? WINDOW_LABELS['24h'];
 
   return (
-    <Section title="Components" subtitle={`${integrations.length} service${integrations.length !== 1 ? 's' : ''} monitored`}>
+    <Section
+      title="Components"
+      subtitle={`${integrations.length} service${integrations.length !== 1 ? 's' : ''} monitored · ${windowLabel}`}
+    >
       <div className="divide-y divide-gray-100">
         {sorted.map(item => (
           <ComponentRow
             key={item.name}
             item={item}
             uptime={uptimeByName?.get(item.name)}
+            totalBars={totalBars}
           />
         ))}
       </div>
@@ -75,9 +91,11 @@ export function PublicComponentList({ integrations, uptimeByName }: PublicCompon
 function ComponentRow({
   item,
   uptime,
+  totalBars,
 }: {
-  item:    IntegrationStatus;
-  uptime?: { uptimePercent: number | null; buckets: PublicUptimeBucket[] };
+  item:      IntegrationStatus;
+  uptime?:   { uptimePercent: number | null; buckets: PublicUptimeBucket[] };
+  totalBars: number;
 }) {
   const cfg     = STATUS_CONFIG[item.status];
   const checked = formatTimestamp(item.lastCheckedAtUtc);
@@ -107,6 +125,7 @@ function ComponentRow({
           <AvailabilityBars
             buckets={uptime.buckets}
             uptimePercent={uptime.uptimePercent}
+            totalBars={totalBars}
           />
         </div>
       )}
