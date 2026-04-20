@@ -2,9 +2,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Monitoring.Application.Queries;
 using Monitoring.Application.Scheduling;
 using Monitoring.Infrastructure.Http;
 using Monitoring.Infrastructure.Persistence;
+using Monitoring.Infrastructure.Queries;
 using Monitoring.Infrastructure.Scheduling;
 
 namespace Monitoring.Infrastructure;
@@ -45,6 +47,9 @@ public static class DependencyInjection
         });
 
         services.AddHostedService<DatabaseConnectivityHostedService>();
+
+        // Read service — scoped so it shares the per-request MonitoringDbContext.
+        services.AddScoped<IMonitoringReadService, EfCoreMonitoringReadService>();
 
         // Scheduler foundation. Options are validated at startup so a bad
         // interval value fails fast with a clear message.

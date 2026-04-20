@@ -7,11 +7,12 @@
  *
  * Source switch (env):
  *   MONITORING_SOURCE=local   → use built-in local probe engine (default, current behavior)
- *   MONITORING_SOURCE=service → delegate to Monitoring Service REST API (MON-INT-01-001)
+ *   MONITORING_SOURCE=service → delegate to Monitoring Service REST API (MON-INT-01-002)
  *
- * Migration target: MON-INT-01-001 — Monitoring Read API Integration.
- * When the Monitoring Service is integrated, only the 'service' branch below
- * needs to be implemented. The UI, route, and types require zero changes.
+ * Migration target: MON-INT-01-002 — Monitoring Read Model Completion.
+ * The Monitoring Service now exposes /monitoring/summary, /monitoring/status,
+ * and /monitoring/alerts. The service branch calls /monitoring/summary directly
+ * instead of deriving a summary from entity registry data.
  */
 
 import { listServices, type ServiceDef } from '@/lib/system-health-store';
@@ -40,19 +41,35 @@ interface ProbeResult {
 }
 
 // ── Monitoring Service types (internal to this module) ───────────────────────
-// Matches MonitoredEntityResponse from Monitoring.Api/Contracts/MonitoredEntityResponse.cs
+// Matches MonitoringSummaryResponse / MonitoringStatusResponse / MonitoringAlertResponse
+// from Monitoring.Api/Contracts/ (MON-INT-01-002).
 
-interface MonitoringServiceEntity {
-  id:             string;
-  name:           string;
-  entityType:     string;
-  monitoringType: string;
-  target:         string;
-  isEnabled:      boolean;
-  scope:          string;
-  impactLevel:    string;
-  createdAtUtc:   string;
-  updatedAtUtc:   string;
+interface ServiceStatusEntry {
+  entityId:         string;
+  name:             string;
+  scope:            string;
+  status:           string;           // "Healthy" | "Degraded" | "Down"
+  lastCheckedAtUtc: string | null;
+  latencyMs:        number | null;
+}
+
+interface ServiceAlertEntry {
+  alertId:      string;
+  entityId:     string;
+  name:         string;
+  severity:     string;               // "Info" | "Warning" | "Critical"
+  message:      string;
+  createdAtUtc: string;
+  resolvedAtUtc: string | null;
+}
+
+interface ServiceSummaryResponse {
+  system: {
+    status:           string;
+    lastCheckedAtUtc: string;
+  };
+  integrations: ServiceStatusEntry[];
+  alerts:       ServiceAlertEntry[];
 }
 
 // ── Local engine implementation ───────────────────────────────────────────────
@@ -149,60 +166,24 @@ async function localGetMonitoringSummary(): Promise<MonitoringSummary> {
 }
 
 // ── Service engine implementation ─────────────────────────────────────────────
-// MON-INT-01-001 — Monitoring Read API Integration
+// MON-INT-01-002 — Monitoring Read Model Completion
 //
-// Calls the Monitoring Service entity registry via the YARP gateway.
-// Gateway URL: {GATEWAY_URL}/monitoring/monitoring/entities
-//   → YARP strips "/monitoring" prefix
-//   → Monitoring Service receives: GET /monitoring/entities
+// Calls GET /monitoring/summary via the YARP gateway.
+// Gateway routing (double-prefix):
+//   CC calls: {GATEWAY_URL}/monitoring/monitoring/summary
+//   YARP strips: /monitoring prefix → cluster receives: /monitoring/summary
+//   Monitoring Service handles: GET /monitoring/summary
 //
-// Architecture note: The Monitoring Service (port 5015) exposes entity CRUD
-// and a background scheduler that writes check results and alerts to the DB.
-// As of MON-INT-01-001, there is no REST endpoint for current-status or alert
-// reads — those are stored in EntityCurrentStatus and MonitoringAlerts tables.
-// This implementation derives a best-effort summary from entity registry data:
-//   - isEnabled=true  → status: 'Healthy' (entity is configured and enabled)
-//   - isEnabled=false → status: 'Down'    (entity intentionally disabled)
-// Actual health data (Healthy/Degraded/Down from HTTP checks) requires a future
-// /monitoring/status read endpoint. Track as MON-INT-01-002.
-
-function buildSummaryFromEntities(entities: MonitoringServiceEntity[]): MonitoringSummary {
-  const now = new Date().toISOString();
-
-  const integrations: IntegrationStatus[] = entities.map(e => ({
-    name:             e.name,
-    status:           (e.isEnabled ? 'Healthy' : 'Down') as MonitoringStatus,
-    latencyMs:        undefined,
-    lastCheckedAtUtc: e.updatedAtUtc ?? now,
-    category:         e.scope || e.entityType,
-  }));
-
-  const downCount     = integrations.filter(i => i.status === 'Down').length;
-  const overallStatus: MonitoringStatus = downCount > 0 ? 'Down' : 'Healthy';
-
-  const system: SystemHealthSummary = {
-    status:           overallStatus,
-    lastCheckedAtUtc: now,
-  };
-
-  const alerts: SystemAlert[] = integrations
-    .filter(i => i.status === 'Down')
-    .map(i => ({
-      id:           `alert-${i.name.toLowerCase().replace(/\s+/g, '-')}`,
-      message:      `${i.name} is disabled`,
-      severity:     'Warning' as AlertSeverity,
-      createdAtUtc: i.lastCheckedAtUtc,
-    }));
-
-  return { system, integrations, alerts };
-}
+// The Monitoring Service returns a MonitoringSummaryResponse that maps
+// directly to the MonitoringSummary type used by the Control Center.
 
 async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
   const gatewayBase = process.env.GATEWAY_URL ?? 'http://localhost:5010';
-  // Double "monitoring" is intentional: gateway strips the /monitoring prefix,
-  // so the outer /monitoring routes to the monitoring-cluster, then the inner
-  // /monitoring/entities is the actual service path after prefix removal.
-  const url = `${gatewayBase}/monitoring/monitoring/entities`;
+
+  // Double "monitoring" is intentional: YARP strips the outer /monitoring
+  // prefix for the monitoring-cluster, so the inner /monitoring/summary
+  // is the actual service path.
+  const url = `${gatewayBase}/monitoring/monitoring/summary`;
 
   const res = await fetch(url, {
     cache:   'no-store',
@@ -216,8 +197,30 @@ async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
     );
   }
 
-  const entities: MonitoringServiceEntity[] = await res.json();
-  return buildSummaryFromEntities(entities);
+  const data: ServiceSummaryResponse = await res.json();
+
+  // Map service response types to Control Center types.
+  const system: SystemHealthSummary = {
+    status:           data.system.status as MonitoringStatus,
+    lastCheckedAtUtc: data.system.lastCheckedAtUtc,
+  };
+
+  const integrations: IntegrationStatus[] = data.integrations.map(i => ({
+    name:             i.name,
+    status:           i.status as MonitoringStatus,
+    latencyMs:        i.latencyMs ?? undefined,
+    lastCheckedAtUtc: i.lastCheckedAtUtc ?? new Date().toISOString(),
+    category:         i.scope,
+  }));
+
+  const alerts: SystemAlert[] = data.alerts.map(a => ({
+    id:           a.alertId,
+    message:      a.message,
+    severity:     a.severity as AlertSeverity,
+    createdAtUtc: a.createdAtUtc,
+  }));
+
+  return { system, integrations, alerts };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -227,7 +230,7 @@ async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
  * integration statuses, and active alerts.
  *
  * In 'local' mode: probes registered services directly (current behavior).
- * In 'service' mode: delegates to Monitoring Service REST API (MON-INT-01-001).
+ * In 'service' mode: calls GET /monitoring/summary on the Monitoring Service.
  */
 export async function getMonitoringSummary(): Promise<MonitoringSummary> {
   if (MONITORING_SOURCE === 'service') {
