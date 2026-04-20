@@ -37,7 +37,9 @@ PID_CC=$!
   # Reports service has its own project boundary (not in LegalSynq.sln).
   dotnet restore "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" --verbosity quiet
   dotnet build   "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" --no-restore --configuration Debug --verbosity quiet
-  dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
+  NotificationsService__BaseUrl=http://localhost:5008 \
+    NotificationsService__PortalBaseUrl=http://localhost:3050 \
+    dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" &

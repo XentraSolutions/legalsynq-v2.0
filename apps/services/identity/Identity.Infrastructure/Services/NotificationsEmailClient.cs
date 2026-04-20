@@ -207,16 +207,52 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
 
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation(
-                    "[{Tag}] Email dispatched to {Email} (tenant={TenantId}).",
-                    logTag, toEmail, tenantId);
-                return (EmailConfigured: true, Success: true, Error: null);
+                var responseBody = await response.Content.ReadAsStringAsync(ct);
+
+                string? notifStatus = null;
+                string? failureCategory = null;
+                string? lastErrorMessage = null;
+                string? notificationId = null;
+
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(responseBody);
+                    var root = doc.RootElement;
+                    notifStatus      = root.TryGetProperty("status",           out var sp) ? sp.GetString() : null;
+                    failureCategory  = root.TryGetProperty("failureCategory",  out var fp) ? fp.GetString() : null;
+                    lastErrorMessage = root.TryGetProperty("lastErrorMessage", out var ep) ? ep.GetString() : null;
+                    notificationId   = root.TryGetProperty("id",               out var ip) ? ip.GetString() : null;
+                }
+                catch { }
+
+                if (notifStatus == "sent")
+                {
+                    _logger.LogInformation(
+                        "[{Tag}] Email dispatched to {Email} (tenant={TenantId}) notificationId={NotificationId}.",
+                        logTag, toEmail, tenantId, notificationId ?? "(unknown)");
+                    return (EmailConfigured: true, Success: true, Error: null);
+                }
+
+                _logger.LogWarning(
+                    "[{Tag}] Notifications service accepted but delivery did NOT complete. " +
+                    "Status={Status} FailureCategory={FailureCategory} Error={Error} " +
+                    "NotificationId={NotificationId} Email={Email} TenantId={TenantId}. " +
+                    "Check the notifications service for delivery details.",
+                    logTag, notifStatus ?? "unknown", failureCategory ?? "unknown",
+                    lastErrorMessage ?? "(none)", notificationId ?? "(unknown)", toEmail, tenantId);
+
+                return (
+                    EmailConfigured: true,
+                    Success:         false,
+                    Error:           $"Notification delivery failed with status '{notifStatus ?? "unknown"}' " +
+                                     $"({failureCategory ?? "unknown"}).");
             }
 
-            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            var errorBody = await response.Content.ReadAsStringAsync(ct);
             _logger.LogWarning(
                 "[{Tag}] Notifications service returned HTTP {Status} for {Email} (tenant={TenantId}). Body: {Body}",
-                logTag, (int)response.StatusCode, toEmail, tenantId, responseBody);
+                logTag, (int)response.StatusCode, toEmail, tenantId,
+                errorBody.Length > 500 ? errorBody[..500] : errorBody);
             return (
                 EmailConfigured: true,
                 Success:         false,

@@ -17,10 +17,24 @@ public static class NotificationEndpoints
         // Accepts authenticated callers (user or service JWT) OR legacy
         // unauthenticated callers supplying a valid X-Tenant-Id header
         // (backward-compat transition — logged as LEGACY SUBMISSION warning).
-        group.MapPost("/", async (HttpContext context, INotificationService service, SubmitNotificationDto request) =>
+        group.MapPost("/", async (HttpContext context, INotificationService service, ILoggerFactory loggerFactory, SubmitNotificationDto request) =>
         {
             var tenantId = context.GetTenantId();
             var result = await service.SubmitAsync(tenantId, request);
+
+            if (result.Status != "sent" && result.Status != "blocked")
+            {
+                var logger = loggerFactory.CreateLogger("Notifications.Api.Endpoints");
+                logger.LogWarning(
+                    "[NOTIF-WARN] Notification {NotificationId} submitted but not delivered. " +
+                    "Status={Status} FailureCategory={FailureCategory} LastError={LastError} " +
+                    "TenantId={TenantId}",
+                    result.Id, result.Status,
+                    result.FailureCategory ?? "(none)",
+                    result.LastErrorMessage ?? "(none)",
+                    tenantId);
+            }
+
             return result.Status == "blocked"
                 ? Results.Json(result, statusCode: 422)
                 : Results.Created($"/v1/notifications/{result.Id}", result);
