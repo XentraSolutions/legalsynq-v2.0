@@ -214,6 +214,26 @@ public sealed class LienTaskService : ILienTaskService
             }, ct);
         }
 
+        // LIENS-TASK-MODAL-001: Notify reporter (task creator) when they are not the assignee.
+        // When the creator assigns themselves, the created_assigned event already covers them.
+        var reporterIsAlsoAssignee = entity.AssignedUserId.HasValue
+            && entity.AssignedUserId.Value == actingUserId;
+
+        if (!reporterIsAlsoAssignee)
+        {
+            _ = _notifications.PublishAsync("liens.task.created_reporter", tenantId, new Dictionary<string, string>
+            {
+                ["tenantId"]    = tenantId.ToString(),
+                ["taskId"]      = entity.Id.ToString(),
+                ["taskTitle"]   = entity.Title,
+                ["reporterId"]  = actingUserId.ToString(),
+                ["assignedTo"]  = entity.AssignedUserId?.ToString() ?? string.Empty,
+                ["caseId"]      = entity.CaseId?.ToString() ?? string.Empty,
+                ["priority"]    = entity.Priority,
+                ["dueDate"]     = entity.DueDate?.ToString("yyyy-MM-dd") ?? string.Empty,
+            }, ct);
+        }
+
         return MapToResponse(entity, links);
     }
 
