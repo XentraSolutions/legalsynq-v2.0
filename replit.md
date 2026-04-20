@@ -5523,3 +5523,43 @@ SHA256_hex("{RuleKey}|{ScopeType}|{TenantId??''}|{AffectedActorId??''}|{Affected
 
 ### Analysis
 `analysis/LS-ID-TNT-017-008-02-report.md`
+
+---
+
+## Monitoring Service — MON-INT-01 + MON-INT-02-001 ✅
+
+**Port:** 5015  
+**DB:** `monitoring_db` on RDS (via `ConnectionStrings__MonitoringDb`)  
+**Migrations:** 6 applied (InitialPersistenceSetup → AddMonitoringAlerts)
+
+### Architecture
+- **Domain:** `MonitoredEntity`, `EntityCurrentStatus`, `MonitoringAlert`, `CheckResult`
+- **Write path:** Admin API (`POST /monitoring/admin/entities`) — requires RS256 auth (blocked pending MON-INT-01-003)
+- **Read path (MON-INT-01-002):** 3 anonymous endpoints consumed by Control Center
+  - `GET /monitoring/status` → `MonitoringStatusResponse[]` — per-entity current status
+  - `GET /monitoring/alerts` → `MonitoringAlertResponse[]` — active alerts
+  - `GET /monitoring/summary` → `MonitoringSummaryResponse` — full system + integrations + alerts
+- **Scheduler:** `MonitoringSchedulerHostedService` fires every 15 s, probes all enabled entities via `HttpMonitoredEntityExecutor`, updates `entity_current_status` and `check_results`
+- **Status mapping:** EntityStatus.Up → `Healthy`, EntityStatus.Unknown → `Degraded` (conservative), EntityStatus.Down → `Down`
+
+### Entity Bootstrap (MON-INT-02-001)
+`Monitoring.Infrastructure/Bootstrap/MonitoringEntityBootstrap.cs` — `IHostedService` that seeds 10 platform entities on first startup if the registry is empty.
+
+**Seeded entities (10):** Gateway, Identity, Documents, Notifications, Audit, Reports, Workflow, Synq Fund, Synq CareConnect, Synq Liens  
+**Idempotent:** skips if any entity row already exists  
+**Disable:** set `MonitoringBootstrap__Enabled=false`
+
+### Gateway routing
+Double-prefix intentional — YARP strips outer `/monitoring` prefix:
+- `GET /monitoring/monitoring/summary` → Monitoring Service `GET /monitoring/summary`
+- Routes 52–54 in `appsettings.json` are anonymous (no auth policy)
+
+### Control Center integration
+`apps/control-center/src/lib/monitoring-source.ts`  
+- `MONITORING_SOURCE=local` (default) — CC probes services directly (existing behaviour)
+- `MONITORING_SOURCE=service` — CC calls `GET {GATEWAY_URL}/monitoring/monitoring/summary`
+
+### Known gaps
+- MON-INT-01-003: RS256 ↔ HS256 auth alignment (admin API blocked until then)
+- Bootstrap temporary — replace with admin API seed script once auth aligned
+- Reports service not running in dev (correctly detected as Down + Critical alert)

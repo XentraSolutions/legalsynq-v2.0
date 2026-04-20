@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Monitoring.Application.Queries;
 using Monitoring.Application.Scheduling;
+using Monitoring.Infrastructure.Bootstrap;
 using Monitoring.Infrastructure.Http;
 using Monitoring.Infrastructure.Persistence;
 using Monitoring.Infrastructure.Queries;
@@ -47,6 +48,11 @@ public static class DependencyInjection
         });
 
         services.AddHostedService<DatabaseConnectivityHostedService>();
+
+        // One-shot startup seed: registers platform services if the entity
+        // registry is empty. Idempotent — skips if any row already exists.
+        // Disable via MonitoringBootstrap__Enabled=false.
+        services.AddHostedService<MonitoringEntityBootstrap>();
 
         // Read service — scoped so it shares the per-request MonitoringDbContext.
         services.AddScoped<IMonitoringReadService, EfCoreMonitoringReadService>();
