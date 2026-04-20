@@ -84,6 +84,7 @@ function RowActionsMenu({
   onDeactivate,
   onResetPassword,
   onResendInvite,
+  onCancelInvite,
 }: {
   user:             TenantUser;
   onView:           () => void;
@@ -92,6 +93,7 @@ function RowActionsMenu({
   onDeactivate:     () => void;
   onResetPassword:  () => void;
   onResendInvite:   () => void;
+  onCancelInvite:   () => void;
 }) {
   const [open, setOpen] = useState(false);
   function close() { setOpen(false); }
@@ -131,16 +133,28 @@ function RowActionsMenu({
             </button>
 
             {isInvited ? (
-              <button
-                onClick={(e) => { e.stopPropagation(); close(); onResendInvite(); }}
-                className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-700 flex items-start gap-2"
-              >
-                <i className="ri-mail-send-line mt-0.5" />
-                <span>
-                  <span className="block">Resend Invite</span>
-                  <span className="block text-xs text-amber-500 font-normal leading-snug">Use if the user did not receive the original email</span>
-                </span>
-              </button>
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); close(); onResendInvite(); }}
+                  className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-700 flex items-start gap-2"
+                >
+                  <i className="ri-mail-send-line mt-0.5" />
+                  <span>
+                    <span className="block">Resend Invite</span>
+                    <span className="block text-xs text-amber-500 font-normal leading-snug">Use if the user did not receive the original email</span>
+                  </span>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); close(); onCancelInvite(); }}
+                  className="w-full text-left px-3 py-2 hover:bg-red-50 text-red-600 flex items-start gap-2"
+                >
+                  <i className="ri-mail-close-line mt-0.5" />
+                  <span>
+                    <span className="block">Cancel Invite</span>
+                    <span className="block text-xs text-red-400 font-normal leading-snug">Revokes the pending invitation link</span>
+                  </span>
+                </button>
+              </>
             ) : (
               <button
                 onClick={(e) => { e.stopPropagation(); close(); onResetPassword(); }}
@@ -197,6 +211,9 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
   const [resending,         setResending]         = useState(false);
   const [inviteResult,      setInviteResult]      = useState<{ name: string; email: string; link: string } | null>(null);
   const [inviteCopyLabel,   setInviteCopyLabel]   = useState('Copy link');
+
+  const [cancelInviteUser,  setCancelInviteUser]  = useState<TenantUser | null>(null);
+  const [cancelling,        setCancelling]        = useState(false);
 
   const activeAdminCount = useMemo(
     () => users.filter(u => u.isActive && (u.roles ?? []).includes(TENANT_ADMIN_ROLE)).length,
@@ -344,6 +361,36 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
     }
   }
 
+  async function handleCancelInviteConfirm() {
+    if (!cancelInviteUser) return;
+    setCancelling(true);
+    try {
+      await tenantClientApi.cancelInvite(cancelInviteUser.id);
+      const name  = displayName(cancelInviteUser);
+      const email = (cancelInviteUser.email ?? '').trim();
+      setCancelInviteUser(null);
+      showToast(
+        email
+          ? `Invitation cancelled for ${email}.`
+          : `Invitation cancelled for ${name}.`,
+        'success',
+      );
+      router.refresh();
+    } catch (err) {
+      let msg = 'Something went wrong. Please try again.';
+      if (err instanceof ApiError) {
+        if (err.isForbidden) msg = 'You do not have permission to cancel invitations.';
+        else if (err.isNotFound) msg = 'User not found.';
+        else if (err.isConflict) msg = 'This user has no pending invitation to cancel.';
+        else if (err.message) msg = err.message;
+      }
+      showToast(msg, 'error');
+      setCancelInviteUser(null);
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   const productCount = (u: TenantUser) => u.productCount ?? 0;
   const roleCount    = (u: TenantUser) => u.roles?.length ?? 0;
 
@@ -356,6 +403,9 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
 
   const resendInviteName  = resendInviteUser ? displayName(resendInviteUser) : '';
   const resendInviteEmail = (resendInviteUser?.email ?? '').trim();
+
+  const cancelInviteName  = cancelInviteUser ? displayName(cancelInviteUser) : '';
+  const cancelInviteEmail = (cancelInviteUser?.email ?? '').trim();
 
   return (
     <>
@@ -419,6 +469,21 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
         }
         confirmLabel="Resend Invite"
         confirmVariant="primary"
+      />
+
+      <ConfirmDialog
+        open={!!cancelInviteUser}
+        onClose={() => { if (!cancelling) setCancelInviteUser(null); }}
+        onConfirm={handleCancelInviteConfirm}
+        loading={cancelling}
+        title={`Cancel Invite for ${cancelInviteName}?`}
+        description={
+          cancelInviteEmail
+            ? `The pending invitation for ${cancelInviteEmail} will be revoked immediately. They will not be able to use the invitation link to activate their account. You can invite them again at any time.`
+            : 'The pending invitation will be revoked immediately. The user will not be able to use the invitation link to activate their account. You can invite them again at any time.'
+        }
+        confirmLabel="Cancel Invite"
+        confirmVariant="danger"
       />
 
       {/* LS-ID-TNT-005: Dev/non-production reset link delivery modal */}
@@ -617,6 +682,7 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
                         onEdit={() => setEditUser(u)}
                         onResetPassword={() => setResetPwdUser(u)}
                         onResendInvite={() => setResendInviteUser(u)}
+                        onCancelInvite={() => setCancelInviteUser(u)}
                         onActivate={() => setConfirmState({ user: u, action: 'activate' })}
                         onDeactivate={() => handleDeactivateRequest(u)}
                       />

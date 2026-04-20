@@ -121,6 +121,10 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/users/{id:guid}/resend-invite",          ResendInvite)
             .RequirePermission(PermCodes.TenantInvitationsManage);
 
+        // UIX-002: cancel invite
+        routes.MapPost("/api/admin/users/{id:guid}/cancel-invite",          CancelInvite)
+            .RequirePermission(PermCodes.TenantInvitationsManage);
+
         // Admin can edit a user's primary phone number on file.
         routes.MapPatch("/api/admin/users/{id:guid}/phone",                 UpdateUserPhone)
             .RequirePermission(PermCodes.TenantUsersManage);
@@ -3898,6 +3902,54 @@ public static class AdminEndpoints
         }
 
         return Results.Ok(new { invitationId = newInvite.Id });
+    }
+
+    /// <summary>
+    /// POST /api/admin/users/{id}/cancel-invite
+    /// Revokes all pending invitations for the user without creating a new one.
+    /// </summary>
+    private static async Task<IResult> CancelInvite(
+        Guid                id,
+        ClaimsPrincipal     caller,
+        IdentityDbContext   db,
+        IAuditEventClient   auditClient,
+        CancellationToken   ct)
+    {
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var pending = await db.UserInvitations
+            .Where(i => i.UserId == id && i.Status == UserInvitation.Statuses.Pending)
+            .ToListAsync(ct);
+
+        if (pending.Count == 0)
+            return Results.Conflict(new { error = "No pending invitations found for this user." });
+
+        foreach (var inv in pending) inv.Revoke();
+
+        await db.SaveChangesAsync(ct);
+
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.invite_cancelled",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+            Scope  = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = user.TenantId.ToString() },
+            Actor  = new AuditEventActorDto { Type = ActorType.System, Name = "admin-api" },
+            Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
+            Action      = "InviteCancelled",
+            Description = $"Invite cancelled for user '{user.Email}'.",
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.invite_cancelled", id.ToString()),
+            Tags = ["user-management", "invite"],
+        });
+
+        return Results.NoContent();
     }
 
     // =========================================================================

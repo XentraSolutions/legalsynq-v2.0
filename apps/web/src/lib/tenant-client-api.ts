@@ -47,6 +47,9 @@ export const tenantClientApi = {
     apiClient.post<{ invitationId: string; inviteToken?: string }>(
       `/identity/api/admin/users/${userId}/resend-invite`, {}),
 
+  cancelInvite: (userId: string) =>
+    apiClient.post<void>(`/identity/api/admin/users/${userId}/cancel-invite`, {}),
+
   getRoles: () =>
     apiClient.get<TenantRolesListResponse>('/identity/api/admin/roles'),
 
