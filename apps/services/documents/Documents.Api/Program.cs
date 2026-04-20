@@ -224,6 +224,20 @@ catch (Exception ex)
     app.Logger.LogWarning(ex, "Migration coverage self-test could not run");
 }
 
+// ── Schema safety-net ─────────────────────────────────────────────────────────
+// Creates any tables that were defined in the InitialCreate migration but may
+// have drifted out of production (idempotent CREATE TABLE IF NOT EXISTS).
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<DocsDbContext>();
+    await EnsureDocsSchemaTablesAsync(db, (Microsoft.Extensions.Logging.ILogger)app.Logger);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "EnsureDocsSchemaTablesAsync could not run — schema may be missing tables.");
+}
+
 // ── Middleware pipeline ────────────────────────────────────────────────────────
 app.UseCorrelationId();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -286,3 +300,86 @@ app.MapPublicLogoEndpoints();
 }
 
 app.Run();
+
+// ── EnsureDocsSchemaTablesAsync ────────────────────────────────────────────────
+// Idempotently creates tables from the InitialCreate migration that were not
+// applied to production (schema-drift guard, matches notifications pattern).
+static async Task EnsureDocsSchemaTablesAsync(DocsDbContext db, Microsoft.Extensions.Logging.ILogger logger)
+{
+    var conn = db.Database.GetDbConnection();
+    if (conn.State != System.Data.ConnectionState.Open)
+        await conn.OpenAsync();
+
+    var stmts = new[]
+    {
+        // docs_file_blobs
+        """
+        CREATE TABLE IF NOT EXISTS `docs_file_blobs` (
+            `storage_key`    varchar(500) NOT NULL,
+            `content`        longblob     NOT NULL,
+            `mime_type`      varchar(200) NOT NULL,
+            `size_bytes`     bigint       NOT NULL,
+            `created_at_utc` datetime(6)  NOT NULL,
+            PRIMARY KEY (`storage_key`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+
+        // docs_document_audits
+        """
+        CREATE TABLE IF NOT EXISTS `docs_document_audits` (
+            `id`             char(36)      NOT NULL COLLATE ascii_general_ci,
+            `tenant_id`      char(36)      NOT NULL COLLATE ascii_general_ci,
+            `document_id`    char(36)      NULL     COLLATE ascii_general_ci,
+            `event`          varchar(100)  NOT NULL,
+            `actor_id`       char(36)      NULL     COLLATE ascii_general_ci,
+            `actor_email`    varchar(500)  NULL,
+            `outcome`        varchar(20)   NOT NULL,
+            `ip_address`     varchar(50)   NULL,
+            `user_agent`     varchar(1000) NULL,
+            `correlation_id` varchar(100)  NULL,
+            `detail`         json          NULL,
+            `occurred_at`    datetime(6)   NOT NULL,
+            PRIMARY KEY (`id`),
+            CONSTRAINT `FK_dda_document_id`
+                FOREIGN KEY (`document_id`) REFERENCES `docs_documents` (`id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+
+        // docs_document_versions
+        """
+        CREATE TABLE IF NOT EXISTS `docs_document_versions` (
+            `id`                  char(36)     NOT NULL COLLATE ascii_general_ci,
+            `document_id`         char(36)     NOT NULL COLLATE ascii_general_ci,
+            `tenant_id`           char(36)     NOT NULL COLLATE ascii_general_ci,
+            `version_number`      int          NOT NULL,
+            `mime_type`           varchar(200) NOT NULL,
+            `file_size_bytes`     bigint       NOT NULL,
+            `storage_key`         longtext     NOT NULL,
+            `storage_bucket`      longtext     NOT NULL,
+            `checksum`            longtext     NULL,
+            `scan_status`         longtext     NOT NULL,
+            `scan_completed_at`   datetime(6)  NULL,
+            `scan_duration_ms`    int          NULL,
+            `scan_threats`        json         NOT NULL,
+            `scan_engine_version` longtext     NULL,
+            `label`               varchar(200) NULL,
+            `is_deleted`          tinyint(1)   NOT NULL,
+            `deleted_at`          datetime(6)  NULL,
+            `deleted_by`          char(36)     NULL COLLATE ascii_general_ci,
+            `uploaded_at`         datetime(6)  NOT NULL,
+            `uploaded_by`         char(36)     NOT NULL COLLATE ascii_general_ci,
+            PRIMARY KEY (`id`),
+            CONSTRAINT `FK_ddv_document_id`
+                FOREIGN KEY (`document_id`) REFERENCES `docs_documents` (`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+    };
+
+    using var cmd = conn.CreateCommand();
+    foreach (var sql in stmts)
+    {
+        cmd.CommandText = sql;
+        await cmd.ExecuteNonQueryAsync();
+    }
+    logger.LogInformation("EnsureDocsSchemaTablesAsync: docs_file_blobs, docs_document_audits, docs_document_versions ensured.");
+}

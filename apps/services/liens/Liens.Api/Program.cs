@@ -97,6 +97,21 @@ catch (Exception ex)
     app.Logger.LogWarning(ex, "Migration coverage self-test could not run");
 }
 
+// ── Schema safety-net ─────────────────────────────────────────────────────
+// Creates any tables that were pre-seeded in __EFMigrationsHistory without
+// their DDL actually running in production (same pattern as the notifications
+// fix). Idempotent: uses CREATE TABLE IF NOT EXISTS so safe on every restart.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+    await EnsureLiensSchemaTablesAsync(db, app.Logger);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "EnsureLiensSchemaTablesAsync could not run — schema may be missing tables.");
+}
+
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -159,3 +174,41 @@ app.MapTaskGenerationRuleEndpoints();
 app.MapTaskNoteEndpoints();
 
 app.Run();
+
+// ── EnsureLiensSchemaTablesAsync ─────────────────────────────────────────
+// Idempotently creates tables that are defined in EF migrations but may not
+// have been applied to the live DB (production schema-drift guard).
+static async Task EnsureLiensSchemaTablesAsync(LiensDbContext db, ILogger logger)
+{
+    var conn = db.Database.GetDbConnection();
+    if (conn.State != System.Data.ConnectionState.Open)
+        await conn.OpenAsync();
+
+    // liens_WorkflowTransitions — added by migration 20260418200000
+    const string createWorkflowTransitions = """
+        CREATE TABLE IF NOT EXISTS `liens_WorkflowTransitions` (
+            `Id`               char(36)    NOT NULL COLLATE ascii_general_ci,
+            `WorkflowConfigId` char(36)    NOT NULL COLLATE ascii_general_ci,
+            `FromStageId`      char(36)    NOT NULL COLLATE ascii_general_ci,
+            `ToStageId`        char(36)    NOT NULL COLLATE ascii_general_ci,
+            `IsActive`         tinyint(1)  NOT NULL,
+            `SortOrder`        int         NOT NULL,
+            `CreatedByUserId`  char(36)    NOT NULL COLLATE ascii_general_ci,
+            `UpdatedByUserId`  char(36)    NULL     COLLATE ascii_general_ci,
+            `CreatedAtUtc`     datetime(6) NOT NULL,
+            `UpdatedAtUtc`     datetime(6) NOT NULL,
+            PRIMARY KEY (`Id`),
+            CONSTRAINT `FK_lWT_WorkflowConfigId`
+                FOREIGN KEY (`WorkflowConfigId`) REFERENCES `liens_WorkflowConfigs` (`Id`) ON DELETE CASCADE,
+            CONSTRAINT `FK_lWT_FromStageId`
+                FOREIGN KEY (`FromStageId`) REFERENCES `liens_WorkflowStages` (`Id`) ON DELETE RESTRICT,
+            CONSTRAINT `FK_lWT_ToStageId`
+                FOREIGN KEY (`ToStageId`) REFERENCES `liens_WorkflowStages` (`Id`) ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """;
+
+    using var cmd = conn.CreateCommand();
+    cmd.CommandText = createWorkflowTransitions;
+    await cmd.ExecuteNonQueryAsync();
+    logger.LogInformation("EnsureLiensSchemaTablesAsync: liens_WorkflowTransitions ensured.");
+}
