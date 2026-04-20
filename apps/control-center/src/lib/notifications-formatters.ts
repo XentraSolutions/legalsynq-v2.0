@@ -1,4 +1,4 @@
-const FAILURE_CATEGORY_LABELS: Record<string, { label: string; hint: string }> = {
+export const FAILURE_CATEGORY_LABELS: Record<string, { label: string; hint: string }> = {
   auth_config_failure:        { label: 'Authentication configuration failure', hint: 'Check your SendGrid API key and provider credentials.' },
   invalid_recipient:          { label: 'Invalid recipient',                    hint: 'The destination address or phone number was rejected by the provider.' },
   retryable_provider_failure: { label: 'Transient provider failure',           hint: 'A temporary error occurred; the notification may be retried automatically.' },
