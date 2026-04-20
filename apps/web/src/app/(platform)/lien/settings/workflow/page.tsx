@@ -238,8 +238,8 @@ export default function WorkflowSettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Workflow Settings"
-        subtitle="Configure the task workflow stages for Synq Liens"
+        title="My Tasks — Stage Configuration"
+        subtitle="Configure the My Tasks stage progression and allowed stage transitions for Synq Liens. These settings govern task-stage movement only and are separate from case workflow execution managed by the Flow service."
       />
 
       {error && (
@@ -369,10 +369,10 @@ export default function WorkflowSettingsPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                <i className="ri-arrow-right-line text-primary" /> Transition Rules
+                <i className="ri-arrow-right-line text-primary" /> My Tasks — Stage Transition Rules
               </h2>
               <p className="text-xs text-gray-400 mt-0.5">
-                Check which stages a task can move to from each source stage. Leave all unchecked to allow any move.
+                Define which task stages can follow each other in My Tasks. These rules control task-stage movement only — they do not affect case or lien workflow execution.
               </p>
             </div>
             <button

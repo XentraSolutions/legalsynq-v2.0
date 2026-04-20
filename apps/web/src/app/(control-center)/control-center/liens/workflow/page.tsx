@@ -229,8 +229,8 @@ export default function ControlCenterLienWorkflowPage() {
   return (
     <div className="space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Synq Liens — Workflow Configuration</h1>
-        <p className="text-sm text-gray-500 mt-1">View and manage per-tenant workflow settings from Control Center</p>
+        <h1 className="text-2xl font-bold text-gray-900">Synq Liens — My Tasks Stage Configuration</h1>
+        <p className="text-sm text-gray-500 mt-1">Configure per-tenant My Tasks stage definitions and transition rules. This governs task-stage movement only — case and lien workflow execution is managed separately by the Flow service.</p>
       </div>
 
       {/* Tenant selector */}
@@ -404,10 +404,10 @@ export default function ControlCenterLienWorkflowPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                        <i className="ri-arrow-right-line text-blue-600" /> Transition Rules
+                        <i className="ri-arrow-right-line text-blue-600" /> My Tasks — Stage Transition Rules
                       </h2>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        Check which stages a task can move to from each source stage. Leave all unchecked to allow any move.
+                        Define which task stages can follow each other in My Tasks. These rules control task-stage movement only — they do not affect case or lien workflow execution.
                       </p>
                     </div>
                     <button

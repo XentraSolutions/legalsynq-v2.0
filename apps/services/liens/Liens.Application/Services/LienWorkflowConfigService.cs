@@ -282,7 +282,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
         _audit.Publish(
             eventType:   "liens.workflow_transition.created",
             action:      "create",
-            description: $"Transition {request.FromStageId} → {request.ToStageId} added to workflow '{entity.WorkflowName}'",
+            description: $"Task stage transition {request.FromStageId} → {request.ToStageId} added to workflow '{entity.WorkflowName}'",
             tenantId:    tenantId,
             actorUserId: actingUserId,
             entityType:  "LienWorkflowTransition",
@@ -308,7 +308,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
         _audit.Publish(
             eventType:   "liens.workflow_transition.deactivated",
             action:      "update",
-            description: $"Transition '{transitionId}' deactivated in workflow '{entity.WorkflowName}'",
+            description: $"Task stage transition '{transitionId}' deactivated in workflow '{entity.WorkflowName}'",
             tenantId:    tenantId,
             actorUserId: actingUserId,
             entityType:  "LienWorkflowTransition",
@@ -378,7 +378,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
         _audit.Publish(
             eventType:   "liens.workflow_transition.saved",
             action:      "update",
-            description: $"Workflow '{entity.WorkflowName}' transitions replaced: {toCreate.Count} active",
+            description: $"Workflow '{entity.WorkflowName}' task stage transitions replaced: {toCreate.Count} active",
             tenantId:    tenantId,
             actorUserId: actingUserId,
             entityType:  "LienWorkflowConfig",
@@ -460,7 +460,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
         _audit.Publish(
             eventType:   "liens.workflow_transition.initialized",
             action:      "create",
-            description: $"Workflow '{entity.WorkflowName}' auto-initialized with {defaultTransitions.Count} linear transitions",
+            description: $"Workflow '{entity.WorkflowName}' auto-initialized with {defaultTransitions.Count} linear task stage transitions",
             tenantId:    entity.TenantId,
             actorUserId: entity.CreatedByUserId,
             entityType:  "LienWorkflowConfig",

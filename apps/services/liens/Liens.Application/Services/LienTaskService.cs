@@ -204,7 +204,12 @@ public sealed class LienTaskService : ILienTaskService
         if (errors.Count > 0)
             throw new ValidationException("Validation failed.", errors);
 
-        // ── LS-LIENS-FLOW-005: Validate workflow stage transition ──────────────
+        // ── LS-LIENS-FLOW-005: Validate My Tasks stage transition ─────────────
+        // Governs task-stage movement within My Tasks only.
+        // This does NOT validate case or lien Flow workflow instance transitions —
+        // those are owned by the Flow service (IFlowClient, WorkflowEndpoints.cs).
+        // Transitional architecture: LS-LIENS-FLOW-007 will correlate this check
+        // with the active Flow WorkflowInstance for the task's linked case.
         // Only validate when moving from one stage to a different stage (both non-null).
         if (entity.WorkflowStageId.HasValue
             && request.WorkflowStageId.HasValue
