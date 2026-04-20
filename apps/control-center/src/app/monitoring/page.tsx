@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { CCShell } from '@/components/shell/cc-shell';
+import { StatusSummaryBanner, StatusSummaryBannerError } from '@/components/monitoring/status-summary-banner';
 import { SystemHealthCard } from '@/components/monitoring/system-health-card';
 import { IntegrationStatusTable } from '@/components/monitoring/integration-status-table';
 import { AlertsPanel } from '@/components/monitoring/alerts-panel';
@@ -39,6 +40,13 @@ export default async function MonitoringPage() {
   const infraServices   = data?.integrations.filter(i => i.category === 'infrastructure') ?? [];
   const productServices = data?.integrations.filter(i => i.category === 'product') ?? [];
 
+  // Quick stats for the summary banner — counted directly from the service response.
+  // No status logic is derived here; system.status comes from the Monitoring Service.
+  const totalServices    = data?.integrations.length ?? 0;
+  const healthyCount     = data?.integrations.filter(i => i.status === 'Healthy').length  ?? 0;
+  const degradedCount    = data?.integrations.filter(i => i.status === 'Degraded').length ?? 0;
+  const downCount        = data?.integrations.filter(i => i.status === 'Down').length      ?? 0;
+
   return (
     <CCShell userEmail={session.email}>
       <div className="min-h-full bg-gray-50">
@@ -67,12 +75,25 @@ export default async function MonitoringPage() {
           </div>
 
           {fetchError ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-5 py-4">
-              <p className="text-sm text-red-700 font-medium">Failed to load monitoring data</p>
-              <p className="text-xs text-red-600 mt-1">{fetchError}</p>
+            <div className="space-y-4">
+              <StatusSummaryBannerError />
+              <div className="bg-red-50 border border-red-200 rounded-lg px-5 py-4">
+                <p className="text-sm text-red-700 font-medium">Failed to load monitoring data</p>
+                <p className="text-xs text-red-600 mt-1">{fetchError}</p>
+              </div>
             </div>
           ) : data ? (
             <div className="space-y-5">
+
+              <StatusSummaryBanner
+                systemStatus={data.system.status}
+                total={totalServices}
+                healthy={healthyCount}
+                degraded={degradedCount}
+                down={downCount}
+                alerts={data.alerts.length}
+                lastCheckedAt={data.system.lastCheckedAtUtc}
+              />
 
               <SystemHealthCard summary={data.system} />
 
