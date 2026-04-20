@@ -29,4 +29,14 @@ public interface ILienTaskRepository
     Task<bool> HasOpenTaskForRuleAsync(Guid tenantId, Guid ruleId, Guid? caseId, Guid? lienId, CancellationToken ct = default);
     Task<bool> HasOpenTaskForTemplateAsync(Guid tenantId, Guid templateId, Guid? caseId, Guid? lienId, CancellationToken ct = default);
     Task AddGeneratedMetadataAsync(LienGeneratedTaskMetadata metadata, CancellationToken ct = default);
+
+    /// <summary>
+    /// LS-LIENS-FLOW-009 — returns all tasks for <paramref name="tenantId"/> linked to
+    /// <paramref name="workflowInstanceId"/>. Uses the
+    /// <c>IX_Tasks_TenantId_WorkflowInstanceId</c> index; returns an empty list when none found.
+    /// </summary>
+    Task<List<LienTask>> GetByWorkflowInstanceIdAsync(
+        Guid tenantId,
+        Guid workflowInstanceId,
+        CancellationToken ct = default);
 }

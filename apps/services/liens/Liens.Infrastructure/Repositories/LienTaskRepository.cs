@@ -203,4 +203,15 @@ public sealed class LienTaskRepository : ILienTaskRepository
         await _db.LienGeneratedTaskMetadatas.AddAsync(metadata, ct);
         await _db.SaveChangesAsync(ct);
     }
+
+    // LS-LIENS-FLOW-009 — batch lookup by Flow workflow instance
+    public async Task<List<LienTask>> GetByWorkflowInstanceIdAsync(
+        Guid tenantId,
+        Guid workflowInstanceId,
+        CancellationToken ct = default)
+    {
+        return await _db.LienTasks
+            .Where(t => t.TenantId == tenantId && t.WorkflowInstanceId == workflowInstanceId)
+            .ToListAsync(ct);
+    }
 }

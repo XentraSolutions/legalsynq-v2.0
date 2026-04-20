@@ -73,6 +73,9 @@ public static class DependencyInjection
         services.AddScoped<ILienTaskGovernanceService, LienTaskGovernanceService>();
         // LS-LIENS-FLOW-007 — Flow instance linkage resolver
         services.AddScoped<IFlowInstanceResolver, FlowInstanceResolver>();
+        // LS-LIENS-FLOW-009 — Flow event consumption (real-time task sync)
+        services.AddScoped<ITaskFlowSyncService, TaskFlowSyncService>();
+        services.AddScoped<IFlowEventHandler, FlowEventHandler>();
 
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
         services.AddHttpClient("DocumentsService", client =>

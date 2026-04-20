@@ -151,4 +151,17 @@ public class LienTask : AuditableEntity
         WorkflowStepKey    = workflowStepKey?.Trim();
         UpdatedAtUtc       = DateTime.UtcNow;
     }
+
+    /// <summary>
+    /// LS-LIENS-FLOW-009 — event-driven step-key update.
+    /// Called when Flow emits a step-change event; updates only <see cref="WorkflowStepKey"/>
+    /// without touching task runtime fields (status, assignment, etc.).
+    /// Idempotent when called with the same step key.
+    /// </summary>
+    public void SyncWorkflowStep(string newStepKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(newStepKey);
+        WorkflowStepKey = newStepKey.Trim();
+        UpdatedAtUtc    = DateTime.UtcNow;
+    }
 }

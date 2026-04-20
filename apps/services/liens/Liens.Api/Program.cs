@@ -174,6 +174,8 @@ app.MapTaskGenerationRuleEndpoints();
 app.MapTaskNoteEndpoints();
 // LS-LIENS-FLOW-006 — Task Creation Governance + Email Notifications.
 app.MapTaskGovernanceEndpoints();
+// LS-LIENS-FLOW-009 — Flow Event Consumption (internal event ingestion).
+app.MapFlowEventsEndpoints();
 
 app.Run();
 
