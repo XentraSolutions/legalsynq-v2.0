@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { tenantClientApi, ApiError } from '@/lib/tenant-client-api';
 import type { TenantUserDetail, AccessDebugResponse, TenantGroup, AssignableRolesResponse } from '@/types/tenant';
+import { Modal } from '@/components/lien/modal';
 
 interface Props {
   user: TenantUserDetail;
@@ -103,10 +104,57 @@ export function UserDetailClient({ user, accessDebug, groups, assignableRoles, t
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
 
+  const [resending, setResending] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [showResendConfirm, setShowResendConfirm] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [inviteResult, setInviteResult] = useState<{ link: string } | null>(null);
+  const [inviteCopyLabel, setInviteCopyLabel] = useState('Copy link');
+
+  const isInvited = user.status === 'Invited';
+
   const showToast = useCallback((message: string, type: 'success' | 'error') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   }, []);
+
+  async function handleResendInvite() {
+    setResending(true);
+    try {
+      const result = await tenantClientApi.resendInvite(user.id);
+      setShowResendConfirm(false);
+      if (result.data?.inviteToken) {
+        const link = `${window.location.origin}/accept-invite?token=${encodeURIComponent(result.data.inviteToken)}`;
+        setInviteResult({ link });
+        setInviteCopyLabel('Copy link');
+      } else {
+        showToast(`Invitation resent to ${user.email}.`, 'success');
+      }
+      router.refresh();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to resend invitation.';
+      showToast(msg, 'error');
+      setShowResendConfirm(false);
+    } finally {
+      setResending(false);
+    }
+  }
+
+  async function handleCancelInvite() {
+    setCancelling(true);
+    try {
+      await tenantClientApi.cancelInvite(user.id);
+      setShowCancelConfirm(false);
+      showToast(`Invitation cancelled for ${user.email}.`, 'success');
+      router.refresh();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to cancel invitation.';
+      showToast(msg, 'error');
+      setShowCancelConfirm(false);
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   async function handleAction(fn: () => Promise<void>, successMsg: string) {
     setLoading(true);
@@ -158,7 +206,41 @@ export function UserDetailClient({ user, accessDebug, groups, assignableRoles, t
         </Link>
       </div>
 
-      <SectionCard title="Identity" icon="ri-user-line">
+      <SectionCard
+        title="Identity"
+        icon="ri-user-line"
+        action={isInvited ? (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowResendConfirm(true)}
+              disabled={resending || cancelling}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <i className="ri-mail-send-line text-sm" />
+              Resend Invite
+            </button>
+            <button
+              onClick={() => setShowCancelConfirm(true)}
+              disabled={resending || cancelling}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <i className="ri-mail-close-line text-sm" />
+              Cancel Invite
+            </button>
+          </div>
+        ) : undefined}
+      >
+        {isInvited && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+            <i className="ri-mail-send-line text-amber-600 text-base mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">Invitation pending</p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                This user has been invited but has not yet activated their account. Use <strong>Resend Invite</strong> if they did not receive the email, or <strong>Cancel Invite</strong> to revoke access.
+              </p>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">Name</p>
@@ -172,14 +254,13 @@ export function UserDetailClient({ user, accessDebug, groups, assignableRoles, t
             <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-1">Status</p>
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${
               user.status === 'Active' ? 'bg-green-50 text-green-700 border-green-200' :
-              user.status === 'Invited' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+              user.status === 'Invited' ? 'bg-amber-50 text-amber-700 border-amber-200' :
               'bg-gray-100 text-gray-500 border-gray-200'
             }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${
-                user.status === 'Active' ? 'bg-green-500' :
-                user.status === 'Invited' ? 'bg-blue-500' :
-                'bg-gray-400'
-              }`} />
+              {user.status === 'Invited'
+                ? <i className="ri-mail-send-line text-[11px]" />
+                : <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'Active' ? 'bg-green-500' : 'bg-gray-400'}`} />
+              }
               {user.status}
             </span>
           </div>
@@ -486,6 +567,111 @@ export function UserDetailClient({ user, accessDebug, groups, assignableRoles, t
         description={confirm?.description ?? ''}
         loading={loading}
       />
+
+      {/* Resend Invite confirm */}
+      {showResendConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="fixed inset-0 bg-black/40" aria-hidden="true" onClick={() => { if (!resending) setShowResendConfirm(false); }} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Resend Invite to {user.firstName}?</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              A new invitation link will be created and sent to <strong>{user.email}</strong>. The previous invitation will be invalidated.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowResendConfirm(false)}
+                disabled={resending}
+                className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResendInvite}
+                disabled={resending}
+                className="text-sm px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {resending && <i className="ri-loader-4-line animate-spin" />}
+                Resend Invite
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Invite confirm */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="fixed inset-0 bg-black/40" aria-hidden="true" onClick={() => { if (!cancelling) setShowCancelConfirm(false); }} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Cancel Invite for {user.firstName}?</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              The pending invitation for <strong>{user.email}</strong> will be revoked immediately. They will not be able to use the existing link to activate their account. You can invite them again at any time.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowCancelConfirm(false)}
+                disabled={cancelling}
+                className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
+              >
+                Keep Invite
+              </button>
+              <button
+                onClick={handleCancelInvite}
+                disabled={cancelling}
+                className="text-sm px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {cancelling && <i className="ri-loader-4-line animate-spin" />}
+                Cancel Invite
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dev/non-production invite link modal */}
+      <Modal
+        open={!!inviteResult}
+        onClose={() => setInviteResult(null)}
+        title="New Invitation Link"
+        size="sm"
+      >
+        {inviteResult && (
+          <div className="space-y-4 py-1">
+            <p className="text-sm text-gray-600">
+              A new invitation link has been created for <strong>{user.firstName} {user.lastName}</strong> ({user.email}). Share this link so they can set their password and activate their account.
+            </p>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <i className="ri-information-line text-[15px] text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[13px] text-amber-700 leading-snug">
+                  <span className="font-medium">Non-production only.</span> In production this link is delivered via email. Do not share this link in an insecure channel.
+                </p>
+              </div>
+              <a
+                href={inviteResult.link}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[13px] font-medium text-orange-600 underline underline-offset-2 break-all"
+              >
+                <i className="ri-mail-send-line text-[14px] shrink-0" />
+                {inviteResult.link}
+              </a>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(inviteResult.link).catch(() => {});
+                setInviteCopyLabel('Copied!');
+                setTimeout(() => setInviteCopyLabel('Copy link'), 2500);
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            >
+              <i className={`${inviteCopyLabel === 'Copied!' ? 'ri-check-line text-green-600' : 'ri-file-copy-line'} text-[15px]`} />
+              {inviteCopyLabel}
+            </button>
+          </div>
+        )}
+      </Modal>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>

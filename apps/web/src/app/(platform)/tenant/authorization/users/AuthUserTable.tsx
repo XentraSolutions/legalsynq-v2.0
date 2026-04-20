@@ -670,7 +670,29 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-gray-600">{u.email || '—'}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <StatusBadge status={getUserStatus(u)} />
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <StatusBadge status={getUserStatus(u)} />
+                        {getUserStatus(u) === 'Invited' && (
+                          <>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setResendInviteUser(u); }}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+                              title="Resend invitation email"
+                            >
+                              <i className="ri-mail-send-line" />
+                              Resend
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setCancelInviteUser(u); }}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
+                              title="Cancel invitation"
+                            >
+                              <i className="ri-mail-close-line" />
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-center"><CountBadge count={productCount(u)} color="blue" /></td>
                     <td className="px-4 py-3 text-center hidden md:table-cell"><CountBadge count={roleCount(u)} color="indigo" /></td>
