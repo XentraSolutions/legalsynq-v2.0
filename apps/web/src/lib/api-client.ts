@@ -61,11 +61,13 @@ async function request<T>(
       // Prefer the human-readable `message` field when present (LS-ID-TNT-009 pattern:
       // error = machine code, message = human description). Fall back to `error` for
       // responses that only include an `error` string (older endpoint convention).
+      // Only accept string values — object/array values would render as "[object Object]".
+      const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
       message =
-        errBody?.message ??
-        errBody?.error   ??
-        errBody?.detail  ??
-        errBody?.title   ??
+        str(errBody?.message) ??
+        str(errBody?.error)   ??
+        str(errBody?.detail)  ??
+        str(errBody?.title)   ??
         message;
     } catch {
       // non-JSON error body — keep default message

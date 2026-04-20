@@ -58,7 +58,6 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     {
       heading: 'SETTINGS',
       items: [
-        { href: '/lien/user-management',                label: 'User Management',   icon: 'ri-user-settings-line' },
         { href: '/lien/settings/workflow',              label: 'Workflow Settings', icon: 'ri-git-branch-line'    },
         { href: '/lien/settings/task-templates',        label: 'Task Templates',    icon: 'ri-file-list-3-line'   },
         { href: '/lien/settings/task-automation',       label: 'Task Automation',   icon: 'ri-robot-line'         },
