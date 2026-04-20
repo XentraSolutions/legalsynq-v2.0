@@ -1,6 +1,7 @@
 'use client';
 
 import type { ProviderLogRow } from '@/app/notifications/actions';
+import { formatFailureCategory } from '@/lib/notifications-formatters';
 
 interface Props {
   rows: ProviderLogRow[];
@@ -71,7 +72,7 @@ export function ProviderLogsTable({ rows }: Props) {
                       title={row.errorMessage}
                     >
                       {row.failureCategory && (
-                        <span className="font-medium mr-1">[{row.failureCategory}]</span>
+                        <span className="font-medium mr-1">[{formatFailureCategory(row.failureCategory)}]</span>
                       )}
                       {row.errorMessage}
                     </span>

@@ -2,7 +2,7 @@ import { requirePlatformAdmin }              from '@/lib/auth-guards';
 import { CCShell }                           from '@/components/shell/cc-shell';
 import { NotificationStatusBadge }          from '@/components/notifications/status-badge';
 import { ChannelBadge }                      from '@/components/notifications/channel-badge';
-import { notifClient, NOTIF_CACHE_TAGS }    from '@/lib/notifications-api';
+import { notifClient, NOTIF_CACHE_TAGS, formatFailureCategory } from '@/lib/notifications-api';
 import type { AdminNotifListResponse }     from '@/lib/notifications-api';
 
 interface Props {
@@ -209,10 +209,12 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
                           {n.providerUsed ?? <span className="text-gray-400 italic">—</span>}
                         </td>
                         <td className="px-4 py-2.5 text-xs text-red-600 max-w-[180px]">
-                          {n.failureCategory ?? (n.lastErrorMessage
-                            ? <span className="truncate block" title={n.lastErrorMessage}>{n.lastErrorMessage}</span>
-                            : <span className="text-gray-400 italic">—</span>
-                          )}
+                          {n.failureCategory
+                            ? formatFailureCategory(n.failureCategory)
+                            : (n.lastErrorMessage
+                              ? <span className="truncate block" title={n.lastErrorMessage}>{n.lastErrorMessage}</span>
+                              : <span className="text-gray-400 italic">—</span>
+                            )}
                         </td>
                         <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 whitespace-nowrap">
                           {new Date(n.createdAt).toLocaleString('en-US', { timeZone: 'UTC', hour12: false })}
