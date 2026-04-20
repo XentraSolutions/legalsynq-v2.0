@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { lienTasksService } from '@/lib/liens/lien-tasks.service';
+import { apiClient } from '@/lib/api-client';
 import type { TaskDto, TasksQuery } from '@/lib/liens/lien-tasks.types';
 import { ACTIVE_TASK_STATUSES } from '@/lib/liens/lien-tasks.types';
+import type { TenantUser } from '@/types/tenant';
 import { TaskCard } from './task-card';
 import { TaskDetailDrawer } from './task-detail-drawer';
 import { CreateEditTaskForm } from './forms/create-edit-task-form';
@@ -23,6 +25,17 @@ export function TaskPanel({ caseId, lienId, workflowStageId, title = 'Tasks' }: 
   const [editTask, setEditTask] = useState<TaskDto | undefined>(undefined);
   const [selectedTask, setSelectedTask] = useState<TaskDto | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('active');
+  const [usersById, setUsersById] = useState<Map<string, TenantUser>>(new Map());
+
+  useEffect(() => {
+    apiClient.get<TenantUser[]>('/identity/api/users')
+      .then(({ data }) => {
+        const map = new Map<string, TenantUser>();
+        (data ?? []).forEach((u) => map.set(u.id, u));
+        setUsersById(map);
+      })
+      .catch(() => { /* best-effort — cards fall back to icon */ });
+  }, []);
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
@@ -117,6 +130,7 @@ export function TaskPanel({ caseId, lienId, workflowStageId, title = 'Tasks' }: 
               task={task}
               onClick={(t) => setSelectedTask(t)}
               compact
+              assigneeUser={task.assignedUserId ? (usersById.get(task.assignedUserId) ?? null) : null}
             />
           ))}
         </div>
