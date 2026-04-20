@@ -112,19 +112,20 @@ public static class UserEndpoints
 
             var enriched = users.Select(u => new
             {
-                id           = u.Id,
-                tenantId     = u.TenantId,
-                email        = u.Email,
-                firstName    = u.FirstName,
-                lastName     = u.LastName,
-                isActive     = u.IsActive,
-                status       = pendingInvitees.Contains(u.Id) ? "Invited"
-                             : u.IsActive                     ? "Active"
-                                                              : "Inactive",
-                roles        = u.Roles,
-                productRoles = u.ProductRoles,
-                groupCount   = groupCounts.GetValueOrDefault(u.Id, 0),
-                productCount = productCounts.GetValueOrDefault(u.Id, 0),
+                id                = u.Id,
+                tenantId          = u.TenantId,
+                email             = u.Email,
+                firstName         = u.FirstName,
+                lastName          = u.LastName,
+                isActive          = u.IsActive,
+                status            = pendingInvitees.Contains(u.Id) ? "Invited"
+                                  : u.IsActive                     ? "Active"
+                                                                   : "Inactive",
+                roles             = u.Roles,
+                productRoles      = u.ProductRoles,
+                groupCount        = groupCounts.GetValueOrDefault(u.Id, 0),
+                productCount      = productCounts.GetValueOrDefault(u.Id, 0),
+                avatarDocumentId  = u.AvatarDocumentId,
             });
 
             return Results.Ok(enriched);

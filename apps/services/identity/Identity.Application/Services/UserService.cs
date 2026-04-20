@@ -74,5 +74,6 @@ public class UserService : IUserService
         user.ScopedRoleAssignments
             .Where(s => s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
             .Select(s => s.Role.Name)
-            .ToList());
+            .ToList(),
+        AvatarDocumentId: user.AvatarDocumentId);
 }

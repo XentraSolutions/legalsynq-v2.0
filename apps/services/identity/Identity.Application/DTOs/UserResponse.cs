@@ -10,4 +10,5 @@ public record UserResponse(
     List<string> Roles,
     Guid? OrganizationId = null,
     string? OrgType = null,
-    List<string>? ProductRoles = null);
+    List<string>? ProductRoles = null,
+    Guid? AvatarDocumentId = null);

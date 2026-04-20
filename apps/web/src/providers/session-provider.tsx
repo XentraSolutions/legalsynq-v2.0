@@ -154,6 +154,8 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
         isPlatformAdmin:       (me.systemRoles ?? []).includes('PlatformAdmin'),
         isTenantAdmin:         (me.systemRoles ?? []).includes('TenantAdmin'),
         hasOrg:                !!me.orgId,
+        avatarDocumentId:      me.avatarDocumentId,
+        phone:                 me.phone,
         expiresAt:             new Date(me.expiresAtUtc),
         sessionTimeoutMinutes: me.sessionTimeoutMinutes ?? PLATFORM_DEFAULT_TIMEOUT_MINUTES,
       };

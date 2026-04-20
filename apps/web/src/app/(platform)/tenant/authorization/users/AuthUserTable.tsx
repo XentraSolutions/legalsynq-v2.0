@@ -664,9 +664,17 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
                   >
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-3">
-                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold flex-shrink-0">
-                          {initials(u.firstName, u.lastName)}
-                        </span>
+                        {u.avatarDocumentId ? (
+                          <img
+                            src={`/api/profile/avatar/${u.avatarDocumentId}`}
+                            alt=""
+                            className="h-8 w-8 rounded-full object-cover flex-shrink-0"
+                          />
+                        ) : (
+                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold flex-shrink-0">
+                            {initials(u.firstName, u.lastName)}
+                          </span>
+                        )}
                         <span className="font-medium text-gray-900">
                           {displayName(u)}
                         </span>
