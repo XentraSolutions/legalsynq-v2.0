@@ -28,6 +28,8 @@ public class MonitoringDbContext : DbContext
 
     public DbSet<MonitoringAlert> MonitoringAlerts => Set<MonitoringAlert>();
 
+    public DbSet<UptimeHourlyRollup> UptimeHourlyRollups => Set<UptimeHourlyRollup>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

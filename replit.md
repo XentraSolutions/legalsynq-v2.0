@@ -5526,21 +5526,26 @@ SHA256_hex("{RuleKey}|{ScopeType}|{TenantId??''}|{AffectedActorId??''}|{Affected
 
 ---
 
-## Monitoring Service — MON-INT-01 + MON-INT-02-001 ✅
+## Monitoring Service — MON-INT-01 through MON-INT-04-002 ✅
 
 **Port:** 5015  
 **DB:** `monitoring_db` on RDS (via `ConnectionStrings__MonitoringDb`)  
-**Migrations:** 6 applied (InitialPersistenceSetup → AddMonitoringAlerts)
+**Migrations:** 7 applied (InitialPersistenceSetup → AddMonitoringAlerts → AddUptimeRollups)  
+**Startup:** `MonitoringMigrationsHostedService` calls `db.Database.MigrateAsync()` before any other hosted services.
 
 ### Architecture
-- **Domain:** `MonitoredEntity`, `EntityCurrentStatus`, `MonitoringAlert`, `CheckResult`
+- **Domain:** `MonitoredEntity`, `EntityCurrentStatus`, `MonitoringAlert`, `CheckResult`, `UptimeHourlyRollup`
 - **Write path:** Admin API (`POST /monitoring/admin/entities`) — requires RS256 auth (blocked pending MON-INT-01-003)
 - **Read path (MON-INT-01-002):** 3 anonymous endpoints consumed by Control Center
   - `GET /monitoring/status` → `MonitoringStatusResponse[]` — per-entity current status
   - `GET /monitoring/alerts` → `MonitoringAlertResponse[]` — active alerts
   - `GET /monitoring/summary` → `MonitoringSummaryResponse` — full system + integrations + alerts
+- **Uptime read path (MON-INT-04-002):** 2 anonymous endpoints from `uptime_hourly_rollups` (never from alerts)
+  - `GET /monitoring/uptime/rollups?window=24h|7d|30d|90d` — per-component + overall uptime percentages
+  - `GET /monitoring/uptime/history?entityId={guid}&window=24h|7d|30d|90d` — per-entity hourly buckets
 - **Scheduler:** `MonitoringSchedulerHostedService` fires every 15 s, probes all enabled entities via `HttpMonitoredEntityExecutor`, updates `entity_current_status` and `check_results`
-- **Status mapping:** EntityStatus.Up → `Healthy`, EntityStatus.Unknown → `Degraded` (conservative), EntityStatus.Down → `Down`
+- **Aggregation:** `UptimeAggregationHostedService` runs every 5 min (default), re-scans `check_results` for the last 91 days, groups by (entity, hour), upserts `uptime_hourly_rollups`. First cycle runs immediately on startup.
+- **Status mapping:** CheckOutcome.Success → Up, CheckOutcome.NonSuccessStatusCode → Degraded, all others → Down, Skipped → Unknown (excluded from uptime denominator)
 
 ### Entity Bootstrap (MON-INT-02-001)
 `Monitoring.Infrastructure/Bootstrap/MonitoringEntityBootstrap.cs` — `IHostedService` that seeds 10 platform entities on first startup if the registry is empty.

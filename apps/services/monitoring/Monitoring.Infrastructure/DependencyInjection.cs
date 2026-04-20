@@ -9,6 +9,7 @@ using Monitoring.Infrastructure.Http;
 using Monitoring.Infrastructure.Persistence;
 using Monitoring.Infrastructure.Queries;
 using Monitoring.Infrastructure.Scheduling;
+using Monitoring.Infrastructure.UptimeAggregation;
 
 namespace Monitoring.Infrastructure;
 
@@ -49,6 +50,11 @@ public static class DependencyInjection
 
         services.AddHostedService<DatabaseConnectivityHostedService>();
 
+        // Apply EF Core migrations before any seed or query services touch the DB.
+        // Must be registered before MonitoringEntityBootstrap (hosted services start
+        // in registration order).
+        services.AddHostedService<MonitoringMigrationsHostedService>();
+
         // One-shot startup seed: registers platform services if the entity
         // registry is empty. Idempotent — skips if any row already exists.
         // Disable via MonitoringBootstrap__Enabled=false.
@@ -56,6 +62,17 @@ public static class DependencyInjection
 
         // Read service — scoped so it shares the per-request MonitoringDbContext.
         services.AddScoped<IMonitoringReadService, EfCoreMonitoringReadService>();
+
+        // Uptime read service — scoped.
+        services.AddScoped<IUptimeReadService, EfCoreUptimeReadService>();
+
+        // Uptime aggregation engine options and hosted service.
+        services.AddOptions<UptimeAggregationOptions>()
+            .Bind(configuration.GetSection(UptimeAggregationOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        services.AddHostedService<UptimeAggregationHostedService>();
 
         // Scheduler foundation. Options are validated at startup so a bad
         // interval value fails fast with a clear message.

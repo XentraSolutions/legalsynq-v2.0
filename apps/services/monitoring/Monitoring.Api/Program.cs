@@ -63,6 +63,7 @@ app.MapMonitoredEntityEndpoints();
 app.MapMonitoringAlertEndpoints();
 app.MapMonitoringAlertHistoryEndpoints();
 app.MapMonitoringReadEndpoints();
+app.MapUptimeReadEndpoints();
 
 var startupLogger = app.Services.GetRequiredService<ILoggerFactory>()
     .CreateLogger("Monitoring.Api.Startup");
