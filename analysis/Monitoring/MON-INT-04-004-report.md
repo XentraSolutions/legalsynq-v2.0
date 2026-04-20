@@ -144,13 +144,16 @@ No `entityId` exposed. `name` matches `IntegrationStatus.name` for correlation i
 
 ## 8. Validation
 
-- `/monitoring` page loads without regression.
-- Expanding a row triggers a single `/api/monitoring/latency` fetch.
-- Sparkline renders with real data points when `MONITORING_SOURCE=service`.
-- Local mode: empty state renders correctly (no crash).
-- Sparse data (null `avgLatencyMs` buckets): gap handling works.
-- TypeScript: zero errors.
-- No changes to `/status` page.
+| Check | Result |
+|-------|--------|
+| TypeScript clean (`tsc --noEmit`, control-center) | **PASS — zero errors** |
+| `/monitoring` page renders without crash | PASS (Fast Refresh clean) |
+| Expanding a row triggers single `/api/monitoring/latency` fetch | PASS (verified in code: `fetchLatency` is guarded by `latencyState !== 'idle'`) |
+| Sparkline renders from real data | Runtime-only (requires `MONITORING_SOURCE=service`) |
+| Local mode empty state | PASS — returns `{ components: [] }` from BFF, sparkline shows "No latency history available" |
+| Sparse null `avgLatencyMs` buckets | PASS — filter removes null values; gaps produce segment breaks in SVG |
+| No changes to `/status` page | PASS — `public-component-list.tsx` untouched |
+| No UUIDs exposed | PASS — `entityId` stripped in BFF; `name` field only in response |
 
 ---
 
