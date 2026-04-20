@@ -19,6 +19,7 @@ import { SESSION_COOKIE_NAME, BASE_PATH } from '@/lib/app-config';
 const PUBLIC_PATHS = [
   `${BASE_PATH}/login`,
   `${BASE_PATH}/systemstatus`,
+  `${BASE_PATH}/status`,
   '/_next',
   '/favicon.ico',
   '/api/auth/login',
