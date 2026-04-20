@@ -160,6 +160,8 @@ async function localGetMonitoringSummary(): Promise<MonitoringSummary> {
       message:      `${r.name} is ${r.status.toLowerCase()}${r.detail ? `: ${r.detail}` : ''}`,
       severity:     (r.status === 'Down' ? 'Critical' : 'Warning') as AlertSeverity,
       createdAtUtc: r.lastCheckedAtUtc,
+      entityName:   r.name,      // correlates to IntegrationStatus.name
+      resolvedAtUtc: undefined,  // local probes don't track resolution timestamps
     }));
 
   return { system, integrations, alerts };
@@ -214,10 +216,12 @@ async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
   }));
 
   const alerts: SystemAlert[] = data.alerts.map(a => ({
-    id:           a.alertId,
-    message:      a.message,
-    severity:     a.severity as AlertSeverity,
-    createdAtUtc: a.createdAtUtc,
+    id:            a.alertId,
+    message:       a.message,
+    severity:      a.severity as AlertSeverity,
+    createdAtUtc:  a.createdAtUtc,
+    entityName:    a.name,          // correlates to IntegrationStatus.name
+    resolvedAtUtc: a.resolvedAtUtc, // null = active; string = resolved at this time
   }));
 
   return { system, integrations, alerts };

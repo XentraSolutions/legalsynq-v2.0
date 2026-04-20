@@ -749,10 +749,12 @@ export interface IntegrationStatus {
 }
 
 export interface SystemAlert {
-  id:           string;
-  message:      string;
-  severity:     AlertSeverity;
-  createdAtUtc: string;
+  id:            string;
+  message:       string;
+  severity:      AlertSeverity;
+  createdAtUtc:  string;
+  entityName?:   string;        // component display name; used for correlation with integrations
+  resolvedAtUtc?: string | null; // null or absent = still active
 }
 
 export interface MonitoringSummary {

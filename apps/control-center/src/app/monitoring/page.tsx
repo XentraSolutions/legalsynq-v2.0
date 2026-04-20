@@ -97,7 +97,7 @@ export default async function MonitoringPage() {
               <ComponentStatusList integrations={data.integrations} />
 
               {hasAlerts ? (
-                <AlertsPanel alerts={data.alerts} />
+                <AlertsPanel alerts={data.alerts} integrations={data.integrations} />
               ) : (
                 <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">
                   <p className="text-sm text-gray-500 text-center py-4">
