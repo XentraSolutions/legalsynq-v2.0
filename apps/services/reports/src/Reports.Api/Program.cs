@@ -10,6 +10,7 @@ using Reports.Contracts.Configuration;
 using Reports.Infrastructure;
 using Reports.Worker.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
