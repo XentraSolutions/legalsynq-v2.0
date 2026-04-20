@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Monitoring.Api.Authentication;
 using Monitoring.Api.Contracts;
 using Monitoring.Domain.Monitoring;
 using Monitoring.Infrastructure.Persistence;
@@ -19,7 +20,8 @@ public static class MonitoredEntityEndpoints
     public static IEndpointRouteBuilder MapMonitoredEntityEndpoints(this IEndpointRouteBuilder app)
     {
         var read = app.MapGroup("/monitoring/entities").AllowAnonymous();
-        var admin = app.MapGroup("/monitoring/admin/entities").RequireAuthorization();
+        var admin = app.MapGroup("/monitoring/admin/entities")
+                       .RequireAuthorization(MonitoringPolicies.AdminWrite);
 
         read.MapGet("/", ListAsync);
         read.MapGet("/{id:guid}", GetByIdAsync);

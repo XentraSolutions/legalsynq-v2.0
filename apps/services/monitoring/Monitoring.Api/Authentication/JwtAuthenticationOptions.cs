@@ -1,37 +1,21 @@
 namespace Monitoring.Api.Authentication;
 
 /// <summary>
-/// Strongly-typed configuration for JWT Bearer (RS256) validation.
-/// Bound from the configuration section <c>Authentication:Jwt</c>.
+/// RETIRED — MON-INT-01-003.
+/// <para>
+/// This class was the RS256-specific configuration model for the Monitoring
+/// Service's original JWT scheme. It has been replaced by the platform-standard
+/// <c>Jwt:SigningKey</c> / <c>Jwt:Issuer</c> / <c>Jwt:Audience</c>
+/// configuration pattern (HS256, same as Liens, Notifications, etc.).
+/// </para>
+/// <para>
+/// Kept as an empty stub to avoid unresolved-reference errors in any
+/// tooling that cached the previous build output. Will be removed in
+/// a future cleanup pass once all downstream references are confirmed gone.
+/// </para>
 /// </summary>
-public class JwtAuthenticationOptions
+[Obsolete("Retired in MON-INT-01-003. Use Jwt:SigningKey / Jwt:Issuer / Jwt:Audience instead.")]
+internal sealed class JwtAuthenticationOptions
 {
-    public const string SectionName = "Authentication:Jwt";
-
-    /// <summary>Expected token issuer ("iss"). Required.</summary>
-    public string Issuer { get; set; } = string.Empty;
-
-    /// <summary>Expected token audience ("aud"). Required.</summary>
-    public string Audience { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Optional OIDC authority. When set, JWKS-based key resolution is used.
-    /// Either <see cref="Authority"/> or <see cref="PublicKeyPem"/> must be provided.
-    /// </summary>
-    public string? Authority { get; set; }
-
-    /// <summary>
-    /// Optional explicit RSA public key in PEM format (SubjectPublicKeyInfo).
-    /// Used when <see cref="Authority"/> is not configured.
-    /// </summary>
-    public string? PublicKeyPem { get; set; }
-
-    /// <summary>
-    /// Whether the metadata endpoint requires HTTPS. Defaults to true.
-    /// Only relevant when <see cref="Authority"/> is set.
-    /// </summary>
-    public bool RequireHttpsMetadata { get; set; } = true;
-
-    /// <summary>Allowed clock skew, in seconds, when validating token lifetime.</summary>
-    public int ClockSkewSeconds { get; set; } = 30;
+    internal const string SectionName = "Authentication:Jwt";
 }

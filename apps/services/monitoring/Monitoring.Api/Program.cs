@@ -48,14 +48,16 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "monitorin
     .AllowAnonymous();
 
 // Protected validation endpoint — exists solely to verify the auth pipeline.
+// Accepts either a user JWT (Bearer scheme) or a service token (ServiceToken scheme).
 // No business logic. Returns the authenticated subject's identity claims only.
 app.MapGet("/secure/ping", (HttpContext ctx) =>
 {
     var sub = ctx.User.FindFirst("sub")?.Value
               ?? ctx.User.Identity?.Name
               ?? "unknown";
-    return Results.Ok(new { status = "ok", sub });
-}).RequireAuthorization();
+    var scheme = ctx.User.Identity?.AuthenticationType ?? "unknown";
+    return Results.Ok(new { status = "ok", sub, scheme });
+}).RequireAuthorization(MonitoringPolicies.AdminWrite);
 
 app.MapMonitoredEntityEndpoints();
 app.MapMonitoringReadEndpoints();
@@ -66,6 +68,10 @@ startupLogger.LogInformation(
     "Monitoring service starting in {Environment} environment",
     app.Environment.EnvironmentName);
 startupLogger.LogInformation(
-    "Authentication: JWT Bearer (RS256) enabled. /health is public; other endpoints require authentication.");
+    "Authentication: platform-standard dual-scheme JWT enabled. " +
+    "Scheme 1: Bearer (HS256, Jwt:SigningKey, issuer=legalsynq-identity). " +
+    "Scheme 2: ServiceToken (HS256, FLOW_SERVICE_TOKEN_SECRET, issuer=legalsynq-service-tokens). " +
+    "/health and read endpoints are anonymous; admin/write endpoints require {Policy}.",
+    MonitoringPolicies.AdminWrite);
 
 app.Run();

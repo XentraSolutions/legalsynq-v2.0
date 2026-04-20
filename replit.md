@@ -5559,7 +5559,21 @@ Double-prefix intentional — YARP strips outer `/monitoring` prefix:
 - `MONITORING_SOURCE=local` (default) — CC probes services directly (existing behaviour)
 - `MONITORING_SOURCE=service` — CC calls `GET {GATEWAY_URL}/monitoring/monitoring/summary`
 
+### Auth model (MON-INT-01-003 — complete)
+Platform-standard dual-scheme JWT:
+- **Scheme 1 — Bearer (HS256):** `Jwt:SigningKey`, issuer=`legalsynq-identity`, audience=`legalsynq-platform`. Accepts user JWTs from Identity service.
+- **Scheme 2 — ServiceToken (HS256):** `FLOW_SERVICE_TOKEN_SECRET`, issuer=`legalsynq-service-tokens`, audience=`monitoring-service`. Accepts machine-to-machine tokens; subject must start with `service:`.
+- **`MonitoringAdmin` policy:** admin/write endpoints accept Bearer+PlatformAdmin role OR ServiceToken+service: subject.
+- RS256-only scheme (legacy) fully retired: `JwtAuthenticationOptions` and `JwtAuthenticationOptionsValidator` are `[Obsolete]` stubs.
+
+### Endpoint security posture
+- `GET /health`, `GET /monitoring/entities`, `GET /monitoring/status`, `GET /monitoring/alerts`, `GET /monitoring/summary` — **anonymous** (CC backend consumes server-side; non-sensitive operational data)
+- `POST /monitoring/admin/entities`, `PATCH /monitoring/admin/entities/{id}`, `GET /secure/ping` — **MonitoringAdmin policy** (ServiceToken validated end-to-end)
+
+### Bootstrap (MON-INT-02-001)
+`MonitoringBootstrap:Enabled=false` in base appsettings (production default). `Enabled=true` in `appsettings.Development.json` (dev auto-seed if DB empty). Idempotent — skips if any entity row exists.
+
 ### Known gaps
-- MON-INT-01-003: RS256 ↔ HS256 auth alignment (admin API blocked until then)
-- Bootstrap temporary — replace with admin API seed script once auth aligned
+- Bearer JWT path not runtime-validated in dev (placeholder `Jwt:SigningKey`; real key from `Jwt__SigningKey` env var)
+- RS256 stubs remain; safe to delete in a future cleanup
 - Reports service not running in dev (correctly detected as Down + Critical alert)
