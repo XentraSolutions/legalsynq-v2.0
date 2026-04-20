@@ -1890,7 +1890,15 @@ public static class AdminEndpoints
             });
         }
 
-        return Results.Ok(new { message = "Password reset initiated." });
+        // In production, missing configuration is a hard error — return 503 so the caller
+        // knows the email was never dispatched rather than silently claiming success.
+        return Results.Json(
+            new
+            {
+                message = "Password reset could not be initiated because the notifications service is not configured. " +
+                          "Ensure NotificationsService:BaseUrl and NotificationsService:PortalBaseUrl are set.",
+            },
+            statusCode: 503);
     }
 
     /// <summary>

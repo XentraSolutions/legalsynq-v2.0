@@ -29,9 +29,9 @@ var issuer       = jwtSection["Issuer"]   ?? "legalsynq-identity";
 var audience     = jwtSection["Audience"] ?? "legalsynq-platform";
 
 // ── Email delivery pre-flight checks ─────────────────────────────────────────
-// Both values must be present for invitation emails to work.  Failing at startup
-// (in non-development environments) prevents silent runtime drops where user
-// records are created but invites never reach the new user.
+// Both values must be present for invitation and password-reset emails to work.
+// Failing at startup (in non-development environments) prevents silent runtime
+// drops where invites or admin-triggered password-reset emails are never sent.
 var notifSection   = builder.Configuration.GetSection("NotificationsService");
 var notifBaseUrl   = notifSection["BaseUrl"];
 var portalBaseUrl  = notifSection["PortalBaseUrl"];
