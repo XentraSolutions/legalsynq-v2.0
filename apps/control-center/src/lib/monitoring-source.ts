@@ -16,6 +16,7 @@
  */
 
 import { listServices, type ServiceDef } from '@/lib/system-health-store';
+import { CONTROL_CENTER_API_BASE } from '@/lib/env';
 import type {
   MonitoringSummary,
   MonitoringStatus,
@@ -180,7 +181,7 @@ async function localGetMonitoringSummary(): Promise<MonitoringSummary> {
 // directly to the MonitoringSummary type used by the Control Center.
 
 async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
-  const gatewayBase = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+  const gatewayBase = CONTROL_CENTER_API_BASE;
 
   // Double "monitoring" is intentional: YARP strips the outer /monitoring
   // prefix for the monitoring-cluster, so the inner /monitoring/summary
@@ -195,7 +196,7 @@ async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
   if (!res.ok) {
     throw new Error(
       `[monitoring-source] Monitoring Service returned HTTP ${res.status} from ${url}. ` +
-      `Verify the Monitoring Service is running on port 5015 and ConnectionStrings__MonitoringDb is set.`,
+      `Verify the Monitoring Service is reachable via CONTROL_CENTER_API_BASE and ConnectionStrings__MonitoringDb is set.`,
     );
   }
 

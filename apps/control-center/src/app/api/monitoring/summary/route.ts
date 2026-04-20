@@ -13,8 +13,20 @@ import { NextResponse } from 'next/server';
 import { getMonitoringSummary } from '@/lib/monitoring-source';
 
 export async function GET() {
-  const summary = await getMonitoringSummary();
-  return NextResponse.json(summary, {
-    headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
-  });
+  try {
+    const summary = await getMonitoringSummary();
+    return NextResponse.json(summary, {
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Monitoring source unavailable';
+    console.error('[/api/monitoring/summary]', message);
+    return NextResponse.json(
+      { error: 'monitoring_unavailable', message },
+      {
+        status: 503,
+        headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+      },
+    );
+  }
 }
