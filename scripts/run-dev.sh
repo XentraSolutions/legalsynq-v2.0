@@ -32,6 +32,8 @@ PID_CC=$!
   # NuGet packages (never restored by LegalSynq.sln) don't block the build.
   dotnet restore "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --verbosity quiet
   dotnet build   "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --no-restore --configuration Debug --verbosity quiet
+  dotnet restore "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj" --verbosity quiet
+  dotnet build   "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj" --no-restore --configuration Debug --verbosity quiet
   dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
@@ -41,6 +43,7 @@ PID_CC=$!
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj" &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" &
+  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
   wait
 ) &

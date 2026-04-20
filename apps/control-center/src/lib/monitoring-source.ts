@@ -39,6 +39,22 @@ interface ProbeResult {
   detail?:          string;
 }
 
+// ── Monitoring Service types (internal to this module) ───────────────────────
+// Matches MonitoredEntityResponse from Monitoring.Api/Contracts/MonitoredEntityResponse.cs
+
+interface MonitoringServiceEntity {
+  id:             string;
+  name:           string;
+  entityType:     string;
+  monitoringType: string;
+  target:         string;
+  isEnabled:      boolean;
+  scope:          string;
+  impactLevel:    string;
+  createdAtUtc:   string;
+  updatedAtUtc:   string;
+}
+
 // ── Local engine implementation ───────────────────────────────────────────────
 // TEMPORARY — local monitoring engine (to be replaced by Monitoring Service)
 // MON-INT-01 migration target
@@ -132,6 +148,78 @@ async function localGetMonitoringSummary(): Promise<MonitoringSummary> {
   return { system, integrations, alerts };
 }
 
+// ── Service engine implementation ─────────────────────────────────────────────
+// MON-INT-01-001 — Monitoring Read API Integration
+//
+// Calls the Monitoring Service entity registry via the YARP gateway.
+// Gateway URL: {GATEWAY_URL}/monitoring/monitoring/entities
+//   → YARP strips "/monitoring" prefix
+//   → Monitoring Service receives: GET /monitoring/entities
+//
+// Architecture note: The Monitoring Service (port 5015) exposes entity CRUD
+// and a background scheduler that writes check results and alerts to the DB.
+// As of MON-INT-01-001, there is no REST endpoint for current-status or alert
+// reads — those are stored in EntityCurrentStatus and MonitoringAlerts tables.
+// This implementation derives a best-effort summary from entity registry data:
+//   - isEnabled=true  → status: 'Healthy' (entity is configured and enabled)
+//   - isEnabled=false → status: 'Down'    (entity intentionally disabled)
+// Actual health data (Healthy/Degraded/Down from HTTP checks) requires a future
+// /monitoring/status read endpoint. Track as MON-INT-01-002.
+
+function buildSummaryFromEntities(entities: MonitoringServiceEntity[]): MonitoringSummary {
+  const now = new Date().toISOString();
+
+  const integrations: IntegrationStatus[] = entities.map(e => ({
+    name:             e.name,
+    status:           (e.isEnabled ? 'Healthy' : 'Down') as MonitoringStatus,
+    latencyMs:        undefined,
+    lastCheckedAtUtc: e.updatedAtUtc ?? now,
+    category:         e.scope || e.entityType,
+  }));
+
+  const downCount     = integrations.filter(i => i.status === 'Down').length;
+  const overallStatus: MonitoringStatus = downCount > 0 ? 'Down' : 'Healthy';
+
+  const system: SystemHealthSummary = {
+    status:           overallStatus,
+    lastCheckedAtUtc: now,
+  };
+
+  const alerts: SystemAlert[] = integrations
+    .filter(i => i.status === 'Down')
+    .map(i => ({
+      id:           `alert-${i.name.toLowerCase().replace(/\s+/g, '-')}`,
+      message:      `${i.name} is disabled`,
+      severity:     'Warning' as AlertSeverity,
+      createdAtUtc: i.lastCheckedAtUtc,
+    }));
+
+  return { system, integrations, alerts };
+}
+
+async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
+  const gatewayBase = process.env.GATEWAY_URL ?? 'http://localhost:5010';
+  // Double "monitoring" is intentional: gateway strips the /monitoring prefix,
+  // so the outer /monitoring routes to the monitoring-cluster, then the inner
+  // /monitoring/entities is the actual service path after prefix removal.
+  const url = `${gatewayBase}/monitoring/monitoring/entities`;
+
+  const res = await fetch(url, {
+    cache:   'no-store',
+    headers: { 'Accept': 'application/json' },
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `[monitoring-source] Monitoring Service returned HTTP ${res.status} from ${url}. ` +
+      `Verify the Monitoring Service is running on port 5015 and ConnectionStrings__MonitoringDb is set.`,
+    );
+  }
+
+  const entities: MonitoringServiceEntity[] = await res.json();
+  return buildSummaryFromEntities(entities);
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -143,13 +231,7 @@ async function localGetMonitoringSummary(): Promise<MonitoringSummary> {
  */
 export async function getMonitoringSummary(): Promise<MonitoringSummary> {
   if (MONITORING_SOURCE === 'service') {
-    // NOT IMPLEMENTED — awaiting MON-INT-01-001 (Monitoring Read API Integration).
-    // The Monitoring Service archive has not been integrated yet.
-    // To enable: set MONITORING_SOURCE=service and implement the fetch below.
-    throw new Error(
-      '[monitoring-source] MONITORING_SOURCE=service is not yet implemented. ' +
-      'Integration target: MON-INT-01-001. Currently set MONITORING_SOURCE=local.',
-    );
+    return serviceGetMonitoringSummary();
   }
 
   // Default: local engine (existing behavior, no regression).
