@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
@@ -55,11 +56,21 @@ public static class TaskNoteEndpoints
         CreateTaskNoteRequest request,
         ILienTaskNoteService svc,
         ICurrentRequestContext ctx,
+        ClaimsPrincipal user,
         CancellationToken ct)
     {
-        var tenantId = RequireTenantId(ctx);
-        var userId   = RequireUserId(ctx);
-        var note     = await svc.CreateNoteAsync(tenantId, taskId, userId, request, ct);
+        var tenantId   = RequireTenantId(ctx);
+        var userId     = RequireUserId(ctx);
+        var authorName = user.FindFirstValue(ClaimTypes.Name)
+                      ?? user.FindFirstValue("name")
+                      ?? ctx.Email
+                      ?? string.Empty;
+        var enriched = new CreateTaskNoteRequest
+        {
+            Content         = request.Content,
+            CreatedByName   = authorName,
+        };
+        var note = await svc.CreateNoteAsync(tenantId, taskId, userId, enriched, ct);
         return Results.Created($"/api/liens/tasks/{taskId}/notes/{note.Id}", note);
     }
 

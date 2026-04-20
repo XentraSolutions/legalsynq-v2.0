@@ -5647,3 +5647,30 @@ SendGrid now receives a properly-structured MIME multipart email with both `text
 
 ### Analysis
 Full root-cause analysis: `analysis/Notifications/invite-email-not-dispatched-report.md`
+
+---
+
+## PROD-LIENS-TASK-BUGS Fix (2026-04-20)
+SynqLiens task detail drawer had two user-visible bugs: note authors always showed as "Unknown", and the History tab always showed "No history recorded yet".
+
+### Bug A — Note author always "Unknown"
+
+**Root cause (two-part):**  
+1. `TaskNoteEndpoints.CreateNote` forwarded the request body as-is; the frontend (`lien-task-notes.service.ts`) only sent `{ content }`, never `createdByName`.  
+2. `JwtTokenService.GenerateToken` never issued a `name` claim in the JWT, so there was no server-side source for the author's display name.  
+
+**Fix:**  
+- `apps/services/identity/Identity.Infrastructure/Services/JwtTokenService.cs` — added `JwtRegisteredClaimNames.Name` (`"name"`) claim set to `"{FirstName} {LastName}"` at token-issue time. Backward-compatible.  
+- `apps/services/liens/Liens.Api/Endpoints/TaskNoteEndpoints.cs` — injected `ClaimsPrincipal user` into `CreateNote`; resolved `authorName` via `FindFirstValue(ClaimTypes.Name) ?? FindFirstValue("name") ?? ctx.Email ?? ""` (handles both standard and raw claim naming because Liens API sets `MapInboundClaims = false`). Constructs an enriched `CreateTaskNoteRequest` with the resolved name; frontend no longer needs to supply it.
+
+### Bug B — History tab always empty
+
+**Investigation:** Code path is correct end-to-end (BFF → gateway → audit service → EF repository filter `EntityType=LienTask AND EntityId={taskId}`). Deployment logs confirmed the query reached the audit service and returned 0 records — meaning the events were genuinely absent from the DB, not a query issue.
+
+**Root cause:** The task shown in the screenshot had its lifecycle events (creation, status change) published during the audit service's brief MySQL connectivity failure at startup (`CanConnect=false`). The `HttpAuditEventClient` would have logged transport/rejection warnings for those calls, but those warnings fall outside the captured log window. New task operations after a stable startup will record history correctly.
+
+**No code change required.** Confirmed: `HttpAuditEventClient` is transient (not scoped, not `IDisposable`), so its `HttpClient` is not disposed when the request scope ends — the fire-and-forget pattern is safe.  
+Note: `AuditPublisher.Publish()`'s `ContinueWith(OnlyOnFaulted)` continuation is unreachable dead code (since `IngestAsync` never throws), but `HttpAuditEventClient` handles its own logging so failure observability is preserved.
+
+### Analysis
+Full root-cause analysis: `analysis/SynqLiens/liens-task-bugs-report.md`
