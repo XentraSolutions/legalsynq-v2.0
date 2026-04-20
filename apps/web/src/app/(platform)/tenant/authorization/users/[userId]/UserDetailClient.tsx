@@ -261,7 +261,7 @@ export function UserDetailClient({ user, accessDebug, groups, assignableRoles, t
                 ? <i className="ri-mail-send-line text-[11px]" />
                 : <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'Active' ? 'bg-green-500' : 'bg-gray-400'}`} />
               }
-              {user.status}
+              {user.status === 'Invited' ? 'Invite sent' : user.status}
             </span>
           </div>
           <div>

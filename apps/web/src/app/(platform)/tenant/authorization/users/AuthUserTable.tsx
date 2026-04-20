@@ -49,7 +49,7 @@ function StatusBadge({ status }: { status: string }) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border bg-amber-50 text-amber-700 border-amber-200">
         <i className="ri-mail-send-line text-[11px]" />
-        Invited
+        Invite sent
       </span>
     );
   }
@@ -214,6 +214,7 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
 
   const [cancelInviteUser,  setCancelInviteUser]  = useState<TenantUser | null>(null);
   const [cancelling,        setCancelling]        = useState(false);
+  const [hiddenIds,         setHiddenIds]         = useState<Set<string>>(new Set());
 
   const activeAdminCount = useMemo(
     () => users.filter(u => u.isActive && (u.roles ?? []).includes(TENANT_ADMIN_ROLE)).length,
@@ -227,6 +228,7 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return users.filter((u) => {
+      if (hiddenIds.has(u.id)) return false;
       const uStatus = getUserStatus(u);
       const matchesStatus =
         statusFilter === 'All' ||
@@ -241,7 +243,7 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
         fullName.toLowerCase().includes(q)
       );
     });
-  }, [users, search, statusFilter]);
+  }, [users, hiddenIds, search, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage   = Math.min(page, totalPages);
@@ -368,7 +370,9 @@ export function AuthUserTable({ users, tenantId }: { users: TenantUser[]; tenant
       await tenantClientApi.cancelInvite(cancelInviteUser.id);
       const name  = displayName(cancelInviteUser);
       const email = (cancelInviteUser.email ?? '').trim();
+      const cancelledId = cancelInviteUser.id;
       setCancelInviteUser(null);
+      setHiddenIds(prev => new Set([...prev, cancelledId]));
       showToast(
         email
           ? `Invitation cancelled for ${email}.`
