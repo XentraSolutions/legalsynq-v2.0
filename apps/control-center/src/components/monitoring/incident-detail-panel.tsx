@@ -12,11 +12,21 @@ interface IncidentDetailPanelProps {
 }
 
 type ResolveState = 'idle' | 'submitting' | 'success' | 'error';
+type HistoryState = 'idle' | 'loading' | 'loaded' | 'error' | 'local-mode';
+
+interface AlertHistoryItem {
+  alertId:       string;
+  entityName:    string;
+  severity:      string;
+  message:       string;
+  createdAtUtc:  string;   // = TriggeredAtUtc on the Monitoring Service
+  resolvedAtUtc: string | null;
+}
 
 const SEVERITY_COLORS: Record<AlertSeverity, { badge: string; bar: string }> = {
-  Critical: { badge: 'bg-red-100 text-red-700 border-red-300',    bar: 'bg-red-500'   },
+  Critical: { badge: 'bg-red-100 text-red-700 border-red-300',      bar: 'bg-red-500'   },
   Warning:  { badge: 'bg-amber-100 text-amber-700 border-amber-300', bar: 'bg-amber-400' },
-  Info:     { badge: 'bg-blue-100 text-blue-700 border-blue-200',  bar: 'bg-blue-400'  },
+  Info:     { badge: 'bg-blue-100 text-blue-700 border-blue-200',   bar: 'bg-blue-400'  },
 };
 
 const STATUS_COLORS: Record<MonitoringStatus, string> = {
@@ -29,35 +39,71 @@ const STATUS_COLORS: Record<MonitoringStatus, string> = {
  * IncidentDetailPanel — slide-over detail + action panel.
  *
  * Opens from the right side of the viewport when an alert row is selected.
- * Shows: severity, message, affected component + current status, timestamps.
+ * Shows: severity, message, affected component + current status, timestamps,
+ * a resolve action button, and a full Incident History section.
  *
- * For active alerts, exposes a Resolve button that calls the Monitoring Service
- * admin endpoint through a secure server action. After a successful resolve,
- * triggers router.refresh() to sync the alerts list with the server state.
+ * History is fetched lazily from the CC BFF on panel open, keyed by entityName.
+ * Refreshes after a successful resolve to reflect the updated resolvedAtUtc.
  */
 export function IncidentDetailPanel({ alert, integration, onClose }: IncidentDetailPanelProps) {
   const router = useRouter();
   const sev    = SEVERITY_COLORS[alert.severity];
 
-  // Server-side resolved state (from last fetch)
   const serverActive = !alert.resolvedAtUtc;
 
-  // Local action state — tracks the in-progress resolve workflow
+  // ── Resolve action state ───────────────────────────────────────────────────
   const [resolveState, setResolveState] = useState<ResolveState>('idle');
   const [resolveError, setResolveError] = useState<string | null>(null);
-
-  // Derived: treat as resolved if either the server says so OR the action succeeded
   const isResolved = !serverActive || resolveState === 'success';
 
-  // Dismiss on Escape key
+  // ── History state ─────────────────────────────────────────────────────────
+  const [history,      setHistory]      = useState<AlertHistoryItem[]>([]);
+  const [historyState, setHistoryState] = useState<HistoryState>('idle');
+  const [historyNonce, setHistoryNonce] = useState(0);  // increment to re-fetch after resolve
+
+  // ── Escape dismiss ────────────────────────────────────────────────────────
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // ── History fetch ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!alert.entityName) {
+      setHistoryState('idle');   // no entity name — section hidden
+      return;
+    }
+
+    const controller = new AbortController();
+    setHistoryState('loading');
+    setHistory([]);
+
+    fetch(
+      `/api/monitoring/alerts/history?entityName=${encodeURIComponent(alert.entityName)}&limit=10`,
+      { signal: controller.signal, cache: 'no-store' },
+    )
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<{ source: 'service' | 'local'; items: AlertHistoryItem[] }>;
+      })
+      .then(({ source, items }) => {
+        if (source === 'local') {
+          setHistoryState('local-mode');
+        } else {
+          setHistory(items);
+          setHistoryState('loaded');
+        }
+      })
+      .catch(err => {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        setHistoryState('error');
+      });
+
+    return () => controller.abort();
+  }, [alert.entityName, historyNonce]);
+
+  // ── Resolve handler ───────────────────────────────────────────────────────
   async function handleResolve() {
     setResolveState('submitting');
     setResolveError(null);
@@ -66,7 +112,7 @@ export function IncidentDetailPanel({ alert, integration, onClose }: IncidentDet
 
     if (result.ok) {
       setResolveState('success');
-      // Refresh server components so the alerts list reflects the new state.
+      setHistoryNonce(n => n + 1);  // re-fetch history to show updated resolvedAtUtc
       startTransition(() => { router.refresh(); });
     } else {
       setResolveState('error');
@@ -186,6 +232,17 @@ export function IncidentDetailPanel({ alert, integration, onClose }: IncidentDet
             <code className="text-xs text-gray-400 font-mono break-all">{alert.id}</code>
           </Section>
 
+          {/* Incident History — only shown when entityName is available */}
+          {alert.entityName && (
+            <Section title="Incident History">
+              <HistorySection
+                items={history}
+                state={historyState}
+                currentAlertId={alert.id}
+              />
+            </Section>
+          )}
+
         </div>
 
         {/* Footer — action area */}
@@ -250,6 +307,94 @@ export function IncidentDetailPanel({ alert, integration, onClose }: IncidentDet
   );
 }
 
+// ── History section sub-component ──────────────────────────────────────────────
+
+const HISTORY_SEV_BADGE: Record<string, string> = {
+  Critical: 'bg-red-100 text-red-700 border-red-300',
+  Warning:  'bg-amber-100 text-amber-700 border-amber-300',
+  Info:     'bg-blue-100 text-blue-700 border-blue-200',
+};
+
+function HistorySection({
+  items,
+  state,
+  currentAlertId,
+}: {
+  items:          AlertHistoryItem[];
+  state:          HistoryState;
+  currentAlertId: string;
+}) {
+  if (state === 'idle' || state === 'loading') {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-14 rounded-md bg-gray-100 animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (state === 'local-mode') {
+    return (
+      <p className="text-xs text-gray-400 italic">
+        History is not available in local mode — switch to Monitoring Service to see historical alerts.
+      </p>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <p className="text-xs text-red-500">Unable to load history — check Monitoring Service connectivity.</p>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <p className="text-xs text-gray-400">No historical alerts recorded for this component.</p>
+    );
+  }
+
+  return (
+    <ol className="space-y-2" aria-label="Alert history">
+      {items.map(item => {
+        const isCurrent = item.alertId === currentAlertId;
+        const resolved  = item.resolvedAtUtc !== null;
+        const badge     = HISTORY_SEV_BADGE[item.severity] ?? HISTORY_SEV_BADGE.Warning;
+
+        return (
+          <li
+            key={item.alertId}
+            className={`rounded-md border px-3 py-2.5 text-xs space-y-1 ${
+              isCurrent
+                ? 'border-gray-400 bg-gray-50 ring-1 ring-gray-300'
+                : 'border-gray-200 bg-white'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${badge}`}>
+                {item.severity}
+              </span>
+              <span className={`text-[10px] font-medium ${resolved ? 'text-green-600' : 'text-red-600'}`}>
+                {resolved ? 'Resolved' : 'Active'}
+              </span>
+              {isCurrent && (
+                <span className="ml-auto text-[10px] font-medium text-gray-400 italic">current</span>
+              )}
+            </div>
+            <p className="text-gray-700 leading-snug line-clamp-2">{item.message}</p>
+            <div className="flex items-center gap-3 text-gray-400 tabular-nums">
+              <span>▶ {formatShortTimestamp(item.createdAtUtc)}</span>
+              {resolved && item.resolvedAtUtc && (
+                <span>■ {formatShortTimestamp(item.resolvedAtUtc)}</span>
+              )}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -298,6 +443,16 @@ function formatFullTimestamp(iso: string): string {
       year: 'numeric', month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false, timeZone: 'UTC', timeZoneName: 'short',
+    });
+  } catch { return iso; }
+}
+
+function formatShortTimestamp(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString('en-US', {
+      month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+      hour12: false, timeZone: 'UTC',
     });
   } catch { return iso; }
 }
