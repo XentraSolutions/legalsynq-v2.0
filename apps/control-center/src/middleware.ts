@@ -26,6 +26,7 @@ const PUBLIC_PATHS = [
   '/api/auth/logout',
   '/api/health',
   '/api/monitoring/summary',
+  '/api/monitoring/uptime',
 ];
 
 const PUBLIC_FILE_EXT = /\.(png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|eot|css|js|map)$/i;

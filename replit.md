@@ -5526,7 +5526,7 @@ SHA256_hex("{RuleKey}|{ScopeType}|{TenantId??''}|{AffectedActorId??''}|{Affected
 
 ---
 
-## Monitoring Service — MON-INT-01 through MON-INT-04-002 ✅
+## Monitoring Service — MON-INT-01 through MON-INT-04-003 ✅
 
 **Port:** 5015  
 **DB:** `monitoring_db` on RDS (via `ConnectionStrings__MonitoringDb`)  
@@ -5566,6 +5566,20 @@ Double-prefix intentional — YARP strips outer `/monitoring` prefix:
 `apps/control-center/src/lib/monitoring-source.ts`  
 - `MONITORING_SOURCE=local` (default) — CC probes services directly (existing behaviour)
 - `MONITORING_SOURCE=service` — CC calls `GET {GATEWAY_URL}/monitoring/monitoring/summary`
+
+### Public Status Page — MON-INT-04-003 Availability Timeline Bars ✅
+`apps/control-center/src/app/status/page.tsx` — server-side parallel fetch of summary + uptime history  
+`apps/control-center/src/app/api/monitoring/uptime/route.ts` — public BFF: sanitizes uptime data, strips entityId  
+`apps/control-center/src/components/monitoring/availability-bars.tsx` — `AvailabilityBars` + `AvailabilityLegend`  
+`apps/control-center/src/components/monitoring/public-component-list.tsx` — extended to accept `uptimeByName` Map  
+`apps/control-center/src/middleware.ts` — `/api/monitoring/uptime` added to `PUBLIC_PATHS`
+
+**How it works:**
+- `GET /api/monitoring/uptime` calls rollups (for entityIds) then parallel-fetches history per entity, strips all internal IDs
+- Returns `{ components: [{ name, uptimePercent, buckets: [{ bucketStartUtc, dominantStatus, uptimePercent, insufficientData }] }] }`
+- In local mode: returns `{ components: [] }` (no aggregation available) — bars silently absent
+- In service mode: real 24-hour hourly bars per component, color-coded (green/amber/red/gray)
+- Zero entityId UUIDs exposed in rendered page HTML (verified)
 
 ### Auth model (MON-INT-01-003 — complete)
 Platform-standard dual-scheme JWT:

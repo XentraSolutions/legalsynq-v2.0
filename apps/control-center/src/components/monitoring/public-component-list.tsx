@@ -1,7 +1,14 @@
 import type { IntegrationStatus, MonitoringStatus } from '@/types/control-center';
+import type { PublicUptimeBucket } from '@/app/api/monitoring/uptime/route';
+import { AvailabilityBars, AvailabilityLegend } from './availability-bars';
 
 interface PublicComponentListProps {
   integrations: IntegrationStatus[];
+  /**
+   * Optional uptime history keyed by component name (case-sensitive match
+   * against IntegrationStatus.name). Omit or pass empty map to hide bars.
+   */
+  uptimeByName?: Map<string, { uptimePercent: number | null; buckets: PublicUptimeBucket[] }>;
 }
 
 const STATUS_ORDER: Record<MonitoringStatus, number> = { Down: 0, Degraded: 1, Healthy: 2 };
@@ -23,6 +30,7 @@ const STATUS_CONFIG: Record<MonitoringStatus, {
  *   - component name (safe display name, not internal ID)
  *   - status (Healthy / Degraded / Down) via an external-friendly label
  *   - last checked timestamp
+ *   - optional 24-hour availability bar strip (when uptimeByName is provided)
  *
  * Does NOT expose:
  *   - latency (internal performance metric)
@@ -30,7 +38,7 @@ const STATUS_CONFIG: Record<MonitoringStatus, {
  *   - admin controls
  *   - filter controls
  */
-export function PublicComponentList({ integrations }: PublicComponentListProps) {
+export function PublicComponentList({ integrations, uptimeByName }: PublicComponentListProps) {
   if (integrations.length === 0) {
     return (
       <Section title="Components">
@@ -44,38 +52,71 @@ export function PublicComponentList({ integrations }: PublicComponentListProps) 
     return diff !== 0 ? diff : a.name.localeCompare(b.name);
   });
 
+  const showBars = uptimeByName && uptimeByName.size > 0;
+
   return (
     <Section title="Components" subtitle={`${integrations.length} service${integrations.length !== 1 ? 's' : ''} monitored`}>
       <div className="divide-y divide-gray-100">
         {sorted.map(item => (
-          <ComponentRow key={item.name} item={item} />
+          <ComponentRow
+            key={item.name}
+            item={item}
+            uptime={uptimeByName?.get(item.name)}
+          />
         ))}
       </div>
+      {showBars && <AvailabilityLegend />}
     </Section>
   );
 }
 
 // ── ComponentRow ───────────────────────────────────────────────────────────────
 
-function ComponentRow({ item }: { item: IntegrationStatus }) {
+function ComponentRow({
+  item,
+  uptime,
+}: {
+  item:    IntegrationStatus;
+  uptime?: { uptimePercent: number | null; buckets: PublicUptimeBucket[] };
+}) {
   const cfg     = STATUS_CONFIG[item.status];
   const checked = formatTimestamp(item.lastCheckedAtUtc);
 
   return (
-    <div className="flex items-center gap-3 px-5 py-3.5">
-      <span className={`h-2 w-2 rounded-full shrink-0 ${cfg.dot}`} />
+    <div className="px-5 py-3">
+      {/* Top row: dot, name, timestamp, badge */}
+      <div className="flex items-center gap-3">
+        <span className={`h-2 w-2 rounded-full shrink-0 ${cfg.dot}`} />
 
-      <span className="flex-1 text-sm text-gray-900 truncate min-w-0">
-        {item.name}
-      </span>
+        <span className="flex-1 text-sm text-gray-900 truncate min-w-0">
+          {item.name}
+        </span>
 
-      <span className="text-xs text-gray-400 hidden sm:block shrink-0">
-        {checked}
-      </span>
+        <span className="text-xs text-gray-400 hidden sm:block shrink-0">
+          {checked}
+        </span>
 
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset shrink-0 ${cfg.badge}`}>
-        {cfg.label}
-      </span>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset shrink-0 ${cfg.badge}`}>
+          {cfg.label}
+        </span>
+      </div>
+
+      {/* Availability bars row (only when data is present) */}
+      {uptime && uptime.buckets.length > 0 && (
+        <div className="mt-2 ml-5">
+          <AvailabilityBars
+            buckets={uptime.buckets}
+            uptimePercent={uptime.uptimePercent}
+          />
+        </div>
+      )}
+
+      {/* Fallback: bars requested but no bucket data yet */}
+      {uptime && uptime.buckets.length === 0 && (
+        <div className="mt-1.5 ml-5">
+          <p className="text-[11px] text-gray-400">History unavailable</p>
+        </div>
+      )}
     </div>
   );
 }
