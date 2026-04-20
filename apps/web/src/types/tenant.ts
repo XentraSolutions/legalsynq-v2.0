@@ -12,6 +12,7 @@ export interface TenantUser {
   productRoles?: string[];
   groupCount?: number;
   productCount?: number;
+  avatarDocumentId?: string;
 }
 
 export interface TenantUserDetail {
