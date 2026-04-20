@@ -80,14 +80,14 @@ public sealed class EfCoreMonitoringReadService : IMonitoringReadService
     /// <inheritdoc/>
     public async Task<MonitoringSummaryResult> GetSummaryAsync(CancellationToken ct)
     {
-        // Run both queries concurrently — neither mutates state.
-        var statusTask = GetStatusAsync(ct);
-        var alertsTask = GetActiveAlertsAsync(ct);
-
-        await Task.WhenAll(statusTask, alertsTask).ConfigureAwait(false);
+        // Must run sequentially — MonitoringDbContext is not thread-safe.
+        // Task.WhenAll would start both queries on the same scoped context
+        // instance concurrently, triggering InvalidOperationException.
+        var statuses = await GetStatusAsync(ct).ConfigureAwait(false);
+        var alerts   = await GetActiveAlertsAsync(ct).ConfigureAwait(false);
 
         return new MonitoringSummaryResult(
-            Statuses:     statusTask.Result,
-            ActiveAlerts: alertsTask.Result);
+            Statuses:     statuses,
+            ActiveAlerts: alerts);
     }
 }

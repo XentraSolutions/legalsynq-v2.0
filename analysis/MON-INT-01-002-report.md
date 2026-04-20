@@ -318,18 +318,60 @@ $ curl http://localhost:5004/api/monitoring/summary
 
 Local mode working correctly. `MONITORING_SOURCE` defaults to `local`.
 
-### H. MONITORING_SOURCE=service ⏸️ (blocked by DB)
+### H. MONITORING_SOURCE=service ✅ VALIDATED (empty registry)
 
-Will work end-to-end once `ConnectionStrings__MonitoringDb` is provisioned and
-migrations are run. Expected result with an empty registry (no entities yet):
+After provisioning `ConnectionStrings__MonitoringDb` and applying all 6 migrations:
 
-```json
-{
-  "system": { "status": "Healthy", "lastCheckedAtUtc": "..." },
-  "integrations": [],
-  "alerts": []
-}
+```bash
+$ curl http://localhost:5015/monitoring/summary
+{"system":{"status":"Healthy","lastCheckedAtUtc":"2026-04-20T06:21:44.704Z"},"integrations":[],"alerts":[]}
+
+$ curl http://localhost:5015/monitoring/status
+[]
+
+$ curl http://localhost:5015/monitoring/alerts
+[]
+
+$ curl http://localhost:5010/monitoring/monitoring/summary
+{"system":{"status":"Healthy","lastCheckedAtUtc":"2026-04-20T06:21:45.502Z"},"integrations":[],"alerts":[]}
+
+$ curl http://localhost:5010/monitoring/monitoring/status
+[]
+
+$ curl http://localhost:5010/monitoring/monitoring/alerts
+[]
 ```
+
+Empty arrays are correct — no entities have been registered yet (empty registry).
+Once entities are seeded via `POST /monitoring/admin/entities`, the scheduler
+will populate `EntityCurrentStatus` rows and the endpoints will return live data.
+
+**Migrations applied:** All 6 applied cleanly to `monitoring_db` on RDS.
+
+```
+Applying migration '20260419220351_InitialPersistenceSetup'.
+Applying migration '20260419225858_AddMonitoredEntity'.
+Applying migration '20260420000123_AddScopeAndImpactToMonitoredEntity'.
+Applying migration '20260420032446_AddCheckResults'.
+Applying migration '20260420035016_AddEntityCurrentStatus'.
+Applying migration '20260420041116_AddMonitoringAlerts'.
+Done.
+```
+
+### I. Bug fixed — concurrent DbContext access
+
+During initial testing (DB connected but pre-migration), the `/summary` endpoint
+returned 500 with:
+```
+InvalidOperationException: A second operation was started on this context instance
+before a previous operation completed.
+```
+Root cause: `GetSummaryAsync` used `Task.WhenAll` to run `GetStatusAsync` and
+`GetActiveAlertsAsync` concurrently on the same scoped `MonitoringDbContext` —
+EF Core's `DbContext` is not thread-safe.
+
+**Fix:** Changed to sequential `await` calls. Both queries still complete in
+~2 round-trips total, which is fast enough for a status page.
 
 ---
 
