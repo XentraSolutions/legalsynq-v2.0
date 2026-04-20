@@ -1,13 +1,17 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, startTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import type { SystemAlert, IntegrationStatus, AlertSeverity, MonitoringStatus } from '@/types/control-center';
+import { resolveAlertAction } from '@/app/actions/monitoring';
 
 interface IncidentDetailPanelProps {
   alert:       SystemAlert;
   integration: IntegrationStatus | undefined;
   onClose:     () => void;
 }
+
+type ResolveState = 'idle' | 'submitting' | 'success' | 'error';
 
 const SEVERITY_COLORS: Record<AlertSeverity, { badge: string; bar: string }> = {
   Critical: { badge: 'bg-red-100 text-red-700 border-red-300',    bar: 'bg-red-500'   },
@@ -22,15 +26,28 @@ const STATUS_COLORS: Record<MonitoringStatus, string> = {
 };
 
 /**
- * IncidentDetailPanel — read-only slide-over panel.
+ * IncidentDetailPanel — slide-over detail + action panel.
  *
  * Opens from the right side of the viewport when an alert row is selected.
  * Shows: severity, message, affected component + current status, timestamps.
- * No mutation or action flows.
+ *
+ * For active alerts, exposes a Resolve button that calls the Monitoring Service
+ * admin endpoint through a secure server action. After a successful resolve,
+ * triggers router.refresh() to sync the alerts list with the server state.
  */
 export function IncidentDetailPanel({ alert, integration, onClose }: IncidentDetailPanelProps) {
+  const router = useRouter();
   const sev    = SEVERITY_COLORS[alert.severity];
-  const active = !alert.resolvedAtUtc;
+
+  // Server-side resolved state (from last fetch)
+  const serverActive = !alert.resolvedAtUtc;
+
+  // Local action state — tracks the in-progress resolve workflow
+  const [resolveState, setResolveState] = useState<ResolveState>('idle');
+  const [resolveError, setResolveError] = useState<string | null>(null);
+
+  // Derived: treat as resolved if either the server says so OR the action succeeded
+  const isResolved = !serverActive || resolveState === 'success';
 
   // Dismiss on Escape key
   useEffect(() => {
@@ -40,6 +57,22 @@ export function IncidentDetailPanel({ alert, integration, onClose }: IncidentDet
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  async function handleResolve() {
+    setResolveState('submitting');
+    setResolveError(null);
+
+    const result = await resolveAlertAction(alert.id);
+
+    if (result.ok) {
+      setResolveState('success');
+      // Refresh server components so the alerts list reflects the new state.
+      startTransition(() => { router.refresh(); });
+    } else {
+      setResolveState('error');
+      setResolveError(result.error ?? 'Failed to resolve alert — please try again.');
+    }
+  }
 
   return (
     <>
@@ -66,8 +99,8 @@ export function IncidentDetailPanel({ alert, integration, onClose }: IncidentDet
             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${sev.badge}`}>
               {alert.severity}
             </span>
-            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${active ? 'bg-red-50 text-red-600 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
-              {active ? 'Active' : 'Resolved'}
+            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${isResolved ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+              {isResolved ? 'Resolved' : 'Active'}
             </span>
           </div>
           <button
@@ -135,7 +168,9 @@ export function IncidentDetailPanel({ alert, integration, onClose }: IncidentDet
                 </span>
               </Row>
               <Row label="Resolved">
-                {alert.resolvedAtUtc ? (
+                {resolveState === 'success' ? (
+                  <span className="text-sm text-green-700 tabular-nums">Operator resolved — refreshing…</span>
+                ) : alert.resolvedAtUtc ? (
                   <span className="text-sm text-green-700 tabular-nums">
                     {formatFullTimestamp(alert.resolvedAtUtc)}
                   </span>
@@ -153,9 +188,62 @@ export function IncidentDetailPanel({ alert, integration, onClose }: IncidentDet
 
         </div>
 
-        {/* Footer note */}
-        <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 shrink-0">
-          <p className="text-xs text-gray-400 text-center">Read-only view · Data from Monitoring Service</p>
+        {/* Footer — action area */}
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 shrink-0 space-y-3">
+
+          {/* Resolve button — only for active alerts not yet resolved by this session */}
+          {!isResolved && (
+            <button
+              type="button"
+              onClick={handleResolve}
+              disabled={resolveState === 'submitting'}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white bg-gray-800 hover:bg-gray-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              {resolveState === 'submitting' ? (
+                <>
+                  <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round" />
+                  </svg>
+                  Resolving…
+                </>
+              ) : (
+                <>
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path d="M13.5 4.5l-7 7L2.5 7.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Resolve Alert
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Success state */}
+          {resolveState === 'success' && (
+            <div className="flex items-center gap-2 text-sm text-green-700">
+              <svg className="h-4 w-4 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M13.5 4.5l-7 7L2.5 7.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Alert resolved — data refreshing.
+            </div>
+          )}
+
+          {/* Error state */}
+          {resolveState === 'error' && resolveError && (
+            <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2">
+              <p className="text-xs text-red-700 leading-relaxed">{resolveError}</p>
+              <button
+                type="button"
+                onClick={() => { setResolveState('idle'); setResolveError(null); }}
+                className="mt-1.5 text-xs text-red-600 underline hover:text-red-800"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-400 text-center">
+            {isResolved ? 'Resolved · Data from Monitoring Service' : 'Actions execute through Monitoring Service · Data is authoritative'}
+          </p>
         </div>
       </div>
     </>

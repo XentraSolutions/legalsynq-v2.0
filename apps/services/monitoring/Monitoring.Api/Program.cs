@@ -60,6 +60,7 @@ app.MapGet("/secure/ping", (HttpContext ctx) =>
 }).RequireAuthorization(MonitoringPolicies.AdminWrite);
 
 app.MapMonitoredEntityEndpoints();
+app.MapMonitoringAlertEndpoints();
 app.MapMonitoringReadEndpoints();
 
 var startupLogger = app.Services.GetRequiredService<ILoggerFactory>()
