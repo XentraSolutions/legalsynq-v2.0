@@ -6,6 +6,8 @@ import type { TaskNoteResponse } from '@/lib/liens/lien-task-notes.types';
 import type { TaskDto, TaskStatus } from '@/lib/liens/lien-tasks.types';
 import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, TASK_PRIORITY_COLORS, TASK_PRIORITY_ICONS, ALL_TASK_STATUSES } from '@/lib/liens/lien-tasks.types';
 import { lienTasksService } from '@/lib/liens/lien-tasks.service';
+import { lienTaskHistoryService } from '@/lib/liens/lien-task-history.service';
+import type { TaskHistoryEvent } from '@/lib/liens/lien-task-history.types';
 import { formatDateTime } from '@/lib/lien-utils';
 import { getNoteInitials } from '@/lib/liens/note-utils';
 
@@ -27,10 +29,15 @@ function formatDate(val?: string | null): string {
 }
 
 export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: TaskDetailDrawerProps) {
-  const [activeTab, setActiveTab] = useState<'notes' | 'details'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'details' | 'history'>('notes');
   const [notes, setNotes] = useState<TaskNoteResponse[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
+
+  const [historyEvents, setHistoryEvents]   = useState<TaskHistoryEvent[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError]     = useState<string | null>(null);
+  const [historyLoaded, setHistoryLoaded]   = useState(false);
 
   const [draftText, setDraftText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -50,6 +57,9 @@ export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: Task
     setLocalTask(task);
     setStatusError(null);
     setStatusChanging(null);
+    setHistoryEvents([]);
+    setHistoryError(null);
+    setHistoryLoaded(false);
   }, [task]);
 
   const fetchNotes = useCallback(async () => {
@@ -74,6 +84,27 @@ export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: Task
       fetchNotes();
     }
   }, [task, fetchNotes]);
+
+  const fetchHistory = useCallback(async () => {
+    if (!task) return;
+    setLoadingHistory(true);
+    setHistoryError(null);
+    try {
+      const result = await lienTaskHistoryService.getHistory(task.id);
+      setHistoryEvents(result.items);
+      setHistoryLoaded(true);
+    } catch {
+      setHistoryError('Failed to load history.');
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [task]);
+
+  useEffect(() => {
+    if (activeTab === 'history' && !historyLoaded && !loadingHistory) {
+      fetchHistory();
+    }
+  }, [activeTab, historyLoaded, loadingHistory, fetchHistory]);
 
   async function handleStatusChange(newStatus: TaskStatus) {
     if (!localTask || newStatus === localTask.status) return;
@@ -274,34 +305,39 @@ export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: Task
 
         {/* Tabs */}
         <div className="flex border-b border-gray-100 flex-shrink-0">
-          {(['notes', 'details'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-6 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                activeTab === tab
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab === 'notes' ? (
-                <span className="flex items-center gap-1.5">
-                  <i className="ri-chat-3-line" />
-                  Notes
-                  {notes.length > 0 && (
-                    <span className="ml-1 bg-primary/10 text-primary text-xs rounded-full px-1.5 py-0.5 font-semibold">
-                      {notes.length}
-                    </span>
-                  )}
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5">
-                  <i className="ri-information-line" />
-                  {isSystem ? 'Automation Details' : 'Details'}
-                </span>
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={`px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'notes' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            <span className="flex items-center gap-1.5">
+              <i className="ri-chat-3-line" />
+              Notes
+              {notes.length > 0 && (
+                <span className="ml-1 bg-primary/10 text-primary text-xs rounded-full px-1.5 py-0.5 font-semibold">{notes.length}</span>
               )}
-            </button>
-          ))}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'history' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            <span className="flex items-center gap-1.5">
+              <i className="ri-history-line" />
+              History
+              {historyLoaded && historyEvents.length > 0 && (
+                <span className="ml-1 bg-gray-100 text-gray-500 text-xs rounded-full px-1.5 py-0.5 font-semibold">{historyEvents.length}</span>
+              )}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('details')}
+            className={`px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === 'details' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            <span className="flex items-center gap-1.5">
+              <i className="ri-information-line" />
+              {isSystem ? 'Automation' : 'Details'}
+            </span>
+          </button>
         </div>
 
         {/* Tab content */}
@@ -433,6 +469,13 @@ export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: Task
                 </div>
               </div>
             </div>
+          ) : activeTab === 'history' ? (
+            <TaskHistoryPanel
+              events={historyEvents}
+              loading={loadingHistory}
+              error={historyError}
+              onRetry={() => { setHistoryLoaded(false); fetchHistory(); }}
+            />
           ) : (
             <div className="px-6 py-5 space-y-5">
               {isSystem ? (
@@ -584,6 +627,149 @@ function DetailRow({
         <p className={`text-sm text-gray-700 break-all ${mono ? 'font-mono text-xs' : ''} ${valueClass}`}>
           {value}
         </p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Task History Panel ──────────────────────────────────────────────────── */
+
+const EVENT_STYLES: Record<string, { icon: string; dot: string; badge: string }> = {
+  'liens.task.created':       { icon: 'ri-add-circle-line',   dot: 'bg-green-500',  badge: 'bg-green-100 text-green-700'  },
+  'liens.task.updated':       { icon: 'ri-edit-line',          dot: 'bg-blue-500',   badge: 'bg-blue-100 text-blue-700'   },
+  'liens.task.assigned':      { icon: 'ri-user-add-line',      dot: 'bg-violet-500', badge: 'bg-violet-100 text-violet-700' },
+  'liens.task.reassigned':    { icon: 'ri-user-shared-line',   dot: 'bg-violet-500', badge: 'bg-violet-100 text-violet-700' },
+  'liens.task.status_changed':{ icon: 'ri-refresh-line',       dot: 'bg-amber-500',  badge: 'bg-amber-100 text-amber-700'  },
+  'liens.task.completed':     { icon: 'ri-checkbox-circle-line', dot: 'bg-green-600', badge: 'bg-green-100 text-green-700' },
+  'liens.task.cancelled':     { icon: 'ri-close-circle-line',  dot: 'bg-red-500',    badge: 'bg-red-100 text-red-700'     },
+};
+
+const DEFAULT_STYLE = { icon: 'ri-time-line', dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-600' };
+
+function friendlyLabel(eventType: string): string {
+  const map: Record<string, string> = {
+    'liens.task.created':        'Created',
+    'liens.task.updated':        'Updated',
+    'liens.task.assigned':       'Assigned',
+    'liens.task.reassigned':     'Reassigned',
+    'liens.task.status_changed': 'Status Changed',
+    'liens.task.completed':      'Completed',
+    'liens.task.cancelled':      'Cancelled',
+  };
+  return map[eventType] ?? eventType.split('.').pop()?.replace(/_/g, ' ') ?? eventType;
+}
+
+function formatHistoryTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+  } catch { return iso; }
+}
+
+function parseStatusFromDescription(description: string): { from?: string; to?: string } | null {
+  const m = description.match(/from ['"]?(\w+)['"]? to ['"]?(\w+)['"]?/i);
+  if (m) return { from: m[1], to: m[2] };
+  return null;
+}
+
+function TaskHistoryPanel({
+  events,
+  loading,
+  error,
+  onRetry,
+}: {
+  events: TaskHistoryEvent[];
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-gray-300">
+        <i className="ri-loader-4-line animate-spin text-2xl mb-2" />
+        <p className="text-sm">Loading history…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="px-6 py-8 flex flex-col items-center gap-3">
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 w-full flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={onRetry} className="text-xs text-red-600 hover:text-red-800 font-medium ml-2">Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (events.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-gray-300">
+        <i className="ri-history-line text-4xl mb-2" />
+        <p className="text-sm">No history recorded yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-6 py-4">
+      <div className="relative">
+        {/* Vertical rail */}
+        <div className="absolute left-3 top-0 bottom-0 w-px bg-gray-200" aria-hidden="true" />
+
+        <div className="space-y-0">
+          {events.map((event, idx) => {
+            const style = EVENT_STYLES[event.eventType] ?? DEFAULT_STYLE;
+            const actorName = event.actor?.name ?? (event.actor?.id ? `User ${event.actor.id.slice(0, 8)}` : 'System');
+            const statusTransition = event.eventType === 'liens.task.status_changed'
+              ? parseStatusFromDescription(event.description)
+              : null;
+
+            return (
+              <div key={event.auditId ?? idx} className="relative flex gap-4 pb-6 last:pb-0">
+                {/* Dot */}
+                <div className={`relative z-10 w-6 h-6 rounded-full ${style.dot} flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm`}>
+                  <i className={`${style.icon} text-white text-[10px]`} />
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0 pt-0.5">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className={`inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${style.badge}`}>
+                      {friendlyLabel(event.eventType)}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-auto whitespace-nowrap">
+                      {formatHistoryTime(event.occurredAtUtc)}
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-gray-700 leading-relaxed">{event.description}</p>
+
+                  {statusTransition && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-xs bg-gray-100 text-gray-500 rounded px-2 py-0.5 font-mono">
+                        {statusTransition.from}
+                      </span>
+                      <i className="ri-arrow-right-line text-gray-400 text-xs" />
+                      <span className="text-xs bg-primary/10 text-primary rounded px-2 py-0.5 font-mono">
+                        {statusTransition.to}
+                      </span>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                    <i className="ri-user-line text-[10px]" />
+                    {actorName}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
