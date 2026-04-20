@@ -176,7 +176,17 @@ if command -v dotnet &>/dev/null; then
           launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5012
           PID_FLOW=$! ;;
         Gateway.Api)   launch_svc "$_svc_label" "$csproj"; PID_GATEWAY=$! ;;
-        Identity.Api)  launch_svc "$_svc_label" "$csproj"; PID_IDENTITY=$! ;;
+        Identity.Api)
+          # NotificationsService:BaseUrl and :PortalBaseUrl must be non-empty in
+          # Production (Program.cs startup guard, lines 39-50).
+          # BaseUrl → internal Notifications service (always port 5008).
+          # PortalBaseUrl → PORTAL_BASE_URL secret/env if set; otherwise derived from
+          #   the first value in REPLIT_DOMAINS (the Replit-assigned deployment domain).
+          _portal_url="${PORTAL_BASE_URL:-https://$(echo "${REPLIT_DOMAINS:-localhost:3050}" | cut -d',' -f1)}"
+          launch_svc "$_svc_label" "$csproj" env \
+            "NotificationsService__BaseUrl=http://localhost:5008" \
+            "NotificationsService__PortalBaseUrl=${_portal_url}"
+          PID_IDENTITY=$! ;;
         Fund.Api)      launch_svc "$_svc_label" "$csproj"; PID_FUND=$! ;;
         CareConnect.Api) launch_svc "$_svc_label" "$csproj"; PID_CARECONNECT=$! ;;
         Documents.Api) launch_svc "$_svc_label" "$csproj"; PID_DOCUMENTS=$! ;;
