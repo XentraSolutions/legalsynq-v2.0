@@ -71,6 +71,9 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
             Code = "LEGALSYNQ",
             IsActive = true,
             ProvisioningStatus = ProvisioningStatus.Active,
+            ProvisioningFailureStage = ProvisioningFailureStage.None,
+            VerificationAttemptCount = 0,
+            IsVerificationRetryExhausted = false,
             CreatedAtUtc = SeedIds.SeededAt,
             UpdatedAtUtc = SeedIds.SeededAt
         });
