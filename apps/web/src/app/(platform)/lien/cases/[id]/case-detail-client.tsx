@@ -618,7 +618,7 @@ function DetailsTab({ d, panelMode, onPanelModeChange, canEdit, onCaseUpdated }:
 
   const rightContent = (
     <div className="space-y-4">
-      <CollapsibleSection title="Workflow" icon="ri-flow-chart">
+      <CollapsibleSection title="Tasks" icon="ri-task-line">
         <WorkflowPanel
           caseId={d.id}
           productKey="synqlien"

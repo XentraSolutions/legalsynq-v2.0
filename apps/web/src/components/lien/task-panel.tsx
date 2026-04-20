@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { lienTasksService } from '@/lib/liens/lien-tasks.service';
 import type { TaskDto, TasksQuery } from '@/lib/liens/lien-tasks.types';
-import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, ACTIVE_TASK_STATUSES } from '@/lib/liens/lien-tasks.types';
+import { ACTIVE_TASK_STATUSES } from '@/lib/liens/lien-tasks.types';
 import { TaskCard } from './task-card';
+import { TaskDetailDrawer } from './task-detail-drawer';
 import { CreateEditTaskForm } from './forms/create-edit-task-form';
 
 interface TaskPanelProps {
@@ -20,6 +21,7 @@ export function TaskPanel({ caseId, lienId, workflowStageId, title = 'Tasks' }: 
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [editTask, setEditTask] = useState<TaskDto | undefined>(undefined);
+  const [selectedTask, setSelectedTask] = useState<TaskDto | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('active');
 
   const fetchTasks = useCallback(async () => {
@@ -129,12 +131,22 @@ export function TaskPanel({ caseId, lienId, workflowStageId, title = 'Tasks' }: 
               task={task}
               onComplete={handleComplete}
               onCancel={handleCancel}
-              onClick={(t) => setEditTask(t)}
+              onClick={(t) => setSelectedTask(t)}
               compact
             />
           ))}
         </div>
       )}
+
+      <TaskDetailDrawer
+        task={selectedTask}
+        onClose={() => setSelectedTask(null)}
+        onEdit={(t) => { setSelectedTask(null); setEditTask(t); }}
+        onStatusChange={(updated) => {
+          setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+          setSelectedTask(updated);
+        }}
+      />
 
       <CreateEditTaskForm
         open={showCreate}

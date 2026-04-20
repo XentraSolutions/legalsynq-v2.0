@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { lienTaskNotesService } from '@/lib/liens/lien-task-notes.service';
 import type { TaskNoteResponse } from '@/lib/liens/lien-task-notes.types';
-import type { TaskDto } from '@/lib/liens/lien-tasks.types';
-import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, TASK_PRIORITY_COLORS, TASK_PRIORITY_ICONS } from '@/lib/liens/lien-tasks.types';
+import type { TaskDto, TaskStatus } from '@/lib/liens/lien-tasks.types';
+import { TASK_STATUS_LABELS, TASK_STATUS_COLORS, TASK_PRIORITY_COLORS, TASK_PRIORITY_ICONS, ALL_TASK_STATUSES } from '@/lib/liens/lien-tasks.types';
+import { lienTasksService } from '@/lib/liens/lien-tasks.service';
 import { formatDateTime } from '@/lib/lien-utils';
 import { getNoteInitials } from '@/lib/liens/note-utils';
 
@@ -12,6 +13,7 @@ interface TaskDetailDrawerProps {
   task: TaskDto | null;
   onClose: () => void;
   onEdit: (task: TaskDto) => void;
+  onStatusChange?: (updated: TaskDto) => void;
 }
 
 const MAX_CHARS = 5000;
@@ -24,7 +26,7 @@ function formatDate(val?: string | null): string {
   } catch { return val ?? '\u2014'; }
 }
 
-export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProps) {
+export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: TaskDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<'notes' | 'details'>('notes');
   const [notes, setNotes] = useState<TaskNoteResponse[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
@@ -38,7 +40,17 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const [statusChanging, setStatusChanging] = useState<TaskStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [localTask, setLocalTask] = useState<TaskDto | null>(task);
+
   const threadEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setLocalTask(task);
+    setStatusError(null);
+    setStatusChanging(null);
+  }, [task]);
 
   const fetchNotes = useCallback(async () => {
     if (!task) return;
@@ -62,6 +74,21 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
       fetchNotes();
     }
   }, [task, fetchNotes]);
+
+  async function handleStatusChange(newStatus: TaskStatus) {
+    if (!localTask || newStatus === localTask.status) return;
+    setStatusChanging(newStatus);
+    setStatusError(null);
+    try {
+      const updated = await lienTasksService.updateStatus(localTask.id, newStatus);
+      setLocalTask(updated);
+      onStatusChange?.(updated);
+    } catch {
+      setStatusError('Failed to update status. Please try again.');
+    } finally {
+      setStatusChanging(null);
+    }
+  }
 
   useEffect(() => {
     if (activeTab === 'notes') {
@@ -115,10 +142,20 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
     }
   }
 
-  if (!task) return null;
+  if (!localTask) return null;
 
-  const statusCfg = TASK_STATUS_COLORS[task.status];
-  const isSystem = task.isSystemGenerated;
+  const displayTask = localTask;
+  const statusCfg = TASK_STATUS_COLORS[displayTask.status];
+  const isSystem = displayTask.isSystemGenerated;
+  const isTerminal = displayTask.status === 'COMPLETED' || displayTask.status === 'CANCELLED';
+
+  const STATUS_ICONS: Record<string, string> = {
+    NEW: 'ri-circle-line',
+    IN_PROGRESS: 'ri-play-circle-line',
+    WAITING_BLOCKED: 'ri-pause-circle-line',
+    COMPLETED: 'ri-checkbox-circle-line',
+    CANCELLED: 'ri-close-circle-line',
+  };
 
   return (
     <>
@@ -144,17 +181,17 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
                 </span>
               )}
               <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${statusCfg.bg} ${statusCfg.text}`}>
-                {TASK_STATUS_LABELS[task.status]}
+                {TASK_STATUS_LABELS[displayTask.status]}
               </span>
             </div>
             <h2 className="text-base font-semibold text-gray-900 leading-snug line-clamp-2">
-              {task.title}
+              {displayTask.title}
             </h2>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
-            {task.status !== 'COMPLETED' && task.status !== 'CANCELLED' && (
+            {!isTerminal && (
               <button
-                onClick={() => onEdit(task)}
+                onClick={() => onEdit(displayTask)}
                 className="p-2 text-gray-500 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
                 title="Edit task"
               >
@@ -171,30 +208,67 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
           </div>
         </div>
 
+        {/* Status change bar */}
+        <div className="px-6 py-3 border-b border-gray-100 flex-shrink-0">
+          <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">Change status</p>
+          <div className="flex flex-wrap gap-2">
+            {ALL_TASK_STATUSES.map((s) => {
+              const cfg = TASK_STATUS_COLORS[s];
+              const isCurrent = s === displayTask.status;
+              const isLoading = statusChanging === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => handleStatusChange(s)}
+                  disabled={isCurrent || statusChanging !== null}
+                  title={isCurrent ? 'Current status' : `Set to ${TASK_STATUS_LABELS[s]}`}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border
+                    ${isCurrent
+                      ? `${cfg.bg} ${cfg.text} border-current ring-2 ring-offset-1 ring-current/30 cursor-default`
+                      : `bg-white text-gray-500 border-gray-200 hover:${cfg.bg} hover:${cfg.text} hover:border-current disabled:opacity-40 disabled:cursor-not-allowed`
+                    }`}
+                >
+                  {isLoading
+                    ? <i className="ri-loader-4-line animate-spin" />
+                    : <i className={STATUS_ICONS[s]} />
+                  }
+                  {TASK_STATUS_LABELS[s]}
+                </button>
+              );
+            })}
+          </div>
+          {statusError && (
+            <p className="mt-2 text-xs text-red-600 flex items-center gap-1">
+              <i className="ri-error-warning-line" />
+              {statusError}
+            </p>
+          )}
+        </div>
+
         {/* Task meta */}
         <div className="px-6 py-3 border-b border-gray-100 flex-shrink-0">
           <div className="grid grid-cols-2 gap-3 text-xs text-gray-500">
             <div className="flex items-center gap-1.5">
-              <i className={`${TASK_PRIORITY_ICONS[task.priority]} ${TASK_PRIORITY_COLORS[task.priority]}`} />
+              <i className={`${TASK_PRIORITY_ICONS[displayTask.priority]} ${TASK_PRIORITY_COLORS[displayTask.priority]}`} />
               <span className="font-medium text-gray-700">
-                {task.priority.charAt(0) + task.priority.slice(1).toLowerCase()} priority
+                {displayTask.priority.charAt(0) + displayTask.priority.slice(1).toLowerCase()} priority
               </span>
             </div>
-            {task.dueDate && (
+            {displayTask.dueDate && (
               <div className="flex items-center gap-1.5">
                 <i className="ri-calendar-line text-gray-400" />
-                <span>Due {formatDate(task.dueDate)}</span>
+                <span>Due {formatDate(displayTask.dueDate)}</span>
               </div>
             )}
-            {task.linkedLiens.length > 0 && (
+            {displayTask.linkedLiens.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <i className="ri-links-line text-purple-400" />
-                <span>{task.linkedLiens.length} lien{task.linkedLiens.length !== 1 ? 's' : ''} linked</span>
+                <span>{displayTask.linkedLiens.length} lien{displayTask.linkedLiens.length !== 1 ? 's' : ''} linked</span>
               </div>
             )}
           </div>
-          {task.description && (
-            <p className="mt-2 text-sm text-gray-600 leading-relaxed">{task.description}</p>
+          {displayTask.description && (
+            <p className="mt-2 text-sm text-gray-600 leading-relaxed">{displayTask.description}</p>
           )}
         </div>
 
@@ -362,9 +436,9 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
           ) : (
             <div className="px-6 py-5 space-y-5">
               {isSystem ? (
-                <AutomationDetailsPanel task={task} />
+                <AutomationDetailsPanel task={displayTask} />
               ) : (
-                <ManualTaskDetails task={task} />
+                <ManualTaskDetails task={displayTask} />
               )}
             </div>
           )}
