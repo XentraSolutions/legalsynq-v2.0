@@ -4,7 +4,7 @@ import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { CCShell } from '@/components/shell/cc-shell';
 import { StatusSummaryBanner, StatusSummaryBannerError } from '@/components/monitoring/status-summary-banner';
 import { SystemHealthCard } from '@/components/monitoring/system-health-card';
-import { IntegrationStatusTable } from '@/components/monitoring/integration-status-table';
+import { ComponentStatusList } from '@/components/monitoring/component-status-list';
 import { AlertsPanel } from '@/components/monitoring/alerts-panel';
 import type { MonitoringSummary } from '@/types/control-center';
 
@@ -36,9 +36,6 @@ export default async function MonitoringPage() {
 
   const hasAlerts       = (data?.alerts.length ?? 0) > 0;
   const criticalCount   = data?.alerts.filter(a => a.severity === 'Critical').length ?? 0;
-
-  const infraServices   = data?.integrations.filter(i => i.category === 'infrastructure') ?? [];
-  const productServices = data?.integrations.filter(i => i.category === 'product') ?? [];
 
   // Quick stats for the summary banner — counted directly from the service response.
   // No status logic is derived here; system.status comes from the Monitoring Service.
@@ -97,17 +94,7 @@ export default async function MonitoringPage() {
 
               <SystemHealthCard summary={data.system} />
 
-              <IntegrationStatusTable
-                integrations={infraServices}
-                title="Platform Services"
-                subtitle="Core infrastructure components"
-              />
-
-              <IntegrationStatusTable
-                integrations={productServices}
-                title="Products"
-                subtitle="Tenant-facing product services"
-              />
+              <ComponentStatusList integrations={data.integrations} />
 
               {hasAlerts ? (
                 <AlertsPanel alerts={data.alerts} />
