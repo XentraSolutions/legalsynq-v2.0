@@ -3785,13 +3785,13 @@ public static class AdminEndpoints
                 statusCode: 502);
         }
 
-        // Non-production: return raw token so the admin can hand-deliver the link.
+        // Non-production: return raw token and activation link so the admin can hand-deliver the link.
         if (!env.IsProduction())
         {
-            Console.WriteLine($"[INVITE TOKEN — dev only] userId={user.Id} token={rawToken}");
+            Console.WriteLine($"[INVITE TOKEN — dev only] userId={user.Id} token={rawToken} link={activationLink}");
             return Results.Created(
                 $"/api/admin/users/{user.Id}",
-                new { userId = user.Id, invitationId = invitation.Id, email = emailLower, inviteToken = rawToken });
+                new { userId = user.Id, invitationId = invitation.Id, email = emailLower, inviteToken = rawToken, activationLink });
         }
 
         return Results.Created(
@@ -3894,11 +3894,11 @@ public static class AdminEndpoints
                 statusCode: 502);
         }
 
-        // Non-production: return raw token for hand-delivery.
+        // Non-production: return raw token and activation link for hand-delivery.
         if (!env.IsProduction())
         {
-            Console.WriteLine($"[RESEND INVITE — dev only] userId={id} token={rawToken}");
-            return Results.Ok(new { invitationId = newInvite.Id, inviteToken = rawToken });
+            Console.WriteLine($"[RESEND INVITE — dev only] userId={id} token={rawToken} link={activationLink}");
+            return Results.Ok(new { invitationId = newInvite.Id, inviteToken = rawToken, activationLink });
         }
 
         return Results.Ok(new { invitationId = newInvite.Id });

@@ -100,6 +100,7 @@ export type TrackEvent =
   | 'user.unlock'
   | 'user.password.reset'
   | 'user.invite.resend'
+  | 'user.invite.cancel'
   // Impersonation
   | 'impersonation.start'
   | 'impersonation.stop'

@@ -6,7 +6,7 @@
  * Groups:
  *   1. Account state — Activate / Deactivate
  *   2. Security      — Lock / Unlock, Reset Password, Force Logout
- *   3. Invite        — Resend Invite (only when status === 'Invited')
+ *   3. Invite        — Resend Invite, Cancel Invite (only when status === 'Invited')
  *
  * UIX-003-03: lock, unlock, reset-password, force-logout are now fully wired
  * to real BFF proxy routes (no more simulateAction stubs for these actions).
@@ -31,7 +31,8 @@ type UserAction =
   | 'unlock'
   | 'reset-password'
   | 'force-logout'
-  | 'resend-invite';
+  | 'resend-invite'
+  | 'cancel-invite';
 
 interface FeedbackState {
   type:    'success' | 'error';
@@ -46,6 +47,7 @@ const ACTION_LABELS: Record<UserAction, string> = {
   'reset-password':'Password reset email sent',
   'force-logout':  'All sessions signed out',
   'resend-invite': 'Invitation resent',
+  'cancel-invite': 'Invitation cancelled',
 };
 
 export function UserActions({ userId, currentStatus, isLocked = false }: UserActionsProps) {
@@ -87,6 +89,7 @@ export function UserActions({ userId, currentStatus, isLocked = false }: UserAct
         'reset-password':'user.password.reset',
         'force-logout':  'user.force.logout',
         'resend-invite': 'user.invite.resend',
+        'cancel-invite': 'user.invite.cancel',
       };
       track(trackEvent[action] as import('@/lib/analytics').TrackEvent, { userId, action });
       showFeedback('success', `${ACTION_LABELS[action]}.`);
@@ -183,6 +186,15 @@ export function UserActions({ userId, currentStatus, isLocked = false }: UserAct
               title="Resend the invitation email"
               onClick={() => executeAction('resend-invite')}
             />
+            <ActionButton
+              label="Cancel Invite"
+              variant="danger"
+              disabled={isPendingAny}
+              isPending={pending === 'cancel-invite'}
+              aria-label="Cancel the pending invitation"
+              title="Revoke the pending invitation — user status will change to Inactive"
+              onClick={() => setConfirming('cancel-invite')}
+            />
           </>
         )}
 
@@ -236,6 +248,19 @@ export function UserActions({ userId, currentStatus, isLocked = false }: UserAct
           variant="warning"
           isPending={pending === 'force-logout'}
           onConfirm={() => executeAction('force-logout')}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
+
+      {/* Cancel invite confirmation */}
+      {confirming === 'cancel-invite' && (
+        <ConfirmDialog
+          title="Cancel this invitation?"
+          description="The invitation link will be revoked immediately. The user account will remain but their status will change to Inactive. You can send a new invitation at any time."
+          confirmLabel="Cancel Invitation"
+          variant="warning"
+          isPending={pending === 'cancel-invite'}
+          onConfirm={() => executeAction('cancel-invite')}
           onCancel={() => setConfirming(null)}
         />
       )}

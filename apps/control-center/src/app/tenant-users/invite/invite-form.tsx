@@ -16,6 +16,10 @@
  *   - Explains what happens next before navigating away
  *   - Better help text on each field
  *   - Tenant context is clearly communicated
+ *
+ * INVITE-FIX: When the backend returns an inviteToken (non-production only),
+ * the success screen shows the activation link so admins can hand-deliver it
+ * as a fallback when email delivery is unavailable or delayed.
  */
 
 import { useState, useEffect, FormEvent } from 'react';
@@ -37,9 +41,10 @@ interface FormState {
 }
 
 interface SuccessState {
-  email:      string;
-  firstName:  string;
-  lastName:   string;
+  email:          string;
+  firstName:      string;
+  lastName:       string;
+  activationLink: string | null;
 }
 
 const MEMBER_ROLES = [
@@ -59,10 +64,11 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
     tenantId:   resolvedTenantId ?? '',
     memberRole: 'Member',
   });
-  const [pending,  setPending]  = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
-  const [success,  setSuccess]  = useState<SuccessState | null>(null);
+  const [pending,   setPending]   = useState(false);
+  const [error,     setError]     = useState<string | null>(null);
+  const [success,   setSuccess]   = useState<SuccessState | null>(null);
   const [countdown, setCountdown] = useState(5);
+  const [copied,    setCopied]    = useState(false);
 
   /* After success, count down and redirect */
   useEffect(() => {
@@ -104,15 +110,28 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
         throw new Error(body.message ?? 'Failed to send invitation.');
       }
 
+      const data = await res.json().catch(() => ({})) as { activationLink?: string | null };
+
       setSuccess({
-        email:     form.email.trim(),
-        firstName: form.firstName.trim(),
-        lastName:  form.lastName.trim(),
+        email:          form.email.trim(),
+        firstName:      form.firstName.trim(),
+        lastName:       form.lastName.trim(),
+        activationLink: data.activationLink ?? null,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally {
       setPending(false);
+    }
+  }
+
+  async function copyLink(link: string) {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard not available
     }
   }
 
@@ -157,6 +176,25 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
                 </ul>
               </div>
 
+              {/* Dev-mode fallback: show the activation link when provided */}
+              {success.activationLink && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-2">
+                  <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">
+                    Activation link (share manually if email is delayed)
+                  </p>
+                  <p className="text-[11px] text-amber-700 break-all font-mono leading-relaxed">
+                    {success.activationLink}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => copyLink(success.activationLink!)}
+                    className="text-[11px] font-medium text-amber-800 hover:text-amber-900 underline transition-colors"
+                  >
+                    {copied ? 'Copied!' : 'Copy link'}
+                  </button>
+                </div>
+              )}
+
               <p className="text-xs text-gray-400">
                 Redirecting to user list in {countdown}s…
               </p>
@@ -174,6 +212,7 @@ export function InviteUserForm({ resolvedTenantId, resolvedTenantName }: Props) 
                   onClick={() => {
                     setSuccess(null);
                     setCountdown(5);
+                    setCopied(false);
                     setForm({
                       email:      '',
                       firstName:  '',

@@ -629,6 +629,7 @@ export const controlCenterServerApi = {
     /**
      * POST /identity/api/admin/users/invite
      * Sends an invitation to a new user. Revalidates cc:users cache.
+     * Returns inviteToken in non-production environments for hand-delivery fallback.
      */
     invite: async (payload: {
       email:          string;
@@ -637,9 +638,13 @@ export const controlCenterServerApi = {
       tenantId:       string;
       organizationId?: string;
       memberRole?:    string;
-    }): Promise<void> => {
-      await apiClient.post<unknown>('/identity/api/admin/users/invite', payload);
+    }): Promise<{ activationLink?: string }> => {
+      const result = await apiClient.post<{ activationLink?: string }>(
+        '/identity/api/admin/users/invite',
+        payload,
+      );
       safeRevalidateTag(CACHE_TAGS.users);
+      return { activationLink: result?.activationLink };
     },
 
     /**
@@ -649,6 +654,18 @@ export const controlCenterServerApi = {
     resendInvite: async (id: string): Promise<void> => {
       await apiClient.post<unknown>(
         `/identity/api/admin/users/${encodeURIComponent(id)}/resend-invite`,
+        {},
+      );
+      safeRevalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * POST /identity/api/admin/users/{id}/cancel-invite
+     * Revokes all pending invitations for a user. Revalidates cc:users cache.
+     */
+    cancelInvite: async (id: string): Promise<void> => {
+      await apiClient.post<unknown>(
+        `/identity/api/admin/users/${encodeURIComponent(id)}/cancel-invite`,
         {},
       );
       safeRevalidateTag(CACHE_TAGS.users);

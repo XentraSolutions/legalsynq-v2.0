@@ -14,13 +14,13 @@ interface UserRowActionsProps {
   currentStatus: UserStatus;
 }
 
-type RowAction = 'activate' | 'deactivate' | 'resend-invite';
+type RowAction = 'activate' | 'deactivate' | 'resend-invite' | 'cancel-invite';
 
 export function UserRowActions({ userId, userName, userEmail, currentStatus }: UserRowActionsProps) {
   const router = useRouter();
 
   const [pending,    setPending]    = useState<RowAction | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<'deactivate' | 'cancel-invite' | null>(null);
   const [error,      setError]      = useState<string | null>(null);
   const [showSetPassword, setShowSetPassword] = useState(false);
 
@@ -45,7 +45,7 @@ export function UserRowActions({ userId, userName, userEmail, currentStatus }: U
       setError(err instanceof Error ? err.message : 'An error occurred.');
     } finally {
       setPending(null);
-      setConfirming(false);
+      setConfirming(null);
     }
   }
 
@@ -71,17 +71,17 @@ export function UserRowActions({ userId, userName, userEmail, currentStatus }: U
       )}
 
       {/* Deactivate — shown for Active; requires confirmation */}
-      {isActive && !confirming && (
+      {isActive && confirming !== 'deactivate' && (
         <ActionButton
           label="Deactivate"
           isPending={false}
           variant="danger"
-          onClick={() => setConfirming(true)}
+          onClick={() => setConfirming('deactivate')}
         />
       )}
 
-      {/* Inline confirm prompt */}
-      {isActive && confirming && (
+      {/* Inline confirm prompt for Deactivate */}
+      {isActive && confirming === 'deactivate' && (
         <span className="inline-flex items-center gap-1 text-xs">
           <span className="text-red-700 font-medium">Deactivate?</span>
           <button
@@ -94,7 +94,7 @@ export function UserRowActions({ userId, userName, userEmail, currentStatus }: U
           </button>
           <button
             type="button"
-            onClick={() => setConfirming(false)}
+            onClick={() => setConfirming(null)}
             className="px-2 py-0.5 rounded border border-gray-200 bg-white text-gray-500 text-[11px] hover:bg-gray-50 transition-colors"
           >
             No
@@ -120,6 +120,38 @@ export function UserRowActions({ userId, userName, userEmail, currentStatus }: U
           variant="neutral"
           onClick={() => run('resend-invite')}
         />
+      )}
+
+      {/* Cancel Invite — only for Invited status; requires confirmation */}
+      {isInvited && confirming !== 'cancel-invite' && (
+        <ActionButton
+          label="Cancel Invite"
+          isPending={false}
+          variant="danger"
+          onClick={() => setConfirming('cancel-invite')}
+        />
+      )}
+
+      {/* Inline confirm prompt for Cancel Invite */}
+      {isInvited && confirming === 'cancel-invite' && (
+        <span className="inline-flex items-center gap-1 text-xs">
+          <span className="text-red-700 font-medium">Cancel invite?</span>
+          <button
+            type="button"
+            onClick={() => run('cancel-invite')}
+            disabled={pending === 'cancel-invite'}
+            className="px-2 py-0.5 rounded bg-red-600 text-white text-[11px] font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+          >
+            {pending === 'cancel-invite' ? '…' : 'Yes'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirming(null)}
+            className="px-2 py-0.5 rounded border border-gray-200 bg-white text-gray-500 text-[11px] hover:bg-gray-50 transition-colors"
+          >
+            No
+          </button>
+        </span>
       )}
 
       {/* Inline error */}
