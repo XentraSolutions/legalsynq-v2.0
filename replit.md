@@ -5557,7 +5557,10 @@ SHA256_hex("{RuleKey}|{ScopeType}|{TenantId??''}|{AffectedActorId??''}|{Affected
 ### Gateway routing
 Double-prefix intentional — YARP strips outer `/monitoring` prefix:
 - `GET /monitoring/monitoring/summary` → Monitoring Service `GET /monitoring/summary`
-- Routes 52–54 in `appsettings.json` are anonymous (no auth policy)
+- `GET /monitoring/monitoring/uptime/rollups` → Monitoring Service `GET /monitoring/uptime/rollups` (order 57, anonymous)
+- `GET /monitoring/monitoring/uptime/history` → Monitoring Service `GET /monitoring/uptime/history` (order 58, anonymous)
+- Catch-all `monitoring-protected` (order 150) also covers all unmatched `/monitoring/*` paths
+- All uptime routes are anonymous (no auth policy required)
 
 ### Control Center integration
 `apps/control-center/src/lib/monitoring-source.ts`  
