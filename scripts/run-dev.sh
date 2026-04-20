@@ -19,7 +19,7 @@ PID_PROXY=$!
 
 # Start Control Center — port 5004
 echo "[control-center] Starting Next.js on :5004"
-(cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$ROOT/node_modules/next/dist/bin/next" dev -p 5004) &
+(cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 MONITORING_SOURCE=service exec "$NODE" "$ROOT/node_modules/next/dist/bin/next" dev -p 5004) &
 PID_CC=$!
 
 # Restore, build, and start .NET services all in background
