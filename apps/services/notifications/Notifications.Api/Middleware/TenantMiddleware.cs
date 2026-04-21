@@ -67,11 +67,12 @@ public class TenantMiddleware
             return;
         }
 
-        // ── Unauthenticated / legacy-service requests — header fallback ──────
-        // LS-NOTIF-CORE-021: the ServiceSubmission policy on POST /v1/notifications
-        // already checked and succeeded for legacy requests that carry a valid
-        // X-Tenant-Id header.  Log a structured warning here so log dashboards
-        // can track remaining un-migrated callers.
+        // ── Unauthenticated requests — header fallback ────────────────────────
+        // NOTE: POST /v1/notifications (ServiceSubmission policy) requires a
+        // service JWT and will have already rejected any unauthenticated caller
+        // before reaching this middleware branch. The X-Tenant-Id fallback
+        // below is retained only for any other non-authenticated internal paths
+        // that have not yet been migrated to JWT authentication.
         var tenantIdHeader = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
         if (string.IsNullOrEmpty(tenantIdHeader) || !Guid.TryParse(tenantIdHeader, out var tenantId))
         {
@@ -97,9 +98,10 @@ public static class TenantMiddlewareExtensions
 {
     /// <summary>
     /// Returns the TenantId resolved by <see cref="TenantMiddleware"/>.
-    /// For authenticated requests this comes from the JWT <c>tenant_id</c> claim;
-    /// for unauthenticated (internal) requests it comes from the
-    /// <c>X-Tenant-Id</c> header.
+    /// For authenticated requests this comes from the JWT <c>tenant_id</c> claim.
+    /// Note: <c>POST /v1/notifications</c> requires a service JWT (svc claim);
+    /// ordinary user tokens and unauthenticated callers are rejected by the
+    /// ServiceSubmission policy before this helper is reached.
     /// </summary>
     public static Guid GetTenantId(this HttpContext context)
     {

@@ -14,9 +14,8 @@ public static class NotificationEndpoints
 
         // ── POST /v1/notifications ────────────────────────────────────────────
         // LS-NOTIF-CORE-021: Secured via ServiceSubmission policy.
-        // Accepts authenticated callers (user or service JWT) OR legacy
-        // unauthenticated callers supplying a valid X-Tenant-Id header
-        // (backward-compat transition — logged as LEGACY SUBMISSION warning).
+        // Requires the caller to present a service JWT (svc claim present).
+        // Ordinary user JWTs and unauthenticated callers are rejected.
         group.MapPost("/", async (HttpContext context, INotificationService service, ILoggerFactory loggerFactory, SubmitNotificationDto request) =>
         {
             var tenantId = context.GetTenantId();

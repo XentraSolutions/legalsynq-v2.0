@@ -23,9 +23,11 @@ public class TwilioVerifier
     {
         if (!_enabled)
         {
-            if (_environment == "Production")
-                _logger.LogWarning("Twilio webhook verification is disabled in production");
-            return (false, true, "verification_disabled");
+            _logger.LogWarning(
+                "Twilio webhook verification is disabled; request rejected. " +
+                "Set TWILIO_WEBHOOK_VERIFICATION_ENABLED=true and configure " +
+                "TWILIO_AUTH_TOKEN to accept webhook callbacks.");
+            return (false, false, "verification_disabled");
         }
 
         if (string.IsNullOrEmpty(_authToken))

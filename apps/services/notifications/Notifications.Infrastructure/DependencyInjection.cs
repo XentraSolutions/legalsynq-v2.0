@@ -122,7 +122,7 @@ public static class DependencyInjection
             return new TwilioAdapter(twilioSid, twilioToken, twilioFrom, httpFactory.CreateClient("Twilio"), logger);
         });
 
-        var sgWebhookEnabled = configuration.GetValue<bool>("SENDGRID_WEBHOOK_VERIFICATION_ENABLED", false);
+        var sgWebhookEnabled = configuration.GetValue<bool>("SENDGRID_WEBHOOK_VERIFICATION_ENABLED", true);
         var sgPublicKey = configuration["SENDGRID_WEBHOOK_PUBLIC_KEY"] ?? "";
         var environment = configuration["ASPNETCORE_ENVIRONMENT"] ?? "Development";
 
@@ -132,7 +132,7 @@ public static class DependencyInjection
             return new SendGridVerifier(sgWebhookEnabled, sgPublicKey, environment, logger);
         });
 
-        var twilioWebhookEnabled = configuration.GetValue<bool>("TWILIO_WEBHOOK_VERIFICATION_ENABLED", false);
+        var twilioWebhookEnabled = configuration.GetValue<bool>("TWILIO_WEBHOOK_VERIFICATION_ENABLED", true);
 
         services.AddSingleton(sp =>
         {

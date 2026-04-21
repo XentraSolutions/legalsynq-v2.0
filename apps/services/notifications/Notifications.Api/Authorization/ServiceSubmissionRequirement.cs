@@ -9,19 +9,11 @@ namespace Notifications.Api.Authorization;
 /// <c>POST /v1/notifications</c> producer endpoint.
 ///
 /// <para>
-/// The handler accepts the request when:
-/// <list type="bullet">
-///   <item>Any authenticated caller (user or service JWT) is present.</item>
-///   <item>An unauthenticated legacy caller supplies a valid
-///         <c>X-Tenant-Id</c> header — accepted with a structured
-///         <c>[LEGACY SUBMISSION]</c> WARNING so migration progress can
-///         be tracked in log dashboards.</item>
-/// </list>
-/// </para>
-///
-/// <para>
-/// Requests with neither a valid JWT nor a valid <c>X-Tenant-Id</c> header
-/// are not succeeded, causing the framework to return <c>401 Unauthorized</c>.
+/// The handler succeeds only when the caller presents a JWT that carries a
+/// non-empty <c>svc</c> claim, identifying it as an internal service token.
+/// Ordinary user JWTs (no <c>svc</c> claim) and unauthenticated callers are
+/// rejected so that the notification producer is restricted to backend
+/// services and cannot be abused by low-privilege tenant users.
 /// </para>
 /// </summary>
 public sealed class ServiceSubmissionRequirement : IAuthorizationRequirement { }
@@ -48,51 +40,42 @@ public sealed class ServiceSubmissionHandler
         AuthorizationHandlerContext context,
         ServiceSubmissionRequirement requirement)
     {
-        // ── Authenticated path (user JWT or service JWT) ─────────────────
-        if (context.User.Identity?.IsAuthenticated == true)
-        {
-            var sub         = context.User.FindFirst("sub")?.Value ?? "(unknown)";
-            var serviceName = context.User.FindFirst("svc")?.Value;
-            var tenantId    = context.User.FindFirst("tenant_id")?.Value ?? "(unknown)";
+        var httpCtx = _http.HttpContext;
 
-            if (!string.IsNullOrEmpty(serviceName))
-            {
-                _logger.LogDebug(
-                    "Service submission authorised via JWT. " +
-                    "ServiceName={ServiceName} Sub={Sub} TenantId={TenantId}",
-                    serviceName, sub, tenantId);
-            }
-
-            context.Succeed(requirement);
-            return Task.CompletedTask;
-        }
-
-        // ── Legacy path — unauthenticated caller with X-Tenant-Id header ──
-        var httpCtx     = _http.HttpContext;
-        var tenantHeader = httpCtx?.Request.Headers["X-Tenant-Id"].FirstOrDefault();
-
-        if (!string.IsNullOrEmpty(tenantHeader) && Guid.TryParse(tenantHeader, out _))
+        if (context.User.Identity?.IsAuthenticated != true)
         {
             _logger.LogWarning(
-                "[LEGACY SUBMISSION] Unauthenticated POST /v1/notifications accepted " +
-                "via X-Tenant-Id header. TenantId={TenantId} Path={Path} " +
-                "RemoteIp={RemoteIp}. " +
-                "Migrate this caller to service-token authentication (LS-NOTIF-CORE-021).",
-                tenantHeader,
+                "POST /v1/notifications rejected: unauthenticated caller. " +
+                "Path={Path} RemoteIp={RemoteIp}",
                 httpCtx?.Request.Path.Value,
                 httpCtx?.Connection.RemoteIpAddress?.ToString());
 
-            context.Succeed(requirement);
             return Task.CompletedTask;
         }
 
-        // ── Rejected — no JWT and no valid X-Tenant-Id header ────────────
-        _logger.LogWarning(
-            "POST /v1/notifications rejected: no valid JWT and no X-Tenant-Id header. " +
-            "Path={Path} RemoteIp={RemoteIp}",
-            httpCtx?.Request.Path.Value,
-            httpCtx?.Connection.RemoteIpAddress?.ToString());
+        var sub         = context.User.FindFirst("sub")?.Value ?? "(unknown)";
+        var serviceName = context.User.FindFirst("svc")?.Value;
+        var tenantId    = context.User.FindFirst("tenant_id")?.Value ?? "(unknown)";
 
+        if (string.IsNullOrEmpty(serviceName))
+        {
+            _logger.LogWarning(
+                "POST /v1/notifications rejected: authenticated caller lacks svc claim " +
+                "(ordinary user token). Sub={Sub} TenantId={TenantId} " +
+                "Path={Path} RemoteIp={RemoteIp}",
+                sub, tenantId,
+                httpCtx?.Request.Path.Value,
+                httpCtx?.Connection.RemoteIpAddress?.ToString());
+
+            return Task.CompletedTask;
+        }
+
+        _logger.LogDebug(
+            "Service submission authorised via service JWT. " +
+            "ServiceName={ServiceName} Sub={Sub} TenantId={TenantId}",
+            serviceName, sub, tenantId);
+
+        context.Succeed(requirement);
         return Task.CompletedTask;
     }
 }

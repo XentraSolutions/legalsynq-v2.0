@@ -23,9 +23,11 @@ public class SendGridVerifier
     {
         if (!_enabled)
         {
-            if (_environment == "Production")
-                _logger.LogWarning("SendGrid webhook verification is disabled in production");
-            return (false, true, "verification_disabled");
+            _logger.LogWarning(
+                "SendGrid webhook verification is disabled; request rejected. " +
+                "Set SENDGRID_WEBHOOK_VERIFICATION_ENABLED=true and configure " +
+                "SENDGRID_WEBHOOK_PUBLIC_KEY to accept webhook callbacks.");
+            return (false, false, "verification_disabled");
         }
 
         if (string.IsNullOrEmpty(_publicKey))
