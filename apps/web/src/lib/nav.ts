@@ -182,6 +182,7 @@ export const GLOBAL_BOTTOM_NAV: NavSection = {
     { href: '/my-work',                         label: 'My Work',         icon: 'ri-task-line'           },
     { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line'      },
     { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line'        },
+    { href: '/tenant/analytics',                label: 'Operations',      icon: 'ri-line-chart-line',    adminOnly: true },
     { href: '/tenant/authorization/users',      label: 'User Management', icon: 'ri-shield-user-line',   adminOnly: true },
   ],
 };
@@ -192,17 +193,6 @@ export const GLOBAL_BOTTOM_NAV: NavSection = {
  * Returns the Administration NavSection[] for sidebar rendering.
  * Returns an empty array for standard users — they see nothing.
  */
-export function buildNavGroups(session: PlatformSession): NavSection[] {
-  if (!session.isPlatformAdmin && !session.isTenantAdmin) return [];
-
-  const sections: NavSection[] = [];
-
-  sections.push({
-    heading: 'ANALYTICS',
-    items: [
-      { href: '/tenant/analytics', label: 'Operations', icon: 'ri-line-chart-line' },
-    ],
-  });
-
-  return sections;
+export function buildNavGroups(_session: PlatformSession): NavSection[] {
+  return [];
 }
