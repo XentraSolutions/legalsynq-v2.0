@@ -14,6 +14,7 @@ using Liens.Infrastructure.TaskService;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Liens.Infrastructure;
 
@@ -78,6 +79,11 @@ public static class DependencyInjection
         services.AddScoped<IFlowEventHandler, FlowEventHandler>();
         // TASK-B04 — backfill service
         services.AddScoped<ILienTaskBackfillService, LienTaskBackfillService>();
+
+        // TASK-MIG-01 — startup governance sync: copies liens_TaskGovernanceSettings
+        // rows into tasks_GovernanceSettings on every startup. Idempotent; best-effort.
+        services.AddSingleton<LiensGovernanceSyncService>();
+        services.AddHostedService(sp => sp.GetRequiredService<LiensGovernanceSyncService>());
 
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
         services.AddHttpClient("DocumentsService", client =>

@@ -12,8 +12,9 @@ public record UpsertTaskGovernanceRequest(
     bool    AllowNotesOnClosedTasks,
     string  DefaultPriority,
     string  DefaultTaskScope,
-    string? SourceProductCode = null,
-    int     ExpectedVersion   = 0);
+    string? SourceProductCode    = null,
+    int     ExpectedVersion      = 0,
+    string? ProductSettingsJson  = null);
 
 public record TaskGovernanceDto(
     Guid    Id,
@@ -30,14 +31,16 @@ public record TaskGovernanceDto(
     string  DefaultTaskScope,
     int     Version,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc)
+    DateTime UpdatedAtUtc,
+    string? ProductSettingsJson = null)
 {
     public static TaskGovernanceDto From(TaskGovernanceSettings s) => new(
         s.Id, s.TenantId, s.SourceProductCode,
         s.RequireAssignee, s.RequireDueDate, s.RequireStage,
         s.AllowUnassign, s.AllowCancel, s.AllowCompleteWithoutStage,
         s.AllowNotesOnClosedTasks, s.DefaultPriority, s.DefaultTaskScope,
-        s.Version, s.CreatedAtUtc, s.UpdatedAtUtc);
+        s.Version, s.CreatedAtUtc, s.UpdatedAtUtc,
+        s.ProductSettingsJson);
 }
 
 /// <summary>Resolved governance after applying the priority lookup chain.</summary>

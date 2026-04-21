@@ -36,6 +36,11 @@ public class TaskGovernanceSettingsConfiguration : IEntityTypeConfiguration<Task
 
         builder.Property(g => g.Version).IsRequired().HasDefaultValue(1);
 
+        // TASK-MIG-01 — product-specific extensions stored as a JSON blob.
+        // NULL for tenant defaults and products with no overrides.
+        builder.Property(g => g.ProductSettingsJson)
+            .HasColumnType("TEXT");
+
         builder.Property(g => g.CreatedByUserId).IsRequired();
         builder.Property(g => g.UpdatedByUserId);
         builder.Property(g => g.CreatedAtUtc).IsRequired();

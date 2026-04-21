@@ -16,6 +16,10 @@ public sealed class LienTaskGovernanceSettingsRepository : ILienTaskGovernanceSe
         _db.LienTaskGovernanceSettings
             .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.ProductCode == productCode, ct);
 
+    public async Task<IReadOnlyList<LienTaskGovernanceSettings>> GetAllAsync(
+        CancellationToken ct = default) =>
+        await _db.LienTaskGovernanceSettings.ToListAsync(ct);
+
     public async Task AddAsync(LienTaskGovernanceSettings entity, CancellationToken ct = default)
     {
         _db.LienTaskGovernanceSettings.Add(entity);

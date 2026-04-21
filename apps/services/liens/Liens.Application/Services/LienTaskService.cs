@@ -3,7 +3,6 @@ using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
 using Liens.Domain;
-using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Microsoft.Extensions.Logging;
 
@@ -17,15 +16,15 @@ namespace Liens.Application.Services;
 /// </summary>
 public sealed class LienTaskService : ILienTaskService
 {
-    private readonly ILiensTaskServiceClient               _taskClient;
-    private readonly ILienRepository                       _lienRepo;
-    private readonly IAuditPublisher                       _audit;
-    private readonly INotificationPublisher                _notifications;
-    private readonly ILienWorkflowConfigRepository         _workflowRepo;
-    private readonly IWorkflowTransitionValidationService  _transitionValidator;
-    private readonly ILienTaskGovernanceSettingsRepository _governanceRepo;
-    private readonly IFlowInstanceResolver                 _flowResolver;
-    private readonly ILogger<LienTaskService>              _logger;
+    private readonly ILiensTaskServiceClient              _taskClient;
+    private readonly ILienRepository                      _lienRepo;
+    private readonly IAuditPublisher                      _audit;
+    private readonly INotificationPublisher               _notifications;
+    private readonly ILienWorkflowConfigRepository        _workflowRepo;
+    private readonly IWorkflowTransitionValidationService _transitionValidator;
+    private readonly ILienTaskGovernanceService           _governanceService;
+    private readonly IFlowInstanceResolver                _flowResolver;
+    private readonly ILogger<LienTaskService>             _logger;
 
     public LienTaskService(
         ILiensTaskServiceClient               taskClient,
@@ -34,7 +33,7 @@ public sealed class LienTaskService : ILienTaskService
         INotificationPublisher                notifications,
         ILienWorkflowConfigRepository         workflowRepo,
         IWorkflowTransitionValidationService  transitionValidator,
-        ILienTaskGovernanceSettingsRepository governanceRepo,
+        ILienTaskGovernanceService            governanceService,
         IFlowInstanceResolver                 flowResolver,
         ILogger<LienTaskService>              logger)
     {
@@ -44,7 +43,7 @@ public sealed class LienTaskService : ILienTaskService
         _notifications       = notifications;
         _workflowRepo        = workflowRepo;
         _transitionValidator = transitionValidator;
-        _governanceRepo      = governanceRepo;
+        _governanceService   = governanceService;
         _flowResolver        = flowResolver;
         _logger              = logger;
     }
@@ -99,9 +98,8 @@ public sealed class LienTaskService : ILienTaskService
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing.", errors);
 
-        // ── LS-LIENS-FLOW-006: Governance enforcement ─────────────────────────
-        var governance = await _governanceRepo.GetByTenantProductAsync(
-            tenantId, LiensPermissions.ProductCode, ct);
+        // ── LS-LIENS-FLOW-006 / TASK-MIG-01: Governance enforcement (dual-read) ──
+        var governance = await _governanceService.GetAsync(tenantId, ct);
 
         var effectiveAssignedUserId  = request.AssignedUserId;
         var effectiveCaseId          = request.CaseId;
@@ -415,9 +413,9 @@ public sealed class LienTaskService : ILienTaskService
     // ── Helpers ───────────────────────────────────────────────────────────────────
 
     private async Task<Guid?> DeriveStartStageAsync(
-        Guid                      tenantId,
-        LienTaskGovernanceSettings governance,
-        CancellationToken          ct)
+        Guid                          tenantId,
+        TaskGovernanceSettingsResponse governance,
+        CancellationToken              ct)
     {
         if (governance.DefaultStartStageMode == StartStageMode.ExplicitStage
             && governance.ExplicitStartStageId.HasValue)

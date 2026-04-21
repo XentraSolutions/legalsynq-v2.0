@@ -142,6 +142,7 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.Property<string>("DefaultPriority").IsRequired().HasMaxLength(20).HasDefaultValue("MEDIUM").HasColumnType("varchar(20)");
                     b.Property<string>("DefaultTaskScope").IsRequired().HasMaxLength(20).HasDefaultValue("GENERAL").HasColumnType("varchar(20)");
                     b.Property<int>("Version").IsRequired().HasDefaultValue(1).HasColumnType("int");
+                    b.Property<string>("ProductSettingsJson").HasColumnType("TEXT");
                     b.Property<Guid>("CreatedByUserId").HasColumnType("char(36)");
                     b.Property<Guid?>("UpdatedByUserId").HasColumnType("char(36)");
                     b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");

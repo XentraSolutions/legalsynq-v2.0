@@ -31,6 +31,14 @@ public class TaskGovernanceSettings : AuditableEntity
 
     public int     Version                     { get; private set; } = 1;
 
+    /// <summary>
+    /// Optional JSON blob for product-specific governance extensions that do not fit
+    /// the generic model. Used by SYNQ_LIENS to store RequireCaseLinkOnCreate,
+    /// AllowMultipleAssignees, DefaultStartStageMode, and ExplicitStartStageId.
+    /// NULL for tenant-wide defaults and products that have no extensions.
+    /// </summary>
+    public string? ProductSettingsJson         { get; private set; }
+
     private TaskGovernanceSettings() { }
 
     public static TaskGovernanceSettings CreateDefault(
@@ -65,17 +73,18 @@ public class TaskGovernanceSettings : AuditableEntity
     }
 
     public void Update(
-        bool   requireAssignee,
-        bool   requireDueDate,
-        bool   requireStage,
-        bool   allowUnassign,
-        bool   allowCancel,
-        bool   allowCompleteWithoutStage,
-        bool   allowNotesOnClosedTasks,
-        string defaultPriority,
-        string defaultTaskScope,
-        Guid   updatedByUserId,
-        int    expectedVersion)
+        bool    requireAssignee,
+        bool    requireDueDate,
+        bool    requireStage,
+        bool    allowUnassign,
+        bool    allowCancel,
+        bool    allowCompleteWithoutStage,
+        bool    allowNotesOnClosedTasks,
+        string  defaultPriority,
+        string  defaultTaskScope,
+        Guid    updatedByUserId,
+        int     expectedVersion,
+        string? productSettingsJson = null)
     {
         if (!TaskPriority.All.Contains(defaultPriority))
             throw new ArgumentException($"Invalid priority: '{defaultPriority}'.", nameof(defaultPriority));
@@ -93,6 +102,7 @@ public class TaskGovernanceSettings : AuditableEntity
         AllowNotesOnClosedTasks   = allowNotesOnClosedTasks;
         DefaultPriority           = defaultPriority;
         DefaultTaskScope          = defaultTaskScope;
+        ProductSettingsJson       = productSettingsJson;
         Version                  += 1;
         UpdatedByUserId           = updatedByUserId;
         UpdatedAtUtc              = DateTime.UtcNow;

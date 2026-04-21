@@ -109,6 +109,27 @@ public interface ILiensTaskServiceClient
         IReadOnlyList<Guid> lienIds,
         CancellationToken ct = default);
 
+    // ── TASK-MIG-01 — Governance settings round-trip with Task service ───────────
+
+    /// <summary>
+    /// Fetches governance settings for the given tenant and product from the Task service.
+    /// Returns null when no settings exist yet (HTTP 204 No Content).
+    /// </summary>
+    Task<TaskServiceGovernanceResponse?> GetGovernanceAsync(
+        Guid   tenantId,
+        string productCode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates or updates governance settings in the Task service.
+    /// Used to keep the Task service in sync after a Liens-side governance update.
+    /// </summary>
+    System.Threading.Tasks.Task UpsertGovernanceAsync(
+        Guid   tenantId,
+        Guid   actingUserId,
+        TaskServiceGovernanceUpsertRequest payload,
+        CancellationToken ct = default);
+
     // ── TASK-B04-01 — Duplicate-prevention helpers for LienTaskGenerationEngine ──
 
     /// <summary>

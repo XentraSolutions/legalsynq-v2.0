@@ -576,6 +576,46 @@ public sealed class LiensTaskServiceClient : ILiensTaskServiceClient
         UpdatedAtUtc    = null,
     };
 
+    // ── TASK-MIG-01 — Governance round-trip ──────────────────────────────────────
+
+    public async Task<TaskServiceGovernanceResponse?> GetGovernanceAsync(
+        Guid   tenantId,
+        string productCode,
+        CancellationToken ct = default)
+    {
+        var url = $"/api/tasks/governance?sourceProductCode={Uri.EscapeDataString(productCode)}";
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Add("X-Tenant-Id", tenantId.ToString());
+
+        var response = await _http.SendAsync(req, ct);
+
+        if (response.StatusCode == HttpStatusCode.NoContent ||
+            response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+
+        response.EnsureSuccessStatusCode();
+
+        var dto = await response.Content.ReadFromJsonAsync<TaskServiceGovernanceResponse>(_json, ct);
+        return dto;
+    }
+
+    public async System.Threading.Tasks.Task UpsertGovernanceAsync(
+        Guid   tenantId,
+        Guid   actingUserId,
+        TaskServiceGovernanceUpsertRequest payload,
+        CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/tasks/governance")
+        {
+            Content = JsonContent.Create(payload, options: _json),
+        };
+        req.Headers.Add("X-Tenant-Id",   tenantId.ToString());
+        req.Headers.Add("X-User-Id",     actingUserId.ToString());
+
+        var response = await _http.SendAsync(req, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     // ── Local wire types (match Task service camelCase JSON) ─────────────────────
 
     private sealed class TaskApiDto

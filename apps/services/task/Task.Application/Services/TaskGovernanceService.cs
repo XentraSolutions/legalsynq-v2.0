@@ -59,7 +59,8 @@ public class TaskGovernanceService : ITaskGovernanceService
             request.RequireAssignee, request.RequireDueDate, request.RequireStage,
             request.AllowUnassign, request.AllowCancel, request.AllowCompleteWithoutStage,
             request.AllowNotesOnClosedTasks, request.DefaultPriority, request.DefaultTaskScope,
-            userId, request.ExpectedVersion == 0 ? existing.Version : request.ExpectedVersion);
+            userId, request.ExpectedVersion == 0 ? existing.Version : request.ExpectedVersion,
+            request.ProductSettingsJson);
 
         await _uow.SaveChangesAsync(ct);
 
