@@ -1,8 +1,5 @@
 using Flow.Application.Interfaces;
 using Flow.Domain.Common;
-using Flow.Domain.Entities;
-using Flow.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -12,41 +9,37 @@ namespace Flow.Infrastructure.Outbox;
 
 /// <summary>
 /// LS-FLOW-E10.3 (task slice) — background worker that evaluates
-/// <see cref="WorkflowTask"/> SLA / timer state. Sibling to
-/// <see cref="WorkflowSlaEvaluator"/>; shares the same lifecycle shape
-/// and idempotency posture but operates on the work-item grain.
+/// <see cref="Flow.Domain.Entities.WorkflowTask"/> SLA / timer state.
+///
+/// <para>
+/// <b>TASK-FLOW-03 (post-migration):</b> the shadow table
+/// (<c>flow_workflow_tasks</c>) has been dropped. The evaluator now
+/// sources its batch from the Task service via
+/// <see cref="IFlowTaskServiceClient.GetTasksForSlaEvaluationAsync"/>
+/// and pushes transitions back via
+/// <see cref="IFlowTaskServiceClient.UpdateSlaStateAsync"/>.
+/// No Flow DB writes occur during a tick.
+/// </para>
 ///
 /// <para>
 /// Lifecycle (per tick):
-///   1. Open a fresh DI scope so <see cref="FlowDbContext"/> is fresh
-///      and the request-scoped tenant provider resolves null. We
-///      <c>IgnoreQueryFilters()</c> because a background worker has no
-///      tenant context.
-///   2. Pull a bounded batch of active tasks (Open / InProgress) with
-///      <c>DueAt</c> set, ordered by oldest <c>LastSlaEvaluatedAt</c>
-///      first then by <c>DueAt</c> so the workload is fair under
-///      continuous churn.
-///   3. For each row, compute the new <see cref="WorkflowSlaStatus"/>
+///   1. Open a fresh DI scope.
+///   2. Call the Task service for a bounded batch of active tasks (Open /
+///      InProgress) with <c>DueAt</c> set that may need SLA re-evaluation.
+///   3. For each task, compute the new <see cref="WorkflowSlaStatus"/>
 ///      from <c>(now, DueAt, dueSoonThresholdMinutes)</c> via the pure
 ///      <see cref="WorkflowTaskSlaPolicy"/>.
-///   4. If the computed status differs from the persisted value, mutate
-///      the row. If the new status is Overdue and we have not stamped
-///      a breach moment yet, stamp <c>SlaBreachedAt = now</c>.
-///   5. Always stamp <c>LastSlaEvaluatedAt = now</c> on every visited
-///      row so the ordering window naturally rotates.
+///   4. Collect tasks where status or <c>SlaBreachedAt</c> changed.
+///   5. Push the changes back to the Task service grouped by TenantId.
 /// </para>
 ///
 /// <para>
-/// Idempotency: re-evaluating an unchanged row is a no-op for
-/// <c>SlaStatus</c> / <c>SlaBreachedAt</c>; only <c>LastSlaEvaluatedAt</c>
-/// rotates. This phase emits no outbox events for task SLA transitions
-/// (deferred to the escalation / notifications phase) so the worker is
-/// genuinely write-light.
+/// Idempotency: re-evaluating an unchanged task is a no-op — the push
+/// payload is empty and no Task service write occurs.
 /// </para>
 ///
 /// <para>
-/// Single-replica by design (same posture as <see cref="WorkflowSlaEvaluator"/>);
-/// multi-replica would require a SKIP LOCKED claim phase.
+/// Single-replica by design (same posture as <see cref="WorkflowSlaEvaluator"/>).
 /// </para>
 /// </summary>
 public sealed class WorkflowTaskSlaEvaluator : BackgroundService
@@ -109,51 +102,53 @@ public sealed class WorkflowTaskSlaEvaluator : BackgroundService
         if (!opts.Enabled) return;
 
         await using var scope = _scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<FlowDbContext>();
+        var taskClient = scope.ServiceProvider.GetRequiredService<IFlowTaskServiceClient>();
 
         var now = DateTime.UtcNow;
 
-        // Pull active tasks with a DueAt that might transition. The
-        // predicate matches any of:
-        //   • DueAt is in the past (Overdue territory; row may need to
-        //     flip from OnTrack/DueSoon → Overdue, or to get its
-        //     SlaBreachedAt stamped on first observation)
-        //   • DueAt is in the dueSoon horizon (OnTrack → DueSoon)
-        //   • SlaStatus has already been promoted off OnTrack so we keep
-        //     re-visiting until completion (and so a manually-edited
-        //     DueAt that pushes the deadline back can demote correctly)
-        var dueSoonHorizon = now.AddMinutes(Math.Max(0, opts.DueSoonThresholdMinutes));
-
-        var batch = await db.WorkflowTasks
-            .IgnoreQueryFilters()
-            .Where(t => t.DueAt != null
-                        && (t.Status == WorkflowTaskStatus.Open || t.Status == WorkflowTaskStatus.InProgress)
-                        && (t.DueAt <= dueSoonHorizon || t.SlaStatus != WorkflowSlaStatus.OnTrack))
-            .OrderBy(t => t.LastSlaEvaluatedAt ?? DateTime.MinValue)
-            .ThenBy(t => t.DueAt)
-            .Take(Math.Max(1, opts.BatchSize))
-            .ToListAsync(ct);
+        // Pull active tasks from the Task service (write authority, post-TASK-FLOW-03).
+        // The endpoint returns tasks with DueAt set where any of:
+        //   • DueAt <= dueSoonHorizon (approaching or past due)
+        //   • SlaStatus != OnTrack (already promoted; keep re-visiting until terminal)
+        // Ordered by DueAt ascending inside the Task service.
+        IReadOnlyList<FlowSlaBatchItem> batch;
+        try
+        {
+            batch = await taskClient.GetTasksForSlaEvaluationAsync(
+                Math.Max(1, opts.BatchSize),
+                opts.DueSoonThresholdMinutes,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex,
+                "WorkflowTaskSlaEvaluator: Task service SLA batch read FAILED — skipping tick.");
+            return;
+        }
 
         if (batch.Count == 0) return;
 
+        // Evaluate each item using the pure SLA policy.
+        // Collect changes grouped by TenantId for the push call.
         var transitions = 0;
+        var slaUpdates  = new List<(Guid TenantId, Guid TaskId, string SlaStatus, DateTime? SlaBreachedAt, DateTime EvaluatedAt)>();
 
-        // TASK-FLOW-02 — collect SLA state changes so we can push to Task service.
-        // (TenantId, TaskId, SlaStatus, SlaBreachedAt, EvaluatedAt)
-        var slaUpdates = new List<(string TenantId, Guid TaskId, string SlaStatus, DateTime? SlaBreachedAt, DateTime EvaluatedAt)>();
-
-        foreach (var task in batch)
+        foreach (var item in batch)
         {
             if (ct.IsCancellationRequested) break;
-            if (TryEvaluate(task, now, opts.DueSoonThresholdMinutes))
-            {
-                transitions++;
-                slaUpdates.Add((task.TenantId, task.Id, task.SlaStatus, task.SlaBreachedAt, now));
-            }
-            task.LastSlaEvaluatedAt = now;
-        }
+            if (item.DueAt is not DateTime dueAt) continue;
 
-        await db.SaveChangesAsync(ct);
+            var newStatus   = WorkflowTaskSlaPolicy.ComputeStatus(now, dueAt, opts.DueSoonThresholdMinutes);
+            var newBreached = WorkflowTaskSlaPolicy.ComputeBreachedAt(newStatus, item.SlaBreachedAt, now);
+
+            var statusChanged  = !string.Equals(newStatus, item.SlaStatus, StringComparison.Ordinal);
+            var breachedChanged = newBreached != item.SlaBreachedAt;
+
+            if (!statusChanged && !breachedChanged) continue;
+
+            if (statusChanged) transitions++;
+            slaUpdates.Add((item.TenantId, item.TaskId, newStatus, newBreached, now));
+        }
 
         if (transitions > 0)
         {
@@ -162,61 +157,26 @@ public sealed class WorkflowTaskSlaEvaluator : BackgroundService
                 batch.Count, transitions);
         }
 
-        // TASK-FLOW-02 — push SLA changes to Task service (best-effort; shadow already committed).
-        // Group by TenantId and call once per tenant. Uses internal service-token auth.
-        if (slaUpdates.Count > 0)
+        // Push SLA changes to Task service grouped by TenantId.
+        if (slaUpdates.Count == 0) return;
+
+        foreach (var group in slaUpdates.GroupBy(u => u.TenantId))
         {
-            var taskClient = scope.ServiceProvider.GetRequiredService<IFlowTaskServiceClient>();
-            foreach (var group in slaUpdates.GroupBy(u => u.TenantId))
+            var tenantGuid = group.Key;
+            var perTenantUpdates = group
+                .Select(u => (u.TaskId, u.SlaStatus, u.SlaBreachedAt, u.EvaluatedAt))
+                .ToList();
+
+            try
             {
-                if (!Guid.TryParse(group.Key, out var tenantGuid))
-                {
-                    _log.LogWarning(
-                        "WorkflowTaskSlaEvaluator: TenantId '{TenantId}' is not a valid Guid — SLA push skipped for {Count} task(s).",
-                        group.Key, group.Count());
-                    continue;
-                }
-
-                var perTenantUpdates = group
-                    .Select(u => (u.TaskId, u.SlaStatus, u.SlaBreachedAt, u.EvaluatedAt))
-                    .ToList();
-
-                try
-                {
-                    await taskClient.UpdateSlaStateAsync(tenantGuid, perTenantUpdates, ct);
-                }
-                catch (Exception ex)
-                {
-                    // Non-fatal: shadow table already has the correct state.
-                    // Task service will reconcile on next successful push.
-                    _log.LogError(ex,
-                        "WorkflowTaskSlaEvaluator: Task service SLA push FAILED for tenant {TenantId} ({Count} update(s)); shadow already committed.",
-                        group.Key, perTenantUpdates.Count);
-                }
+                await taskClient.UpdateSlaStateAsync(tenantGuid, perTenantUpdates, ct);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex,
+                    "WorkflowTaskSlaEvaluator: Task service SLA push FAILED for tenant {TenantId} ({Count} update(s)).",
+                    tenantGuid, perTenantUpdates.Count);
             }
         }
-    }
-
-    /// <summary>
-    /// Apply the pure-policy decision to a single task. Mutates
-    /// <paramref name="task"/> only when the computed status differs
-    /// from persisted (or when a first-observation breach moment needs
-    /// to be stamped). Returns true when a status mutation occurred.
-    /// </summary>
-    internal static bool TryEvaluate(WorkflowTask task, DateTime now, int dueSoonThresholdMinutes)
-    {
-        if (task.DueAt is not DateTime dueAt) return false;
-
-        var newStatus = WorkflowTaskSlaPolicy.ComputeStatus(now, dueAt, dueSoonThresholdMinutes);
-        var newBreached = WorkflowTaskSlaPolicy.ComputeBreachedAt(newStatus, task.SlaBreachedAt, now);
-
-        var statusChanged = !string.Equals(newStatus, task.SlaStatus, StringComparison.Ordinal);
-        var breachedChanged = newBreached != task.SlaBreachedAt;
-
-        if (!statusChanged && !breachedChanged) return false;
-
-        task.SlaStatus = newStatus;
-        task.SlaBreachedAt = newBreached;
-        return statusChanged;
     }
 }

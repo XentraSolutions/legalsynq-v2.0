@@ -3,8 +3,6 @@ using Flow.Application.Exceptions;
 using Flow.Application.Interfaces;
 using Flow.Application.Options;
 using Flow.Domain.Common;
-using Flow.Domain.Entities;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -48,24 +46,31 @@ namespace Flow.Application.Services;
 /// No randomness. No ML. No opaque scoring. Every recommendation is
 /// reproducible for the same input state.
 /// </para>
+///
+/// <para>
+/// <b>TASK-FLOW-03 (post-migration):</b> the shadow table
+/// (<c>flow_workflow_tasks</c>) has been dropped. The task context
+/// is now loaded from the Task service via
+/// <see cref="IFlowTaskServiceClient.GetTaskByIdAsync"/>.
+/// </para>
 /// </summary>
 public sealed class TaskRecommendationService : ITaskRecommendationService
 {
-    private readonly IFlowDbContext _db;
+    private readonly IFlowTaskServiceClient _taskClient;
     private readonly IWorkloadService _workload;
     private readonly WorkDistributionOptions _opts;
     private readonly ILogger<TaskRecommendationService> _log;
 
     public TaskRecommendationService(
-        IFlowDbContext db,
+        IFlowTaskServiceClient taskClient,
         IWorkloadService workload,
         IOptions<WorkDistributionOptions> opts,
         ILogger<TaskRecommendationService> log)
     {
-        _db      = db;
-        _workload = workload;
-        _opts    = opts.Value;
-        _log     = log;
+        _taskClient = taskClient;
+        _workload   = workload;
+        _opts       = opts.Value;
+        _log        = log;
     }
 
     /// <inheritdoc />
@@ -78,31 +83,30 @@ public sealed class TaskRecommendationService : ITaskRecommendationService
         {
             return new RecommendAssigneeResult
             {
-                TaskId            = taskId,
-                RecommendedUserId = null,
+                TaskId             = taskId,
+                RecommendedUserId  = null,
                 ExplanationSummary = "Recommendation feature is currently disabled (WorkDistribution:EnableRecommendation = false).",
-                CandidateSource   = "disabled",
-                TaskSlaStatus     = WorkflowSlaStatus.OnTrack,
-                TaskPriority      = WorkflowTaskPriority.Normal,
-                Candidates        = Array.Empty<AssigneeCandidateInfo>(),
+                CandidateSource    = "disabled",
+                TaskSlaStatus      = WorkflowSlaStatus.OnTrack,
+                TaskPriority       = WorkflowTaskPriority.Normal,
+                Candidates         = Array.Empty<AssigneeCandidateInfo>(),
             };
         }
 
-        // 1. Load the task context (tenant filter applied globally).
-        var ctx = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => t.Id == taskId)
-            .Select(t => new TaskRecommendationContext(
-                t.Id,
-                t.AssignmentMode,
-                t.AssignedRole,
-                t.AssignedOrgId,
-                t.SlaStatus,
-                t.Priority))
-            .FirstOrDefaultAsync(ct);
+        // 1. Load the task context from Task service (post-TASK-FLOW-03).
+        //    Tenant scoping is enforced by the Task service token auth.
+        var taskDto = await _taskClient.GetTaskByIdAsync(taskId, ct);
 
-        if (ctx is null)
-            throw new NotFoundException(nameof(WorkflowTask), taskId);
+        if (taskDto is null)
+            throw new NotFoundException("WorkflowTask", taskId);
+
+        var ctx = new TaskRecommendationContext(
+            Id:             taskDto.TaskId,
+            AssignmentMode: taskDto.AssignmentMode ?? WorkflowTaskAssignmentMode.Unassigned,
+            AssignedRole:   taskDto.AssignedRole,
+            AssignedOrgId:  taskDto.AssignedOrgId,
+            SlaStatus:      taskDto.SlaStatus,
+            Priority:       taskDto.Priority);
 
         // 2. Resolve candidates + source label.
         var (candidates, source) = await ResolveCandidatesAsync(ctx, candidateUserIds, ct);
@@ -133,7 +137,7 @@ public sealed class TaskRecommendationService : ITaskRecommendationService
         var ranked = RankCandidates(candidates, counts);
 
         var recommended = ranked[0].UserId;
-        var summary = BuildExplanationSummary(recommended, ranked[0], ctx, source);
+        var summary     = BuildExplanationSummary(recommended, ranked[0], ctx, source);
 
         _log.LogInformation(
             "E18 Recommendation: TaskId={TaskId} SlaStatus={Sla} Priority={Priority} " +
@@ -162,7 +166,6 @@ public sealed class TaskRecommendationService : ITaskRecommendationService
         IReadOnlyList<string>? explicit_,
         CancellationToken ct)
     {
-        // Caller-supplied list takes priority — no workload-history derivation.
         if (explicit_ is { Count: > 0 })
         {
             var deduped = explicit_
@@ -173,7 +176,6 @@ public sealed class TaskRecommendationService : ITaskRecommendationService
             return (deduped, "explicit");
         }
 
-        // Derive from workload history based on assignment mode.
         switch (ctx.AssignmentMode)
         {
             case WorkflowTaskAssignmentMode.RoleQueue:
@@ -193,7 +195,6 @@ public sealed class TaskRecommendationService : ITaskRecommendationService
                 return (orgIds, "workload-history-org");
 
             default:
-                // DirectUser is already assigned; Unassigned has no eligible set.
                 return (Array.Empty<string>(), "none");
         }
     }
@@ -204,15 +205,12 @@ public sealed class TaskRecommendationService : ITaskRecommendationService
         IReadOnlyList<string> candidates,
         IReadOnlyDictionary<string, int> counts)
     {
-        // Enrich — users not in the counts dictionary have 0 active tasks.
         var enriched = candidates
             .Select(uid =>
             {
                 var count = counts.TryGetValue(uid, out var c) ? c : 0;
                 return (UserId: uid, Count: count, Bucket: GetBucket(count));
             })
-            // Sort: bucket asc (0 = best), then count asc (less work first),
-            // then UserId asc (stable lexicographic tiebreaker).
             .OrderBy(x => x.Bucket)
             .ThenBy(x => x.Count)
             .ThenBy(x => x.UserId, StringComparer.OrdinalIgnoreCase)
@@ -231,10 +229,6 @@ public sealed class TaskRecommendationService : ITaskRecommendationService
             .ToList();
     }
 
-    /// <summary>
-    /// Returns the capacity bucket index (0 = below soft, 1 = below hard, 2 = overloaded).
-    /// Lower is better.
-    /// </summary>
     private int GetBucket(int count) =>
         count < _opts.SoftCapacityThreshold ? 0 :
         count < _opts.MaxActiveTasksPerUser  ? 1 : 2;
@@ -300,10 +294,10 @@ public sealed class TaskRecommendationService : ITaskRecommendationService
 
     private string BuildCandidateNote(
         string userId,
-        int count,
-        int bucket,
-        int rank,
-        int total)
+        int    count,
+        int    bucket,
+        int    rank,
+        int    total)
     {
         var capacity = bucket switch
         {

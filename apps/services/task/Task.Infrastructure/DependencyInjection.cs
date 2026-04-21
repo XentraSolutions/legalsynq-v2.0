@@ -58,6 +58,8 @@ public static class DependencyInjection
         // TASK-FLOW-04 — analytics service + repository
         services.AddScoped<ITaskAnalyticsRepository, TaskAnalyticsRepository>();
         services.AddScoped<ITaskAnalyticsService,    TaskAnalyticsService>();
+        services.AddScoped<ITaskWorkloadRepository,  TaskWorkloadRepository>();
+        services.AddScoped<ITaskWorkloadService,     TaskWorkloadService>();
 
         // Audit integration — LegalSynq.AuditClient pattern
         services.AddAuditEventClient(configuration);

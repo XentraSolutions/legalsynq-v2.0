@@ -70,4 +70,15 @@ public interface ITaskRepository
         Guid tenantId, Guid userId, DateTime asOf, CancellationToken ct = default);
 
     System.Threading.Tasks.Task AddAsync(PlatformTask task, CancellationToken ct = default);
+
+    /// <summary>
+    /// TASK-FLOW-03 — Returns a cross-tenant batch of active tasks with
+    /// <c>DueAt</c> set and SLA status potentially needing re-evaluation.
+    /// Ordered by <c>DueAt</c> ascending (nearest deadline first).
+    /// Used exclusively by Flow's <c>WorkflowTaskSlaEvaluator</c>.
+    /// </summary>
+    System.Threading.Tasks.Task<IReadOnlyList<Task.Application.DTOs.FlowSlaBatchItem>> GetFlowSlaBatchAsync(
+        int               batchSize,
+        DateTime          dueSoonHorizonUtc,
+        CancellationToken ct = default);
 }

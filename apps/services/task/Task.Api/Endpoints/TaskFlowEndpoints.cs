@@ -29,6 +29,8 @@ public static class TaskFlowEndpoints
         // TASK-FLOW-02 — new internal endpoints
         internalGroup.MapPost("/flow-sla-update",  HandleFlowSlaUpdate);
         internalGroup.MapPost("/flow-queue-assign/{tenantId:guid}/{taskId:guid}", HandleFlowQueueAssign);
+        // TASK-FLOW-03 — cross-tenant SLA evaluation batch read
+        internalGroup.MapGet("/flow-sla-batch",    HandleFlowSlaBatch);
 
         // Per-task workflow context — authenticated user
         var taskGroup = app.MapGroup("/api/tasks")
@@ -109,5 +111,22 @@ public static class TaskFlowEndpoints
     {
         var result = await taskService.SetFlowQueueAssignmentAsync(tenantId, taskId, request, ct);
         return result.Updated ? Results.Ok(result) : Results.NotFound(result);
+    }
+
+    // TASK-FLOW-03 — cross-tenant SLA evaluation batch read.
+    // No tenant context required: the SLA evaluator is a background worker
+    // that reads across all tenants. Query params:
+    //   batchSize         — max rows to return (default 100)
+    //   dueSoonMinutes    — DueSoon horizon in minutes from now (default 60)
+    private static async System.Threading.Tasks.Task<IResult> HandleFlowSlaBatch(
+        ITaskService      taskService,
+        int               batchSize      = 100,
+        int               dueSoonMinutes = 60,
+        CancellationToken ct             = default)
+    {
+        var horizon = DateTime.UtcNow.AddMinutes(Math.Max(0, dueSoonMinutes));
+        var result  = await taskService.GetFlowSlaBatchAsync(
+            Math.Max(1, batchSize), horizon, ct);
+        return Results.Ok(result);
     }
 }

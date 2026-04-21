@@ -241,3 +241,22 @@ public record FlowQueueAssignRequest(
 
 /// <summary>Result of the internal queue assignment update.</summary>
 public record FlowQueueAssignResult(bool Updated, string? Error = null);
+
+// ── TASK-FLOW-03 — SLA batch evaluation read ──────────────────────────────
+
+/// <summary>
+/// TASK-FLOW-03 — Single task projection returned by the internal
+/// SLA batch evaluation endpoint. Contains only the fields needed by
+/// Flow's <c>WorkflowTaskSlaEvaluator</c> to compute SLA transitions.
+/// </summary>
+public record FlowSlaBatchItem(
+    Guid      TaskId,
+    Guid      TenantId,
+    DateTime? DueAt,
+    string    SlaStatus,
+    DateTime? SlaBreachedAt);
+
+/// <summary>
+/// TASK-FLOW-03 — Response wrapper for the internal SLA batch read.
+/// </summary>
+public record FlowSlaBatchResponse(IReadOnlyList<FlowSlaBatchItem> Items);

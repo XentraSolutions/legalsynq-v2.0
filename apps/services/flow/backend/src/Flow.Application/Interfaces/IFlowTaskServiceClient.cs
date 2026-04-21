@@ -200,7 +200,77 @@ public interface IFlowTaskServiceClient
     /// </summary>
     Task<TaskPlatformAnalyticsResult> GetPlatformAnalyticsAsync(
         CancellationToken ct = default);
+
+    // ── Workload / dedup (TASK-FLOW-03) ───────────────────────────────────────
+
+    /// <summary>
+    /// TASK-FLOW-03 — Returns active task counts per user for the supplied
+    /// <paramref name="userIds"/> within <paramref name="tenantId"/>.
+    /// Replaces <c>WorkloadService.GetActiveTaskCountsAsync</c> shadow query.
+    /// Users with zero active tasks are omitted from the result.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, int>> GetWorkloadCountsAsync(
+        Guid                tenantId,
+        IEnumerable<string> userIds,
+        CancellationToken   ct = default);
+
+    /// <summary>
+    /// TASK-FLOW-03 — Returns user IDs who have at least one active task
+    /// in <paramref name="role"/> for <paramref name="tenantId"/>.
+    /// Replaces <c>WorkloadService.GetUserIdsForRoleAsync</c> shadow query.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetWorkloadUsersByRoleAsync(
+        Guid              tenantId,
+        string            role,
+        int               max = 20,
+        CancellationToken ct  = default);
+
+    /// <summary>
+    /// TASK-FLOW-03 — Returns user IDs who have at least one active task
+    /// in <paramref name="orgId"/> for <paramref name="tenantId"/>.
+    /// Replaces <c>WorkloadService.GetUserIdsForOrgAsync</c> shadow query.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetWorkloadUsersByOrgAsync(
+        Guid              tenantId,
+        string            orgId,
+        int               max = 20,
+        CancellationToken ct  = default);
+
+    /// <summary>
+    /// TASK-FLOW-03 — Returns true when an active (Open or InProgress) task
+    /// already exists in the Task service for the given
+    /// <paramref name="workflowInstanceId"/> + <paramref name="stepKey"/>.
+    /// Replaces <c>WorkflowTaskFromWorkflowFactory</c> shadow dedup check.
+    /// </summary>
+    Task<bool> HasActiveStepTaskAsync(
+        Guid              tenantId,
+        Guid              workflowInstanceId,
+        string            stepKey,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// TASK-FLOW-03 — Returns a cross-tenant batch of active tasks with
+    /// <c>DueAt</c> set and SLA status potentially needing re-evaluation.
+    /// Replaces <c>WorkflowTaskSlaEvaluator</c>'s shadow table read.
+    /// </summary>
+    Task<IReadOnlyList<FlowSlaBatchItem>> GetTasksForSlaEvaluationAsync(
+        int               batchSize,
+        int               dueSoonThresholdMinutes,
+        CancellationToken ct = default);
 }
+
+/// <summary>
+/// TASK-FLOW-03 — Minimal projection returned by the Task service SLA
+/// batch read endpoint. Contains only the fields needed by
+/// <see cref="Flow.Infrastructure.Outbox.WorkflowTaskSlaEvaluator"/>
+/// to compute SLA status transitions.
+/// </summary>
+public record FlowSlaBatchItem(
+    Guid      TaskId,
+    Guid      TenantId,
+    DateTime? DueAt,
+    string    SlaStatus,
+    DateTime? SlaBreachedAt);
 
 // ── Analytics result records (TASK-FLOW-04) ───────────────────────────────────
 

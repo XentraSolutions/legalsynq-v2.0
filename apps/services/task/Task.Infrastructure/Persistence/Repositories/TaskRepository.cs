@@ -242,4 +242,29 @@ public class TaskRepository : ITaskRepository
 
     public async System.Threading.Tasks.Task AddAsync(PlatformTask task, CancellationToken ct = default)
         => await _db.Tasks.AddAsync(task, ct);
+
+    // TASK-FLOW-03 — cross-tenant SLA evaluation batch.
+    // Active tasks (OPEN / IN_PROGRESS) with DueAt in the SLA window.
+    // No tenant filter: background worker has no tenant context.
+    // Ordered by DueAt ascending (nearest deadline first) so the most
+    // urgent tasks are always processed within the batch limit.
+    public async System.Threading.Tasks.Task<IReadOnlyList<Task.Application.DTOs.FlowSlaBatchItem>> GetFlowSlaBatchAsync(
+        int batchSize, DateTime dueSoonHorizonUtc, CancellationToken ct = default)
+    {
+        var rows = await _db.Tasks
+            .Where(t => t.DueAt != null
+                     && (t.Status == "OPEN" || t.Status == "IN_PROGRESS")
+                     && (t.DueAt <= dueSoonHorizonUtc || t.SlaStatus != "OnTrack"))
+            .OrderBy(t => t.DueAt)
+            .Take(batchSize)
+            .Select(t => new Task.Application.DTOs.FlowSlaBatchItem(
+                t.Id,
+                t.TenantId,
+                t.DueAt,
+                t.SlaStatus,
+                t.SlaBreachedAt))
+            .ToListAsync(ct);
+
+        return rows;
+    }
 }

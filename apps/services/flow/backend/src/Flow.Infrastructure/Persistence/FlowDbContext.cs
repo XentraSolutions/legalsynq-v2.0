@@ -32,9 +32,6 @@ public class FlowDbContext : DbContext, IFlowDbContext
     public DbSet<WorkflowInstance> WorkflowInstances => Set<WorkflowInstance>();
     // LS-FLOW-E10.2 — transactional outbox for durable side effects.
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
-    // LS-FLOW-E11.1 — first-class workflow work item (separate grain
-    // from the legacy TaskItem definition-layer entity).
-    public DbSet<WorkflowTask> WorkflowTasks => Set<WorkflowTask>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -327,100 +324,6 @@ public class FlowDbContext : DbContext, IFlowDbContext
             // possible. WorkflowInstanceId is informational + indexed.
         });
 
-        // LS-FLOW-E11.1 — first-class human-work item. Tenant-scoped,
-        // tied to WorkflowInstance + StepKey. Foundational only —
-        // no engine wiring this phase. Indexes are sized for the
-        // queries E11.2+ will introduce (operator inbox, role queue,
-        // per-instance task list); over-indexing avoided by keeping
-        // these to the four documented in the report.
-        modelBuilder.Entity<WorkflowTask>(entity =>
-        {
-            entity.ToTable("flow_workflow_tasks");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.TenantId).IsRequired().HasMaxLength(128);
-            entity.Property(e => e.WorkflowInstanceId).IsRequired();
-            entity.Property(e => e.StepKey).IsRequired().HasMaxLength(64);
-            entity.Property(e => e.Title).IsRequired().HasMaxLength(512);
-            entity.Property(e => e.Description).HasMaxLength(4096);
-            entity.Property(e => e.Status)
-                .IsRequired()
-                .HasMaxLength(32)
-                .HasDefaultValue(Flow.Domain.Common.WorkflowTaskStatus.Open);
-            entity.Property(e => e.Priority)
-                .IsRequired()
-                .HasMaxLength(16)
-                .HasDefaultValue(Flow.Domain.Common.WorkflowTaskPriority.Normal);
-            entity.Property(e => e.AssignedUserId).HasMaxLength(256);
-            entity.Property(e => e.AssignedRole).HasMaxLength(128);
-            entity.Property(e => e.AssignedOrgId).HasMaxLength(256);
-            // LS-FLOW-E14.1 — explicit assignment model.
-            entity.Property(e => e.AssignmentMode)
-                .IsRequired()
-                .HasMaxLength(32)
-                .HasDefaultValue(Flow.Domain.Common.WorkflowTaskAssignmentMode.Unassigned);
-            entity.Property(e => e.AssignedBy).HasMaxLength(256);
-            entity.Property(e => e.AssignmentReason).HasMaxLength(512);
-            entity.Property(e => e.CorrelationKey).HasMaxLength(256);
-            entity.Property(e => e.MetadataJson).HasColumnType("longtext");
-            entity.Property(e => e.CreatedBy).HasMaxLength(256);
-            entity.Property(e => e.UpdatedBy).HasMaxLength(256);
-
-            // Operator inbox / queue scans (E11.2+).
-            entity.HasIndex(e => new { e.TenantId, e.Status })
-                .HasDatabaseName("ix_flow_workflow_tasks_tenant_status");
-            entity.HasIndex(e => new { e.TenantId, e.AssignedUserId, e.Status })
-                .HasDatabaseName("ix_flow_workflow_tasks_tenant_user_status");
-            entity.HasIndex(e => new { e.TenantId, e.AssignedRole, e.Status })
-                .HasDatabaseName("ix_flow_workflow_tasks_tenant_role_status");
-            // LS-FLOW-E14.1 — queue-scan support (Unassigned / RoleQueue
-            // / OrgQueue listings the upcoming claim/reassign surfaces
-            // will hit). Composite leftmost-prefix on TenantId so it
-            // remains tenant-safe.
-            entity.HasIndex(e => new { e.TenantId, e.AssignmentMode, e.Status })
-                .HasDatabaseName("ix_flow_workflow_tasks_tenant_mode_status");
-            // Per-instance task list (timeline / control-center detail drawer).
-            entity.HasIndex(e => e.WorkflowInstanceId)
-                .HasDatabaseName("ix_flow_workflow_tasks_instance");
-
-            // LS-FLOW-E10.3 (task slice) — SLA / timer columns.
-            // SlaStatus stored as varchar(16) for human-readable
-            // operator queries (matches the workflow-level shape).
-            entity.Property(e => e.SlaStatus)
-                .IsRequired()
-                .HasMaxLength(16)
-                .HasDefaultValue(Flow.Domain.Common.WorkflowSlaStatus.OnTrack);
-            entity.Property(e => e.SlaPolicyKey).HasMaxLength(64);
-            // Composite indexes sized for the two read patterns this
-            // phase introduces:
-            //   (TenantId, Status, SlaStatus) — admin / API "show me
-            //     at-risk / overdue active tasks" scans (tenant-scoped).
-            //   (TenantId, Status, DueAt) — same shape, ordered for
-            //     UI lists that surface "what's due next".
-            //   (Status, DueAt) — *cross-tenant* index for the
-            //     WorkflowTaskSlaEvaluator hot path. The worker runs
-            //     with IgnoreQueryFilters() (no tenant predicate), so
-            //     a TenantId-leading index would force the planner to
-            //     either ignore tenancy and scan, or merge across
-            //     tenant partitions. A non-tenant-leading index keeps
-            //     the evaluator's range scan tight as the table grows.
-            entity.HasIndex(e => new { e.TenantId, e.Status, e.SlaStatus })
-                .HasDatabaseName("ix_flow_workflow_tasks_tenant_status_slastatus");
-            entity.HasIndex(e => new { e.TenantId, e.Status, e.DueAt })
-                .HasDatabaseName("ix_flow_workflow_tasks_tenant_status_dueat");
-            entity.HasIndex(e => new { e.Status, e.DueAt })
-                .HasDatabaseName("ix_flow_workflow_tasks_status_dueat_eval");
-
-            // Restrict deletion of an instance that still owns tasks
-            // — work items are durable evidence; cleanup is an explicit
-            // future operation, not a cascade.
-            entity.HasOne(e => e.WorkflowInstance)
-                .WithMany()
-                .HasForeignKey(e => e.WorkflowInstanceId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasQueryFilter(e => _tenantProvider == null || e.TenantId == _tenantProvider.GetTenantId());
-        });
-
         WorkflowSeedData.Seed(modelBuilder);
 
         modelBuilder.Entity<TaskItem>(entity =>
@@ -523,19 +426,6 @@ public class FlowDbContext : DbContext, IFlowDbContext
                 case EntityState.Modified:
                     entry.Entity.UpdatedAt = DateTime.UtcNow;
                     break;
-            }
-        }
-
-        // LS-FLOW-E11.1 — domain invariants for the new WorkflowTask
-        // grain (required FKs + terminal-timestamp/status pairing).
-        // Validated on Added and Modified rows so partial mutations
-        // (e.g. setting CompletedAt without flipping Status) fail loudly
-        // at SaveChanges instead of silently persisting.
-        foreach (var entry in ChangeTracker.Entries<Flow.Domain.Entities.WorkflowTask>())
-        {
-            if (entry.State is EntityState.Added or EntityState.Modified)
-            {
-                entry.Entity.EnsureValid();
             }
         }
 

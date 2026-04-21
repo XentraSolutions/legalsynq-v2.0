@@ -3,7 +3,6 @@ using Flow.Application.Interfaces;
 using Flow.Domain.Common;
 using Flow.Domain.Entities;
 using Flow.Domain.Interfaces;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Flow.Application.Services;
@@ -13,271 +12,157 @@ namespace Flow.Application.Services;
 /// <see cref="IWorkflowTaskLifecycleService"/>.
 ///
 /// <para>
-/// <b>Persistence pattern:</b> a two-step pre-check + atomic
-/// compare-and-swap. The pre-check (an <c>AsNoTracking</c> read through
-/// the global tenant query filter) gives callers a precise error
-/// (<see cref="NotFoundException"/> vs.
-/// <see cref="InvalidStateTransitionException"/>) instead of a bare
-/// "0 rows affected" failure. The conditional UPDATE
-/// (<c>ExecuteUpdateAsync</c> with <c>WHERE Id = … AND Status = expected</c>)
-/// is the actual concurrency primitive: it returns 1 on success and 0
-/// when another caller has already moved the task, in which case we
-/// raise <see cref="WorkflowTaskConcurrencyException"/>.
-/// </para>
-///
-/// <para>
-/// <b>Why <c>ExecuteUpdateAsync</c> rather than load-and-track:</b>
-/// <list type="bullet">
-///   <item>Atomic in a single round-trip — no need to add a RowVersion
-///         column or a new EF migration.</item>
-///   <item>Honours the existing tenant <c>HasQueryFilter</c> on
-///         <see cref="WorkflowTask"/> automatically (the underlying
-///         <c>IQueryable</c> goes through the filter).</item>
-///   <item>Cannot accidentally flush unrelated tracked changes — this
-///         service is laser-focused on a single row.</item>
-/// </list>
-/// The trade-off is that EF's save-hook (audit-column stamping,
-/// <c>EnsureValid</c>) does NOT run for these updates. We compensate
-/// explicitly: this service sets <c>UpdatedAt</c> and <c>UpdatedBy</c>
-/// in the <c>SetProperty</c> chain, and re-asserts the same status /
-/// terminal-timestamp invariants <see cref="WorkflowTask.EnsureValid"/>
-/// enforces.
-/// </para>
-///
-/// <para>
-/// <b>Out of scope (intentionally not touched):</b> WorkflowInstance,
-/// WorkflowEngine, outbox, SLA, notifications, assignment columns
-/// (<c>AssignedUserId</c> / <c>AssignedRole</c> / <c>AssignedOrgId</c> /
-/// <c>AssignmentMode</c> / <c>AssignedAt</c> / <c>AssignedBy</c> /
-/// <c>AssignmentReason</c>), reassignment.
-/// </para>
-///
-/// <para>
-/// <b>E14.1 caveat — bypass of assignment-mode invariants.</b> Because
-/// <c>ExecuteUpdateAsync</c> skips the save-hook, the new single-mode
-/// invariants enforced by <see cref="WorkflowTask.EnsureValid"/>
-/// (<c>DirectUser</c> / <c>RoleQueue</c> / <c>OrgQueue</c> /
-/// <c>Unassigned</c> consistency between <c>AssignmentMode</c> and the
-/// assignment-target columns) are NOT re-checked here. This service is
-/// currently safe because it only mutates status / lifecycle
-/// timestamps and never touches the assignment columns. Any future
-/// helper that uses <c>ExecuteUpdateAsync</c> to mutate assignment
-/// columns MUST either (a) load + track + <c>SaveChangesAsync</c> so
-/// the save-hook fires, or (b) re-apply the same single-mode rule
-/// inline before issuing the UPDATE.
+/// <b>TASK-FLOW-03 (post-migration):</b> the shadow table
+/// (<c>flow_workflow_tasks</c>) has been dropped. All status reads and
+/// writes are now delegated exclusively to the Task service.
+/// <c>ReadCurrentStatusAsync</c> calls <see cref="IFlowTaskServiceClient.GetTaskByIdAsync"/>
+/// and normalises the Task service's UPPERCASE status strings to Flow's
+/// PascalCase constants (<see cref="WorkflowTaskStatus"/>). The
+/// compare-and-swap is gone; the Task service's own status-transition
+/// validation (idempotent for terminal states, 409 for invalid
+/// transitions) is the concurrency primitive. Any HTTP 409 from the
+/// Task service is re-thrown as
+/// <see cref="WorkflowTaskConcurrencyException"/> to preserve the
+/// existing API contract.
 /// </para>
 /// </summary>
 public sealed class WorkflowTaskLifecycleService : IWorkflowTaskLifecycleService
 {
-    private readonly IFlowDbContext _db;
-    private readonly IFlowUserContext _user;
-    // TASK-FLOW-01 — Task service client for dual-write delegation.
     private readonly IFlowTaskServiceClient _taskClient;
     private readonly ILogger<WorkflowTaskLifecycleService> _log;
 
     public WorkflowTaskLifecycleService(
-        IFlowDbContext db,
-        IFlowUserContext user,
         IFlowTaskServiceClient taskClient,
         ILogger<WorkflowTaskLifecycleService> log)
     {
-        _db = db;
-        _user = user;
         _taskClient = taskClient;
-        _log = log;
+        _log        = log;
     }
 
     public Task<WorkflowTaskTransitionResult> StartTaskAsync(Guid taskId, CancellationToken ct = default) =>
         TransitionAsync(
             taskId,
-            expectedStatus: WorkflowTaskStatus.Open,
-            newStatus: WorkflowTaskStatus.InProgress,
-            timestampField: TimestampField.Started,
-            taskServiceDelegate: id => _taskClient.StartTaskAsync(id, ct),
+            expectedStatus:       WorkflowTaskStatus.Open,
+            newStatus:            WorkflowTaskStatus.InProgress,
+            taskServiceDelegate:  id => _taskClient.StartTaskAsync(id, ct),
             ct);
 
     public Task<WorkflowTaskTransitionResult> CompleteTaskAsync(Guid taskId, CancellationToken ct = default) =>
         TransitionAsync(
             taskId,
-            expectedStatus: WorkflowTaskStatus.InProgress,
-            newStatus: WorkflowTaskStatus.Completed,
-            timestampField: TimestampField.Completed,
-            taskServiceDelegate: id => _taskClient.CompleteTaskAsync(id, ct),
+            expectedStatus:       WorkflowTaskStatus.InProgress,
+            newStatus:            WorkflowTaskStatus.Completed,
+            taskServiceDelegate:  id => _taskClient.CompleteTaskAsync(id, ct),
             ct);
 
     public async Task<WorkflowTaskTransitionResult> CancelTaskAsync(Guid taskId, CancellationToken ct = default)
     {
-        // Cancel is the only transition with two valid source states
-        // (Open and InProgress). Single read drives both the validation
-        // (terminal-state rejection) and the chosen `expected` for the
-        // CAS. We must NOT re-read inside ApplyCasAsync — if the row
-        // races from Open to InProgress between the read and the
-        // UPDATE, that interleaving is *contention* (InProgress →
-        // Cancelled is itself valid), not a "wrong source state". The
-        // CAS will fail with affected==0 and surface as
-        // WorkflowTaskConcurrencyException, which is the correct
-        // taxonomy — caller may safely retry with a fresh read.
+        // Cancel accepts two source states (Open and InProgress).
+        // We read first to give a precise error (invalid-state vs.
+        // not-found) and to know which source state to echo back in
+        // WorkflowTaskTransitionResult.PreviousStatus.
         var current = await ReadCurrentStatusAsync(taskId, ct);
         if (current is not (WorkflowTaskStatus.Open or WorkflowTaskStatus.InProgress))
         {
             throw new InvalidStateTransitionException(current, WorkflowTaskStatus.Cancelled);
         }
 
-        // TASK-FLOW-01: delegate to Task service before shadow CAS.
         await DelegateToTaskServiceAsync(taskId, id => _taskClient.CancelTaskAsync(id, ct), "Cancel");
 
-        return await ApplyCasAsync(
-            taskId,
-            expectedStatus: current,
-            newStatus: WorkflowTaskStatus.Cancelled,
-            timestampField: TimestampField.Cancelled,
-            ct);
+        var now = DateTime.UtcNow;
+        _log.LogInformation(
+            "WorkflowTask lifecycle transition: TaskId={TaskId} {From}→{To}",
+            taskId, current, WorkflowTaskStatus.Cancelled);
+        return new WorkflowTaskTransitionResult(taskId, current, WorkflowTaskStatus.Cancelled, now);
     }
 
-    // ---------------- internals -----------------
+    // ── internals ──────────────────────────────────────────────────────────
 
-    private enum TimestampField { Started, Completed, Cancelled }
-
-    /// <summary>
-    /// Pre-check + atomic CAS for the single-source transitions
-    /// (Start, Complete). Cancel does its own pre-check because it has
-    /// two valid source states and must classify a between-read race as
-    /// concurrency rather than as an invalid source.
-    /// </summary>
     private async Task<WorkflowTaskTransitionResult> TransitionAsync(
-        Guid taskId,
-        string expectedStatus,
-        string newStatus,
-        TimestampField timestampField,
-        Func<Guid, Task> taskServiceDelegate,
+        Guid              taskId,
+        string            expectedStatus,
+        string            newStatus,
+        Func<Guid, Task>  taskServiceDelegate,
         CancellationToken ct)
     {
         var current = await ReadCurrentStatusAsync(taskId, ct);
         if (!string.Equals(current, expectedStatus, StringComparison.Ordinal))
         {
-            // Pre-check fail: the row is in a state from which this
-            // single-source transition is never valid (e.g. Complete
-            // called against an Open or terminal task). Reported as a
-            // source-state error, not a concurrency error.
             throw new InvalidStateTransitionException(current, newStatus);
         }
 
-        // TASK-FLOW-01: delegate to Task service before shadow CAS.
         await DelegateToTaskServiceAsync(taskId, taskServiceDelegate, newStatus);
 
-        return await ApplyCasAsync(taskId, expectedStatus, newStatus, timestampField, ct);
+        var now = DateTime.UtcNow;
+        _log.LogInformation(
+            "WorkflowTask lifecycle transition: TaskId={TaskId} {From}→{To}",
+            taskId, expectedStatus, newStatus);
+        return new WorkflowTaskTransitionResult(taskId, expectedStatus, newStatus, now);
     }
 
     /// <summary>
-    /// TASK-FLOW-01 — calls the Task service delegate and propagates any
-    /// failure immediately so the shadow CAS is never executed if the
-    /// primary write fails.
+    /// Delegates the lifecycle call to the Task service. A non-success
+    /// HTTP response propagates as-is; an HTTP 409 is additionally
+    /// wrapped as <see cref="WorkflowTaskConcurrencyException"/> so
+    /// callers receive the same exception type they relied on when the
+    /// shadow CAS existed.
     /// </summary>
     private async Task DelegateToTaskServiceAsync(
-        Guid taskId,
-        Func<Guid, Task> delegate_,
-        string operationLabel)
+        Guid              taskId,
+        Func<Guid, Task>  delegate_,
+        string            operationLabel)
     {
         try
         {
             await delegate_(taskId);
         }
+        catch (HttpRequestException ex) when (
+            ex.Message.Contains("409", StringComparison.Ordinal))
+        {
+            _log.LogWarning(
+                "WorkflowTaskLifecycleService: Task service returned 409 for task {TaskId} op={Op}. " +
+                "Re-throwing as WorkflowTaskConcurrencyException.",
+                taskId, operationLabel);
+            throw new WorkflowTaskConcurrencyException(taskId, operationLabel);
+        }
         catch (Exception ex)
         {
             _log.LogError(ex,
                 "WorkflowTaskLifecycleService: Task service call FAILED for task {TaskId} op={Op}. " +
-                "Shadow CAS skipped; propagating error.",
+                "Propagating error.",
                 taskId, operationLabel);
             throw;
         }
     }
 
     /// <summary>
-    /// Pure atomic compare-and-swap with NO pre-check. Used both as the
-    /// final step of <see cref="TransitionAsync"/> and directly by
-    /// <see cref="CancelTaskAsync"/>'s two-source path so a
-    /// between-read race surfaces as
-    /// <see cref="WorkflowTaskConcurrencyException"/> (caller-retryable)
-    /// rather than as a misclassified
-    /// <see cref="InvalidStateTransitionException"/>.
-    /// </summary>
-    private async Task<WorkflowTaskTransitionResult> ApplyCasAsync(
-        Guid taskId,
-        string expectedStatus,
-        string newStatus,
-        TimestampField timestampField,
-        CancellationToken ct)
-    {
-        var now = DateTime.UtcNow;
-        var updatedBy = _user.UserId;
-
-        var affected = timestampField switch
-        {
-            TimestampField.Started => await _db.WorkflowTasks
-                .Where(t => t.Id == taskId && t.Status == expectedStatus)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(t => t.Status, newStatus)
-                    // First start sets StartedAt; a subsequent re-entry
-                    // would not reach this branch (Open is single-source
-                    // for InProgress) but we still preserve any existing
-                    // value defensively.
-                    .SetProperty(t => t.StartedAt, t => t.StartedAt ?? now)
-                    .SetProperty(t => t.UpdatedAt, now)
-                    .SetProperty(t => t.UpdatedBy, t => updatedBy ?? t.UpdatedBy), ct),
-
-            TimestampField.Completed => await _db.WorkflowTasks
-                .Where(t => t.Id == taskId && t.Status == expectedStatus)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(t => t.Status, newStatus)
-                    .SetProperty(t => t.CompletedAt, (DateTime?)now)
-                    .SetProperty(t => t.UpdatedAt, now)
-                    .SetProperty(t => t.UpdatedBy, t => updatedBy ?? t.UpdatedBy), ct),
-
-            TimestampField.Cancelled => await _db.WorkflowTasks
-                .Where(t => t.Id == taskId && t.Status == expectedStatus)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(t => t.Status, newStatus)
-                    .SetProperty(t => t.CancelledAt, (DateTime?)now)
-                    .SetProperty(t => t.UpdatedAt, now)
-                    .SetProperty(t => t.UpdatedBy, t => updatedBy ?? t.UpdatedBy), ct),
-
-            _ => throw new InvalidOperationException($"Unknown timestamp field: {timestampField}"),
-        };
-
-        if (affected == 0)
-        {
-            // Pre-check passed but the conditional UPDATE matched nothing
-            // → the row was mutated between the read and the write.
-            throw new WorkflowTaskConcurrencyException(taskId, expectedStatus);
-        }
-
-        _log.LogInformation(
-            "WorkflowTask lifecycle transition: TaskId={TaskId} {From}→{To}",
-            taskId, expectedStatus, newStatus);
-
-        return new WorkflowTaskTransitionResult(taskId, expectedStatus, newStatus, now);
-    }
-
-    /// <summary>
-    /// Existence + tenant-scoped read of the current status. Returns the
-    /// status string on success; throws <see cref="NotFoundException"/>
-    /// when the task does not exist OR is owned by a different tenant
-    /// (the global query filter cannot tell the two cases apart, and
-    /// surfacing them identically prevents cross-tenant id probing).
+    /// Reads and normalises the current status from the Task service.
+    /// Returns Flow PascalCase status on success; throws
+    /// <see cref="NotFoundException"/> when the task is not found.
     /// </summary>
     private async Task<string> ReadCurrentStatusAsync(Guid taskId, CancellationToken ct)
     {
-        var status = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => t.Id == taskId)
-            .Select(t => t.Status)
-            .FirstOrDefaultAsync(ct);
-
-        if (status is null)
+        var taskDto = await _taskClient.GetTaskByIdAsync(taskId, ct);
+        if (taskDto is null)
         {
             throw new NotFoundException(nameof(WorkflowTask), taskId);
         }
-
-        return status;
+        return NormalizeStatus(taskDto.Status);
     }
+
+    /// <summary>
+    /// Maps Task service UPPERCASE status strings to Flow's PascalCase
+    /// <see cref="WorkflowTaskStatus"/> constants. Unknown values are
+    /// passed through unchanged so downstream validation (invalid-state
+    /// checks) can produce a meaningful error.
+    /// </summary>
+    private static string NormalizeStatus(string tsStatus) =>
+        tsStatus switch
+        {
+            "OPEN"        => WorkflowTaskStatus.Open,
+            "IN_PROGRESS" => WorkflowTaskStatus.InProgress,
+            "COMPLETED"   => WorkflowTaskStatus.Completed,
+            "CANCELLED"   => WorkflowTaskStatus.Cancelled,
+            _             => tsStatus,
+        };
 }

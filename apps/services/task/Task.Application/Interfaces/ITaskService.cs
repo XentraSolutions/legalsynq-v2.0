@@ -163,4 +163,15 @@ public interface ITaskService
         Guid linkedEntityId,
         Guid removedByUserId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// TASK-FLOW-03 — Returns a cross-tenant batch of active tasks with
+    /// <c>DueAt</c> set and SLA status potentially needing re-evaluation.
+    /// Called by Flow's <c>WorkflowTaskSlaEvaluator</c> after the shadow
+    /// table (<c>flow_workflow_tasks</c>) was dropped.
+    /// </summary>
+    System.Threading.Tasks.Task<Task.Application.DTOs.FlowSlaBatchResponse> GetFlowSlaBatchAsync(
+        int               batchSize,
+        DateTime          dueSoonHorizonUtc,
+        CancellationToken ct = default);
 }

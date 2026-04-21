@@ -644,6 +644,17 @@ public class TaskService : ITaskService
         await _uow.SaveChangesAsync(ct);
     }
 
+    // TASK-FLOW-03 — SLA batch read for Flow's WorkflowTaskSlaEvaluator
+    public async System.Threading.Tasks.Task<Task.Application.DTOs.FlowSlaBatchResponse> GetFlowSlaBatchAsync(
+        int               batchSize,
+        DateTime          dueSoonHorizonUtc,
+        CancellationToken ct = default)
+    {
+        var items = await _tasks.GetFlowSlaBatchAsync(
+            Math.Max(1, batchSize), dueSoonHorizonUtc, ct);
+        return new Task.Application.DTOs.FlowSlaBatchResponse(items);
+    }
+
     private async System.Threading.Tasks.Task<PlatformTask> RequireTaskAsync(
         Guid tenantId, Guid id, CancellationToken ct)
     {

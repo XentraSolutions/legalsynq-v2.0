@@ -547,4 +547,124 @@ public sealed class FlowTaskServiceClient : IFlowTaskServiceClient
         int                                TotalActiveTasks,
         int                                TotalOverdueTasks,
         IReadOnlyList<TenantSlaCountRaw>?  TenantSlaGroups);
+
+    // ── Workload / dedup (TASK-FLOW-03) ───────────────────────────────────────
+
+    public async Task<IReadOnlyDictionary<string, int>> GetWorkloadCountsAsync(
+        Guid                tenantId,
+        IEnumerable<string> userIds,
+        CancellationToken   ct = default)
+    {
+        var ids = string.Join(",", userIds);
+        if (string.IsNullOrEmpty(ids))
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        var qs  = BuildQueryString(new Dictionary<string, string?> { ["userIds"] = ids });
+        var req = BuildInternalRequest<object?>(tenantId, HttpMethod.Get,
+            $"/api/tasks/internal/flow-workload/{tenantId}/user-counts{qs}");
+        var resp = await InternalClient.SendAsync(req, ct);
+        EnsureSuccess(resp, $"GET /api/tasks/internal/flow-workload/{tenantId}/user-counts");
+
+        var rows = await resp.Content.ReadFromJsonAsync<IReadOnlyList<WorkloadCountRaw>>(_json, ct)
+            ?? [];
+
+        return rows.ToDictionary(
+            r => r.UserId,
+            r => r.Count,
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    public async Task<IReadOnlyList<string>> GetWorkloadUsersByRoleAsync(
+        Guid              tenantId,
+        string            role,
+        int               max = 20,
+        CancellationToken ct  = default)
+    {
+        var qs   = BuildQueryString(new Dictionary<string, string?> { ["max"] = max.ToString() });
+        var req  = BuildInternalRequest<object?>(tenantId, HttpMethod.Get,
+            $"/api/tasks/internal/flow-workload/{tenantId}/role/{Uri.EscapeDataString(role)}/users{qs}");
+        var resp = await InternalClient.SendAsync(req, ct);
+        EnsureSuccess(resp, $"GET /api/tasks/internal/flow-workload/{tenantId}/role/users");
+
+        return await resp.Content.ReadFromJsonAsync<IReadOnlyList<string>>(_json, ct)
+            ?? Array.Empty<string>();
+    }
+
+    public async Task<IReadOnlyList<string>> GetWorkloadUsersByOrgAsync(
+        Guid              tenantId,
+        string            orgId,
+        int               max = 20,
+        CancellationToken ct  = default)
+    {
+        var qs   = BuildQueryString(new Dictionary<string, string?> { ["max"] = max.ToString() });
+        var req  = BuildInternalRequest<object?>(tenantId, HttpMethod.Get,
+            $"/api/tasks/internal/flow-workload/{tenantId}/org/{Uri.EscapeDataString(orgId)}/users{qs}");
+        var resp = await InternalClient.SendAsync(req, ct);
+        EnsureSuccess(resp, $"GET /api/tasks/internal/flow-workload/{tenantId}/org/users");
+
+        return await resp.Content.ReadFromJsonAsync<IReadOnlyList<string>>(_json, ct)
+            ?? Array.Empty<string>();
+    }
+
+    public async Task<bool> HasActiveStepTaskAsync(
+        Guid              tenantId,
+        Guid              workflowInstanceId,
+        string            stepKey,
+        CancellationToken ct = default)
+    {
+        var qs  = BuildQueryString(new Dictionary<string, string?>
+        {
+            ["tenantId"]           = tenantId.ToString(),
+            ["workflowInstanceId"] = workflowInstanceId.ToString(),
+            ["stepKey"]            = stepKey,
+        });
+        var req  = new HttpRequestMessage(HttpMethod.Get,
+            $"/api/tasks/internal/flow-has-active-step{qs}");
+        var resp = await InternalClient.SendAsync(req, ct);
+        EnsureSuccess(resp, "GET /api/tasks/internal/flow-has-active-step");
+
+        var raw = await resp.Content.ReadFromJsonAsync<HasActiveStepRaw>(_json, ct);
+        return raw?.HasActive ?? false;
+    }
+
+    // TASK-FLOW-03 — SLA batch read for WorkflowTaskSlaEvaluator.
+    // Calls the cross-tenant internal endpoint; no tenantId required.
+    public async Task<IReadOnlyList<FlowSlaBatchItem>> GetTasksForSlaEvaluationAsync(
+        int               batchSize,
+        int               dueSoonThresholdMinutes,
+        CancellationToken ct = default)
+    {
+        var qs = BuildQueryString(new Dictionary<string, string?>
+        {
+            ["batchSize"]      = Math.Max(1, batchSize).ToString(),
+            ["dueSoonMinutes"] = Math.Max(0, dueSoonThresholdMinutes).ToString(),
+        });
+        var req  = new HttpRequestMessage(HttpMethod.Get,
+            $"/api/tasks/internal/flow-sla-batch{qs}");
+        var resp = await InternalClient.SendAsync(req, ct);
+        EnsureSuccess(resp, "GET /api/tasks/internal/flow-sla-batch");
+
+        var raw = await resp.Content.ReadFromJsonAsync<FlowSlaBatchRaw>(_json, ct);
+        if (raw?.Items is null) return Array.Empty<FlowSlaBatchItem>();
+
+        return raw.Items
+            .Select(r => new FlowSlaBatchItem(
+                r.TaskId,
+                r.TenantId,
+                r.DueAt,
+                r.SlaStatus,
+                r.SlaBreachedAt))
+            .ToList();
+    }
+
+    private sealed record WorkloadCountRaw(string UserId, int Count);
+    private sealed record HasActiveStepRaw(bool HasActive);
+
+    private sealed record FlowSlaBatchRaw(IReadOnlyList<FlowSlaBatchItemRaw>? Items);
+    private sealed record FlowSlaBatchItemRaw(
+        Guid      TaskId,
+        Guid      TenantId,
+        DateTime? DueAt,
+        string    SlaStatus,
+        DateTime? SlaBreachedAt);
 }
