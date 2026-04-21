@@ -42,8 +42,111 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
     public async Task<List<TaskTemplateResponse>> GetContextualAsync(
         Guid tenantId, string? contextType, Guid? workflowStageId, CancellationToken ct = default)
     {
+        // TASK-MIG-05 — dual-read for contextual UI filter.
+        // Task service is primary; Liens DB is fallback.
+        // The Task service has no server-side contextType/stageId filter, so we
+        // fetch all active Liens templates and apply the filter in-process.
+        var fromTask = await TryGetContextualFromTaskServiceAsync(tenantId, contextType, workflowStageId, ct);
+        if (fromTask is not null)
+        {
+            _logger.LogDebug(
+                "template_contextual_source=task_service_filtered TenantId={TenantId} contextType={ContextType} stageId={StageId} Count={Count}",
+                tenantId, contextType, workflowStageId, fromTask.Count);
+            return fromTask;
+        }
+
+        _logger.LogDebug(
+            "template_contextual_source=liens_db_fallback TenantId={TenantId} contextType={ContextType} stageId={StageId}",
+            tenantId, contextType, workflowStageId);
+
         var list = await _repo.GetActiveByTenantAsync(tenantId, contextType, workflowStageId, ct);
         return list.Select(MapToResponse).ToList();
+    }
+
+    /// <summary>
+    /// TASK-MIG-05 — Fetches all active Liens templates from Task service and applies the
+    /// same contextual filter logic as <see cref="LienTaskTemplateRepository.GetActiveByTenantAsync"/>.
+    /// Returns null (triggering Liens DB fallback) when Task service returns zero templates
+    /// (data not yet synced) or on any transient error.
+    /// Returns an empty list only when Task service has templates but none match the filter —
+    /// which is the correct answer and avoids an unnecessary fallback.
+    /// Stage IDs are safe to compare directly: MIG-03 preserved stage GUIDs verbatim.
+    /// </summary>
+    private async Task<List<TaskTemplateResponse>?> TryGetContextualFromTaskServiceAsync(
+        Guid    tenantId,
+        string? contextType,
+        Guid?   workflowStageId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var all = await _taskClient.GetAllTemplatesAsync(tenantId, ProductCode, ct);
+
+            // Empty response = Task service not yet populated → fall back to Liens DB
+            if (all.Count == 0)
+            {
+                _logger.LogDebug(
+                    "template_contextual_source=task_service_empty TenantId={TenantId}; falling back to Liens DB.",
+                    tenantId);
+                return null;
+            }
+
+            // Apply same contextual filter logic as LienTaskTemplateRepository.GetActiveByTenantAsync
+            var filtered = all
+                .Select(dto => new { dto, ext = LiensTemplateExtensions.Deserialize(dto.ProductSettingsJson) })
+                .Where(x => IsContextualMatch(x.dto, x.ext, contextType, workflowStageId))
+                .OrderBy(x => ContextualSortOrder(x.ext.ContextType, contextType))
+                .ThenBy(x => x.dto.Name)
+                .Select(x => MapFromTaskServiceDto(x.dto))
+                .ToList();
+
+            return filtered;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "template_contextual_source=task_service_error TenantId={TenantId}; falling back to Liens DB.",
+                tenantId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Mirrors the WHERE clause from <see cref="LienTaskTemplateRepository.GetActiveByTenantAsync"/>.
+    /// A template passes the contextual filter when:
+    ///  - no contextType filter is requested (all active templates pass), OR
+    ///  - ContextType is GENERAL, OR
+    ///  - ContextType matches the requested contextType, OR
+    ///  - ContextType is STAGE and ApplicableWorkflowStageId matches the requested stageId.
+    /// </summary>
+    private static bool IsContextualMatch(
+        TaskServiceTemplateResponse dto,
+        LiensTemplateExtensions     ext,
+        string?                     contextType,
+        Guid?                       workflowStageId)
+    {
+        // Must be active (Task service list endpoint already filters by activeOnly=true)
+        if (!dto.IsActive) return false;
+
+        if (string.IsNullOrWhiteSpace(contextType)) return true;
+
+        var ct2 = ext.ContextType;
+        return ct2 == TaskTemplateContextType.General
+            || ct2 == contextType
+            || (ct2 == TaskTemplateContextType.Stage
+                && workflowStageId.HasValue
+                && ext.ApplicableWorkflowStageId == workflowStageId);
+    }
+
+    /// <summary>
+    /// Mirrors the OrderBy from <see cref="LienTaskTemplateRepository.GetActiveByTenantAsync"/>:
+    /// STAGE-contextual first (0), then exact contextType match (1), then catch-all (2).
+    /// </summary>
+    private static int ContextualSortOrder(string ctxType, string? requestedContextType)
+    {
+        if (ctxType == TaskTemplateContextType.Stage)    return 0;
+        if (ctxType == requestedContextType)             return 1;
+        return 2;
     }
 
     public async Task<TaskTemplateResponse?> GetByIdAsync(
