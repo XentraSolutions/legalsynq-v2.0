@@ -22,7 +22,10 @@ async function proxy(req: NextRequest, segments: string[]): Promise<NextResponse
   const url    = `${GATEWAY_URL}/liens/${path}${search}`;
 
   const cookieStore = await cookies();
-  const token = cookieStore.get('platform_session')?.value;
+  // Support both portal users (portal_session) and platform/admin users (platform_session).
+  const token =
+    cookieStore.get('portal_session')?.value ??
+    cookieStore.get('platform_session')?.value;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };

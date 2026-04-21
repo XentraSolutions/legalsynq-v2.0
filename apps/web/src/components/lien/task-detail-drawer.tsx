@@ -93,8 +93,9 @@ export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: Task
       const result = await lienTaskHistoryService.getHistory(task.id);
       setHistoryEvents(result.items);
       setHistoryLoaded(true);
-    } catch {
-      setHistoryError('Failed to load history.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load history.';
+      setHistoryError(msg);
     } finally {
       setLoadingHistory(false);
     }
@@ -114,8 +115,9 @@ export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: Task
       const updated = await lienTasksService.updateStatus(localTask.id, newStatus);
       setLocalTask(updated);
       onStatusChange?.(updated);
-    } catch {
-      setStatusError('Failed to update status. Please try again.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to update status. Please try again.';
+      setStatusError(msg);
     } finally {
       setStatusChanging(null);
     }

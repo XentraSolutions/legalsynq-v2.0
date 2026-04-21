@@ -20,9 +20,10 @@ interface AuditEnvelope { success: boolean; data: RawAuditQueryResponse; message
 
 export const lienTaskHistoryService = {
   async getHistory(taskId: string, pageSize = 100): Promise<TaskHistoryResponse> {
-    // Gateway route: /audit-service/audit/{**} → strips /audit-service → audit service receives /audit/{**}
+    // BFF route: /api/audit/[...path] → forwards to gateway /audit-service/{path}
+    // Gateway YARP route strips /audit-service prefix → audit service receives /audit/{**}
     const { data: envelope } = await apiClient.get<AuditEnvelope>(
-      `/audit-service/audit/entity/LienTask/${encodeURIComponent(taskId)}?pageSize=${pageSize}&sortOrder=asc`,
+      `/audit/audit/entity/LienTask/${encodeURIComponent(taskId)}?pageSize=${pageSize}&sortOrder=asc`,
     );
 
     // Unwrap the audit service envelope: { success, data: { items, totalCount, ... } }
