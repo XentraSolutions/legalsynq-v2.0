@@ -23,6 +23,12 @@ public class PlatformTask : AuditableEntity
     public string? SourceEntityType   { get; private set; }
     public Guid?   SourceEntityId     { get; private set; }
 
+    /// <summary>
+    /// Optional reference to the current execution stage from <see cref="TaskStageConfig"/>.
+    /// Null if no stage is assigned or stages are not configured for this tenant/product.
+    /// </summary>
+    public Guid?   CurrentStageId     { get; private set; }
+
     public DateTime? DueAt            { get; private set; }
     public DateTime? CompletedAt      { get; private set; }
     public Guid?   ClosedByUserId     { get; private set; }
@@ -30,17 +36,18 @@ public class PlatformTask : AuditableEntity
     private PlatformTask() { }
 
     public static PlatformTask Create(
-        Guid    tenantId,
-        string  title,
-        Guid    createdByUserId,
-        string? description       = null,
-        string? priority          = null,
-        string? scope             = null,
-        Guid?   assignedUserId    = null,
-        string? sourceProductCode = null,
-        string? sourceEntityType  = null,
-        Guid?   sourceEntityId    = null,
-        DateTime? dueAt           = null)
+        Guid      tenantId,
+        string    title,
+        Guid      createdByUserId,
+        string?   description       = null,
+        string?   priority          = null,
+        string?   scope             = null,
+        Guid?     assignedUserId    = null,
+        string?   sourceProductCode = null,
+        string?   sourceEntityType  = null,
+        Guid?     sourceEntityId    = null,
+        DateTime? dueAt             = null,
+        Guid?     currentStageId    = null)
     {
         if (tenantId == Guid.Empty)        throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
@@ -72,6 +79,7 @@ public class PlatformTask : AuditableEntity
             SourceEntityType  = sourceEntityType?.Trim(),
             SourceEntityId    = sourceEntityId,
             DueAt             = dueAt,
+            CurrentStageId    = currentStageId,
             CreatedByUserId   = createdByUserId,
             UpdatedByUserId   = createdByUserId,
             CreatedAtUtc      = now,
@@ -80,12 +88,13 @@ public class PlatformTask : AuditableEntity
     }
 
     public void Update(
-        string  title,
-        Guid    updatedByUserId,
-        string? description    = null,
-        string? priority       = null,
-        Guid?   assignedUserId = null,
-        DateTime? dueAt        = null)
+        string    title,
+        Guid      updatedByUserId,
+        string?   description    = null,
+        string?   priority       = null,
+        Guid?     assignedUserId = null,
+        DateTime? dueAt          = null,
+        Guid?     currentStageId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
 
@@ -98,6 +107,7 @@ public class PlatformTask : AuditableEntity
         Priority        = effectivePriority;
         AssignedUserId  = assignedUserId;
         DueAt           = dueAt;
+        CurrentStageId  = currentStageId;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
     }
@@ -124,10 +134,44 @@ public class PlatformTask : AuditableEntity
         }
     }
 
-    public void Assign(Guid? userId, Guid updatedByUserId)
+    /// <summary>
+    /// Assigns or unassigns the task. Returns the <see cref="AssignmentChangeKind"/>
+    /// so the caller can write the appropriate history action (ASSIGNED / REASSIGNED / UNASSIGNED).
+    /// Returns <see cref="AssignmentChangeKind.NoOp"/> when the requested value equals the current one.
+    /// </summary>
+    public AssignmentChangeKind Assign(Guid? userId, Guid updatedByUserId)
     {
+        var previous = AssignedUserId;
+
+        if (previous == userId)
+            return AssignmentChangeKind.NoOp;
+
         AssignedUserId  = userId;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
+
+        if (userId is null)
+            return AssignmentChangeKind.Unassigned;
+
+        return previous is null
+            ? AssignmentChangeKind.Assigned
+            : AssignmentChangeKind.Reassigned;
     }
+
+    /// <summary>Sets or clears the current execution stage.</summary>
+    public void SetStage(Guid? stageId, Guid updatedByUserId)
+    {
+        CurrentStageId  = stageId;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
+    }
+}
+
+/// <summary>Describes what kind of assignment change occurred.</summary>
+public enum AssignmentChangeKind
+{
+    NoOp       = 0,
+    Assigned   = 1,
+    Reassigned = 2,
+    Unassigned = 3,
 }

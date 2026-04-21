@@ -9,24 +9,33 @@ namespace Task.Application.Services;
 
 public class TaskService : ITaskService
 {
-    private readonly ITaskRepository        _tasks;
-    private readonly ITaskNoteRepository    _notes;
-    private readonly ITaskHistoryRepository _history;
-    private readonly IUnitOfWork            _uow;
-    private readonly ILogger<TaskService>   _logger;
+    private readonly ITaskRepository          _tasks;
+    private readonly ITaskNoteRepository      _notes;
+    private readonly ITaskHistoryRepository   _history;
+    private readonly ITaskGovernanceService   _governance;
+    private readonly ITaskReminderService     _reminders;
+    private readonly ITaskNotificationClient  _notifications;
+    private readonly IUnitOfWork              _uow;
+    private readonly ILogger<TaskService>     _logger;
 
     public TaskService(
-        ITaskRepository        tasks,
-        ITaskNoteRepository    notes,
-        ITaskHistoryRepository history,
-        IUnitOfWork            uow,
-        ILogger<TaskService>   logger)
+        ITaskRepository          tasks,
+        ITaskNoteRepository      notes,
+        ITaskHistoryRepository   history,
+        ITaskGovernanceService   governance,
+        ITaskReminderService     reminders,
+        ITaskNotificationClient  notifications,
+        IUnitOfWork              uow,
+        ILogger<TaskService>     logger)
     {
-        _tasks   = tasks;
-        _notes   = notes;
-        _history = history;
-        _uow     = uow;
-        _logger  = logger;
+        _tasks         = tasks;
+        _notes         = notes;
+        _history       = history;
+        _governance    = governance;
+        _reminders     = reminders;
+        _notifications = notifications;
+        _uow           = uow;
+        _logger        = logger;
     }
 
     public async System.Threading.Tasks.Task<TaskDto> CreateAsync(
@@ -35,13 +44,20 @@ public class TaskService : ITaskService
         CreateTaskRequest request,
         CancellationToken ct = default)
     {
+        var governance = await _governance.ResolveAsync(tenantId, request.SourceProductCode, ct);
+
+        if (governance.RequireAssignee && request.AssignedUserId is null)
+            throw new InvalidOperationException("Governance requires an assignee.");
+        if (governance.RequireDueDate && request.DueAt is null)
+            throw new InvalidOperationException("Governance requires a due date.");
+
         var task = PlatformTask.Create(
             tenantId,
             request.Title,
             createdByUserId,
             request.Description,
-            request.Priority,
-            request.Scope,
+            request.Priority ?? governance.DefaultPriority,
+            request.Scope ?? governance.DefaultTaskScope,
             request.AssignedUserId,
             request.SourceProductCode,
             request.SourceEntityType,
@@ -50,12 +66,14 @@ public class TaskService : ITaskService
 
         await _tasks.AddAsync(task, ct);
 
-        var historyEntry = TaskHistory.Record(
-            task.Id, tenantId, TaskActions.Created, createdByUserId,
-            $"Task '{task.Title}' created with scope {task.Scope}");
-        await _history.AddAsync(historyEntry, ct);
+        await _history.AddAsync(
+            TaskHistory.Record(task.Id, tenantId, TaskActions.Created, createdByUserId,
+                $"Task '{task.Title}' created with scope {task.Scope}"), ct);
 
         await _uow.SaveChangesAsync(ct);
+
+        if (task.DueAt.HasValue)
+            await _reminders.SyncRemindersAsync(tenantId, task.Id, task.DueAt, ct);
 
         _logger.LogInformation(
             "Task {TaskId} created by {UserId} in tenant {TenantId} (scope={Scope})",
@@ -103,19 +121,26 @@ public class TaskService : ITaskService
         UpdateTaskRequest request,
         CancellationToken ct = default)
     {
-        var task = await RequireTaskAsync(tenantId, id, ct);
+        var task       = await RequireTaskAsync(tenantId, id, ct);
+        var governance = await _governance.ResolveAsync(tenantId, task.SourceProductCode, ct);
+
+        if (governance.RequireDueDate && request.DueAt is null)
+            throw new InvalidOperationException("Governance requires a due date.");
+
+        var previousDueAt = task.DueAt;
         task.Update(request.Title, updatedByUserId, request.Description,
                     request.Priority, request.AssignedUserId, request.DueAt);
 
-        var historyEntry = TaskHistory.Record(
-            task.Id, tenantId, TaskActions.Updated, updatedByUserId);
-        await _history.AddAsync(historyEntry, ct);
+        await _history.AddAsync(
+            TaskHistory.Record(task.Id, tenantId, TaskActions.Updated, updatedByUserId), ct);
 
         await _uow.SaveChangesAsync(ct);
 
+        if (task.DueAt != previousDueAt)
+            await _reminders.SyncRemindersAsync(tenantId, task.Id, task.DueAt, ct);
+
         _logger.LogInformation(
-            "Task {TaskId} updated by {UserId} in tenant {TenantId}",
-            task.Id, updatedByUserId, tenantId);
+            "Task {TaskId} updated by {UserId} in tenant {TenantId}", id, updatedByUserId, tenantId);
 
         return TaskDto.From(task);
     }
@@ -127,24 +152,38 @@ public class TaskService : ITaskService
         string            newStatus,
         CancellationToken ct = default)
     {
-        var task = await RequireTaskAsync(tenantId, id, ct);
-        var oldStatus = task.Status;
+        var task       = await RequireTaskAsync(tenantId, id, ct);
+        var governance = await _governance.ResolveAsync(tenantId, task.SourceProductCode, ct);
+
+        if (newStatus == TaskStatus.Cancelled && !governance.AllowCancel)
+            throw new InvalidOperationException("Governance does not allow cancellation of tasks.");
+
+        if (newStatus == TaskStatus.Completed
+            && !governance.AllowCompleteWithoutStage
+            && task.CurrentStageId is null)
+            throw new InvalidOperationException("Governance requires a stage to be set before completing a task.");
+
         task.TransitionStatus(newStatus, updatedByUserId);
 
-        var action = newStatus == TaskStatus.Completed ? TaskActions.Completed
-                   : newStatus == TaskStatus.Cancelled ? TaskActions.Cancelled
-                   : TaskActions.StatusChanged;
+        var action = newStatus switch
+        {
+            TaskStatus.Completed => TaskActions.Completed,
+            TaskStatus.Cancelled => TaskActions.Cancelled,
+            _                    => TaskActions.StatusChanged,
+        };
 
-        var historyEntry = TaskHistory.Record(
-            task.Id, tenantId, action, updatedByUserId,
-            $"{oldStatus} → {newStatus}");
-        await _history.AddAsync(historyEntry, ct);
+        await _history.AddAsync(
+            TaskHistory.Record(task.Id, tenantId, action, updatedByUserId,
+                $"Status changed to {newStatus}"), ct);
 
         await _uow.SaveChangesAsync(ct);
 
+        if (TaskStatus.IsTerminal(newStatus))
+            await _reminders.CancelRemindersAsync(tenantId, task.Id, ct);
+
         _logger.LogInformation(
-            "Task {TaskId} status changed from {Old} to {New} by {UserId}",
-            task.Id, oldStatus, newStatus, updatedByUserId);
+            "Task {TaskId} status → {Status} by {UserId} in tenant {TenantId}",
+            id, newStatus, updatedByUserId, tenantId);
 
         return TaskDto.From(task);
     }
@@ -156,16 +195,55 @@ public class TaskService : ITaskService
         Guid?             assignedUserId,
         CancellationToken ct = default)
     {
-        var task = await RequireTaskAsync(tenantId, id, ct);
-        task.Assign(assignedUserId, updatedByUserId);
+        var task       = await RequireTaskAsync(tenantId, id, ct);
+        var governance = await _governance.ResolveAsync(tenantId, task.SourceProductCode, ct);
 
-        var details = assignedUserId.HasValue
-            ? $"Assigned to {assignedUserId}"
-            : "Unassigned";
-        var historyEntry = TaskHistory.Record(task.Id, tenantId, TaskActions.Assigned, updatedByUserId, details);
-        await _history.AddAsync(historyEntry, ct);
+        if (assignedUserId is null && !governance.AllowUnassign)
+            throw new InvalidOperationException("Governance does not allow unassigning tasks.");
 
-        await _uow.SaveChangesAsync(ct);
+        var changeKind = task.Assign(assignedUserId, updatedByUserId);
+
+        if (changeKind != AssignmentChangeKind.NoOp)
+        {
+            var (action, detail) = changeKind switch
+            {
+                AssignmentChangeKind.Assigned   => (TaskActions.Assigned,   $"Assigned to {assignedUserId}"),
+                AssignmentChangeKind.Reassigned => (TaskActions.Reassigned, $"Reassigned to {assignedUserId}"),
+                AssignmentChangeKind.Unassigned => (TaskActions.Unassigned, "Assignee removed"),
+                _                               => (TaskActions.Updated,    string.Empty),
+            };
+
+            await _history.AddAsync(
+                TaskHistory.Record(task.Id, tenantId, action, updatedByUserId, detail), ct);
+
+            await _uow.SaveChangesAsync(ct);
+
+            if (assignedUserId.HasValue)
+            {
+                try
+                {
+                    if (changeKind == AssignmentChangeKind.Assigned)
+                        await _notifications.NotifyAssignedAsync(
+                            tenantId, task.Id, task.Title,
+                            assignedUserId.Value, task.SourceProductCode, ct);
+                    else
+                        await _notifications.NotifyReassignedAsync(
+                            tenantId, task.Id, task.Title,
+                            assignedUserId.Value, task.SourceProductCode, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Notification for task {TaskId} assignment could not be dispatched — continuing.",
+                        task.Id);
+                }
+            }
+        }
+
+        _logger.LogInformation(
+            "Task {TaskId} assignment change={Change} by {UserId} in tenant {TenantId}",
+            id, changeKind, updatedByUserId, tenantId);
+
         return TaskDto.From(task);
     }
 
@@ -176,19 +254,22 @@ public class TaskService : ITaskService
         string            note,
         CancellationToken ct = default)
     {
-        var task = await RequireTaskAsync(tenantId, taskId, ct);
+        var task       = await RequireTaskAsync(tenantId, taskId, ct);
+        var governance = await _governance.ResolveAsync(tenantId, task.SourceProductCode, ct);
+
+        if (TaskStatus.IsTerminal(task.Status) && !governance.AllowNotesOnClosedTasks)
+            throw new InvalidOperationException("Governance does not allow notes on closed tasks.");
 
         var noteEntity = TaskNote.Create(taskId, tenantId, note, createdByUserId);
         await _notes.AddAsync(noteEntity, ct);
 
-        var historyEntry = TaskHistory.Record(taskId, tenantId, TaskActions.NoteAdded, createdByUserId);
-        await _history.AddAsync(historyEntry, ct);
+        await _history.AddAsync(
+            TaskHistory.Record(taskId, tenantId, TaskActions.NoteAdded, createdByUserId), ct);
 
         await _uow.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Note {NoteId} added to task {TaskId} by {UserId}",
-            noteEntity.Id, taskId, createdByUserId);
+            "Note {NoteId} added to task {TaskId} by {UserId}", noteEntity.Id, taskId, createdByUserId);
 
         return TaskNoteDto.From(noteEntity);
     }

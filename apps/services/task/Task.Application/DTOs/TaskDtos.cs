@@ -38,6 +38,7 @@ public record TaskDto(
     string?   SourceProductCode,
     string?   SourceEntityType,
     Guid?     SourceEntityId,
+    Guid?     CurrentStageId,
     DateTime? DueAt,
     DateTime? CompletedAt,
     Guid?     ClosedByUserId,
@@ -51,6 +52,7 @@ public record TaskDto(
         t.Status, t.Priority, t.Scope,
         t.AssignedUserId,
         t.SourceProductCode, t.SourceEntityType, t.SourceEntityId,
+        t.CurrentStageId,
         t.DueAt, t.CompletedAt, t.ClosedByUserId,
         t.CreatedByUserId, t.UpdatedByUserId,
         t.CreatedAtUtc, t.UpdatedAtUtc);
