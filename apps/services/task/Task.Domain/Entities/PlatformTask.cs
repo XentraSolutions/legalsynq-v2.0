@@ -29,6 +29,15 @@ public class PlatformTask : AuditableEntity
     /// </summary>
     public Guid?   CurrentStageId     { get; private set; }
 
+    /// <summary>Optional reference to a Flow workflow instance that drives or owns this task.</summary>
+    public Guid?   WorkflowInstanceId       { get; private set; }
+
+    /// <summary>The current step key within the linked Flow workflow instance.</summary>
+    public string? WorkflowStepKey          { get; private set; }
+
+    /// <summary>Timestamp of the last meaningful change to workflow linkage fields.</summary>
+    public DateTime? WorkflowLinkageChangedAt { get; private set; }
+
     public DateTime? DueAt            { get; private set; }
     public DateTime? CompletedAt      { get; private set; }
     public Guid?   ClosedByUserId     { get; private set; }
@@ -39,15 +48,17 @@ public class PlatformTask : AuditableEntity
         Guid      tenantId,
         string    title,
         Guid      createdByUserId,
-        string?   description       = null,
-        string?   priority          = null,
-        string?   scope             = null,
-        Guid?     assignedUserId    = null,
-        string?   sourceProductCode = null,
-        string?   sourceEntityType  = null,
-        Guid?     sourceEntityId    = null,
-        DateTime? dueAt             = null,
-        Guid?     currentStageId    = null)
+        string?   description        = null,
+        string?   priority           = null,
+        string?   scope              = null,
+        Guid?     assignedUserId     = null,
+        string?   sourceProductCode  = null,
+        string?   sourceEntityType   = null,
+        Guid?     sourceEntityId     = null,
+        DateTime? dueAt              = null,
+        Guid?     currentStageId     = null,
+        Guid?     workflowInstanceId = null,
+        string?   workflowStepKey    = null)
     {
         if (tenantId == Guid.Empty)        throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
@@ -78,12 +89,15 @@ public class PlatformTask : AuditableEntity
             SourceProductCode = sourceProductCode?.Trim().ToUpperInvariant(),
             SourceEntityType  = sourceEntityType?.Trim(),
             SourceEntityId    = sourceEntityId,
-            DueAt             = dueAt,
-            CurrentStageId    = currentStageId,
-            CreatedByUserId   = createdByUserId,
-            UpdatedByUserId   = createdByUserId,
-            CreatedAtUtc      = now,
-            UpdatedAtUtc      = now,
+            DueAt                    = dueAt,
+            CurrentStageId           = currentStageId,
+            WorkflowInstanceId       = workflowInstanceId,
+            WorkflowStepKey          = workflowStepKey?.Trim(),
+            WorkflowLinkageChangedAt = workflowInstanceId.HasValue ? now : null,
+            CreatedByUserId          = createdByUserId,
+            UpdatedByUserId          = createdByUserId,
+            CreatedAtUtc             = now,
+            UpdatedAtUtc             = now,
         };
     }
 
@@ -164,6 +178,25 @@ public class PlatformTask : AuditableEntity
         CurrentStageId  = stageId;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Updates Flow workflow linkage fields. Returns <c>true</c> if any field changed
+    /// (for idempotency — callers can skip writing history when this returns false).
+    /// </summary>
+    public bool SetWorkflowLinkage(Guid? workflowInstanceId, string? stepKey, Guid updatedByUserId)
+    {
+        var normalizedStep = stepKey?.Trim();
+
+        if (WorkflowInstanceId == workflowInstanceId && WorkflowStepKey == normalizedStep)
+            return false;
+
+        WorkflowInstanceId        = workflowInstanceId;
+        WorkflowStepKey           = normalizedStep;
+        WorkflowLinkageChangedAt  = DateTime.UtcNow;
+        UpdatedByUserId           = updatedByUserId;
+        UpdatedAtUtc              = DateTime.UtcNow;
+        return true;
     }
 }
 

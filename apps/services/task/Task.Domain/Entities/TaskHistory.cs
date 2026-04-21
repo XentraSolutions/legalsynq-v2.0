@@ -55,4 +55,7 @@ public static class TaskActions
     public const string NoteAdded             = "NOTE_ADDED";
     public const string Completed             = "COMPLETED";
     public const string Cancelled             = "CANCELLED";
+    public const string FlowLinkageUpdated    = "FLOW_LINKAGE_UPDATED";
+    public const string LinkedEntityAdded     = "LINKED_ENTITY_ADDED";
+    public const string LinkedEntityRemoved   = "LINKED_ENTITY_REMOVED";
 }

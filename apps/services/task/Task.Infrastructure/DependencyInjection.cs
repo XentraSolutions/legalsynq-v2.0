@@ -1,6 +1,7 @@
 using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Context;
 using BuildingBlocks.Notifications;
+using LegalSynq.AuditClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,10 +33,11 @@ public static class DependencyInjection
         services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 
         // Core task repositories
-        services.AddScoped<ITaskRepository,        TaskRepository>();
-        services.AddScoped<ITaskNoteRepository,     TaskNoteRepository>();
-        services.AddScoped<ITaskHistoryRepository,  TaskHistoryRepository>();
-        services.AddScoped<IUnitOfWork,             UnitOfWork>();
+        services.AddScoped<ITaskRepository,             TaskRepository>();
+        services.AddScoped<ITaskNoteRepository,         TaskNoteRepository>();
+        services.AddScoped<ITaskHistoryRepository,      TaskHistoryRepository>();
+        services.AddScoped<ITaskLinkedEntityRepository, TaskLinkedEntityRepository>();
+        services.AddScoped<IUnitOfWork,                 UnitOfWork>();
 
         // Execution engine repositories
         services.AddScoped<ITaskStageRepository,      TaskStageRepository>();
@@ -44,15 +46,17 @@ public static class DependencyInjection
         services.AddScoped<ITaskReminderRepository,    TaskReminderRepository>();
 
         // Application services
-        services.AddScoped<ITaskGovernanceService,  TaskGovernanceService>();
-        services.AddScoped<ITaskStageService,        TaskStageService>();
-        services.AddScoped<ITaskTemplateService,     TaskTemplateService>();
-        services.AddScoped<ITaskReminderService,     TaskReminderService>();
-        services.AddScoped<ITaskService,             TaskService>();
+        services.AddScoped<ITaskGovernanceService, TaskGovernanceService>();
+        services.AddScoped<ITaskStageService,      TaskStageService>();
+        services.AddScoped<ITaskTemplateService,   TaskTemplateService>();
+        services.AddScoped<ITaskReminderService,   TaskReminderService>();
+        services.AddScoped<ITaskService,           TaskService>();
+
+        // Audit integration — LegalSynq.AuditClient pattern
+        services.AddAuditEventClient(configuration);
+        services.AddScoped<ITaskAuditPublisher, TaskAuditPublisher>();
 
         // Notification client — LS-NOTIF-CORE-024 pattern
-        // Service-JWT auth for outbound Notifications calls (same signing key as other services).
-        // Falls back gracefully when NotificationsService:BaseUrl is not configured.
         services.AddOptions<TaskNotificationsServiceOptions>()
                 .Bind(configuration.GetSection(TaskNotificationsServiceOptions.SectionName));
 

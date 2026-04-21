@@ -14,6 +14,7 @@ public class TasksDbContext : DbContext
     public DbSet<TaskGovernanceSettings> GovernanceSettings => Set<TaskGovernanceSettings>();
     public DbSet<TaskTemplate>           Templates         => Set<TaskTemplate>();
     public DbSet<TaskReminder>           Reminders         => Set<TaskReminder>();
+    public DbSet<TaskLinkedEntity>       LinkedEntities    => Set<TaskLinkedEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

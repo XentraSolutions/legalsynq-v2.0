@@ -16,21 +16,55 @@ public interface ITaskService
         CancellationToken ct = default);
 
     System.Threading.Tasks.Task<TaskListResponse> SearchAsync(
-        Guid              tenantId,
-        string?           search            = null,
-        string?           status            = null,
-        string?           priority          = null,
-        string?           scope             = null,
-        Guid?             assignedUserId    = null,
-        string?           sourceProductCode = null,
-        int               page              = 1,
-        int               pageSize          = 50,
-        CancellationToken ct                = default);
+        Guid      tenantId,
+        string?   search             = null,
+        string?   status             = null,
+        string?   priority           = null,
+        string?   scope              = null,
+        Guid?     assignedUserId     = null,
+        string?   sourceProductCode  = null,
+        Guid?     stageId            = null,
+        DateTime? dueBefore          = null,
+        DateTime? dueAfter           = null,
+        Guid?     workflowInstanceId = null,
+        int       page               = 1,
+        int       pageSize           = 50,
+        CancellationToken ct         = default);
 
     System.Threading.Tasks.Task<IReadOnlyList<TaskDto>> GetMyTasksAsync(
-        Guid              tenantId,
-        Guid              userId,
+        Guid      tenantId,
+        Guid      userId,
+        string?   productCode = null,
+        string?   status      = null,
+        int       page        = 1,
+        int       pageSize    = 50,
+        CancellationToken ct  = default);
+
+    System.Threading.Tasks.Task<MyTaskSummaryResponse> GetMyTaskSummaryAsync(
+        Guid tenantId, Guid userId, CancellationToken ct = default);
+
+    System.Threading.Tasks.Task<IReadOnlyList<TaskDto>> GetByWorkflowInstanceAsync(
+        Guid tenantId, Guid workflowInstanceId, CancellationToken ct = default);
+
+    System.Threading.Tasks.Task<IReadOnlyList<TaskDto>> GetBySourceEntityAsync(
+        Guid   tenantId,
+        string entityType,
+        Guid   entityId,
         CancellationToken ct = default);
+
+    System.Threading.Tasks.Task<TaskWorkflowContextDto?> GetWorkflowContextAsync(
+        Guid tenantId, Guid id, CancellationToken ct = default);
+
+    System.Threading.Tasks.Task<TaskDto> UpdateWorkflowLinkageAsync(
+        Guid                         tenantId,
+        Guid                         id,
+        Guid                         updatedByUserId,
+        UpdateWorkflowLinkageRequest request,
+        CancellationToken            ct = default);
+
+    System.Threading.Tasks.Task<FlowCallbackResult> ProcessFlowCallbackAsync(
+        FlowStepCallbackRequest request,
+        CancellationToken       ct = default);
 
     System.Threading.Tasks.Task<TaskDto> UpdateAsync(
         Guid              tenantId,
@@ -68,5 +102,22 @@ public interface ITaskService
     System.Threading.Tasks.Task<IReadOnlyList<TaskHistoryDto>> GetHistoryAsync(
         Guid              tenantId,
         Guid              taskId,
+        CancellationToken ct = default);
+
+    System.Threading.Tasks.Task<TaskLinkedEntityDto> AddLinkedEntityAsync(
+        Guid                    tenantId,
+        Guid                    taskId,
+        Guid                    createdByUserId,
+        AddLinkedEntityRequest  request,
+        CancellationToken       ct = default);
+
+    System.Threading.Tasks.Task<IReadOnlyList<TaskLinkedEntityDto>> GetLinkedEntitiesAsync(
+        Guid tenantId, Guid taskId, CancellationToken ct = default);
+
+    System.Threading.Tasks.Task RemoveLinkedEntityAsync(
+        Guid tenantId,
+        Guid taskId,
+        Guid linkedEntityId,
+        Guid removedByUserId,
         CancellationToken ct = default);
 }

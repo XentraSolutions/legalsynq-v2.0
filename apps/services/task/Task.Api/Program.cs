@@ -93,5 +93,7 @@ app.MapTaskStageEndpoints();
 app.MapTaskGovernanceEndpoints();
 app.MapTaskTemplateEndpoints();
 app.MapTaskReminderEndpoints();
+app.MapTaskFlowEndpoints();
+app.MapTaskLinkedEntityEndpoints();
 
 app.Run();

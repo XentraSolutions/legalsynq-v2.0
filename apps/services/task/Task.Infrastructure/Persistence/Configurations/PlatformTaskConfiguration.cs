@@ -44,6 +44,11 @@ public class PlatformTaskConfiguration : IEntityTypeConfiguration<PlatformTask>
 
         builder.Property(t => t.CurrentStageId);
 
+        // Flow linkage fields
+        builder.Property(t => t.WorkflowInstanceId);
+        builder.Property(t => t.WorkflowStepKey).HasMaxLength(100);
+        builder.Property(t => t.WorkflowLinkageChangedAt);
+
         builder.Property(t => t.DueAt);
         builder.Property(t => t.CompletedAt);
         builder.Property(t => t.ClosedByUserId);
@@ -53,6 +58,7 @@ public class PlatformTaskConfiguration : IEntityTypeConfiguration<PlatformTask>
         builder.Property(t => t.CreatedAtUtc).IsRequired();
         builder.Property(t => t.UpdatedAtUtc).IsRequired();
 
+        // Existing indexes
         builder.HasIndex(t => new { t.TenantId, t.Status })
             .HasDatabaseName("IX_Tasks_TenantId_Status");
 
@@ -67,5 +73,15 @@ public class PlatformTaskConfiguration : IEntityTypeConfiguration<PlatformTask>
 
         builder.HasIndex(t => new { t.TenantId, t.CurrentStageId })
             .HasDatabaseName("IX_Tasks_TenantId_StageId");
+
+        // New indexes for B03 query paths
+        builder.HasIndex(t => t.WorkflowInstanceId)
+            .HasDatabaseName("IX_Tasks_WorkflowInstanceId");
+
+        builder.HasIndex(t => new { t.TenantId, t.SourceEntityType, t.SourceEntityId })
+            .HasDatabaseName("IX_Tasks_SourceEntity");
+
+        builder.HasIndex(t => new { t.TenantId, t.AssignedUserId, t.Status })
+            .HasDatabaseName("IX_Tasks_TenantId_AssignedUser_Status");
     }
 }

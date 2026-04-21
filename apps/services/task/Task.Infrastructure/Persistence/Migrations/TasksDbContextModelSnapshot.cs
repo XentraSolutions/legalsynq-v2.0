@@ -42,13 +42,35 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.Property<string>("Title").IsRequired().HasMaxLength(500).HasColumnType("varchar(500)");
                     b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)");
                     b.Property<Guid?>("UpdatedByUserId").HasColumnType("char(36)");
+                    b.Property<Guid?>("WorkflowInstanceId").HasColumnType("char(36)");
+                    b.Property<DateTime?>("WorkflowLinkageChangedAt").HasColumnType("datetime(6)");
+                    b.Property<string>("WorkflowStepKey").HasMaxLength(100).HasColumnType("varchar(100)");
                     b.HasKey("Id");
                     b.HasIndex(new[] { "TenantId", "Status" }, "IX_Tasks_TenantId_Status");
                     b.HasIndex(new[] { "TenantId", "AssignedUserId" }, "IX_Tasks_TenantId_AssignedUserId");
                     b.HasIndex(new[] { "TenantId", "Scope", "SourceProductCode" }, "IX_Tasks_TenantId_Scope_Product");
                     b.HasIndex(new[] { "TenantId", "CreatedAtUtc" }, "IX_Tasks_TenantId_CreatedAt");
                     b.HasIndex(new[] { "TenantId", "CurrentStageId" }, "IX_Tasks_TenantId_StageId");
+                    b.HasIndex(new[] { "WorkflowInstanceId" }, "IX_Tasks_WorkflowInstanceId");
+                    b.HasIndex(new[] { "TenantId", "SourceEntityType", "SourceEntityId" }, "IX_Tasks_SourceEntity");
+                    b.HasIndex(new[] { "TenantId", "AssignedUserId", "Status" }, "IX_Tasks_TenantId_AssignedUser_Status");
                     b.ToTable("tasks_Tasks");
+                });
+
+            modelBuilder.Entity("Task.Domain.Entities.TaskLinkedEntity", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("char(36)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<string>("EntityId").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("EntityType").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("RelationshipType").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("SourceProductCode").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<Guid>("TaskId").HasColumnType("char(36)");
+                    b.Property<Guid>("TenantId").HasColumnType("char(36)");
+                    b.HasKey("Id");
+                    b.HasIndex(new[] { "TaskId" }, "IX_LinkedEntities_TaskId");
+                    b.HasIndex(new[] { "TenantId", "EntityType", "EntityId" }, "IX_LinkedEntities_EntityRef");
+                    b.ToTable("tasks_LinkedEntities");
                 });
 
             modelBuilder.Entity("Task.Domain.Entities.TaskNote", b =>
