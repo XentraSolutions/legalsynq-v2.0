@@ -50,14 +50,29 @@ builder.Services
 
 builder.Services.AddAuthorization(options =>
 {
+    // Accept both standard user JWTs and machine-to-machine service tokens
+    // (e.g. Liens service calling GET /api/tasks on behalf of a tenant).
     options.AddPolicy(Policies.AuthenticatedUser, policy =>
-        policy.RequireAuthenticatedUser());
+        policy
+            .AddAuthenticationSchemes(
+                JwtBearerDefaults.AuthenticationScheme,
+                ServiceTokenAuthenticationDefaults.Scheme)
+            .RequireAuthenticatedUser());
 
     options.AddPolicy(Policies.AdminOnly, policy =>
         policy.RequireRole(Roles.PlatformAdmin));
 
+    // Also accepts service tokens so Liens/Flow can call admin-tier stage/transition
+    // setup endpoints (e.g. POST /api/tasks/stages/from-source) on behalf of a tenant.
     options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
-        policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
+        policy
+            .AddAuthenticationSchemes(
+                JwtBearerDefaults.AuthenticationScheme,
+                ServiceTokenAuthenticationDefaults.Scheme)
+            .RequireRole(
+                Roles.PlatformAdmin,
+                Roles.TenantAdmin,
+                ServiceTokenAuthenticationDefaults.ServiceRole));
 
     // TASK-B05 (TASK-013) — internal service-to-service endpoint gate.
     // Only accepts tokens with scheme=ServiceToken and role=service.
