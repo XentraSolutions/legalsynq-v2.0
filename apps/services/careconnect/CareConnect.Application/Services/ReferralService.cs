@@ -7,6 +7,7 @@ using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
 using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
@@ -26,6 +27,7 @@ public class ReferralService : IReferralService
     private readonly IAuditEventClient _auditClient;
     private readonly IActivationRequestService? _activationRequests; // LSCC-009 (optional — avoid circular DI)
     private readonly ILogger<ReferralService> _logger;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public ReferralService(
         IReferralRepository referrals,
@@ -37,6 +39,7 @@ public class ReferralService : IReferralService
         IOrganizationRelationshipResolver relationshipResolver,
         IAuditEventClient auditClient,
         ILogger<ReferralService> logger,
+        IHttpContextAccessor httpContextAccessor,
         IActivationRequestService? activationRequests = null)
     {
         _referrals            = referrals;
@@ -49,6 +52,7 @@ public class ReferralService : IReferralService
         _auditClient          = auditClient;
         _activationRequests   = activationRequests;
         _logger               = logger;
+        _httpContextAccessor  = httpContextAccessor;
     }
 
     public async Task<PagedResponse<ReferralResponse>> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default)

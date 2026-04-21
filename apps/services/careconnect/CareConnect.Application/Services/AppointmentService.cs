@@ -7,6 +7,7 @@ using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
 using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
+using Microsoft.AspNetCore.Http;
 using System.Text.Json;
 
 namespace CareConnect.Application.Services;
@@ -19,6 +20,7 @@ public class AppointmentService : IAppointmentService
     private readonly IReferralRepository _referrals;
     private readonly INotificationService _notifications;
     private readonly IAuditEventClient _auditClient;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public AppointmentService(
         IAppointmentSlotRepository slots,
@@ -26,14 +28,16 @@ public class AppointmentService : IAppointmentService
         IAppointmentStatusHistoryRepository history,
         IReferralRepository referrals,
         INotificationService notifications,
-        IAuditEventClient auditClient)
+        IAuditEventClient auditClient,
+        IHttpContextAccessor httpContextAccessor)
     {
-        _slots         = slots;
-        _appointments  = appointments;
-        _history       = history;
-        _referrals     = referrals;
-        _notifications = notifications;
-        _auditClient   = auditClient;
+        _slots               = slots;
+        _appointments        = appointments;
+        _history             = history;
+        _referrals           = referrals;
+        _notifications       = notifications;
+        _auditClient         = auditClient;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<PagedResponse<SlotResponse>> SearchSlotsAsync(

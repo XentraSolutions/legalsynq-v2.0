@@ -15,6 +15,7 @@ using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
 using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -31,6 +32,7 @@ public class AutoProvisionService : IAutoProvisionService
     private readonly IAuditEventClient             _auditClient;
     private readonly ILogger<AutoProvisionService> _logger;
     private readonly string                        _appBaseUrl;
+    private readonly IHttpContextAccessor          _httpContextAccessor;
 
     public AutoProvisionService(
         IReferralEmailService         emailService,
@@ -41,17 +43,19 @@ public class AutoProvisionService : IAutoProvisionService
         IActivationRequestService     activationRequests,
         IAuditEventClient             auditClient,
         IConfiguration                configuration,
-        ILogger<AutoProvisionService> logger)
+        ILogger<AutoProvisionService> logger,
+        IHttpContextAccessor          httpContextAccessor)
     {
-        _emailService       = emailService;
-        _referrals          = referrals;
-        _providers          = providers;
-        _providerService    = providerService;
-        _identityOrgs       = identityOrgs;
-        _activationRequests = activationRequests;
-        _auditClient        = auditClient;
-        _logger             = logger;
-        _appBaseUrl         = (configuration["AppBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
+        _emailService        = emailService;
+        _referrals           = referrals;
+        _providers           = providers;
+        _providerService     = providerService;
+        _identityOrgs        = identityOrgs;
+        _activationRequests  = activationRequests;
+        _auditClient         = auditClient;
+        _logger              = logger;
+        _appBaseUrl          = (configuration["AppBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
+        _httpContextAccessor = httpContextAccessor;
     }
 
     // ── Main orchestration ────────────────────────────────────────────────────

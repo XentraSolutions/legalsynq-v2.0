@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Context;
 using BuildingBlocks.FlowClient;
 using CareConnect.Api.Endpoints;
@@ -7,9 +8,12 @@ using CareConnect.Api.Middleware;
 using CareConnect.Infrastructure;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,7 +37,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
             RoleClaimType            = ClaimTypes.Role
         };
-    });
+    })
+    // M2M service-token bearer — validates HS256 tokens minted by platform services.
+    // Secret is read from FLOW_SERVICE_TOKEN_SECRET env var (see ServiceTokenAuthenticationDefaults).
+    .AddServiceTokenBearer(builder.Configuration);
 
 // Authorization policies
 builder.Services.AddAuthorization(options =>
@@ -43,6 +50,12 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
         policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
+
+    // Internal M2M endpoints — only accept service tokens (not user JWTs).
+    options.AddPolicy("ServiceOnly", policy =>
+        policy
+            .AddAuthenticationSchemes(ServiceTokenAuthenticationDefaults.Scheme)
+            .RequireRole(ServiceTokenAuthenticationDefaults.ServiceRole));
 });
 
 // Infrastructure (DbContext + repositories + services)

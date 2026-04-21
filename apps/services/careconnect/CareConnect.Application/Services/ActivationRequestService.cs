@@ -16,6 +16,7 @@ using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
 using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
 namespace CareConnect.Application.Services;
@@ -26,17 +27,20 @@ public class ActivationRequestService : IActivationRequestService
     private readonly IProviderService                  _providerService;
     private readonly IAuditEventClient                 _auditClient;
     private readonly ILogger<ActivationRequestService> _logger;
+    private readonly IHttpContextAccessor              _httpContextAccessor;
 
     public ActivationRequestService(
         IActivationRequestRepository       requests,
         IProviderService                   providerService,
         IAuditEventClient                  auditClient,
-        ILogger<ActivationRequestService>  logger)
+        ILogger<ActivationRequestService>  logger,
+        IHttpContextAccessor               httpContextAccessor)
     {
-        _requests        = requests;
-        _providerService = providerService;
-        _auditClient     = auditClient;
-        _logger          = logger;
+        _requests            = requests;
+        _providerService     = providerService;
+        _auditClient         = auditClient;
+        _logger              = logger;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     // ── Upsert ────────────────────────────────────────────────────────────────
