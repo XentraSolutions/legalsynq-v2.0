@@ -15,13 +15,20 @@ interface RawAuditItem {
 }
 interface RawAuditQueryResponse { items: RawAuditItem[]; totalCount: number; page: number; pageSize: number; }
 
+// The audit service wraps all responses in { success, data: <payload>, ... }
+interface AuditEnvelope { success: boolean; data: RawAuditQueryResponse; message?: string | null; }
+
 export const lienTaskHistoryService = {
   async getHistory(taskId: string, pageSize = 100): Promise<TaskHistoryResponse> {
-    const { data } = await apiClient.get<RawAuditQueryResponse>(
-      `/audit/audit/entity/LienTask/${encodeURIComponent(taskId)}?pageSize=${pageSize}&sortOrder=asc`,
+    // Gateway route: /audit-service/audit/{**} → strips /audit-service → audit service receives /audit/{**}
+    const { data: envelope } = await apiClient.get<AuditEnvelope>(
+      `/audit-service/audit/entity/LienTask/${encodeURIComponent(taskId)}?pageSize=${pageSize}&sortOrder=asc`,
     );
 
-    const events: TaskHistoryEvent[] = (data?.items ?? []).map((e) => ({
+    // Unwrap the audit service envelope: { success, data: { items, totalCount, ... } }
+    const payload = envelope?.data ?? (envelope as unknown as RawAuditQueryResponse);
+
+    const events: TaskHistoryEvent[] = (payload?.items ?? []).map((e) => ({
       auditId:       e.auditId,
       eventType:     e.eventType,
       action:        e.action,
@@ -35,9 +42,9 @@ export const lienTaskHistoryService = {
 
     return {
       items:      events,
-      totalCount: data?.totalCount ?? 0,
-      page:       data?.page       ?? 1,
-      pageSize:   data?.pageSize   ?? pageSize,
+      totalCount: payload?.totalCount ?? 0,
+      page:       payload?.page       ?? 1,
+      pageSize:   payload?.pageSize   ?? pageSize,
     };
   },
 };

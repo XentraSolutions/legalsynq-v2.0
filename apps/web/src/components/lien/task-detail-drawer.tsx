@@ -242,31 +242,31 @@ export function TaskDetailDrawer({ task, onClose, onEdit, onStatusChange }: Task
         {/* Status change bar */}
         <div className="px-6 py-3 border-b border-gray-100 flex-shrink-0">
           <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wide">Change status</p>
-          <div className="flex flex-wrap gap-2">
-            {ALL_TASK_STATUSES.map((s) => {
-              const cfg = TASK_STATUS_COLORS[s];
-              const isCurrent = s === displayTask.status;
-              const isLoading = statusChanging === s;
-              return (
-                <button
-                  key={s}
-                  onClick={() => handleStatusChange(s)}
-                  disabled={isCurrent || statusChanging !== null}
-                  title={isCurrent ? 'Current status' : `Set to ${TASK_STATUS_LABELS[s]}`}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border
-                    ${isCurrent
-                      ? `${cfg.bg} ${cfg.text} border-current ring-2 ring-offset-1 ring-current/30 cursor-default`
-                      : `bg-white text-gray-500 border-gray-200 hover:${cfg.bg} hover:${cfg.text} hover:border-current disabled:opacity-40 disabled:cursor-not-allowed`
-                    }`}
-                >
-                  {isLoading
-                    ? <i className="ri-loader-4-line animate-spin" />
-                    : <i className={STATUS_ICONS[s]} />
-                  }
-                  {TASK_STATUS_LABELS[s]}
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1">
+              <select
+                value={displayTask.status}
+                onChange={(e) => handleStatusChange(e.target.value as TaskStatus)}
+                disabled={statusChanging !== null}
+                className="w-full appearance-none pl-3 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {ALL_TASK_STATUSES.map((s) => (
+                  <option key={s} value={s}>{TASK_STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400">
+                {statusChanging !== null
+                  ? <i className="ri-loader-4-line animate-spin text-sm" />
+                  : <i className="ri-arrow-down-s-line text-sm" />
+                }
+              </span>
+            </div>
+            {statusChanging === null && (
+              <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-full ${TASK_STATUS_COLORS[displayTask.status].bg} ${TASK_STATUS_COLORS[displayTask.status].text}`}>
+                <i className={STATUS_ICONS[displayTask.status]} />
+                {TASK_STATUS_LABELS[displayTask.status]}
+              </span>
+            )}
           </div>
           {statusError && (
             <p className="mt-2 text-xs text-red-600 flex items-center gap-1">
