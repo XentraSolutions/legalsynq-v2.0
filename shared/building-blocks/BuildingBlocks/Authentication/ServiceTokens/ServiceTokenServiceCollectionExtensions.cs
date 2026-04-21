@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using System.Text;
 using BuildingBlocks.FlowClient;
 using Microsoft.AspNetCore.Authentication;
@@ -120,7 +119,10 @@ public static class ServiceTokenServiceCollectionExtensions
                     ? null
                     : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
                 NameClaimType            = "sub",
-                RoleClaimType            = ClaimTypes.Role,
+                // MapInboundClaims = false means JWT short names are preserved as-is.
+                // JwtSecurityTokenHandler.DefaultOutboundClaimTypeMap writes ClaimTypes.Role
+                // as the short JWT claim name "role", so we must match that here.
+                RoleClaimType            = "role",
                 ClockSkew                = TimeSpan.FromSeconds(30)
             };
 

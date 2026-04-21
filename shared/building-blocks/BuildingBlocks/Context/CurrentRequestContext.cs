@@ -15,8 +15,25 @@ public class CurrentRequestContext : ICurrentRequestContext
 
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated == true;
 
-    public Guid? UserId =>
-        Guid.TryParse(User?.FindFirstValue("sub"), out var uid) ? uid : null;
+    public Guid? UserId
+    {
+        get
+        {
+            // Normal user tokens: sub is the user's GUID.
+            if (Guid.TryParse(User?.FindFirstValue("sub"), out var uid))
+                return uid;
+
+            // Service-token callers (sub = "service:*"): the acting user's GUID is
+            // forwarded in the X-User-Id header by the delegating handler on the caller side.
+            var ctx = _httpContextAccessor.HttpContext;
+            if (ctx is not null &&
+                ctx.Request.Headers.TryGetValue("X-User-Id", out var headerVal) &&
+                Guid.TryParse(headerVal, out var headerUid))
+                return headerUid;
+
+            return null;
+        }
+    }
 
     public Guid? TenantId =>
         Guid.TryParse(User?.FindFirstValue("tenant_id"), out var tid) ? tid : null;
