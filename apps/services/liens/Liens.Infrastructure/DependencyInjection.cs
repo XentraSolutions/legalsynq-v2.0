@@ -80,8 +80,10 @@ public static class DependencyInjection
         // TASK-B04 — backfill service
         services.AddScoped<ILienTaskBackfillService, LienTaskBackfillService>();
 
-        // TASK-MIG-01 — startup governance sync: copies liens_TaskGovernanceSettings
-        // rows into tasks_GovernanceSettings on every startup. Idempotent; best-effort.
+        // TASK-MIG-08 — LiensGovernanceSyncService DISABLED (Liens→Task direction suppressed).
+        // Task service is now the primary write owner for governance settings (MIG-08 flip).
+        // Registration is kept so rollback only requires restoring ExecuteAsync body — no DI change.
+        // Rollback: revert LienTaskGovernanceService write order AND restore ExecuteAsync body.
         services.AddSingleton<LiensGovernanceSyncService>();
         services.AddHostedService(sp => sp.GetRequiredService<LiensGovernanceSyncService>());
 

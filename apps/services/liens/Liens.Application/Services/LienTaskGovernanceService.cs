@@ -11,19 +11,23 @@ using Microsoft.Extensions.Logging;
 namespace Liens.Application.Services;
 
 /// <summary>
-/// LS-LIENS-FLOW-006 / TASK-MIG-01 — Manages task governance settings for a tenant.
+/// LS-LIENS-FLOW-006 / TASK-MIG-08 — Governance Ownership Flip (Liens → Task).
 ///
-/// Read strategy (dual-read):
-///   1. Try Task service (GET /api/tasks/governance?sourceProductCode=SYNQ_LIENS).
-///   2. Fall back to Liens DB if Task service returns no settings or an error.
+/// Write authority : Task service (primary). All admin writes (UpdateAsync, GetOrCreateAsync
+///                  default-create) go to Task service first.
+///                  Liens DB receives a best-effort mirror write for rollback safety only.
+///                  A failed Task service write is fatal (not swallowed); a failed Liens
+///                  mirror write is logged and tolerated.
 ///
-/// Write strategy (write-through):
-///   1. Always write to Liens DB (source of truth during migration).
-///   2. Best-effort sync to Task service; failure is logged but does NOT abort the request.
+/// Read authority  : Task service (primary) for all reads.
+///                  Liens DB is retained as fallback only.
+///                  governance_write_owner=task_service / governance_read_owner=task_service
 ///
-/// Migration safety:
-///   - Liens DB is NEVER deleted in this step.
-///   - Fallback ensures zero behavior regression.
+/// Startup sync    : LiensGovernanceSyncService (Liens→Task direction) is DISABLED post-MIG-08.
+///                  It would overwrite Task-owned data with stale Liens DB copies.
+///
+/// Rollback        : Re-enable Liens DB as primary in UpdateAsync + GetOrCreateAsync, and
+///                  re-enable LiensGovernanceSyncService body in DependencyInjection.cs.
 /// </summary>
 public sealed class LienTaskGovernanceService : ILienTaskGovernanceService
 {
@@ -48,90 +52,91 @@ public sealed class LienTaskGovernanceService : ILienTaskGovernanceService
         _logger     = logger;
     }
 
-    // ── GetAsync — dual-read, no create ─────────────────────────────────────────
+    // ── GetAsync — Task-first read (unchanged from MIG-01) ───────────────────────
 
     public async Task<TaskGovernanceSettingsResponse?> GetAsync(
         Guid tenantId, CancellationToken ct = default)
     {
-        // 1. Try Task service (primary)
         var fromTask = await TryFetchFromTaskServiceAsync(tenantId, ct);
         if (fromTask is not null)
             return fromTask;
 
-        // 2. Fall back to Liens DB
         var entity = await _repo.GetByTenantProductAsync(tenantId, ProductCode, ct);
         if (entity is not null)
         {
             _logger.LogDebug(
-                "governance_source=liens_fallback TenantId={TenantId}", tenantId);
+                "governance_read_owner=liens_db_fallback GetAsync TenantId={TenantId}", tenantId);
             return MapToResponse(entity);
         }
 
         return null;
     }
 
-    // ── GetOrCreateAsync — dual-read with Liens-side default creation ────────────
+    // ── GetOrCreateAsync — TASK-MIG-08: create in Task service first ─────────────
 
     public async Task<TaskGovernanceSettingsResponse> GetOrCreateAsync(
         Guid tenantId, Guid actingUserId, string updateSource, CancellationToken ct = default)
     {
-        // 1. Try Task service (primary)
+        // 1. Task service (primary read)
         var fromTask = await TryFetchFromTaskServiceAsync(tenantId, ct);
         if (fromTask is not null)
             return fromTask;
 
-        // 2. Try Liens DB
+        // 2. Liens DB fallback
         var entity = await _repo.GetByTenantProductAsync(tenantId, ProductCode, ct);
         if (entity is not null)
         {
             _logger.LogDebug(
-                "governance_source=liens_fallback TenantId={TenantId}", tenantId);
+                "governance_read_owner=liens_db_fallback GetOrCreateAsync TenantId={TenantId}", tenantId);
             return MapToResponse(entity);
         }
 
-        // 3. Create default in Liens DB (source of truth)
+        // 3. Neither exists — TASK-MIG-08: create in Task service FIRST (primary owner).
         var newEntity = LienTaskGovernanceSettings.CreateDefault(
             tenantId:        tenantId,
             productCode:     ProductCode,
             updateSource:    updateSource,
             createdByUserId: actingUserId);
 
-        await _repo.AddAsync(newEntity, ct);
+        // PRIMARY WRITE — Task service
+        var payload = BuildUpsertPayload(newEntity);
+        await _taskClient.UpsertGovernanceAsync(tenantId, actingUserId, payload, ct);
+
+        _logger.LogInformation(
+            "governance_write_owner=task_service Created defaults TenantId={TenantId}", tenantId);
 
         _audit.Publish(
             eventType:   "liens.task_governance.created",
             action:      "create",
-            description: "Task governance settings created with defaults",
+            description: "Task governance settings created with defaults (Task service primary)",
             tenantId:    tenantId,
             actorUserId: actingUserId,
             entityType:  "LienTaskGovernanceSettings",
             entityId:    newEntity.Id.ToString());
 
-        _logger.LogInformation(
-            "governance_source=liens_created TenantId={TenantId}", tenantId);
-
-        // 4. Best-effort sync new defaults to Task service
-        await TrySyncToTaskServiceAsync(tenantId, actingUserId, newEntity, expectedVersion: 0, ct);
+        // MIRROR — Liens DB best-effort rollback safety
+        await TryMirrorCreateToLiensDbAsync(tenantId, newEntity, ct);
 
         return MapToResponse(newEntity);
     }
 
-    // ── UpdateAsync — write-through ──────────────────────────────────────────────
+    // ── UpdateAsync — TASK-MIG-08: Task service primary write ────────────────────
 
     public async Task<TaskGovernanceSettingsResponse> UpdateAsync(
         Guid tenantId, Guid actingUserId,
         UpdateTaskGovernanceSettingsRequest request, CancellationToken ct = default)
     {
+        // Load from Liens DB for version conflict detection (transitional version authority).
         var entity = await _repo.GetByTenantProductAsync(tenantId, ProductCode, ct);
 
         if (entity is null)
         {
+            // First-time upsert: create default in-memory, apply request fields.
             entity = LienTaskGovernanceSettings.CreateDefault(
                 tenantId:        tenantId,
                 productCode:     ProductCode,
                 updateSource:    request.UpdateSource,
                 createdByUserId: actingUserId);
-            await _repo.AddAsync(entity, ct);
         }
         else if (entity.Version != request.Version)
         {
@@ -139,6 +144,7 @@ public sealed class LienTaskGovernanceService : ILienTaskGovernanceService
                 $"Governance settings were modified by another user (expected version {request.Version}, current {entity.Version}). Please reload and try again.");
         }
 
+        // Apply changes in-memory (Liens DB not written yet).
         entity.Update(
             requireAssigneeOnCreate:      request.RequireAssigneeOnCreate,
             requireCaseLinkOnCreate:      request.RequireCaseLinkOnCreate,
@@ -150,33 +156,31 @@ public sealed class LienTaskGovernanceService : ILienTaskGovernanceService
             updatedByUserId:              actingUserId,
             updatedByName:                request.UpdatedByName);
 
-        await _repo.UpdateAsync(entity, ct);
+        // PRIMARY WRITE — Task service (throws on failure)
+        var payload = BuildUpsertPayload(entity);
+        await _taskClient.UpsertGovernanceAsync(tenantId, actingUserId, payload, ct);
+
+        _logger.LogInformation(
+            "governance_write_owner=task_service Updated TenantId={TenantId} by UserId={UserId}",
+            tenantId, actingUserId);
 
         _audit.Publish(
             eventType:   "liens.task_governance.updated",
             action:      "update",
-            description: "Task governance settings updated",
+            description: "Task governance settings updated (Task service primary)",
             tenantId:    tenantId,
             actorUserId: actingUserId,
             entityType:  "LienTaskGovernanceSettings",
             entityId:    entity.Id.ToString());
 
-        _logger.LogInformation(
-            "Task governance settings updated for tenant {TenantId} by user {UserId}.", tenantId, actingUserId);
-
-        // Best-effort write-through to Task service
-        await TrySyncToTaskServiceAsync(tenantId, actingUserId, entity, expectedVersion: 0, ct);
+        // MIRROR — Liens DB best-effort rollback safety
+        await TryMirrorUpdateToLiensDbAsync(tenantId, entity, ct);
 
         return MapToResponse(entity);
     }
 
-    // ── Private helpers ──────────────────────────────────────────────────────────
+    // ── Read helper ──────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Calls the Task service governance endpoint and maps the response to the
-    /// Liens DTO. Returns null if no settings are found or the call fails.
-    /// Never throws — failures are logged and callers fall back to Liens DB.
-    /// </summary>
     private async Task<TaskGovernanceSettingsResponse?> TryFetchFromTaskServiceAsync(
         Guid tenantId, CancellationToken ct)
     {
@@ -189,87 +193,113 @@ public sealed class LienTaskGovernanceService : ILienTaskGovernanceService
             var extensions = DeserializeExtensions(dto.ProductSettingsJson);
 
             _logger.LogDebug(
-                "governance_source=task_service TenantId={TenantId}", tenantId);
+                "governance_read_owner=task_service TenantId={TenantId}", tenantId);
 
             return new TaskGovernanceSettingsResponse
             {
-                Id                       = dto.Id,
-                TenantId                 = dto.TenantId,
-                ProductCode              = ProductCode,
-                RequireAssigneeOnCreate  = dto.RequireAssignee,
-                RequireCaseLinkOnCreate  = extensions.RequireCaseLinkOnCreate,
-                AllowMultipleAssignees   = extensions.AllowMultipleAssignees,
+                Id                           = dto.Id,
+                TenantId                     = dto.TenantId,
+                ProductCode                  = ProductCode,
+                RequireAssigneeOnCreate      = dto.RequireAssignee,
+                RequireCaseLinkOnCreate      = extensions.RequireCaseLinkOnCreate,
+                AllowMultipleAssignees       = extensions.AllowMultipleAssignees,
                 RequireWorkflowStageOnCreate = dto.RequireStage,
-                DefaultStartStageMode    = extensions.DefaultStartStageMode,
-                ExplicitStartStageId     = extensions.ExplicitStartStageId,
-                Version                  = dto.Version,
-                LastUpdatedAt            = dto.UpdatedAtUtc,
-                LastUpdatedByUserId      = null,
-                LastUpdatedByName        = null,
-                LastUpdatedSource        = WorkflowUpdateSources.TaskServiceSync,
-                CreatedAtUtc             = dto.CreatedAtUtc,
-                UpdatedAtUtc             = dto.UpdatedAtUtc,
+                DefaultStartStageMode        = extensions.DefaultStartStageMode,
+                ExplicitStartStageId         = extensions.ExplicitStartStageId,
+                Version                      = dto.Version,
+                LastUpdatedAt                = dto.UpdatedAtUtc,
+                LastUpdatedByUserId          = null,
+                LastUpdatedByName            = null,
+                LastUpdatedSource            = WorkflowUpdateSources.TaskServiceSync,
+                CreatedAtUtc                 = dto.CreatedAtUtc,
+                UpdatedAtUtc                 = dto.UpdatedAtUtc,
             };
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "governance_source=task_service_error TenantId={TenantId}; falling back to Liens DB.",
+                "governance_read_owner=task_service_error TenantId={TenantId}; falling back to Liens DB.",
                 tenantId);
             return null;
         }
     }
 
-    /// <summary>
-    /// Serializes a <see cref="LienTaskGovernanceSettings"/> entity into a
-    /// <see cref="TaskServiceGovernanceUpsertRequest"/> and sends it to the Task service.
-    /// Failures are logged but not re-thrown — the Liens DB remains authoritative.
-    /// </summary>
-    private async System.Threading.Tasks.Task TrySyncToTaskServiceAsync(
-        Guid                      tenantId,
-        Guid                      actingUserId,
-        LienTaskGovernanceSettings entity,
-        int                       expectedVersion,
-        CancellationToken         ct)
+    // ── Mirror helpers (Liens DB rollback safety — non-authoritative) ─────────────
+
+    private async System.Threading.Tasks.Task TryMirrorCreateToLiensDbAsync(
+        Guid tenantId, LienTaskGovernanceSettings entity, CancellationToken ct)
     {
         try
         {
-            var extensions = new LiensGovernanceExtensions
-            {
-                RequireCaseLinkOnCreate = entity.RequireCaseLinkOnCreate,
-                AllowMultipleAssignees  = entity.AllowMultipleAssignees,
-                DefaultStartStageMode   = entity.DefaultStartStageMode,
-                ExplicitStartStageId    = entity.ExplicitStartStageId,
-            };
-
-            var payload = new TaskServiceGovernanceUpsertRequest
-            {
-                RequireAssignee           = entity.RequireAssigneeOnCreate,
-                RequireDueDate            = false,
-                RequireStage              = entity.RequireWorkflowStageOnCreate,
-                AllowUnassign             = true,
-                AllowCancel               = true,
-                AllowCompleteWithoutStage = !entity.RequireWorkflowStageOnCreate,
-                AllowNotesOnClosedTasks   = false,
-                DefaultPriority           = "MEDIUM",
-                DefaultTaskScope          = "GENERAL",
-                SourceProductCode         = ProductCode,
-                ExpectedVersion           = expectedVersion,
-                ProductSettingsJson       = JsonSerializer.Serialize(extensions, _json),
-            };
-
-            await _taskClient.UpsertGovernanceAsync(tenantId, actingUserId, payload, ct);
-
-            _logger.LogInformation(
-                "governance_sync=ok TenantId={TenantId}", tenantId);
+            await _repo.AddAsync(entity, ct);
+            _logger.LogDebug(
+                "governance_mirror_target=liens_db Create TenantId={TenantId}", tenantId);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "governance_sync=failed TenantId={TenantId}; Liens DB remains authoritative.",
+                "governance_mirror_target=liens_db_failed Create TenantId={TenantId}; "
+                + "Task service write succeeded — Liens DB mirror is non-authoritative.",
                 tenantId);
         }
     }
+
+    private async System.Threading.Tasks.Task TryMirrorUpdateToLiensDbAsync(
+        Guid tenantId, LienTaskGovernanceSettings entity, CancellationToken ct)
+    {
+        try
+        {
+            // Upsert pattern: if the entity doesn't exist in Liens DB yet (mirror drifted),
+            // check and add/update accordingly.
+            var existing = await _repo.GetByTenantProductAsync(tenantId, ProductCode, ct);
+            if (existing is null)
+                await _repo.AddAsync(entity, ct);
+            else
+                await _repo.UpdateAsync(entity, ct);
+
+            _logger.LogDebug(
+                "governance_mirror_target=liens_db Update TenantId={TenantId}", tenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "governance_mirror_target=liens_db_failed Update TenantId={TenantId}; "
+                + "Task service write succeeded — Liens DB mirror is non-authoritative.",
+                tenantId);
+        }
+    }
+
+    // ── Payload builder ──────────────────────────────────────────────────────────
+
+    private static TaskServiceGovernanceUpsertRequest BuildUpsertPayload(
+        LienTaskGovernanceSettings entity)
+    {
+        var extensions = new LiensGovernanceExtensions
+        {
+            RequireCaseLinkOnCreate = entity.RequireCaseLinkOnCreate,
+            AllowMultipleAssignees  = entity.AllowMultipleAssignees,
+            DefaultStartStageMode   = entity.DefaultStartStageMode,
+            ExplicitStartStageId    = entity.ExplicitStartStageId,
+        };
+
+        return new TaskServiceGovernanceUpsertRequest
+        {
+            RequireAssignee           = entity.RequireAssigneeOnCreate,
+            RequireDueDate            = false,
+            RequireStage              = entity.RequireWorkflowStageOnCreate,
+            AllowUnassign             = true,
+            AllowCancel               = true,
+            AllowCompleteWithoutStage = !entity.RequireWorkflowStageOnCreate,
+            AllowNotesOnClosedTasks   = false,
+            DefaultPriority           = "MEDIUM",
+            DefaultTaskScope          = "GENERAL",
+            SourceProductCode         = ProductCode,
+            ExpectedVersion           = 0,
+            ProductSettingsJson       = JsonSerializer.Serialize(extensions, _json),
+        };
+    }
+
+    // ── Mapping helpers ──────────────────────────────────────────────────────────
 
     private static LiensGovernanceExtensions DeserializeExtensions(string? json)
     {
@@ -290,21 +320,21 @@ public sealed class LienTaskGovernanceService : ILienTaskGovernanceService
     private static TaskGovernanceSettingsResponse MapToResponse(LienTaskGovernanceSettings e) =>
         new()
         {
-            Id                       = e.Id,
-            TenantId                 = e.TenantId,
-            ProductCode              = e.ProductCode,
-            RequireAssigneeOnCreate  = e.RequireAssigneeOnCreate,
-            RequireCaseLinkOnCreate  = e.RequireCaseLinkOnCreate,
-            AllowMultipleAssignees   = e.AllowMultipleAssignees,
+            Id                           = e.Id,
+            TenantId                     = e.TenantId,
+            ProductCode                  = e.ProductCode,
+            RequireAssigneeOnCreate      = e.RequireAssigneeOnCreate,
+            RequireCaseLinkOnCreate      = e.RequireCaseLinkOnCreate,
+            AllowMultipleAssignees       = e.AllowMultipleAssignees,
             RequireWorkflowStageOnCreate = e.RequireWorkflowStageOnCreate,
-            DefaultStartStageMode    = e.DefaultStartStageMode,
-            ExplicitStartStageId     = e.ExplicitStartStageId,
-            Version                  = e.Version,
-            LastUpdatedAt            = e.LastUpdatedAt,
-            LastUpdatedByUserId      = e.LastUpdatedByUserId,
-            LastUpdatedByName        = e.LastUpdatedByName,
-            LastUpdatedSource        = e.LastUpdatedSource,
-            CreatedAtUtc             = e.CreatedAtUtc,
-            UpdatedAtUtc             = e.UpdatedAtUtc,
+            DefaultStartStageMode        = e.DefaultStartStageMode,
+            ExplicitStartStageId         = e.ExplicitStartStageId,
+            Version                      = e.Version,
+            LastUpdatedAt                = e.LastUpdatedAt,
+            LastUpdatedByUserId          = e.LastUpdatedByUserId,
+            LastUpdatedByName            = e.LastUpdatedByName,
+            LastUpdatedSource            = e.LastUpdatedSource,
+            CreatedAtUtc                 = e.CreatedAtUtc,
+            UpdatedAtUtc                 = e.UpdatedAtUtc,
         };
 }
