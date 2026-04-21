@@ -5699,3 +5699,21 @@ CC `/monitoring` page showed "Monitoring unavailable — Health probe failed: 50
 
 ### Analysis
 Full root-cause analysis: `analysis/Monitoring/monitoring-500-report.md`
+
+## Per-Case Task Manager — Full Board/List/Filter Enhancement (2026-04-21)
+
+### Feature
+The Task Manager tab inside each case detail page now matches the main Task Manager page, replacing the previous basic list panel.
+
+### Changes
+
+- **`apps/web/src/components/lien/case-task-manager.tsx`** — New component `CaseTaskManager` (extracted to keep case-detail-client.tsx clean). Scoped to a single `caseId`. Features:
+  - Board / List view toggle
+  - KPI cards: Total, In Progress, Blocked, Overdue
+  - Filters: Search, Assignee (specific user dropdown), Status, Priority; Clear All button when filters active
+  - Board view: 4 kanban columns (New, In Progress, Waiting/Blocked, Completed) using `TaskCard` with `assigneeUser`
+  - List view: table with Title, Status, Priority, Assignee, Liens, Due, Updated (no redundant Case column)
+  - "New Task" pre-fills `prefillCaseId` + `prefillWorkflowStageId` from active workflow
+  - `TaskDetailDrawer` + `CreateEditTaskForm` for edit/status change
+
+- **`apps/web/src/app/(platform)/lien/cases/[id]/case-detail-client.tsx`** — `TaskManagerTab` now renders `CaseTaskManager` instead of `TaskPanel`. `TaskPanel` still used for the compact right-side panel (unchanged).

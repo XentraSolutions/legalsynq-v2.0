@@ -9,6 +9,7 @@ import { casesService, type CaseDetail, type CaseLienItem } from '@/lib/cases';
 import { ApiError } from '@/lib/api-client';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { TaskPanel } from '@/components/lien/task-panel';
+import { CaseTaskManager } from '@/components/lien/case-task-manager';
 
 import { ConfirmDialog } from '@/components/lien/modal';
 import { LayoutSplit, type PanelMode } from '@/components/lien/layout-split';
@@ -2118,10 +2119,9 @@ function TaskManagerTab({ caseDetail }: { caseDetail: CaseDetail }) {
   }, [caseDetail.id, active?.workflowInstanceId]);
 
   return (
-    <TaskPanel
+    <CaseTaskManager
       caseId={caseDetail.id}
       workflowStageId={workflowDetail?.currentStageId ?? undefined}
-      title="Task Manager"
     />
   );
 }
