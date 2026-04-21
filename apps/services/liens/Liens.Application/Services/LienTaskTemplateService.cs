@@ -8,14 +8,33 @@ using Microsoft.Extensions.Logging;
 
 namespace Liens.Application.Services;
 
+/// <summary>
+/// TASK-MIG-07 — Template Ownership Flip (Liens → Task).
+///
+/// Write authority : Task service (primary). All admin writes go to Task service first.
+///                  Liens DB receives a best-effort mirror write for rollback safety only.
+///                  A failed Task service write is fatal (not swallowed); a failed Liens
+///                  mirror write is logged and tolerated.
+///
+/// Read authority  : Task service (primary) for admin list/get-by-id, generation, and
+///                  contextual reads. Liens DB fallback retained for resilience only.
+///                  template_write_owner=task_service / template_read_owner=task_service
+///
+/// Startup sync    : LiensTemplateSyncService (Liens→Task direction) is DISABLED post-MIG-07.
+///                  It would overwrite Task-owned data with stale Liens DB copies.
+///
+/// Rollback        : Re-enable Liens DB as primary write target in CreateAsync/UpdateAsync/
+///                  ActivateAsync/DeactivateAsync, and re-enable LiensTemplateSyncService
+///                  registration in DependencyInjection.cs.
+/// </summary>
 public sealed class LienTaskTemplateService : ILienTaskTemplateService
 {
-    private const string ProductCode = "SYNQ_LIENS";
-    private const string DefaultScope = "GENERAL";
+    private const string ProductCode   = "SYNQ_LIENS";
+    private const string DefaultScope  = "GENERAL";
 
-    private readonly ILienTaskTemplateRepository     _repo;
-    private readonly ILiensTaskServiceClient         _taskClient;
-    private readonly IAuditPublisher                 _audit;
+    private readonly ILienTaskTemplateRepository      _repo;
+    private readonly ILiensTaskServiceClient          _taskClient;
+    private readonly IAuditPublisher                  _audit;
     private readonly ILogger<LienTaskTemplateService> _logger;
 
     public LienTaskTemplateService(
@@ -30,11 +49,33 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         _logger     = logger;
     }
 
-    // ── Admin / tenant reads (always Liens DB — no dual-read for admin) ───────────
+    // ── TASK-MIG-07 — Admin reads: Task service primary, Liens DB fallback ────────
 
     public async Task<List<TaskTemplateResponse>> GetByTenantAsync(
         Guid tenantId, CancellationToken ct = default)
     {
+        try
+        {
+            var all = await _taskClient.GetAllTemplatesAsync(tenantId, ProductCode, ct);
+            if (all.Count > 0)
+            {
+                _logger.LogDebug(
+                    "template_read_owner=task_service GetByTenant TenantId={TenantId} Count={Count}",
+                    tenantId, all.Count);
+                return all.Select(MapFromTaskServiceDto).ToList();
+            }
+
+            _logger.LogDebug(
+                "template_read_owner=liens_db_fallback GetByTenant TenantId={TenantId} (Task service returned 0 templates)",
+                tenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "template_read_owner=liens_db_fallback GetByTenant TenantId={TenantId} (Task service error)",
+                tenantId);
+        }
+
         var list = await _repo.GetByTenantAsync(tenantId, ct);
         return list.Select(MapToResponse).ToList();
     }
@@ -42,10 +83,8 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
     public async Task<List<TaskTemplateResponse>> GetContextualAsync(
         Guid tenantId, string? contextType, Guid? workflowStageId, CancellationToken ct = default)
     {
-        // TASK-MIG-05 — dual-read for contextual UI filter.
+        // TASK-MIG-05 — dual-read for contextual UI filter (unchanged).
         // Task service is primary; Liens DB is fallback.
-        // The Task service has no server-side contextType/stageId filter, so we
-        // fetch all active Liens templates and apply the filter in-process.
         var fromTask = await TryGetContextualFromTaskServiceAsync(tenantId, contextType, workflowStageId, ct);
         if (fromTask is not null)
         {
@@ -63,15 +102,6 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         return list.Select(MapToResponse).ToList();
     }
 
-    /// <summary>
-    /// TASK-MIG-05 — Fetches all active Liens templates from Task service and applies the
-    /// same contextual filter logic as <see cref="LienTaskTemplateRepository.GetActiveByTenantAsync"/>.
-    /// Returns null (triggering Liens DB fallback) when Task service returns zero templates
-    /// (data not yet synced) or on any transient error.
-    /// Returns an empty list only when Task service has templates but none match the filter —
-    /// which is the correct answer and avoids an unnecessary fallback.
-    /// Stage IDs are safe to compare directly: MIG-03 preserved stage GUIDs verbatim.
-    /// </summary>
     private async Task<List<TaskTemplateResponse>?> TryGetContextualFromTaskServiceAsync(
         Guid    tenantId,
         string? contextType,
@@ -82,7 +112,6 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         {
             var all = await _taskClient.GetAllTemplatesAsync(tenantId, ProductCode, ct);
 
-            // Empty response = Task service not yet populated → fall back to Liens DB
             if (all.Count == 0)
             {
                 _logger.LogDebug(
@@ -91,7 +120,6 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
                 return null;
             }
 
-            // Apply same contextual filter logic as LienTaskTemplateRepository.GetActiveByTenantAsync
             var filtered = all
                 .Select(dto => new { dto, ext = LiensTemplateExtensions.Deserialize(dto.ProductSettingsJson) })
                 .Where(x => IsContextualMatch(x.dto, x.ext, contextType, workflowStageId))
@@ -111,23 +139,13 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         }
     }
 
-    /// <summary>
-    /// Mirrors the WHERE clause from <see cref="LienTaskTemplateRepository.GetActiveByTenantAsync"/>.
-    /// A template passes the contextual filter when:
-    ///  - no contextType filter is requested (all active templates pass), OR
-    ///  - ContextType is GENERAL, OR
-    ///  - ContextType matches the requested contextType, OR
-    ///  - ContextType is STAGE and ApplicableWorkflowStageId matches the requested stageId.
-    /// </summary>
     private static bool IsContextualMatch(
         TaskServiceTemplateResponse dto,
         LiensTemplateExtensions     ext,
         string?                     contextType,
         Guid?                       workflowStageId)
     {
-        // Must be active (Task service list endpoint already filters by activeOnly=true)
         if (!dto.IsActive) return false;
-
         if (string.IsNullOrWhiteSpace(contextType)) return true;
 
         var ct2 = ext.ContextType;
@@ -138,25 +156,46 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
                 && ext.ApplicableWorkflowStageId == workflowStageId);
     }
 
-    /// <summary>
-    /// Mirrors the OrderBy from <see cref="LienTaskTemplateRepository.GetActiveByTenantAsync"/>:
-    /// STAGE-contextual first (0), then exact contextType match (1), then catch-all (2).
-    /// </summary>
     private static int ContextualSortOrder(string ctxType, string? requestedContextType)
     {
-        if (ctxType == TaskTemplateContextType.Stage)    return 0;
-        if (ctxType == requestedContextType)             return 1;
+        if (ctxType == TaskTemplateContextType.Stage)  return 0;
+        if (ctxType == requestedContextType)           return 1;
         return 2;
     }
 
+    /// <summary>
+    /// TASK-MIG-07 — Admin get-by-id: Task service primary, Liens DB fallback.
+    /// </summary>
     public async Task<TaskTemplateResponse?> GetByIdAsync(
         Guid tenantId, Guid id, CancellationToken ct = default)
     {
+        try
+        {
+            var dto = await _taskClient.GetTemplateAsync(tenantId, id, ct);
+            if (dto is not null)
+            {
+                _logger.LogDebug(
+                    "template_read_owner=task_service GetById TemplateId={TemplateId} TenantId={TenantId}",
+                    id, tenantId);
+                return MapFromTaskServiceDto(dto);
+            }
+
+            _logger.LogDebug(
+                "template_read_owner=liens_db_fallback GetById TemplateId={TemplateId} TenantId={TenantId} (not found in Task service)",
+                id, tenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "template_read_owner=liens_db_fallback GetById TemplateId={TemplateId} TenantId={TenantId} (Task service error)",
+                id, tenantId);
+        }
+
         var entity = await _repo.GetByIdAsync(tenantId, id, ct);
         return entity is null ? null : MapToResponse(entity);
     }
 
-    // ── TASK-MIG-02 — Dual-read for generation engine ────────────────────────────
+    // ── TASK-MIG-02 — Dual-read for generation engine (unchanged) ─────────────────
 
     public async Task<TaskTemplateResponse?> GetForGenerationAsync(
         Guid tenantId, Guid id, CancellationToken ct = default)
@@ -199,8 +238,14 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         }
     }
 
-    // ── Write operations (Liens DB authoritative + best-effort Task sync) ─────────
+    // ── TASK-MIG-07 — Write operations: Task service PRIMARY, Liens DB mirror ──────
 
+    /// <summary>
+    /// TASK-MIG-07: Write to Task service first (primary owner). Mirror to Liens DB best-effort.
+    /// A Task service write failure throws — not swallowed.
+    /// A Liens DB mirror failure is logged and tolerated.
+    /// template_write_owner=task_service
+    /// </summary>
     public async Task<TaskTemplateResponse> CreateAsync(
         Guid tenantId, Guid actingUserId, CreateTaskTemplateRequest request, CancellationToken ct = default)
     {
@@ -208,6 +253,8 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         if (errors.Count > 0)
             throw new ValidationException("Validation failed.", errors);
 
+        // Build the domain entity in-memory to validate fields and generate a stable ID.
+        // The entity is NOT saved to Liens DB first (ownership flip).
         var entity = LienTaskTemplate.Create(
             tenantId:                  tenantId,
             name:                      request.Name,
@@ -223,27 +270,38 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
             applicableWorkflowStageId: request.ApplicableWorkflowStageId,
             updatedByName:             request.UpdatedByName);
 
-        await _repo.AddAsync(entity, ct);
+        // PRIMARY WRITE — Task service
+        var payload = MapToUpsertPayload(entity);
+        await _taskClient.UpsertTemplateFromSourceAsync(tenantId, actingUserId, payload, ct);
 
-        _logger.LogInformation("TaskTemplate created: {TemplateId} Tenant={TenantId}", entity.Id, tenantId);
+        _logger.LogInformation(
+            "template_write_owner=task_service Created TemplateId={TemplateId} TenantId={TenantId}",
+            entity.Id, tenantId);
 
         _audit.Publish(
             eventType:   "liens.task_template.created",
             action:      "create",
-            description: $"Task template '{entity.Name}' created from {request.UpdateSource}",
+            description: $"Task template '{entity.Name}' created (Task service primary)",
             tenantId:    tenantId,
             actorUserId: actingUserId,
             entityType:  "LienTaskTemplate",
             entityId:    entity.Id.ToString());
 
-        await TrySyncToTaskServiceAsync(tenantId, actingUserId, entity, "template_sync_create");
+        // MIRROR — Liens DB (best-effort rollback safety)
+        await TryMirrorCreateToLiensDbAsync(tenantId, entity, ct);
 
         return MapToResponse(entity);
     }
 
+    /// <summary>
+    /// TASK-MIG-07: Task service primary write. Liens entity is still loaded for version
+    /// conflict detection (transitional — Liens version is the client-visible version).
+    /// template_write_owner=task_service
+    /// </summary>
     public async Task<TaskTemplateResponse> UpdateAsync(
         Guid tenantId, Guid id, Guid actingUserId, UpdateTaskTemplateRequest request, CancellationToken ct = default)
     {
+        // Load from Liens DB for version check (transitional authority for optimistic concurrency).
         var entity = await RequireTemplate(tenantId, id, ct);
 
         if (entity.Version != request.Version)
@@ -255,6 +313,7 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         if (errors.Count > 0)
             throw new ValidationException("Validation failed.", errors);
 
+        // Apply changes in-memory (not saved to Liens DB yet).
         entity.Update(
             name:                      request.Name,
             description:               request.Description,
@@ -270,24 +329,33 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
             expectedVersion:           request.Version,
             updatedByName:             request.UpdatedByName);
 
-        await _repo.UpdateAsync(entity, ct);
+        // PRIMARY WRITE — Task service
+        var payload = MapToUpsertPayload(entity);
+        await _taskClient.UpsertTemplateFromSourceAsync(tenantId, actingUserId, payload, ct);
 
-        _logger.LogInformation("TaskTemplate updated: {TemplateId} Tenant={TenantId}", entity.Id, tenantId);
+        _logger.LogInformation(
+            "template_write_owner=task_service Updated TemplateId={TemplateId} TenantId={TenantId}",
+            entity.Id, tenantId);
 
         _audit.Publish(
             eventType:   "liens.task_template.updated",
             action:      "update",
-            description: $"Task template '{entity.Name}' updated from {request.UpdateSource}",
+            description: $"Task template '{entity.Name}' updated (Task service primary)",
             tenantId:    tenantId,
             actorUserId: actingUserId,
             entityType:  "LienTaskTemplate",
             entityId:    entity.Id.ToString());
 
-        await TrySyncToTaskServiceAsync(tenantId, actingUserId, entity, "template_sync_update");
+        // MIRROR — Liens DB (best-effort rollback safety)
+        await TryMirrorUpdateToLiensDbAsync(tenantId, entity, ct);
 
         return MapToResponse(entity);
     }
 
+    /// <summary>
+    /// TASK-MIG-07: Task service primary write for activate.
+    /// template_write_owner=task_service
+    /// </summary>
     public async Task<TaskTemplateResponse> ActivateAsync(
         Guid tenantId, Guid id, Guid actingUserId, ActivateDeactivateTemplateRequest request, CancellationToken ct = default)
     {
@@ -297,23 +365,36 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
             throw new ValidationException("Validation failed.",
                 new Dictionary<string, string[]> { { "updateSource", [$"Invalid updateSource '{request.UpdateSource}'."] } });
 
+        // Apply change in-memory (not saved to Liens DB yet).
         entity.Activate(actingUserId, request.UpdateSource, request.UpdatedByName);
-        await _repo.UpdateAsync(entity, ct);
+
+        // PRIMARY WRITE — Task service
+        var payload = MapToUpsertPayload(entity);
+        await _taskClient.UpsertTemplateFromSourceAsync(tenantId, actingUserId, payload, ct);
+
+        _logger.LogInformation(
+            "template_write_owner=task_service Activated TemplateId={TemplateId} TenantId={TenantId}",
+            entity.Id, tenantId);
 
         _audit.Publish(
             eventType:   "liens.task_template.activated",
             action:      "activate",
-            description: $"Task template '{entity.Name}' activated",
+            description: $"Task template '{entity.Name}' activated (Task service primary)",
             tenantId:    tenantId,
             actorUserId: actingUserId,
             entityType:  "LienTaskTemplate",
             entityId:    entity.Id.ToString());
 
-        await TrySyncToTaskServiceAsync(tenantId, actingUserId, entity, "template_sync_activate");
+        // MIRROR — Liens DB (best-effort rollback safety)
+        await TryMirrorUpdateToLiensDbAsync(tenantId, entity, ct);
 
         return MapToResponse(entity);
     }
 
+    /// <summary>
+    /// TASK-MIG-07: Task service primary write for deactivate.
+    /// template_write_owner=task_service
+    /// </summary>
     public async Task<TaskTemplateResponse> DeactivateAsync(
         Guid tenantId, Guid id, Guid actingUserId, ActivateDeactivateTemplateRequest request, CancellationToken ct = default)
     {
@@ -323,42 +404,69 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
             throw new ValidationException("Validation failed.",
                 new Dictionary<string, string[]> { { "updateSource", [$"Invalid updateSource '{request.UpdateSource}'."] } });
 
+        // Apply change in-memory (not saved to Liens DB yet).
         entity.Deactivate(actingUserId, request.UpdateSource, request.UpdatedByName);
-        await _repo.UpdateAsync(entity, ct);
+
+        // PRIMARY WRITE — Task service
+        var payload = MapToUpsertPayload(entity);
+        await _taskClient.UpsertTemplateFromSourceAsync(tenantId, actingUserId, payload, ct);
+
+        _logger.LogInformation(
+            "template_write_owner=task_service Deactivated TemplateId={TemplateId} TenantId={TenantId}",
+            entity.Id, tenantId);
 
         _audit.Publish(
             eventType:   "liens.task_template.deactivated",
             action:      "deactivate",
-            description: $"Task template '{entity.Name}' deactivated",
+            description: $"Task template '{entity.Name}' deactivated (Task service primary)",
             tenantId:    tenantId,
             actorUserId: actingUserId,
             entityType:  "LienTaskTemplate",
             entityId:    entity.Id.ToString());
 
-        await TrySyncToTaskServiceAsync(tenantId, actingUserId, entity, "template_sync_deactivate");
+        // MIRROR — Liens DB (best-effort rollback safety)
+        await TryMirrorUpdateToLiensDbAsync(tenantId, entity, ct);
 
         return MapToResponse(entity);
     }
 
-    // ── Write-through sync ────────────────────────────────────────────────────────
+    // ── Mirror helpers (Liens DB rollback safety — non-authoritative) ─────────────
 
-    private async Task TrySyncToTaskServiceAsync(
-        Guid tenantId, Guid actingUserId, LienTaskTemplate entity, string operation)
+    private async Task TryMirrorCreateToLiensDbAsync(
+        Guid tenantId, LienTaskTemplate entity, CancellationToken ct)
     {
         try
         {
-            var payload = MapToUpsertPayload(entity);
-            await _taskClient.UpsertTemplateFromSourceAsync(tenantId, actingUserId, payload);
+            await _repo.AddAsync(entity, ct);
             _logger.LogDebug(
-                "template_sync=ok Operation={Operation} TemplateId={TemplateId} TenantId={TenantId}",
-                operation, entity.Id, tenantId);
+                "template_mirror_target=liens_db Create TemplateId={TemplateId} TenantId={TenantId}",
+                entity.Id, tenantId);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "template_sync=failed Operation={Operation} TemplateId={TemplateId} TenantId={TenantId}; "
-                + "startup sync will reconcile.",
-                operation, entity.Id, tenantId);
+                "template_mirror_target=liens_db_failed Create TemplateId={TemplateId} TenantId={TenantId}; "
+                + "Task service write succeeded — Liens DB mirror is non-authoritative.",
+                entity.Id, tenantId);
+        }
+    }
+
+    private async Task TryMirrorUpdateToLiensDbAsync(
+        Guid tenantId, LienTaskTemplate entity, CancellationToken ct)
+    {
+        try
+        {
+            await _repo.UpdateAsync(entity, ct);
+            _logger.LogDebug(
+                "template_mirror_target=liens_db Update TemplateId={TemplateId} TenantId={TenantId}",
+                entity.Id, tenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "template_mirror_target=liens_db_failed Update TemplateId={TemplateId} TenantId={TenantId}; "
+                + "Task service write succeeded — Liens DB mirror is non-authoritative.",
+                entity.Id, tenantId);
         }
     }
 
@@ -387,6 +495,13 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         return errors;
     }
 
+    // ── Mapping ───────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds the Task service upsert payload from a Liens domain entity.
+    /// Liens-specific fields (ContextType, ApplicableWorkflowStageId, DefaultRoleId)
+    /// are packed into ProductSettingsJson.
+    /// </summary>
     public static TaskServiceTemplateUpsertRequest MapToUpsertPayload(LienTaskTemplate entity)
     {
         var ext = new LiensTemplateExtensions

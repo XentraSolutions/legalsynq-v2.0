@@ -85,8 +85,11 @@ public static class DependencyInjection
         services.AddSingleton<LiensGovernanceSyncService>();
         services.AddHostedService(sp => sp.GetRequiredService<LiensGovernanceSyncService>());
 
-        // TASK-MIG-02 — startup template sync: copies liens_TaskTemplates rows
-        // into tasks_Templates on every startup. Idempotent; best-effort.
+        // TASK-MIG-07 — LiensTemplateSyncService DISABLED (Liens→Task direction suppressed).
+        // Task service is now the primary write owner for templates (MIG-07 ownership flip).
+        // The service is still registered so that rollback only requires un-suppressing
+        // ExecuteAsync in LiensTemplateSyncService.cs — no DI change needed.
+        // Rollback: revert LienTaskTemplateService write order AND un-suppress ExecuteAsync.
         services.AddSingleton<LiensTemplateSyncService>();
         services.AddHostedService(sp => sp.GetRequiredService<LiensTemplateSyncService>());
 

@@ -1,85 +1,45 @@
-using Liens.Application.Repositories;
-using Liens.Application.Services;
-using Liens.Application.Interfaces;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Liens.Infrastructure.TaskService;
 
 /// <summary>
-/// TASK-MIG-02 — Startup sync service that copies all liens_TaskTemplates rows
-/// into tasks_Templates (Task service) on every host startup.
+/// TASK-MIG-07 — DISABLED.
 ///
-/// Rules:
-///   - Runs once, 5 seconds after startup, then exits.
-///   - Idempotent — uses the Task service upsert-from-source endpoint.
-///   - Per-template errors are logged and skipped; the loop continues.
-///   - Does NOT modify or delete liens_TaskTemplates.
-///   - Uses system migration user 00000000-0000-0000-0000-000000000001.
+/// This service previously synced all liens_TaskTemplates rows into the Task service
+/// (Liens → Task direction) on every host startup. That direction is now WRONG:
+/// after the MIG-07 ownership flip, the Task service is the primary write owner for
+/// templates. Running this sync would overwrite Task-owned edits with stale Liens DB data.
+///
+/// The class is retained (not deleted) for two reasons:
+///  1. Rollback safety — re-registering it as a HostedService in DependencyInjection.cs
+///     immediately restores the pre-MIG-07 startup sync behavior with zero code change.
+///  2. Reference — it documents the prior sync direction and the upsert payload shape.
+///
+/// Rollback instructions:
+///  - In DependencyInjection.cs, uncomment the two LiensTemplateSyncService registrations.
+///  - Revert LienTaskTemplateService.cs write methods to Liens-DB-primary.
+///
+/// Future cleanup (post MIG-08 or when liens_TaskTemplates is dropped):
+///  - Delete this file and remove the registration comment from DependencyInjection.cs.
 /// </summary>
 public sealed class LiensTemplateSyncService : BackgroundService
 {
-    private static readonly Guid SystemUserId =
-        new("00000000-0000-0000-0000-000000000001");
+    private readonly ILogger<LiensTemplateSyncService> _logger;
 
-    private readonly IServiceScopeFactory                   _scopeFactory;
-    private readonly ILogger<LiensTemplateSyncService>      _logger;
-
-    public LiensTemplateSyncService(
-        IServiceScopeFactory scopeFactory,
-        ILogger<LiensTemplateSyncService> logger)
+    public LiensTemplateSyncService(ILogger<LiensTemplateSyncService> logger)
     {
-        _scopeFactory = scopeFactory;
-        _logger       = logger;
+        _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override System.Threading.Tasks.Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-
-        _logger.LogInformation("TASK-MIG-02: template sync starting.");
-
-        using var scope = _scopeFactory.CreateScope();
-        var repo        = scope.ServiceProvider.GetRequiredService<ILienTaskTemplateRepository>();
-        var taskClient  = scope.ServiceProvider.GetRequiredService<ILiensTaskServiceClient>();
-
-        List<Liens.Domain.Entities.LienTaskTemplate> templates;
-        try
-        {
-            templates = await repo.GetAllAsync(stoppingToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "TASK-MIG-02: failed to load templates from Liens DB; aborting sync.");
-            return;
-        }
-
-        int created = 0, updated = 0, errors = 0;
-
-        foreach (var entity in templates)
-        {
-            try
-            {
-                var existing = await taskClient.GetTemplateAsync(entity.TenantId, entity.Id, stoppingToken);
-                var payload  = LienTaskTemplateService.MapToUpsertPayload(entity);
-
-                await taskClient.UpsertTemplateFromSourceAsync(entity.TenantId, SystemUserId, payload, stoppingToken);
-
-                if (existing is null) created++;
-                else                  updated++;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex,
-                    "TASK-MIG-02: failed to sync TemplateId={TemplateId} TenantId={TenantId}; skipping.",
-                    entity.Id, entity.TenantId);
-                errors++;
-            }
-        }
-
+        // TASK-MIG-07: sync intentionally disabled.
+        // Task service is now the primary write owner for templates.
+        // Running Liens→Task sync would overwrite Task-owned data.
         _logger.LogInformation(
-            "TASK-MIG-02: sync complete — created={Created} updated={Updated} errors={Errors}",
-            created, updated, errors);
+            "TASK-MIG-07: LiensTemplateSyncService is DISABLED (template_write_owner=task_service). "
+            + "Liens→Task startup sync suppressed to protect Task-owned template data.");
+        return System.Threading.Tasks.Task.CompletedTask;
     }
 }
