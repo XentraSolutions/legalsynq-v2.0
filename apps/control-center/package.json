@@ -10,6 +10,8 @@
     "test": "tsx --test src/lib/__tests__/*.test.ts"
   },
   "dependencies": {
+    "@types/dompurify": "^3.0.5",
+    "dompurify": "^3.4.1",
     "next": "15.2.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

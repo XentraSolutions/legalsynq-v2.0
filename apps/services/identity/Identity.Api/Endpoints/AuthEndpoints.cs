@@ -629,9 +629,6 @@ public static class AuthEndpoints
             if (tenant is null)
             {
                 logger.LogWarning("[forgot-password] Tenant not found for code={TenantCode}", body.TenantCode);
-                var allTenants = await db.Tenants.Select(t => new { t.Code, t.IsActive }).ToListAsync(ct);
-                logger.LogInformation("[forgot-password] Available tenants: {Tenants}",
-                    string.Join(", ", allTenants.Select(t => $"{t.Code}(active={t.IsActive})")));
                 return Results.Ok(new { message = "If an account exists with that email, a password reset link has been generated." });
             }
 

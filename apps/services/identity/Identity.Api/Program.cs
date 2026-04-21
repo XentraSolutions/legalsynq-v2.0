@@ -438,6 +438,16 @@ if (app.Environment.IsDevelopment())
 }
 
 // ── Middleware pipeline ───────────────────────────────────────────────────
+// Security headers
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    ctx.Response.Headers["X-Frame-Options"]        = "DENY";
+    ctx.Response.Headers["X-XSS-Protection"]       = "0";
+    ctx.Response.Headers["Referrer-Policy"]        = "strict-origin-when-cross-origin";
+    await next();
+});
+
 // UseAuthentication + UseAuthorization must precede all endpoint maps
 app.UseAuthentication();
 app.UseAuthorization();
