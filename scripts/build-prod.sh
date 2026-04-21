@@ -74,6 +74,7 @@ if command -v dotnet &>/dev/null; then
   build_service "Notifications" "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
   build_service "Liens"         "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj"
   build_service "Flow API"      "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj"
+  build_service "Monitoring"    "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj"
 
   if [ "$DOTNET_FAIL" -gt 0 ]; then
     echo "[dotnet] WARNING: $DOTNET_FAIL service(s) failed to build"

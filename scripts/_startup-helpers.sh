@@ -22,6 +22,7 @@ _svc_label_for() {
     CareConnect.Api)           echo "CareConnect" ;;
     Documents.Api)             echo "Documents" ;;
     Liens.Api)                 echo "Liens" ;;
+    Monitoring.Api)            echo "Monitoring" ;;
     *)                         echo "$svc_name" ;;
   esac
 }

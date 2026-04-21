@@ -29,54 +29,41 @@
 
 ### 2.2 Production environment
 
-- Production deployment logs consistently show `Connection refused (localhost:5015)` within seconds of startup and continue for **49+ minutes**:
+- Production deployment logs consistently show `Connection refused (localhost:5015)` within seconds of startup and continue indefinitely:
   ```
   System.Net.Http.HttpRequestException: Connection refused (localhost:5015)
   ```
 - Gateway returns HTTP 502 for all monitoring-prefixed routes → BFF `fetchRollups` throws → `catch` block → returns `{components: []}`.
-- **Zero monitoring service startup logs appear in production** — not even `MonitoringMigrations: applying pending EF Core migrations` — indicating the process exits silently before logging initialises.
-- The [monitoring-source] fallback correctly degrades the monitoring **summary** page, but the uptime BFF has no equivalent fallback — it silently returns empty.
+- **Zero monitoring service startup logs appear in production** — not even the `[monitoring]` echo added to `run-dev.sh` — because **production uses a completely separate script** (`scripts/run-prod.sh`), not `run-dev.sh`.
+- Investigating `scripts/run-prod.sh` (the real production entry point, confirmed by `.replit` `[deployment] run = ["bash", "scripts/run-prod.sh"]`) revealed:
+  - The monitoring service (`Monitoring.Api.csproj`) was **entirely absent from `BUILD_PROJECTS`** — the array that controls which services are built and launched in production.
+  - `MONITORING_SOURCE` was **not set** for the control center process — so even if monitoring were running, the BFF would fall through the `if (MONITORING_SOURCE !== 'service') return empty` guard and return empty bars.
 
-### 2.3 Secrets and configuration
+### 2.3 Root cause confirmation
 
-| Config item | Dev | Production | Match? |
-|---|---|---|---|
-| `MONITORING_SOURCE` | `service` (set in run-dev.sh line 22) | `service` (same run-dev.sh) | ✓ |
-| `ConnectionStrings__MonitoringDb` | RDS MySQL (env secret) | Same secret | ✓ |
-| `ASPNETCORE_URLS` | Not globally set | Not globally set | ✓ |
-| Monitoring service port | 5015 (appsettings.json) | 5015 (same file) | ✓ |
-| Port conflict with other services | None (5001–5003, 5007–5012) | Same | ✓ |
-| `ASPNETCORE_ENVIRONMENT` | `Development` (run-dev.sh line 51) | `Development` (same line) | ✓ |
-
-### 2.4 Build chain analysis
-
-The monitoring service IS part of `LegalSynq.sln` and IS built by the solution build step:
+The `run-prod.sh` `BUILD_PROJECTS` array (before the fix):
+```bash
+"$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj"
+"$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj"
+...
+"$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj"
+# Monitoring.Api.csproj ← MISSING
+"$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
 ```
-dotnet build LegalSynq.sln --no-restore --configuration Debug --verbosity quiet
-```
-followed by a redundant standalone build:
-```
-dotnet build Monitoring.Api.csproj --no-restore --configuration Debug --verbosity quiet
-```
-Both runs use `--verbosity quiet`, silencing any warnings or soft errors.
-
-The service is then started with:
-```
-ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project Monitoring.Api.csproj &
-```
-`--no-build` requires the binary to already exist and be valid. If the binary is stale, ABI-mismatched, or the runtime can't load it in the production container, the process exits immediately with no log output (crash happens before logging is configured).
+All other services are present. Monitoring was simply never added when the production startup script was created.  
+`scripts/build-prod.sh` also lacked a `build_service "Monitoring"` call, so no Release binary was produced during the production build phase.
 
 ---
 
 ## 3. Root Cause Analysis
 
-### Root Cause A — Monitoring service not running in production (PRIMARY)
+### Root Cause A — Monitoring service never started in production (PRIMARY)
 
-The monitoring service process crashes before its logging pipeline is initialised, producing zero log output. Possible sub-causes (ordered by likelihood):
+`scripts/run-prod.sh` is the actual production entrypoint (`[deployment] run = ["bash", "scripts/run-prod.sh"]` in `.replit`). The monitoring service (`Monitoring.Api.csproj`) was completely absent from the `BUILD_PROJECTS` array in both:
+- `scripts/build-prod.sh` — no Release binary was built during `docker build` / Replit build phase.
+- `scripts/run-prod.sh` — no `launch_svc` call was ever made; port 5015 was never bound.
 
-1. **Binary produced by solution build is invalid for production runtime** — the `dotnet run --no-build` flag requires a pre-built binary that is correct for the current host. If the binary was produced by the solution build but `dotnet run --no-build` for the standalone project cannot resolve it (different intermediate output path, missing publish-time files), the process aborts before `WebApplication.CreateBuilder` runs.
-2. **DI startup exception swallowed as background process** — an uncaught `InvalidOperationException` during `AddInfrastructure` or `AddMonitoringAuthentication` (e.g., missing config key in the production environment) crashes the process. Since the process is started with `&`, its stderr is not captured with any prefix that makes it identifiable in the combined log stream.
-3. **Runtime library mismatch** — production container may use a slightly different .NET 8 patch version or native library set that makes the pre-compiled binary unloadable.
+All changes made to `scripts/run-dev.sh` in the earlier session (restart wrapper, `[monitoring]` prefix) had no effect in production because the dev script is not used there.
 
 ### Root Cause B — Uptime BFF silent empty fallback (SECONDARY)
 
