@@ -43,17 +43,21 @@ public static class DependencyInjection
         // Execution engine repositories
         services.AddScoped<ITaskStageRepository,           TaskStageRepository>();
         services.AddScoped<ITaskStageTransitionRepository, TaskStageTransitionRepository>();
-        services.AddScoped<ITaskGovernanceRepository,  TaskGovernanceRepository>();
-        services.AddScoped<ITaskTemplateRepository,    TaskTemplateRepository>();
-        services.AddScoped<ITaskReminderRepository,    TaskReminderRepository>();
+        services.AddScoped<ITaskGovernanceRepository,      TaskGovernanceRepository>();
+        services.AddScoped<ITaskTemplateRepository,        TaskTemplateRepository>();
+        services.AddScoped<ITaskReminderRepository,        TaskReminderRepository>();
 
         // Application services
-        services.AddScoped<ITaskGovernanceService, TaskGovernanceService>();
+        services.AddScoped<ITaskGovernanceService,      TaskGovernanceService>();
         services.AddScoped<ITaskStageService,           TaskStageService>();
         services.AddScoped<ITaskStageTransitionService, TaskStageTransitionService>();
-        services.AddScoped<ITaskTemplateService,   TaskTemplateService>();
-        services.AddScoped<ITaskReminderService,   TaskReminderService>();
-        services.AddScoped<ITaskService,           TaskService>();
+        services.AddScoped<ITaskTemplateService,        TaskTemplateService>();
+        services.AddScoped<ITaskReminderService,        TaskReminderService>();
+        services.AddScoped<ITaskService,                TaskService>();
+
+        // TASK-FLOW-04 — analytics service + repository
+        services.AddScoped<ITaskAnalyticsRepository, TaskAnalyticsRepository>();
+        services.AddScoped<ITaskAnalyticsService,    TaskAnalyticsService>();
 
         // Audit integration — LegalSynq.AuditClient pattern
         services.AddAuditEventClient(configuration);

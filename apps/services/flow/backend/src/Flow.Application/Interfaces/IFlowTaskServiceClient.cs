@@ -162,4 +162,82 @@ public interface IFlowTaskServiceClient
     /// Returns <c>null</c> when the task is not found (404).
     /// </summary>
     Task<TaskServiceTaskDto?> GetTaskByIdAsync(Guid taskId, CancellationToken ct = default);
+
+    // ── Read: analytics (TASK-FLOW-04) ────────────────────────────────────────
+
+    /// <summary>
+    /// TASK-FLOW-04 — Returns pre-computed SLA analytics for <paramref name="tenantId"/>
+    /// from the Task service. Replaces the <c>_db.WorkflowTasks</c> queries in
+    /// <c>FlowAnalyticsService.GetSlaSummaryAsync</c>.
+    /// </summary>
+    Task<TaskSlaAnalyticsResult> GetSlaAnalyticsAsync(
+        Guid      tenantId,
+        DateTime  windowStart,
+        DateTime  windowEnd,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// TASK-FLOW-04 — Returns pre-computed queue and workload analytics for
+    /// <paramref name="tenantId"/>. Replaces <c>GetQueueSummaryAsync</c> shadow reads.
+    /// </summary>
+    Task<TaskQueueAnalyticsResult> GetQueueAnalyticsAsync(
+        Guid tenantId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// TASK-FLOW-04 — Returns pre-computed assignment analytics for
+    /// <paramref name="tenantId"/>. Replaces <c>GetAssignmentSummaryAsync</c> shadow reads.
+    /// </summary>
+    Task<TaskAssignmentAnalyticsResult> GetAssignmentAnalyticsAsync(
+        Guid      tenantId,
+        DateTime  windowStart,
+        DateTime  windowEnd,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// TASK-FLOW-04 — Returns cross-tenant active task and SLA counts.
+    /// Replaces the <c>IgnoreQueryFilters()</c> queries in <c>GetPlatformSummaryAsync</c>.
+    /// </summary>
+    Task<TaskPlatformAnalyticsResult> GetPlatformAnalyticsAsync(
+        CancellationToken ct = default);
 }
+
+// ── Analytics result records (TASK-FLOW-04) ───────────────────────────────────
+
+public record TaskSlaAnalyticsResult(
+    IReadOnlyList<SlaStatusCount>  SlaGroups,
+    double?                        AvgOverdueAgeDays,
+    int                            BreachedInWindow,
+    int                            CompletedInWindow,
+    int                            CompletedOnTimeInWindow,
+    IReadOnlyList<QueueOverdueItem> RoleOverdueGroups,
+    IReadOnlyList<QueueOverdueItem> OrgOverdueGroups);
+
+public record SlaStatusCount(string SlaStatus, int Count);
+public record QueueOverdueItem(string QueueKey, int OverdueCount);
+
+public record TaskQueueAnalyticsResult(
+    IReadOnlyList<QueueGroupItem> RoleGroups,
+    IReadOnlyList<QueueGroupItem> OrgGroups,
+    int                           UnassignedCount,
+    double?                       OldestQueueAgeHours,
+    double?                       MedianQueueAgeHours,
+    int                           ActiveUserCount,
+    int                           OverloadedUserCount);
+
+public record QueueGroupItem(string Key, string Status, string SlaStatus, int Count);
+
+public record TaskAssignmentAnalyticsResult(
+    IReadOnlyList<ModeCount>       ModeGroups,
+    int                            AssignedInWindow,
+    IReadOnlyList<UserStatusCount> UserStatusGroups);
+
+public record ModeCount(string? Mode, int Count);
+public record UserStatusCount(string UserId, string Status, int Count);
+
+public record TaskPlatformAnalyticsResult(
+    int                             TotalActiveTasks,
+    int                             TotalOverdueTasks,
+    IReadOnlyList<TenantSlaCount>   TenantSlaGroups);
+
+public record TenantSlaCount(Guid TenantId, string SlaStatus, int Count);

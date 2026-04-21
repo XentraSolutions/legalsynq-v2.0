@@ -412,4 +412,139 @@ public sealed class FlowTaskServiceClient : IFlowTaskServiceClient
         int Total,
         int Page,
         int PageSize);
+
+    // ── Read: analytics (TASK-FLOW-04) ────────────────────────────────────────
+
+    public async Task<TaskSlaAnalyticsResult> GetSlaAnalyticsAsync(
+        Guid      tenantId,
+        DateTime  windowStart,
+        DateTime  windowEnd,
+        CancellationToken ct = default)
+    {
+        var qs  = BuildQueryString(new Dictionary<string, string?>
+        {
+            ["windowStart"] = windowStart.ToString("O"),
+            ["windowEnd"]   = windowEnd.ToString("O"),
+        });
+        var req  = BuildInternalRequest<object?>(tenantId, HttpMethod.Get,
+            $"/api/tasks/internal/flow-analytics/{tenantId}/sla{qs}");
+        var client = InternalClient;
+        var resp   = await client.SendAsync(req, ct);
+        EnsureSuccess(resp, $"GET /api/tasks/internal/flow-analytics/{tenantId}/sla");
+
+        var raw = await resp.Content.ReadFromJsonAsync<SlaAnalyticsRaw>(_json, ct)
+            ?? throw new InvalidOperationException("Task analytics: null SLA response.");
+
+        return new TaskSlaAnalyticsResult(
+            SlaGroups:               (raw.SlaGroups ?? []).Select(g => new SlaStatusCount(g.SlaStatus, g.Count)).ToList(),
+            AvgOverdueAgeDays:       raw.AvgOverdueAgeDays,
+            BreachedInWindow:        raw.BreachedInWindow,
+            CompletedInWindow:       raw.CompletedInWindow,
+            CompletedOnTimeInWindow: raw.CompletedOnTimeInWindow,
+            RoleOverdueGroups:       (raw.RoleOverdueGroups ?? []).Select(g => new QueueOverdueItem(g.QueueKey, g.OverdueCount)).ToList(),
+            OrgOverdueGroups:        (raw.OrgOverdueGroups  ?? []).Select(g => new QueueOverdueItem(g.QueueKey, g.OverdueCount)).ToList());
+    }
+
+    public async Task<TaskQueueAnalyticsResult> GetQueueAnalyticsAsync(
+        Guid tenantId,
+        CancellationToken ct = default)
+    {
+        var req    = BuildInternalRequest<object?>(tenantId, HttpMethod.Get,
+            $"/api/tasks/internal/flow-analytics/{tenantId}/queue");
+        var client = InternalClient;
+        var resp   = await client.SendAsync(req, ct);
+        EnsureSuccess(resp, $"GET /api/tasks/internal/flow-analytics/{tenantId}/queue");
+
+        var raw = await resp.Content.ReadFromJsonAsync<QueueAnalyticsRaw>(_json, ct)
+            ?? throw new InvalidOperationException("Task analytics: null queue response.");
+
+        return new TaskQueueAnalyticsResult(
+            RoleGroups:          (raw.RoleGroups ?? []).Select(g => new QueueGroupItem(g.Key, g.Status, g.SlaStatus, g.Count)).ToList(),
+            OrgGroups:           (raw.OrgGroups  ?? []).Select(g => new QueueGroupItem(g.Key, g.Status, g.SlaStatus, g.Count)).ToList(),
+            UnassignedCount:     raw.UnassignedCount,
+            OldestQueueAgeHours: raw.OldestQueueAgeHours,
+            MedianQueueAgeHours: raw.MedianQueueAgeHours,
+            ActiveUserCount:     raw.ActiveUserCount,
+            OverloadedUserCount: raw.OverloadedUserCount);
+    }
+
+    public async Task<TaskAssignmentAnalyticsResult> GetAssignmentAnalyticsAsync(
+        Guid      tenantId,
+        DateTime  windowStart,
+        DateTime  windowEnd,
+        CancellationToken ct = default)
+    {
+        var qs  = BuildQueryString(new Dictionary<string, string?>
+        {
+            ["windowStart"] = windowStart.ToString("O"),
+            ["windowEnd"]   = windowEnd.ToString("O"),
+        });
+        var req    = BuildInternalRequest<object?>(tenantId, HttpMethod.Get,
+            $"/api/tasks/internal/flow-analytics/{tenantId}/assignment{qs}");
+        var client = InternalClient;
+        var resp   = await client.SendAsync(req, ct);
+        EnsureSuccess(resp, $"GET /api/tasks/internal/flow-analytics/{tenantId}/assignment");
+
+        var raw = await resp.Content.ReadFromJsonAsync<AssignmentAnalyticsRaw>(_json, ct)
+            ?? throw new InvalidOperationException("Task analytics: null assignment response.");
+
+        return new TaskAssignmentAnalyticsResult(
+            ModeGroups:       (raw.ModeGroups       ?? []).Select(g => new ModeCount(g.Mode, g.Count)).ToList(),
+            AssignedInWindow: raw.AssignedInWindow,
+            UserStatusGroups: (raw.UserStatusGroups ?? []).Select(g => new UserStatusCount(g.UserId, g.Status, g.Count)).ToList());
+    }
+
+    public async Task<TaskPlatformAnalyticsResult> GetPlatformAnalyticsAsync(
+        CancellationToken ct = default)
+    {
+        var req    = new HttpRequestMessage(HttpMethod.Get,
+            "/api/tasks/internal/flow-analytics/platform-summary");
+        var client = InternalClient;
+        var resp   = await client.SendAsync(req, ct);
+        EnsureSuccess(resp, "GET /api/tasks/internal/flow-analytics/platform-summary");
+
+        var raw = await resp.Content.ReadFromJsonAsync<PlatformAnalyticsRaw>(_json, ct)
+            ?? throw new InvalidOperationException("Task analytics: null platform response.");
+
+        return new TaskPlatformAnalyticsResult(
+            TotalActiveTasks:  raw.TotalActiveTasks,
+            TotalOverdueTasks: raw.TotalOverdueTasks,
+            TenantSlaGroups:   (raw.TenantSlaGroups ?? []).Select(g => new TenantSlaCount(g.TenantId, g.SlaStatus, g.Count)).ToList());
+    }
+
+    // ── Analytics deserialization records (TASK-FLOW-04) ──────────────────────
+
+    private sealed record SlaStatusCountRaw(string SlaStatus, int Count);
+    private sealed record QueueOverdueRaw(string QueueKey, int OverdueCount);
+    private sealed record SlaAnalyticsRaw(
+        IReadOnlyList<SlaStatusCountRaw>? SlaGroups,
+        double?                           AvgOverdueAgeDays,
+        int                               BreachedInWindow,
+        int                               CompletedInWindow,
+        int                               CompletedOnTimeInWindow,
+        IReadOnlyList<QueueOverdueRaw>?   RoleOverdueGroups,
+        IReadOnlyList<QueueOverdueRaw>?   OrgOverdueGroups);
+
+    private sealed record QueueGroupRaw(string Key, string Status, string SlaStatus, int Count);
+    private sealed record QueueAnalyticsRaw(
+        IReadOnlyList<QueueGroupRaw>? RoleGroups,
+        IReadOnlyList<QueueGroupRaw>? OrgGroups,
+        int                           UnassignedCount,
+        double?                       OldestQueueAgeHours,
+        double?                       MedianQueueAgeHours,
+        int                           ActiveUserCount,
+        int                           OverloadedUserCount);
+
+    private sealed record ModeCountRaw(string? Mode, int Count);
+    private sealed record UserStatusCountRaw(string UserId, string Status, int Count);
+    private sealed record AssignmentAnalyticsRaw(
+        IReadOnlyList<ModeCountRaw>?       ModeGroups,
+        int                                AssignedInWindow,
+        IReadOnlyList<UserStatusCountRaw>? UserStatusGroups);
+
+    private sealed record TenantSlaCountRaw(Guid TenantId, string SlaStatus, int Count);
+    private sealed record PlatformAnalyticsRaw(
+        int                                TotalActiveTasks,
+        int                                TotalOverdueTasks,
+        IReadOnlyList<TenantSlaCountRaw>?  TenantSlaGroups);
 }

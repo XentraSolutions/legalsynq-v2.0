@@ -109,6 +109,7 @@ app.MapTaskGovernanceEndpoints();
 app.MapTaskTemplateEndpoints();
 app.MapTaskReminderEndpoints();
 app.MapTaskFlowEndpoints();
+app.MapTaskAnalyticsEndpoints();
 app.MapTaskLinkedEntityEndpoints();
 
 app.Run();

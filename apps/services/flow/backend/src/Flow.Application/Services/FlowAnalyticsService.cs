@@ -1,49 +1,52 @@
 using Flow.Application.DTOs;
 using Flow.Application.Interfaces;
 using Flow.Domain.Common;
+using Flow.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Flow.Application.Services;
 
 /// <summary>
-/// E19 — default implementation of <see cref="IFlowAnalyticsService"/>.
+/// E19 / TASK-FLOW-04 — default implementation of <see cref="IFlowAnalyticsService"/>.
 ///
 /// <para>
-/// All queries are <c>AsNoTracking</c> read-only. The EF global tenant query
-/// filter applies unless explicitly bypassed (platform summary only).
-/// Each method issues the minimum number of SQL queries — typically one
-/// per domain via GROUP BY or a single WHERE scan over the tenant slice.
+/// After TASK-FLOW-04 this service no longer queries <c>flow_workflow_tasks</c>.
+/// Task analytics (SLA, queue, assignment) are delegated to the Task service via
+/// <see cref="IFlowTaskServiceClient"/>. Flow retains ownership of workflow
+/// throughput (WorkflowInstances) and outbox (OutboxMessages) analytics.
 /// </para>
 ///
 /// <para>
-/// Metric definitions and source-of-truth are documented on each DTO;
-/// this service enforces the same semantics in its WHERE clauses.
+/// Tenant isolation for task analytics is enforced by passing the tenant ID
+/// from <see cref="ITenantProvider"/> to each Task service call.
+/// The platform summary endpoint calls Task service with no tenant filter
+/// (cross-tenant admin view).
 /// </para>
 /// </summary>
 public sealed class FlowAnalyticsService : IFlowAnalyticsService
 {
-    private const int OverloadThreshold     = 10;
-    private const int MaxQueueBreakdown     = 20;
-    private const int MaxTopOverdueQueues   = 10;
-    private const int MaxTopAssignees       = 20;
-    private const int MaxPlatformTenants    = 20;
-    private const int MaxProductBreakdown   = 10;
+    private const int OverloadThreshold   = 10;
+    private const int MaxQueueBreakdown   = 20;
+    private const int MaxTopOverdueQueues = 10;
+    private const int MaxTopAssignees     = 20;
+    private const int MaxPlatformTenants  = 20;
 
-    // Statuses that represent live (non-terminal) tasks.
-    private static readonly string[] ActiveStatuses =
-    [
-        WorkflowTaskStatus.Open,
-        WorkflowTaskStatus.InProgress,
-    ];
-
-    private readonly IFlowDbContext _db;
+    private readonly IFlowDbContext           _db;
+    private readonly IFlowTaskServiceClient   _taskClient;
+    private readonly ITenantProvider          _tenantProvider;
     private readonly ILogger<FlowAnalyticsService> _log;
 
-    public FlowAnalyticsService(IFlowDbContext db, ILogger<FlowAnalyticsService> log)
+    public FlowAnalyticsService(
+        IFlowDbContext           db,
+        IFlowTaskServiceClient   taskClient,
+        ITenantProvider          tenantProvider,
+        ILogger<FlowAnalyticsService> log)
     {
-        _db  = db;
-        _log = log;
+        _db             = db;
+        _taskClient     = taskClient;
+        _tenantProvider = tenantProvider;
+        _log            = log;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -66,6 +69,15 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
             _                          => "Last 7 Days",
         };
         return (start, now, label);
+    }
+
+    private Guid CurrentTenantGuid()
+    {
+        var tid = _tenantProvider.GetTenantId();
+        return Guid.TryParse(tid, out var g)
+            ? g
+            : throw new InvalidOperationException(
+                $"FlowAnalyticsService: tenant ID '{tid}' is not a valid Guid.");
     }
 
     // ── Dashboard Summary ─────────────────────────────────────────────────────
@@ -96,233 +108,115 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
         };
     }
 
-    // ── SLA Analytics ─────────────────────────────────────────────────────────
+    // ── SLA Analytics — Task service ──────────────────────────────────────────
 
     public async Task<SlaSummaryDto> GetSlaSummaryAsync(
         AnalyticsWindow window,
         CancellationToken ct = default)
     {
         var (start, end, label) = WindowBounds(window);
-        var now = end;
+        var tenantId = CurrentTenantGuid();
 
-        // Active task SLA breakdown — single GROUP BY query
-        var slaGroups = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => ActiveStatuses.Contains(t.Status))
-            .GroupBy(t => t.SlaStatus)
-            .Select(g => new { SlaStatus = g.Key, Count = g.Count() })
-            .ToListAsync(ct);
+        var data = await _taskClient.GetSlaAnalyticsAsync(tenantId, start, end, ct);
 
-        var onTrack  = slaGroups.FirstOrDefault(g => g.SlaStatus == WorkflowSlaStatus.OnTrack)?.Count  ?? 0;
-        var atRisk   = slaGroups.FirstOrDefault(g => g.SlaStatus == WorkflowSlaStatus.DueSoon)?.Count  ?? 0;
-        var overdue  = slaGroups.FirstOrDefault(g => g.SlaStatus == WorkflowSlaStatus.Overdue)?.Count  ?? 0;
-        var total    = onTrack + atRisk + overdue;
+        var onTrack = data.SlaGroups.FirstOrDefault(g => g.SlaStatus == WorkflowSlaStatus.OnTrack)?.Count ?? 0;
+        var atRisk  = data.SlaGroups.FirstOrDefault(g => g.SlaStatus == WorkflowSlaStatus.DueSoon)?.Count  ?? 0;
+        var overdue = data.SlaGroups.FirstOrDefault(g => g.SlaStatus == WorkflowSlaStatus.Overdue)?.Count  ?? 0;
+        var total   = onTrack + atRisk + overdue;
 
-        // Avg overdue age (SlaBreachedAt → now)
-        double? avgOverdueAgeDays = null;
-        if (overdue > 0)
-        {
-            // Pull SlaBreachedAt for overdue tasks to compute average age in-process
-            // (EF cannot compute TimeSpan arithmetic directly in all providers)
-            var breachDates = await _db.WorkflowTasks
-                .AsNoTracking()
-                .Where(t => ActiveStatuses.Contains(t.Status)
-                         && t.SlaStatus == WorkflowSlaStatus.Overdue
-                         && t.SlaBreachedAt != null)
-                .Select(t => t.SlaBreachedAt!.Value)
-                .ToListAsync(ct);
-
-            if (breachDates.Count > 0)
-                avgOverdueAgeDays = breachDates.Average(d => (now - d).TotalDays);
-        }
-
-        // Window: tasks where SlaBreachedAt is within window
-        var breachedInWindow = await _db.WorkflowTasks
-            .AsNoTracking()
-            .CountAsync(t => t.SlaBreachedAt >= start && t.SlaBreachedAt <= now, ct);
-
-        // Window: tasks completed on-time in window
-        var completedInWindow = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => t.Status == WorkflowTaskStatus.Completed
-                     && t.CompletedAt >= start && t.CompletedAt <= now)
-            .CountAsync(ct);
-
-        var completedOnTime = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => t.Status == WorkflowTaskStatus.Completed
-                     && t.CompletedAt >= start && t.CompletedAt <= now
-                     && t.SlaStatus == WorkflowSlaStatus.OnTrack)
-            .CountAsync(ct);
-
-        // Top overdue queues
-        var roleOverdue = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => ActiveStatuses.Contains(t.Status)
-                     && t.SlaStatus == WorkflowSlaStatus.Overdue
-                     && t.AssignmentMode == WorkflowTaskAssignmentMode.RoleQueue
-                     && t.AssignedRole != null)
-            .GroupBy(t => t.AssignedRole!)
+        var topOverdueQueues = data.RoleOverdueGroups
             .Select(g => new QueueOverdueBreakdownDto
             {
-                QueueKey   = g.Key,
-                QueueType  = "Role",
-                OverdueCount = g.Count(),
+                QueueKey     = g.QueueKey,
+                QueueType    = "Role",
+                OverdueCount = g.OverdueCount,
             })
-            .OrderByDescending(x => x.OverdueCount)
-            .Take(MaxTopOverdueQueues / 2)
-            .ToListAsync(ct);
-
-        var orgOverdue = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => ActiveStatuses.Contains(t.Status)
-                     && t.SlaStatus == WorkflowSlaStatus.Overdue
-                     && t.AssignmentMode == WorkflowTaskAssignmentMode.OrgQueue
-                     && t.AssignedOrgId != null)
-            .GroupBy(t => t.AssignedOrgId!)
-            .Select(g => new QueueOverdueBreakdownDto
+            .Concat(data.OrgOverdueGroups.Select(g => new QueueOverdueBreakdownDto
             {
-                QueueKey   = g.Key,
-                QueueType  = "Org",
-                OverdueCount = g.Count(),
-            })
-            .OrderByDescending(x => x.OverdueCount)
-            .Take(MaxTopOverdueQueues / 2)
-            .ToListAsync(ct);
-
-        var topOverdueQueues = roleOverdue
-            .Concat(orgOverdue)
+                QueueKey     = g.QueueKey,
+                QueueType    = "Org",
+                OverdueCount = g.OverdueCount,
+            }))
             .OrderByDescending(x => x.OverdueCount)
             .Take(MaxTopOverdueQueues)
             .ToList();
 
         return new SlaSummaryDto
         {
-            ActiveOnTrackCount     = onTrack,
-            ActiveAtRiskCount      = atRisk,
-            ActiveOverdueCount     = overdue,
-            TotalActiveCount       = total,
-            OverduePercentage      = total > 0 ? Math.Round((double)overdue / total * 100, 1) : 0,
-            BreachedInWindow       = breachedInWindow,
-            CompletedOnTimeInWindow = completedOnTime,
-            CompletedInWindow      = completedInWindow,
-            AvgOverdueAgeDays      = avgOverdueAgeDays.HasValue
-                                        ? Math.Round(avgOverdueAgeDays.Value, 2)
-                                        : null,
-            WindowStart            = start,
-            WindowEnd              = now,
-            WindowLabel            = label,
-            TopOverdueQueues       = topOverdueQueues,
+            ActiveOnTrackCount      = onTrack,
+            ActiveAtRiskCount       = atRisk,
+            ActiveOverdueCount      = overdue,
+            TotalActiveCount        = total,
+            OverduePercentage       = total > 0 ? Math.Round((double)overdue / total * 100, 1) : 0,
+            BreachedInWindow        = data.BreachedInWindow,
+            CompletedOnTimeInWindow = data.CompletedOnTimeInWindow,
+            CompletedInWindow       = data.CompletedInWindow,
+            AvgOverdueAgeDays       = data.AvgOverdueAgeDays,
+            WindowStart             = start,
+            WindowEnd               = end,
+            WindowLabel             = label,
+            TopOverdueQueues        = topOverdueQueues,
         };
     }
 
-    // ── Queue / Workload Analytics ────────────────────────────────────────────
+    // ── Queue / Workload Analytics — Task service ──────────────────────────────
 
     public async Task<QueueSummaryDto> GetQueueSummaryAsync(
         CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
+        var now      = DateTime.UtcNow;
+        var tenantId = CurrentTenantGuid();
 
-        // Role queue backlog breakdown
-        var roleGroups = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => ActiveStatuses.Contains(t.Status)
-                     && t.AssignmentMode == WorkflowTaskAssignmentMode.RoleQueue
-                     && t.AssignedRole != null)
-            .GroupBy(t => new { t.AssignedRole, t.Status, t.SlaStatus })
-            .Select(g => new { g.Key.AssignedRole, g.Key.Status, g.Key.SlaStatus, Count = g.Count() })
-            .ToListAsync(ct);
+        var data = await _taskClient.GetQueueAnalyticsAsync(tenantId, ct);
 
-        var roleQueueBreakdown = roleGroups
-            .GroupBy(x => x.AssignedRole!)
+        var roleQueueBreakdown = data.RoleGroups
+            .GroupBy(x => x.Key)
             .Select(grp => new RoleQueueBacklogDto
             {
-                Role           = grp.Key,
-                OpenCount      = grp.Where(x => x.Status == WorkflowTaskStatus.Open).Sum(x => x.Count),
-                InProgressCount = grp.Where(x => x.Status == WorkflowTaskStatus.InProgress).Sum(x => x.Count),
-                TotalCount     = grp.Sum(x => x.Count),
-                OverdueCount   = grp.Where(x => x.SlaStatus == WorkflowSlaStatus.Overdue).Sum(x => x.Count),
+                Role            = grp.Key,
+                OpenCount       = grp.Where(x => x.Status.Equals("OPEN",        StringComparison.OrdinalIgnoreCase)).Sum(x => x.Count),
+                InProgressCount = grp.Where(x => x.Status.Equals("IN_PROGRESS", StringComparison.OrdinalIgnoreCase)).Sum(x => x.Count),
+                TotalCount      = grp.Sum(x => x.Count),
+                OverdueCount    = grp.Where(x => x.SlaStatus == WorkflowSlaStatus.Overdue).Sum(x => x.Count),
             })
             .OrderByDescending(x => x.TotalCount)
             .Take(MaxQueueBreakdown)
             .ToList();
 
-        // Org queue backlog breakdown
-        var orgGroups = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => ActiveStatuses.Contains(t.Status)
-                     && t.AssignmentMode == WorkflowTaskAssignmentMode.OrgQueue
-                     && t.AssignedOrgId != null)
-            .GroupBy(t => new { t.AssignedOrgId, t.Status, t.SlaStatus })
-            .Select(g => new { g.Key.AssignedOrgId, g.Key.Status, g.Key.SlaStatus, Count = g.Count() })
-            .ToListAsync(ct);
-
-        var orgQueueBreakdown = orgGroups
-            .GroupBy(x => x.AssignedOrgId!)
+        var orgQueueBreakdown = data.OrgGroups
+            .GroupBy(x => x.Key)
             .Select(grp => new OrgQueueBacklogDto
             {
-                OrgId          = grp.Key,
-                OpenCount      = grp.Where(x => x.Status == WorkflowTaskStatus.Open).Sum(x => x.Count),
-                InProgressCount = grp.Where(x => x.Status == WorkflowTaskStatus.InProgress).Sum(x => x.Count),
-                TotalCount     = grp.Sum(x => x.Count),
-                OverdueCount   = grp.Where(x => x.SlaStatus == WorkflowSlaStatus.Overdue).Sum(x => x.Count),
+                OrgId           = grp.Key,
+                OpenCount       = grp.Where(x => x.Status.Equals("OPEN",        StringComparison.OrdinalIgnoreCase)).Sum(x => x.Count),
+                InProgressCount = grp.Where(x => x.Status.Equals("IN_PROGRESS", StringComparison.OrdinalIgnoreCase)).Sum(x => x.Count),
+                TotalCount      = grp.Sum(x => x.Count),
+                OverdueCount    = grp.Where(x => x.SlaStatus == WorkflowSlaStatus.Overdue).Sum(x => x.Count),
             })
             .OrderByDescending(x => x.TotalCount)
             .Take(MaxQueueBreakdown)
             .ToList();
 
-        var roleBacklog      = roleQueueBreakdown.Sum(x => x.TotalCount);
-        var orgBacklog       = orgQueueBreakdown.Sum(x => x.TotalCount);
-        var unassignedBacklog = await _db.WorkflowTasks
-            .AsNoTracking()
-            .CountAsync(t => ActiveStatuses.Contains(t.Status)
-                          && t.AssignmentMode == WorkflowTaskAssignmentMode.Unassigned, ct);
-
-        // Queue age for non-DirectUser tasks — pull CreatedAt for bounded set
-        var queuedCreatedAts = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => ActiveStatuses.Contains(t.Status)
-                     && t.AssignmentMode != WorkflowTaskAssignmentMode.DirectUser)
-            .Select(t => t.CreatedAt)
-            .ToListAsync(ct);
-
-        double? oldestAgeHours = null;
-        double? medianAgeHours = null;
-        if (queuedCreatedAts.Count > 0)
-        {
-            var ages = queuedCreatedAts.Select(c => (now - c).TotalHours).OrderBy(h => h).ToList();
-            oldestAgeHours = Math.Round(ages.Last(), 2);
-            medianAgeHours = Math.Round(ages[ages.Count / 2], 2);
-        }
-
-        // Active tasks per user
-        var userWorkloads = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => ActiveStatuses.Contains(t.Status) && t.AssignedUserId != null)
-            .GroupBy(t => t.AssignedUserId!)
-            .Select(g => g.Count())
-            .ToListAsync(ct);
-
-        var activeUserCount    = userWorkloads.Count;
-        var overloadedCount    = userWorkloads.Count(c => c >= OverloadThreshold);
+        var roleBacklog = roleQueueBreakdown.Sum(x => x.TotalCount);
+        var orgBacklog  = orgQueueBreakdown.Sum(x => x.TotalCount);
 
         return new QueueSummaryDto
         {
-            RoleQueueBacklog        = roleBacklog,
-            OrgQueueBacklog         = orgBacklog,
-            UnassignedBacklog       = unassignedBacklog,
-            OldestQueuedTaskAgeHours = oldestAgeHours,
-            MedianQueueAgeHours     = medianAgeHours,
-            ActiveUserCount         = activeUserCount,
-            OverloadedUserCount     = overloadedCount,
-            OverloadThreshold       = OverloadThreshold,
-            RoleQueueBreakdown      = roleQueueBreakdown,
-            OrgQueueBreakdown       = orgQueueBreakdown,
-            AsOf                    = now,
+            RoleQueueBacklog         = roleBacklog,
+            OrgQueueBacklog          = orgBacklog,
+            UnassignedBacklog        = data.UnassignedCount,
+            OldestQueuedTaskAgeHours = data.OldestQueueAgeHours,
+            MedianQueueAgeHours      = data.MedianQueueAgeHours,
+            ActiveUserCount          = data.ActiveUserCount,
+            OverloadedUserCount      = data.OverloadedUserCount,
+            OverloadThreshold        = OverloadThreshold,
+            RoleQueueBreakdown       = roleQueueBreakdown,
+            OrgQueueBreakdown        = orgQueueBreakdown,
+            AsOf                     = now,
         };
     }
 
-    // ── Workflow Throughput ───────────────────────────────────────────────────
+    // ── Workflow Throughput — Flow DB only (unchanged) ─────────────────────────
 
     public async Task<WorkflowThroughputDto> GetWorkflowThroughputAsync(
         AnalyticsWindow window,
@@ -348,7 +242,6 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
         var activeCount = await _db.WorkflowInstances.AsNoTracking()
             .CountAsync(i => i.Status == "Active", ct);
 
-        // Cycle time — only for instances completed in window with valid timestamps
         var cycleDates = await _db.WorkflowInstances
             .AsNoTracking()
             .Where(i => i.Status == "Completed"
@@ -373,7 +266,6 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
             }
         }
 
-        // By-product breakdown
         var productGroups = await _db.WorkflowInstances
             .AsNoTracking()
             .Where(i => i.CreatedAt >= start && i.CreatedAt <= end)
@@ -386,7 +278,7 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
                 ActiveCount    = g.Count(x => x.Status == "Active"),
             })
             .OrderByDescending(x => x.StartedCount)
-            .Take(MaxProductBreakdown)
+            .Take(10)
             .ToListAsync(ct);
 
         return new WorkflowThroughputDto
@@ -405,47 +297,30 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
         };
     }
 
-    // ── Assignment Analytics ──────────────────────────────────────────────────
+    // ── Assignment Analytics — Task service ───────────────────────────────────
 
     public async Task<AssignmentSummaryDto> GetAssignmentSummaryAsync(
         AnalyticsWindow window,
         CancellationToken ct = default)
     {
         var (start, end, label) = WindowBounds(window);
+        var tenantId = CurrentTenantGuid();
 
-        // Current mode distribution (all statuses)
-        var modeGroups = await _db.WorkflowTasks
-            .AsNoTracking()
-            .GroupBy(t => t.AssignmentMode)
-            .Select(g => new { Mode = g.Key, Count = g.Count() })
-            .ToListAsync(ct);
+        var data = await _taskClient.GetAssignmentAnalyticsAsync(tenantId, start, end, ct);
 
-        var directUser  = modeGroups.FirstOrDefault(g => g.Mode == WorkflowTaskAssignmentMode.DirectUser)?.Count  ?? 0;
-        var roleQueue   = modeGroups.FirstOrDefault(g => g.Mode == WorkflowTaskAssignmentMode.RoleQueue)?.Count   ?? 0;
-        var orgQueue    = modeGroups.FirstOrDefault(g => g.Mode == WorkflowTaskAssignmentMode.OrgQueue)?.Count    ?? 0;
-        var unassigned  = modeGroups.FirstOrDefault(g => g.Mode == WorkflowTaskAssignmentMode.Unassigned)?.Count  ?? 0;
+        var directUser = data.ModeGroups.FirstOrDefault(g => g.Mode == WorkflowTaskAssignmentMode.DirectUser)?.Count ?? 0;
+        var roleQueue  = data.ModeGroups.FirstOrDefault(g => g.Mode == WorkflowTaskAssignmentMode.RoleQueue)?.Count   ?? 0;
+        var orgQueue   = data.ModeGroups.FirstOrDefault(g => g.Mode == WorkflowTaskAssignmentMode.OrgQueue)?.Count    ?? 0;
+        var unassigned = data.ModeGroups.FirstOrDefault(g => g.Mode == WorkflowTaskAssignmentMode.Unassigned)?.Count  ?? 0;
 
-        // Assigned in window (AssignedAt within window)
-        var assignedInWindow = await _db.WorkflowTasks
-            .AsNoTracking()
-            .CountAsync(t => t.AssignedAt >= start && t.AssignedAt <= end, ct);
-
-        // Top assignees by active load
-        var topAssignees = await _db.WorkflowTasks
-            .AsNoTracking()
-            .Where(t => ActiveStatuses.Contains(t.Status) && t.AssignedUserId != null)
-            .GroupBy(t => new { t.AssignedUserId, t.Status })
-            .Select(g => new { g.Key.AssignedUserId, g.Key.Status, Count = g.Count() })
-            .ToListAsync(ct);
-
-        var userWorkload = topAssignees
-            .GroupBy(x => x.AssignedUserId!)
+        var userWorkload = data.UserStatusGroups
+            .GroupBy(x => x.UserId)
             .Select(grp => new UserWorkloadDto
             {
                 UserId          = grp.Key,
                 ActiveTaskCount = grp.Sum(x => x.Count),
-                OpenCount       = grp.Where(x => x.Status == WorkflowTaskStatus.Open).Sum(x => x.Count),
-                InProgressCount = grp.Where(x => x.Status == WorkflowTaskStatus.InProgress).Sum(x => x.Count),
+                OpenCount       = grp.Where(x => x.Status.Equals("OPEN",        StringComparison.OrdinalIgnoreCase)).Sum(x => x.Count),
+                InProgressCount = grp.Where(x => x.Status.Equals("IN_PROGRESS", StringComparison.OrdinalIgnoreCase)).Sum(x => x.Count),
             })
             .OrderByDescending(x => x.ActiveTaskCount)
             .Take(MaxTopAssignees)
@@ -453,19 +328,19 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
 
         return new AssignmentSummaryDto
         {
-            DirectUserCount             = directUser,
-            RoleQueueCount              = roleQueue,
-            OrgQueueCount               = orgQueue,
-            UnassignedCount             = unassigned,
-            AssignedInWindow            = assignedInWindow,
-            TopAssigneesByActiveLoad    = userWorkload,
-            WindowStart                 = start,
-            WindowEnd                   = end,
-            WindowLabel                 = label,
+            DirectUserCount          = directUser,
+            RoleQueueCount           = roleQueue,
+            OrgQueueCount            = orgQueue,
+            UnassignedCount          = unassigned,
+            AssignedInWindow         = data.AssignedInWindow,
+            TopAssigneesByActiveLoad = userWorkload,
+            WindowStart              = start,
+            WindowEnd                = end,
+            WindowLabel              = label,
         };
     }
 
-    // ── Outbox Analytics ──────────────────────────────────────────────────────
+    // ── Outbox Analytics — Flow DB only (unchanged) ───────────────────────────
 
     public async Task<OutboxAnalyticsSummaryDto> GetOutboxAnalyticsAsync(
         AnalyticsWindow window,
@@ -474,8 +349,6 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
         var (start, end, label) = WindowBounds(window);
         var now = end;
 
-        // Current-state counts (bypass global query filter — OutboxProcessor runs
-        // in null-tenant scope; consistent with AdminOutboxController pattern)
         var statusGroups = await _db.OutboxMessages
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -484,13 +357,12 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
             .ToListAsync(ct);
 
         int Cnt(string s) => statusGroups.FirstOrDefault(g => g.Status == s)?.Count ?? 0;
-        var pending     = Cnt(OutboxStatus.Pending);
-        var processing  = Cnt(OutboxStatus.Processing);
-        var failed      = Cnt(OutboxStatus.Failed);
-        var deadLetter  = Cnt(OutboxStatus.DeadLettered);
-        var succeeded   = Cnt(OutboxStatus.Succeeded);
+        var pending    = Cnt(OutboxStatus.Pending);
+        var processing = Cnt(OutboxStatus.Processing);
+        var failed     = Cnt(OutboxStatus.Failed);
+        var deadLetter = Cnt(OutboxStatus.DeadLettered);
+        var succeeded  = Cnt(OutboxStatus.Succeeded);
 
-        // Window-scoped counts
         var createdInWindow = await _db.OutboxMessages.IgnoreQueryFilters().AsNoTracking()
             .CountAsync(m => m.CreatedAt >= start && m.CreatedAt <= now, ct);
 
@@ -506,7 +378,6 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
             .CountAsync(m => m.Status == OutboxStatus.DeadLettered
                           && m.ProcessedAt >= start && m.ProcessedAt <= now, ct);
 
-        // Failed + dead-lettered by event type
         var failedByType = await _db.OutboxMessages
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -535,7 +406,6 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
             FailedCount          = failed,
             DeadLetteredCount    = deadLetter,
             SucceededCount       = succeeded,
-            UnhealthyCount       = pending + processing + failed + deadLetter,
             CreatedInWindow      = createdInWindow,
             SucceededInWindow    = succeededInWindow,
             FailedInWindow       = failedInWindow,
@@ -548,7 +418,7 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
         };
     }
 
-    // ── Platform Summary (cross-tenant) ──────────────────────────────────────
+    // ── Platform Summary — Task service + Flow DB ──────────────────────────────
 
     public async Task<PlatformAnalyticsSummaryDto> GetPlatformSummaryAsync(
         AnalyticsWindow window,
@@ -557,25 +427,16 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
         var (start, end, label) = WindowBounds(window);
         var now = end;
 
-        // Cross-tenant active workflows
+        // Task service provides cross-tenant task counts and SLA groups.
+        var taskData = await _taskClient.GetPlatformAnalyticsAsync(ct);
+
+        // Flow DB provides cross-tenant active workflow count and per-tenant workflow rank.
         var totalActiveWorkflows = await _db.WorkflowInstances
             .IgnoreQueryFilters()
             .AsNoTracking()
             .CountAsync(i => i.Status == "Active", ct);
 
-        // Cross-tenant active + overdue tasks
-        var taskStatusSla = await _db.WorkflowTasks
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(t => ActiveStatuses.Contains(t.Status))
-            .GroupBy(t => t.SlaStatus)
-            .Select(g => new { SlaStatus = g.Key, Count = g.Count() })
-            .ToListAsync(ct);
-
-        var totalActiveTasks = taskStatusSla.Sum(g => g.Count);
-        var totalOverdue     = taskStatusSla.FirstOrDefault(g => g.SlaStatus == WorkflowSlaStatus.Overdue)?.Count ?? 0;
-
-        // Cross-tenant outbox
+        // Cross-tenant outbox health (Flow DB)
         var outboxGroups = await _db.OutboxMessages
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -583,36 +444,10 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
             .GroupBy(m => m.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
             .ToListAsync(ct);
-        var totalFailed      = outboxGroups.FirstOrDefault(g => g.Status == OutboxStatus.Failed)?.Count ?? 0;
+        var totalFailed      = outboxGroups.FirstOrDefault(g => g.Status == OutboxStatus.Failed)?.Count      ?? 0;
         var totalDeadLettered = outboxGroups.FirstOrDefault(g => g.Status == OutboxStatus.DeadLettered)?.Count ?? 0;
 
-        // Top tenants by overdue rate
-        var tenantOverdue = await _db.WorkflowTasks
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(t => ActiveStatuses.Contains(t.Status))
-            .GroupBy(t => new { t.TenantId, t.SlaStatus })
-            .Select(g => new { g.Key.TenantId, g.Key.SlaStatus, Count = g.Count() })
-            .ToListAsync(ct);
-
-        var topByOverdue = tenantOverdue
-            .GroupBy(x => x.TenantId)
-            .Select(grp =>
-            {
-                var totalActive = grp.Sum(x => x.Count);
-                var overdueCount = grp.Where(x => x.SlaStatus == WorkflowSlaStatus.Overdue).Sum(x => x.Count);
-                return new TenantOverdueRankDto
-                {
-                    TenantId     = grp.Key,
-                    OverdueCount = overdueCount,
-                    OverdueRate  = totalActive > 0 ? Math.Round((double)overdueCount / totalActive * 100, 1) : 0,
-                };
-            })
-            .OrderByDescending(x => x.OverdueCount)
-            .Take(10)
-            .ToList();
-
-        // Top tenants by active workflow count
+        // Top tenants by active workflow count (Flow DB)
         var tenantWorkflows = await _db.WorkflowInstances
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -623,7 +458,7 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
             .Take(10)
             .ToListAsync(ct);
 
-        // Outbox health by tenant
+        // Per-tenant outbox health (Flow DB)
         var tenantOutbox = await _db.OutboxMessages
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -644,18 +479,36 @@ public sealed class FlowAnalyticsService : IFlowAnalyticsService
             .Take(MaxPlatformTenants)
             .ToList();
 
+        // Map Task service tenant SLA groups to Flow's TenantOverdueRankDto
+        var topByOverdue = taskData.TenantSlaGroups
+            .GroupBy(x => x.TenantId)
+            .Select(grp =>
+            {
+                var totalActive  = grp.Sum(x => x.Count);
+                var overdueCount = grp.Where(x => x.SlaStatus == WorkflowSlaStatus.Overdue).Sum(x => x.Count);
+                return new TenantOverdueRankDto
+                {
+                    TenantId     = grp.Key.ToString(),
+                    OverdueCount = overdueCount,
+                    OverdueRate  = totalActive > 0 ? Math.Round((double)overdueCount / totalActive * 100, 1) : 0,
+                };
+            })
+            .OrderByDescending(x => x.OverdueCount)
+            .Take(10)
+            .ToList();
+
         return new PlatformAnalyticsSummaryDto
         {
-            TotalActiveWorkflows      = totalActiveWorkflows,
-            TotalActiveTasks          = totalActiveTasks,
-            TotalOverdueTasks         = totalOverdue,
-            TotalDeadLettered         = totalDeadLettered,
-            TotalFailedOutbox         = totalFailed,
-            TopTenantsByOverdue       = topByOverdue,
+            TotalActiveWorkflows        = totalActiveWorkflows,
+            TotalActiveTasks            = taskData.TotalActiveTasks,
+            TotalOverdueTasks           = taskData.TotalOverdueTasks,
+            TotalDeadLettered           = totalDeadLettered,
+            TotalFailedOutbox           = totalFailed,
+            TopTenantsByOverdue         = topByOverdue,
             TopTenantsByActiveWorkflows = tenantWorkflows,
-            OutboxHealthByTenant      = outboxByTenant,
-            AsOf                      = now,
-            WindowLabel               = label,
+            OutboxHealthByTenant        = outboxByTenant,
+            AsOf                        = now,
+            WindowLabel                 = label,
         };
     }
 }

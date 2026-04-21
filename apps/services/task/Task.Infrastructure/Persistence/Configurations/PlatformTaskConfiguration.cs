@@ -121,5 +121,18 @@ public class PlatformTaskConfiguration : IEntityTypeConfiguration<PlatformTask>
 
         builder.HasIndex(t => new { t.TenantId, t.AssignmentMode, t.AssignedOrgId })
             .HasDatabaseName("IX_Tasks_TenantId_AssignmentMode_Org");
+
+        // TASK-FLOW-04 — analytics query indexes
+        builder.HasIndex(t => new { t.TenantId, t.Status, t.SlaStatus })
+            .HasDatabaseName("IX_Tasks_TenantId_Status_SlaStatus");
+
+        builder.HasIndex(t => new { t.TenantId, t.SlaBreachedAt })
+            .HasDatabaseName("IX_Tasks_TenantId_SlaBreachedAt");
+
+        builder.HasIndex(t => new { t.TenantId, t.CompletedAt })
+            .HasDatabaseName("IX_Tasks_TenantId_CompletedAt");
+
+        builder.HasIndex(t => new { t.TenantId, t.AssignedAt })
+            .HasDatabaseName("IX_Tasks_TenantId_AssignedAt");
     }
 }
