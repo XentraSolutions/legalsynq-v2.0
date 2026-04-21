@@ -24,7 +24,17 @@ public sealed class AccessTokenService
     private readonly ScanService             _scan;
     private readonly AuditService            _audit;
     private readonly AccessTokenOptions      _opts;
+    private readonly DocumentServiceOptions  _docOpts;
     private readonly ILogger<AccessTokenService> _log;
+
+    private static readonly Dictionary<string, string[]> Permissions = new()
+    {
+        ["DocReader"]     = new[] { "read" },
+        ["DocUploader"]   = new[] { "read", "write" },
+        ["DocManager"]    = new[] { "read", "write", "delete" },
+        ["TenantAdmin"]   = new[] { "read", "write", "delete" },
+        ["PlatformAdmin"] = new[] { "read", "write", "delete", "admin" },
+    };
 
     public AccessTokenService(
         IAccessTokenStore       store,
@@ -32,8 +42,9 @@ public sealed class AccessTokenService
         IStorageProvider        storage,
         ScanService             scan,
         AuditService            audit,
-        IOptions<AccessTokenOptions> opts,
-        ILogger<AccessTokenService> log)
+        IOptions<AccessTokenOptions>     opts,
+        IOptions<DocumentServiceOptions> docOpts,
+        ILogger<AccessTokenService>      log)
     {
         _store   = store;
         _docs    = docs;
@@ -41,6 +52,7 @@ public sealed class AccessTokenService
         _scan    = scan;
         _audit   = audit;
         _opts    = opts.Value;
+        _docOpts = docOpts.Value;
         _log     = log;
     }
 
@@ -50,10 +62,14 @@ public sealed class AccessTokenService
         RequestContext ctx,
         CancellationToken ct = default)
     {
+        AssertPermission(ctx.Principal, "read");
+
         var doc = await _docs.FindByIdAsync(documentId, ctx.EffectiveTenantId, ct)
             ?? throw new NotFoundException("Document", documentId);
 
-        _scan.EnforceCleanScan(doc);
+        await AssertDocumentTenantScopeAsync(ctx, doc);
+
+        _scan.EnforceCleanScan(doc, _docOpts.RequireCleanScanForAccess);
 
         var tokenBytes = new byte[32];
         System.Security.Cryptography.RandomNumberGenerator.Fill(tokenBytes);
@@ -141,5 +157,30 @@ public sealed class AccessTokenService
             detail: new { type = token.Type, issuedFromIp = token.IssuedFromIp });
 
         return redirectUrl;
+    }
+
+    private static void AssertPermission(Principal principal, string action)
+    {
+        var hasPermission = principal.Roles.Any(role =>
+            Permissions.TryGetValue(role, out var perms) && perms.Contains(action));
+
+        if (!hasPermission)
+            throw new ForbiddenException(
+                $"Role(s) [{string.Join(", ", principal.Roles)}] do not have '{action}' permission");
+    }
+
+    private async Task AssertDocumentTenantScopeAsync(RequestContext ctx, Domain.Entities.Document doc)
+    {
+        if (doc.TenantId == ctx.Principal.TenantId) return;
+
+        if (!ctx.Principal.IsPlatformAdmin)
+        {
+            await _audit.LogAsync(AuditEvent.TenantIsolationViolation, ctx, doc.Id, outcome: "DENIED",
+                detail: new { resourceTenantId = doc.TenantId });
+            throw new TenantIsolationException();
+        }
+
+        await _audit.LogAsync(AuditEvent.AdminCrossTenantAccess, ctx, doc.Id,
+            detail: new { actorTenantId = ctx.Principal.TenantId, resourceTenantId = doc.TenantId });
     }
 }

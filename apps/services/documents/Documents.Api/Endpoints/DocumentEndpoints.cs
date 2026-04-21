@@ -87,6 +87,10 @@ public static class DocumentEndpoints
                 Description    = form["description"].ToString() is { Length: > 0 } d ? d : null,
             };
 
+            // Validate file magic bytes against the declared MIME type before uploading
+            await using (var signatureStream = file.OpenReadStream())
+                await DocumentService.ValidateFileSignatureAsync(signatureStream, file.ContentType, ct);
+
             await using var stream = file.OpenReadStream();
             var result = await svc.CreateAsync(req, stream, file.FileName, file.ContentType, file.Length, reqCtx, ct);
 
@@ -207,6 +211,10 @@ public static class DocumentEndpoints
 
             var req = new UploadDocumentVersionRequest { Label = form["label"].ToString() is { Length: > 0 } l ? l : null };
 
+            // Validate file magic bytes against the declared MIME type before uploading
+            await using (var signatureStream = file.OpenReadStream())
+                await DocumentService.ValidateFileSignatureAsync(signatureStream, file.ContentType, ct);
+
             await using var stream = file.OpenReadStream();
             var result = await svc.CreateVersionAsync(id, req, stream, file.FileName, file.ContentType, file.Length, reqCtx, ct);
 
@@ -251,6 +259,43 @@ public static class DocumentEndpoints
         })
         .WithName("RequestDownloadUrl")
         .WithSummary("Request a download access token");
+
+        // ── PUT /documents/{id}/logo-registration ─────────────────────────────
+        docs.MapPut("/{id:guid}/logo-registration", async (
+            Guid id, HttpContext ctx, DocumentService svc, CancellationToken ct) =>
+        {
+            var principal = JwtPrincipalExtractor.Extract(ctx.User);
+            var reqCtx    = BuildContext(ctx, principal);
+            await svc.RegisterAsLogoAsync(id, reqCtx, ct);
+            return Results.NoContent();
+        })
+        .WithName("RegisterDocumentAsLogo")
+        .WithSummary("Register a document as the published tenant logo (admin only)");
+
+        // ── DELETE /documents/{id}/logo-registration ───────────────────────────
+        docs.MapDelete("/{id:guid}/logo-registration", async (
+            Guid id, HttpContext ctx, DocumentService svc, CancellationToken ct) =>
+        {
+            var principal = JwtPrincipalExtractor.Extract(ctx.User);
+            var reqCtx    = BuildContext(ctx, principal);
+            await svc.UnregisterLogoAsync(id, reqCtx, ct);
+            return Results.NoContent();
+        })
+        .WithName("UnregisterDocumentAsLogo")
+        .WithSummary("Remove the published logo registration from a document (admin only)");
+
+        // ── DELETE /documents/logo-registration ────────────────────────────────
+        // Clears all logo registrations for the tenant (used when the logo is deleted).
+        docs.MapDelete("/logo-registration", async (
+            HttpContext ctx, DocumentService svc, CancellationToken ct) =>
+        {
+            var principal = JwtPrincipalExtractor.Extract(ctx.User);
+            var reqCtx    = BuildContext(ctx, principal);
+            await svc.ClearTenantLogoRegistrationAsync(reqCtx, ct);
+            return Results.NoContent();
+        })
+        .WithName("ClearTenantLogoRegistration")
+        .WithSummary("Clear all logo registrations for the tenant (admin only)");
 
         // ── GET /documents/{id}/content ───────────────────────────────────────
         docs.MapGet("/{id:guid}/content", async (

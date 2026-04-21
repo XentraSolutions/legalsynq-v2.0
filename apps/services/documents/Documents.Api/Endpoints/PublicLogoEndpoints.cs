@@ -1,4 +1,5 @@
 using Amazon.S3;
+using Documents.Domain.Enums;
 using Documents.Domain.Interfaces;
 using Documents.Infrastructure.Database;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,15 @@ public static class PublicLogoEndpoints
 {
     private static readonly Guid TenantLogoDocTypeId =
         Guid.Parse("20000000-0000-0000-0000-000000000002");
+
+    private static readonly HashSet<string> AllowedLogoMimeTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/jpeg",
+        "image/png",
+        "image/tiff",
+        "image/gif",
+        "image/webp",
+    };
 
     public static void MapPublicLogoEndpoints(this WebApplication app)
     {
@@ -22,17 +32,26 @@ public static class PublicLogoEndpoints
                 .AsNoTracking()
                 .Where(d => d.Id == id
                          && !d.IsDeleted
-                         && d.DocumentTypeId == TenantLogoDocTypeId)
-                .Select(d => new { d.StorageKey, d.StorageBucket, d.MimeType })
+                         && d.DocumentTypeId == TenantLogoDocTypeId
+                         && d.IsPublishedAsLogo)
+                .Select(d => new { d.StorageKey, d.StorageBucket, d.MimeType, d.ScanStatus })
                 .FirstOrDefaultAsync(ct);
 
             if (doc is null || string.IsNullOrEmpty(doc.StorageKey))
                 return Results.NotFound();
 
+            // Only serve files that have been confirmed clean by the scanner
+            if (doc.ScanStatus != ScanStatus.Clean)
+                return Results.NotFound();
+
+            // Restrict public logo serving to image MIME types only
+            if (string.IsNullOrEmpty(doc.MimeType) || !AllowedLogoMimeTypes.Contains(doc.MimeType))
+                return Results.NotFound();
+
             try
             {
                 var stream = await storage.DownloadAsync(doc.StorageKey, ct);
-                return Results.Stream(stream, doc.MimeType ?? "image/png");
+                return Results.Stream(stream, doc.MimeType);
             }
             catch (FileNotFoundException)
             {
@@ -45,7 +64,7 @@ public static class PublicLogoEndpoints
         })
         .AllowAnonymous()
         .WithTags("Public")
-        .WithSummary("Public logo access — streams tenant logo images only (document type restricted)")
+        .WithSummary("Public logo access — image-only, scan-gated, branding-registration required")
         .ExcludeFromDescription();
     }
 }

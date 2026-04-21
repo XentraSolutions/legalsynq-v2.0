@@ -54,6 +54,7 @@ public sealed class DocsDbContext : DbContext
                     v => JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null) ?? new())
                 .HasColumnType("json");
             e.Property(d => d.ScanEngineVersion).HasColumnName("scan_engine_version").HasMaxLength(100);
+            e.Property(d => d.IsPublishedAsLogo).HasColumnName("is_published_as_logo").HasDefaultValue(false);
             e.Property(d => d.IsDeleted).HasColumnName("is_deleted");
             e.Property(d => d.DeletedAt).HasColumnName("deleted_at");
             e.Property(d => d.DeletedBy).HasColumnName("deleted_by");

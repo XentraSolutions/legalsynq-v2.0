@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS docs_documents (
     scan_duration_ms  INT,
     scan_threats      JSON         NOT NULL,
     scan_engine_version VARCHAR(100),
+    is_published_as_logo TINYINT(1) NOT NULL DEFAULT 0,
     is_deleted        TINYINT(1)   NOT NULL DEFAULT 0,
     deleted_at        DATETIME(6),
     deleted_by        CHAR(36),

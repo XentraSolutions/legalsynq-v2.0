@@ -62,7 +62,7 @@ public sealed class ScanService
             throw new ScanBlockedException($"Access denied: file scan status is INFECTED. Only CLEAN files may be accessed.");
         }
 
-        if (requireClean && doc.ScanStatus is ScanStatus.Pending or ScanStatus.Failed)
+        if (requireClean && doc.ScanStatus is ScanStatus.Pending or ScanStatus.Failed or ScanStatus.Skipped)
         {
             throw new ScanBlockedException($"Access denied: file scan status is {doc.ScanStatus.ToString().ToUpperInvariant()}.");
         }
@@ -75,7 +75,7 @@ public sealed class ScanService
             throw new ScanBlockedException($"Access denied: file scan status is INFECTED. Only CLEAN files may be accessed.");
         }
 
-        if (requireClean && version.ScanStatus is ScanStatus.Pending or ScanStatus.Failed)
+        if (requireClean && version.ScanStatus is ScanStatus.Pending or ScanStatus.Failed or ScanStatus.Skipped)
         {
             throw new ScanBlockedException($"Access denied: file scan status is {version.ScanStatus.ToString().ToUpperInvariant()}.");
         }

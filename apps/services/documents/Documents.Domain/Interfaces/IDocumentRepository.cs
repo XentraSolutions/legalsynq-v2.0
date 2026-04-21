@@ -10,6 +10,7 @@ public interface IDocumentRepository
     Task<Document> UpdateAsync(Document document, CancellationToken ct = default);
     Task SoftDeleteAsync(Guid id, Guid tenantId, Guid deletedBy, CancellationToken ct = default);
     Task UpdateScanStatusAsync(Guid id, Guid tenantId, ScanStatusUpdate update, CancellationToken ct = default);
+    Task ClearPublishedLogoFlagAsync(Guid tenantId, CancellationToken ct = default);
 }
 
 public sealed class DocumentFilter

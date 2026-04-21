@@ -54,6 +54,69 @@ public sealed class DocumentService
         "text/csv",
     };
 
+    /// <summary>
+    /// The reserved document type GUID for tenant logo files.
+    /// Only tenant/platform admins may assign this type directly.
+    /// </summary>
+    private static readonly Guid TenantLogoDocTypeId =
+        Guid.Parse("20000000-0000-0000-0000-000000000002");
+
+    /// <summary>
+    /// Maps allowed MIME types to their expected file magic-byte signatures.
+    /// At least one signature must match the file header for the declared type to be accepted.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, byte[][]> MimeTypeSignatures =
+        new Dictionary<string, byte[][]>
+        {
+            ["application/pdf"] = new[]
+            {
+                new byte[] { 0x25, 0x50, 0x44, 0x46 },                         // %PDF
+            },
+            ["application/msword"] = new[]
+            {
+                new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 }, // OLE2
+            },
+            ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"] = new[]
+            {
+                new byte[] { 0x50, 0x4B, 0x03, 0x04 },                         // ZIP/PK
+            },
+            ["application/vnd.ms-excel"] = new[]
+            {
+                new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 }, // OLE2
+            },
+            ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] = new[]
+            {
+                new byte[] { 0x50, 0x4B, 0x03, 0x04 },                         // ZIP/PK
+            },
+            ["image/jpeg"] = new[]
+            {
+                new byte[] { 0xFF, 0xD8, 0xFF },                                // JPEG SOI
+            },
+            ["image/png"] = new[]
+            {
+                new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }, // PNG
+            },
+            ["image/tiff"] = new[]
+            {
+                new byte[] { 0x49, 0x49, 0x2A, 0x00 },                         // TIFF little-endian
+                new byte[] { 0x4D, 0x4D, 0x00, 0x2A },                         // TIFF big-endian
+            },
+        };
+
+    /// <summary>
+    /// Binary magic-byte prefixes that must NOT appear in text/plain or text/csv files.
+    /// </summary>
+    private static readonly byte[][] BinaryMagicPrefixes =
+    {
+        new byte[] { 0xD0, 0xCF, 0x11, 0xE0 },  // OLE2
+        new byte[] { 0x25, 0x50, 0x44, 0x46 },  // PDF
+        new byte[] { 0x50, 0x4B, 0x03, 0x04 },  // ZIP/PK
+        new byte[] { 0xFF, 0xD8, 0xFF },         // JPEG
+        new byte[] { 0x89, 0x50, 0x4E, 0x47 },  // PNG
+        new byte[] { 0x49, 0x49, 0x2A, 0x00 },  // TIFF LE
+        new byte[] { 0x4D, 0x4D, 0x00, 0x2A },  // TIFF BE
+    };
+
     public DocumentService(
         IDocumentRepository        docs,
         IDocumentVersionRepository versions,
@@ -87,6 +150,10 @@ public sealed class DocumentService
     {
         AssertTenantScope(ctx.Principal, req.TenantId);
         AssertPermission(ctx.Principal, "write");
+
+        if (req.DocumentTypeId == TenantLogoDocTypeId && !IsAdminPrincipal(ctx.Principal))
+            throw new ForbiddenException("The tenant logo document type is reserved and cannot be assigned directly.");
+
         ValidateMimeType(mimeType);
 
         // ── File size enforcement ─────────────────────────────────────────────
@@ -200,7 +267,12 @@ public sealed class DocumentService
 
         if (req.Title        is not null) doc.Title          = req.Title;
         if (req.Description  is not null) doc.Description    = req.Description;
-        if (req.DocumentTypeId.HasValue)  doc.DocumentTypeId = req.DocumentTypeId.Value;
+        if (req.DocumentTypeId.HasValue)
+        {
+            if (req.DocumentTypeId.Value == TenantLogoDocTypeId && !IsAdminPrincipal(ctx.Principal))
+                throw new ForbiddenException("The tenant logo document type is reserved and cannot be assigned directly.");
+            doc.DocumentTypeId = req.DocumentTypeId.Value;
+        }
         if (req.RetainUntil.HasValue)     doc.RetainUntil    = req.RetainUntil;
 
         if (req.Status is not null)
@@ -262,6 +334,10 @@ public sealed class DocumentService
             ?? throw new NotFoundException("Document", documentId);
 
         await AssertDocumentTenantScopeAsync(ctx, doc);
+
+        if (doc.DocumentTypeId == TenantLogoDocTypeId && !IsAdminPrincipal(ctx.Principal))
+            throw new ForbiddenException("Only tenant or platform administrators may upload new versions of a logo document.");
+
         ValidateMimeType(mimeType);
 
         // ── File size enforcement (mirrors CreateAsync) ───────────────────────
@@ -317,6 +393,83 @@ public sealed class DocumentService
                           scanStatus = ScanStatus.Pending.ToString() });
 
         return DocumentVersionResponse.From(created);
+    }
+
+    // ── Logo registration ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Registers a document as the published tenant logo. Only admins may call this.
+    /// Clears the IsPublishedAsLogo flag on any prior logo document for the same tenant
+    /// before setting it on the target document.
+    /// </summary>
+    public async Task RegisterAsLogoAsync(
+        Guid              documentId,
+        RequestContext    ctx,
+        CancellationToken ct = default)
+    {
+        if (!IsAdminPrincipal(ctx.Principal))
+            throw new ForbiddenException("Only tenant or platform administrators may register a logo document.");
+
+        var doc = await _docs.FindByIdAsync(documentId, ctx.EffectiveTenantId, ct)
+            ?? throw new NotFoundException("Document", documentId);
+
+        await AssertDocumentTenantScopeAsync(ctx, doc);
+
+        if (doc.DocumentTypeId != TenantLogoDocTypeId)
+            throw new ForbiddenException("Only documents of the tenant logo type may be registered as a logo.");
+
+        // Clear the flag on any existing logo documents for this tenant
+        await _docs.ClearPublishedLogoFlagAsync(ctx.EffectiveTenantId, ct);
+
+        doc.IsPublishedAsLogo = true;
+        doc.UpdatedAt = DateTime.UtcNow;
+        doc.UpdatedBy = ctx.Principal.UserId;
+        await _docs.UpdateAsync(doc, ct);
+
+        await _audit.LogAsync(AuditEvent.DocumentUpdated, ctx, documentId,
+            detail: new { action = "LOGO_REGISTERED" });
+    }
+
+    /// <summary>
+    /// Removes the published logo registration for a specific document.
+    /// </summary>
+    public async Task UnregisterLogoAsync(
+        Guid              documentId,
+        RequestContext    ctx,
+        CancellationToken ct = default)
+    {
+        if (!IsAdminPrincipal(ctx.Principal))
+            throw new ForbiddenException("Only tenant or platform administrators may unregister a logo document.");
+
+        var doc = await _docs.FindByIdAsync(documentId, ctx.EffectiveTenantId, ct)
+            ?? throw new NotFoundException("Document", documentId);
+
+        await AssertDocumentTenantScopeAsync(ctx, doc);
+
+        doc.IsPublishedAsLogo = false;
+        doc.UpdatedAt = DateTime.UtcNow;
+        doc.UpdatedBy = ctx.Principal.UserId;
+        await _docs.UpdateAsync(doc, ct);
+
+        await _audit.LogAsync(AuditEvent.DocumentUpdated, ctx, documentId,
+            detail: new { action = "LOGO_UNREGISTERED" });
+    }
+
+    /// <summary>
+    /// Clears the logo registration flag for all documents belonging to the tenant.
+    /// Used when the tenant logo is deleted and no replacement is set.
+    /// </summary>
+    public async Task ClearTenantLogoRegistrationAsync(
+        RequestContext    ctx,
+        CancellationToken ct = default)
+    {
+        if (!IsAdminPrincipal(ctx.Principal))
+            throw new ForbiddenException("Only tenant or platform administrators may clear the logo registration.");
+
+        await _docs.ClearPublishedLogoFlagAsync(ctx.EffectiveTenantId, ct);
+
+        await _audit.LogAsync(AuditEvent.DocumentUpdated, ctx, null,
+            detail: new { action = "TENANT_LOGO_REGISTRATION_CLEARED" });
     }
 
     // ── List versions ────────────────────────────────────────────────────────
@@ -419,6 +572,9 @@ public sealed class DocumentService
             throw new ForbiddenException("Tenant scope mismatch");
     }
 
+    private static bool IsAdminPrincipal(Domain.ValueObjects.Principal principal) =>
+        principal.Roles.Any(r => r is "TenantAdmin" or "PlatformAdmin");
+
     private async Task AssertDocumentTenantScopeAsync(RequestContext ctx, Document doc)
     {
         if (doc.TenantId == ctx.Principal.TenantId) return;  // same tenant — OK
@@ -439,6 +595,54 @@ public sealed class DocumentService
     {
         if (!AllowedMimeTypes.Contains(mimeType))
             throw new UnsupportedFileTypeException($"File type not permitted: {mimeType}");
+    }
+
+    /// <summary>
+    /// Validates that the first bytes of <paramref name="stream"/> match the expected magic bytes
+    /// for <paramref name="declaredMimeType"/>. Throws <see cref="UnsupportedFileTypeException"/>
+    /// if the file content does not match the declared type.
+    /// </summary>
+    public static async Task ValidateFileSignatureAsync(
+        Stream            stream,
+        string            declaredMimeType,
+        CancellationToken ct = default)
+    {
+        var header    = new byte[8];
+        var totalRead = 0;
+        while (totalRead < header.Length)
+        {
+            var n = await stream.ReadAsync(header, totalRead, header.Length - totalRead, ct);
+            if (n == 0) break;
+            totalRead += n;
+        }
+
+        if (totalRead == 0)
+            throw new UnsupportedFileTypeException("File is empty; cannot validate file type.");
+
+        if (MimeTypeSignatures.TryGetValue(declaredMimeType, out var signatures))
+        {
+            var matched = signatures.Any(sig => HeaderStartsWith(header, totalRead, sig));
+
+            if (!matched)
+                throw new UnsupportedFileTypeException(
+                    $"File content does not match declared MIME type: {declaredMimeType}");
+        }
+        else if (declaredMimeType is "text/plain" or "text/csv")
+        {
+            var isBinary = BinaryMagicPrefixes.Any(sig => HeaderStartsWith(header, totalRead, sig));
+
+            if (isBinary)
+                throw new UnsupportedFileTypeException(
+                    $"File content appears to be binary data, not text: {declaredMimeType}");
+        }
+    }
+
+    private static bool HeaderStartsWith(byte[] header, int headerLength, byte[] signature)
+    {
+        if (headerLength < signature.Length) return false;
+        for (var i = 0; i < signature.Length; i++)
+            if (header[i] != signature[i]) return false;
+        return true;
     }
 
     /// <summary>

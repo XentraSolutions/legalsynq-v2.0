@@ -92,6 +92,17 @@ public sealed class DocumentRepository : IDocumentRepository
             ct);
     }
 
+    public async Task ClearPublishedLogoFlagAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        RequireTenantId(tenantId);
+        await _db.Documents
+            .Where(d => d.TenantId == tenantId && d.IsPublishedAsLogo)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.IsPublishedAsLogo, false)
+                .SetProperty(d => d.UpdatedAt, DateTime.UtcNow),
+            ct);
+    }
+
     private static void RequireTenantId(Guid tenantId)
     {
         if (tenantId == Guid.Empty)

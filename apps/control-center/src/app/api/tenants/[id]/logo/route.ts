@@ -83,6 +83,24 @@ export async function POST(
     return NextResponse.json({ error: 'LOGO_UPDATE_FAILED', detail: err }, { status: patchRes.status });
   }
 
+  // Register the document as the active published logo in the Documents service.
+  // This is required so that the anonymous /public/logo/{id} endpoint will serve it.
+  const regRes = await fetch(
+    `${GATEWAY_URL}/documents/documents/${docId}/logo-registration`,
+    {
+      method:  'PUT',
+      headers: {
+        Authorization:           `Bearer ${token}`,
+        'X-Admin-Target-Tenant': targetTenantId,
+      },
+    },
+  );
+
+  if (!regRes.ok) {
+    const err = await regRes.text();
+    return NextResponse.json({ error: 'LOGO_REGISTRATION_FAILED', detail: err }, { status: regRes.status });
+  }
+
   return NextResponse.json({ logoDocumentId: docId });
 }
 
@@ -108,6 +126,20 @@ export async function DELETE(
     const err = await delRes.text();
     return NextResponse.json({ error: 'DELETE_FAILED', detail: err }, { status: delRes.status });
   }
+
+  // Clear all logo registrations for the tenant in the Documents service so the
+  // anonymous /public/logo/{id} endpoint no longer serves the old logo.
+  // X-Admin-Target-Tenant ensures the Documents service clears the correct
+  // tenant's registrations when a platform-admin operates on another tenant.
+  await fetch(`${GATEWAY_URL}/documents/documents/logo-registration`, {
+    method:  'DELETE',
+    headers: {
+      Authorization:           `Bearer ${token}`,
+      'X-Admin-Target-Tenant': targetTenantId,
+    },
+  });
+  // Ignore errors on the logo deregistration to avoid breaking the delete flow
+  // if the Documents service is temporarily unavailable.
 
   return NextResponse.json({ ok: true });
 }

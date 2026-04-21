@@ -32,6 +32,9 @@ public sealed class Document
     public List<string> ScanThreats       { get; set; } = new();
     public string?      ScanEngineVersion { get; set; }
 
+    // Published logo tracking — true only when explicitly registered via the logo workflow
+    public bool IsPublishedAsLogo { get; set; }
+
     // Soft delete
     public bool     IsDeleted  { get; set; }
     public DateTime? DeletedAt { get; set; }
