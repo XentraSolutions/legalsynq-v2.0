@@ -74,14 +74,14 @@ export function TaskCard({ task, onClick, compact = false, assigneeUser }: TaskC
 
   return (
     <div
-      className={`bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow ${onClick ? 'cursor-pointer' : ''}`}
+      className={`bg-white border border-gray-200 rounded-lg p-2 shadow-sm hover:shadow-md transition-shadow ${onClick ? 'cursor-pointer' : ''}`}
       onClick={() => onClick?.(task)}
     >
       {/* Priority + Title */}
-      <div className="flex items-start gap-2 mb-2">
+      <div className="flex items-start gap-2 mb-1.5">
         <div className="flex-1 min-w-0">
           {/* Priority pill */}
-          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded mb-1.5 ${PRIORITY_BG[task.priority]}`}>
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded mb-1 ${PRIORITY_BG[task.priority]}`}>
             <i className={`${TASK_PRIORITY_ICONS[task.priority]} text-[10px] ${TASK_PRIORITY_COLORS[task.priority]}`} />
             {PRIORITY_LABELS[task.priority] ?? task.priority}
           </span>
@@ -95,7 +95,7 @@ export function TaskCard({ task, onClick, compact = false, assigneeUser }: TaskC
       </div>
 
       {/* Meta row: case ID, liens, due date */}
-      <div className="flex items-center gap-1.5 flex-wrap mb-2">
+      <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
         {task.caseId && (
           <span className="inline-flex items-center gap-0.5 text-[10px] font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200 rounded px-1.5 py-0.5">
             <i className="ri-briefcase-line text-[10px]" />
@@ -121,7 +121,7 @@ export function TaskCard({ task, onClick, compact = false, assigneeUser }: TaskC
       </div>
 
       {/* Footer: assignee avatar + name on left, status badge on right */}
-      <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-gray-100">
+      <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
         {/* Assignee */}
         {assigneeUser ? (
           <div className="flex items-center gap-1.5 min-w-0">
