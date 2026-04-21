@@ -76,8 +76,9 @@ export default async function StatusPage({
     uptimeData = null;
   }
 
-  const uptimeByName = buildUptimeMap(uptimeData);
-  const totalBars    = uptimeData?.totalBars ?? 24;
+  const uptimeByName          = buildUptimeMap(uptimeData);
+  const totalBars             = uptimeData?.totalBars ?? 24;
+  const monitoringUnavailable = uptimeData?.monitoringUnavailable ?? false;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -126,6 +127,7 @@ export default async function StatusPage({
               uptimeByName={uptimeByName}
               totalBars={totalBars}
               window={selectedWindow}
+              monitoringUnavailable={monitoringUnavailable}
             />
             <PublicIncidentsPanel alerts={data.alerts} />
             {data.alerts.filter(a => !a.resolvedAtUtc).length === 0 && (

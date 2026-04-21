@@ -32,8 +32,6 @@ PID_CC=$!
   # NuGet packages (never restored by LegalSynq.sln) don't block the build.
   dotnet restore "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --verbosity quiet
   dotnet build   "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --no-restore --configuration Debug --verbosity quiet
-  dotnet restore "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj" --verbosity quiet
-  dotnet build   "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj" --no-restore --configuration Debug --verbosity quiet
   # Reports service has its own project boundary (not in LegalSynq.sln).
   dotnet restore "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" --verbosity quiet
   dotnet build   "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" --no-restore --configuration Debug --verbosity quiet
@@ -48,7 +46,22 @@ PID_CC=$!
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj" &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" &
-  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj" &
+  # Monitoring service: use 'dotnet run' (not --no-build) so the runtime build
+  # step resolves any binary-path mismatch between solution-build and standalone
+  # run. A restart wrapper logs crashes visibly and retries once after a delay.
+  (
+    for attempt in 1 2; do
+      echo "[monitoring] Starting Monitoring service (attempt $attempt)..."
+      ASPNETCORE_ENVIRONMENT=Development \
+        dotnet run --project "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj" \
+        2>&1 | sed 's/^/[monitoring] /' || true
+      if [ "$attempt" -lt 2 ]; then
+        echo "[monitoring] Service exited on attempt $attempt; restarting in 15s..."
+        sleep 15
+      fi
+    done
+    echo "[monitoring] Monitoring service exited after 2 attempts."
+  ) &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
   wait

@@ -92,9 +92,10 @@ export interface PublicUptimeComponent {
 }
 
 export interface PublicUptimeResponse {
-  window:     string;
-  totalBars:  number;
-  components: PublicUptimeComponent[];
+  window:                string;
+  totalBars:             number;
+  components:            PublicUptimeComponent[];
+  monitoringUnavailable?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -198,8 +199,18 @@ export async function GET(request: Request): Promise<NextResponse> {
 
     const response: PublicUptimeResponse = { window, totalBars: bars, components };
     return NextResponse.json(response, { headers: NO_STORE });
-  } catch {
-    const empty: PublicUptimeResponse = { window, totalBars: bars, components: [] };
-    return NextResponse.json(empty, { headers: NO_STORE });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[uptime-bff] Failed to fetch uptime data from monitoring service via ${GATEWAY_URL}. ` +
+      `Verify Monitoring.Api is running and ConnectionStrings__MonitoringDb is set. Reason: ${reason}`,
+    );
+    const unavailable: PublicUptimeResponse = {
+      window,
+      totalBars:             bars,
+      components:            [],
+      monitoringUnavailable: true,
+    };
+    return NextResponse.json(unavailable, { headers: NO_STORE });
   }
 }

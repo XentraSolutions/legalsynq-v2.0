@@ -15,6 +15,11 @@ interface PublicComponentListProps {
   totalBars?:    number;
   /** Selected time window — used in the section subtitle label. */
   window?:       SupportedWindow;
+  /**
+   * When true the monitoring service could not be reached and availability
+   * history is absent. A notice is shown instead of silently hiding bars.
+   */
+  monitoringUnavailable?: boolean;
 }
 
 const STATUS_ORDER: Record<MonitoringStatus, number> = { Down: 0, Degraded: 1, Healthy: 2 };
@@ -51,7 +56,7 @@ const WINDOW_LABELS: Record<SupportedWindow, string> = {
  *   - admin controls
  *   - filter controls
  */
-export function PublicComponentList({ integrations, uptimeByName, totalBars = 24, window = '24h' }: PublicComponentListProps) {
+export function PublicComponentList({ integrations, uptimeByName, totalBars = 24, window = '24h', monitoringUnavailable }: PublicComponentListProps) {
   if (integrations.length === 0) {
     return (
       <Section title="Components">
@@ -73,6 +78,14 @@ export function PublicComponentList({ integrations, uptimeByName, totalBars = 24
       title="Components"
       subtitle={`${integrations.length} service${integrations.length !== 1 ? 's' : ''} monitored · ${windowLabel}`}
     >
+      {monitoringUnavailable && (
+        <div className="px-5 py-2.5 border-b border-amber-100 bg-amber-50 flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+          <p className="text-xs text-amber-700">
+            Availability history is temporarily unavailable. Current status is shown below.
+          </p>
+        </div>
+      )}
       <div className="divide-y divide-gray-100">
         {sorted.map(item => (
           <ComponentRow
