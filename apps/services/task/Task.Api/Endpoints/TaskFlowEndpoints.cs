@@ -18,9 +18,11 @@ public static class TaskFlowEndpoints
 {
     public static void MapTaskFlowEndpoints(this WebApplication app)
     {
-        // Internal callback — requires service token (PlatformAdmin role carries the service token claim)
+        // Internal callback — TASK-B05 (TASK-013): service-token only.
+        // "InternalService" policy accepts only scheme=ServiceToken + role=service.
+        // User JWTs (PlatformAdmin or otherwise) are explicitly rejected.
         var internalGroup = app.MapGroup("/api/tasks/internal")
-            .RequireAuthorization(Policies.AdminOnly)
+            .RequireAuthorization("InternalService")
             .WithTags("Tasks - Flow Integration");
 
         internalGroup.MapPost("/flow-callback", HandleFlowCallback);

@@ -1,6 +1,7 @@
 using Task.Application.DTOs;
 using Task.Application.Interfaces;
 using Task.Domain.Entities;
+using Task.Domain.Validation;
 using Microsoft.Extensions.Logging;
 
 namespace Task.Application.Services;
@@ -42,9 +43,8 @@ public class TaskGovernanceService : ITaskGovernanceService
     public async System.Threading.Tasks.Task<TaskGovernanceDto> UpsertAsync(
         Guid tenantId, Guid userId, UpsertTaskGovernanceRequest request, CancellationToken ct = default)
     {
-        var productCode = string.IsNullOrWhiteSpace(request.SourceProductCode)
-            ? null
-            : request.SourceProductCode.Trim().ToUpperInvariant();
+        // TASK-B05 (TASK-014) — validate product code
+        var productCode = KnownProductCodes.ValidateOptional(request.SourceProductCode);
 
         var existing = await _repo.GetByTenantAndProductAsync(tenantId, productCode, ct);
 

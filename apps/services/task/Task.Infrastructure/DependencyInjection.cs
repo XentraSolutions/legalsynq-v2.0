@@ -68,6 +68,11 @@ public static class DependencyInjection
 
         services.AddScoped<ITaskNotificationClient, TaskNotificationClient>();
 
+        // TASK-B05 (TASK-015) — monitoring service registration on startup
+        services.AddOptions<TaskMonitoringOptions>()
+                .Bind(configuration.GetSection(TaskMonitoringOptions.SectionName));
+        services.AddHostedService<TaskServiceRegistrar>();
+
         return services;
     }
 }

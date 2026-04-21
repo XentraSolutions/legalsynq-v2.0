@@ -57,5 +57,12 @@ public interface ITaskRepository
     System.Threading.Tasks.Task<IReadOnlyList<(string? ProductCode, string Status, int Count)>> GetMyTaskCountsAsync(
         Guid tenantId, Guid userId, CancellationToken ct = default);
 
+    /// <summary>
+    /// TASK-B05 (TASK-017) — server-side count of tasks that are overdue for a user.
+    /// Replaces the previous in-memory approach of loading up to 5 000 rows.
+    /// </summary>
+    System.Threading.Tasks.Task<int> GetOverdueCountForUserAsync(
+        Guid tenantId, Guid userId, DateTime asOf, CancellationToken ct = default);
+
     System.Threading.Tasks.Task AddAsync(PlatformTask task, CancellationToken ct = default);
 }

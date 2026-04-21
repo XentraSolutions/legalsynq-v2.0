@@ -104,6 +104,10 @@ public class TaskRepository : ITaskRepository
         if (excludeTerminal)
             q = q.Where(t => t.Status != "COMPLETED" && t.Status != "CANCELLED");
 
+        // TASK-B05 (TASK-017) — cap pageSize to prevent unbounded queries
+        if (pageSize > 200) pageSize = 200;
+        if (page < 1)       page     = 1;
+
         var total = await q.CountAsync(ct);
         var items = await q
             .OrderByDescending(t => t.CreatedAtUtc)
@@ -123,6 +127,10 @@ public class TaskRepository : ITaskRepository
         int       pageSize    = 200,
         CancellationToken ct  = default)
     {
+        // TASK-B05 (TASK-017) — cap to prevent unbounded queries
+        if (pageSize > 500) pageSize = 500;
+        if (page < 1)       page     = 1;
+
         var q = _db.Tasks.Where(t => t.TenantId == tenantId && t.AssignedUserId == userId);
 
         if (!string.IsNullOrWhiteSpace(productCode))
@@ -136,6 +144,24 @@ public class TaskRepository : ITaskRepository
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
+    }
+
+    public async System.Threading.Tasks.Task<int> GetOverdueCountForUserAsync(
+        Guid     tenantId,
+        Guid     userId,
+        DateTime asOf,
+        CancellationToken ct = default)
+    {
+        // TASK-B05 (TASK-017) — server-side overdue count; avoids the previous
+        // approach of loading up to 5000 rows into memory and calling .Count().
+        var openStatuses = new[] { "OPEN", "IN_PROGRESS", "PENDING_REVIEW", "BLOCKED" };
+        return await _db.Tasks.CountAsync(t =>
+            t.TenantId       == tenantId     &&
+            t.AssignedUserId == userId       &&
+            openStatuses.Contains(t.Status)  &&
+            t.DueAt.HasValue                 &&
+            t.DueAt < asOf,
+            ct);
     }
 
     public async System.Threading.Tasks.Task<IReadOnlyList<PlatformTask>> GetByWorkflowInstanceAsync(

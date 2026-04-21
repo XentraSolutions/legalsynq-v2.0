@@ -2,6 +2,7 @@ using BuildingBlocks.Exceptions;
 using Task.Application.DTOs;
 using Task.Application.Interfaces;
 using Task.Domain.Entities;
+using Task.Domain.Validation;
 using Microsoft.Extensions.Logging;
 
 namespace Task.Application.Services;
@@ -37,9 +38,12 @@ public class TaskTemplateService : ITaskTemplateService
     public async System.Threading.Tasks.Task<TaskTemplateDto> CreateAsync(
         Guid tenantId, Guid userId, CreateTaskTemplateRequest req, CancellationToken ct = default)
     {
+        // TASK-B05 (TASK-014) — validate product code against canonical registry
+        var productCode = KnownProductCodes.ValidateOptional(req.SourceProductCode);
+
         var template = TaskTemplate.Create(
             tenantId, req.Code, req.Name, req.DefaultTitle, userId,
-            req.SourceProductCode, req.Description, req.DefaultDescription,
+            productCode, req.Description, req.DefaultDescription,
             req.DefaultPriority, req.DefaultScope, req.DefaultDueInDays, req.DefaultStageId);
 
         await _templates.AddAsync(template, ct);

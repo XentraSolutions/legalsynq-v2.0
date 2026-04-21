@@ -2,6 +2,7 @@ using BuildingBlocks.Exceptions;
 using Task.Application.DTOs;
 using Task.Application.Interfaces;
 using Task.Domain.Entities;
+using Task.Domain.Validation;
 using Microsoft.Extensions.Logging;
 
 namespace Task.Application.Services;
@@ -25,9 +26,12 @@ public class TaskStageService : ITaskStageService
     public async System.Threading.Tasks.Task<TaskStageDto> CreateAsync(
         Guid tenantId, Guid userId, CreateTaskStageRequest request, CancellationToken ct = default)
     {
+        // TASK-B05 (TASK-014) — validate product code against canonical registry
+        var productCode = KnownProductCodes.ValidateOptional(request.SourceProductCode);
+
         var stage = TaskStageConfig.Create(
             tenantId, request.Code, request.Name, request.DisplayOrder,
-            userId, request.SourceProductCode);
+            userId, productCode);
 
         await _stages.AddAsync(stage, ct);
         await _uow.SaveChangesAsync(ct);

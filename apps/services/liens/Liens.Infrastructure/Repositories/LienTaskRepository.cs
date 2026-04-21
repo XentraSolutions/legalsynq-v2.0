@@ -133,69 +133,8 @@ public sealed class LienTaskRepository : ILienTaskRepository
         }
     }
 
-    public async Task<bool> HasOpenTaskForRuleAsync(
-        Guid tenantId, Guid ruleId, Guid? caseId, Guid? lienId,
-        CancellationToken ct = default)
-    {
-        var openStatuses = new[] { "COMPLETED", "CANCELLED" };
-
-        if (caseId.HasValue)
-        {
-            return await _db.LienTasks.AnyAsync(t =>
-                t.TenantId == tenantId &&
-                t.GenerationRuleId == ruleId &&
-                t.CaseId == caseId.Value &&
-                !openStatuses.Contains(t.Status), ct);
-        }
-
-        if (lienId.HasValue)
-        {
-            var taskIds = await _db.LienTaskLienLinks
-                .Where(l => l.LienId == lienId.Value)
-                .Select(l => l.TaskId)
-                .ToListAsync(ct);
-
-            return await _db.LienTasks.AnyAsync(t =>
-                t.TenantId == tenantId &&
-                t.GenerationRuleId == ruleId &&
-                taskIds.Contains(t.Id) &&
-                !openStatuses.Contains(t.Status), ct);
-        }
-
-        return false;
-    }
-
-    public async Task<bool> HasOpenTaskForTemplateAsync(
-        Guid tenantId, Guid templateId, Guid? caseId, Guid? lienId,
-        CancellationToken ct = default)
-    {
-        var openStatuses = new[] { "COMPLETED", "CANCELLED" };
-
-        if (caseId.HasValue)
-        {
-            return await _db.LienTasks.AnyAsync(t =>
-                t.TenantId == tenantId &&
-                t.GeneratingTemplateId == templateId &&
-                t.CaseId == caseId.Value &&
-                !openStatuses.Contains(t.Status), ct);
-        }
-
-        if (lienId.HasValue)
-        {
-            var taskIds = await _db.LienTaskLienLinks
-                .Where(l => l.LienId == lienId.Value)
-                .Select(l => l.TaskId)
-                .ToListAsync(ct);
-
-            return await _db.LienTasks.AnyAsync(t =>
-                t.TenantId == tenantId &&
-                t.GeneratingTemplateId == templateId &&
-                taskIds.Contains(t.Id) &&
-                !openStatuses.Contains(t.Status), ct);
-        }
-
-        return false;
-    }
+    // TASK-B05 (TASK-019) — HasOpenTaskForRuleAsync / HasOpenTaskForTemplateAsync removed.
+    // Duplicate-prevention is handled by ILiensTaskServiceClient (Task service HTTP calls).
 
     public async Task AddGeneratedMetadataAsync(
         LienGeneratedTaskMetadata metadata, CancellationToken ct = default)

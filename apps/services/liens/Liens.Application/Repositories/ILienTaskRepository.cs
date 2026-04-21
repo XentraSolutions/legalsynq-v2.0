@@ -26,8 +26,9 @@ public interface ILienTaskRepository
     Task AddLienLinksAsync(IEnumerable<LienTaskLienLink> links, CancellationToken ct = default);
     Task RemoveLienLinksAsync(Guid taskId, CancellationToken ct = default);
 
-    Task<bool> HasOpenTaskForRuleAsync(Guid tenantId, Guid ruleId, Guid? caseId, Guid? lienId, CancellationToken ct = default);
-    Task<bool> HasOpenTaskForTemplateAsync(Guid tenantId, Guid templateId, Guid? caseId, Guid? lienId, CancellationToken ct = default);
+    // TASK-B05 (TASK-019) — HasOpenTaskForRuleAsync / HasOpenTaskForTemplateAsync removed;
+    // duplicate-prevention is now handled server-side via ILiensTaskServiceClient
+    // (Task service HTTP calls) so the local Liens DB is no longer queried for this purpose.
     Task AddGeneratedMetadataAsync(LienGeneratedTaskMetadata metadata, CancellationToken ct = default);
 
     /// <summary>

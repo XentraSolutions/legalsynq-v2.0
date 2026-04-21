@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text;
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
 using Contracts;
 using Task.Api.Endpoints;
@@ -40,7 +41,12 @@ builder.Services
             RoleClaimType            = ClaimTypes.Role,
             ClockSkew                = TimeSpan.Zero,
         };
-    });
+    })
+    // TASK-B05 (TASK-013) — second scheme for machine-to-machine service tokens.
+    // Used exclusively on /api/tasks/internal/* endpoints.
+    // Secret sourced from FLOW_SERVICE_TOKEN_SECRET env var (same shared secret
+    // used by Flow, Notifications, and all other platform services).
+    .AddServiceTokenBearer(builder.Configuration);
 
 builder.Services.AddAuthorization(options =>
 {
@@ -52,6 +58,14 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
         policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
+
+    // TASK-B05 (TASK-013) — internal service-to-service endpoint gate.
+    // Only accepts tokens with scheme=ServiceToken and role=service.
+    // Rejects user JWTs, tokens with missing tenant claim, and unsigned tokens.
+    options.AddPolicy("InternalService", policy =>
+        policy
+            .AddAuthenticationSchemes(ServiceTokenAuthenticationDefaults.Scheme)
+            .RequireRole(ServiceTokenAuthenticationDefaults.ServiceRole));
 });
 
 builder.Services.AddTaskServices(builder.Configuration);

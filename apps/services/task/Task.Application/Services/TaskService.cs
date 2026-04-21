@@ -2,6 +2,7 @@ using BuildingBlocks.Exceptions;
 using Task.Application.DTOs;
 using Task.Application.Interfaces;
 using Task.Domain.Entities;
+using Task.Domain.Validation;
 using TaskStatus = Task.Domain.Enums.TaskStatus;
 using Microsoft.Extensions.Logging;
 
@@ -50,6 +51,9 @@ public class TaskService : ITaskService
         CreateTaskRequest request,
         CancellationToken ct = default)
     {
+        // TASK-B05 (TASK-014) — validate product code against canonical registry
+        KnownProductCodes.ValidateOptional(request.SourceProductCode);
+
         var governance = await _governance.ResolveAsync(tenantId, request.SourceProductCode, ct);
 
         if (governance.RequireAssignee && request.AssignedUserId is null)
@@ -159,20 +163,22 @@ public class TaskService : ITaskService
     public async System.Threading.Tasks.Task<MyTaskSummaryResponse> GetMyTaskSummaryAsync(
         Guid tenantId, Guid userId, CancellationToken ct = default)
     {
-        var counts = await _tasks.GetMyTaskCountsAsync(tenantId, userId, ct);
         var now    = DateTime.UtcNow;
 
-        var overdueCount = 0;
+        // TASK-B05 (TASK-017) — replaced unbounded 5000-row in-memory loads with
+        // server-side aggregation queries. Start both in parallel.
+        var countTask   = _tasks.GetMyTaskCountsAsync(tenantId, userId, ct);
+        var overdueTask = _tasks.GetOverdueCountForUserAsync(tenantId, userId, now, ct);
+        await System.Threading.Tasks.Task.WhenAll(countTask, overdueTask);
+        var counts       = countTask.Result;
+        var overdueCount = overdueTask.Result;
+
         var openStatuses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { "OPEN", "IN_PROGRESS", "PENDING_REVIEW", "BLOCKED" };
 
-        // Overdue = open status + due before now (need a separate query for accuracy)
-        // We count overdue from the list query here using a separate call for correctness
-        var allOpen = await _tasks.GetByAssignedUserAsync(tenantId, userId, null, null, 1, 5000, ct);
-        overdueCount = allOpen.Count(t =>
-            openStatuses.Contains(t.Status) && t.DueAt.HasValue && t.DueAt.Value < now);
-
-        var totalOpen = allOpen.Count(t => openStatuses.Contains(t.Status));
+        var totalOpen = counts
+            .Where(c => openStatuses.Contains(c.Status))
+            .Sum(c => c.Count);
 
         var summary = counts
             .Select(c => new TaskProductSummaryDto(c.ProductCode, c.Status, c.Count))

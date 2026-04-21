@@ -26,5 +26,10 @@ public class TaskLinkedEntityConfiguration : IEntityTypeConfiguration<TaskLinked
 
         builder.HasIndex(e => new { e.TenantId, e.EntityType, e.EntityId })
             .HasDatabaseName("IX_LinkedEntities_EntityRef");
+
+        // TASK-B05 (TASK-017) — prevent duplicate (taskId, entityType, entityId) rows
+        builder.HasIndex(e => new { e.TaskId, e.EntityType, e.EntityId })
+            .IsUnique()
+            .HasDatabaseName("UX_LinkedEntities_TaskId_EntityType_EntityId");
     }
 }

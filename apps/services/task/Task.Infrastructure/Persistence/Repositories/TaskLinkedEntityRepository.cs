@@ -33,9 +33,28 @@ public class TaskLinkedEntityRepository : ITaskLinkedEntityRepository
         => await _db.LinkedEntities
             .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.Id == id, ct);
 
+    public async System.Threading.Tasks.Task<bool> ExistsAsync(
+        Guid   taskId,
+        string entityType,
+        string entityId,
+        CancellationToken ct = default)
+        => await _db.LinkedEntities.AnyAsync(
+            e => e.TaskId     == taskId
+              && e.EntityType == entityType
+              && e.EntityId   == entityId,
+            ct);
+
     public async System.Threading.Tasks.Task AddAsync(
         TaskLinkedEntity entity, CancellationToken ct = default)
-        => await _db.LinkedEntities.AddAsync(entity, ct);
+    {
+        // TASK-B05 (TASK-017) — dedup guard: skip silently if the link already exists.
+        // The DB unique constraint (UX_LinkedEntities_TaskId_EntityType_EntityId) is the
+        // authoritative safety net; this check avoids throwing on the happy-path duplicate.
+        var exists = await ExistsAsync(
+            entity.TaskId, entity.EntityType, entity.EntityId, ct);
+        if (!exists)
+            await _db.LinkedEntities.AddAsync(entity, ct);
+    }
 
     public void Remove(TaskLinkedEntity entity)
         => _db.LinkedEntities.Remove(entity);
