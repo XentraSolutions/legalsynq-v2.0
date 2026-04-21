@@ -179,9 +179,10 @@ export function orgTypeLabel(orgType: string | undefined): string {
 export const GLOBAL_BOTTOM_NAV: NavSection = {
   heading: 'ACCOUNT',
   items: [
-    { href: '/my-work',       label: 'My Work',       icon: 'ri-task-line'      },
-    { href: '/notifications', label: 'Notifications', icon: 'ri-mail-send-line' },
-    { href: '/activity',      label: 'Activity Log',  icon: 'ri-history-line'   },
+    { href: '/my-work',                         label: 'My Work',         icon: 'ri-task-line'           },
+    { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line'      },
+    { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line'        },
+    { href: '/tenant/authorization/users',      label: 'User Management', icon: 'ri-shield-user-line',   adminOnly: true },
   ],
 };
 
@@ -195,16 +196,6 @@ export function buildNavGroups(session: PlatformSession): NavSection[] {
   if (!session.isPlatformAdmin && !session.isTenantAdmin) return [];
 
   const sections: NavSection[] = [];
-
-  sections.push({
-    heading: 'AUTHORIZATION',
-    items: [
-      { href: '/tenant/authorization/users',     label: 'Users',     icon: 'ri-user-line'            },
-      { href: '/tenant/authorization/groups',     label: 'Groups',    icon: 'ri-group-line'           },
-      { href: '/tenant/authorization/access',     label: 'Access',    icon: 'ri-shield-keyhole-line'  },
-      { href: '/tenant/authorization/simulator',  label: 'Simulator', icon: 'ri-test-tube-line'       },
-    ],
-  });
 
   sections.push({
     heading: 'ANALYTICS',

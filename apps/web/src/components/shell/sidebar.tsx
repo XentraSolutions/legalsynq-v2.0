@@ -163,6 +163,7 @@ export function Sidebar() {
         <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
           {GLOBAL_BOTTOM_NAV.items
             .filter(item => !(selectedProductId === 'lien' && item.href === '/my-work'))
+            .filter(item => !item.adminOnly || (session?.isPlatformAdmin || session?.isTenantAdmin))
             .map(item => (
             <SidebarItem
               key={item.href}

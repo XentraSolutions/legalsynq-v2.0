@@ -104,6 +104,7 @@ export interface NavItem {
   badgeKey?: string;
   requiredRoles?: ProductRoleValue[];
   sellModeOnly?: boolean;
+  adminOnly?: boolean;
 }
 
 export interface NavSection {
