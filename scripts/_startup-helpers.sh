@@ -23,6 +23,7 @@ _svc_label_for() {
     Documents.Api)             echo "Documents" ;;
     Liens.Api)                 echo "Liens" ;;
     Monitoring.Api)            echo "Monitoring" ;;
+    Task.Api)                  echo "Task" ;;
     *)                         echo "$svc_name" ;;
   esac
 }

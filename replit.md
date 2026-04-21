@@ -456,6 +456,11 @@ apps/
         architecture.md                   ← Service architecture (purpose, detachable principle, stack, integration model)
         README.md                         ← Service overview + local-run commands
         merge-phase-1-notes.md            ← What Phase 1 did vs. deferred to Phase 2 (Identity/Notifications/Audit/gateway/sln integration)
+    task/                                 ← TASK-B01: Standalone Task service. 4-project DDD layout (Task.Domain / Task.Application / Task.Infrastructure / Task.Api). Entities: PlatformTask, TaskNote, TaskHistory. Scopes: GENERAL, PRODUCT (requires sourceProductCode). Priorities: LOW/MEDIUM/HIGH/URGENT. Statuses: OPEN/IN_PROGRESS/COMPLETED/CANCELLED (terminal guard). EF Core MySQL (tasks_db). REST API: GET/POST/PUT /api/tasks, /api/tasks/{id}/status, /api/tasks/{id}/assign, /api/tasks/{id}/notes, /api/tasks/{id}/history. Health: :5016/health. Gateway: /task/{**catch-all}. In LegalSynq.sln. Started by run-dev.sh and run-prod.sh. Migration: 20260421000001_InitialCreate.
+      Task.Domain/                        ← Entities (PlatformTask, TaskNote, TaskHistory), Enums (TaskStatus/Priority/Scope)
+      Task.Application/                   ← DTOs/TaskDtos.cs, Interfaces (ITaskRepository, ITaskNoteRepository, ITaskHistoryRepository, IUnitOfWork, ITaskService), Services/TaskService.cs
+      Task.Infrastructure/                ← TasksDbContext, EF Configurations, Repositories, UnitOfWork, DependencyInjection.cs (AddTaskServices)
+      Task.Api/                           ← Program.cs (JWT auth, auto-migrate), Endpoints (TaskEndpoints, TaskNoteEndpoints), Middleware/ExceptionHandlingMiddleware.cs, DesignTimeDbContextFactory.cs; port 5016; ConnectionStrings:TasksDb
     reports/                              ← Standalone Reports microservice (relocated from /reports; not in LegalSynq.sln; own DB reports_db; runs independently on port 5029). Detailed in "Reports Service" section near end of this doc.
       Reports.sln
       src/{Reports.Api,Reports.Application,Reports.Domain,Reports.Infrastructure,Reports.Worker,Reports.Contracts,Reports.Shared}/
