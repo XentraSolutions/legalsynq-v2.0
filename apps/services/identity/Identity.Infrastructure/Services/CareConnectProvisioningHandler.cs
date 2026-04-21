@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Identity.Application.Interfaces;
 using Identity.Domain;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Identity.Infrastructure.Services;
@@ -8,15 +9,18 @@ namespace Identity.Infrastructure.Services;
 public class CareConnectProvisioningHandler : IProductProvisioningHandler
 {
     private readonly HttpClient _httpClient;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<CareConnectProvisioningHandler> _logger;
 
     public string ProductCode => ProductCodes.SynqCareConnect;
 
     public CareConnectProvisioningHandler(
         IHttpClientFactory httpClientFactory,
+        IConfiguration configuration,
         ILogger<CareConnectProvisioningHandler> logger)
     {
         _httpClient = httpClientFactory.CreateClient("CareConnectInternal");
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -63,6 +67,11 @@ public class CareConnectProvisioningHandler : IProductProvisioningHandler
     private async Task<ProvisionOutcome> ProvisionProviderForOrg(
         Guid tenantId, Organization org, CancellationToken ct)
     {
+        var serviceToken = _configuration["CareConnect:InternalServiceToken"];
+        if (string.IsNullOrEmpty(serviceToken))
+            throw new InvalidOperationException(
+                "CareConnect:InternalServiceToken is not configured. Cannot provision provider.");
+
         var request = new
         {
             tenantId,
@@ -72,7 +81,7 @@ public class CareConnectProvisioningHandler : IProductProvisioningHandler
 
         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/internal/provision-provider");
         httpRequest.Content = JsonContent.Create(request);
-        httpRequest.Headers.Add("X-Internal-Service-Token", "legalsynq-internal-service-2024");
+        httpRequest.Headers.Add("X-Internal-Service-Token", serviceToken);
 
         var response = await _httpClient.SendAsync(httpRequest, ct);
 

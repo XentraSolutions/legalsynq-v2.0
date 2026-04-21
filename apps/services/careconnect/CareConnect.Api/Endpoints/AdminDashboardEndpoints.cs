@@ -4,12 +4,14 @@
 //
 //   GET /api/admin/dashboard               — aggregate metrics (counts, trends)
 //   GET /api/admin/providers/blocked       — paged blocked-access log, grouped per user
-//   GET /api/admin/referrals               — paged cross-tenant referral monitor
+//   GET /api/admin/referrals               — referral monitor (platform-wide for PlatformAdmin,
+//                                            tenant-scoped for TenantAdmin)
 //
 // All endpoints require PlatformOrTenantAdmin.  They query CareConnectDbContext
 // directly (no application-layer service needed — queries are purely read-only
 // projections with no domain behaviour).
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Context;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -163,14 +165,17 @@ public static class AdminDashboardEndpoints
     // ──────────────────────────────────────────────────────────────────────────
     // GET /api/admin/referrals
     // ──────────────────────────────────────────────────────────────────────────
-    // Cross-tenant referral monitor for admins.  Joins to Provider for name.
+    // Referral monitor for admins. Joins to Provider for name.
+    // PlatformAdmin: platform-wide view (optional ?tenantId filter).
+    // TenantAdmin: restricted to their own tenant only.
     // Supports:
     //   ?page=1&pageSize=25
     //   ?status=New|Accepted|InProgress|Completed|Declined|Cancelled
-    //   ?tenantId=<guid>
+    //   ?tenantId=<guid>  (PlatformAdmin only; ignored for TenantAdmin)
     //   ?since=<ISO-datetime>
     private static async Task<IResult> GetAdminReferralsAsync(
-        CareConnectDbContext db,
+        CareConnectDbContext    db,
+        ICurrentRequestContext  ctx,
         [FromQuery] int      page     = 1,
         [FromQuery] int      pageSize = 25,
         [FromQuery] string?  status   = null,
@@ -189,8 +194,18 @@ public static class AdminDashboardEndpoints
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(r => r.Status == status);
 
-        if (tenantId.HasValue)
-            query = query.Where(r => r.TenantId == tenantId.Value);
+        if (ctx.IsPlatformAdmin)
+        {
+            // PlatformAdmin may optionally narrow to a specific tenant.
+            if (tenantId.HasValue)
+                query = query.Where(r => r.TenantId == tenantId.Value);
+        }
+        else
+        {
+            // TenantAdmin is always scoped to their own tenant — ignore caller-supplied tenantId.
+            var callerTenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            query = query.Where(r => r.TenantId == callerTenantId);
+        }
 
         if (since is not null && DateTime.TryParse(since, out var parsedSince))
             query = query.Where(r => r.CreatedAtUtc >= parsedSince.ToUniversalTime());

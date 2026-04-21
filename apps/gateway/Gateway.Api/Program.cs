@@ -33,7 +33,11 @@ builder.Services
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Deny", policy =>
+        policy.RequireAssertion(_ => false));
+});
 
 builder.Services
     .AddReverseProxy()

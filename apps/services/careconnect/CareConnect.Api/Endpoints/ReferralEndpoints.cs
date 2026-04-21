@@ -157,7 +157,20 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
-            var history = await service.GetHistoryAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin || isProviderOrg);
+            var globalLookup = ctx.IsPlatformAdmin || isProviderOrg;
+
+            // Participant check — mirrors GET /{id:guid} to prevent cross-tenant data access.
+            var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
+            if (!ctx.IsPlatformAdmin)
+            {
+                var isParticipant =
+                    (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
+                    (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId);
+                if (!isParticipant)
+                    return Results.NotFound();
+            }
+
+            var history = await service.GetHistoryAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
             return Results.Ok(history);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
@@ -197,6 +210,19 @@ public static class ReferralEndpoints
 
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
             var bypassTenant = ctx.IsPlatformAdmin || isProviderOrg;
+
+            // Participant check — verify caller is a participant before mutating the referral.
+            // Returns 404 (not 403) to avoid confirming record existence across tenants.
+            var existing = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: bypassTenant);
+            if (!ctx.IsPlatformAdmin)
+            {
+                var isParticipant =
+                    (ctx.OrgId.HasValue && existing.ReferringOrganizationId == ctx.OrgId) ||
+                    (ctx.OrgId.HasValue && existing.ReceivingOrganizationId  == ctx.OrgId);
+                if (!isParticipant)
+                    return Results.NotFound();
+            }
+
             var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct, bypassTenantScope: bypassTenant);
             return Results.Ok(referral);
         })
@@ -215,7 +241,20 @@ public static class ReferralEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
-            var notifs = await service.GetNotificationsAsync(tenantId, id, ct, isPlatformAdmin: ctx.IsPlatformAdmin || isProviderOrg);
+            var globalLookup = ctx.IsPlatformAdmin || isProviderOrg;
+
+            // Participant check — mirrors GET /{id:guid} to prevent cross-tenant data access.
+            var referral = await service.GetByIdAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
+            if (!ctx.IsPlatformAdmin)
+            {
+                var isParticipant =
+                    (ctx.OrgId.HasValue && referral.ReferringOrganizationId == ctx.OrgId) ||
+                    (ctx.OrgId.HasValue && referral.ReceivingOrganizationId  == ctx.OrgId);
+                if (!isParticipant)
+                    return Results.NotFound();
+            }
+
+            var notifs = await service.GetNotificationsAsync(tenantId, id, ct, isPlatformAdmin: globalLookup);
             return Results.Ok(notifs);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)

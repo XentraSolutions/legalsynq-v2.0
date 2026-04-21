@@ -6,7 +6,6 @@ namespace CareConnect.Api.Endpoints;
 public static class InternalProvisionEndpoints
 {
     private const string InternalTokenHeader = "X-Internal-Service-Token";
-    private const string ExpectedToken = "legalsynq-internal-service-2024";
 
     public static IEndpointRouteBuilder MapInternalProvisionEndpoints(
         this IEndpointRouteBuilder routes)
@@ -23,11 +22,20 @@ public static class InternalProvisionEndpoints
         IProviderRepository providers,
         CancellationToken ct)
     {
-        var token = httpContext.Request.Headers[InternalTokenHeader].FirstOrDefault();
         var configToken = httpContext.RequestServices
-            .GetService<IConfiguration>()?["InternalServiceToken"] ?? ExpectedToken;
+            .GetService<IConfiguration>()?["InternalServiceToken"];
+
+        if (string.IsNullOrEmpty(configToken))
+        {
+            return Results.Problem(
+                detail: "Internal service token is not configured.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        var token = httpContext.Request.Headers[InternalTokenHeader].FirstOrDefault();
         if (string.IsNullOrEmpty(token) || token != configToken)
             return Results.Unauthorized();
+
         if (body.TenantId == Guid.Empty)
             return Results.BadRequest(new { error = "tenantId is required." });
         if (body.OrganizationId == Guid.Empty)
