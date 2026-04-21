@@ -159,10 +159,38 @@ All required indexes already present + new unique index above.
 
 ## 8. Validation Results
 
-_Pending — will be updated after build verification_
+### Build results (2026-04-21)
+
+| Service | Errors | Warnings | Result |
+|---------|--------|----------|--------|
+| Task.Api | 0 | 1 × MSB3277 (pre-existing JwtBearer version conflict) | ✅ PASS |
+| Liens.Api | 0 | 1 × MSB3277 (pre-existing JwtBearer version conflict) | ✅ PASS |
+
+MSB3277 is a pre-existing transitive dependency conflict (JwtBearer 8.0.8 vs 8.0.26) unrelated to TASK-B05 changes.
+
+### Change coverage
+
+| Step | Change | Verified |
+|------|--------|----------|
+| STEP 2 | `AddServiceTokenBearer` + `InternalService` policy | Build ✅ |
+| STEP 3 | `KnownProductCodes.Validate/ValidateOptional` in 4 services | Build ✅ |
+| STEP 4 | `TaskMonitoringOptions` + `TaskServiceRegistrar` (IHostedService) registered in DI | Build ✅ |
+| STEP 5 | `correlationId` added to both failure log branches in `TaskNotificationClient` | Build ✅ |
+| STEP 6a | `ITaskLinkedEntityRepository.ExistsAsync` + impl | Build ✅ |
+| STEP 6b | Dedup guard in `TaskLinkedEntityRepository.AddAsync` | Build ✅ |
+| STEP 6c | Unique index `UX_LinkedEntities_TaskId_EntityType_EntityId` in config + migration 20260421000006 + snapshot | Build ✅ |
+| STEP 6d | `SearchAsync` capped at 200, `GetByAssignedUserAsync` capped at 500 | Build ✅ |
+| STEP 6e | `GetOverdueCountForUserAsync` in `ITaskRepository` + `TaskRepository` + wired in `GetMyTaskSummaryAsync` | Build ✅ |
+| STEP 7 | Removed `HasOpenTaskForRuleAsync` / `HasOpenTaskForTemplateAsync` from `ILienTaskRepository` + `LienTaskRepository` | Build ✅ |
 
 ---
 
 ## 9. Known Gaps / Risks
 
-_Pending — will be updated at completion_
+| # | Area | Description | Severity |
+|---|------|-------------|----------|
+| G-01 | Monitoring registration | `TaskServiceRegistrar` uses `TASK_SERVICE_URL` env var for the health endpoint target. If the variable is not set in the deployment environment the monitoring service will register the wrong URL (`http://task:8080`). This must be verified per environment. | Low — registration failure is non-fatal (Warning log) |
+| G-02 | Pagination cap enforcement | The `SearchAsync` cap is enforced inside the repository. Callers that previously passed `pageSize > 200` will silently get a capped result set with no error. API documentation should be updated to reflect the hard cap. | Low |
+| G-03 | JwtBearer version conflict (MSB3277) | Pre-existing transitive dependency conflict between `JwtBearer 8.0.8` (direct) and `8.0.26` (via BuildingBlocks). Runtime impact is negligible because the higher-binding SDK resolves it, but should be resolved in a dependency cleanup pass. | Low |
+| G-04 | Dedup race condition | The `ExistsAsync` + `AddAsync` pattern in `TaskLinkedEntityRepository` is not atomic. Concurrent inserts of the same (taskId, entityType, entityId) can pass the check simultaneously and hit the unique DB constraint. The constraint is the authoritative safety net; callers should handle `DbUpdateException` for the rare concurrent case. | Low — expected to be caught by the DB constraint |
+| G-05 | Notification skipped-config log level | When `NotificationsService:BaseUrl` is unset the client logs at `Warning`. In local/dev environments this generates noise; consider `Debug` level gated on an `IsDevelopment` check. | Info |

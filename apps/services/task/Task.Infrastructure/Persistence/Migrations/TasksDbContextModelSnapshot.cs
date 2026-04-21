@@ -74,6 +74,8 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
                     b.HasIndex(new[] { "TaskId" }, "IX_LinkedEntities_TaskId");
                     b.HasIndex(new[] { "TenantId", "EntityType", "EntityId" }, "IX_LinkedEntities_EntityRef");
+                    // TASK-B05 (TASK-017) — unique constraint added in migration 20260421000006
+                    b.HasIndex(new[] { "TaskId", "EntityType", "EntityId" }, "UX_LinkedEntities_TaskId_EntityType_EntityId").IsUnique();
                     b.ToTable("tasks_LinkedEntities");
                 });
 

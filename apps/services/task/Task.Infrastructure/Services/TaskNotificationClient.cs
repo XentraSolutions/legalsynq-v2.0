@@ -163,16 +163,21 @@ public sealed class TaskNotificationClient : ITaskNotificationClient
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(ct);
+                // TASK-B05 (TASK-016) — include correlationId (=taskId) for cross-service tracing
                 _logger.LogWarning(
-                    "[TaskNotif/{Tag}] Notifications service returned {StatusCode}. Body: {Body}",
-                    logTag, (int)response.StatusCode, body.Length > 500 ? body[..500] : body);
+                    "[TaskNotif/{Tag}] Notifications service returned {StatusCode} " +
+                    "(correlationId={CorrelationId}). Body: {Body}",
+                    logTag, (int)response.StatusCode, envelope.CorrelationId,
+                    body.Length > 500 ? body[..500] : body);
             }
         }
         catch (Exception ex)
         {
+            // TASK-B05 (TASK-016) — include correlationId (=taskId) for cross-service tracing
             _logger.LogWarning(ex,
-                "[TaskNotif/{Tag}] Failed to submit notification to Notifications service (tenant={TenantId}).",
-                logTag, tenantId);
+                "[TaskNotif/{Tag}] Failed to submit notification to Notifications service " +
+                "(tenant={TenantId}, correlationId={CorrelationId}).",
+                logTag, tenantId, envelope.CorrelationId);
         }
     }
 }
