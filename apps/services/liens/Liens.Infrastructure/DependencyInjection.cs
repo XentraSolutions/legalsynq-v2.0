@@ -95,6 +95,11 @@ public static class DependencyInjection
         services.AddSingleton<LiensStageSyncService>();
         services.AddHostedService(sp => sp.GetRequiredService<LiensStageSyncService>());
 
+        // TASK-MIG-04 — startup + periodic transition sync: copies liens_WorkflowTransitions
+        // into tasks_StageTransitions on startup and every 60 min. Idempotent; best-effort.
+        services.AddSingleton<LiensTransitionSyncService>();
+        services.AddHostedService(sp => sp.GetRequiredService<LiensTransitionSyncService>());
+
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
         services.AddHttpClient("DocumentsService", client =>
         {

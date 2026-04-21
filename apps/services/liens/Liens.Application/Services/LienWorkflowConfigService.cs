@@ -349,6 +349,9 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityType:  "LienWorkflowTransition",
             entityId:    transition.Id.ToString());
 
+        // TASK-MIG-04: best-effort write-through to Task service
+        await TrySyncTransitionsToTaskServiceAsync(tenantId, actingUserId, id, ct);
+
         var updated = await _repo.GetByIdAsync(tenantId, id, ct);
         return MapToResponseWithStages(updated!, null);
     }
@@ -374,6 +377,9 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             actorUserId: actingUserId,
             entityType:  "LienWorkflowTransition",
             entityId:    transitionId.ToString());
+
+        // TASK-MIG-04: best-effort write-through to Task service
+        await TrySyncTransitionsToTaskServiceAsync(tenantId, actingUserId, id, ct);
 
         var updated = await _repo.GetByIdAsync(tenantId, id, ct);
         return MapToResponseWithStages(updated!, null);
@@ -444,6 +450,9 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             actorUserId: actingUserId,
             entityType:  "LienWorkflowConfig",
             entityId:    entity.Id.ToString());
+
+        // TASK-MIG-04: best-effort write-through to Task service
+        await TrySyncTransitionsToTaskServiceAsync(tenantId, actingUserId, id, ct);
 
         return toCreate.Select(t => new WorkflowTransitionResponse
         {
@@ -710,5 +719,45 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
 
     private static WorkflowConfigResponse MapToResponse(LienWorkflowConfig entity)
         => MapToResponseWithStages(entity, null);
+
+    // ── TASK-MIG-04 — Transition write-through helper ────────────────────────────
+
+    /// <summary>
+    /// Reads all active transitions from Liens DB and pushes the full set to the Task service.
+    /// This is a batch-replace: the Task service's transition set for (TenantId, ProductCode)
+    /// is replaced with the current Liens DB state.
+    /// Failures are logged but never propagated to the caller.
+    /// </summary>
+    private async System.Threading.Tasks.Task TrySyncTransitionsToTaskServiceAsync(
+        Guid tenantId, Guid actingUserId, Guid workflowConfigId, CancellationToken ct)
+    {
+        try
+        {
+            var current = await _repo.GetActiveTransitionsAsync(workflowConfigId, ct);
+
+            var payload = new TaskServiceTransitionsUpsertRequest
+            {
+                SourceProductCode = ProductCode,
+                Transitions = current.Select(t => new TaskServiceTransitionsUpsertRequest.TransitionEntryDto
+                {
+                    FromStageId = t.FromStageId,
+                    ToStageId   = t.ToStageId,
+                    SortOrder   = t.SortOrder,
+                }).ToList(),
+            };
+
+            await _taskClient.UpsertTransitionsFromSourceAsync(tenantId, actingUserId, payload, ct);
+
+            _logger.LogInformation(
+                "transition_sync=ok WorkflowConfigId={WorkflowConfigId} TenantId={TenantId} Count={Count}",
+                workflowConfigId, tenantId, current.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "transition_sync=failed WorkflowConfigId={WorkflowConfigId} TenantId={TenantId}; Liens DB remains authoritative.",
+                workflowConfigId, tenantId);
+        }
+    }
 }
 

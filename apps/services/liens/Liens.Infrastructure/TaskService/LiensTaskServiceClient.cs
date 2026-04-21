@@ -728,6 +728,43 @@ public sealed class LiensTaskServiceClient : ILiensTaskServiceClient
         response.EnsureSuccessStatusCode();
     }
 
+    // ── TASK-MIG-04 — Transition round-trip ──────────────────────────────────────
+
+    public async Task<List<TaskServiceTransitionResponse>> GetTransitionsAsync(
+        Guid   tenantId,
+        string productCode,
+        CancellationToken ct = default)
+    {
+        var url = $"/api/tasks/stage-transitions?productCode={Uri.EscapeDataString(productCode)}";
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Add("X-Tenant-Id", tenantId.ToString());
+
+        var response = await _http.SendAsync(req, ct);
+        response.EnsureSuccessStatusCode();
+
+        var list = await response.Content
+            .ReadFromJsonAsync<List<TaskServiceTransitionResponse>>(_json, ct);
+        return list ?? [];
+    }
+
+    public async System.Threading.Tasks.Task UpsertTransitionsFromSourceAsync(
+        Guid   tenantId,
+        Guid   actingUserId,
+        TaskServiceTransitionsUpsertRequest payload,
+        CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(
+            HttpMethod.Post, "/api/tasks/stage-transitions/from-source")
+        {
+            Content = JsonContent.Create(payload, options: _json),
+        };
+        req.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        req.Headers.Add("X-User-Id",   actingUserId.ToString());
+
+        var response = await _http.SendAsync(req, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     // ── Local wire types (match Task service camelCase JSON) ─────────────────────
 
     private sealed class TaskApiDto

@@ -260,6 +260,7 @@ public sealed class LienTaskService : ILienTaskService
             if (fromStageResp is not null)
             {
                 var allowed = await _transitionValidator.IsTransitionAllowedAsync(
+                    tenantId,
                     fromStageResp.WorkflowConfigId,
                     existing.WorkflowStageId.Value,
                     request.WorkflowStageId.Value, ct);

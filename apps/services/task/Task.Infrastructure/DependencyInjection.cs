@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Task.Application.Interfaces;
+using Task.Application.Repositories;
 using Task.Application.Services;
 using Task.Infrastructure.Persistence;
 using Task.Infrastructure.Persistence.Repositories;
@@ -40,14 +41,16 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork,                 UnitOfWork>();
 
         // Execution engine repositories
-        services.AddScoped<ITaskStageRepository,      TaskStageRepository>();
+        services.AddScoped<ITaskStageRepository,           TaskStageRepository>();
+        services.AddScoped<ITaskStageTransitionRepository, TaskStageTransitionRepository>();
         services.AddScoped<ITaskGovernanceRepository,  TaskGovernanceRepository>();
         services.AddScoped<ITaskTemplateRepository,    TaskTemplateRepository>();
         services.AddScoped<ITaskReminderRepository,    TaskReminderRepository>();
 
         // Application services
         services.AddScoped<ITaskGovernanceService, TaskGovernanceService>();
-        services.AddScoped<ITaskStageService,      TaskStageService>();
+        services.AddScoped<ITaskStageService,           TaskStageService>();
+        services.AddScoped<ITaskStageTransitionService, TaskStageTransitionService>();
         services.AddScoped<ITaskTemplateService,   TaskTemplateService>();
         services.AddScoped<ITaskReminderService,   TaskReminderService>();
         services.AddScoped<ITaskService,           TaskService>();

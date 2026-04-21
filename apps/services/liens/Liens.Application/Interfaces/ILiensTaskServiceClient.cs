@@ -215,6 +215,16 @@ public interface ILiensTaskServiceClient
         Guid? caseId,
         Guid? lienId,
         CancellationToken ct = default);
+
+    // ── TASK-MIG-04 — Transition round-trip ──────────────────────────────────────
+
+    /// <summary>Returns all active transitions for (tenantId, productCode) from Task service.</summary>
+    Task<List<TaskServiceTransitionResponse>> GetTransitionsAsync(
+        Guid tenantId, string productCode, CancellationToken ct = default);
+
+    /// <summary>Batch-replaces transitions for (tenantId, productCode) in Task service (idempotent).</summary>
+    System.Threading.Tasks.Task UpsertTransitionsFromSourceAsync(
+        Guid tenantId, Guid actorId, TaskServiceTransitionsUpsertRequest request, CancellationToken ct = default);
 }
 
 public sealed record BackfillTaskResult(Guid TaskId, int NotesCreated, int LinksCreated, bool AlreadyExisted);

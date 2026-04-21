@@ -198,6 +198,26 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.HasIndex(new[] { "Status", "RemindAt" }, "IX_Reminders_Status_RemindAt");
                     b.ToTable("tasks_Reminders");
                 });
+
+            modelBuilder.Entity("Task.Domain.Entities.TaskStageTransition", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("char(36)");
+                    b.Property<Guid>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("SourceProductCode").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<Guid>("FromStageId").HasColumnType("char(36)");
+                    b.Property<Guid>("ToStageId").HasColumnType("char(36)");
+                    b.Property<bool>("IsActive").HasColumnType("tinyint(1)").HasDefaultValue(true);
+                    b.Property<int>("SortOrder").HasColumnType("int").HasDefaultValue(0);
+                    b.Property<Guid>("CreatedByUserId").HasColumnType("char(36)");
+                    b.Property<Guid?>("UpdatedByUserId").HasColumnType("char(36)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex(new[] { "TenantId", "SourceProductCode" }, "IX_StageTransitions_TenantId_Product");
+                    b.HasIndex(new[] { "TenantId", "SourceProductCode", "FromStageId" }, "IX_StageTransitions_FromStage");
+                    b.HasIndex(new[] { "TenantId", "SourceProductCode", "FromStageId", "ToStageId" }, "UX_StageTransitions_Unique").IsUnique();
+                    b.ToTable("tasks_StageTransitions");
+                });
 #pragma warning restore 612, 618
         }
     }

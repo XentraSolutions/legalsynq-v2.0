@@ -11,6 +11,7 @@ public class TasksDbContext : DbContext
     public DbSet<TaskNote>               Notes             => Set<TaskNote>();
     public DbSet<TaskHistory>            History           => Set<TaskHistory>();
     public DbSet<TaskStageConfig>        StageConfigs      => Set<TaskStageConfig>();
+    public DbSet<TaskStageTransition>    StageTransitions  => Set<TaskStageTransition>();
     public DbSet<TaskGovernanceSettings> GovernanceSettings => Set<TaskGovernanceSettings>();
     public DbSet<TaskTemplate>           Templates         => Set<TaskTemplate>();
     public DbSet<TaskReminder>           Reminders         => Set<TaskReminder>();

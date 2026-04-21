@@ -104,6 +104,7 @@ app.MapGet("/info", () =>
 app.MapTaskEndpoints();
 app.MapTaskNoteEndpoints();
 app.MapTaskStageEndpoints();
+app.MapTaskStageTransitionEndpoints();
 app.MapTaskGovernanceEndpoints();
 app.MapTaskTemplateEndpoints();
 app.MapTaskReminderEndpoints();
