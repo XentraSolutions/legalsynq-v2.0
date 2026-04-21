@@ -21,13 +21,12 @@ public class LiensDbContext : DbContext
     public DbSet<LienWorkflowConfig>      LienWorkflowConfigs     => Set<LienWorkflowConfig>();
     public DbSet<LienWorkflowStage>       LienWorkflowStages      => Set<LienWorkflowStage>();
     public DbSet<LienWorkflowTransition>  LienWorkflowTransitions => Set<LienWorkflowTransition>();
-    public DbSet<LienTaskTemplate> LienTaskTemplates => Set<LienTaskTemplate>();
+    // TASK-MIG-09: LienTaskTemplates DbSet removed — liens_TaskTemplates dropped (MIG-09 migration)
     public DbSet<LienTaskGenerationRule> LienTaskGenerationRules => Set<LienTaskGenerationRule>();
     public DbSet<LienGeneratedTaskMetadata> LienGeneratedTaskMetadatas => Set<LienGeneratedTaskMetadata>();
     public DbSet<LienTaskNote> LienTaskNotes => Set<LienTaskNote>();
     public DbSet<LienCaseNote> LienCaseNotes => Set<LienCaseNote>();
-    // LS-LIENS-FLOW-006 — Task governance settings
-    public DbSet<LienTaskGovernanceSettings> LienTaskGovernanceSettings => Set<LienTaskGovernanceSettings>();
+    // TASK-MIG-09: LienTaskGovernanceSettings DbSet removed — liens_TaskGovernanceSettings dropped (MIG-09 migration)
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

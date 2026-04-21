@@ -213,39 +213,13 @@ static async Task EnsureLiensSchemaTablesAsync(LiensDbContext db, ILogger logger
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """;
 
-    const string createTaskGovernanceSettings = """
-        CREATE TABLE IF NOT EXISTS `liens_TaskGovernanceSettings` (
-            `Id`                         char(36)     NOT NULL COLLATE ascii_general_ci,
-            `TenantId`                   char(36)     NOT NULL COLLATE ascii_general_ci,
-            `ProductCode`                varchar(50)  NOT NULL,
-            `RequireAssigneeOnCreate`    tinyint(1)   NOT NULL DEFAULT 1,
-            `RequireCaseLinkOnCreate`    tinyint(1)   NOT NULL DEFAULT 1,
-            `AllowMultipleAssignees`     tinyint(1)   NOT NULL DEFAULT 0,
-            `RequireWorkflowStageOnCreate` tinyint(1) NOT NULL DEFAULT 1,
-            `DefaultStartStageMode`      varchar(30)  NOT NULL DEFAULT 'FIRST_ACTIVE_STAGE',
-            `ExplicitStartStageId`       char(36)     NULL     COLLATE ascii_general_ci,
-            `Version`                    int          NOT NULL DEFAULT 1,
-            `LastUpdatedAt`              datetime(6)  NOT NULL,
-            `LastUpdatedByUserId`        char(36)     NULL     COLLATE ascii_general_ci,
-            `LastUpdatedByName`          varchar(200) NULL,
-            `LastUpdatedSource`          varchar(50)  NOT NULL DEFAULT 'TENANT_PRODUCT_SETTINGS',
-            `CreatedByUserId`            char(36)     NOT NULL COLLATE ascii_general_ci,
-            `UpdatedByUserId`            char(36)     NULL     COLLATE ascii_general_ci,
-            `CreatedAtUtc`               datetime(6)  NOT NULL,
-            `UpdatedAtUtc`               datetime(6)  NOT NULL,
-            PRIMARY KEY (`Id`),
-            UNIQUE KEY `UX_TaskGovernance_TenantId_ProductCode` (`TenantId`, `ProductCode`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        """;
+    // TASK-MIG-09: liens_TaskGovernanceSettings removed — table dropped by migration 20260421000002.
+    // TASK-MIG-09: liens_TaskTemplates removed — table dropped by migration 20260421000002.
 
     using var cmd = conn.CreateCommand();
     cmd.CommandText = createWorkflowTransitions;
     await cmd.ExecuteNonQueryAsync();
     logger.LogInformation("EnsureLiensSchemaTablesAsync: liens_WorkflowTransitions ensured.");
-
-    cmd.CommandText = createTaskGovernanceSettings;
-    await cmd.ExecuteNonQueryAsync();
-    logger.LogInformation("EnsureLiensSchemaTablesAsync: liens_TaskGovernanceSettings ensured.");
 
     // LS-LIENS-FLOW-007 — liens_Tasks.WorkflowInstanceId + WorkflowStepKey columns
     // Added by migration 20260420000002_AddTaskFlowLinkage. MySQL does not support

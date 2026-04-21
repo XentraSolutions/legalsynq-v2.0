@@ -14,7 +14,6 @@ using Liens.Infrastructure.TaskService;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace Liens.Infrastructure;
 
@@ -45,12 +44,11 @@ public static class DependencyInjection
         services.AddScoped<IServicingItemRepository, ServicingItemRepository>();
         services.AddScoped<ILienTaskRepository, LienTaskRepository>();
         services.AddScoped<ILienWorkflowConfigRepository, LienWorkflowConfigRepository>();
-        services.AddScoped<ILienTaskTemplateRepository, LienTaskTemplateRepository>();
+        // TASK-MIG-09: ILienTaskTemplateRepository removed — template table dropped; service is Task-only
         services.AddScoped<ILienTaskGenerationRuleRepository, LienTaskGenerationRuleRepository>();
         services.AddScoped<ILienTaskNoteRepository, LienTaskNoteRepository>();
         services.AddScoped<ILienCaseNoteRepository, LienCaseNoteRepository>();
-        // LS-LIENS-FLOW-006 — Task governance
-        services.AddScoped<ILienTaskGovernanceSettingsRepository, LienTaskGovernanceSettingsRepository>();
+        // TASK-MIG-09: ILienTaskGovernanceSettingsRepository removed — governance table dropped; service is Task-only
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddSingleton<IBillOfSalePdfGenerator, BillOfSalePdfGenerator>();
@@ -80,20 +78,8 @@ public static class DependencyInjection
         // TASK-B04 — backfill service
         services.AddScoped<ILienTaskBackfillService, LienTaskBackfillService>();
 
-        // TASK-MIG-08 — LiensGovernanceSyncService DISABLED (Liens→Task direction suppressed).
-        // Task service is now the primary write owner for governance settings (MIG-08 flip).
-        // Registration is kept so rollback only requires restoring ExecuteAsync body — no DI change.
-        // Rollback: revert LienTaskGovernanceService write order AND restore ExecuteAsync body.
-        services.AddSingleton<LiensGovernanceSyncService>();
-        services.AddHostedService(sp => sp.GetRequiredService<LiensGovernanceSyncService>());
-
-        // TASK-MIG-07 — LiensTemplateSyncService DISABLED (Liens→Task direction suppressed).
-        // Task service is now the primary write owner for templates (MIG-07 ownership flip).
-        // The service is still registered so that rollback only requires un-suppressing
-        // ExecuteAsync in LiensTemplateSyncService.cs — no DI change needed.
-        // Rollback: revert LienTaskTemplateService write order AND un-suppress ExecuteAsync.
-        services.AddSingleton<LiensTemplateSyncService>();
-        services.AddHostedService(sp => sp.GetRequiredService<LiensTemplateSyncService>());
+        // TASK-MIG-09: LiensGovernanceSyncService REMOVED. Governance is fully Task-owned.
+        // TASK-MIG-09: LiensTemplateSyncService REMOVED. Templates are fully Task-owned.
 
         // TASK-MIG-03 — startup + periodic stage sync: copies liens_WorkflowStages
         // into tasks_StageConfigs on startup and every 60 min. Idempotent; best-effort.
@@ -116,8 +102,6 @@ public static class DependencyInjection
         services.AddScoped<IAuditPublisher, AuditPublisher>();
 
         // LS-NOTIF-CORE-021 — service token issuer for Notifications calls.
-        // Mints HS256 JWTs (audience: notifications-service) so POST /v1/notifications
-        // is authenticated rather than relying on the legacy X-Tenant-Id header.
         services.AddServiceTokenIssuer(configuration, "liens-service");
         services.AddTransient<NotificationsAuthDelegatingHandler>();
 
