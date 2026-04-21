@@ -54,7 +54,8 @@ public class ActivationQueueTests
             repoMock.Object,
             providerMock.Object,
             auditMock.Object,
-            NullLogger<ActivationRequestService>.Instance);
+            NullLogger<ActivationRequestService>.Instance,
+            new Mock<Microsoft.AspNetCore.Http.IHttpContextAccessor>().Object);
 
         return (service, repoMock, providerMock, auditMock);
     }

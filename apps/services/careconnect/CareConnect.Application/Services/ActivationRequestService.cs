@@ -247,6 +247,7 @@ public class ActivationRequestService : IActivationRequestService
                 Action      = "Approved",
                 Description = $"Activation request '{request.Id}' approved. Provider '{request.ProviderId}' linked to org '{organizationId}'.",
                 Outcome     = "success",
+                RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
                 IdempotencyKey = IdempotencyKey.ForWithTimestamp(
                     DateTimeOffset.UtcNow, "care-connect",
                     "careconnect.activation.approved",

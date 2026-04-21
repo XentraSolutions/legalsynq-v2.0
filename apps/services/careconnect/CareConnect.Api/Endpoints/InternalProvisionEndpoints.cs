@@ -1,3 +1,4 @@
+using BuildingBlocks.Authentication.ServiceTokens;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
 
@@ -5,37 +6,23 @@ namespace CareConnect.Api.Endpoints;
 
 public static class InternalProvisionEndpoints
 {
-    private const string InternalTokenHeader = "X-Internal-Service-Token";
-
     public static IEndpointRouteBuilder MapInternalProvisionEndpoints(
         this IEndpointRouteBuilder routes)
     {
+        // Requires a valid platform service token (HS256, FLOW_SERVICE_TOKEN_SECRET).
+        // The gateway blocks /internal/** from external clients via the Deny policy on
+        // careconnect-internal-block, so this route is only reachable by internal services.
         routes.MapPost("/internal/provision-provider", ProvisionProvider)
-            .AllowAnonymous();
+            .RequireAuthorization("ServiceOnly");
 
         return routes;
     }
 
     private static async Task<IResult> ProvisionProvider(
-        HttpContext httpContext,
         ProvisionProviderRequest body,
         IProviderRepository providers,
         CancellationToken ct)
     {
-        var configToken = httpContext.RequestServices
-            .GetService<IConfiguration>()?["InternalServiceToken"];
-
-        if (string.IsNullOrEmpty(configToken))
-        {
-            return Results.Problem(
-                detail: "Internal service token is not configured.",
-                statusCode: StatusCodes.Status503ServiceUnavailable);
-        }
-
-        var token = httpContext.Request.Headers[InternalTokenHeader].FirstOrDefault();
-        if (string.IsNullOrEmpty(token) || token != configToken)
-            return Results.Unauthorized();
-
         if (body.TenantId == Guid.Empty)
             return Results.BadRequest(new { error = "tenantId is required." });
         if (body.OrganizationId == Guid.Empty)

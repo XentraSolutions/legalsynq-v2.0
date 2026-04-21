@@ -213,6 +213,7 @@ public class ReferralService : IReferralService
                 referringOrganizationId = request.ReferringOrganizationId,
                 receivingOrganizationId = request.ReceivingOrganizationId,
             }),
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.For("care-connect", "careconnect.referral.created", referral.Id.ToString()),
             Tags = ["referral", "created"],
         });
@@ -326,6 +327,7 @@ public class ReferralService : IReferralService
                 urgency = request.Urgency,
                 statusChanged,
             }),
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "care-connect", "careconnect.referral.updated", referral.Id.ToString()),
             Tags = ["referral", "clinical", "status-change"],
         });
@@ -411,6 +413,7 @@ public class ReferralService : IReferralService
             Action        = "ReferralViewed",
             Description   = $"Referral '{referral.Id}' viewed via public token (provider state: {routeType}).",
             Outcome       = "success",
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(viewedNow, "care-connect", "careconnect.referral.funnel.referralviewed", referral.Id.ToString()),
             Tags           = ["referral", "funnel", "viewed", routeType],
         });
@@ -474,6 +477,7 @@ public class ReferralService : IReferralService
                 Action        = "ReferralAcceptReplay",
                 Description   = $"Duplicate acceptance attempt for referral '{referral.Id}' (status: '{referral.Status}'). Rejected.",
                 Outcome       = "failure",
+                RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
                 IdempotencyKey = IdempotencyKey.ForWithTimestamp(replayNow, "care-connect", "careconnect.referral.accept.replay", referral.Id.ToString()),
                 Tags           = ["referral", "replay", "security"],
             });
@@ -539,6 +543,7 @@ public class ReferralService : IReferralService
             Action         = "ReferralAcceptedByToken",
             Description    = $"Referral '{referral.Id}' accepted via public view token.",
             Outcome        = "success",
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.accepted.by-token", referral.Id.ToString()),
             Tags           = ["referral", "accepted", "public-token"],
         });
@@ -623,6 +628,7 @@ public class ReferralService : IReferralService
             Action        = "ReferralEmailResent",
             Description   = $"Provider notification email resent for referral '{referral.Id}'.",
             Outcome       = "success",
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.email.resent", referral.Id.ToString()),
             Tags           = ["referral", "email", "resent"],
         });
@@ -666,6 +672,7 @@ public class ReferralService : IReferralService
             Action        = "ReferralTokenRevoked",
             Description   = $"View token revoked for referral '{referral.Id}'. Version {oldVersion} → {referral.TokenVersion}.",
             Outcome       = "success",
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.token.revoked", referral.Id.ToString()),
             Tags           = ["referral", "token", "revoked", "security"],
         });
@@ -711,6 +718,7 @@ public class ReferralService : IReferralService
             Action        = "TokenInvalid",
             Description   = $"Invalid referral view token presented. Reason: {reason}.",
             Outcome       = "failure",
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", "careconnect.referral.token.invalid", referralId?.ToString() ?? "unknown"),
             Tags           = ["referral", "token", "invalid", "security"],
         });
@@ -1015,6 +1023,7 @@ public class ReferralService : IReferralService
             Action        = eventType,
             Description   = $"Provider funnel event '{eventType}' recorded for referral '{referral.Id}'.",
             Outcome       = "success",
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", $"careconnect.referral.funnel.{normalised}", referral.Id.ToString()),
             Tags           = ["referral", "funnel", "activation", normalised],
         });

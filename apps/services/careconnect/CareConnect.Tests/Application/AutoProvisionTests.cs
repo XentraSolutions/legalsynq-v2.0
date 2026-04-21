@@ -83,7 +83,8 @@ public class AutoProvisionTests
             activationsMock.Object,
             auditMock.Object,
             config,
-            NullLogger<AutoProvisionService>.Instance);
+            NullLogger<AutoProvisionService>.Instance,
+            new Mock<Microsoft.AspNetCore.Http.IHttpContextAccessor>().Object);
 
         return (sut, emailMock, referralsMock, providersMock,
                 providerSvcMock, identityMock, activationsMock, auditMock);

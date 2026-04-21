@@ -159,6 +159,7 @@ public class AppointmentService : IAppointmentService
                 startAtUtc    = slot.StartAtUtc,
                 tenantId,
             }),
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.For("care-connect", "careconnect.appointment.scheduled", appointment.Id.ToString()),
             Tags = ["appointment", "scheduled"],
         });
@@ -393,6 +394,7 @@ public class AppointmentService : IAppointmentService
                 notes        = request.Notes,
                 slotReleased = slot is not null,
             }),
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "care-connect", "careconnect.appointment.cancelled", appointment.Id.ToString()),
             Tags = ["appointment", "clinical", "cancellation"],
         });

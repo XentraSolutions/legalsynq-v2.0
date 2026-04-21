@@ -453,6 +453,7 @@ public class ProviderActivationFunnelTests
             scopeFactory,
             relationshipResolver,
             auditClient,
-            NullLogger<ReferralService>.Instance);
+            NullLogger<ReferralService>.Instance,
+            new Mock<Microsoft.AspNetCore.Http.IHttpContextAccessor>().Object);
     }
 }

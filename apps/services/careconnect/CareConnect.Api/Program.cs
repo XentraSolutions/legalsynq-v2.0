@@ -8,12 +8,9 @@ using CareConnect.Api.Middleware;
 using CareConnect.Infrastructure;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
-using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -140,7 +137,24 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // Health & info
-app.MapGet("/health", () => Results.Ok(new { status = "healthy" })).AllowAnonymous();
+app.MapGet("/health", async (CareConnectDbContext db, CancellationToken ct) =>
+{
+    try
+    {
+        // Lightweight probe: executes "SELECT 1" to confirm DB connectivity.
+        var canConnect = await db.Database.CanConnectAsync(ct);
+        var dbStatus   = canConnect ? "connected" : "unreachable";
+        return canConnect
+            ? Results.Ok(new { status = "healthy", db = dbStatus })
+            : Results.Json(new { status = "degraded", db = dbStatus },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (Exception)
+    {
+        return Results.Json(new { status = "degraded", db = "error" },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+}).AllowAnonymous();
 app.MapGet("/info",   () => Results.Ok(new { service = "CareConnect", version = "1.0.0" })).AllowAnonymous();
 
 // Internal service-to-service endpoints

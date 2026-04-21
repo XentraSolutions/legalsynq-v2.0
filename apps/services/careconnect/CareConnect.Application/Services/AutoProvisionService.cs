@@ -317,6 +317,7 @@ public class AutoProvisionService : IAutoProvisionService
                         ? $"{eventType}: provider '{provider?.Id}' referral '{referral.Id}'. {detail}"
                         : $"{eventType}: provider '{provider?.Id}' referral '{referral.Id}'.",
                     Outcome     = eventType.Contains("Failed") ? "failure" : "success",
+                    RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
                     IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "care-connect", eventCode, referral.Id.ToString()),
                     Tags           = ["autoprovision", "activation", "provider-funnel"],
                 });
