@@ -13,11 +13,11 @@ namespace Flow.Application.Services;
 /// docs and <c>analysis/E11.2-report.md</c> for the rule set.
 ///
 /// <para>
-/// Transactional model: the factory only <b>stages</b> a new
-/// <see cref="WorkflowTask"/> on the shared <see cref="IFlowDbContext"/>.
-/// The caller's <c>SaveChangesAsync</c> commits both the workflow state
-/// change and the task in a single EF unit-of-work, so a workflow
-/// transition that fails to persist cannot leave behind an orphan task.
+/// <b>TASK-FLOW-01 dual-write:</b> the factory now calls the external
+/// Task service first (making it the write authority) and then stages
+/// the same row in <c>flow_workflow_tasks</c> as a read-replica shadow.
+/// If the Task service call fails the shadow write is skipped and the
+/// error propagates.
 /// </para>
 ///
 /// <para>
@@ -55,17 +55,21 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
     private readonly IFlowDbContext _db;
     private readonly IWorkflowTaskAssignmentResolver _assignmentResolver;
     private readonly IWorkflowTaskSlaClock _slaClock;
+    // TASK-FLOW-01 — Task service client for dual-write delegation.
+    private readonly IFlowTaskServiceClient _taskClient;
     private readonly ILogger<WorkflowTaskFromWorkflowFactory> _logger;
 
     public WorkflowTaskFromWorkflowFactory(
         IFlowDbContext db,
         IWorkflowTaskAssignmentResolver assignmentResolver,
         IWorkflowTaskSlaClock slaClock,
+        IFlowTaskServiceClient taskClient,
         ILogger<WorkflowTaskFromWorkflowFactory> logger)
     {
         _db = db;
         _assignmentResolver = assignmentResolver;
         _slaClock = slaClock;
+        _taskClient = taskClient;
         _logger = logger;
     }
 
@@ -240,6 +244,38 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
 
         ApplyAssignment(task, assignment);
 
+        // TASK-FLOW-01 — delegate creation to Task service (write authority).
+        // Only DirectUser assignments are representable in the Task service's
+        // current data model; RoleQueue / OrgQueue are preserved in the shadow
+        // only (Phase 1). Task service is called FIRST; the local EF staging
+        // below is the dual-write shadow and only runs if this call succeeds.
+        var assignedUserIdForTaskService =
+            task.AssignmentMode == WorkflowTaskAssignmentMode.DirectUser
+                ? task.AssignedUserId
+                : null;
+
+        try
+        {
+            await _taskClient.CreateWorkflowTaskAsync(
+                workflowInstanceId: instanceId,
+                stepKey:            stepKey,
+                title:              task.Title,
+                priority:           task.Priority,
+                dueAt:              task.DueAt,
+                assignedUserId:     assignedUserIdForTaskService,
+                ct:                 cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "WorkflowTaskFromWorkflowFactory.Ensure: Task service create FAILED for instance={InstanceId} step={StepKey}. " +
+                "Shadow write skipped; propagating error.",
+                instanceId, stepKey);
+            throw;
+        }
+
+        // Shadow write: stage the local EF entity so queries via
+        // flow_workflow_tasks continue to work in Phase 1.
         _db.WorkflowTasks.Add(task);
 
         _logger.LogInformation(

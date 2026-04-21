@@ -71,15 +71,19 @@ public sealed class WorkflowTaskLifecycleService : IWorkflowTaskLifecycleService
 {
     private readonly IFlowDbContext _db;
     private readonly IFlowUserContext _user;
+    // TASK-FLOW-01 — Task service client for dual-write delegation.
+    private readonly IFlowTaskServiceClient _taskClient;
     private readonly ILogger<WorkflowTaskLifecycleService> _log;
 
     public WorkflowTaskLifecycleService(
         IFlowDbContext db,
         IFlowUserContext user,
+        IFlowTaskServiceClient taskClient,
         ILogger<WorkflowTaskLifecycleService> log)
     {
         _db = db;
         _user = user;
+        _taskClient = taskClient;
         _log = log;
     }
 
@@ -89,6 +93,7 @@ public sealed class WorkflowTaskLifecycleService : IWorkflowTaskLifecycleService
             expectedStatus: WorkflowTaskStatus.Open,
             newStatus: WorkflowTaskStatus.InProgress,
             timestampField: TimestampField.Started,
+            taskServiceDelegate: id => _taskClient.StartTaskAsync(id, ct),
             ct);
 
     public Task<WorkflowTaskTransitionResult> CompleteTaskAsync(Guid taskId, CancellationToken ct = default) =>
@@ -97,6 +102,7 @@ public sealed class WorkflowTaskLifecycleService : IWorkflowTaskLifecycleService
             expectedStatus: WorkflowTaskStatus.InProgress,
             newStatus: WorkflowTaskStatus.Completed,
             timestampField: TimestampField.Completed,
+            taskServiceDelegate: id => _taskClient.CompleteTaskAsync(id, ct),
             ct);
 
     public async Task<WorkflowTaskTransitionResult> CancelTaskAsync(Guid taskId, CancellationToken ct = default)
@@ -116,6 +122,9 @@ public sealed class WorkflowTaskLifecycleService : IWorkflowTaskLifecycleService
         {
             throw new InvalidStateTransitionException(current, WorkflowTaskStatus.Cancelled);
         }
+
+        // TASK-FLOW-01: delegate to Task service before shadow CAS.
+        await DelegateToTaskServiceAsync(taskId, id => _taskClient.CancelTaskAsync(id, ct), "Cancel");
 
         return await ApplyCasAsync(
             taskId,
@@ -140,6 +149,7 @@ public sealed class WorkflowTaskLifecycleService : IWorkflowTaskLifecycleService
         string expectedStatus,
         string newStatus,
         TimestampField timestampField,
+        Func<Guid, Task> taskServiceDelegate,
         CancellationToken ct)
     {
         var current = await ReadCurrentStatusAsync(taskId, ct);
@@ -152,7 +162,34 @@ public sealed class WorkflowTaskLifecycleService : IWorkflowTaskLifecycleService
             throw new InvalidStateTransitionException(current, newStatus);
         }
 
+        // TASK-FLOW-01: delegate to Task service before shadow CAS.
+        await DelegateToTaskServiceAsync(taskId, taskServiceDelegate, newStatus);
+
         return await ApplyCasAsync(taskId, expectedStatus, newStatus, timestampField, ct);
+    }
+
+    /// <summary>
+    /// TASK-FLOW-01 — calls the Task service delegate and propagates any
+    /// failure immediately so the shadow CAS is never executed if the
+    /// primary write fails.
+    /// </summary>
+    private async Task DelegateToTaskServiceAsync(
+        Guid taskId,
+        Func<Guid, Task> delegate_,
+        string operationLabel)
+    {
+        try
+        {
+            await delegate_(taskId);
+        }
+        catch (Exception ex)
+        {
+            _log.LogError(ex,
+                "WorkflowTaskLifecycleService: Task service call FAILED for task {TaskId} op={Op}. " +
+                "Shadow CAS skipped; propagating error.",
+                taskId, operationLabel);
+            throw;
+        }
     }
 
     /// <summary>

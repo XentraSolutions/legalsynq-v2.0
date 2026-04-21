@@ -25,6 +25,21 @@ public static class DependencyInjection
         services.AddScoped<IFlowDbContext>(provider => provider.GetRequiredService<FlowDbContext>());
         services.AddScoped(typeof(IRepository<>), typeof(RepositoryBase<>));
 
+        // TASK-FLOW-01 — Task service HTTP client (dual-write authority for workflow tasks).
+        // FlowTaskServiceAuthDelegatingHandler forwards the caller's bearer token so Task service
+        // can authenticate the user (AuthenticatedUser policy). Falls back to service token for
+        // background / non-HTTP contexts.
+        services.AddHttpContextAccessor();
+        services.AddTransient<Flow.Infrastructure.TaskService.FlowTaskServiceAuthDelegatingHandler>();
+
+        var taskBaseUrl = configuration["ExternalServices:Task:BaseUrl"] ?? "http://localhost:5016";
+        services.AddHttpClient<IFlowTaskServiceClient, Flow.Infrastructure.TaskService.FlowTaskServiceClient>(client =>
+        {
+            client.BaseAddress = new Uri(taskBaseUrl);
+            client.Timeout     = TimeSpan.FromSeconds(30);
+        })
+        .AddHttpMessageHandler<Flow.Infrastructure.TaskService.FlowTaskServiceAuthDelegatingHandler>();
+
         return services;
     }
 
@@ -37,7 +52,7 @@ public static class DependencyInjection
 
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
-        services.AddScoped<ITaskService, TaskService>();
+        services.AddScoped<ITaskService, Flow.Application.Services.TaskService>();
         services.AddScoped<IWorkflowService, WorkflowService>();
         services.AddScoped<IAutomationExecutor, AutomationExecutor>();
         services.AddScoped<INotificationService, NotificationService>();

@@ -131,25 +131,41 @@ public sealed class WorkflowTaskCompletionService : IWorkflowTaskCompletionServi
         }
 
         // ---- Phase 2: atomic completion + advancement ----
-        // Use the database's execution strategy so any retry scope
-        // covers BOTH the lifecycle CAS and the engine advance — we must
-        // never end up with the task Completed but the workflow still on
-        // the previous step due to a transient connection blip.
+        //
+        // TASK-FLOW-01 dual-write sequencing:
+        //   2a. Task service complete (primary authority) — runs OUTSIDE any
+        //       DB transaction so the HTTP call is not bounded by the DB
+        //       execution strategy's retry scope.
+        //   2b. DB execution strategy: shadow CAS (lifecycle.CompleteTaskAsync)
+        //       + engine advance in one DB transaction.
+        //
+        // On step 2b failure after 2a succeeded: the task is Completed in
+        // Task service but the workflow has not advanced. This inconsistency
+        // is logged and surfaced to the caller. The caller may safely retry
+        // because Task service's status transition is idempotent for terminal
+        // statuses, and the engine's step-match check prevents double-advance.
+
+        // 2a. Task service complete (primary write authority, no DB tx).
+        // This call goes through WorkflowTaskLifecycleService which will
+        // itself delegate to Task service as part of its own dual-write.
+        // No separate direct call needed here — the lifecycle service handles
+        // both the Task service delegation and the shadow CAS below.
+
         var strategy = _db.CreateExecutionStrategy();
 
         return await strategy.ExecuteAsync(async () =>
         {
             await using var tx = await _db.BeginTransactionAsync(ct);
 
-            // 2a. Atomic InProgress → Completed CAS. If another caller
-            //     already completed (or cancelled) the task between
-            //     phase-1 read and here, this throws
-            //     WorkflowTaskConcurrencyException ⇒ 409. The
-            //     transaction has not yet flushed any work, so the
-            //     rollback is trivially correct.
+            // 2b-i. Shadow CAS via lifecycle service (InProgress → Completed).
+            // WorkflowTaskLifecycleService.CompleteTaskAsync calls the Task
+            // service first (TASK-FLOW-01) and then applies the shadow CAS.
+            // If another caller already completed (or cancelled) the task
+            // between phase-1 read and here, this throws
+            // WorkflowTaskConcurrencyException ⇒ 409.
             var taskResult = await _lifecycle.CompleteTaskAsync(taskId, ct);
 
-            // 2b. Drive the workflow engine. The engine is the sole
+            // 2b-ii. Drive the workflow engine. The engine is the sole
             //     execution authority and does its own checks:
             //       - workflow must be Active                 ⇒ 409
             //       - workflow.CurrentStepKey must equal
@@ -157,14 +173,8 @@ public sealed class WorkflowTaskCompletionService : IWorkflowTaskCompletionServi
             //       - exactly one outbound transition or
             //         caller-named target                     ⇒ 409 if ambiguous
             //     Any failure throws and the using-await above rolls back
-            //     the task CAS — preserving the "all or nothing" promise.
-            //
-            //     toStepKey is null on this surface: a UI-driven task
-            //     completion expresses "I finished the work for this
-            //     step", not "route the workflow to a specific next
-            //     step". Definitions with a fan-out at the current step
-            //     intentionally fail loud here so they can be exposed
-            //     through a richer endpoint later.
+            //     the shadow CAS — but the Task service write in step 2b-i
+            //     has already committed (no shared tx). Log the inconsistency.
             WorkflowInstanceResponse engineResult;
             try
             {

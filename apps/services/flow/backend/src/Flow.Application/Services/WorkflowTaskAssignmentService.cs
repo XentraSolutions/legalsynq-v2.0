@@ -81,17 +81,21 @@ public sealed class WorkflowTaskAssignmentService : IWorkflowTaskAssignmentServi
     private readonly IFlowDbContext _db;
     private readonly IFlowUserContext _user;
     private readonly IAuditAdapter _audit;
+    // TASK-FLOW-01 — Task service client for dual-write delegation.
+    private readonly IFlowTaskServiceClient _taskClient;
     private readonly ILogger<WorkflowTaskAssignmentService> _log;
 
     public WorkflowTaskAssignmentService(
         IFlowDbContext db,
         IFlowUserContext user,
         IAuditAdapter audit,
+        IFlowTaskServiceClient taskClient,
         ILogger<WorkflowTaskAssignmentService> log)
     {
         _db = db;
         _user = user;
         _audit = audit;
+        _taskClient = taskClient;
         _log = log;
     }
 
@@ -306,6 +310,55 @@ public sealed class WorkflowTaskAssignmentService : IWorkflowTaskAssignmentServi
         var newUserId = target.UserId;
         var newRole = target.Role;
         var newOrgId = target.OrgId;
+
+        // TASK-FLOW-01 — delegate DirectUser assignment to Task service.
+        // RoleQueue, OrgQueue, and Unassigned are not representable in the
+        // Task service's assignment model (Phase 1); they are preserved in
+        // the shadow table only. A warning is logged for those modes.
+        if (newMode == WorkflowTaskAssignmentMode.DirectUser)
+        {
+            Guid? assignedUserGuid = null;
+            if (!string.IsNullOrWhiteSpace(newUserId) && Guid.TryParse(newUserId, out var parsed))
+                assignedUserGuid = parsed;
+            else if (!string.IsNullOrWhiteSpace(newUserId))
+                _log.LogWarning(
+                    "WorkflowTaskAssignmentService: AssignedUserId '{UserId}' is not a valid Guid — Task service assign skipped; shadow only.",
+                    newUserId);
+
+            if (assignedUserGuid.HasValue)
+            {
+                try
+                {
+                    await _taskClient.AssignUserAsync(taskId, assignedUserGuid, ct);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogError(ex,
+                        "WorkflowTaskAssignmentService: Task service assign FAILED for task {TaskId}. Shadow CAS skipped; propagating error.",
+                        taskId);
+                    throw;
+                }
+            }
+        }
+        else if (newMode == WorkflowTaskAssignmentMode.Unassigned)
+        {
+            try
+            {
+                await _taskClient.AssignUserAsync(taskId, null, ct);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "WorkflowTaskAssignmentService: Task service unassign failed for task {TaskId} (non-fatal for Phase 1 RoleQueue/OrgQueue modes); continuing shadow write.",
+                    taskId);
+            }
+        }
+        else
+        {
+            _log.LogWarning(
+                "WorkflowTaskAssignmentService: assignment mode {Mode} cannot be delegated to Task service in Phase 1 — shadow-only write for task {TaskId}.",
+                newMode, taskId);
+        }
 
         var affected = await _db.WorkflowTasks
             .Where(t => t.Id == taskId
