@@ -54,6 +54,11 @@ public static class TaskEndpoints
         bool      excludeTerminal      = false,
         int       page                 = 1,
         int       pageSize             = 50,
+        // TASK-FLOW-02 — queue filter & sort
+        string?   assignmentMode       = null,
+        string?   assignedRole         = null,
+        string?   assignedOrgId        = null,
+        string?   sort                 = null,
         CancellationToken ct           = default)
     {
         var tenantId    = RequireTenantId(ctx);
@@ -66,7 +71,12 @@ public static class TaskEndpoints
             linkedEntityType, linkedEntityId,
             assignmentScope, currentUser,
             generationRuleId, generatingTemplateId, excludeTerminal,
-            page, pageSize, ct);
+            page, pageSize,
+            assignmentMode: assignmentMode,
+            assignedRole:   assignedRole,
+            assignedOrgId:  assignedOrgId,
+            sort:           sort,
+            ct:             ct);
         return Results.Ok(result);
     }
 

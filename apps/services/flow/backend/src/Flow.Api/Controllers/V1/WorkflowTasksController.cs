@@ -275,10 +275,13 @@ public sealed class WorkflowTasksController : ControllerBase
         // between the two reads — we collapse to 404 to keep the
         // contract identical to a missing/ineligible id rather than
         // throwing a 500.
-        var tenantId = await _db.WorkflowTasks
+        // TASK-FLOW-02 — look up TenantId from WorkflowInstances instead of the
+        // WorkflowTasks shadow table; the shadow will be dropped in TASK-FLOW-03.
+        // detail.WorkflowInstanceId is always populated (set on task creation).
+        var tenantId = await _db.WorkflowInstances
             .AsNoTracking()
-            .Where(t => t.Id == id)
-            .Select(t => t.TenantId)
+            .Where(wi => wi.Id == detail.WorkflowInstanceId)
+            .Select(wi => wi.TenantId)
             .FirstOrDefaultAsync(ct);
         if (tenantId is null) return NotFound();
 

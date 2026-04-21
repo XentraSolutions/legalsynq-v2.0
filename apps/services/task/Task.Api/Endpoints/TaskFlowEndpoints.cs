@@ -25,7 +25,10 @@ public static class TaskFlowEndpoints
             .RequireAuthorization("InternalService")
             .WithTags("Tasks - Flow Integration");
 
-        internalGroup.MapPost("/flow-callback", HandleFlowCallback);
+        internalGroup.MapPost("/flow-callback",    HandleFlowCallback);
+        // TASK-FLOW-02 — new internal endpoints
+        internalGroup.MapPost("/flow-sla-update",  HandleFlowSlaUpdate);
+        internalGroup.MapPost("/flow-queue-assign/{tenantId:guid}/{taskId:guid}", HandleFlowQueueAssign);
 
         // Per-task workflow context — authenticated user
         var taskGroup = app.MapGroup("/api/tasks")
@@ -78,5 +81,33 @@ public static class TaskFlowEndpoints
         var userId   = RequireUserId(ctx);
         var result   = await taskService.UpdateWorkflowLinkageAsync(tenantId, id, userId, request, ct);
         return Results.Ok(result);
+    }
+
+    // TASK-FLOW-02 — batch SLA state push from Flow's WorkflowTaskSlaEvaluator
+    private static async System.Threading.Tasks.Task<IResult> HandleFlowSlaUpdate(
+        FlowSlaUpdateRequest    request,
+        ITaskService            taskService,
+        ICurrentRequestContext  ctx,
+        CancellationToken       ct = default)
+    {
+        // SLA evaluator is per-tenant; tenant comes from the service-token header claim
+        var tenantId = ctx.TenantId;
+        if (tenantId is null)
+            return Results.BadRequest("TenantId is required in service token claims.");
+
+        var result = await taskService.UpdateFlowSlaStateAsync(tenantId.Value, request, ct);
+        return Results.Ok(result);
+    }
+
+    // TASK-FLOW-02 — queue assignment update from Flow's WorkflowTaskAssignmentService
+    private static async System.Threading.Tasks.Task<IResult> HandleFlowQueueAssign(
+        Guid                   tenantId,
+        Guid                   taskId,
+        FlowQueueAssignRequest request,
+        ITaskService           taskService,
+        CancellationToken      ct = default)
+    {
+        var result = await taskService.SetFlowQueueAssignmentAsync(tenantId, taskId, request, ct);
+        return result.Updated ? Results.Ok(result) : Results.NotFound(result);
     }
 }

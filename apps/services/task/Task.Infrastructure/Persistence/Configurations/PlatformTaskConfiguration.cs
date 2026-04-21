@@ -57,6 +57,26 @@ public class PlatformTaskConfiguration : IEntityTypeConfiguration<PlatformTask>
         builder.Property(t => t.CompletedAt);
         builder.Property(t => t.ClosedByUserId);
 
+        // TASK-FLOW-02 — Flow queue assignment metadata
+        builder.Property(t => t.AssignmentMode).HasMaxLength(20);
+        builder.Property(t => t.AssignedRole).HasMaxLength(100);
+        builder.Property(t => t.AssignedOrgId).HasMaxLength(100);
+        builder.Property(t => t.AssignedAt);
+        builder.Property(t => t.AssignedBy).HasMaxLength(100);
+        builder.Property(t => t.AssignmentReason).HasMaxLength(500);
+
+        // TASK-FLOW-02 — Additional lifecycle timestamps
+        builder.Property(t => t.StartedAt);
+        builder.Property(t => t.CancelledAt);
+
+        // TASK-FLOW-02 — SLA state (pushed from Flow SLA evaluator)
+        builder.Property(t => t.SlaStatus)
+            .IsRequired()
+            .HasMaxLength(20)
+            .HasDefaultValue("OnTrack");
+        builder.Property(t => t.SlaBreachedAt);
+        builder.Property(t => t.LastSlaEvaluatedAt);
+
         builder.Property(t => t.CreatedByUserId).IsRequired();
         builder.Property(t => t.UpdatedByUserId);
         builder.Property(t => t.CreatedAtUtc).IsRequired();
@@ -94,5 +114,12 @@ public class PlatformTaskConfiguration : IEntityTypeConfiguration<PlatformTask>
 
         builder.HasIndex(t => new { t.TenantId, t.SourceProductCode, t.GeneratingTemplateId })
             .HasDatabaseName("IX_Tasks_TenantId_Product_GeneratingTemplate");
+
+        // TASK-FLOW-02 — queue read indexes for role/org queue filtering
+        builder.HasIndex(t => new { t.TenantId, t.AssignmentMode, t.AssignedRole })
+            .HasDatabaseName("IX_Tasks_TenantId_AssignmentMode_Role");
+
+        builder.HasIndex(t => new { t.TenantId, t.AssignmentMode, t.AssignedOrgId })
+            .HasDatabaseName("IX_Tasks_TenantId_AssignmentMode_Org");
     }
 }

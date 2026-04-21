@@ -25,20 +25,34 @@ public static class DependencyInjection
         services.AddScoped<IFlowDbContext>(provider => provider.GetRequiredService<FlowDbContext>());
         services.AddScoped(typeof(IRepository<>), typeof(RepositoryBase<>));
 
-        // TASK-FLOW-01 — Task service HTTP client (dual-write authority for workflow tasks).
-        // FlowTaskServiceAuthDelegatingHandler forwards the caller's bearer token so Task service
-        // can authenticate the user (AuthenticatedUser policy). Falls back to service token for
-        // background / non-HTTP contexts.
+        // TASK-FLOW-01 / TASK-FLOW-02 — Task service HTTP clients.
+        //
+        // Two clients are registered:
+        //   1. Typed client (user-bearer auth): for all user-facing Task service endpoints
+        //      (AuthenticatedUser policy). Forwards the caller's bearer token.
+        //   2. Named client "FlowTaskInternal" (service-token auth): for internal endpoints
+        //      (InternalService policy: flow-sla-update, flow-queue-assign).
+        //      Always mints a service token via X-Tenant-Id header.
         services.AddHttpContextAccessor();
         services.AddTransient<Flow.Infrastructure.TaskService.FlowTaskServiceAuthDelegatingHandler>();
+        services.AddTransient<Flow.Infrastructure.TaskService.FlowTaskInternalAuthHandler>();
 
         var taskBaseUrl = configuration["ExternalServices:Task:BaseUrl"] ?? "http://localhost:5016";
+
         services.AddHttpClient<IFlowTaskServiceClient, Flow.Infrastructure.TaskService.FlowTaskServiceClient>(client =>
         {
             client.BaseAddress = new Uri(taskBaseUrl);
             client.Timeout     = TimeSpan.FromSeconds(30);
         })
         .AddHttpMessageHandler<Flow.Infrastructure.TaskService.FlowTaskServiceAuthDelegatingHandler>();
+
+        // TASK-FLOW-02 — internal named client (service token, no user bearer forwarding).
+        services.AddHttpClient("FlowTaskInternal", client =>
+        {
+            client.BaseAddress = new Uri(taskBaseUrl);
+            client.Timeout     = TimeSpan.FromSeconds(30);
+        })
+        .AddHttpMessageHandler<Flow.Infrastructure.TaskService.FlowTaskInternalAuthHandler>();
 
         return services;
     }

@@ -1,3 +1,4 @@
+using Flow.Application.Interfaces;
 using Flow.Domain.Common;
 using Flow.Domain.Entities;
 using Flow.Infrastructure.Persistence;
@@ -136,12 +137,18 @@ public sealed class WorkflowTaskSlaEvaluator : BackgroundService
         if (batch.Count == 0) return;
 
         var transitions = 0;
+
+        // TASK-FLOW-02 — collect SLA state changes so we can push to Task service.
+        // (TenantId, TaskId, SlaStatus, SlaBreachedAt, EvaluatedAt)
+        var slaUpdates = new List<(string TenantId, Guid TaskId, string SlaStatus, DateTime? SlaBreachedAt, DateTime EvaluatedAt)>();
+
         foreach (var task in batch)
         {
             if (ct.IsCancellationRequested) break;
             if (TryEvaluate(task, now, opts.DueSoonThresholdMinutes))
             {
                 transitions++;
+                slaUpdates.Add((task.TenantId, task.Id, task.SlaStatus, task.SlaBreachedAt, now));
             }
             task.LastSlaEvaluatedAt = now;
         }
@@ -153,6 +160,40 @@ public sealed class WorkflowTaskSlaEvaluator : BackgroundService
             _log.LogInformation(
                 "WorkflowTaskSlaEvaluator tick: visited={Visited} transitioned={Transitioned}",
                 batch.Count, transitions);
+        }
+
+        // TASK-FLOW-02 — push SLA changes to Task service (best-effort; shadow already committed).
+        // Group by TenantId and call once per tenant. Uses internal service-token auth.
+        if (slaUpdates.Count > 0)
+        {
+            var taskClient = scope.ServiceProvider.GetRequiredService<IFlowTaskServiceClient>();
+            foreach (var group in slaUpdates.GroupBy(u => u.TenantId))
+            {
+                if (!Guid.TryParse(group.Key, out var tenantGuid))
+                {
+                    _log.LogWarning(
+                        "WorkflowTaskSlaEvaluator: TenantId '{TenantId}' is not a valid Guid — SLA push skipped for {Count} task(s).",
+                        group.Key, group.Count());
+                    continue;
+                }
+
+                var perTenantUpdates = group
+                    .Select(u => (u.TaskId, u.SlaStatus, u.SlaBreachedAt, u.EvaluatedAt))
+                    .ToList();
+
+                try
+                {
+                    await taskClient.UpdateSlaStateAsync(tenantGuid, perTenantUpdates, ct);
+                }
+                catch (Exception ex)
+                {
+                    // Non-fatal: shadow table already has the correct state.
+                    // Task service will reconcile on next successful push.
+                    _log.LogError(ex,
+                        "WorkflowTaskSlaEvaluator: Task service SLA push FAILED for tenant {TenantId} ({Count} update(s)); shadow already committed.",
+                        group.Key, perTenantUpdates.Count);
+                }
+            }
         }
     }
 

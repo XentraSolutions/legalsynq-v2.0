@@ -244,11 +244,10 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
 
         ApplyAssignment(task, assignment);
 
-        // TASK-FLOW-01 — delegate creation to Task service (write authority).
-        // Only DirectUser assignments are representable in the Task service's
-        // current data model; RoleQueue / OrgQueue are preserved in the shadow
-        // only (Phase 1). Task service is called FIRST; the local EF staging
-        // below is the dual-write shadow and only runs if this call succeeds.
+        // TASK-FLOW-01 / TASK-FLOW-02 — delegate creation to Task service (write authority).
+        // Task service is called FIRST; the local EF staging below is the dual-write shadow
+        // and only runs if this call succeeds.
+        // TASK-FLOW-02: all assignment modes are now forwarded to Task service (not just DirectUser).
         var assignedUserIdForTaskService =
             task.AssignmentMode == WorkflowTaskAssignmentMode.DirectUser
                 ? task.AssignedUserId
@@ -263,6 +262,16 @@ public sealed class WorkflowTaskFromWorkflowFactory : IWorkflowTaskFromWorkflowF
                 priority:           task.Priority,
                 dueAt:              task.DueAt,
                 assignedUserId:     assignedUserIdForTaskService,
+                // TASK-FLOW-01 — pass shadow ID as ExternalId so PlatformTask.Id == WorkflowTask.Id.
+                // Task service uses: Id = externalId ?? Guid.NewGuid(), ensuring the canonical ID
+                // returned from Task service == the shadow row ID used by lifecycle delegates.
+                externalId:         task.Id,
+                // TASK-FLOW-02 — queue metadata now forwarded on creation
+                assignmentMode:     task.AssignmentMode,
+                assignedRole:       task.AssignedRole,
+                assignedOrgId:      task.AssignedOrgId,
+                assignedBy:         task.AssignedBy,
+                assignmentReason:   task.AssignmentReason,
                 ct:                 cancellationToken);
         }
         catch (Exception ex)

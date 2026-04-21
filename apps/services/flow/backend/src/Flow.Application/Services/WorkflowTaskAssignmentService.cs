@@ -311,53 +311,51 @@ public sealed class WorkflowTaskAssignmentService : IWorkflowTaskAssignmentServi
         var newRole = target.Role;
         var newOrgId = target.OrgId;
 
-        // TASK-FLOW-01 — delegate DirectUser assignment to Task service.
-        // RoleQueue, OrgQueue, and Unassigned are not representable in the
-        // Task service's assignment model (Phase 1); they are preserved in
-        // the shadow table only. A warning is logged for those modes.
-        if (newMode == WorkflowTaskAssignmentMode.DirectUser)
+        // TASK-FLOW-02 — delegate assignment to Task service for ALL modes
+        // (DirectUser, RoleQueue, OrgQueue, Unassigned) via the internal
+        // flow-queue-assign endpoint (service token auth).
+        // Phase 1 limitation of DirectUser-only is now removed.
+        Guid? assignedUserGuid = null;
+        if (!string.IsNullOrWhiteSpace(newUserId))
         {
-            Guid? assignedUserGuid = null;
-            if (!string.IsNullOrWhiteSpace(newUserId) && Guid.TryParse(newUserId, out var parsed))
+            if (Guid.TryParse(newUserId, out var parsed))
                 assignedUserGuid = parsed;
-            else if (!string.IsNullOrWhiteSpace(newUserId))
+            else
                 _log.LogWarning(
-                    "WorkflowTaskAssignmentService: AssignedUserId '{UserId}' is not a valid Guid — Task service assign skipped; shadow only.",
+                    "WorkflowTaskAssignmentService: AssignedUserId '{UserId}' is not a valid Guid — assignedUserId will be null in Task service.",
                     newUserId);
-
-            if (assignedUserGuid.HasValue)
-            {
-                try
-                {
-                    await _taskClient.AssignUserAsync(taskId, assignedUserGuid, ct);
-                }
-                catch (Exception ex)
-                {
-                    _log.LogError(ex,
-                        "WorkflowTaskAssignmentService: Task service assign FAILED for task {TaskId}. Shadow CAS skipped; propagating error.",
-                        taskId);
-                    throw;
-                }
-            }
         }
-        else if (newMode == WorkflowTaskAssignmentMode.Unassigned)
+
+        Guid tenantGuid = Guid.Empty;
+        if (!string.IsNullOrWhiteSpace(_user.TenantId) && !Guid.TryParse(_user.TenantId, out tenantGuid))
+        {
+            _log.LogWarning(
+                "WorkflowTaskAssignmentService: TenantId '{TenantId}' is not a valid Guid — queue assignment to Task service skipped.",
+                _user.TenantId);
+        }
+
+        if (tenantGuid != Guid.Empty)
         {
             try
             {
-                await _taskClient.AssignUserAsync(taskId, null, ct);
+                await _taskClient.SetQueueAssignmentAsync(
+                    tenantId:        tenantGuid,
+                    taskId:          taskId,
+                    assignmentMode:  newMode,
+                    assignedUserId:  assignedUserGuid,
+                    assignedRole:    newRole,
+                    assignedOrgId:   newOrgId,
+                    assignedBy:      actor,
+                    assignmentReason: reasonForRow,
+                    ct:              ct);
             }
             catch (Exception ex)
             {
-                _log.LogWarning(ex,
-                    "WorkflowTaskAssignmentService: Task service unassign failed for task {TaskId} (non-fatal for Phase 1 RoleQueue/OrgQueue modes); continuing shadow write.",
-                    taskId);
+                _log.LogError(ex,
+                    "WorkflowTaskAssignmentService: Task service SetQueueAssignment FAILED for task {TaskId} mode={Mode}. Shadow CAS skipped; propagating error.",
+                    taskId, newMode);
+                throw;
             }
-        }
-        else
-        {
-            _log.LogWarning(
-                "WorkflowTaskAssignmentService: assignment mode {Mode} cannot be delegated to Task service in Phase 1 — shadow-only write for task {TaskId}.",
-                newMode, taskId);
         }
 
         var affected = await _db.WorkflowTasks

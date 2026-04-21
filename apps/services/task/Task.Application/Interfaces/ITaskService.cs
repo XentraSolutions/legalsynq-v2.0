@@ -38,7 +38,25 @@ public interface ITaskService
         bool      excludeTerminal      = false,
         int       page                 = 1,
         int       pageSize             = 50,
+        // TASK-FLOW-02
+        string?   assignmentMode       = null,
+        string?   assignedRole         = null,
+        string?   assignedOrgId        = null,
+        string?   sort                 = null,
         CancellationToken ct           = default);
+
+    // TASK-FLOW-02 — internal SLA push from Flow's WorkflowTaskSlaEvaluator
+    System.Threading.Tasks.Task<FlowSlaUpdateResult> UpdateFlowSlaStateAsync(
+        Guid                tenantId,
+        FlowSlaUpdateRequest request,
+        CancellationToken   ct = default);
+
+    // TASK-FLOW-02 — internal queue assignment from Flow's WorkflowTaskAssignmentService
+    System.Threading.Tasks.Task<FlowQueueAssignResult> SetFlowQueueAssignmentAsync(
+        Guid                   tenantId,
+        Guid                   taskId,
+        FlowQueueAssignRequest request,
+        CancellationToken      ct = default);
 
     System.Threading.Tasks.Task<IReadOnlyList<TaskDto>> GetMyTasksAsync(
         Guid      tenantId,

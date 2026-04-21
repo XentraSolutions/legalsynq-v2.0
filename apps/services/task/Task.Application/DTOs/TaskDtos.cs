@@ -23,7 +23,17 @@ public record CreateTaskRequest(
     /// <summary>TASK-B04-01 — ID of the generation rule that triggered auto-creation (null for manual tasks).</summary>
     Guid?     GenerationRuleId     = null,
     /// <summary>TASK-B04-01 — ID of the template applied during auto-generation.</summary>
-    Guid?     GeneratingTemplateId = null);
+    Guid?     GeneratingTemplateId = null,
+    /// <summary>TASK-FLOW-02 — Flow assignment mode: DirectUser, RoleQueue, OrgQueue, or Unassigned.</summary>
+    string?   AssignmentMode       = null,
+    /// <summary>TASK-FLOW-02 — Role key when AssignmentMode = RoleQueue.</summary>
+    string?   AssignedRole         = null,
+    /// <summary>TASK-FLOW-02 — Org ID when AssignmentMode = OrgQueue.</summary>
+    string?   AssignedOrgId        = null,
+    /// <summary>TASK-FLOW-02 — String user ID (JWT sub) of the actor who set the initial assignment.</summary>
+    string?   AssignedBy           = null,
+    /// <summary>TASK-FLOW-02 — Free-form note recorded with the initial assignment.</summary>
+    string?   AssignmentReason     = null);
 
 public record UpdateTaskRequest(
     string    Title,
@@ -62,7 +72,21 @@ public record TaskDto(
     Guid?     CreatedByUserId,
     Guid?     UpdatedByUserId,
     DateTime  CreatedAtUtc,
-    DateTime  UpdatedAtUtc)
+    DateTime  UpdatedAtUtc,
+    // TASK-FLOW-02 — Flow queue assignment metadata
+    string?   AssignmentMode     = null,
+    string?   AssignedRole       = null,
+    string?   AssignedOrgId      = null,
+    DateTime? AssignedAt         = null,
+    string?   AssignedBy         = null,
+    string?   AssignmentReason   = null,
+    // TASK-FLOW-02 — Additional lifecycle timestamps
+    DateTime? StartedAt          = null,
+    DateTime? CancelledAt        = null,
+    // TASK-FLOW-02 — SLA state
+    string    SlaStatus          = "OnTrack",
+    DateTime? SlaBreachedAt      = null,
+    DateTime? LastSlaEvaluatedAt = null)
 {
     public static TaskDto From(PlatformTask t) => new(
         t.Id, t.TenantId, t.Title, t.Description,
@@ -73,7 +97,18 @@ public record TaskDto(
         t.WorkflowInstanceId, t.WorkflowStepKey, t.WorkflowLinkageChangedAt,
         t.DueAt, t.CompletedAt, t.ClosedByUserId,
         t.CreatedByUserId, t.UpdatedByUserId,
-        t.CreatedAtUtc, t.UpdatedAtUtc);
+        t.CreatedAtUtc, t.UpdatedAtUtc,
+        AssignmentMode:     t.AssignmentMode,
+        AssignedRole:       t.AssignedRole,
+        AssignedOrgId:      t.AssignedOrgId,
+        AssignedAt:         t.AssignedAt,
+        AssignedBy:         t.AssignedBy,
+        AssignmentReason:   t.AssignmentReason,
+        StartedAt:          t.StartedAt,
+        CancelledAt:        t.CancelledAt,
+        SlaStatus:          t.SlaStatus,
+        SlaBreachedAt:      t.SlaBreachedAt,
+        LastSlaEvaluatedAt: t.LastSlaEvaluatedAt);
 }
 
 public record TaskNoteDto(
@@ -171,3 +206,38 @@ public record AddLinkedEntityRequest(
     string  EntityId,
     string  RelationshipType  = "RELATED",
     string? SourceProductCode = null);
+
+// ── TASK-FLOW-02 — Internal Flow integration DTOs ──────────────────────────
+
+/// <summary>
+/// TASK-FLOW-02 — Payload for a single task's SLA state update.
+/// Sent by Flow's WorkflowTaskSlaEvaluator to the internal SLA push endpoint.
+/// </summary>
+public record FlowSlaUpdateItem(
+    Guid      TaskId,
+    string    SlaStatus,
+    DateTime? SlaBreachedAt,
+    DateTime  EvaluatedAt);
+
+/// <summary>
+/// TASK-FLOW-02 — Batch SLA update request sent by Flow's SLA evaluator.
+/// </summary>
+public record FlowSlaUpdateRequest(IReadOnlyList<FlowSlaUpdateItem> Updates);
+
+/// <summary>Result of the internal SLA update batch.</summary>
+public record FlowSlaUpdateResult(int Updated, int NotFound);
+
+/// <summary>
+/// TASK-FLOW-02 — Sets Flow queue assignment metadata on a task via the internal endpoint.
+/// Called on claim/reassign operations delegated by Flow.
+/// </summary>
+public record FlowQueueAssignRequest(
+    string?  AssignmentMode,
+    Guid?    AssignedUserId,
+    string?  AssignedRole,
+    string?  AssignedOrgId,
+    string?  AssignedBy,
+    string?  AssignmentReason);
+
+/// <summary>Result of the internal queue assignment update.</summary>
+public record FlowQueueAssignResult(bool Updated, string? Error = null);

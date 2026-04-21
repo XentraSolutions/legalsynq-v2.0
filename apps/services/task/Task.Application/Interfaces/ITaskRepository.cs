@@ -30,6 +30,11 @@ public interface ITaskRepository
         bool      excludeTerminal      = false,
         int       page                 = 1,
         int       pageSize             = 50,
+        // TASK-FLOW-02 — queue filter params
+        string?   assignmentMode       = null,
+        string?   assignedRole         = null,
+        string?   assignedOrgId        = null,
+        string?   sort                 = null,
         CancellationToken ct           = default);
 
     System.Threading.Tasks.Task<IReadOnlyList<PlatformTask>> GetByAssignedUserAsync(

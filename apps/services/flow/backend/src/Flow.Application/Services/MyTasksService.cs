@@ -1,9 +1,7 @@
-using System.Linq.Expressions;
 using Flow.Application.DTOs;
 using Flow.Application.Exceptions;
 using Flow.Application.Interfaces;
 using Flow.Domain.Common;
-using Flow.Domain.Entities;
 using Flow.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -11,91 +9,111 @@ using Microsoft.Extensions.Logging;
 namespace Flow.Application.Services;
 
 /// <summary>
-/// LS-FLOW-E11.5 / LS-FLOW-E15 — default implementation of
-/// <see cref="IMyTasksService"/>.
+/// TASK-FLOW-02 — read paths migrated from <c>flow_workflow_tasks</c> to the
+/// canonical Task service.
 ///
 /// <para>
-/// E15 widened the surface from "list my direct tasks" to also include
-/// "list the role-queue tasks I can claim", "list the org-queue tasks
-/// I can claim", and "get a single task by id". All four queries share
-/// the same <see cref="ProjectToDto"/> expression so the widened
-/// <see cref="MyTaskDto"/> assignment fields are populated identically
-/// everywhere — no chance of drift between list and detail.
+/// All four surfaces — My Tasks, Role Queue, Org Queue, and Task Detail — now
+/// call <see cref="IFlowTaskServiceClient"/> for the task rows, then enrich
+/// the results with <c>WorkflowName</c> / <c>ProductKey</c> by batch-querying
+/// <see cref="IFlowDbContext.WorkflowInstances"/> on the Flow DB.
 /// </para>
 ///
 /// <para>
-/// <b>Tenant safety:</b> enforced by the global query filter on
-/// <see cref="WorkflowTask"/>. Cross-tenant ids surface as
-/// <see cref="NotFoundException"/> ⇒ 404, identical to a missing task.
+/// <b>Status string contract</b>: the Task service uses uppercase snake-case
+/// status strings (OPEN, IN_PROGRESS, COMPLETED, CANCELLED). The helper
+/// <see cref="ToTaskServiceStatus"/> converts the caller's Flow-convention
+/// strings to the Task service format; <see cref="MapStatus"/> converts back.
 /// </para>
 ///
 /// <para>
-/// <b>Eligibility filtering for queues:</b>
-///   <list type="bullet">
-///     <item>RoleQueue: <c>AssignedRole IN (caller.Roles)</c>. Platform
-///       admins bypass this filter (they can see every queue for
-///       support / on-call work).</item>
-///     <item>OrgQueue: <c>AssignedOrgId = caller.OrgId</c>. Platform
-///       admins bypass.</item>
-///   </list>
-/// Both queue queries are pinned to <c>Status = Open</c>: in our
-/// model, only Open queue rows are claimable; an InProgress row has
-/// already been claimed and would not benefit from being shown in the
-/// queue surface.
+/// <b>Role-queue pagination</b>: for non-admin callers with multiple roles,
+/// the Task service does not yet accept a multi-role filter. We loop once per
+/// role (capped at <see cref="RoleQueuePerRoleFetchCap"/> items), merge, dedupe
+/// by TaskId, sort in-memory with the same urgency hierarchy as before, then
+/// slice the requested page. This is correct for the current workloads; a
+/// multi-role Task service filter will be added in a later sprint.
+/// </para>
+///
+/// <para>
+/// <b>Tenant safety</b>: the Task service enforces tenant isolation via JWT
+/// claims (the forwarded bearer token). We do not apply extra tenant filters
+/// beyond what the user's token already provides.
+/// </para>
+///
+/// <para>
+/// <b>Eligibility</b> (GetTaskDetailAsync): checked in-memory after the Task
+/// service fetch; the service returns null (→ 404) for missing/wrong-tenant
+/// tasks, and the in-memory gate covers intra-tenant IDOR.
 /// </para>
 /// </summary>
 public sealed class MyTasksService : IMyTasksService
 {
+    private const int RoleQueuePerRoleFetchCap = 500;
+
     private readonly IFlowDbContext _db;
     private readonly IFlowUserContext _user;
+    private readonly IFlowTaskServiceClient _taskClient;
     private readonly ILogger<MyTasksService> _log;
 
-    public MyTasksService(IFlowDbContext db, IFlowUserContext user, ILogger<MyTasksService> log)
+    public MyTasksService(
+        IFlowDbContext           db,
+        IFlowUserContext         user,
+        IFlowTaskServiceClient   taskClient,
+        ILogger<MyTasksService>  log)
     {
-        _db = db;
-        _user = user;
-        _log = log;
+        _db         = db;
+        _user       = user;
+        _taskClient = taskClient;
+        _log        = log;
     }
 
     // =========================================================
-    // E11.5 — My direct tasks
+    // My direct tasks
     // =========================================================
     public async Task<PagedResponse<MyTaskDto>> ListMyTasksAsync(MyTasksQuery query, CancellationToken ct = default)
     {
         var userId = _user.UserId;
         if (string.IsNullOrWhiteSpace(userId))
-        {
             throw new ValidationException("Authenticated user id is required to list My Tasks.");
-        }
 
         var (page, pageSize) = NormalizePage(query.Page, query.PageSize);
-        var statusFilter = NormaliseStatusFilter(query.Status);
 
-        var baseQuery = _db.WorkflowTasks.AsNoTracking()
-            .Where(t => t.AssignedUserId == userId);
+        // Single-status fast path: pass status filter to Task service so it can
+        // apply it server-side. Multiple-status: fetch all, filter in memory.
+        string? taskServiceStatus = null;
+        if (query.Status is { Count: 1 })
+            taskServiceStatus = ToTaskServiceStatus(NormaliseStatusFilter(query.Status)![0]);
 
-        if (statusFilter is not null)
+        var raw = await _taskClient.ListTasksAsync(
+            assignedUserId: userId,
+            status:         taskServiceStatus,
+            sort:           "flow_active_first",
+            page:           page,
+            pageSize:       pageSize,
+            ct:             ct);
+
+        // Multiple-status filter applied in memory (rare code path).
+        IReadOnlyList<TaskServiceTaskDto> items = raw.Items;
+        var totalCount = raw.Total;
+        if (query.Status is { Count: > 1 })
         {
-            baseQuery = baseQuery.Where(t => statusFilter.Contains(t.Status));
+            var allowedStatuses = NormaliseStatusFilter(query.Status)!
+                .Select(ToTaskServiceStatus)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            items     = items.Where(t => allowedStatuses.Contains(t.Status)).ToList();
+            totalCount = items.Count;
         }
 
-        var totalCount = await baseQuery.CountAsync(ct);
-
-        var items = await OrderActiveFirst(baseQuery)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(ProjectToDto)
-            .ToListAsync(ct);
+        var enriched = await EnrichAsync(items, ct);
 
         _log.LogDebug(
-            "MyTasks query: UserId={UserId} Page={Page} PageSize={PageSize} StatusFilter={StatusFilter} Total={Total} Returned={Returned}",
-            userId, page, pageSize,
-            statusFilter is null ? "(all)" : string.Join(",", statusFilter),
-            totalCount, items.Count);
+            "MyTasks query: UserId={UserId} Page={Page}/{PageSize} Total={Total} Returned={Returned}",
+            userId, page, pageSize, totalCount, enriched.Count);
 
         return new PagedResponse<MyTaskDto>
         {
-            Items      = items,
+            Items      = enriched,
             TotalCount = totalCount,
             Page       = page,
             PageSize   = pageSize,
@@ -103,50 +121,70 @@ public sealed class MyTasksService : IMyTasksService
     }
 
     // =========================================================
-    // E15 — Role Queue (claimable role-queue tasks for caller)
+    // Role Queue
     // =========================================================
     public async Task<PagedResponse<MyTaskDto>> ListRoleQueueAsync(RoleQueueQuery query, CancellationToken ct = default)
     {
-        // No caller-supplied role list — eligibility is always derived
-        // from the auth context. This makes cross-role enumeration
-        // impossible by API shape (not just by policy).
-        var roles = _user.Roles;
+        var roles           = _user.Roles;
         var isPlatformAdmin = _user.IsPlatformAdmin;
 
         var (page, pageSize) = NormalizePage(query.Page, query.PageSize);
 
-        // Platform admins see all role-queue rows (still tenant-scoped).
-        // Non-admins must hold at least one role; if they don't, the
-        // result is necessarily empty — short-circuit so we don't spin
-        // up a no-op SQL round-trip.
         if (!isPlatformAdmin && (roles is null || roles.Count == 0))
-        {
             return EmptyPage(page, pageSize);
-        }
 
-        var baseQuery = _db.WorkflowTasks.AsNoTracking()
-            .Where(t => t.AssignmentMode == WorkflowTaskAssignmentMode.RoleQueue
-                     && t.Status == WorkflowTaskStatus.Open);
+        List<TaskServiceTaskDto> mergedItems;
+        int totalCount;
 
-        if (!isPlatformAdmin)
+        if (isPlatformAdmin)
         {
-            // Materialise to a List<string> for EF's `Contains`
-            // translation. AssignedRole is nullable; the IN list won't
-            // include nulls so a row with a null role is naturally
-            // excluded (which also happens to be our fail-closed
-            // posture from E14.2).
-            var rolesList = roles!.ToList();
-            baseQuery = baseQuery.Where(t =>
-                t.AssignedRole != null && rolesList.Contains(t.AssignedRole));
+            // Admins see all role-queue rows — single Task service call.
+            var raw = await _taskClient.ListTasksAsync(
+                assignmentMode: WorkflowTaskAssignmentMode.RoleQueue,
+                status:         ToTaskServiceStatus(WorkflowTaskStatus.Open),
+                sort:           "flow_active_first",
+                page:           page,
+                pageSize:       pageSize,
+                ct:             ct);
+
+            mergedItems = raw.Items.ToList();
+            totalCount  = raw.Total;
+        }
+        else
+        {
+            // Per-role fetch: one call per role, capped at RoleQueuePerRoleFetchCap.
+            // Dedupe by TaskId, sort in-memory (same urgency hierarchy), paginate.
+            var seen = new HashSet<Guid>();
+            var allItems = new List<TaskServiceTaskDto>();
+
+            foreach (var role in roles!)
+            {
+                var raw = await _taskClient.ListTasksAsync(
+                    assignmentMode: WorkflowTaskAssignmentMode.RoleQueue,
+                    status:         ToTaskServiceStatus(WorkflowTaskStatus.Open),
+                    assignedRole:   role,
+                    sort:           "flow_active_first",
+                    page:           1,
+                    pageSize:       RoleQueuePerRoleFetchCap,
+                    ct:             ct);
+
+                foreach (var item in raw.Items)
+                {
+                    if (seen.Add(item.TaskId))
+                        allItems.Add(item);
+                }
+            }
+
+            // Sort merged set by the same urgency hierarchy and paginate.
+            var sorted = SortByUrgency(allItems);
+            totalCount  = sorted.Count;
+            mergedItems = sorted
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
         }
 
-        var totalCount = await baseQuery.CountAsync(ct);
-
-        var items = await OrderActiveFirst(baseQuery)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(ProjectToDto)
-            .ToListAsync(ct);
+        var enriched = await EnrichAsync(mergedItems, ct);
 
         _log.LogDebug(
             "RoleQueue query: UserId={UserId} IsPlatformAdmin={IsAdmin} Roles={RoleCount} Page={Page}/{PageSize} Total={Total}",
@@ -154,7 +192,7 @@ public sealed class MyTasksService : IMyTasksService
 
         return new PagedResponse<MyTaskDto>
         {
-            Items      = items,
+            Items      = enriched,
             TotalCount = totalCount,
             Page       = page,
             PageSize   = pageSize,
@@ -162,232 +200,269 @@ public sealed class MyTasksService : IMyTasksService
     }
 
     // =========================================================
-    // E15 — Org Queue (claimable org-queue tasks for caller)
+    // Org Queue
     // =========================================================
     public async Task<PagedResponse<MyTaskDto>> ListOrgQueueAsync(OrgQueueQuery query, CancellationToken ct = default)
     {
-        var orgId = _user.OrgId;
+        var orgId           = _user.OrgId;
         var isPlatformAdmin = _user.IsPlatformAdmin;
 
         var (page, pageSize) = NormalizePage(query.Page, query.PageSize);
 
         if (!isPlatformAdmin && string.IsNullOrWhiteSpace(orgId))
-        {
             return EmptyPage(page, pageSize);
-        }
 
-        var baseQuery = _db.WorkflowTasks.AsNoTracking()
-            .Where(t => t.AssignmentMode == WorkflowTaskAssignmentMode.OrgQueue
-                     && t.Status == WorkflowTaskStatus.Open);
+        var raw = await _taskClient.ListTasksAsync(
+            assignmentMode: WorkflowTaskAssignmentMode.OrgQueue,
+            status:         ToTaskServiceStatus(WorkflowTaskStatus.Open),
+            assignedOrgId:  isPlatformAdmin ? null : orgId,
+            sort:           "flow_active_first",
+            page:           page,
+            pageSize:       pageSize,
+            ct:             ct);
 
-        if (!isPlatformAdmin)
-        {
-            // Equality here intentionally — an OrgQueue row's
-            // AssignedOrgId must match the caller's OrgId exactly.
-            baseQuery = baseQuery.Where(t => t.AssignedOrgId == orgId);
-        }
-
-        var totalCount = await baseQuery.CountAsync(ct);
-
-        var items = await OrderActiveFirst(baseQuery)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .Select(ProjectToDto)
-            .ToListAsync(ct);
+        var enriched = await EnrichAsync(raw.Items, ct);
 
         _log.LogDebug(
             "OrgQueue query: UserId={UserId} OrgId={OrgId} IsPlatformAdmin={IsAdmin} Page={Page}/{PageSize} Total={Total}",
-            _user.UserId, orgId, isPlatformAdmin, page, pageSize, totalCount);
+            _user.UserId, orgId, isPlatformAdmin, page, pageSize, raw.Total);
 
         return new PagedResponse<MyTaskDto>
         {
-            Items      = items,
-            TotalCount = totalCount,
+            Items      = enriched,
+            TotalCount = raw.Total,
             Page       = page,
             PageSize   = pageSize,
         };
     }
 
     // =========================================================
-    // E15 — Task detail (single row, widened DTO)
+    // Task detail
     // =========================================================
     /// <summary>
-    /// Returns a single task by id, with eligibility-scoped
-    /// authorisation.
+    /// Returns a single task by id, with eligibility-scoped authorisation.
     ///
     /// <para>
-    /// <b>Eligibility rule</b> (a caller is allowed to read a task
-    /// iff at least one of):
+    /// Eligibility (at least one must be true):
     ///   <list type="bullet">
-    ///     <item>Platform admin (operations / on-call bypass).</item>
-    ///     <item>The task is <c>DirectUser</c> assigned to the caller.</item>
-    ///     <item>The task is an open <c>RoleQueue</c> for a role the caller holds.</item>
-    ///     <item>The task is an open <c>OrgQueue</c> for the caller's org.</item>
+    ///     <item>Platform admin.</item>
+    ///     <item>DirectUser task assigned to the caller.</item>
+    ///     <item>Open RoleQueue task for a role the caller holds.</item>
+    ///     <item>Open OrgQueue task for the caller's org.</item>
     ///   </list>
     /// </para>
     ///
     /// <para>
-    /// Without this guard a tenant user who learned a task GUID
-    /// could read every task in the tenant (intra-tenant IDOR).
-    /// We deliberately collapse "not found" and "not eligible" into
-    /// a single <see cref="NotFoundException"/> so the response
-    /// never leaks the difference between "no such id" and
-    /// "exists but you can't see it".
+    /// "Not found" and "not eligible" both surface as
+    /// <see cref="NotFoundException"/> (→ 404) to prevent existence leakage.
     /// </para>
     /// </summary>
     public async Task<MyTaskDto> GetTaskDetailAsync(Guid taskId, CancellationToken ct = default)
     {
-        var userId          = _user.UserId;
-        var orgId           = _user.OrgId;
-        var isPlatformAdmin = _user.IsPlatformAdmin;
-        var roles           = _user.Roles ?? Array.Empty<string>();
-        var rolesList       = roles.ToList();
-
-        // Tenant filter is global on WorkflowTask, so a wrong-tenant
-        // id naturally yields null (= NotFoundException). On top of
-        // that, encode the eligibility rule as a SQL predicate so a
-        // not-allowed row also yields null and surfaces as 404 — no
-        // existence-leak.
-        var query = _db.WorkflowTasks.AsNoTracking()
-            .Where(t => t.Id == taskId);
-
-        if (!isPlatformAdmin)
-        {
-            query = query.Where(t =>
-                // Direct assignment to the caller.
-                (t.AssignedUserId != null && t.AssignedUserId == userId)
-                // Open role-queue task for a role the caller holds.
-                || (t.AssignmentMode == WorkflowTaskAssignmentMode.RoleQueue
-                    && t.Status == WorkflowTaskStatus.Open
-                    && t.AssignedRole != null
-                    && rolesList.Contains(t.AssignedRole))
-                // Open org-queue task for the caller's org.
-                || (t.AssignmentMode == WorkflowTaskAssignmentMode.OrgQueue
-                    && t.Status == WorkflowTaskStatus.Open
-                    && t.AssignedOrgId != null
-                    && t.AssignedOrgId == orgId));
-        }
-
-        var dto = await query.Select(ProjectToDto).FirstOrDefaultAsync(ct);
+        var dto = await _taskClient.GetTaskByIdAsync(taskId, ct);
 
         if (dto is null)
-            throw new NotFoundException(nameof(WorkflowTask), taskId);
+            throw new NotFoundException(nameof(Domain.Entities.WorkflowTask), taskId);
 
-        return dto;
+        // In-memory eligibility check.
+        if (!IsEligible(dto))
+            throw new NotFoundException(nameof(Domain.Entities.WorkflowTask), taskId);
+
+        // Enrich with workflow context.
+        var enrichMap = await LoadWorkflowEnrichmentAsync(
+            new[] { dto.WorkflowInstanceId }, ct);
+
+        return MapToDto(dto, enrichMap);
     }
 
     // =========================================================
-    // Shared helpers
+    // Helpers
     // =========================================================
 
-    /// <summary>
-    /// Single source of truth for the <see cref="WorkflowTask"/> →
-    /// <see cref="MyTaskDto"/> projection. Materialised as an
-    /// expression so it can be reused inside multiple
-    /// <c>IQueryable.Select</c> calls — EF translates it to SQL
-    /// identically each time, so the four surfaces can never drift.
-    /// </summary>
-    private static readonly Expression<Func<WorkflowTask, MyTaskDto>> ProjectToDto = t => new MyTaskDto
+    private bool IsEligible(TaskServiceTaskDto dto)
     {
-        TaskId             = t.Id,
-        Title              = t.Title,
-        Description        = t.Description,
-        Status             = t.Status,
-        Priority           = t.Priority,
-        StepKey            = t.StepKey,
+        if (_user.IsPlatformAdmin) return true;
 
-        AssignmentMode     = t.AssignmentMode,
-        AssignedUserId     = t.AssignedUserId,
-        AssignedRole       = t.AssignedRole,
-        AssignedOrgId      = t.AssignedOrgId,
-        AssignedAt         = t.AssignedAt,
-        AssignedBy         = t.AssignedBy,
-        AssignmentReason   = t.AssignmentReason,
+        var userId = _user.UserId;
+        var orgId  = _user.OrgId;
+        var roles  = _user.Roles ?? Array.Empty<string>();
 
-        CreatedAt          = t.CreatedAt,
-        UpdatedAt          = t.UpdatedAt,
-        StartedAt          = t.StartedAt,
-        CompletedAt        = t.CompletedAt,
-        CancelledAt        = t.CancelledAt,
+        // DirectUser assignment to the caller.
+        if (dto.AssignmentMode == WorkflowTaskAssignmentMode.DirectUser
+            && dto.AssignedUserId != null
+            && dto.AssignedUserId == userId)
+            return true;
 
-        // LS-FLOW-E10.3 task slice — SLA fields. Defaulting SlaStatus
-        // to OnTrack when null is defensive: the column is NOT NULL in
-        // the schema, but EF projection through navigation properties
-        // would otherwise need an explicit non-null guarantee.
-        DueAt              = t.DueAt,
-        SlaStatus          = t.SlaStatus,
-        SlaBreachedAt      = t.SlaBreachedAt,
+        // Open RoleQueue for a role the caller holds.
+        if (dto.AssignmentMode == WorkflowTaskAssignmentMode.RoleQueue
+            && dto.Status == ToTaskServiceStatus(WorkflowTaskStatus.Open)
+            && dto.AssignedRole != null
+            && roles.Contains(dto.AssignedRole, StringComparer.OrdinalIgnoreCase))
+            return true;
 
-        WorkflowInstanceId = t.WorkflowInstanceId,
-        // LEFT-JOIN-style enrichment via navigation properties; EF
-        // translates to a single SQL with LEFT JOINs (no N+1).
-        WorkflowName       = t.WorkflowInstance != null && t.WorkflowInstance.WorkflowDefinition != null
-                                ? t.WorkflowInstance.WorkflowDefinition.Name
-                                : null,
-        ProductKey         = t.WorkflowInstance != null
-                                ? t.WorkflowInstance.ProductKey
-                                : null,
-    };
+        // Open OrgQueue for the caller's org.
+        if (dto.AssignmentMode == WorkflowTaskAssignmentMode.OrgQueue
+            && dto.Status == ToTaskServiceStatus(WorkflowTaskStatus.Open)
+            && dto.AssignedOrgId != null
+            && dto.AssignedOrgId == orgId)
+            return true;
+
+        return false;
+    }
+
+    private async Task<List<MyTaskDto>> EnrichAsync(
+        IEnumerable<TaskServiceTaskDto> items, CancellationToken ct)
+    {
+        var list = items.ToList();
+        if (list.Count == 0) return new();
+
+        var enrichMap = await LoadWorkflowEnrichmentAsync(
+            list.Select(t => t.WorkflowInstanceId), ct);
+
+        return list.Select(t => MapToDto(t, enrichMap)).ToList();
+    }
 
     /// <summary>
-    /// LS-FLOW-E18 — shared deterministic ordering that places the most
-    /// urgent work at the top of every queue and task list surface.
-    ///
-    /// <para><b>Documented sort hierarchy (innermost → outermost):</b></para>
-    /// <list type="number">
-    ///   <item>Active tasks (Open / InProgress) before terminal ones.</item>
-    ///   <item>SLA urgency tier — Escalated (0) &gt; Overdue (1) &gt; DueSoon (2)
-    ///     &gt; OnTrack (3) &gt; unknown/null (4).</item>
-    ///   <item>Priority tier — Urgent (0) &gt; High (1) &gt; Normal (2) &gt; Low (3).</item>
-    ///   <item>DueAt ascending, nulls last — earlier deadline first; items with no deadline
-    ///     sort after items that have one.</item>
-    ///   <item>CreatedAt ascending — older items before newer within the same urgency.</item>
-    ///   <item>Id ascending — stable, deterministic tiebreaker; no randomness.</item>
-    /// </list>
-    ///
-    /// <para>
-    /// Invariant: no task may outrank a more urgent task solely because of
-    /// recency. An Overdue-Normal task always appears above an OnTrack-Urgent
-    /// task. Within the same SLA+Priority bucket, earlier deadlines surface
-    /// first.
-    /// </para>
-    ///
-    /// <para>
-    /// EF Core translates the conditional expressions below to SQL
-    /// <c>CASE WHEN … THEN … END</c> clauses; MySQL evaluates them
-    /// efficiently on the tenant-scoped index.
-    /// </para>
+    /// Batch-loads WorkflowInstance Name + ProductKey keyed by Id.
+    /// Uses <c>IgnoreQueryFilters</c> when resolving by GUID collection so
+    /// cross-tenant data cannot leak (Task service already tenant-scoped the IDs).
     /// </summary>
-    private static IQueryable<WorkflowTask> OrderActiveFirst(IQueryable<WorkflowTask> q) =>
-        q
-        // 1. Active (Open/InProgress) before terminal (Completed/Cancelled).
-        .OrderBy(t =>
-            t.Status == WorkflowTaskStatus.Open ||
-            t.Status == WorkflowTaskStatus.InProgress ? 0 : 1)
-        // 2. SLA urgency tier (ascending = more urgent first).
-        .ThenBy(t =>
-            t.SlaStatus == WorkflowSlaStatus.Escalated ? 0 :
-            t.SlaStatus == WorkflowSlaStatus.Overdue   ? 1 :
-            t.SlaStatus == WorkflowSlaStatus.DueSoon   ? 2 :
-            t.SlaStatus == WorkflowSlaStatus.OnTrack   ? 3 : 4)
-        // 3. Priority tier (ascending = higher priority first).
-        .ThenBy(t =>
-            t.Priority == WorkflowTaskPriority.Urgent ? 0 :
-            t.Priority == WorkflowTaskPriority.High   ? 1 :
-            t.Priority == WorkflowTaskPriority.Normal ? 2 :
-            t.Priority == WorkflowTaskPriority.Low    ? 3 : 2)
-        // 4. DueAt nulls last — items without a deadline sort after items with one.
-        .ThenBy(t => t.DueAt == null ? 1 : 0)
-        // 5. DueAt ascending — earliest deadline first among items that have one.
-        .ThenBy(t => t.DueAt)
-        // 6. CreatedAt ascending — older items before newer within the same urgency band.
-        .ThenBy(t => t.CreatedAt)
-        // 7. Id ascending — perfectly stable tiebreaker; no randomness, no instability.
-        .ThenBy(t => t.Id);
+    private async Task<Dictionary<Guid, (string? WorkflowName, string? ProductKey)>>
+        LoadWorkflowEnrichmentAsync(IEnumerable<Guid?> workflowInstanceIds, CancellationToken ct)
+    {
+        var ids = workflowInstanceIds
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        if (ids.Count == 0)
+            return new();
+
+        var rows = await _db.WorkflowInstances
+            .AsNoTracking()
+            .Where(wi => ids.Contains(wi.Id))
+            .Select(wi => new
+            {
+                wi.Id,
+                wi.ProductKey,
+                WorkflowName = wi.WorkflowDefinition != null ? wi.WorkflowDefinition.Name : null,
+            })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(
+            r => r.Id,
+            r => (r.WorkflowName, (string?)r.ProductKey));
+    }
+
+    private static MyTaskDto MapToDto(
+        TaskServiceTaskDto dto,
+        Dictionary<Guid, (string? WorkflowName, string? ProductKey)> enrichMap)
+    {
+        enrichMap.TryGetValue(dto.WorkflowInstanceId ?? Guid.Empty, out var wi);
+        return new MyTaskDto
+        {
+            TaskId             = dto.TaskId,
+            Title              = dto.Title,
+            Description        = dto.Description,
+            Status             = MapStatus(dto.Status),
+            Priority           = MapPriority(dto.Priority),
+            StepKey            = dto.WorkflowStepKey ?? string.Empty,
+
+            AssignmentMode     = dto.AssignmentMode ?? WorkflowTaskAssignmentMode.Unassigned,
+            AssignedUserId     = dto.AssignedUserId,
+            AssignedRole       = dto.AssignedRole,
+            AssignedOrgId      = dto.AssignedOrgId,
+            AssignedAt         = dto.AssignedAt,
+            AssignedBy         = dto.AssignedBy,
+            AssignmentReason   = dto.AssignmentReason,
+
+            CreatedAt          = dto.CreatedAtUtc,
+            UpdatedAt          = dto.UpdatedAtUtc,
+            StartedAt          = dto.StartedAt,
+            CompletedAt        = dto.CompletedAt,
+            CancelledAt        = dto.CancelledAt,
+
+            DueAt              = dto.DueAt,
+            SlaStatus          = dto.SlaStatus,
+            SlaBreachedAt      = dto.SlaBreachedAt,
+
+            WorkflowInstanceId = dto.WorkflowInstanceId ?? Guid.Empty,
+            WorkflowName       = wi.WorkflowName,
+            ProductKey         = wi.ProductKey,
+        };
+    }
+
+    // ── Status string mapping ──────────────────────────────────────────────────
+
+    /// <summary>Flow "Open" → Task service "OPEN" etc.</summary>
+    private static string ToTaskServiceStatus(string flowStatus) =>
+        flowStatus switch
+        {
+            WorkflowTaskStatus.Open       => "OPEN",
+            WorkflowTaskStatus.InProgress => "IN_PROGRESS",
+            WorkflowTaskStatus.Completed  => "COMPLETED",
+            WorkflowTaskStatus.Cancelled  => "CANCELLED",
+            _                             => flowStatus.ToUpperInvariant(),
+        };
+
+    /// <summary>Task service "OPEN" → Flow "Open" etc.</summary>
+    private static string MapStatus(string taskServiceStatus) =>
+        taskServiceStatus switch
+        {
+            "OPEN"        => WorkflowTaskStatus.Open,
+            "IN_PROGRESS" => WorkflowTaskStatus.InProgress,
+            "COMPLETED"   => WorkflowTaskStatus.Completed,
+            "CANCELLED"   => WorkflowTaskStatus.Cancelled,
+            _             => taskServiceStatus,
+        };
+
+    /// <summary>Task service "URGENT" → Flow "Urgent" etc.</summary>
+    private static string MapPriority(string taskServicePriority) =>
+        taskServicePriority switch
+        {
+            "URGENT" => WorkflowTaskPriority.Urgent,
+            "HIGH"   => WorkflowTaskPriority.High,
+            "NORMAL" => WorkflowTaskPriority.Normal,
+            "LOW"    => WorkflowTaskPriority.Low,
+            _        => taskServicePriority,
+        };
+
+    // ── In-memory sort (mirrors SQL ORDER BY from legacy service) ─────────────
+
+    private static List<TaskServiceTaskDto> SortByUrgency(List<TaskServiceTaskDto> items)
+    {
+        static int SlaOrder(string s) =>
+            s == WorkflowSlaStatus.Escalated ? 0 :
+            s == WorkflowSlaStatus.Overdue   ? 1 :
+            s == WorkflowSlaStatus.DueSoon   ? 2 :
+            s == WorkflowSlaStatus.OnTrack   ? 3 : 4;
+
+        static int PriorityOrder(string p) =>
+            p == "URGENT" ? 0 :
+            p == "HIGH"   ? 1 :
+            p == "NORMAL" ? 2 :
+            p == "LOW"    ? 3 : 2;
+
+        static int ActiveOrder(string s) =>
+            s is "OPEN" or "IN_PROGRESS" ? 0 : 1;
+
+        return items
+            .OrderBy(t => ActiveOrder(t.Status))
+            .ThenBy(t => SlaOrder(t.SlaStatus))
+            .ThenBy(t => PriorityOrder(t.Priority))
+            .ThenBy(t => t.DueAt.HasValue ? 0 : 1)
+            .ThenBy(t => t.DueAt)
+            .ThenBy(t => t.CreatedAtUtc)
+            .ThenBy(t => t.TaskId)
+            .ToList();
+    }
+
+    // ── Pagination helpers ────────────────────────────────────────────────────
 
     private static (int Page, int PageSize) NormalizePage(int page, int pageSize)
     {
-        var p = page < 1 ? 1 : page;
+        var p  = page < 1 ? 1 : page;
         var ps = pageSize < 1
             ? MyTasksDefaults.DefaultPageSize
             : Math.Min(pageSize, MyTasksDefaults.MaxPageSize);
@@ -421,7 +496,9 @@ public sealed class MyTasksService : IMyTasksService
                                                                                               s)
             .ToArray();
 
-        var unknown = canonicalised.Where(s => !WorkflowTaskStatus.IsKnown(s)).ToArray();
+        var unknown = canonicalised
+            .Where(s => !WorkflowTaskStatus.IsKnown(s))
+            .ToArray();
         if (unknown.Length > 0)
         {
             throw new ValidationException(

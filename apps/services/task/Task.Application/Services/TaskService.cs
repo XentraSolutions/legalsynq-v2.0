@@ -75,7 +75,13 @@ public class TaskService : ITaskService
             request.DueAt,
             externalId:           request.ExternalId,
             generationRuleId:     request.GenerationRuleId,
-            generatingTemplateId: request.GeneratingTemplateId);
+            generatingTemplateId: request.GeneratingTemplateId,
+            // TASK-FLOW-02 — queue assignment fields forwarded from Flow on creation
+            assignmentMode:       request.AssignmentMode,
+            assignedRole:         request.AssignedRole,
+            assignedOrgId:        request.AssignedOrgId,
+            assignedBy:           request.AssignedBy,
+            assignmentReason:     request.AssignmentReason);
 
         if (request.WorkflowInstanceId.HasValue)
             task.SetWorkflowLinkage(request.WorkflowInstanceId, request.WorkflowStepKey, createdByUserId);
@@ -132,6 +138,10 @@ public class TaskService : ITaskService
         bool      excludeTerminal      = false,
         int       page                 = 1,
         int       pageSize             = 50,
+        string?   assignmentMode       = null,
+        string?   assignedRole         = null,
+        string?   assignedOrgId        = null,
+        string?   sort                 = null,
         CancellationToken ct           = default)
     {
         var (items, total) = await _tasks.SearchAsync(
@@ -142,8 +152,71 @@ public class TaskService : ITaskService
             linkedEntityType, linkedEntityId,
             assignmentScope, currentUserId,
             generationRuleId, generatingTemplateId, excludeTerminal,
-            page, pageSize, ct);
+            page, pageSize,
+            assignmentMode: assignmentMode,
+            assignedRole:   assignedRole,
+            assignedOrgId:  assignedOrgId,
+            sort:           sort,
+            ct:             ct);
         return new TaskListResponse(items.Select(TaskDto.From).ToList(), total, page, pageSize);
+    }
+
+    // TASK-FLOW-02 — batch SLA state push from Flow's WorkflowTaskSlaEvaluator
+    public async System.Threading.Tasks.Task<FlowSlaUpdateResult> UpdateFlowSlaStateAsync(
+        Guid                 tenantId,
+        FlowSlaUpdateRequest request,
+        CancellationToken    ct = default)
+    {
+        var updated  = 0;
+        var notFound = 0;
+
+        foreach (var item in request.Updates)
+        {
+            var task = await _tasks.GetByIdAsync(tenantId, item.TaskId, ct);
+            if (task is null)
+            {
+                notFound++;
+                _logger.LogWarning(
+                    "FlowSlaUpdate: task {TaskId} not found in tenant {TenantId}", item.TaskId, tenantId);
+                continue;
+            }
+
+            task.SetSlaState(item.SlaStatus, item.SlaBreachedAt, item.EvaluatedAt);
+            updated++;
+        }
+
+        if (updated > 0)
+            await _uow.SaveChangesAsync(ct);
+
+        return new FlowSlaUpdateResult(updated, notFound);
+    }
+
+    // TASK-FLOW-02 — queue assignment delegated from Flow's WorkflowTaskAssignmentService
+    public async System.Threading.Tasks.Task<FlowQueueAssignResult> SetFlowQueueAssignmentAsync(
+        Guid                   tenantId,
+        Guid                   taskId,
+        FlowQueueAssignRequest request,
+        CancellationToken      ct = default)
+    {
+        var task = await _tasks.GetByIdAsync(tenantId, taskId, ct);
+        if (task is null)
+            return new FlowQueueAssignResult(false, $"Task {taskId} not found");
+
+        task.SetFlowQueueAssignment(
+            request.AssignmentMode,
+            request.AssignedUserId,
+            request.AssignedRole,
+            request.AssignedOrgId,
+            request.AssignedBy,
+            request.AssignmentReason);
+
+        await _uow.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "FlowQueueAssign: task {TaskId} assigned mode={Mode} user={UserId} role={Role} org={Org}",
+            taskId, request.AssignmentMode, request.AssignedUserId, request.AssignedRole, request.AssignedOrgId);
+
+        return new FlowQueueAssignResult(true);
     }
 
     public async System.Threading.Tasks.Task<IReadOnlyList<TaskDto>> GetMyTasksAsync(

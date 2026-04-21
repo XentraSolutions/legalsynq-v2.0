@@ -48,6 +48,52 @@ public class PlatformTask : AuditableEntity
     public DateTime? CompletedAt      { get; private set; }
     public Guid?   ClosedByUserId     { get; private set; }
 
+    // ── TASK-FLOW-02 — Flow queue assignment metadata ─────────────────────────
+    /// <summary>
+    /// Assignment mode from Flow: DirectUser, RoleQueue, OrgQueue, or Unassigned.
+    /// Null for non-Flow tasks. Used to filter role/org queue reads.
+    /// </summary>
+    public string? AssignmentMode     { get; private set; }
+
+    /// <summary>Role key that owns this task when <c>AssignmentMode = RoleQueue</c>.</summary>
+    public string? AssignedRole       { get; private set; }
+
+    /// <summary>Org ID that owns this task when <c>AssignmentMode = OrgQueue</c>.</summary>
+    public string? AssignedOrgId      { get; private set; }
+
+    /// <summary>UTC timestamp of the most recent assignment event. Null for Unassigned.</summary>
+    public DateTime? AssignedAt       { get; private set; }
+
+    /// <summary>
+    /// String user ID (JWT sub) of the actor who performed the most recent assignment.
+    /// Kept as string because Flow user IDs are strings; may or may not be a parseable Guid.
+    /// </summary>
+    public string? AssignedBy         { get; private set; }
+
+    /// <summary>Free-form note recorded with the most recent assignment.</summary>
+    public string? AssignmentReason   { get; private set; }
+
+    // ── TASK-FLOW-02 — Additional lifecycle timestamps ────────────────────────
+    /// <summary>UTC timestamp when the task moved to IN_PROGRESS. Null until started.</summary>
+    public DateTime? StartedAt        { get; private set; }
+
+    /// <summary>UTC timestamp when the task was cancelled. Null unless cancelled.</summary>
+    public DateTime? CancelledAt      { get; private set; }
+
+    // ── TASK-FLOW-02 — SLA state (pushed by Flow SLA evaluator) ──────────────
+    /// <summary>
+    /// SLA status: OnTrack, DueSoon, or Overdue.
+    /// Populated by Flow's WorkflowTaskSlaEvaluator via the internal SLA push endpoint.
+    /// Defaults to OnTrack for tasks with no DueAt or not yet evaluated.
+    /// </summary>
+    public string SlaStatus           { get; private set; } = "OnTrack";
+
+    /// <summary>UTC timestamp of the first SLA breach observation. Null until Overdue.</summary>
+    public DateTime? SlaBreachedAt    { get; private set; }
+
+    /// <summary>UTC timestamp of the last SLA evaluation. Used to rotate the evaluator batch.</summary>
+    public DateTime? LastSlaEvaluatedAt { get; private set; }
+
     private PlatformTask() { }
 
     public static PlatformTask Create(
@@ -67,7 +113,12 @@ public class PlatformTask : AuditableEntity
         string?   workflowStepKey      = null,
         Guid?     externalId           = null,
         Guid?     generationRuleId     = null,
-        Guid?     generatingTemplateId = null)
+        Guid?     generatingTemplateId = null,
+        string?   assignmentMode       = null,
+        string?   assignedRole         = null,
+        string?   assignedOrgId        = null,
+        string?   assignedBy           = null,
+        string?   assignmentReason     = null)
     {
         if (tenantId == Guid.Empty)        throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
@@ -105,6 +156,13 @@ public class PlatformTask : AuditableEntity
             WorkflowInstanceId       = workflowInstanceId,
             WorkflowStepKey          = workflowStepKey?.Trim(),
             WorkflowLinkageChangedAt = workflowInstanceId.HasValue ? now : null,
+            AssignmentMode           = assignmentMode,
+            AssignedRole             = assignedRole,
+            AssignedOrgId            = assignedOrgId,
+            AssignedAt               = assignmentMode is not null ? now : null,
+            AssignedBy               = assignedBy,
+            AssignmentReason         = assignmentReason,
+            SlaStatus                = "OnTrack",
             CreatedByUserId          = createdByUserId,
             UpdatedByUserId          = createdByUserId,
             CreatedAtUtc             = now,
@@ -144,17 +202,23 @@ public class PlatformTask : AuditableEntity
         if (TaskStatus.IsTerminal(Status))
             throw new InvalidOperationException($"Cannot transition from terminal status '{Status}'.");
 
+        var now = DateTime.UtcNow;
         Status          = newStatus;
         UpdatedByUserId = updatedByUserId;
-        UpdatedAtUtc    = DateTime.UtcNow;
+        UpdatedAtUtc    = now;
 
-        if (newStatus == TaskStatus.Completed)
+        if (newStatus == TaskStatus.InProgress)
         {
-            CompletedAt    = DateTime.UtcNow;
+            StartedAt = now;
+        }
+        else if (newStatus == TaskStatus.Completed)
+        {
+            CompletedAt    = now;
             ClosedByUserId = updatedByUserId;
         }
         else if (newStatus == TaskStatus.Cancelled)
         {
+            CancelledAt    = now;
             ClosedByUserId = updatedByUserId;
         }
     }
@@ -181,6 +245,40 @@ public class PlatformTask : AuditableEntity
         return previous is null
             ? AssignmentChangeKind.Assigned
             : AssignmentChangeKind.Reassigned;
+    }
+
+    /// <summary>
+    /// TASK-FLOW-02 — Sets queue assignment metadata from Flow's claim/reassign operations.
+    /// Called via the internal flow-queue-assign endpoint.
+    /// </summary>
+    public void SetFlowQueueAssignment(
+        string?  assignmentMode,
+        Guid?    assignedUserId,
+        string?  assignedRole,
+        string?  assignedOrgId,
+        string?  assignedBy,
+        string?  assignmentReason)
+    {
+        var now         = DateTime.UtcNow;
+        AssignmentMode  = assignmentMode;
+        AssignedUserId  = assignedUserId;
+        AssignedRole    = assignedRole;
+        AssignedOrgId   = assignedOrgId;
+        AssignedAt      = now;
+        AssignedBy      = assignedBy;
+        AssignmentReason = assignmentReason;
+        UpdatedAtUtc    = now;
+    }
+
+    /// <summary>
+    /// TASK-FLOW-02 — Updates SLA state pushed from Flow's WorkflowTaskSlaEvaluator.
+    /// </summary>
+    public void SetSlaState(string slaStatus, DateTime? slaBreachedAt, DateTime evaluatedAt)
+    {
+        SlaStatus           = slaStatus;
+        SlaBreachedAt       = slaBreachedAt;
+        LastSlaEvaluatedAt  = evaluatedAt;
+        UpdatedAtUtc        = evaluatedAt;
     }
 
     /// <summary>Sets or clears the current execution stage.</summary>

@@ -47,6 +47,20 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("WorkflowInstanceId").HasColumnType("char(36)");
                     b.Property<DateTime?>("WorkflowLinkageChangedAt").HasColumnType("datetime(6)");
                     b.Property<string>("WorkflowStepKey").HasMaxLength(100).HasColumnType("varchar(100)");
+                    // TASK-FLOW-02 — queue assignment metadata
+                    b.Property<string>("AssignmentMode").HasMaxLength(20).HasColumnType("varchar(20)");
+                    b.Property<string>("AssignedRole").HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("AssignedOrgId").HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<DateTime?>("AssignedAt").HasColumnType("datetime(6)");
+                    b.Property<string>("AssignedBy").HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("AssignmentReason").HasMaxLength(500).HasColumnType("varchar(500)");
+                    // TASK-FLOW-02 — lifecycle timestamps
+                    b.Property<DateTime?>("StartedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("CancelledAt").HasColumnType("datetime(6)");
+                    // TASK-FLOW-02 — SLA state
+                    b.Property<string>("SlaStatus").IsRequired().HasMaxLength(20).HasDefaultValue("OnTrack").HasColumnType("varchar(20)");
+                    b.Property<DateTime?>("SlaBreachedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("LastSlaEvaluatedAt").HasColumnType("datetime(6)");
                     b.HasKey("Id");
                     b.HasIndex(new[] { "TenantId", "Status" }, "IX_Tasks_TenantId_Status");
                     b.HasIndex(new[] { "TenantId", "AssignedUserId" }, "IX_Tasks_TenantId_AssignedUserId");
@@ -58,6 +72,9 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.HasIndex(new[] { "TenantId", "AssignedUserId", "Status" }, "IX_Tasks_TenantId_AssignedUser_Status");
                     b.HasIndex(new[] { "TenantId", "SourceProductCode", "GenerationRuleId" }, "IX_Tasks_TenantId_Product_GenerationRule");
                     b.HasIndex(new[] { "TenantId", "SourceProductCode", "GeneratingTemplateId" }, "IX_Tasks_TenantId_Product_GeneratingTemplate");
+                    // TASK-FLOW-02 — queue read indexes
+                    b.HasIndex(new[] { "TenantId", "AssignmentMode", "AssignedRole" }, "IX_Tasks_TenantId_AssignmentMode_Role");
+                    b.HasIndex(new[] { "TenantId", "AssignmentMode", "AssignedOrgId" }, "IX_Tasks_TenantId_AssignmentMode_Org");
                     b.ToTable("tasks_Tasks");
                 });
 

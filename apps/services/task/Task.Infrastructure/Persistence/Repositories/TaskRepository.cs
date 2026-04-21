@@ -37,6 +37,10 @@ public class TaskRepository : ITaskRepository
         bool      excludeTerminal      = false,
         int       page                 = 1,
         int       pageSize             = 50,
+        string?   assignmentMode       = null,
+        string?   assignedRole         = null,
+        string?   assignedOrgId        = null,
+        string?   sort                 = null,
         CancellationToken ct           = default)
     {
         var q = _db.Tasks.Where(t => t.TenantId == tenantId);
@@ -104,13 +108,46 @@ public class TaskRepository : ITaskRepository
         if (excludeTerminal)
             q = q.Where(t => t.Status != "COMPLETED" && t.Status != "CANCELLED");
 
+        // TASK-FLOW-02 — queue assignment filters
+        if (!string.IsNullOrWhiteSpace(assignmentMode))
+            q = q.Where(t => t.AssignmentMode == assignmentMode);
+
+        if (!string.IsNullOrWhiteSpace(assignedRole))
+            q = q.Where(t => t.AssignedRole == assignedRole);
+
+        if (!string.IsNullOrWhiteSpace(assignedOrgId))
+            q = q.Where(t => t.AssignedOrgId == assignedOrgId);
+
         // TASK-B05 (TASK-017) — cap pageSize to prevent unbounded queries
         if (pageSize > 200) pageSize = 200;
         if (page < 1)       page     = 1;
 
         var total = await q.CountAsync(ct);
-        var items = await q
-            .OrderByDescending(t => t.CreatedAtUtc)
+
+        // TASK-FLOW-02 — sort=flowActiveFirst: Overdue→DueSoon→OnTrack, then status, then DueAt, then priority, then created
+        IQueryable<PlatformTask> sorted;
+        if (sort is not null && sort.Equals("flowActiveFirst", StringComparison.OrdinalIgnoreCase))
+        {
+            sorted = q
+                .OrderBy(t =>
+                    t.SlaStatus == "Overdue"  ? 0 :
+                    t.SlaStatus == "DueSoon"  ? 1 : 2)
+                .ThenBy(t =>
+                    t.Status == "IN_PROGRESS" ? 0 :
+                    t.Status == "OPEN"        ? 1 : 2)
+                .ThenBy(t => t.DueAt == null ? 1 : 0)
+                .ThenBy(t => t.DueAt)
+                .ThenBy(t =>
+                    t.Priority == "HIGH"   ? 0 :
+                    t.Priority == "MEDIUM" ? 1 : 2)
+                .ThenByDescending(t => t.CreatedAtUtc);
+        }
+        else
+        {
+            sorted = q.OrderByDescending(t => t.CreatedAtUtc);
+        }
+
+        var items = await sorted
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);

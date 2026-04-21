@@ -1,30 +1,79 @@
 namespace Flow.Application.Interfaces;
 
+// ── Projection DTOs returned by read paths ─────────────────────────────────
+
+/// <summary>Minimal task projection returned by Task service read calls.</summary>
+public record TaskServiceTaskDto(
+    Guid      TaskId,
+    Guid      TenantId,
+    string    Title,
+    string?   Description,
+    string    Status,
+    string    Priority,
+    string?   WorkflowStepKey,
+    // TASK-FLOW-02 — queue assignment
+    string?   AssignmentMode,
+    string?   AssignedUserId,
+    string?   AssignedRole,
+    string?   AssignedOrgId,
+    DateTime? AssignedAt,
+    string?   AssignedBy,
+    string?   AssignmentReason,
+    // Lifecycle
+    DateTime  CreatedAtUtc,
+    DateTime  UpdatedAtUtc,
+    DateTime? StartedAt,
+    DateTime? CompletedAt,
+    DateTime? CancelledAt,
+    // SLA
+    DateTime? DueAt,
+    string    SlaStatus,
+    DateTime? SlaBreachedAt,
+    // Workflow linkage
+    Guid?     WorkflowInstanceId);
+
+/// <summary>Paged result returned by Task service list endpoints.</summary>
+public record TaskServicePageResult(
+    IReadOnlyList<TaskServiceTaskDto> Items,
+    int Total,
+    int Page,
+    int PageSize);
+
+// ── Client interface ────────────────────────────────────────────────────────
+
 /// <summary>
-/// TASK-FLOW-01 — HTTP client interface for the canonical Task service.
-/// Flow delegates task creation and lifecycle mutations to this client;
-/// flow_workflow_tasks remains a read-only shadow (dual-write) in Phase 1.
+/// TASK-FLOW-01 / TASK-FLOW-02 — HTTP client interface for the canonical Task service.
+/// Flow delegates task creation, lifecycle mutations, and (Phase 2) read paths to this client.
 ///
 /// <para>
 /// Auth model: the implementation forwards the calling user's bearer token
-/// via <c>FlowTaskServiceAuthDelegatingHandler</c>. All Task service endpoints
-/// used here require <c>AuthenticatedUser</c> policy, so a valid user JWT must
-/// be present in the ambient HTTP context when these methods are called.
+/// via <c>FlowTaskServiceAuthDelegatingHandler</c>. All Task service user-facing
+/// endpoints require <c>AuthenticatedUser</c> policy. Internal endpoints use the
+/// service token sent via <c>FlowTaskServiceInternalAuthHandler</c>.
 /// </para>
 ///
 /// <para>
-/// Dual-write contract: callers invoke Task service first (making it the
-/// write authority) and then mirror the change to <c>flow_workflow_tasks</c>
-/// via the local EF context. If the Task service call fails, the local write
-/// is NOT performed and the error propagates to the caller.
+/// Dual-write contract (Phase 1 / TASK-FLOW-01): callers invoke Task service
+/// first (making it the write authority) and then mirror the change to
+/// <c>flow_workflow_tasks</c> via the local EF context. If the Task service call
+/// fails, the local write is NOT performed and the error propagates to the caller.
+/// </para>
+///
+/// <para>
+/// Phase 2 (TASK-FLOW-02) adds read paths: list/get from Task service, SLA push,
+/// and full queue-assignment delegation for all modes (not just DirectUser).
 /// </para>
 /// </summary>
 public interface IFlowTaskServiceClient
 {
+    // ── Write: create ─────────────────────────────────────────────────────────
+
     /// <summary>
     /// Creates a new task in the Task service for the given workflow step.
     /// Returns the canonical Task service ID assigned to the new task.
     /// Tenant context is derived from the forwarded bearer token.
+    /// TASK-FLOW-02 — now also accepts queue metadata so all assignment modes
+    /// are fully represented on the Task service record at creation time.
     /// </summary>
     Task<Guid> CreateWorkflowTaskAsync(
         Guid      workflowInstanceId,
@@ -33,7 +82,15 @@ public interface IFlowTaskServiceClient
         string    priority,
         DateTime? dueAt,
         string?   assignedUserId,
+        Guid?     externalId           = null,
+        string?   assignmentMode       = null,
+        string?   assignedRole         = null,
+        string?   assignedOrgId        = null,
+        string?   assignedBy           = null,
+        string?   assignmentReason     = null,
         CancellationToken ct = default);
+
+    // ── Write: lifecycle transitions ─────────────────────────────────────────
 
     /// <summary>Transitions a task to <c>IN_PROGRESS</c> (Open → InProgress).</summary>
     Task StartTaskAsync(Guid taskId, CancellationToken ct = default);
@@ -49,4 +106,60 @@ public interface IFlowTaskServiceClient
     /// Pass <c>null</c> to clear the assignment (Unassigned).
     /// </summary>
     Task AssignUserAsync(Guid taskId, Guid? assignedUserId, CancellationToken ct = default);
+
+    // ── Write: internal — queue assignment (TASK-FLOW-02) ────────────────────
+
+    /// <summary>
+    /// TASK-FLOW-02 — Pushes full queue assignment metadata to the Task service
+    /// via the internal <c>POST /api/tasks/internal/flow-queue-assign/{tenantId}/{taskId}</c>
+    /// endpoint. Used by all assignment modes (DirectUser, RoleQueue, OrgQueue, Unassigned).
+    /// Uses the service-token auth handler (not the user bearer token).
+    /// </summary>
+    Task SetQueueAssignmentAsync(
+        Guid      tenantId,
+        Guid      taskId,
+        string?   assignmentMode,
+        Guid?     assignedUserId,
+        string?   assignedRole,
+        string?   assignedOrgId,
+        string?   assignedBy,
+        string?   assignmentReason,
+        CancellationToken ct = default);
+
+    // ── Write: internal — SLA push (TASK-FLOW-02) ────────────────────────────
+
+    /// <summary>
+    /// TASK-FLOW-02 — Pushes a batch of SLA state updates to the Task service
+    /// via the internal <c>POST /api/tasks/internal/flow-sla-update</c> endpoint.
+    /// Called by <see cref="Flow.Infrastructure.Outbox.WorkflowTaskSlaEvaluator"/>
+    /// after computing per-task SLA transitions.
+    /// Uses the service-token auth handler.
+    /// </summary>
+    Task UpdateSlaStateAsync(
+        Guid tenantId,
+        IReadOnlyList<(Guid TaskId, string SlaStatus, DateTime? SlaBreachedAt, DateTime EvaluatedAt)> updates,
+        CancellationToken ct = default);
+
+    // ── Read paths (TASK-FLOW-02) ────────────────────────────────────────────
+
+    /// <summary>
+    /// TASK-FLOW-02 — Lists tasks from the Task service with queue-aware filters.
+    /// Equivalent to <c>GET /api/tasks</c> with query parameters.
+    /// </summary>
+    Task<TaskServicePageResult> ListTasksAsync(
+        string?   assignedUserId  = null,
+        string?   status          = null,
+        string?   assignmentMode  = null,
+        string?   assignedRole    = null,
+        string?   assignedOrgId   = null,
+        string?   sort            = null,
+        int       page            = 1,
+        int       pageSize        = 50,
+        CancellationToken ct      = default);
+
+    /// <summary>
+    /// TASK-FLOW-02 — Retrieves a single task by ID.
+    /// Returns <c>null</c> when the task is not found (404).
+    /// </summary>
+    Task<TaskServiceTaskDto?> GetTaskByIdAsync(Guid taskId, CancellationToken ct = default);
 }
