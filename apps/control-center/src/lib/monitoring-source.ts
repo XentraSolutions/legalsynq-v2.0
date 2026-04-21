@@ -253,10 +253,29 @@ async function serviceGetMonitoringSummary(): Promise<MonitoringSummary> {
  *
  * In 'local' mode: probes registered services directly (current behavior).
  * In 'service' mode: calls GET /monitoring/summary on the Monitoring Service.
+ *   If the Monitoring Service is unavailable (502/503/network error), falls
+ *   back to the local probe engine so the page remains functional.
  */
 export async function getMonitoringSummary(): Promise<MonitoringSummary> {
   if (MONITORING_SOURCE === 'service') {
-    return serviceGetMonitoringSummary();
+    try {
+      return await serviceGetMonitoringSummary();
+    } catch (err) {
+      // If the Monitoring Service is unreachable or the gateway returns 502/503,
+      // fall back to the local probe engine so monitoring is still available.
+      const msg = err instanceof Error ? err.message : String(err);
+      const isServiceUnavailable =
+        msg.includes('502') ||
+        msg.includes('503') ||
+        msg.includes('network error') ||
+        msg.includes('timed out') ||
+        msg.includes('Cannot reach');
+      if (isServiceUnavailable) {
+        console.warn('[monitoring-source] Monitoring Service unavailable, falling back to local engine:', msg);
+        return localGetMonitoringSummary();
+      }
+      throw err;
+    }
   }
 
   // Default: local engine (existing behavior, no regression).
