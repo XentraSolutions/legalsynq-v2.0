@@ -48,7 +48,12 @@ public static class ProductRoleClaimExtensions
     public static IReadOnlyCollection<string> GetPermissions(this ClaimsPrincipal principal) =>
         principal.FindAll("permissions").Select(c => c.Value).ToList().AsReadOnly();
 
-    public static bool IsTenantAdminOrAbove(this ClaimsPrincipal principal) =>
-        principal.IsInRole(Roles.PlatformAdmin) ||
-        principal.IsInRole(Roles.TenantAdmin);
+    public static bool IsTenantAdminOrAbove(this ClaimsPrincipal principal)
+    {
+        if (principal.IsInRole(Roles.PlatformAdmin) || principal.IsInRole(Roles.TenantAdmin))
+            return true;
+
+        var roleClaims = principal.FindAll("role").Select(c => c.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return roleClaims.Contains(Roles.PlatformAdmin) || roleClaims.Contains(Roles.TenantAdmin);
+    }
 }

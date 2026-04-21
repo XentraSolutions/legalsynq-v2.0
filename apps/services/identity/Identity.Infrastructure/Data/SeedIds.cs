@@ -125,4 +125,14 @@ internal static class SeedIds
     public static readonly Guid PermInsightsReportsBuild    = new("60000000-0000-0000-0000-000000000042");
     public static readonly Guid PermInsightsSchedulesManage = new("60000000-0000-0000-0000-000000000043");
     public static readonly Guid PermInsightsSchedulesRun    = new("60000000-0000-0000-0000-000000000044");
+
+    // ── Permissions — SynqLien Tasks (SYNQ_LIENS.task:*) ─────────────────────────
+    // IDs 0045-0051
+    public static readonly Guid PermTaskRead     = new("60000000-0000-0000-0000-000000000045");
+    public static readonly Guid PermTaskCreate   = new("60000000-0000-0000-0000-000000000046");
+    public static readonly Guid PermTaskEditOwn  = new("60000000-0000-0000-0000-000000000047");
+    public static readonly Guid PermTaskEditAll  = new("60000000-0000-0000-0000-000000000048");
+    public static readonly Guid PermTaskAssign   = new("60000000-0000-0000-0000-000000000049");
+    public static readonly Guid PermTaskComplete = new("60000000-0000-0000-0000-000000000050");
+    public static readonly Guid PermTaskCancel   = new("60000000-0000-0000-0000-000000000051");
 }

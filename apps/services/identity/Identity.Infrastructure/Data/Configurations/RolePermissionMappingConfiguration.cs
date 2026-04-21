@@ -62,6 +62,26 @@ public class RolePermissionMappingConfiguration : IEntityTypeConfiguration<RoleP
             new { ProductRoleId = holder, PermissionId = SeedIds.PermLienService },
             new { ProductRoleId = holder, PermissionId = SeedIds.PermLienSettle },
 
+            // SynqLien — Task permissions
+            // Seller (law firm): creates and manages their own tasks
+            new { ProductRoleId = seller, PermissionId = SeedIds.PermTaskRead },
+            new { ProductRoleId = seller, PermissionId = SeedIds.PermTaskCreate },
+            new { ProductRoleId = seller, PermissionId = SeedIds.PermTaskEditOwn },
+            new { ProductRoleId = seller, PermissionId = SeedIds.PermTaskComplete },
+            new { ProductRoleId = seller, PermissionId = SeedIds.PermTaskCancel },
+
+            // Buyer: read-only view of tasks on their acquired liens
+            new { ProductRoleId = buyer, PermissionId = SeedIds.PermTaskRead },
+
+            // Holder (services liens): full task management capability
+            new { ProductRoleId = holder, PermissionId = SeedIds.PermTaskRead },
+            new { ProductRoleId = holder, PermissionId = SeedIds.PermTaskCreate },
+            new { ProductRoleId = holder, PermissionId = SeedIds.PermTaskEditOwn },
+            new { ProductRoleId = holder, PermissionId = SeedIds.PermTaskEditAll },
+            new { ProductRoleId = holder, PermissionId = SeedIds.PermTaskAssign },
+            new { ProductRoleId = holder, PermissionId = SeedIds.PermTaskComplete },
+            new { ProductRoleId = holder, PermissionId = SeedIds.PermTaskCancel },
+
             new { ProductRoleId = fReferrer, PermissionId = SeedIds.PermApplicationCreate },
             new { ProductRoleId = fReferrer, PermissionId = SeedIds.PermApplicationReadOwn },
             new { ProductRoleId = fReferrer, PermissionId = SeedIds.PermApplicationCancel },
