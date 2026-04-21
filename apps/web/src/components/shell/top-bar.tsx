@@ -314,13 +314,25 @@ function UserMenu({ session, clearSession }: UserMenuProps) {
 
 function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useTenantBranding>; hasSession: boolean }) {
   const sources: string[] = [];
+  // Authenticated: prefer white logo first, then regular logo
   if (branding.logoWhiteDocumentId && hasSession)
     sources.push(`/api/branding/logo/${branding.logoWhiteDocumentId}`);
   if (branding.logoDocumentId && hasSession)
     sources.push(`/api/branding/logo/${branding.logoDocumentId}`);
+  // Direct CDN/URL logo (no auth required)
   if (branding.logoUrl)
     sources.push(branding.logoUrl);
-  sources.push('/api/branding/logo/public');
+  // Non-authenticated public fallback (e.g. login page): the BFF will attempt
+  // /public/logo/{id} which serves scan-clean, IsPublishedAsLogo=true documents
+  // without requiring a session cookie.  Only add when there is an actual GUID —
+  // the old fallback of '/api/branding/logo/public' passed the literal string
+  // "public" which is never a valid GUID and always returned 404.
+  if (!hasSession) {
+    if (branding.logoWhiteDocumentId)
+      sources.push(`/api/branding/logo/${branding.logoWhiteDocumentId}`);
+    if (branding.logoDocumentId)
+      sources.push(`/api/branding/logo/${branding.logoDocumentId}`);
+  }
 
   const [srcIndex, setSrcIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
@@ -340,7 +352,7 @@ function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useT
     }
   }
 
-  if (exhausted) {
+  if (exhausted || sources.length === 0) {
     return (
       <Image
         src="/legalsynq-logo-white.png"
@@ -354,11 +366,12 @@ function TenantLogo({ branding, hasSession }: { branding: ReturnType<typeof useT
     );
   }
 
-  const isWhiteSrc = srcIndex === 0 && !!branding.logoWhiteDocumentId && hasSession;
+  const currentSrc  = sources[srcIndex] ?? '';
+  const isWhiteSrc  = !!branding.logoWhiteDocumentId && currentSrc.includes(branding.logoWhiteDocumentId);
 
   return (
     <img
-      src={sources[srcIndex]}
+      src={currentSrc}
       alt={branding.displayName || 'Tenant logo'}
       className="w-auto object-contain max-w-[180px]"
       style={{
