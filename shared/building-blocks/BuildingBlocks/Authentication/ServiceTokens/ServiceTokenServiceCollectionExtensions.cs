@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text;
 using BuildingBlocks.FlowClient;
 using Microsoft.AspNetCore.Authentication;
@@ -119,10 +120,12 @@ public static class ServiceTokenServiceCollectionExtensions
                     ? null
                     : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
                 NameClaimType            = "sub",
-                // MapInboundClaims = false means JWT short names are preserved as-is.
-                // JwtSecurityTokenHandler.DefaultOutboundClaimTypeMap writes ClaimTypes.Role
-                // as the short JWT claim name "role", so we must match that here.
-                RoleClaimType            = "role",
+                // ServiceTokenIssuer uses new JwtSecurityToken(claims:...) which does NOT apply
+                // DefaultOutboundClaimTypeMap, so ClaimTypes.Role is written as the full XML URI
+                // into the JWT payload. With MapInboundClaims = false the claim type is preserved
+                // as-is, so RoleClaimType must match the full ClaimTypes.Role URI for IsInRole
+                // to find it.
+                RoleClaimType            = ClaimTypes.Role,
                 ClockSkew                = TimeSpan.FromSeconds(30)
             };
 
