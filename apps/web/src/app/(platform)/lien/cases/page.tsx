@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PageHeader } from '@/components/lien/page-header';
 import { FilterToolbar } from '@/components/lien/filter-toolbar';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { ActionMenu } from '@/components/lien/action-menu';
-import { SideDrawer } from '@/components/lien/side-drawer';
 import { ConfirmDialog } from '@/components/lien/modal';
 import { CreateCaseForm } from '@/components/lien/forms/create-case-form';
 import { BulkActionBar } from '@/components/lien/bulk-action-bar';
@@ -41,6 +41,7 @@ const BULK_ACTIONS: BulkActionConfig[] = [
 ];
 
 export default function CasesPage() {
+  const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
   const selection = useSelectionState();
@@ -53,7 +54,6 @@ export default function CasesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [previewId, setPreviewId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ id: string; status: string } | null>(null);
 
   const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
@@ -87,7 +87,6 @@ export default function CasesPage() {
     fetchCases();
   }, [fetchCases]);
 
-  const previewCase = previewId ? cases.find((c) => c.id === previewId) : null;
   const canEdit = ra.can('case:edit');
 
   const handleAdvanceStatus = async (caseItem: CaseListItem) => {
@@ -199,7 +198,7 @@ export default function CasesPage() {
                     <tr
                       key={c.id}
                       className={`hover:bg-gray-50/80 transition-colors cursor-pointer ${selection.isSelected(c.id) ? 'bg-primary/5' : ''}`}
-                      onClick={() => setPreviewId(c.id)}
+                      onClick={() => router.push(`/lien/cases/${c.id}`)}
                     >
                       {canEdit && (
                         <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
@@ -219,7 +218,7 @@ export default function CasesPage() {
                       <td className="px-3 py-2.5"><StatusBadge status={c.status} /></td>
                       <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                         <ActionMenu items={[
-                          { label: 'View Details', icon: 'ri-eye-line', onClick: () => {} },
+                          { label: 'View Details', icon: 'ri-eye-line', onClick: () => router.push(`/lien/cases/${c.id}`) },
                           ...(canEdit ? [
                             { label: 'Advance Status', icon: 'ri-arrow-right-line', onClick: () => handleAdvanceStatus(c) },
                           ] : []),
@@ -278,22 +277,6 @@ export default function CasesPage() {
       )}
 
       <CreateCaseForm open={showCreate} onClose={() => setShowCreate(false)} onCreated={handleCaseCreated} />
-
-      <SideDrawer open={!!previewCase} onClose={() => setPreviewId(null)} title={previewCase?.caseNumber || ''} subtitle={previewCase?.clientName}>
-        {previewCase && (
-          <div className="space-y-4">
-            <StatusBadge status={previewCase.status} size="md" />
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><p className="text-xs text-gray-400">Law Firm</p><p className="text-gray-700">{previewCase.lawFirm || '—'}</p></div>
-              <div><p className="text-xs text-gray-400">Case Manager</p><p className="text-gray-700">{previewCase.caseManager || '—'}</p></div>
-              <div><p className="text-xs text-gray-400">Accident Type</p><p className="text-gray-700">{previewCase.accidentType || '—'}</p></div>
-              <div><p className="text-xs text-gray-400">Date of Loss</p><p className="text-gray-700">{previewCase.dateOfIncident || '—'}</p></div>
-              <div><p className="text-xs text-gray-400">Date of Birth</p><p className="text-gray-700">{previewCase.clientDob || '—'}</p></div>
-            </div>
-            <Link href={`/lien/cases/${previewCase.id}`} className="block text-center text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">View Full Details</Link>
-          </div>
-        )}
-      </SideDrawer>
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}
