@@ -27,6 +27,11 @@ public class NotificationServiceImpl : INotificationService
     private readonly IAuditEventClient _auditClient;
     private readonly ILogger<NotificationServiceImpl> _logger;
 
+    private static readonly JsonSerializerOptions _camelCaseOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
     public NotificationServiceImpl(
         INotificationRepository notificationRepo,
         INotificationAttemptRepository attemptRepo,
@@ -231,94 +236,7 @@ public class NotificationServiceImpl : INotificationService
         var notification = await _notificationRepo.GetByIdAndTenantAsync(id, tenantId);
         if (notification == null) return new List<NotificationEventDto>();
 
-        var events = new List<NotificationEventDto>();
-
-        // Synthesize lifecycle event: notification created
-        events.Add(new NotificationEventDto
-        {
-            Id          = id,
-            EventType   = "created",
-            Source      = "system",
-            Timestamp   = notification.CreatedAt,
-            Description = $"Notification accepted (channel={notification.Channel}, status={notification.Status})",
-        });
-
-        // Synthesize attempt events from NotificationAttempt records
-        var attempts = await _attemptRepo.GetByNotificationIdAsync(id);
-        foreach (var attempt in attempts)
-        {
-            events.Add(new NotificationEventDto
-            {
-                Id          = attempt.Id,
-                EventType   = attempt.IsFailover ? "failover_attempted" : "attempted",
-                Source      = "system",
-                Timestamp   = attempt.CreatedAt,
-                Description = $"Attempt #{attempt.AttemptNumber} via {attempt.Provider} — status: {attempt.Status}",
-                Provider    = attempt.Provider,
-                ProviderMessageId = attempt.ProviderMessageId,
-            });
-
-            if (attempt.CompletedAt.HasValue && attempt.Status != "sending")
-            {
-                events.Add(new NotificationEventDto
-                {
-                    Id          = attempt.Id,
-                    EventType   = attempt.Status == "sent" ? "sent" : "attempt_failed",
-                    Source      = "system",
-                    Timestamp   = attempt.CompletedAt.Value,
-                    Description = attempt.Status == "sent"
-                        ? $"Sent via {attempt.Provider}"
-                        : $"Attempt #{attempt.AttemptNumber} failed: {attempt.ErrorMessage ?? attempt.FailureCategory}",
-                    Provider    = attempt.Provider,
-                    ProviderMessageId = attempt.ProviderMessageId,
-                });
-            }
-        }
-
-        // Provider webhook events (delivered, bounced, etc.)
-        var providerEvents = await _eventRepo.GetByNotificationIdAsync(id);
-        foreach (var evt in providerEvents)
-        {
-            events.Add(new NotificationEventDto
-            {
-                Id          = evt.Id,
-                EventType   = evt.NormalizedEventType,
-                Source      = $"provider:{evt.Provider}",
-                Timestamp   = evt.EventTimestamp,
-                Description = $"Provider event: {evt.RawEventType} (normalized: {evt.NormalizedEventType})",
-                Provider    = evt.Provider,
-                ProviderMessageId = evt.ProviderMessageId,
-                MetadataJson = evt.MetadataJson,
-            });
-        }
-
-        // Final/intermediate state synthetic event for non-sent outcomes
-        if (notification.Status is "blocked" or "failed" or "partial" or "dead-letter")
-        {
-            events.Add(new NotificationEventDto
-            {
-                Id          = notification.Id,
-                EventType   = notification.Status,
-                Source      = "system",
-                Timestamp   = notification.UpdatedAt,
-                Description = notification.LastErrorMessage
-                    ?? $"Notification reached terminal status: {notification.Status}",
-            });
-        }
-        else if (notification.Status == "retrying")
-        {
-            events.Add(new NotificationEventDto
-            {
-                Id          = notification.Id,
-                EventType   = "retrying",
-                Source      = "system",
-                Timestamp   = notification.UpdatedAt,
-                Description = notification.LastErrorMessage
-                    ?? $"Notification scheduled for retry #{notification.RetryCount}",
-            });
-        }
-
-        return events.OrderBy(e => e.Timestamp).ThenBy(e => e.EventType).ToList();
+        return await BuildEventTimelineAsync(notification);
     }
 
     // ─── Issues ───────────────────────────────────────────────────────────────
@@ -1354,8 +1272,7 @@ public class NotificationServiceImpl : INotificationService
         }
         else { metaDict = new(); }
 
-        var camelOpts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-        var summaryJson = JsonSerializer.Serialize(summary, camelOpts);
+        var summaryJson = JsonSerializer.Serialize(summary, _camelCaseOptions);
         metaDict["fanout"] = JsonSerializer.Deserialize<JsonElement>(summaryJson);
 
         var status =

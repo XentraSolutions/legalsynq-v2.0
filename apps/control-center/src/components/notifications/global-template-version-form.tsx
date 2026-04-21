@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import { createGlobalTemplateVersion }           from '@/app/notifications/actions';
 import { WysiwygEmailEditor }                    from './wysiwyg-email-editor';
 import type { EditorType }                       from '@/lib/notifications-api';
@@ -149,7 +150,7 @@ export function GlobalTemplateVersionForm({ templateId, channel, editorType }: P
                     Preview compiled HTML
                   </summary>
                   <div className="p-3 bg-white">
-                    <div className="border border-gray-200 rounded p-3 text-sm" dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+                    <div className="border border-gray-200 rounded p-3 text-sm" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(bodyHtml) }} />
                   </div>
                   <div className="px-3 py-2 bg-gray-50 border-t border-gray-100">
                     <p className="text-[11px] text-gray-400 font-medium mb-1">Text fallback:</p>

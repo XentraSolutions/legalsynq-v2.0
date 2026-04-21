@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
   const rawSubdomain = extractRawSubdomain(rawHost);
   const tenantCode = explicitTenantCode?.trim() || rawSubdomain || null;
 
-  console.log(`[login] host=${rawHost}, subdomain=${rawSubdomain}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, email=${email}`);
+  const redactedEmail = email.replace(/(.{2}).+@/, '$1***@');
+  console.log(`[login] host=${rawHost}, subdomain=${rawSubdomain}, explicitTenant=${explicitTenantCode}, resolvedTenantCode=${tenantCode}, email=${redactedEmail}`);
 
   if (!tenantCode) {
     return NextResponse.json(

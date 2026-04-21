@@ -394,7 +394,7 @@ public class AutomationExecutor : IAutomationExecutor
         if (string.IsNullOrWhiteSpace(configJson)) return null;
         try
         {
-            return JsonSerializer.Deserialize<T>(configJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return JsonSerializer.Deserialize<T>(configJson, JsonOptions);
         }
         catch
         {

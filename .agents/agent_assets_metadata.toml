@@ -306,3 +306,9 @@ id = "JKDc8LOQICISeYaTxIZme"
 uri = "file://analysis/Flow/TASK-FLOW-01-report.md"
 type = "text"
 title = "TASK-FLOW-01 Report"
+
+[[outputs]]
+id = "hBjqix6cNT8PFq8nUtIzb"
+uri = "file://analysis/code-review-remediation-report-2026-04-21.md"
+type = "text"
+title = "Code Review Remediation Report — April 21, 2026"

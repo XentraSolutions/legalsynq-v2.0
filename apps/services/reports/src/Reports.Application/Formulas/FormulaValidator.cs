@@ -20,6 +20,11 @@ public static partial class FormulaValidator
         "number", "string", "boolean", "date"
     };
 
+    private static readonly JsonSerializerOptions _caseInsensitiveOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     [GeneratedRegex(@"^[a-zA-Z_][a-zA-Z0-9_]*$")]
     private static partial Regex FieldNamePattern();
 
@@ -31,8 +36,7 @@ public static partial class FormulaValidator
         List<FormulaDefinition>? formulas;
         try
         {
-            formulas = JsonSerializer.Deserialize<List<FormulaDefinition>>(formulaConfigJson,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            formulas = JsonSerializer.Deserialize<List<FormulaDefinition>>(formulaConfigJson, _caseInsensitiveOptions);
         }
         catch (JsonException ex)
         {

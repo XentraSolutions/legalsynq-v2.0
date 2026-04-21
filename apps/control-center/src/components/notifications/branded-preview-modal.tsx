@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import DOMPurify from 'dompurify';
 import { previewGlobalTemplateVersion } from '@/app/notifications/actions';
 import type { ProductType, BrandedPreviewResult } from '@/lib/notifications-api';
 
@@ -144,7 +145,7 @@ export function BrandedPreviewModal({ templateId, versionId, productType, variab
 
                   {tab === 'html' && preview.body && (
                     <div className="border border-gray-200 rounded-lg p-4 bg-white max-h-[500px] overflow-y-auto">
-                      <div dangerouslySetInnerHTML={{ __html: preview.body }} />
+                      <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(preview.body) }} />
                     </div>
                   )}
                   {tab === 'text' && (

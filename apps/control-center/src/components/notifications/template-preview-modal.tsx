@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import DOMPurify from 'dompurify';
 import { previewTemplateVersion }  from '@/app/notifications/actions';
 import type { PreviewTemplateResult } from '@/app/notifications/actions';
 
@@ -116,7 +117,7 @@ export function TemplatePreviewModal({ templateId, versionId, variables }: Props
                       </p>
                       <div
                         className="prose prose-sm max-w-none px-3 py-2 max-h-48 overflow-y-auto text-xs"
-                        dangerouslySetInnerHTML={{ __html: result.bodyHtml }}
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(result.bodyHtml) }}
                       />
                     </div>
                   )}

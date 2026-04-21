@@ -18,6 +18,11 @@ public static partial class FormulaEvaluator
     [GeneratedRegex(@"(ABS|ROUND|FLOOR|CEIL|MIN|MAX)\s*\(\s*(.+?)\s*\)", RegexOptions.IgnoreCase)]
     private static partial Regex MathFunctionPattern();
 
+    private static readonly JsonSerializerOptions _caseInsensitiveOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public static List<FormulaDefinition>? ParseConfig(string? formulaConfigJson)
     {
         if (string.IsNullOrWhiteSpace(formulaConfigJson))
@@ -25,8 +30,7 @@ public static partial class FormulaEvaluator
 
         try
         {
-            return JsonSerializer.Deserialize<List<FormulaDefinition>>(formulaConfigJson,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return JsonSerializer.Deserialize<List<FormulaDefinition>>(formulaConfigJson, _caseInsensitiveOptions);
         }
         catch
         {

@@ -24,6 +24,11 @@ public static class FormattingConfigParser
         "currency", "number", "percentage", "date", "boolean", "text"
     };
 
+    private static readonly JsonSerializerOptions _caseInsensitiveOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public static List<ColumnFormattingRule>? Parse(string? formattingConfigJson)
     {
         if (string.IsNullOrWhiteSpace(formattingConfigJson))
@@ -31,8 +36,7 @@ public static class FormattingConfigParser
 
         try
         {
-            return JsonSerializer.Deserialize<List<ColumnFormattingRule>>(formattingConfigJson,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return JsonSerializer.Deserialize<List<ColumnFormattingRule>>(formattingConfigJson, _caseInsensitiveOptions);
         }
         catch
         {
