@@ -27,6 +27,8 @@ public class TaskTemplate : AuditableEntity
     public bool    IsActive            { get; private set; } = true;
     public int     Version             { get; private set; } = 1;
 
+    public string? ProductSettingsJson { get; private set; }
+
     private TaskTemplate() { }
 
     public static TaskTemplate Create(
@@ -41,7 +43,9 @@ public class TaskTemplate : AuditableEntity
         string? defaultPriority    = null,
         string? defaultScope       = null,
         int?    defaultDueInDays   = null,
-        Guid?   defaultStageId     = null)
+        Guid?   defaultStageId     = null,
+        string? productSettingsJson = null,
+        Guid?   id                 = null)
     {
         if (tenantId == Guid.Empty)        throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
@@ -60,7 +64,7 @@ public class TaskTemplate : AuditableEntity
         var now = DateTime.UtcNow;
         return new TaskTemplate
         {
-            Id                 = Guid.NewGuid(),
+            Id                 = id ?? Guid.NewGuid(),
             TenantId           = tenantId,
             SourceProductCode  = sourceProductCode?.Trim().ToUpperInvariant(),
             Code               = code.Trim().ToUpperInvariant(),
@@ -72,6 +76,7 @@ public class TaskTemplate : AuditableEntity
             DefaultScope       = effectiveScope,
             DefaultDueInDays   = defaultDueInDays,
             DefaultStageId     = defaultStageId,
+            ProductSettingsJson = productSettingsJson,
             IsActive           = true,
             Version            = 1,
             CreatedByUserId    = createdByUserId,
@@ -86,12 +91,13 @@ public class TaskTemplate : AuditableEntity
         string  defaultTitle,
         Guid    updatedByUserId,
         int     expectedVersion,
-        string? description        = null,
-        string? defaultDescription = null,
-        string? defaultPriority    = null,
-        string? defaultScope       = null,
-        int?    defaultDueInDays   = null,
-        Guid?   defaultStageId     = null)
+        string? description         = null,
+        string? defaultDescription  = null,
+        string? defaultPriority     = null,
+        string? defaultScope        = null,
+        int?    defaultDueInDays    = null,
+        Guid?   defaultStageId      = null,
+        string? productSettingsJson = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(defaultTitle);
@@ -106,17 +112,18 @@ public class TaskTemplate : AuditableEntity
         if (!TaskScope.All.Contains(effectiveScope))
             throw new ArgumentException($"Invalid scope: '{effectiveScope}'.", nameof(defaultScope));
 
-        Name               = name.Trim();
-        Description        = description?.Trim();
-        DefaultTitle       = defaultTitle.Trim();
-        DefaultDescription = defaultDescription?.Trim();
-        DefaultPriority    = effectivePriority;
-        DefaultScope       = effectiveScope;
-        DefaultDueInDays   = defaultDueInDays;
-        DefaultStageId     = defaultStageId;
-        Version           += 1;
-        UpdatedByUserId    = updatedByUserId;
-        UpdatedAtUtc       = DateTime.UtcNow;
+        Name                = name.Trim();
+        Description         = description?.Trim();
+        DefaultTitle        = defaultTitle.Trim();
+        DefaultDescription  = defaultDescription?.Trim();
+        DefaultPriority     = effectivePriority;
+        DefaultScope        = effectiveScope;
+        DefaultDueInDays    = defaultDueInDays;
+        DefaultStageId      = defaultStageId;
+        ProductSettingsJson = productSettingsJson;
+        Version            += 1;
+        UpdatedByUserId     = updatedByUserId;
+        UpdatedAtUtc        = DateTime.UtcNow;
     }
 
     public void Activate(Guid updatedByUserId)

@@ -9,4 +9,7 @@ public interface ILienTaskTemplateRepository
     Task<LienTaskTemplate?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task AddAsync(LienTaskTemplate entity, CancellationToken ct = default);
     Task UpdateAsync(LienTaskTemplate entity, CancellationToken ct = default);
+
+    /// <summary>TASK-MIG-02 — full table scan used by LiensTemplateSyncService on startup.</summary>
+    Task<List<LienTaskTemplate>> GetAllAsync(CancellationToken ct = default);
 }

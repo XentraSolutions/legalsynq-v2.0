@@ -66,4 +66,12 @@ public sealed class LienTaskTemplateRepository : ILienTaskTemplateRepository
         _db.LienTaskTemplates.Update(entity);
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task<List<LienTaskTemplate>> GetAllAsync(CancellationToken ct = default)
+    {
+        return await _db.LienTaskTemplates
+            .OrderBy(t => t.TenantId)
+            .ThenByDescending(t => t.CreatedAtUtc)
+            .ToListAsync(ct);
+    }
 }

@@ -85,6 +85,11 @@ public static class DependencyInjection
         services.AddSingleton<LiensGovernanceSyncService>();
         services.AddHostedService(sp => sp.GetRequiredService<LiensGovernanceSyncService>());
 
+        // TASK-MIG-02 — startup template sync: copies liens_TaskTemplates rows
+        // into tasks_Templates on every startup. Idempotent; best-effort.
+        services.AddSingleton<LiensTemplateSyncService>();
+        services.AddHostedService(sp => sp.GetRequiredService<LiensTemplateSyncService>());
+
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
         services.AddHttpClient("DocumentsService", client =>
         {

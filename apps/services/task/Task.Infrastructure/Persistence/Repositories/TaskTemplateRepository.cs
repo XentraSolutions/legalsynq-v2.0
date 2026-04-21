@@ -31,4 +31,11 @@ public class TaskTemplateRepository : ITaskTemplateRepository
     public async System.Threading.Tasks.Task AddAsync(
         TaskTemplate template, CancellationToken ct = default)
         => await _db.Templates.AddAsync(template, ct);
+
+    public System.Threading.Tasks.Task UpdateAsync(
+        TaskTemplate template, CancellationToken ct = default)
+    {
+        _db.Templates.Update(template);
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
 }

@@ -12,7 +12,8 @@ public record CreateTaskTemplateRequest(
     string? DefaultPriority    = null,
     string? DefaultScope       = null,
     int?    DefaultDueInDays   = null,
-    Guid?   DefaultStageId     = null);
+    Guid?   DefaultStageId     = null,
+    string? ProductSettingsJson = null);
 
 public record UpdateTaskTemplateRequest(
     string  Name,
@@ -23,7 +24,8 @@ public record UpdateTaskTemplateRequest(
     string? DefaultPriority    = null,
     string? DefaultScope       = null,
     int?    DefaultDueInDays   = null,
-    Guid?   DefaultStageId     = null);
+    Guid?   DefaultStageId     = null,
+    string? ProductSettingsJson = null);
 
 public record CreateTaskFromTemplateRequest(
     string?   TitleOverride       = null,
@@ -32,6 +34,26 @@ public record CreateTaskFromTemplateRequest(
     DateTime? DueAtOverride       = null,
     string?   SourceEntityType    = null,
     Guid?     SourceEntityId      = null);
+
+/// <summary>
+/// TASK-MIG-02 — Upsert a template from a source product, preserving its original ID.
+/// Used by product sync services (e.g. LiensTemplateSyncService) to replicate templates
+/// into the Task service without creating new IDs.
+/// </summary>
+public record UpsertFromSourceTemplateRequest(
+    Guid    Id,
+    string  Code,
+    string  Name,
+    string  DefaultTitle,
+    string  SourceProductCode,
+    string? Description        = null,
+    string? DefaultDescription = null,
+    string? DefaultPriority    = null,
+    string? DefaultScope       = null,
+    int?    DefaultDueInDays   = null,
+    Guid?   DefaultStageId     = null,
+    bool    IsActive           = true,
+    string? ProductSettingsJson = null);
 
 public record TaskTemplateDto(
     Guid    Id,
@@ -48,6 +70,7 @@ public record TaskTemplateDto(
     Guid?   DefaultStageId,
     bool    IsActive,
     int     Version,
+    string? ProductSettingsJson,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc)
 {
@@ -58,5 +81,6 @@ public record TaskTemplateDto(
         t.DefaultPriority, t.DefaultScope,
         t.DefaultDueInDays, t.DefaultStageId,
         t.IsActive, t.Version,
+        t.ProductSettingsJson,
         t.CreatedAtUtc, t.UpdatedAtUtc);
 }

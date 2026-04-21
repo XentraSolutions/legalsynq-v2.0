@@ -44,7 +44,8 @@ public class TaskTemplateService : ITaskTemplateService
         var template = TaskTemplate.Create(
             tenantId, req.Code, req.Name, req.DefaultTitle, userId,
             productCode, req.Description, req.DefaultDescription,
-            req.DefaultPriority, req.DefaultScope, req.DefaultDueInDays, req.DefaultStageId);
+            req.DefaultPriority, req.DefaultScope, req.DefaultDueInDays, req.DefaultStageId,
+            req.ProductSettingsJson);
 
         await _templates.AddAsync(template, ct);
         await _uow.SaveChangesAsync(ct);
@@ -63,7 +64,8 @@ public class TaskTemplateService : ITaskTemplateService
 
         template.Update(req.Name, req.DefaultTitle, userId, req.ExpectedVersion,
             req.Description, req.DefaultDescription, req.DefaultPriority,
-            req.DefaultScope, req.DefaultDueInDays, req.DefaultStageId);
+            req.DefaultScope, req.DefaultDueInDays, req.DefaultStageId,
+            req.ProductSettingsJson);
 
         await _uow.SaveChangesAsync(ct);
         return TaskTemplateDto.From(template);
@@ -103,6 +105,54 @@ public class TaskTemplateService : ITaskTemplateService
     {
         var template = await _templates.GetByIdAsync(tenantId, id, ct);
         return template is null ? null : TaskTemplateDto.From(template);
+    }
+
+    public async System.Threading.Tasks.Task<TaskTemplateDto> UpsertFromSourceAsync(
+        Guid tenantId, Guid userId, UpsertFromSourceTemplateRequest req, CancellationToken ct = default)
+    {
+        var productCode = KnownProductCodes.ValidateOptional(req.SourceProductCode)
+            ?? throw new ArgumentException("SourceProductCode is required for UpsertFromSource.", nameof(req));
+
+        var existing = await _templates.GetByIdAsync(tenantId, req.Id, ct);
+
+        if (existing is null)
+        {
+            var created = TaskTemplate.Create(
+                tenantId, req.Code, req.Name, req.DefaultTitle, userId,
+                productCode, req.Description, req.DefaultDescription,
+                req.DefaultPriority, req.DefaultScope, req.DefaultDueInDays, req.DefaultStageId,
+                req.ProductSettingsJson, req.Id);
+
+            if (!req.IsActive) created.Deactivate(userId);
+
+            await _templates.AddAsync(created, ct);
+            await _uow.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "Template {TemplateId} ({Code}) created via UpsertFromSource for tenant {TenantId}",
+                created.Id, created.Code, tenantId);
+
+            return TaskTemplateDto.From(created);
+        }
+
+        existing.Update(
+            req.Name, req.DefaultTitle, userId, existing.Version,
+            req.Description, req.DefaultDescription,
+            req.DefaultPriority, req.DefaultScope,
+            req.DefaultDueInDays, req.DefaultStageId,
+            req.ProductSettingsJson);
+
+        if (req.IsActive && !existing.IsActive) existing.Activate(userId);
+        else if (!req.IsActive && existing.IsActive) existing.Deactivate(userId);
+
+        await _templates.UpdateAsync(existing, ct);
+        await _uow.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Template {TemplateId} ({Code}) updated via UpsertFromSource for tenant {TenantId}",
+            existing.Id, existing.Code, tenantId);
+
+        return TaskTemplateDto.From(existing);
     }
 
     public async System.Threading.Tasks.Task<TaskDto> CreateTaskFromTemplateAsync(

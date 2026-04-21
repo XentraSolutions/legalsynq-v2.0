@@ -166,6 +166,7 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.Property<string>("DefaultScope").IsRequired().HasMaxLength(20).HasDefaultValue("GENERAL").HasColumnType("varchar(20)");
                     b.Property<int?>("DefaultDueInDays").HasColumnType("int");
                     b.Property<Guid?>("DefaultStageId").HasColumnType("char(36)");
+                    b.Property<string>("ProductSettingsJson").HasColumnType("TEXT");
                     b.Property<bool>("IsActive").IsRequired().HasDefaultValue(true).HasColumnType("tinyint(1)");
                     b.Property<int>("Version").IsRequired().HasDefaultValue(1).HasColumnType("int");
                     b.Property<Guid>("CreatedByUserId").HasColumnType("char(36)");

@@ -45,6 +45,9 @@ public class TaskTemplateConfiguration : IEntityTypeConfiguration<TaskTemplate>
         builder.Property(t => t.DefaultDueInDays);
         builder.Property(t => t.DefaultStageId);
 
+        builder.Property(t => t.ProductSettingsJson)
+            .HasColumnType("TEXT");
+
         builder.Property(t => t.IsActive).IsRequired().HasDefaultValue(true);
         builder.Property(t => t.Version).IsRequired().HasDefaultValue(1);
 

@@ -10,19 +10,27 @@ namespace Liens.Application.Services;
 
 public sealed class LienTaskTemplateService : ILienTaskTemplateService
 {
-    private readonly ILienTaskTemplateRepository _repo;
-    private readonly IAuditPublisher             _audit;
+    private const string ProductCode = "SYNQ_LIENS";
+    private const string DefaultScope = "GENERAL";
+
+    private readonly ILienTaskTemplateRepository     _repo;
+    private readonly ILiensTaskServiceClient         _taskClient;
+    private readonly IAuditPublisher                 _audit;
     private readonly ILogger<LienTaskTemplateService> _logger;
 
     public LienTaskTemplateService(
         ILienTaskTemplateRepository repo,
+        ILiensTaskServiceClient taskClient,
         IAuditPublisher audit,
         ILogger<LienTaskTemplateService> logger)
     {
-        _repo   = repo;
-        _audit  = audit;
-        _logger = logger;
+        _repo       = repo;
+        _taskClient = taskClient;
+        _audit      = audit;
+        _logger     = logger;
     }
+
+    // ── Admin / tenant reads (always Liens DB — no dual-read for admin) ───────────
 
     public async Task<List<TaskTemplateResponse>> GetByTenantAsync(
         Guid tenantId, CancellationToken ct = default)
@@ -44,6 +52,51 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         var entity = await _repo.GetByIdAsync(tenantId, id, ct);
         return entity is null ? null : MapToResponse(entity);
     }
+
+    // ── TASK-MIG-02 — Dual-read for generation engine ────────────────────────────
+
+    public async Task<TaskTemplateResponse?> GetForGenerationAsync(
+        Guid tenantId, Guid id, CancellationToken ct = default)
+    {
+        var fromTask = await TryFetchFromTaskServiceAsync(tenantId, id, ct);
+        if (fromTask is not null)
+        {
+            _logger.LogDebug(
+                "template_source=task_service TemplateId={TemplateId} TenantId={TenantId}",
+                id, tenantId);
+            return fromTask;
+        }
+
+        var entity = await _repo.GetByIdAsync(tenantId, id, ct);
+        if (entity is not null)
+        {
+            _logger.LogDebug(
+                "template_source=liens_fallback TemplateId={TemplateId} TenantId={TenantId}",
+                id, tenantId);
+            return MapToResponse(entity);
+        }
+
+        return null;
+    }
+
+    private async Task<TaskTemplateResponse?> TryFetchFromTaskServiceAsync(
+        Guid tenantId, Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var dto = await _taskClient.GetTemplateAsync(tenantId, id, ct);
+            return dto is null ? null : MapFromTaskServiceDto(dto);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "template_source=task_service_error TemplateId={TemplateId} TenantId={TenantId}; falling back to Liens DB.",
+                id, tenantId);
+            return null;
+        }
+    }
+
+    // ── Write operations (Liens DB authoritative + best-effort Task sync) ─────────
 
     public async Task<TaskTemplateResponse> CreateAsync(
         Guid tenantId, Guid actingUserId, CreateTaskTemplateRequest request, CancellationToken ct = default)
@@ -79,6 +132,8 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
             actorUserId: actingUserId,
             entityType:  "LienTaskTemplate",
             entityId:    entity.Id.ToString());
+
+        await TrySyncToTaskServiceAsync(tenantId, actingUserId, entity, "template_sync_create");
 
         return MapToResponse(entity);
     }
@@ -125,6 +180,8 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
             entityType:  "LienTaskTemplate",
             entityId:    entity.Id.ToString());
 
+        await TrySyncToTaskServiceAsync(tenantId, actingUserId, entity, "template_sync_update");
+
         return MapToResponse(entity);
     }
 
@@ -148,6 +205,8 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
             actorUserId: actingUserId,
             entityType:  "LienTaskTemplate",
             entityId:    entity.Id.ToString());
+
+        await TrySyncToTaskServiceAsync(tenantId, actingUserId, entity, "template_sync_activate");
 
         return MapToResponse(entity);
     }
@@ -173,8 +232,34 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
             entityType:  "LienTaskTemplate",
             entityId:    entity.Id.ToString());
 
+        await TrySyncToTaskServiceAsync(tenantId, actingUserId, entity, "template_sync_deactivate");
+
         return MapToResponse(entity);
     }
+
+    // ── Write-through sync ────────────────────────────────────────────────────────
+
+    private async Task TrySyncToTaskServiceAsync(
+        Guid tenantId, Guid actingUserId, LienTaskTemplate entity, string operation)
+    {
+        try
+        {
+            var payload = MapToUpsertPayload(entity);
+            await _taskClient.UpsertTemplateFromSourceAsync(tenantId, actingUserId, payload);
+            _logger.LogDebug(
+                "template_sync=ok Operation={Operation} TemplateId={TemplateId} TenantId={TenantId}",
+                operation, entity.Id, tenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "template_sync=failed Operation={Operation} TemplateId={TemplateId} TenantId={TenantId}; "
+                + "startup sync will reconcile.",
+                operation, entity.Id, tenantId);
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────────
 
     private async Task<LienTaskTemplate> RequireTemplate(Guid tenantId, Guid id, CancellationToken ct)
     {
@@ -197,6 +282,33 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         if (!WorkflowUpdateSources.All.Contains(updateSource))
             errors.Add("updateSource", [$"Invalid updateSource '{updateSource}'."]);
         return errors;
+    }
+
+    public static TaskServiceTemplateUpsertRequest MapToUpsertPayload(LienTaskTemplate entity)
+    {
+        var ext = new LiensTemplateExtensions
+        {
+            ContextType               = entity.ContextType,
+            ApplicableWorkflowStageId = entity.ApplicableWorkflowStageId,
+            DefaultRoleId             = entity.DefaultRoleId,
+        };
+
+        return new TaskServiceTemplateUpsertRequest
+        {
+            Id                  = entity.Id,
+            Code                = entity.Id.ToString("N").ToUpperInvariant(),
+            Name                = entity.Name,
+            DefaultTitle        = entity.DefaultTitle,
+            SourceProductCode   = ProductCode,
+            Description         = entity.Description,
+            DefaultDescription  = entity.DefaultDescription,
+            DefaultPriority     = entity.DefaultPriority,
+            DefaultScope        = DefaultScope,
+            DefaultDueInDays    = entity.DefaultDueOffsetDays,
+            DefaultStageId      = null,
+            IsActive            = entity.IsActive,
+            ProductSettingsJson = ext.Serialize(),
+        };
     }
 
     private static TaskTemplateResponse MapToResponse(LienTaskTemplate e) => new()
@@ -222,4 +334,33 @@ public sealed class LienTaskTemplateService : ILienTaskTemplateService
         CreatedAtUtc              = e.CreatedAtUtc,
         UpdatedAtUtc              = e.UpdatedAtUtc,
     };
+
+    private static TaskTemplateResponse MapFromTaskServiceDto(TaskServiceTemplateResponse dto)
+    {
+        var ext = LiensTemplateExtensions.Deserialize(dto.ProductSettingsJson);
+
+        return new TaskTemplateResponse
+        {
+            Id                        = dto.Id,
+            TenantId                  = dto.TenantId,
+            ProductCode               = ProductCode,
+            Name                      = dto.Name,
+            Description               = dto.Description,
+            DefaultTitle              = dto.DefaultTitle,
+            DefaultDescription        = dto.DefaultDescription,
+            DefaultPriority           = dto.DefaultPriority,
+            DefaultDueOffsetDays      = dto.DefaultDueInDays,
+            DefaultRoleId             = ext.DefaultRoleId,
+            ContextType               = ext.ContextType,
+            ApplicableWorkflowStageId = ext.ApplicableWorkflowStageId,
+            IsActive                  = dto.IsActive,
+            Version                   = dto.Version,
+            LastUpdatedAt             = dto.UpdatedAtUtc,
+            LastUpdatedByUserId       = null,
+            LastUpdatedByName         = null,
+            LastUpdatedSource         = WorkflowUpdateSources.TaskServiceSync,
+            CreatedAtUtc              = dto.CreatedAtUtc,
+            UpdatedAtUtc              = dto.UpdatedAtUtc,
+        };
+    }
 }

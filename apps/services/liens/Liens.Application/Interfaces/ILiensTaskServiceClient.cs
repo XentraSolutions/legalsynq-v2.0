@@ -130,6 +130,36 @@ public interface ILiensTaskServiceClient
         TaskServiceGovernanceUpsertRequest payload,
         CancellationToken ct = default);
 
+    // ── TASK-MIG-02 — Template round-trip with Task service ──────────────────────
+
+    /// <summary>
+    /// Fetches a single template from the Task service by ID.
+    /// Returns null if not found (HTTP 204/404).
+    /// </summary>
+    Task<TaskServiceTemplateResponse?> GetTemplateAsync(
+        Guid tenantId,
+        Guid templateId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all templates for the given tenant and product from the Task service.
+    /// Returns an empty list if none exist.
+    /// </summary>
+    Task<List<TaskServiceTemplateResponse>> GetAllTemplatesAsync(
+        Guid   tenantId,
+        string productCode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates or updates a template in the Task service using the source-product upsert endpoint.
+    /// Used by LiensTemplateSyncService and write-through on admin saves.
+    /// </summary>
+    System.Threading.Tasks.Task UpsertTemplateFromSourceAsync(
+        Guid   tenantId,
+        Guid   actingUserId,
+        TaskServiceTemplateUpsertRequest payload,
+        CancellationToken ct = default);
+
     // ── TASK-B04-01 — Duplicate-prevention helpers for LienTaskGenerationEngine ──
 
     /// <summary>

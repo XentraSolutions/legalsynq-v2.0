@@ -20,6 +20,10 @@ public static class TaskTemplateEndpoints
         group.MapPost("/{id:guid}/activate",   ActivateTemplate).RequireAuthorization(Policies.PlatformOrTenantAdmin);
         group.MapPost("/{id:guid}/deactivate", DeactivateTemplate).RequireAuthorization(Policies.PlatformOrTenantAdmin);
         group.MapPost("/{id:guid}/create-task", CreateTaskFromTemplate);
+
+        // TASK-MIG-02 — source-product sync endpoint (platform admin only)
+        group.MapPost("/from-source", UpsertFromSource)
+            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -110,5 +114,17 @@ public static class TaskTemplateEndpoints
         var userId   = RequireUserId(ctx);
         var result   = await templateService.CreateTaskFromTemplateAsync(tenantId, userId, id, request, ct);
         return Results.Created($"/api/tasks/{result.Id}", result);
+    }
+
+    private static async System.Threading.Tasks.Task<IResult> UpsertFromSource(
+        UpsertFromSourceTemplateRequest request,
+        ITaskTemplateService            templateService,
+        ICurrentRequestContext          ctx,
+        CancellationToken               ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId   = RequireUserId(ctx);
+        var result   = await templateService.UpsertFromSourceAsync(tenantId, userId, request, ct);
+        return Results.Ok(result);
     }
 }

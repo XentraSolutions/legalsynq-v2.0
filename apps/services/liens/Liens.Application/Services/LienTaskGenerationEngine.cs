@@ -10,7 +10,7 @@ namespace Liens.Application.Services;
 public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
 {
     private readonly ILienTaskGenerationRuleRepository _ruleRepo;
-    private readonly ILienTaskTemplateRepository       _templateRepo;
+    private readonly ILienTaskTemplateService          _templateService;
     private readonly ILienTaskRepository               _taskRepo;
     private readonly ILienTaskService                  _taskService;
     private readonly ILiensTaskServiceClient           _taskServiceClient;
@@ -19,7 +19,7 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
 
     public LienTaskGenerationEngine(
         ILienTaskGenerationRuleRepository ruleRepo,
-        ILienTaskTemplateRepository templateRepo,
+        ILienTaskTemplateService templateService,
         ILienTaskRepository taskRepo,
         ILienTaskService taskService,
         ILiensTaskServiceClient taskServiceClient,
@@ -27,7 +27,7 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
         ILogger<LienTaskGenerationEngine> logger)
     {
         _ruleRepo          = ruleRepo;
-        _templateRepo      = templateRepo;
+        _templateService   = templateService;
         _taskRepo          = taskRepo;
         _taskService       = taskService;
         _taskServiceClient = taskServiceClient;
@@ -89,8 +89,8 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
             return false;
         }
 
-        // 2. Template check
-        var template = await _templateRepo.GetByIdAsync(context.TenantId, rule.TaskTemplateId, ct);
+        // 2. Template check — TASK-MIG-02: dual-read (Task service first, Liens DB fallback)
+        var template = await _templateService.GetForGenerationAsync(context.TenantId, rule.TaskTemplateId, ct);
         if (template is null || !template.IsActive)
         {
             _logger.LogWarning(
