@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 
+export const dynamic = 'force-dynamic';
+
 const VALID_TYPES = ['FEATURE', 'DEFECT', 'REQUIREMENT', 'MITIGATION'];
 const TYPE_LABELS: Record<string, string> = {
   FEATURE: 'Feature',

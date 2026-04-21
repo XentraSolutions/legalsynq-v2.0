@@ -4,6 +4,8 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell }                from '@/components/shell/cc-shell';
 import { AuditAlertPanel }        from '@/components/synqaudit/audit-alert-panel';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /synqaudit/alerts — Audit Alerting Engine page.
  *

@@ -1,6 +1,8 @@
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { CCShell }              from '@/components/shell/cc-shell';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /products — Product Entitlements.
  *

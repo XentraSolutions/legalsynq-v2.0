@@ -5,6 +5,8 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { SupportCaseTable } from '@/components/support/support-case-table';
 import type { SupportCase } from '@/types/control-center';
 
+export const dynamic = 'force-dynamic';
+
 interface SupportPageProps {
   searchParams: Promise<{
     page?:     string;

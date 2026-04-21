@@ -6,10 +6,13 @@ import { ProviderConfigForm }             from '@/components/notifications/provi
 import { ChannelSettingsForm }            from '@/components/notifications/channel-settings-form';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type {
+
   NotifProviderConfig,
   NotifCatalogProvider,
   NotifChannelSetting,
 } from '@/lib/notifications-api';
+
+export const dynamic = 'force-dynamic';
 
 export default async function NotificationsProvidersPage() {
   const session = await requirePlatformAdmin();

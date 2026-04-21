@@ -2,6 +2,8 @@ import { requirePlatformAdmin }   from '@/lib/auth-guards';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { Routes }                 from '@/lib/routes';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ id: string }>;
   searchParams: Promise<{

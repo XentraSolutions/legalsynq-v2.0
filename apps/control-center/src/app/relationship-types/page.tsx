@@ -3,6 +3,8 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { RelationshipTypeTable } from '@/components/platform/relationship-type-table';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /relationship-types — Relationship Type Catalog.
  *

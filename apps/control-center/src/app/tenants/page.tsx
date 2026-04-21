@@ -5,6 +5,8 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { TenantListTable } from '@/components/tenants/tenant-list-table';
 import { CreateTenantButton } from '@/components/tenants/create-tenant-button';
 
+export const dynamic = 'force-dynamic';
+
 interface TenantsPageProps {
   searchParams: Promise<{
     page?:   string;

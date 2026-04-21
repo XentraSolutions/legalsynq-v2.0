@@ -9,6 +9,8 @@ import { GroupProductAccessPanel }   from '@/components/access-groups/group-prod
 import { GroupRoleAssignmentPanel }  from '@/components/access-groups/group-role-assignment-panel';
 import { AccessGroupActions }        from '@/components/access-groups/access-group-actions';
 
+export const dynamic = 'force-dynamic';
+
 interface AccessGroupDetailPageProps {
   params: Promise<{ tenantId: string; groupId: string }>;
 }

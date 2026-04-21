@@ -3,6 +3,8 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell }                from '@/components/shell/cc-shell';
 import { SimulatorForm }          from './simulator-form';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AuthorizationSimulatorPage() {
   const session = await requireAdmin();
 

@@ -5,6 +5,8 @@ import { GlobalTemplateCreateForm }       from '@/components/notifications/globa
 import { notifClient, NOTIF_CACHE_TAGS }  from '@/lib/notifications-api';
 import type { GlobalTemplate }            from '@/lib/notifications-api';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   searchParams: Promise<{ productType?: string; channel?: string }>;
 }

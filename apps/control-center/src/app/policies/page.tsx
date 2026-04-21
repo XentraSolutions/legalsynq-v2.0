@@ -4,6 +4,8 @@ import { CCShell }                    from '@/components/shell/cc-shell';
 import { PolicyListTable }           from '@/components/policies/policy-list-table';
 import { PolicyCreateDialog }        from '@/components/policies/policy-create-dialog';
 
+export const dynamic = 'force-dynamic';
+
 interface PoliciesPageProps {
   searchParams?: Promise<{ search?: string; product?: string }>;
 }

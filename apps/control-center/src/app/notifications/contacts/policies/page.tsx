@@ -5,6 +5,8 @@ import { ContactPolicyForm }              from '@/components/notifications/conta
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type { NotifContactPolicy }       from '@/lib/notifications-api';
 
+export const dynamic = 'force-dynamic';
+
 export default async function ContactPoliciesPage() {
   const session = await requirePlatformAdmin();
 

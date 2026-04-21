@@ -59,13 +59,13 @@ export function InvestigationWorkspace({
     if (localFilters.dateTo)        params.set('dateTo',        localFilters.dateTo);
     if (localFilters.search)        params.set('search',        localFilters.search);
     startTransition(() => {
-      router.push(`${pathname}${params.size ? `?${params}` : ''}`);
+      router.push(`${pathname ?? "/"}${params.size ? `?${params}` : ''}`);
     });
   }, [localFilters, pathname, router]);
 
   const clearFilters = useCallback(() => {
     setLocalFilters({ eventType: '', category: '', severity: '', actorId: '', targetType: '', correlationId: '', dateFrom: '', dateTo: '', search: '' });
-    startTransition(() => router.push(pathname));
+    startTransition(() => router.push(pathname ?? '/'));
   }, [pathname, router]);
 
   const paginationHref = useCallback((p: number) => {
@@ -80,7 +80,7 @@ export function InvestigationWorkspace({
     if (filters.dateTo)        params.set('dateTo',        filters.dateTo);
     if (filters.search)        params.set('search',        filters.search);
     if (p > 1)                 params.set('page',          String(p));
-    return `${pathname}${params.size ? `?${params}` : ''}`;
+    return `${pathname ?? "/"}${params.size ? `?${params}` : ''}`;
   }, [filters, pathname]);
 
   const hasFilters = Object.values(filters).some(Boolean);

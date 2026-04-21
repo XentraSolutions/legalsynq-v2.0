@@ -15,6 +15,8 @@ import { AccessExplanationPanel }        from '@/components/users/access-explana
 import { startImpersonationAction }       from '@/app/actions/impersonation';
 import type { UserStatus }                from '@/types/control-center';
 
+export const dynamic = 'force-dynamic';
+
 interface UserDetailPageProps {
   params: Promise<{ id: string }>;
 }

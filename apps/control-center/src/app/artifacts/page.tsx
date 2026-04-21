@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 
+export const dynamic = 'force-dynamic';
+
 const ARTIFACT_TYPES = [
   { type: 'FEATURE', label: 'Features', description: 'Product features and enhancements', icon: '⚡' },
   { type: 'DEFECT', label: 'Defects', description: 'Bug reports and defect tracking', icon: '🐛' },

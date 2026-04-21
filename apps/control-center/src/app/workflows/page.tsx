@@ -5,10 +5,13 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { WorkflowOperationsTable } from '@/components/workflows/workflow-operations-table';
 import { WorkflowDetailDrawer } from '@/components/workflows/workflow-detail-drawer';
 import type {
+
   PagedResponse,
   WorkflowInstanceListItem,
   WorkflowInstanceDetail,
 } from '@/types/control-center';
+
+export const dynamic = 'force-dynamic';
 
 interface WorkflowsPageProps {
   searchParams: Promise<{

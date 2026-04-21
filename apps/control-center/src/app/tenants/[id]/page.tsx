@@ -6,6 +6,8 @@ import { TenantSessionSettingsPanel }     from '@/components/tenants/tenant-sess
 import { TenantLogoUpload }              from '@/components/tenants/TenantLogoUpload';
 import { TenantOrganizationsPanel }      from '@/components/tenants/tenant-organizations-panel';
 
+export const dynamic = 'force-dynamic';
+
 interface TenantDetailPageProps {
   params: Promise<{ id: string }>;
 }

@@ -9,6 +9,8 @@ import type {
 import { NotificationStatusBadge } from '@/components/notifications/status-badge';
 import { ChannelBadge }            from '@/components/notifications/channel-badge';
 
+export const dynamic = 'force-dynamic';
+
 function parseRecipient(recipientJson: string): string {
   try {
     const r = JSON.parse(recipientJson);

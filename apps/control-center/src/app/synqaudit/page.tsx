@@ -5,6 +5,8 @@ import { CCShell }                 from '@/components/shell/cc-shell';
 import { formatUtc }               from '@/components/synqaudit/synqaudit-badges';
 import { SeverityBadge, OutcomeBadge } from '@/components/synqaudit/synqaudit-badges';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /synqaudit — SynqAudit overview page.
  *

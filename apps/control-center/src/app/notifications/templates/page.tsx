@@ -5,6 +5,8 @@ import { TemplateCreateForm }             from '@/components/notifications/templ
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type { NotifTemplate }            from '@/lib/notifications-api';
 
+export const dynamic = 'force-dynamic';
+
 export default async function NotificationsTemplatesPage() {
   const session = await requirePlatformAdmin();
 

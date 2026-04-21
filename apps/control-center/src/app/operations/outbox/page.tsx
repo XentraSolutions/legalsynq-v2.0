@@ -7,10 +7,13 @@ import { OutboxSummaryCards }     from '@/components/outbox/outbox-summary-cards
 import { OutboxOperationsTable }  from '@/components/outbox/outbox-operations-table';
 import { OutboxDetailDrawer }     from '@/components/outbox/outbox-detail-drawer';
 import type {
+
   OutboxListResponse,
   OutboxDetail,
   OutboxSummary,
 } from '@/types/control-center';
+
+export const dynamic = 'force-dynamic';
 
 interface OutboxPageProps {
   searchParams: Promise<{

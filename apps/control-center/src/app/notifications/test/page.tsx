@@ -4,6 +4,8 @@ import { notifClient, NOTIF_CACHE_TAGS }    from '@/lib/notifications-api';
 import type { NotifProviderConfig }          from '@/lib/notifications-api';
 import { TestMessageForm }                   from '@/components/notifications/test-message-form';
 
+export const dynamic = 'force-dynamic';
+
 export default async function TestOutboundMessagePage() {
   const session = await requirePlatformAdmin();
 

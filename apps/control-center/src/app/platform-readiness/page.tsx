@@ -3,6 +3,8 @@ import { controlCenterServerApi }      from '@/lib/control-center-api';
 import { CCShell }                     from '@/components/shell/cc-shell';
 import { PlatformReadinessCard }       from '@/components/platform/platform-readiness-card';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /platform-readiness — Cross-domain platform readiness report.
  *

@@ -97,13 +97,13 @@ export function PermissionAuditWorkspace({
     if (f.dateTo)   params.set('dateTo',   f.dateTo);
     if (f.search)   params.set('search',   f.search);
     startTransition(() => {
-      router.push(`${pathname}${params.size ? `?${params}` : ''}`);
+      router.push(`${pathname ?? "/"}${params.size ? `?${params}` : ''}`);
     });
   }, [localFilters, pathname, router]);
 
   const clearFilters = useCallback(() => {
     setLocalFilters({ scope: '', actorId: '', tenantId: '', dateFrom: '', dateTo: '', search: '' });
-    startTransition(() => router.push(pathname));
+    startTransition(() => router.push(pathname ?? '/'));
   }, [pathname, router]);
 
   const paginationHref = useCallback((p: number) => {
@@ -115,7 +115,7 @@ export function PermissionAuditWorkspace({
     if (filters.dateTo)   params.set('dateTo',   filters.dateTo);
     if (filters.search)   params.set('search',   filters.search);
     if (p > 1)            params.set('page',     String(p));
-    return `${pathname}${params.size ? `?${params}` : ''}`;
+    return `${pathname ?? "/"}${params.size ? `?${params}` : ''}`;
   }, [filters, pathname]);
 
   const hasFilters = Object.values(filters).some(Boolean);

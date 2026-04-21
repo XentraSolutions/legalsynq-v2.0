@@ -4,6 +4,8 @@ import { getTenantContext }       from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell }                from '@/components/shell/cc-shell';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   searchParams: Promise<{
     actorId?:   string;

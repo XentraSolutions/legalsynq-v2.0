@@ -5,6 +5,8 @@ import { PermissionCatalogTable }     from '@/components/users/permission-catalo
 import { PermissionSearchBar }        from '@/components/users/permission-search-bar';
 import { PermissionCreateDialog }     from '@/components/users/permission-create-dialog';
 
+export const dynamic = 'force-dynamic';
+
 interface PermissionsPageProps {
   searchParams?: Promise<{ search?: string; product?: string }>;
 }

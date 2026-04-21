@@ -2,6 +2,8 @@ import { requirePlatformAdmin }  from '@/lib/auth-guards';
 import { CCShell }               from '@/components/shell/cc-shell';
 import { ExportRequestForm }     from '@/components/synqaudit/export-request-form';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /synqaudit/exports — SynqAudit export job management.
  *

@@ -6,12 +6,15 @@ import { BillingPlanForm }               from '@/components/notifications/billin
 import { BillingPlanRatesModal }         from '@/components/notifications/billing-plan-rates-modal';
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type {
+
   NotifUsageSummary,
   NotifUsageEvent,
   NotifBillingPlan,
   NotifBillingRate,
   NotifRateLimitPolicy,
 } from '@/lib/notifications-api';
+
+export const dynamic = 'force-dynamic';
 
 export default async function NotificationsBillingPage() {
   const session = await requirePlatformAdmin();

@@ -4,6 +4,8 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell }                from '@/components/shell/cc-shell';
 import { AuditAnomalyPanel }      from '@/components/synqaudit/audit-anomaly-panel';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /synqaudit/anomalies — Audit Anomaly Detection page.
  *

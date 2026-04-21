@@ -3,6 +3,8 @@ import { controlCenterServerApi }            from '@/lib/control-center-api';
 import { CCShell }                           from '@/components/shell/cc-shell';
 import { LegacyCoverageCard }               from '@/components/platform/legacy-coverage-card';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /legacy-coverage — Legacy Migration Coverage Report (Step 5 / Phase F)
  *

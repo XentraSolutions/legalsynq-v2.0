@@ -3,6 +3,8 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { OrgRelationshipTable } from '@/components/platform/org-relationship-table';
 
+export const dynamic = 'force-dynamic';
+
 interface OrgRelationshipsPageProps {
   searchParams: Promise<{
     page?:       string;

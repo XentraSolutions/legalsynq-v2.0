@@ -6,6 +6,8 @@ import { notifClient, formatFailureCategory } from '@/lib/notifications-api';
 import type { NotifDetail, NotifEvent, NotifIssue } from '@/lib/notifications-api';
 import { ApiError }                       from '@/lib/api-client';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ id: string }>;
 }

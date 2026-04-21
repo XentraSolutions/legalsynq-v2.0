@@ -11,6 +11,8 @@ import { getSession, getTenantContext } from '@/lib/auth';
 import { InviteUserForm }               from './invite-form';
 import { redirect }                     from 'next/navigation';
 
+export const dynamic = 'force-dynamic';
+
 export default async function InviteUserPage() {
   const session = await getSession();
   if (!session) redirect('/login');

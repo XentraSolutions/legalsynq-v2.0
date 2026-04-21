@@ -3,6 +3,8 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { RoleListTable } from '@/components/roles/role-list-table';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /roles — Platform roles & permissions list.
  *

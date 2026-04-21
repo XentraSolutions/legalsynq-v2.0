@@ -6,6 +6,8 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { UserListTable } from '@/components/users/user-list-table';
 import { Routes } from '@/lib/routes';
 
+export const dynamic = 'force-dynamic';
+
 type StatusFilter = 'all' | 'active' | 'inactive' | 'invited';
 
 interface TenantUsersPageProps {

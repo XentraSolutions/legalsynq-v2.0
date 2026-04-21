@@ -5,6 +5,8 @@ import { ChannelBadge }                      from '@/components/notifications/ch
 import { notifClient, NOTIF_CACHE_TAGS, formatFailureCategory } from '@/lib/notifications-api';
 import type { AdminNotifListResponse }     from '@/lib/notifications-api';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   searchParams: Promise<{
     status?:  string;

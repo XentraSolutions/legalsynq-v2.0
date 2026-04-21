@@ -4,6 +4,8 @@ import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { artifactsApi, ArtifactsApiError } from '@/lib/artifacts-api';
 import { LinkedFeedbackPanel } from '@/components/artifacts/linked-feedback-panel';
 
+export const dynamic = 'force-dynamic';
+
 const VALID_TYPES = ['FEATURE', 'DEFECT', 'REQUIREMENT', 'MITIGATION'];
 const TYPE_LABELS: Record<string, string> = {
   FEATURE: 'Feature',

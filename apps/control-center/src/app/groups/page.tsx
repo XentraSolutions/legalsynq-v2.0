@@ -5,6 +5,8 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { AccessGroupListTable } from '@/components/access-groups/access-group-list-table';
 import { CreateAccessGroupButton } from '@/components/access-groups/create-access-group-button';
 
+export const dynamic = 'force-dynamic';
+
 interface GroupsPageProps {
   searchParams: Promise<{
     tenantId?: string;

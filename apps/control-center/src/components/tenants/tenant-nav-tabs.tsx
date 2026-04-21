@@ -23,7 +23,7 @@ export function TenantNavTabs({
   notificationsHref,
   activityHref,
 }: TenantNavTabsProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? '';
 
   const isActivity      = pathname.includes('/activity');
   const isNotifications = !isActivity && pathname.includes('/notifications');

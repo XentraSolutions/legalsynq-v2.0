@@ -4,6 +4,8 @@ import { controlCenterServerApi }  from '@/lib/control-center-api';
 import { CCShell }                 from '@/components/shell/cc-shell';
 import { LegalHoldManager }        from '@/components/synqaudit/legal-hold-manager';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   searchParams: Promise<{ auditId?: string }>;
 }

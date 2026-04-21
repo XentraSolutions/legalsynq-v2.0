@@ -102,7 +102,7 @@ export function CCSidebar() {
             key={si}
             section={section}
             sectionIndex={si}
-            pathname={pathname}
+            pathname={pathname ?? ''}
             sidebarCollapsed={collapsed}
             sectionCollapsed={!!collapsedSections[section.heading ?? si]}
             onToggleSection={() => toggleSection(section.heading ?? String(si))}

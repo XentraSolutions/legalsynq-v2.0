@@ -38,6 +38,22 @@ rm -rf .next
 NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 node "$NEXT_BIN" build
 
 echo "====== Building control center ======"
+# Deduplicate React: control-center has its own node_modules/react which creates
+# a second React instance at SSR time, causing "useContext null" prerender failures.
+# Replace with symlinks to the root pnpm store so both CC and react-dom share one copy.
+PNPM_REACT="$ROOT/node_modules/.pnpm/react@18.3.1/node_modules/react"
+PNPM_REACT_DOM="$ROOT/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom"
+CC_NM="$ROOT/apps/control-center/node_modules"
+if [ -d "$PNPM_REACT" ] && [ ! -L "$CC_NM/react" ]; then
+  rm -rf "$CC_NM/react"
+  ln -s "$PNPM_REACT" "$CC_NM/react"
+  echo "[dedup] Linked control-center/node_modules/react → pnpm store"
+fi
+if [ -d "$PNPM_REACT_DOM" ] && [ ! -L "$CC_NM/react-dom" ]; then
+  rm -rf "$CC_NM/react-dom"
+  ln -s "$PNPM_REACT_DOM" "$CC_NM/react-dom"
+  echo "[dedup] Linked control-center/node_modules/react-dom → pnpm store"
+fi
 cd "$ROOT/apps/control-center"
 rm -rf .next
 node "$NEXT_BIN" build

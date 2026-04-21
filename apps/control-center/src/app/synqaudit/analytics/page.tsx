@@ -4,6 +4,8 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell }                from '@/components/shell/cc-shell';
 import { AuditAnalyticsDashboard } from '@/components/synqaudit/audit-analytics-dashboard';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /synqaudit/analytics — Audit Analytics dashboard.
  *

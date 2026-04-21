@@ -3,6 +3,8 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell } from '@/components/shell/cc-shell';
 import { OrgTypeTable } from '@/components/platform/org-type-table';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /org-types — Organization Type Catalog.
  *

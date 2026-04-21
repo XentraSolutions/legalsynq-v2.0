@@ -5,9 +5,12 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { WorkflowExceptionsTable } from '@/components/workflows/workflow-exceptions-table';
 import { WorkflowDetailDrawer } from '@/components/workflows/workflow-detail-drawer';
 import type {
+
   WorkflowInstanceDetail,
   WorkflowInstancePagedResponse,
 } from '@/types/control-center';
+
+export const dynamic = 'force-dynamic';
 
 interface ExceptionsPageProps {
   searchParams: Promise<{

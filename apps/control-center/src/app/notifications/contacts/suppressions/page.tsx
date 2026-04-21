@@ -6,6 +6,8 @@ import { LiftSuppressionButton }         from '@/components/notifications/lift-s
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type { NotifSuppression }         from '@/lib/notifications-api';
 
+export const dynamic = 'force-dynamic';
+
 export default async function ContactSuppressionsPage() {
   const session = await requirePlatformAdmin();
 

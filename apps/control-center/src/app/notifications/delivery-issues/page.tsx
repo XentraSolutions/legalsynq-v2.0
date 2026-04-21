@@ -5,6 +5,8 @@ import { ChannelBadge }                   from '@/components/notifications/chann
 import { notifClient, NOTIF_CACHE_TAGS } from '@/lib/notifications-api';
 import type { NotifListResponse }        from '@/lib/notifications-api';
 
+export const dynamic = 'force-dynamic';
+
 const PAGE_SIZE = 25;
 
 interface Props {

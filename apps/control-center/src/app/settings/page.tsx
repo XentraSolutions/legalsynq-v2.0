@@ -4,6 +4,8 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { PlatformSettingsPanel } from '@/components/settings/platform-settings-panel';
 import type { PlatformSetting } from '@/types/control-center';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /settings — Platform Settings & Feature Flags.
  *

@@ -4,6 +4,8 @@ import { controlCenterServerApi }  from '@/lib/control-center-api';
 import { CCShell }                 from '@/components/shell/cc-shell';
 import { IntegrityPanel }          from '@/components/synqaudit/integrity-panel';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /synqaudit/integrity — Hash chain integrity checkpoint management.
  *

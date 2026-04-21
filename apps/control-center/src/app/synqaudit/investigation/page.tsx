@@ -5,6 +5,8 @@ import { controlCenterServerApi }  from '@/lib/control-center-api';
 import { CCShell }                 from '@/components/shell/cc-shell';
 import { InvestigationWorkspace }  from '@/components/synqaudit/investigation-workspace';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   searchParams: Promise<{
     eventType?:     string;

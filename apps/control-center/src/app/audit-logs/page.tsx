@@ -6,6 +6,8 @@ import { AuditLogTable }                    from '@/components/audit-logs/audit-
 import { CanonicalAuditTableInteractive }  from '@/components/audit-logs/canonical-audit-table-interactive';
 import type { AuditLogEntry, CanonicalAuditEvent, AuditReadMode } from '@/types/control-center';
 
+export const dynamic = 'force-dynamic';
+
 interface AuditLogsPageProps {
   searchParams: Promise<{
     search?:        string;

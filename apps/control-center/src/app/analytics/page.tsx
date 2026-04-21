@@ -8,9 +8,12 @@ import { AnalyticsWorkflowCards } from '@/components/analytics/analytics-workflo
 import { AnalyticsOutboxCards }   from '@/components/analytics/analytics-outbox-cards';
 import { AnalyticsPlatformTable } from '@/components/analytics/analytics-platform-table';
 import type {
+
   AnalyticsDashboardSummary,
   PlatformAnalyticsSummary,
 } from '@/types/control-center';
+
+export const dynamic = 'force-dynamic';
 
 interface AnalyticsPageProps {
   searchParams: Promise<{ window?: string }>;

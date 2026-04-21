@@ -1,6 +1,8 @@
 import { requireAdmin }   from '@/lib/auth-guards';
 import { AvatarUpload }  from '@/components/avatar/AvatarUpload';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * /profile — CC admin profile page.
  *

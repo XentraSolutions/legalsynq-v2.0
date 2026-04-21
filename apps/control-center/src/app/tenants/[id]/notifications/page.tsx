@@ -6,6 +6,8 @@ import type { NotifListResponse, NotifStats } from '@/lib/notifications-api';
 import { NotificationStatusBadge }       from '@/components/notifications/status-badge';
 import { ChannelBadge }                  from '@/components/notifications/channel-badge';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params:       Promise<{ id: string }>;
   searchParams: Promise<{

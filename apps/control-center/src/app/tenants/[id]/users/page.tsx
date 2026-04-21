@@ -2,6 +2,8 @@ import { requirePlatformAdmin }       from '@/lib/auth-guards';
 import { controlCenterServerApi }     from '@/lib/control-center-api';
 import { UserListTable }              from '@/components/users/user-list-table';
 
+export const dynamic = 'force-dynamic';
+
 interface TenantUsersPageProps {
   params:       Promise<{ id: string }>;
   searchParams: Promise<{ page?: string; search?: string }>;

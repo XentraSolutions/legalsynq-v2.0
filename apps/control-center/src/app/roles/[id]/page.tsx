@@ -6,6 +6,8 @@ import { CCShell }                 from '@/components/shell/cc-shell';
 import { RoleDetailCard }          from '@/components/roles/role-detail-card';
 import { RolePermissionPanel }     from '@/components/roles/role-permission-panel';
 
+export const dynamic = 'force-dynamic';
+
 interface RoleDetailPageProps {
   params: Promise<{ id: string }>;
 }

@@ -4,6 +4,8 @@ import { CCShell }                    from '@/components/shell/cc-shell';
 import { PolicyDetailPanel }         from '@/components/policies/policy-detail-panel';
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+
 interface PolicyDetailPageProps {
   params: Promise<{ id: string }>;
 }

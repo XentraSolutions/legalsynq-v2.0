@@ -63,7 +63,7 @@ export function OutboxDetailDrawer({
   const searchParams = useSearchParams();
 
   function closeDrawer() {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.delete('selected');
     const qs = params.toString();
     router.push(qs ? `?${qs}` : '?', { scroll: false });

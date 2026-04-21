@@ -6,6 +6,8 @@ import { fetchProviderLogs }     from '@/app/notifications/actions';
 import type { NotifProviderConfig } from '@/lib/notifications-api';
 import { ProviderLogsTable }     from '@/components/notifications/provider-logs-table';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params:      Promise<{ configId: string }>;
   searchParams: Promise<{ status?: string; from?: string; to?: string; page?: string }>;

@@ -4,6 +4,8 @@ import { controlCenterServerApi } from '@/lib/control-center-api';
 import { CCShell }                from '@/components/shell/cc-shell';
 import { RelatedEventsTimeline }  from '@/components/synqaudit/related-events-timeline';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ auditId: string }>;
 }

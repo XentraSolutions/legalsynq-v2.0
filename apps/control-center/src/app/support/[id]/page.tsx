@@ -7,6 +7,8 @@ import { CCShell } from '@/components/shell/cc-shell';
 import { SupportDetailPanel } from '@/components/support/support-detail-panel';
 import { Routes } from '@/lib/routes';
 
+export const dynamic = 'force-dynamic';
+
 interface SupportCaseDetailPageProps {
   params: Promise<{ id: string }>;
 }

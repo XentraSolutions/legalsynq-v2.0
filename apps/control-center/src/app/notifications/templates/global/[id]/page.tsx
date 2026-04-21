@@ -9,6 +9,8 @@ import { notifClient, NOTIF_CACHE_TAGS }               from '@/lib/notifications
 import type { GlobalTemplate, GlobalTemplateVersion }  from '@/lib/notifications-api';
 import { ApiError }                                    from '@/lib/api-client';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ id: string }>;
 }

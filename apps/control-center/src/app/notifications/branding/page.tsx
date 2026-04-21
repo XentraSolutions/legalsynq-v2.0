@@ -5,6 +5,8 @@ import type { TenantBranding }             from '@/lib/notifications-api';
 import { BrandingCreateForm }              from '@/components/notifications/branding-create-form';
 import { BrandingEditForm }                from '@/components/notifications/branding-edit-form';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   searchParams: Promise<{ productType?: string }>;
 }

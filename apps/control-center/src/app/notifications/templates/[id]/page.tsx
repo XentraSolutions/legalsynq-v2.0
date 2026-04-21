@@ -8,6 +8,8 @@ import { notifClient }                    from '@/lib/notifications-api';
 import type { NotifTemplate, NotifTemplateVersion } from '@/lib/notifications-api';
 import { ApiError }                       from '@/lib/api-client';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ id: string }>;
 }
