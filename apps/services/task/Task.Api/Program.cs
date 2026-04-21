@@ -89,5 +89,9 @@ app.MapGet("/info", () =>
 
 app.MapTaskEndpoints();
 app.MapTaskNoteEndpoints();
+app.MapTaskStageEndpoints();
+app.MapTaskGovernanceEndpoints();
+app.MapTaskTemplateEndpoints();
+app.MapTaskReminderEndpoints();
 
 app.Run();

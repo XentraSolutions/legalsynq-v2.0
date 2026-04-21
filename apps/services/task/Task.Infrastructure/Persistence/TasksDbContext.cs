@@ -7,9 +7,13 @@ public class TasksDbContext : DbContext
 {
     public TasksDbContext(DbContextOptions<TasksDbContext> options) : base(options) { }
 
-    public DbSet<PlatformTask> Tasks    => Set<PlatformTask>();
-    public DbSet<TaskNote>     Notes    => Set<TaskNote>();
-    public DbSet<TaskHistory>  History  => Set<TaskHistory>();
+    public DbSet<PlatformTask>           Tasks             => Set<PlatformTask>();
+    public DbSet<TaskNote>               Notes             => Set<TaskNote>();
+    public DbSet<TaskHistory>            History           => Set<TaskHistory>();
+    public DbSet<TaskStageConfig>        StageConfigs      => Set<TaskStageConfig>();
+    public DbSet<TaskGovernanceSettings> GovernanceSettings => Set<TaskGovernanceSettings>();
+    public DbSet<TaskTemplate>           Templates         => Set<TaskTemplate>();
+    public DbSet<TaskReminder>           Reminders         => Set<TaskReminder>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

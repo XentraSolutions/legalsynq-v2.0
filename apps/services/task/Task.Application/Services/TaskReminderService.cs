@@ -74,7 +74,7 @@ public class TaskReminderService : ITaskReminderService
         foreach (var reminder in reminders)
         {
             var task = await _tasks.GetByIdAsync(reminder.TenantId, reminder.TaskId, ct);
-            if (task is null || Enum.TryParse<TaskStatusHelper>(task.Status, out _) && IsTerminal(task.Status))
+            if (task is null || IsTerminal(task.Status))
             {
                 reminder.Cancel();
                 skipped++;
@@ -140,6 +140,3 @@ public class TaskReminderService : ITaskReminderService
     private static bool IsTerminal(string status) =>
         status == "COMPLETED" || status == "CANCELLED";
 }
-
-// helper to avoid System.Threading.Tasks.TaskStatus collision
-internal enum TaskStatusHelper { }

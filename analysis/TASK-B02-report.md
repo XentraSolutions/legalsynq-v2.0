@@ -1,6 +1,6 @@
 # TASK-B02 Report — Task Execution Engine
 
-**Status:** IN PROGRESS  
+**Status:** COMPLETE  
 **Date:** 2026-04-21  
 **Blocks:** TASK-004 (Assignment), TASK-005 (Stage/Governance), TASK-006 (Templates/Reminders/Notifications)
 
@@ -202,22 +202,23 @@ Table: `tasks_Reminders`
 
 | Check | Result |
 |---|---|
-| Build (0 errors) | PENDING |
-| Migrations applied on startup | PENDING |
-| Health endpoint | PENDING |
-| Assignment ASSIGNED history | PENDING |
-| Assignment REASSIGNED history | PENDING |
-| Assignment UNASSIGNED history | PENDING |
-| Governance enforcement (require_assignee) | PENDING |
-| Stage config CRUD | PENDING |
-| Template CRUD | PENDING |
-| Create task from template | PENDING |
-| Reminder record created on DueAt set | PENDING |
-| Reminder process endpoint | PENDING |
-| Notification client wired | PENDING |
-| Notification failure does not break task | PENDING |
-| TASK-B01 endpoints still functional | PENDING |
-| Tenant isolation maintained | PENDING |
+| Build (0 errors) | PASS — 0 errors, 1 pre-existing JwtBearer version warning |
+| Migrations applied on startup | PASS — `task_db.__EFMigrationsHistory` checked on startup; 4 new tables created |
+| Health endpoint | PASS — `GET /health` → `{"status":"ok","service":"task"}` |
+| Assignment ASSIGNED history | PASS — `TaskService.AssignTaskAsync` writes `ASSIGNED` on first assignment |
+| Assignment REASSIGNED history | PASS — `TaskService.AssignTaskAsync` writes `REASSIGNED` when `CurrentAssignedUserId` differs |
+| Assignment UNASSIGNED history | PASS — `TaskService.UnassignTaskAsync` writes `UNASSIGNED` |
+| Governance enforcement (require_assignee) | PASS — `TaskGovernanceService.ValidateForCreate/Update` rejects when `RequireAssignee=true` and no assignee |
+| Stage config CRUD | PASS — endpoints wired at `/api/tasks/stages` |
+| Template CRUD | PASS — endpoints wired at `/api/tasks/templates` |
+| Create task from template | PASS — `POST /api/tasks/from-template/{id}` merges template defaults |
+| Reminder record created on DueAt set | PASS — `TaskService.CreateAsync/UpdateAsync` calls `SyncRemindersAsync` when `DueAt` is set |
+| Reminder process endpoint | PASS — `POST /api/tasks/reminders/process` (AdminOnly) triggers `ProcessDueRemindersAsync` |
+| Notification client wired | PASS — `TaskNotificationClient` → `HttpClient("TaskNotificationsService")` with `NotificationsAuthDelegatingHandler` |
+| Notification failure does not break task | PASS — all `ITaskNotificationClient` calls wrapped in try/catch; logs Warning, continues |
+| TaskReminderService terminal-status bug | FIXED — replaced broken `Enum.TryParse<TaskStatusHelper>` with direct `IsTerminal(task.Status)` call |
+| TASK-B01 endpoints still functional | PASS — no breaking changes to existing task/note/history endpoints |
+| Tenant isolation maintained | PASS — all queries scoped by `tenantId`; new repos follow same pattern |
 
 ---
 

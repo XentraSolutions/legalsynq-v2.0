@@ -104,8 +104,6 @@ public class TaskGovernanceSettings : AuditableEntity
 /// </summary>
 public static class GovernanceFallback
 {
-    public static readonly TaskGovernanceSettings Instance = new TaskGovernanceSettings();
-
     public const bool   RequireAssignee           = false;
     public const bool   RequireDueDate            = false;
     public const bool   RequireStage              = false;

@@ -42,6 +42,8 @@ public class PlatformTaskConfiguration : IEntityTypeConfiguration<PlatformTask>
         builder.Property(t => t.SourceEntityType).HasMaxLength(100);
         builder.Property(t => t.SourceEntityId);
 
+        builder.Property(t => t.CurrentStageId);
+
         builder.Property(t => t.DueAt);
         builder.Property(t => t.CompletedAt);
         builder.Property(t => t.ClosedByUserId);
@@ -62,5 +64,8 @@ public class PlatformTaskConfiguration : IEntityTypeConfiguration<PlatformTask>
 
         builder.HasIndex(t => new { t.TenantId, t.CreatedAtUtc })
             .HasDatabaseName("IX_Tasks_TenantId_CreatedAt");
+
+        builder.HasIndex(t => new { t.TenantId, t.CurrentStageId })
+            .HasDatabaseName("IX_Tasks_TenantId_StageId");
     }
 }

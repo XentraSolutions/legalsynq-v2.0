@@ -1,4 +1,6 @@
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Context;
+using BuildingBlocks.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,6 +8,7 @@ using Task.Application.Interfaces;
 using Task.Application.Services;
 using Task.Infrastructure.Persistence;
 using Task.Infrastructure.Persistence.Repositories;
+using Task.Infrastructure.Services;
 
 namespace Task.Infrastructure;
 
@@ -28,11 +31,38 @@ public static class DependencyInjection
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 
+        // Core task repositories
         services.AddScoped<ITaskRepository,        TaskRepository>();
         services.AddScoped<ITaskNoteRepository,     TaskNoteRepository>();
         services.AddScoped<ITaskHistoryRepository,  TaskHistoryRepository>();
         services.AddScoped<IUnitOfWork,             UnitOfWork>();
-        services.AddScoped<ITaskService,            TaskService>();
+
+        // Execution engine repositories
+        services.AddScoped<ITaskStageRepository,      TaskStageRepository>();
+        services.AddScoped<ITaskGovernanceRepository,  TaskGovernanceRepository>();
+        services.AddScoped<ITaskTemplateRepository,    TaskTemplateRepository>();
+        services.AddScoped<ITaskReminderRepository,    TaskReminderRepository>();
+
+        // Application services
+        services.AddScoped<ITaskGovernanceService,  TaskGovernanceService>();
+        services.AddScoped<ITaskStageService,        TaskStageService>();
+        services.AddScoped<ITaskTemplateService,     TaskTemplateService>();
+        services.AddScoped<ITaskReminderService,     TaskReminderService>();
+        services.AddScoped<ITaskService,             TaskService>();
+
+        // Notification client — LS-NOTIF-CORE-024 pattern
+        // Service-JWT auth for outbound Notifications calls (same signing key as other services).
+        // Falls back gracefully when NotificationsService:BaseUrl is not configured.
+        services.AddOptions<TaskNotificationsServiceOptions>()
+                .Bind(configuration.GetSection(TaskNotificationsServiceOptions.SectionName));
+
+        services.AddServiceTokenIssuer(configuration, "task");
+        services.AddTransient<NotificationsAuthDelegatingHandler>();
+
+        services.AddHttpClient("TaskNotificationsService")
+                .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
+
+        services.AddScoped<ITaskNotificationClient, TaskNotificationClient>();
 
         return services;
     }

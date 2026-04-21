@@ -29,6 +29,7 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("CompletedAt").HasColumnType("datetime(6)");
                     b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
                     b.Property<Guid>("CreatedByUserId").HasColumnType("char(36)");
+                    b.Property<Guid?>("CurrentStageId").HasColumnType("char(36)");
                     b.Property<string>("Description").HasMaxLength(4000).HasColumnType("varchar(4000)");
                     b.Property<DateTime?>("DueAt").HasColumnType("datetime(6)");
                     b.Property<string>("Priority").IsRequired().HasMaxLength(20).HasDefaultValue("MEDIUM").HasColumnType("varchar(20)");
@@ -46,6 +47,7 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.HasIndex(new[] { "TenantId", "AssignedUserId" }, "IX_Tasks_TenantId_AssignedUserId");
                     b.HasIndex(new[] { "TenantId", "Scope", "SourceProductCode" }, "IX_Tasks_TenantId_Scope_Product");
                     b.HasIndex(new[] { "TenantId", "CreatedAtUtc" }, "IX_Tasks_TenantId_CreatedAt");
+                    b.HasIndex(new[] { "TenantId", "CurrentStageId" }, "IX_Tasks_TenantId_StageId");
                     b.ToTable("tasks_Tasks");
                 });
 
@@ -76,6 +78,94 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
                     b.HasIndex(new[] { "TenantId", "TaskId" }, "IX_History_TenantId_TaskId");
                     b.ToTable("tasks_History");
+                });
+
+            modelBuilder.Entity("Task.Domain.Entities.TaskStageConfig", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("char(36)");
+                    b.Property<Guid>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("SourceProductCode").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("Code").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<int>("DisplayOrder").HasColumnType("int");
+                    b.Property<bool>("IsActive").IsRequired().HasDefaultValue(true).HasColumnType("tinyint(1)");
+                    b.Property<Guid>("CreatedByUserId").HasColumnType("char(36)");
+                    b.Property<Guid?>("UpdatedByUserId").HasColumnType("char(36)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex(new[] { "TenantId", "SourceProductCode" }, "IX_StageConfigs_TenantId_Product");
+                    b.HasIndex(new[] { "TenantId", "SourceProductCode", "Code" }, "IX_StageConfigs_TenantId_Product_Code").IsUnique();
+                    b.ToTable("tasks_StageConfigs");
+                });
+
+            modelBuilder.Entity("Task.Domain.Entities.TaskGovernanceSettings", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("char(36)");
+                    b.Property<Guid>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("SourceProductCode").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<bool>("RequireAssignee").IsRequired().HasDefaultValue(false).HasColumnType("tinyint(1)");
+                    b.Property<bool>("RequireDueDate").IsRequired().HasDefaultValue(false).HasColumnType("tinyint(1)");
+                    b.Property<bool>("RequireStage").IsRequired().HasDefaultValue(false).HasColumnType("tinyint(1)");
+                    b.Property<bool>("AllowUnassign").IsRequired().HasDefaultValue(true).HasColumnType("tinyint(1)");
+                    b.Property<bool>("AllowCancel").IsRequired().HasDefaultValue(true).HasColumnType("tinyint(1)");
+                    b.Property<bool>("AllowCompleteWithoutStage").IsRequired().HasDefaultValue(true).HasColumnType("tinyint(1)");
+                    b.Property<bool>("AllowNotesOnClosedTasks").IsRequired().HasDefaultValue(false).HasColumnType("tinyint(1)");
+                    b.Property<string>("DefaultPriority").IsRequired().HasMaxLength(20).HasDefaultValue("MEDIUM").HasColumnType("varchar(20)");
+                    b.Property<string>("DefaultTaskScope").IsRequired().HasMaxLength(20).HasDefaultValue("GENERAL").HasColumnType("varchar(20)");
+                    b.Property<int>("Version").IsRequired().HasDefaultValue(1).HasColumnType("int");
+                    b.Property<Guid>("CreatedByUserId").HasColumnType("char(36)");
+                    b.Property<Guid?>("UpdatedByUserId").HasColumnType("char(36)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex(new[] { "TenantId", "SourceProductCode" }, "IX_GovernanceSettings_TenantId_Product").IsUnique();
+                    b.ToTable("tasks_GovernanceSettings");
+                });
+
+            modelBuilder.Entity("Task.Domain.Entities.TaskTemplate", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("char(36)");
+                    b.Property<Guid>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("SourceProductCode").HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("Code").IsRequired().HasMaxLength(50).HasColumnType("varchar(50)");
+                    b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<string>("Description").HasMaxLength(1000).HasColumnType("varchar(1000)");
+                    b.Property<string>("DefaultTitle").IsRequired().HasMaxLength(500).HasColumnType("varchar(500)");
+                    b.Property<string>("DefaultDescription").HasMaxLength(4000).HasColumnType("varchar(4000)");
+                    b.Property<string>("DefaultPriority").IsRequired().HasMaxLength(20).HasDefaultValue("MEDIUM").HasColumnType("varchar(20)");
+                    b.Property<string>("DefaultScope").IsRequired().HasMaxLength(20).HasDefaultValue("GENERAL").HasColumnType("varchar(20)");
+                    b.Property<int?>("DefaultDueInDays").HasColumnType("int");
+                    b.Property<Guid?>("DefaultStageId").HasColumnType("char(36)");
+                    b.Property<bool>("IsActive").IsRequired().HasDefaultValue(true).HasColumnType("tinyint(1)");
+                    b.Property<int>("Version").IsRequired().HasDefaultValue(1).HasColumnType("int");
+                    b.Property<Guid>("CreatedByUserId").HasColumnType("char(36)");
+                    b.Property<Guid?>("UpdatedByUserId").HasColumnType("char(36)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex(new[] { "TenantId", "SourceProductCode" }, "IX_Templates_TenantId_Product");
+                    b.HasIndex(new[] { "TenantId", "SourceProductCode", "Code" }, "IX_Templates_TenantId_Product_Code").IsUnique();
+                    b.ToTable("tasks_Templates");
+                });
+
+            modelBuilder.Entity("Task.Domain.Entities.TaskReminder", b =>
+                {
+                    b.Property<Guid>("Id").HasColumnType("char(36)");
+                    b.Property<Guid>("TaskId").HasColumnType("char(36)");
+                    b.Property<Guid>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("ReminderType").IsRequired().HasMaxLength(20).HasColumnType("varchar(20)");
+                    b.Property<DateTime>("RemindAt").HasColumnType("datetime(6)");
+                    b.Property<string>("Status").IsRequired().HasMaxLength(20).HasDefaultValue("PENDING").HasColumnType("varchar(20)");
+                    b.Property<DateTime?>("LastAttemptAt").HasColumnType("datetime(6)");
+                    b.Property<DateTime?>("SentAt").HasColumnType("datetime(6)");
+                    b.Property<string>("FailureReason").HasMaxLength(500).HasColumnType("varchar(500)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)");
+                    b.HasKey("Id");
+                    b.HasIndex(new[] { "TenantId", "TaskId" }, "IX_Reminders_TenantId_TaskId");
+                    b.HasIndex(new[] { "Status", "RemindAt" }, "IX_Reminders_Status_RemindAt");
+                    b.ToTable("tasks_Reminders");
                 });
 #pragma warning restore 612, 618
         }

@@ -1,4 +1,5 @@
 using Task.Domain.Enums;
+using ReminderTypeEnum = Task.Domain.Enums.ReminderType;
 
 namespace Task.Domain.Entities;
 
@@ -31,7 +32,7 @@ public class TaskReminder
     {
         if (taskId == Guid.Empty)   throw new ArgumentException("TaskId is required.", nameof(taskId));
         if (tenantId == Guid.Empty) throw new ArgumentException("TenantId is required.", nameof(tenantId));
-        if (!ReminderType.All.Contains(reminderType))
+        if (!ReminderTypeEnum.All.Contains(reminderType))
             throw new ArgumentException($"Invalid reminder type: '{reminderType}'.", nameof(reminderType));
 
         var now = DateTime.UtcNow;
