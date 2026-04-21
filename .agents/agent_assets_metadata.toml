@@ -294,3 +294,9 @@ id = "KuzQJd2knza2wKMHXG9gj"
 uri = "file://exports/legalsynq-source.zip"
 type = "unspecified"
 title = "LegalSynq full source (2,922 files, 5.3 MB)"
+
+[[outputs]]
+id = "La8Ms2dh9IrNB4rOc97Eg"
+uri = "file://analysis/TASK-B04-analysis.md"
+type = "text"
+title = "TASK-B04 Analysis — Liens Consumer Cutover & Data Migration"
