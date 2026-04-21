@@ -225,6 +225,12 @@ public interface ILiensTaskServiceClient
     /// <summary>Batch-replaces transitions for (tenantId, productCode) in Task service (idempotent).</summary>
     System.Threading.Tasks.Task UpsertTransitionsFromSourceAsync(
         Guid tenantId, Guid actorId, TaskServiceTransitionsUpsertRequest request, CancellationToken ct = default);
+
+    /// <summary>Returns the ordered change history for a single task from the Task service.</summary>
+    Task<List<TaskHistoryEventDto>> GetHistoryAsync(
+        Guid tenantId,
+        Guid taskId,
+        CancellationToken ct = default);
 }
 
 public sealed record BackfillTaskResult(Guid TaskId, int NotesCreated, int LinksCreated, bool AlreadyExisted);

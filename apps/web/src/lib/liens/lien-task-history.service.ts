@@ -1,51 +1,42 @@
 import { apiClient } from '@/lib/api-client';
 import type { TaskHistoryEvent, TaskHistoryResponse } from './lien-task-history.types';
 
-interface RawAuditActor { id?: string | null; name?: string | null; type?: string | null; }
-interface RawAuditItem {
-  auditId:       string;
-  eventType:     string;
-  action:        string;
-  description:   string;
-  occurredAtUtc: string;
-  actor?:        RawAuditActor | null;
-  before?:       string | null;
-  after?:        string | null;
-  metadata?:     string | null;
+interface RawHistoryItem {
+  id:                string;
+  taskId:            string;
+  action:            string;
+  details?:          string | null;
+  performedByUserId: string;
+  createdAtUtc:      string;
 }
-interface RawAuditQueryResponse { items: RawAuditItem[]; totalCount: number; page: number; pageSize: number; }
-
-// The audit service wraps all responses in { success, data: <payload>, ... }
-interface AuditEnvelope { success: boolean; data: RawAuditQueryResponse; message?: string | null; }
 
 export const lienTaskHistoryService = {
   async getHistory(taskId: string, pageSize = 100): Promise<TaskHistoryResponse> {
-    // BFF route: /api/audit/[...path] → forwards to gateway /audit-service/{path}
-    // Gateway YARP route strips /audit-service prefix → audit service receives /audit/{**}
-    const { data: envelope } = await apiClient.get<AuditEnvelope>(
-      `/audit/audit/entity/LienTask/${encodeURIComponent(taskId)}?pageSize=${pageSize}&sortOrder=asc`,
+    const { data: items } = await apiClient.get<RawHistoryItem[]>(
+      `/lien/api/liens/tasks/${encodeURIComponent(taskId)}/history`,
     );
 
-    // Unwrap the audit service envelope: { success, data: { items, totalCount, ... } }
-    const payload = envelope?.data ?? (envelope as unknown as RawAuditQueryResponse);
+    const list = Array.isArray(items) ? items : [];
 
-    const events: TaskHistoryEvent[] = (payload?.items ?? []).map((e) => ({
-      auditId:       e.auditId,
-      eventType:     e.eventType,
-      action:        e.action,
-      description:   e.description,
-      occurredAtUtc: e.occurredAtUtc,
-      actor:         e.actor ?? null,
-      before:        e.before,
-      after:         e.after,
-      metadata:      e.metadata,
+    const events: TaskHistoryEvent[] = list.map((item) => ({
+      auditId:       item.id,
+      eventType:     item.action,
+      action:        item.action,
+      description:   item.details ?? item.action,
+      occurredAtUtc: item.createdAtUtc,
+      actor:         item.performedByUserId
+        ? { id: item.performedByUserId, name: null, type: 'user' }
+        : null,
+      before:   null,
+      after:    null,
+      metadata: null,
     }));
 
     return {
       items:      events,
-      totalCount: payload?.totalCount ?? 0,
-      page:       payload?.page       ?? 1,
-      pageSize:   payload?.pageSize   ?? pageSize,
+      totalCount: events.length,
+      page:       1,
+      pageSize:   pageSize,
     };
   },
 };

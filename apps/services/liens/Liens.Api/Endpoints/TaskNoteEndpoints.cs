@@ -9,29 +9,35 @@ using Liens.Domain;
 namespace Liens.Api.Endpoints;
 
 /// <summary>
-/// LS-LIENS-FLOW-004 — Task Notes endpoints.
-/// Provides per-task notes (text-only collaboration layer).
+/// LS-LIENS-FLOW-004 — Task Notes + History endpoints.
+/// Provides per-task notes (text-only collaboration) and change history.
 /// </summary>
 public static class TaskNoteEndpoints
 {
     public static void MapTaskNoteEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/liens/tasks/{taskId:guid}/notes")
+        var notesGroup = app.MapGroup("/api/liens/tasks/{taskId:guid}/notes")
             .RequireAuthorization(Policies.AuthenticatedUser)
             .RequireProductAccess(LiensPermissions.ProductCode)
             .WithTags("TaskNotes");
 
-        group.MapGet("/", GetNotes)
+        notesGroup.MapGet("/", GetNotes)
             .RequirePermission(LiensPermissions.TaskRead);
 
-        group.MapPost("/", CreateNote)
+        notesGroup.MapPost("/", CreateNote)
             .RequirePermission(LiensPermissions.TaskNoteManage);
 
-        group.MapPut("/{noteId:guid}", UpdateNote)
+        notesGroup.MapPut("/{noteId:guid}", UpdateNote)
             .RequirePermission(LiensPermissions.TaskNoteManage);
 
-        group.MapDelete("/{noteId:guid}", DeleteNote)
+        notesGroup.MapDelete("/{noteId:guid}", DeleteNote)
             .RequirePermission(LiensPermissions.TaskNoteManage);
+
+        app.MapGet("/api/liens/tasks/{taskId:guid}/history", GetTaskHistory)
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(LiensPermissions.ProductCode)
+            .RequirePermission(LiensPermissions.TaskRead)
+            .WithTags("TaskNotes");
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -99,5 +105,16 @@ public static class TaskNoteEndpoints
         var userId   = RequireUserId(ctx);
         await svc.DeleteNoteAsync(tenantId, taskId, noteId, userId, ct);
         return Results.NoContent();
+    }
+
+    private static async Task<IResult> GetTaskHistory(
+        Guid taskId,
+        ILiensTaskServiceClient taskClient,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var history  = await taskClient.GetHistoryAsync(tenantId, taskId, ct);
+        return Results.Ok(history);
     }
 }

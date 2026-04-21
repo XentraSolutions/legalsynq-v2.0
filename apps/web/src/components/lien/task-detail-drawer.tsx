@@ -637,28 +637,40 @@ function DetailRow({
 /* ── Task History Panel ──────────────────────────────────────────────────── */
 
 const EVENT_STYLES: Record<string, { icon: string; dot: string; badge: string }> = {
-  'liens.task.created':       { icon: 'ri-add-circle-line',   dot: 'bg-green-500',  badge: 'bg-green-100 text-green-700'  },
-  'liens.task.updated':       { icon: 'ri-edit-line',          dot: 'bg-blue-500',   badge: 'bg-blue-100 text-blue-700'   },
-  'liens.task.assigned':      { icon: 'ri-user-add-line',      dot: 'bg-violet-500', badge: 'bg-violet-100 text-violet-700' },
-  'liens.task.reassigned':    { icon: 'ri-user-shared-line',   dot: 'bg-violet-500', badge: 'bg-violet-100 text-violet-700' },
-  'liens.task.status_changed':{ icon: 'ri-refresh-line',       dot: 'bg-amber-500',  badge: 'bg-amber-100 text-amber-700'  },
-  'liens.task.completed':     { icon: 'ri-checkbox-circle-line', dot: 'bg-green-600', badge: 'bg-green-100 text-green-700' },
-  'liens.task.cancelled':     { icon: 'ri-close-circle-line',  dot: 'bg-red-500',    badge: 'bg-red-100 text-red-700'     },
+  'TASK_CREATED':           { icon: 'ri-add-circle-line',      dot: 'bg-green-500',  badge: 'bg-green-100 text-green-700'    },
+  'TASK_UPDATED':           { icon: 'ri-edit-line',             dot: 'bg-blue-500',   badge: 'bg-blue-100 text-blue-700'     },
+  'STATUS_CHANGED':         { icon: 'ri-refresh-line',          dot: 'bg-amber-500',  badge: 'bg-amber-100 text-amber-700'   },
+  'ASSIGNED':               { icon: 'ri-user-add-line',         dot: 'bg-violet-500', badge: 'bg-violet-100 text-violet-700' },
+  'REASSIGNED':             { icon: 'ri-user-shared-line',      dot: 'bg-violet-500', badge: 'bg-violet-100 text-violet-700' },
+  'UNASSIGNED':             { icon: 'ri-user-unfollow-line',    dot: 'bg-gray-400',   badge: 'bg-gray-100 text-gray-600'     },
+  'COMPLETED':              { icon: 'ri-checkbox-circle-line',  dot: 'bg-green-600',  badge: 'bg-green-100 text-green-700'   },
+  'CANCELLED':              { icon: 'ri-close-circle-line',     dot: 'bg-red-500',    badge: 'bg-red-100 text-red-700'       },
+  'NOTE_ADDED':             { icon: 'ri-chat-3-line',           dot: 'bg-blue-400',   badge: 'bg-blue-50 text-blue-600'      },
+  'STAGE_CHANGED':          { icon: 'ri-git-branch-line',       dot: 'bg-purple-500', badge: 'bg-purple-100 text-purple-700' },
+  'CREATED_FROM_TEMPLATE':  { icon: 'ri-file-copy-line',        dot: 'bg-green-500',  badge: 'bg-green-100 text-green-700'   },
+  'FLOW_LINKAGE_UPDATED':   { icon: 'ri-links-line',            dot: 'bg-purple-400', badge: 'bg-purple-50 text-purple-600'  },
+  'REMINDER_SENT':          { icon: 'ri-notification-line',     dot: 'bg-gray-400',   badge: 'bg-gray-100 text-gray-600'     },
 };
 
 const DEFAULT_STYLE = { icon: 'ri-time-line', dot: 'bg-gray-400', badge: 'bg-gray-100 text-gray-600' };
 
 function friendlyLabel(eventType: string): string {
   const map: Record<string, string> = {
-    'liens.task.created':        'Created',
-    'liens.task.updated':        'Updated',
-    'liens.task.assigned':       'Assigned',
-    'liens.task.reassigned':     'Reassigned',
-    'liens.task.status_changed': 'Status Changed',
-    'liens.task.completed':      'Completed',
-    'liens.task.cancelled':      'Cancelled',
+    'TASK_CREATED':          'Created',
+    'TASK_UPDATED':          'Updated',
+    'STATUS_CHANGED':        'Status Changed',
+    'ASSIGNED':              'Assigned',
+    'REASSIGNED':            'Reassigned',
+    'UNASSIGNED':            'Unassigned',
+    'COMPLETED':             'Completed',
+    'CANCELLED':             'Cancelled',
+    'NOTE_ADDED':            'Note Added',
+    'STAGE_CHANGED':         'Stage Changed',
+    'CREATED_FROM_TEMPLATE': 'From Template',
+    'FLOW_LINKAGE_UPDATED':  'Flow Updated',
+    'REMINDER_SENT':         'Reminder Sent',
   };
-  return map[eventType] ?? eventType.split('.').pop()?.replace(/_/g, ' ') ?? eventType;
+  return map[eventType] ?? eventType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function formatHistoryTime(iso: string): string {
@@ -727,7 +739,7 @@ function TaskHistoryPanel({
           {events.map((event, idx) => {
             const style = EVENT_STYLES[event.eventType] ?? DEFAULT_STYLE;
             const actorName = event.actor?.name ?? (event.actor?.id ? `User ${event.actor.id.slice(0, 8)}` : 'System');
-            const statusTransition = event.eventType === 'liens.task.status_changed'
+            const statusTransition = event.eventType === 'STATUS_CHANGED'
               ? parseStatusFromDescription(event.description)
               : null;
 

@@ -765,6 +765,27 @@ public sealed class LiensTaskServiceClient : ILiensTaskServiceClient
         response.EnsureSuccessStatusCode();
     }
 
+    // ── History ───────────────────────────────────────────────────────────────────
+
+    public async Task<List<TaskHistoryEventDto>> GetHistoryAsync(
+        Guid tenantId,
+        Guid taskId,
+        CancellationToken ct = default)
+    {
+        var dtos = await GetAsync<List<TaskHistoryApiDto>>(tenantId, $"/api/tasks/{taskId}/history", ct);
+        return dtos?.Select(MapToHistoryDto).ToList() ?? [];
+    }
+
+    private static TaskHistoryEventDto MapToHistoryDto(TaskHistoryApiDto dto) => new()
+    {
+        Id                = dto.Id,
+        TaskId            = dto.TaskId,
+        Action            = dto.Action,
+        Details           = dto.Details,
+        PerformedByUserId = dto.PerformedByUserId,
+        CreatedAtUtc      = dto.CreatedAtUtc,
+    };
+
     // ── Local wire types (match Task service camelCase JSON) ─────────────────────
 
     private sealed class TaskApiDto
@@ -802,6 +823,16 @@ public sealed class LiensTaskServiceClient : ILiensTaskServiceClient
         public bool      IsEdited        { get; set; }
         public bool      IsDeleted       { get; set; }
         public DateTime  CreatedAtUtc    { get; set; }
+    }
+
+    private sealed class TaskHistoryApiDto
+    {
+        public Guid      Id                { get; set; }
+        public Guid      TaskId            { get; set; }
+        public string    Action            { get; set; } = string.Empty;
+        public string?   Details           { get; set; }
+        public Guid      PerformedByUserId { get; set; }
+        public DateTime  CreatedAtUtc      { get; set; }
     }
 
     private sealed class TaskListApiDto
