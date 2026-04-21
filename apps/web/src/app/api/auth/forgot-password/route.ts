@@ -2,6 +2,27 @@ import { type NextRequest, NextResponse } from 'next/server';
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
 
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+
+const forgotPasswordRateLimit = new Map<string, RateLimitEntry>();
+const FORGOT_PASSWORD_LIMIT  = 5;
+const FORGOT_PASSWORD_WINDOW = 15 * 60 * 1000;
+
+function checkForgotPasswordRateLimit(ip: string): boolean {
+  const now   = Date.now();
+  const entry = forgotPasswordRateLimit.get(ip);
+  if (!entry || now > entry.resetAt) {
+    forgotPasswordRateLimit.set(ip, { count: 1, resetAt: now + FORGOT_PASSWORD_WINDOW });
+    return true;
+  }
+  if (entry.count >= FORGOT_PASSWORD_LIMIT) return false;
+  entry.count++;
+  return true;
+}
+
 function extractRawSubdomain(req: NextRequest): string | null {
   const host =
     req.headers.get('x-forwarded-host') ??
@@ -16,6 +37,18 @@ function extractRawSubdomain(req: NextRequest): string | null {
 }
 
 export async function POST(request: NextRequest) {
+  const ip =
+    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+    request.headers.get('x-real-ip') ??
+    'unknown';
+
+  if (!checkForgotPasswordRateLimit(ip)) {
+    return NextResponse.json(
+      { message: 'Too many requests. Please wait before trying again.' },
+      { status: 429 },
+    );
+  }
+
   let body: Record<string, string>;
   try {
     body = await request.json();
@@ -59,7 +92,6 @@ export async function POST(request: NextRequest) {
     const upstreamMessage = errBody.error ?? errBody.detail ?? errBody.title ?? null;
     console.log(`[forgot-password] Identity returned ${identityRes.status}: ${JSON.stringify(errBody)}`);
 
-    // Upstream service failure (5xx) — do NOT blame the user; the identity service is broken.
     if (identityRes.status >= 500) {
       console.error(`[forgot-password] Identity service error ${identityRes.status} — surfacing generic unavailable message`);
       return NextResponse.json(
@@ -68,7 +100,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4xx — pass through upstream message if available, else a neutral fallback.
+    if (identityRes.status === 429) {
+      return NextResponse.json(
+        { message: 'Too many requests. Please wait before trying again.' },
+        { status: 429 },
+      );
+    }
+
     return NextResponse.json(
       { message: upstreamMessage ?? 'Unable to start password reset. Please check your details and try again.' },
       { status: identityRes.status },
@@ -77,20 +115,5 @@ export async function POST(request: NextRequest) {
 
   const data = await identityRes.json();
 
-  const host =
-    request.headers.get('x-forwarded-host') ??
-    request.headers.get('host') ??
-    'localhost:3000';
-  const protocol = request.headers.get('x-forwarded-proto') ?? 'http';
-  const origin = `${protocol}://${host}`;
-
-  const result: Record<string, string> = {
-    message: data.message,
-  };
-
-  if (data.resetToken) {
-    result.resetLink = `${origin}/reset-password?token=${encodeURIComponent(data.resetToken)}`;
-  }
-
-  return NextResponse.json(result);
+  return NextResponse.json({ message: data.message });
 }

@@ -1,9 +1,11 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Contracts;
 using Identity.Api.Endpoints;
 using Identity.Infrastructure;
 using Identity.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -70,6 +72,60 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+
+// Resolves the real client IP from X-Forwarded-For (set by the gateway/proxy)
+// before falling back to the direct TCP remote address. This prevents all
+// traffic from appearing to originate from the gateway IP, which would cause
+// a single bad actor to exhaust the shared limit for all legitimate callers.
+static string ResolveClientIp(HttpContext ctx)
+{
+    var xff = ctx.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+    if (!string.IsNullOrWhiteSpace(xff))
+    {
+        var first = xff.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0];
+        if (!string.IsNullOrWhiteSpace(first))
+            return first;
+    }
+    return ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+}
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("auth-login", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ResolveClientIp(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 20,
+                Window               = TimeSpan.FromMinutes(5),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    options.AddPolicy("auth-forgot-password", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ResolveClientIp(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 5,
+                Window               = TimeSpan.FromMinutes(15),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    options.AddPolicy("auth-token-exchange", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ResolveClientIp(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 10,
+                Window               = TimeSpan.FromMinutes(5),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+});
 
 var app = builder.Build();
 var env = app.Environment.EnvironmentName;
@@ -447,6 +503,8 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["Referrer-Policy"]        = "strict-origin-when-cross-origin";
     await next();
 });
+
+app.UseRateLimiter();
 
 // UseAuthentication + UseAuthorization must precede all endpoint maps
 app.UseAuthentication();

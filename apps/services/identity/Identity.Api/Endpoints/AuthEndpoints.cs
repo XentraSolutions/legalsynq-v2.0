@@ -4,10 +4,12 @@ using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
+using Identity.Infrastructure.Services;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Identity.Api.Endpoints;
 
@@ -56,7 +58,8 @@ public static class AuthEndpoints
                 throw;
             }
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("auth-login");
 
         // ── GET /api/auth/me ─────────────────────────────────────────────────
         // Authenticated (Bearer JWT required).
@@ -256,7 +259,8 @@ public static class AuthEndpoints
 
             return Results.Ok(new { message = "Invitation accepted. Your account is now active." });
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("auth-token-exchange");
 
         // ── POST /api/auth/change-password ───────────────────────────────────
         // Authenticated. Verifies the caller's current password then replaces it.
@@ -591,19 +595,24 @@ public static class AuthEndpoints
 
             return Results.Ok(new { message = "Password updated successfully." });
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("auth-token-exchange");
 
         // ── POST /api/auth/forgot-password ──────────────────────────────────
         // Anonymous. Self-service password reset request.
         // Accepts { tenantCode, email }, validates the user exists, generates a
-        // reset token, and returns the raw token in the response.
-        // Future: the raw token will be emailed instead of returned in the response.
+        // reset token (stored hashed), and returns only a generic success message.
+        // The raw token is never exposed in any API response; it must be delivered
+        // out-of-band (email/SMS) by the notification service.
         app.MapPost("/api/auth/forgot-password", async (
-            ForgotPasswordRequest      body,
-            IdentityDbContext          db,
-            IAuditEventClient          auditClient,
-            ILoggerFactory             loggerFactory,
-            CancellationToken          ct) =>
+            ForgotPasswordRequest                    body,
+            IdentityDbContext                        db,
+            IAuditEventClient                        auditClient,
+            INotificationsEmailClient                emailClient,
+            IOptions<NotificationsServiceOptions>    notifOptions,
+            IWebHostEnvironment                      env,
+            ILoggerFactory                           loggerFactory,
+            CancellationToken                        ct) =>
         {
             var logger = loggerFactory.CreateLogger(nameof(AuthEndpoints));
 
@@ -663,6 +672,49 @@ public static class AuthEndpoints
                 "Password reset requested for user {UserId} ({Email}) in tenant {TenantCode}.",
                 user.Id, user.Email, tenant.Code);
 
+            // ── Deliver the raw token out-of-band via email ───────────────────
+            // The raw token is NEVER returned in any API response. It is only
+            // usable by the account owner who receives the email.
+            var portalBase = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
+            if (string.IsNullOrWhiteSpace(portalBase))
+            {
+                logger.LogError(
+                    "[forgot-password] NotificationsService:PortalBaseUrl is not configured. " +
+                    "Reset email for user {UserId} ({Email}) cannot be sent.",
+                    user.Id, user.Email);
+            }
+            else
+            {
+                var resetLink    = $"{portalBase}/reset-password?token={Uri.EscapeDataString(rawToken)}";
+                var displayName  = !string.IsNullOrWhiteSpace(user.FirstName)
+                    ? $"{user.FirstName} {user.LastName}".Trim()
+                    : user.Email;
+
+                if (env.IsDevelopment())
+                {
+                    logger.LogInformation(
+                        "[forgot-password — dev only] resetLink for {Email}: {ResetLink}",
+                        user.Email, resetLink);
+                }
+
+                try
+                {
+                    var (_, emailSent, emailError) = await emailClient.SendPasswordResetEmailAsync(
+                        user.Email, displayName, resetLink, user.TenantId, ct);
+
+                    if (!emailSent)
+                        logger.LogWarning(
+                            "[forgot-password] Password reset email delivery failed for user {UserId} ({Email}): {Error}",
+                            user.Id, user.Email, emailError ?? "(unknown)");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex,
+                        "[forgot-password] Exception while sending password reset email for user {UserId} ({Email}).",
+                        user.Id, user.Email);
+                }
+            }
+
             var now = DateTimeOffset.UtcNow;
             _ = auditClient.IngestAsync(new IngestAuditEventRequest
             {
@@ -695,10 +747,10 @@ public static class AuthEndpoints
             return Results.Ok(new
             {
                 message = "If an account exists with that email, a password reset link has been generated.",
-                resetToken = rawToken,
             });
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("auth-forgot-password");
     }
 
     private record AcceptInviteRequest(string Token, string NewPassword);

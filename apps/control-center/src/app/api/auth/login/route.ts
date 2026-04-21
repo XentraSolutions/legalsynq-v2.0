@@ -6,6 +6,27 @@ import { CONTROL_CENTER_API_BASE, IS_PROD } from '@/lib/env';
 // TODO: integrate with Identity service session validation
 // TODO: support cross-subdomain auth (scope cookie to .legalsynq.com)
 
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+
+const loginRateLimit = new Map<string, RateLimitEntry>();
+const LOGIN_LIMIT    = 20;
+const LOGIN_WINDOW   = 5 * 60 * 1000;
+
+function checkLoginRateLimit(ip: string): boolean {
+  const now   = Date.now();
+  const entry = loginRateLimit.get(ip);
+  if (!entry || now > entry.resetAt) {
+    loginRateLimit.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW });
+    return true;
+  }
+  if (entry.count >= LOGIN_LIMIT) return false;
+  entry.count++;
+  return true;
+}
+
 /**
  * BFF Login route — POST /api/auth/login
  *
@@ -15,6 +36,18 @@ import { CONTROL_CENTER_API_BASE, IS_PROD } from '@/lib/env';
  * Returns a session envelope — the raw token never reaches browser JS.
  */
 export async function POST(request: NextRequest) {
+  const ip =
+    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ??
+    request.headers.get('x-real-ip') ??
+    'unknown';
+
+  if (!checkLoginRateLimit(ip)) {
+    return NextResponse.json(
+      { message: 'Too many requests. Please wait before trying again.' },
+      { status: 429 },
+    );
+  }
+
   let body: Record<string, string>;
   try {
     body = await request.json();
