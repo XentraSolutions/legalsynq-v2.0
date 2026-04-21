@@ -45,6 +45,12 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
         }
 
         var rules = await _ruleRepo.GetActiveByTenantAndEventAsync(context.TenantId, context.EventType, ct);
+
+        // TASK-MIG-06 — generation rules are Liens-DB-only (not yet migrated to Task service)
+        _logger.LogDebug(
+            "generation_rule_source=liens_db TenantId={TenantId} EventType={EventType} RuleCount={RuleCount}",
+            context.TenantId, context.EventType, rules.Count);
+
         if (rules.Count == 0)
             return new TaskGenerationResult(0, 0);
 
@@ -80,14 +86,20 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
         CancellationToken ct)
     {
         // 1. Stage filter
+        // TASK-MIG-06: rule.ApplicableWorkflowStageId is a Liens-DB-owned field (rules not yet migrated to Task).
+        // Stage GUIDs are safe to compare directly — MIG-03 preserved them verbatim across both systems.
         if (rule.ApplicableWorkflowStageId.HasValue
             && rule.ApplicableWorkflowStageId.Value != context.WorkflowStageId)
         {
             _logger.LogDebug(
-                "Rule {RuleId}: stage mismatch (rule requires {Required}, context has {Actual}). Skipping.",
+                "generation_stage_filter_source=liens_db Rule {RuleId}: stage mismatch (rule requires {Required}, context has {Actual}). Skipping.",
                 rule.Id, rule.ApplicableWorkflowStageId, context.WorkflowStageId);
             return false;
         }
+
+        _logger.LogDebug(
+            "generation_stage_filter_source=liens_db Rule {RuleId}: stage filter passed (required={Required} context={Actual}).",
+            rule.Id, rule.ApplicableWorkflowStageId?.ToString() ?? "any", context.WorkflowStageId?.ToString() ?? "none");
 
         // 2. Template check — TASK-MIG-02: dual-read (Task service first, Liens DB fallback)
         var template = await _templateService.GetForGenerationAsync(context.TenantId, rule.TaskTemplateId, ct);
@@ -107,17 +119,22 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
             return false;
         }
 
-        // 3. Duplicate prevention — TASK-B04-01: use Task service HTTP client
-        //    (no longer queries liens_Tasks directly so the drop migration is safe to apply)
+        // 3. Duplicate prevention — TASK-B04-01 / TASK-MIG-06: uses Task service HTTP client exclusively.
+        //    The Task service stores generationRuleId and generatingTemplateId on every auto-generated task,
+        //    enabling open-task queries without touching liens_Tasks directly.
         var dupMode = rule.DuplicatePreventionMode;
         if (dupMode == DuplicatePreventionMode.SameRuleSameEntityOpenTask)
         {
+            _logger.LogDebug(
+                "generation_duplicate_check_source=task_service Rule {RuleId}: checking SAME_RULE dup (caseId={CaseId} lienId={LienId}).",
+                rule.Id, context.CaseId, context.LienId);
+
             var hasDup = await _taskServiceClient.HasOpenTaskForRuleAsync(
                 context.TenantId, rule.Id, context.CaseId, context.LienId, ct);
             if (hasDup)
             {
                 _logger.LogInformation(
-                    "Rule {RuleId}: duplicate found (SAME_RULE). Skipping.", rule.Id);
+                    "generation_duplicate_check_source=task_service Rule {RuleId}: duplicate found (SAME_RULE). Skipping.", rule.Id);
                 _audit.Publish(
                     eventType:   "liens.task.auto_generation_skipped",
                     action:      "auto_generate_skipped",
@@ -131,12 +148,16 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
         }
         else if (dupMode == DuplicatePreventionMode.SameTemplateSameEntityOpenTask)
         {
+            _logger.LogDebug(
+                "generation_duplicate_check_source=task_service Rule {RuleId}: checking SAME_TEMPLATE dup (templateId={TemplateId} caseId={CaseId} lienId={LienId}).",
+                rule.Id, rule.TaskTemplateId, context.CaseId, context.LienId);
+
             var hasDup = await _taskServiceClient.HasOpenTaskForTemplateAsync(
                 context.TenantId, rule.TaskTemplateId, context.CaseId, context.LienId, ct);
             if (hasDup)
             {
                 _logger.LogInformation(
-                    "Rule {RuleId}: duplicate found (SAME_TEMPLATE). Skipping.", rule.Id);
+                    "generation_duplicate_check_source=task_service Rule {RuleId}: duplicate found (SAME_TEMPLATE). Skipping.", rule.Id);
                 _audit.Publish(
                     eventType:   "liens.task.auto_generation_skipped",
                     action:      "auto_generate_skipped",
@@ -147,6 +168,13 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
                     entityId:    rule.Id.ToString());
                 return false;
             }
+        }
+        else
+        {
+            // DuplicatePreventionMode.None — TASK-MIG-06: logged for observability
+            _logger.LogDebug(
+                "generation_duplicate_check_source=none Rule {RuleId}: dup prevention mode is NONE; skipping dup check.",
+                rule.Id);
         }
 
         // 4. Build task request
