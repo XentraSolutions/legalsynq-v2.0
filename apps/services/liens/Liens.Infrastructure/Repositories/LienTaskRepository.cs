@@ -214,4 +214,14 @@ public sealed class LienTaskRepository : ILienTaskRepository
             .Where(t => t.TenantId == tenantId && t.WorkflowInstanceId == workflowInstanceId)
             .ToListAsync(ct);
     }
+
+    // TASK-B04 — cross-tenant paginated scan used by backfill only
+    public async Task<List<LienTask>> GetAllPagedAsync(int page, int pageSize, CancellationToken ct = default)
+    {
+        return await _db.LienTasks
+            .OrderBy(t => t.CreatedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+    }
 }

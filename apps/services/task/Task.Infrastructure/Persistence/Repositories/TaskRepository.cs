@@ -21,14 +21,20 @@ public class TaskRepository : ITaskRepository
         string?   priority           = null,
         string?   scope              = null,
         Guid?     assignedUserId     = null,
-        string?   sourceProductCode  = null,
-        Guid?     stageId            = null,
-        DateTime? dueBefore          = null,
-        DateTime? dueAfter           = null,
-        Guid?     workflowInstanceId = null,
-        int       page               = 1,
-        int       pageSize           = 50,
-        CancellationToken ct         = default)
+        string?   sourceProductCode   = null,
+        Guid?     stageId             = null,
+        DateTime? dueBefore           = null,
+        DateTime? dueAfter            = null,
+        Guid?     workflowInstanceId  = null,
+        string?   sourceEntityType    = null,
+        Guid?     sourceEntityId      = null,
+        string?   linkedEntityType    = null,
+        Guid?     linkedEntityId      = null,
+        string?   assignmentScope     = null,
+        Guid?     currentUserId       = null,
+        int       page                = 1,
+        int       pageSize            = 50,
+        CancellationToken ct          = default)
     {
         var q = _db.Tasks.Where(t => t.TenantId == tenantId);
 
@@ -62,6 +68,28 @@ public class TaskRepository : ITaskRepository
 
         if (workflowInstanceId.HasValue)
             q = q.Where(t => t.WorkflowInstanceId == workflowInstanceId.Value);
+
+        if (!string.IsNullOrWhiteSpace(sourceEntityType))
+            q = q.Where(t => t.SourceEntityType == sourceEntityType);
+
+        if (sourceEntityId.HasValue)
+            q = q.Where(t => t.SourceEntityId == sourceEntityId.Value);
+
+        if (!string.IsNullOrWhiteSpace(linkedEntityType) && linkedEntityId.HasValue)
+        {
+            var linkedEntityIdStr = linkedEntityId.Value.ToString();
+            var linkedTaskIds = await _db.LinkedEntities
+                .Where(e => e.EntityType == linkedEntityType && e.EntityId == linkedEntityIdStr)
+                .Select(e => e.TaskId)
+                .ToListAsync(ct);
+            q = q.Where(t => linkedTaskIds.Contains(t.Id));
+        }
+
+        if (!string.IsNullOrWhiteSpace(assignmentScope) && currentUserId.HasValue)
+        {
+            if (assignmentScope.Equals("ME", StringComparison.OrdinalIgnoreCase))
+                q = q.Where(t => t.AssignedUserId == currentUserId.Value);
+        }
 
         var total = await q.CountAsync(ct);
         var items = await q

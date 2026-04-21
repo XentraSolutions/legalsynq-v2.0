@@ -5722,3 +5722,47 @@ The Task Manager tab inside each case detail page now matches the main Task Mana
   - `TaskDetailDrawer` + `CreateEditTaskForm` for edit/status change
 
 - **`apps/web/src/app/(platform)/lien/cases/[id]/case-detail-client.tsx`** — `TaskManagerTab` now renders `CaseTaskManager` instead of `TaskPanel`. `TaskPanel` still used for the compact right-side panel (unchanged).
+
+## TASK-B04 — Liens Consumer Cutover & Data Migration (2026-04-21)
+
+### Summary
+Full cutover of Liens task runtime to the canonical Task microservice. Liens service is now a proxy consumer; the Task service owns all task persistence, history, notes, and flow callbacks.
+
+### Architecture
+- **Status mapping**: Liens `NEW` ↔ Task `OPEN` on writes/reads; all other statuses 1:1.
+- **ExternalId approach**: every task written through Liens carries `ExternalId` = Liens internal ID (for idempotent backfill and round-trip lookup).
+- **Source/Linked entity constants**: `SourceProductCode=SYNQ_LIENS`, `SourceEntityType=LIEN_CASE` (CaseId), `LinkedEntityType=LIEN` (each LienId), `Scope=PRODUCT`.
+- **Governance/templates/generation rules**: remain in Liens DB (`liens_TaskTemplates`, `liens_TaskGenerationRules`, `liens_TaskGovernanceSettings`, `liens_GeneratedTaskMetadatas`).
+- **Dropped from Liens DB** (via migration `20260421000001`): `liens_Tasks`, `liens_TaskLienLinks`, `liens_TaskNotes`.
+
+### New Files
+- `apps/services/liens/Liens.Infrastructure/TaskService/TaskServiceAuthDelegatingHandler.cs` — bearer token delegating handler using `FLOW_SERVICE_TOKEN_SECRET`.
+- `apps/services/liens/Liens.Infrastructure/TaskService/LiensTaskServiceClient.cs` — full HTTP client with create/read/update/delete/assign/note CRUD + bulk backfill with idempotency.
+- `apps/services/liens/Liens.Application/Services/LienTaskBackfillService.cs` — backfill service that pages through existing Liens tasks and pushes each to Task service via `CreateTaskAsync` (idempotent).
+- `apps/services/liens/Liens.Api/Endpoints/LienTaskBackfillEndpoints.cs` — admin endpoint `POST /api/liens/internal/task-backfill` gated by `X-Internal-Service-Token`.
+
+### Modified Files
+- `apps/services/liens/Liens.Application/Services/LienTaskService.cs` — rewritten as thin proxy; keeps governance, Flow, audit, and notification orchestration; delegates all persistence to `ILiensTaskServiceClient`.
+- `apps/services/liens/Liens.Application/Services/LienTaskNoteService.cs` — rewritten as proxy to `ILiensTaskServiceClient`.
+- `apps/services/liens/Liens.Infrastructure/DependencyInjection.cs` — registers `TaskServiceAuthDelegatingHandler`, typed `HttpClient<ILiensTaskServiceClient>` with `ExternalServices:Task:BaseUrl`, `ILienTaskBackfillService`.
+- `apps/services/liens/Liens.Api/appsettings.json` — added `ExternalServices:Task:BaseUrl` (default `http://localhost:5016`).
+
+### Task Service Extensions
+- `TaskNote` entity: added `AuthorName`, `IsEdited`, `IsDeleted` fields; `Note` column extended to 5000 chars.
+- `ITaskService` / `TaskService`: added `EditNoteAsync` + `DeleteNoteAsync`.
+- `TaskNoteEndpoints`: `PUT /api/tasks/{id}/notes/{noteId}` + `DELETE /api/tasks/{id}/notes/{noteId}`.
+- `ITaskRepository.SearchAsync` extended: `sourceEntityType`, `sourceEntityId`, `linkedEntityType` (JOIN `tasks_LinkedEntities`), `linkedEntityId`, `assignmentScope`, `currentUserId`.
+- Migration `20260421000004_LiensConsumerCutover` — Note column size + indexes on `SourceEntityType/Id` and `TaskId+IsDeleted`.
+
+### Migrations
+- `Task.Infrastructure` → `20260421000004_LiensConsumerCutover`
+- `Liens.Infrastructure` → `20260421000001_LiensTaskRuntimeRemoval` (applied **after** backfill is verified)
+
+### Cutover Sequence (production runbook)
+1. Deploy new binaries (proxy code active, Task service as backend).
+2. Run: `POST /api/liens/internal/task-backfill` with `X-Internal-Service-Token` header.
+3. Verify Task service contains all migrated tasks.
+4. Apply Liens migration `20260421000001` to drop the now-redundant local task tables.
+
+### Known Post-Cutover TODO
+- `LienTaskGenerationEngine.HasOpenTaskForRuleAsync` / `HasOpenTaskForTemplateAsync` still query `liens_Tasks` locally — must be updated to call Task service search API after step 4 above.

@@ -68,7 +68,8 @@ public class TaskService : ITaskService
             request.SourceProductCode,
             request.SourceEntityType,
             request.SourceEntityId,
-            request.DueAt);
+            request.DueAt,
+            externalId: request.ExternalId);
 
         if (request.WorkflowInstanceId.HasValue)
             task.SetWorkflowLinkage(request.WorkflowInstanceId, request.WorkflowStepKey, createdByUserId);
@@ -104,24 +105,34 @@ public class TaskService : ITaskService
 
     public async System.Threading.Tasks.Task<TaskListResponse> SearchAsync(
         Guid      tenantId,
-        string?   search             = null,
-        string?   status             = null,
-        string?   priority           = null,
-        string?   scope              = null,
-        Guid?     assignedUserId     = null,
-        string?   sourceProductCode  = null,
-        Guid?     stageId            = null,
-        DateTime? dueBefore          = null,
-        DateTime? dueAfter           = null,
-        Guid?     workflowInstanceId = null,
-        int       page               = 1,
-        int       pageSize           = 50,
-        CancellationToken ct         = default)
+        string?   search              = null,
+        string?   status              = null,
+        string?   priority            = null,
+        string?   scope               = null,
+        Guid?     assignedUserId      = null,
+        string?   sourceProductCode   = null,
+        Guid?     stageId             = null,
+        DateTime? dueBefore           = null,
+        DateTime? dueAfter            = null,
+        Guid?     workflowInstanceId  = null,
+        string?   sourceEntityType    = null,
+        Guid?     sourceEntityId      = null,
+        string?   linkedEntityType    = null,
+        Guid?     linkedEntityId      = null,
+        string?   assignmentScope     = null,
+        Guid?     currentUserId       = null,
+        int       page                = 1,
+        int       pageSize            = 50,
+        CancellationToken ct          = default)
     {
         var (items, total) = await _tasks.SearchAsync(
             tenantId, search, status, priority, scope,
             assignedUserId, sourceProductCode, stageId,
-            dueBefore, dueAfter, workflowInstanceId, page, pageSize, ct);
+            dueBefore, dueAfter, workflowInstanceId,
+            sourceEntityType, sourceEntityId,
+            linkedEntityType, linkedEntityId,
+            assignmentScope, currentUserId,
+            page, pageSize, ct);
         return new TaskListResponse(items.Select(TaskDto.From).ToList(), total, page, pageSize);
     }
 
@@ -394,7 +405,8 @@ public class TaskService : ITaskService
         Guid              taskId,
         Guid              createdByUserId,
         string            note,
-        CancellationToken ct = default)
+        CancellationToken ct         = default,
+        string?           authorName = null)
     {
         var task       = await RequireTaskAsync(tenantId, taskId, ct);
         var governance = await _governance.ResolveAsync(tenantId, task.SourceProductCode, ct);
@@ -402,7 +414,7 @@ public class TaskService : ITaskService
         if (TaskStatus.IsTerminal(task.Status) && !governance.AllowNotesOnClosedTasks)
             throw new InvalidOperationException("Governance does not allow notes on closed tasks.");
 
-        var noteEntity = TaskNote.Create(taskId, tenantId, note, createdByUserId);
+        var noteEntity = TaskNote.Create(taskId, tenantId, note, createdByUserId, authorName);
         await _notes.AddAsync(noteEntity, ct);
 
         await _history.AddAsync(
@@ -422,6 +434,62 @@ public class TaskService : ITaskService
         await RequireTaskAsync(tenantId, taskId, ct);
         var notes = await _notes.GetByTaskAsync(tenantId, taskId, ct);
         return notes.Select(TaskNoteDto.From).ToList();
+    }
+
+    public async System.Threading.Tasks.Task<TaskNoteDto> EditNoteAsync(
+        Guid              tenantId,
+        Guid              taskId,
+        Guid              noteId,
+        Guid              editorUserId,
+        string            newContent,
+        CancellationToken ct = default)
+    {
+        await RequireTaskAsync(tenantId, taskId, ct);
+
+        var note = await _notes.GetByIdAsync(tenantId, noteId, ct)
+            ?? throw new InvalidOperationException($"Note '{noteId}' not found.");
+
+        if (note.TaskId != taskId)
+            throw new InvalidOperationException($"Note '{noteId}' does not belong to task '{taskId}'.");
+
+        if (note.CreatedByUserId != editorUserId)
+            throw new UnauthorizedAccessException("You can only edit your own notes.");
+
+        note.Edit(newContent, editorUserId);
+        await _notes.UpdateAsync(note, ct);
+
+        await _history.AddAsync(
+            TaskHistory.Record(taskId, tenantId, TaskActions.NoteAdded, editorUserId, "Note edited"), ct);
+
+        await _uow.SaveChangesAsync(ct);
+
+        return TaskNoteDto.From(note);
+    }
+
+    public async System.Threading.Tasks.Task DeleteNoteAsync(
+        Guid              tenantId,
+        Guid              taskId,
+        Guid              noteId,
+        Guid              deletedByUserId,
+        CancellationToken ct = default)
+    {
+        await RequireTaskAsync(tenantId, taskId, ct);
+
+        var note = await _notes.GetByIdAsync(tenantId, noteId, ct)
+            ?? throw new InvalidOperationException($"Note '{noteId}' not found.");
+
+        if (note.TaskId != taskId)
+            throw new InvalidOperationException($"Note '{noteId}' does not belong to task '{taskId}'.");
+
+        if (note.CreatedByUserId != deletedByUserId)
+            throw new UnauthorizedAccessException("You can only delete your own notes.");
+
+        if (!note.IsDeleted)
+        {
+            note.SoftDelete(deletedByUserId);
+            await _notes.UpdateAsync(note, ct);
+            await _uow.SaveChangesAsync(ct);
+        }
     }
 
     public async System.Threading.Tasks.Task<IReadOnlyList<TaskHistoryDto>> GetHistoryAsync(

@@ -58,7 +58,8 @@ public class PlatformTask : AuditableEntity
         DateTime? dueAt              = null,
         Guid?     currentStageId     = null,
         Guid?     workflowInstanceId = null,
-        string?   workflowStepKey    = null)
+        string?   workflowStepKey    = null,
+        Guid?     externalId         = null)
     {
         if (tenantId == Guid.Empty)        throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
@@ -78,7 +79,7 @@ public class PlatformTask : AuditableEntity
         var now = DateTime.UtcNow;
         return new PlatformTask
         {
-            Id                = Guid.NewGuid(),
+            Id                = externalId ?? Guid.NewGuid(),
             TenantId          = tenantId,
             Title             = title.Trim(),
             Description       = description?.Trim(),

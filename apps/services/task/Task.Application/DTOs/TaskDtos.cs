@@ -13,7 +13,13 @@ public record CreateTaskRequest(
     Guid?     SourceEntityId     = null,
     DateTime? DueAt              = null,
     Guid?     WorkflowInstanceId = null,
-    string?   WorkflowStepKey    = null);
+    string?   WorkflowStepKey    = null,
+    /// <summary>
+    /// TASK-B04 — Optional client-supplied ID. When provided the task is created with this ID
+    /// instead of a server-generated one. Used by Liens consumer cutover so that Liens task IDs
+    /// and canonical Task service IDs are the same Guid (no cross-reference table needed).
+    /// </summary>
+    Guid?     ExternalId         = null);
 
 public record UpdateTaskRequest(
     string    Title,
@@ -26,7 +32,8 @@ public record AssignTaskRequest(Guid? AssignedUserId);
 
 public record TransitionStatusRequest(string Status);
 
-public record AddNoteRequest(string Note);
+/// <param name="AuthorName">Display name of the author (optional). Used by consumer products that track user display names.</param>
+public record AddNoteRequest(string Note, string? AuthorName = null);
 
 /// <summary>Full task projection returned by all task endpoints.</summary>
 public record TaskDto(
@@ -70,10 +77,13 @@ public record TaskNoteDto(
     Guid     TaskId,
     string   Note,
     Guid?    CreatedByUserId,
+    string?  AuthorName,
+    bool     IsEdited,
+    bool     IsDeleted,
     DateTime CreatedAtUtc)
 {
     public static TaskNoteDto From(TaskNote n) => new(
-        n.Id, n.TaskId, n.Note, n.CreatedByUserId, n.CreatedAtUtc);
+        n.Id, n.TaskId, n.Note, n.CreatedByUserId, n.AuthorName, n.IsEdited, n.IsDeleted, n.CreatedAtUtc);
 }
 
 public record TaskHistoryDto(

@@ -31,6 +31,12 @@ public interface ILienTaskRepository
     Task AddGeneratedMetadataAsync(LienGeneratedTaskMetadata metadata, CancellationToken ct = default);
 
     /// <summary>
+    /// TASK-B04 — cross-tenant paginated scan for the one-shot backfill operation.
+    /// Returns all tasks (any tenant) ordered by CreatedAtUtc ascending.
+    /// </summary>
+    Task<List<LienTask>> GetAllPagedAsync(int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
     /// LS-LIENS-FLOW-009 — returns all tasks for <paramref name="tenantId"/> linked to
     /// <paramref name="workflowInstanceId"/>. Uses the
     /// <c>IX_Tasks_TenantId_WorkflowInstanceId</c> index; returns an empty list when none found.

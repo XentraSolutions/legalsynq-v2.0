@@ -176,6 +176,8 @@ app.MapTaskNoteEndpoints();
 app.MapTaskGovernanceEndpoints();
 // LS-LIENS-FLOW-009 — Flow Event Consumption (internal event ingestion).
 app.MapFlowEventsEndpoints();
+// TASK-B04 — one-shot admin task backfill (internal, shared-secret protected).
+app.MapLienTaskBackfillEndpoints();
 
 app.Run();
 

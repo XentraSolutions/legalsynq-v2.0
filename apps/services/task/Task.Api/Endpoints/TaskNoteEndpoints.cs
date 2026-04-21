@@ -13,9 +13,11 @@ public static class TaskNoteEndpoints
             .RequireAuthorization(Policies.AuthenticatedUser)
             .WithTags("Task Notes");
 
-        group.MapPost("/notes",    AddNote);
-        group.MapGet("/notes",     GetNotes);
-        group.MapGet("/history",   GetHistory);
+        group.MapPost("/notes",               AddNote);
+        group.MapGet("/notes",                GetNotes);
+        group.MapPut("/notes/{noteId:guid}",  EditNote);
+        group.MapDelete("/notes/{noteId:guid}", DeleteNote);
+        group.MapGet("/history",              GetHistory);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -33,7 +35,7 @@ public static class TaskNoteEndpoints
     {
         var tenantId = RequireTenantId(ctx);
         var userId   = RequireUserId(ctx);
-        var result   = await taskService.AddNoteAsync(tenantId, taskId, userId, request.Note, ct);
+        var result   = await taskService.AddNoteAsync(tenantId, taskId, userId, request.Note, ct, request.AuthorName);
         return Results.Created($"/api/tasks/{taskId}/notes/{result.Id}", result);
     }
 
@@ -46,6 +48,33 @@ public static class TaskNoteEndpoints
         var tenantId = RequireTenantId(ctx);
         var result   = await taskService.GetNotesAsync(tenantId, taskId, ct);
         return Results.Ok(result);
+    }
+
+    private static async System.Threading.Tasks.Task<IResult> EditNote(
+        Guid                   taskId,
+        Guid                   noteId,
+        AddNoteRequest         request,
+        ITaskService           taskService,
+        ICurrentRequestContext ctx,
+        CancellationToken      ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId   = RequireUserId(ctx);
+        var result   = await taskService.EditNoteAsync(tenantId, taskId, noteId, userId, request.Note, ct);
+        return Results.Ok(result);
+    }
+
+    private static async System.Threading.Tasks.Task<IResult> DeleteNote(
+        Guid                   taskId,
+        Guid                   noteId,
+        ITaskService           taskService,
+        ICurrentRequestContext ctx,
+        CancellationToken      ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId   = RequireUserId(ctx);
+        await taskService.DeleteNoteAsync(tenantId, taskId, noteId, userId, ct);
+        return Results.NoContent();
     }
 
     private static async System.Threading.Tasks.Task<IResult> GetHistory(

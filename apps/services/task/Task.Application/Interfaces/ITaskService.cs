@@ -17,19 +17,25 @@ public interface ITaskService
 
     System.Threading.Tasks.Task<TaskListResponse> SearchAsync(
         Guid      tenantId,
-        string?   search             = null,
-        string?   status             = null,
-        string?   priority           = null,
-        string?   scope              = null,
-        Guid?     assignedUserId     = null,
-        string?   sourceProductCode  = null,
-        Guid?     stageId            = null,
-        DateTime? dueBefore          = null,
-        DateTime? dueAfter           = null,
-        Guid?     workflowInstanceId = null,
-        int       page               = 1,
-        int       pageSize           = 50,
-        CancellationToken ct         = default);
+        string?   search              = null,
+        string?   status              = null,
+        string?   priority            = null,
+        string?   scope               = null,
+        Guid?     assignedUserId      = null,
+        string?   sourceProductCode   = null,
+        Guid?     stageId             = null,
+        DateTime? dueBefore           = null,
+        DateTime? dueAfter            = null,
+        Guid?     workflowInstanceId  = null,
+        string?   sourceEntityType    = null,
+        Guid?     sourceEntityId      = null,
+        string?   linkedEntityType    = null,
+        Guid?     linkedEntityId      = null,
+        string?   assignmentScope     = null,
+        Guid?     currentUserId       = null,
+        int       page                = 1,
+        int       pageSize            = 50,
+        CancellationToken ct          = default);
 
     System.Threading.Tasks.Task<IReadOnlyList<TaskDto>> GetMyTasksAsync(
         Guid      tenantId,
@@ -92,11 +98,27 @@ public interface ITaskService
         Guid              taskId,
         Guid              createdByUserId,
         string            note,
-        CancellationToken ct = default);
+        CancellationToken ct         = default,
+        string?           authorName = null);
 
     System.Threading.Tasks.Task<IReadOnlyList<TaskNoteDto>> GetNotesAsync(
         Guid              tenantId,
         Guid              taskId,
+        CancellationToken ct = default);
+
+    System.Threading.Tasks.Task<TaskNoteDto> EditNoteAsync(
+        Guid              tenantId,
+        Guid              taskId,
+        Guid              noteId,
+        Guid              editorUserId,
+        string            newContent,
+        CancellationToken ct = default);
+
+    System.Threading.Tasks.Task DeleteNoteAsync(
+        Guid              tenantId,
+        Guid              taskId,
+        Guid              noteId,
+        Guid              deletedByUserId,
         CancellationToken ct = default);
 
     System.Threading.Tasks.Task<IReadOnlyList<TaskHistoryDto>> GetHistoryAsync(

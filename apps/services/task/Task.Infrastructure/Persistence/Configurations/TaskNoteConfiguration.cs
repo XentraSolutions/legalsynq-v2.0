@@ -17,7 +17,18 @@ public class TaskNoteConfiguration : IEntityTypeConfiguration<TaskNote>
 
         builder.Property(n => n.Note)
             .IsRequired()
-            .HasMaxLength(4000);
+            .HasMaxLength(5000);
+
+        builder.Property(n => n.AuthorName)
+            .HasMaxLength(200);
+
+        builder.Property(n => n.IsEdited)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(n => n.IsDeleted)
+            .IsRequired()
+            .HasDefaultValue(false);
 
         builder.Property(n => n.CreatedByUserId).IsRequired();
         builder.Property(n => n.UpdatedByUserId);

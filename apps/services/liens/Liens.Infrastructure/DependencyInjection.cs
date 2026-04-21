@@ -10,6 +10,7 @@ using Liens.Infrastructure.Documents;
 using Liens.Infrastructure.Notifications;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Repositories;
+using Liens.Infrastructure.TaskService;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -73,9 +74,10 @@ public static class DependencyInjection
         services.AddScoped<ILienTaskGovernanceService, LienTaskGovernanceService>();
         // LS-LIENS-FLOW-007 — Flow instance linkage resolver
         services.AddScoped<IFlowInstanceResolver, FlowInstanceResolver>();
-        // LS-LIENS-FLOW-009 — Flow event consumption (real-time task sync)
-        services.AddScoped<ITaskFlowSyncService, TaskFlowSyncService>();
+        // LS-LIENS-FLOW-009 — Flow event consumption (delegates to Task service)
         services.AddScoped<IFlowEventHandler, FlowEventHandler>();
+        // TASK-B04 — backfill service
+        services.AddScoped<ILienTaskBackfillService, LienTaskBackfillService>();
 
         var docsBaseUrl = configuration["Services:DocumentsUrl"] ?? "http://localhost:5006";
         services.AddHttpClient("DocumentsService", client =>
@@ -101,6 +103,17 @@ public static class DependencyInjection
         })
         .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
         services.AddScoped<INotificationPublisher, NotificationPublisher>();
+
+        // TASK-B04 — Task service HTTP client with shared service-token auth handler.
+        services.AddTransient<TaskServiceAuthDelegatingHandler>();
+
+        var taskBaseUrl = configuration["ExternalServices:Task:BaseUrl"] ?? "http://localhost:5016";
+        services.AddHttpClient<ILiensTaskServiceClient, LiensTaskServiceClient>(client =>
+        {
+            client.BaseAddress = new Uri(taskBaseUrl);
+            client.Timeout     = TimeSpan.FromSeconds(30);
+        })
+        .AddHttpMessageHandler<TaskServiceAuthDelegatingHandler>();
 
         return services;
     }

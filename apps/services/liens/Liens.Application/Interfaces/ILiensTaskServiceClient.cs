@@ -1,0 +1,113 @@
+using Liens.Application.DTOs;
+
+namespace Liens.Application.Interfaces;
+
+/// <summary>
+/// TASK-B04 / TASK-010 — HTTP client interface for the canonical Task service.
+/// Liens is a consumer-only of this client; it does NOT own task runtime.
+/// All methods map Liens domain concepts onto Task service API contracts.
+/// </summary>
+public interface ILiensTaskServiceClient
+{
+    Task<TaskResponse> CreateTaskAsync(
+        Guid   tenantId,
+        Guid   actingUserId,
+        Guid   externalId,
+        CreateTaskRequest request,
+        CancellationToken ct = default);
+
+    Task<TaskResponse?> GetTaskAsync(
+        Guid tenantId,
+        Guid id,
+        CancellationToken ct = default);
+
+    Task<PaginatedResult<TaskResponse>> SearchTasksAsync(
+        Guid    tenantId,
+        string? search,
+        string? status,
+        string? priority,
+        Guid?   assignedUserId,
+        Guid?   caseId,
+        Guid?   lienId,
+        Guid?   workflowStageId,
+        string? assignmentScope,
+        Guid?   currentUserId,
+        int     page,
+        int     pageSize,
+        CancellationToken ct = default);
+
+    Task<TaskResponse> UpdateTaskAsync(
+        Guid   tenantId,
+        Guid   id,
+        Guid   actingUserId,
+        UpdateTaskRequest request,
+        CancellationToken ct = default);
+
+    Task<TaskResponse> AssignTaskAsync(
+        Guid  tenantId,
+        Guid  id,
+        Guid  actingUserId,
+        Guid? assignedUserId,
+        CancellationToken ct = default);
+
+    Task<TaskResponse> TransitionStatusAsync(
+        Guid   tenantId,
+        Guid   id,
+        Guid   actingUserId,
+        string newStatus,
+        CancellationToken ct = default);
+
+    Task<TaskNoteResponse> AddNoteAsync(
+        Guid   tenantId,
+        Guid   taskId,
+        Guid   actorUserId,
+        string content,
+        string createdByName,
+        CancellationToken ct = default);
+
+    Task<List<TaskNoteResponse>> GetNotesAsync(
+        Guid tenantId,
+        Guid taskId,
+        CancellationToken ct = default);
+
+    Task<TaskNoteResponse> UpdateNoteAsync(
+        Guid   tenantId,
+        Guid   taskId,
+        Guid   noteId,
+        Guid   actorUserId,
+        string content,
+        CancellationToken ct = default);
+
+    Task DeleteNoteAsync(
+        Guid tenantId,
+        Guid taskId,
+        Guid noteId,
+        Guid actorUserId,
+        CancellationToken ct = default);
+
+    Task AddLinkedEntityAsync(
+        Guid   tenantId,
+        Guid   taskId,
+        Guid   actingUserId,
+        string entityType,
+        Guid   entityId,
+        string relationship,
+        CancellationToken ct = default);
+
+    Task TriggerFlowCallbackAsync(
+        Guid   tenantId,
+        Guid   workflowInstanceId,
+        string newStepKey,
+        CancellationToken ct = default);
+
+    Task<BackfillTaskResult> BackfillTaskAsync(
+        Guid   tenantId,
+        Guid   actingUserId,
+        Guid   externalId,
+        CreateTaskRequest request,
+        IReadOnlyList<(Guid NoteId, string Content, string AuthorName, Guid AuthorId, DateTime CreatedAt)> notes,
+        IReadOnlyList<Guid> lienIds,
+        CancellationToken ct = default);
+}
+
+public sealed record BackfillTaskResult(Guid TaskId, int NotesCreated, int LinksCreated, bool AlreadyExisted);

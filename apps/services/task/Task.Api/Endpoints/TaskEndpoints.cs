@@ -34,25 +34,35 @@ public static class TaskEndpoints
     private static async System.Threading.Tasks.Task<IResult> ListTasks(
         ITaskService           taskService,
         ICurrentRequestContext ctx,
-        string?   search             = null,
-        string?   status             = null,
-        string?   priority           = null,
-        string?   scope              = null,
-        Guid?     assignedUserId     = null,
-        string?   sourceProductCode  = null,
-        Guid?     stageId            = null,
-        DateTime? dueBefore          = null,
-        DateTime? dueAfter           = null,
-        Guid?     workflowInstanceId = null,
-        int       page               = 1,
-        int       pageSize           = 50,
-        CancellationToken ct         = default)
+        string?   search              = null,
+        string?   status              = null,
+        string?   priority            = null,
+        string?   scope               = null,
+        Guid?     assignedUserId      = null,
+        string?   sourceProductCode   = null,
+        Guid?     stageId             = null,
+        DateTime? dueBefore           = null,
+        DateTime? dueAfter            = null,
+        Guid?     workflowInstanceId  = null,
+        string?   sourceEntityType    = null,
+        Guid?     sourceEntityId      = null,
+        string?   linkedEntityType    = null,
+        Guid?     linkedEntityId      = null,
+        string?   assignmentScope     = null,
+        int       page                = 1,
+        int       pageSize            = 50,
+        CancellationToken ct          = default)
     {
-        var tenantId = RequireTenantId(ctx);
-        var result   = await taskService.SearchAsync(
+        var tenantId    = RequireTenantId(ctx);
+        var currentUser = ctx.UserId;
+        var result      = await taskService.SearchAsync(
             tenantId, search, status, priority, scope,
             assignedUserId, sourceProductCode, stageId,
-            dueBefore, dueAfter, workflowInstanceId, page, pageSize, ct);
+            dueBefore, dueAfter, workflowInstanceId,
+            sourceEntityType, sourceEntityId,
+            linkedEntityType, linkedEntityId,
+            assignmentScope, currentUser,
+            page, pageSize, ct);
         return Results.Ok(result);
     }
 
