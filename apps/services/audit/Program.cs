@@ -506,7 +506,7 @@ try
     {
         Log.Warning(
             "QueryAuth:Mode = 'None' — query endpoints are unauthenticated and " +
-            "all callers receive PlatformAdmin scope. " +
+            "all callers receive Unknown scope (access denied). " +
             "Set Mode=Bearer and configure claim types for any non-development environment.");
     }
     else
@@ -586,7 +586,7 @@ try
         if (queryAuthMode.Equals("None", StringComparison.OrdinalIgnoreCase))
             Log.Error(
                 "SECURITY: QueryAuth:Mode = 'None' in Production. " +
-                "All callers receive PlatformAdmin scope. " +
+                "All callers receive Unknown scope and are rejected. " +
                 "Set QueryAuth__Mode=Bearer and configure JWT claim types immediately.");
 
         if (dbOpts.EnableSensitiveDataLogging)

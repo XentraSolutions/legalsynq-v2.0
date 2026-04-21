@@ -36,13 +36,14 @@ public sealed record QueryCallerContext : IQueryCallerContext
     // ── Factory helpers ───────────────────────────────────────────────────────
 
     /// <summary>
-    /// Creates a dev-mode anonymous context with PlatformAdmin scope.
+    /// Creates a dev-mode anonymous context with Unknown scope.
     /// Only produced when <c>QueryAuth:Mode = "None"</c>.
+    /// Access is denied by the middleware gate for all protected paths.
     /// </summary>
     public static QueryCallerContext Anonymous() =>
         new()
         {
-            Scope           = CallerScope.PlatformAdmin,
+            Scope           = CallerScope.Unknown,
             IsAuthenticated = false,
             AuthMode        = "None",
         };

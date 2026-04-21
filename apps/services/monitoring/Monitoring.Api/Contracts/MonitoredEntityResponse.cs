@@ -12,7 +12,6 @@ public sealed class MonitoredEntityResponse
     public string Name { get; init; } = string.Empty;
     public EntityType EntityType { get; init; }
     public MonitoringType MonitoringType { get; init; }
-    public string Target { get; init; } = string.Empty;
     public bool IsEnabled { get; init; }
     public string Scope { get; init; } = string.Empty;
     public ImpactLevel ImpactLevel { get; init; }
@@ -25,7 +24,6 @@ public sealed class MonitoredEntityResponse
         Name = entity.Name,
         EntityType = entity.EntityType,
         MonitoringType = entity.MonitoringType,
-        Target = entity.Target,
         IsEnabled = entity.IsEnabled,
         Scope = entity.Scope,
         ImpactLevel = entity.ImpactLevel,

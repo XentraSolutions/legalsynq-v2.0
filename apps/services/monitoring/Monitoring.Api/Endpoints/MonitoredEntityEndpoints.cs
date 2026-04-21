@@ -19,7 +19,7 @@ public static class MonitoredEntityEndpoints
 {
     public static IEndpointRouteBuilder MapMonitoredEntityEndpoints(this IEndpointRouteBuilder app)
     {
-        var read = app.MapGroup("/monitoring/entities").AllowAnonymous();
+        var read = app.MapGroup("/monitoring/entities").RequireAuthorization();
         var admin = app.MapGroup("/monitoring/admin/entities")
                        .RequireAuthorization(MonitoringPolicies.AdminWrite);
 
