@@ -81,7 +81,34 @@ try
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<TasksDbContext>();
     await db.Database.MigrateAsync();
-    app.Logger.LogInformation("Task database migrations applied successfully.");
+
+    // Self-heal: verify that the core table actually exists.
+    // EF can report "up to date" if __EFMigrationsHistory has stale entries
+    // but the DDL was never committed (e.g. after a crashed first-run).
+    bool coreTableExists = false;
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            "SELECT 1 FROM `tasks_Tasks` LIMIT 1");
+        coreTableExists = true;
+    }
+    catch { /* table absent */ }
+
+    if (!coreTableExists)
+    {
+        app.Logger.LogWarning(
+            "tasks_Tasks table missing despite migration history — " +
+            "clearing __EFMigrationsHistory and re-applying all migrations.");
+        await db.Database.ExecuteSqlRawAsync(
+            "DELETE FROM `__EFMigrationsHistory`");
+        await db.Database.MigrateAsync();
+        app.Logger.LogInformation(
+            "Schema rebuilt from scratch — all migrations re-applied.");
+    }
+    else
+    {
+        app.Logger.LogInformation("Task database migrations applied successfully.");
+    }
 }
 catch (Exception ex)
 {

@@ -48,22 +48,15 @@ public sealed class FlowTaskInternalAuthHandler : DelegatingHandler
             return await base.SendAsync(request, cancellationToken);
         }
 
-        // Tenant ID must be present in the X-Tenant-Id header (set by caller).
-        if (!request.Headers.TryGetValues("X-Tenant-Id", out var vals))
-        {
-            _logger.LogWarning(
-                "FlowTaskInternalAuthHandler: X-Tenant-Id header missing — cannot mint service token for '{Path}'.",
-                request.RequestUri?.PathAndQuery);
-            return await base.SendAsync(request, cancellationToken);
-        }
-
-        var tenantId = vals.FirstOrDefault();
+        // Tenant ID sourced from X-Tenant-Id header (set by caller).
+        // For cross-tenant internal calls (e.g. TASK-FLOW-03 SLA batch read)
+        // where there is no per-tenant context, fall back to the well-known
+        // "SYSTEM" principal so the Task service InternalService policy still
+        // validates the JWT signature + role claim without needing a real tenant.
+        request.Headers.TryGetValues("X-Tenant-Id", out var vals);
+        var tenantId = vals?.FirstOrDefault();
         if (string.IsNullOrEmpty(tenantId))
-        {
-            _logger.LogWarning(
-                "FlowTaskInternalAuthHandler: X-Tenant-Id header is empty — cannot mint service token.");
-            return await base.SendAsync(request, cancellationToken);
-        }
+            tenantId = "SYSTEM";
 
         try
         {
@@ -73,8 +66,8 @@ public sealed class FlowTaskInternalAuthHandler : DelegatingHandler
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "FlowTaskInternalAuthHandler: failed to mint service token for tenant {TenantId}.",
-                tenantId);
+                "FlowTaskInternalAuthHandler: failed to mint service token for tenant {TenantId} — request to '{Path}' will have no auth header.",
+                tenantId, request.RequestUri?.PathAndQuery);
         }
 
         return await base.SendAsync(request, cancellationToken);

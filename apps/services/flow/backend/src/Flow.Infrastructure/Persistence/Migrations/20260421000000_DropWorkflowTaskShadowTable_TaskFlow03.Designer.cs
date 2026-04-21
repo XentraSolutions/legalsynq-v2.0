@@ -836,6 +836,25 @@ namespace Flow.Infrastructure.Persistence.Migrations
                 });
 
 
+            modelBuilder.Entity("Flow.Domain.Entities.WorkflowAutomationHook", b =>
+                {
+                    b.HasOne("Flow.Domain.Entities.FlowDefinition", "WorkflowDefinition")
+                        .WithMany("AutomationHooks")
+                        .HasForeignKey("WorkflowDefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Flow.Domain.Entities.WorkflowTransition", "WorkflowTransition")
+                        .WithMany()
+                        .HasForeignKey("WorkflowTransitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("WorkflowDefinition");
+
+                    b.Navigation("WorkflowTransition");
+                });
+
             modelBuilder.Entity("Flow.Domain.Entities.WorkflowTransition", b =>
                 {
                     b.HasOne("Flow.Domain.Entities.WorkflowStage", "FromStage")
