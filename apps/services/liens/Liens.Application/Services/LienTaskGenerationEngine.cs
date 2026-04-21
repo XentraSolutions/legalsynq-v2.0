@@ -13,6 +13,7 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
     private readonly ILienTaskTemplateRepository       _templateRepo;
     private readonly ILienTaskRepository               _taskRepo;
     private readonly ILienTaskService                  _taskService;
+    private readonly ILiensTaskServiceClient           _taskServiceClient;
     private readonly IAuditPublisher                   _audit;
     private readonly ILogger<LienTaskGenerationEngine> _logger;
 
@@ -21,15 +22,17 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
         ILienTaskTemplateRepository templateRepo,
         ILienTaskRepository taskRepo,
         ILienTaskService taskService,
+        ILiensTaskServiceClient taskServiceClient,
         IAuditPublisher audit,
         ILogger<LienTaskGenerationEngine> logger)
     {
-        _ruleRepo     = ruleRepo;
-        _templateRepo = templateRepo;
-        _taskRepo     = taskRepo;
-        _taskService  = taskService;
-        _audit        = audit;
-        _logger       = logger;
+        _ruleRepo          = ruleRepo;
+        _templateRepo      = templateRepo;
+        _taskRepo          = taskRepo;
+        _taskService       = taskService;
+        _taskServiceClient = taskServiceClient;
+        _audit             = audit;
+        _logger            = logger;
     }
 
     public async Task<TaskGenerationResult> TriggerAsync(
@@ -104,11 +107,12 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
             return false;
         }
 
-        // 3. Duplicate prevention
+        // 3. Duplicate prevention — TASK-B04-01: use Task service HTTP client
+        //    (no longer queries liens_Tasks directly so the drop migration is safe to apply)
         var dupMode = rule.DuplicatePreventionMode;
         if (dupMode == DuplicatePreventionMode.SameRuleSameEntityOpenTask)
         {
-            var hasDup = await _taskRepo.HasOpenTaskForRuleAsync(
+            var hasDup = await _taskServiceClient.HasOpenTaskForRuleAsync(
                 context.TenantId, rule.Id, context.CaseId, context.LienId, ct);
             if (hasDup)
             {
@@ -127,7 +131,7 @@ public sealed class LienTaskGenerationEngine : ILienTaskGenerationEngine
         }
         else if (dupMode == DuplicatePreventionMode.SameTemplateSameEntityOpenTask)
         {
-            var hasDup = await _taskRepo.HasOpenTaskForTemplateAsync(
+            var hasDup = await _taskServiceClient.HasOpenTaskForTemplateAsync(
                 context.TenantId, rule.TaskTemplateId, context.CaseId, context.LienId, ct);
             if (hasDup)
             {

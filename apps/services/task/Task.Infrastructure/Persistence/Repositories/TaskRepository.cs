@@ -16,25 +16,28 @@ public class TaskRepository : ITaskRepository
 
     public async System.Threading.Tasks.Task<(IReadOnlyList<PlatformTask> Items, int Total)> SearchAsync(
         Guid      tenantId,
-        string?   search             = null,
-        string?   status             = null,
-        string?   priority           = null,
-        string?   scope              = null,
-        Guid?     assignedUserId     = null,
-        string?   sourceProductCode   = null,
-        Guid?     stageId             = null,
-        DateTime? dueBefore           = null,
-        DateTime? dueAfter            = null,
-        Guid?     workflowInstanceId  = null,
-        string?   sourceEntityType    = null,
-        Guid?     sourceEntityId      = null,
-        string?   linkedEntityType    = null,
-        Guid?     linkedEntityId      = null,
-        string?   assignmentScope     = null,
-        Guid?     currentUserId       = null,
-        int       page                = 1,
-        int       pageSize            = 50,
-        CancellationToken ct          = default)
+        string?   search               = null,
+        string?   status               = null,
+        string?   priority             = null,
+        string?   scope                = null,
+        Guid?     assignedUserId       = null,
+        string?   sourceProductCode    = null,
+        Guid?     stageId              = null,
+        DateTime? dueBefore            = null,
+        DateTime? dueAfter             = null,
+        Guid?     workflowInstanceId   = null,
+        string?   sourceEntityType     = null,
+        Guid?     sourceEntityId       = null,
+        string?   linkedEntityType     = null,
+        Guid?     linkedEntityId       = null,
+        string?   assignmentScope      = null,
+        Guid?     currentUserId        = null,
+        Guid?     generationRuleId     = null,
+        Guid?     generatingTemplateId = null,
+        bool      excludeTerminal      = false,
+        int       page                 = 1,
+        int       pageSize             = 50,
+        CancellationToken ct           = default)
     {
         var q = _db.Tasks.Where(t => t.TenantId == tenantId);
 
@@ -90,6 +93,16 @@ public class TaskRepository : ITaskRepository
             if (assignmentScope.Equals("ME", StringComparison.OrdinalIgnoreCase))
                 q = q.Where(t => t.AssignedUserId == currentUserId.Value);
         }
+
+        // TASK-B04-01 — generation metadata filters
+        if (generationRuleId.HasValue)
+            q = q.Where(t => t.GenerationRuleId == generationRuleId.Value);
+
+        if (generatingTemplateId.HasValue)
+            q = q.Where(t => t.GeneratingTemplateId == generatingTemplateId.Value);
+
+        if (excludeTerminal)
+            q = q.Where(t => t.Status != "COMPLETED" && t.Status != "CANCELLED");
 
         var total = await q.CountAsync(ct);
         var items = await q

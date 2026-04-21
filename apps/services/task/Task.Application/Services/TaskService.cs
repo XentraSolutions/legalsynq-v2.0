@@ -69,7 +69,9 @@ public class TaskService : ITaskService
             request.SourceEntityType,
             request.SourceEntityId,
             request.DueAt,
-            externalId: request.ExternalId);
+            externalId:           request.ExternalId,
+            generationRuleId:     request.GenerationRuleId,
+            generatingTemplateId: request.GeneratingTemplateId);
 
         if (request.WorkflowInstanceId.HasValue)
             task.SetWorkflowLinkage(request.WorkflowInstanceId, request.WorkflowStepKey, createdByUserId);
@@ -105,25 +107,28 @@ public class TaskService : ITaskService
 
     public async System.Threading.Tasks.Task<TaskListResponse> SearchAsync(
         Guid      tenantId,
-        string?   search              = null,
-        string?   status              = null,
-        string?   priority            = null,
-        string?   scope               = null,
-        Guid?     assignedUserId      = null,
-        string?   sourceProductCode   = null,
-        Guid?     stageId             = null,
-        DateTime? dueBefore           = null,
-        DateTime? dueAfter            = null,
-        Guid?     workflowInstanceId  = null,
-        string?   sourceEntityType    = null,
-        Guid?     sourceEntityId      = null,
-        string?   linkedEntityType    = null,
-        Guid?     linkedEntityId      = null,
-        string?   assignmentScope     = null,
-        Guid?     currentUserId       = null,
-        int       page                = 1,
-        int       pageSize            = 50,
-        CancellationToken ct          = default)
+        string?   search               = null,
+        string?   status               = null,
+        string?   priority             = null,
+        string?   scope                = null,
+        Guid?     assignedUserId       = null,
+        string?   sourceProductCode    = null,
+        Guid?     stageId              = null,
+        DateTime? dueBefore            = null,
+        DateTime? dueAfter             = null,
+        Guid?     workflowInstanceId   = null,
+        string?   sourceEntityType     = null,
+        Guid?     sourceEntityId       = null,
+        string?   linkedEntityType     = null,
+        Guid?     linkedEntityId       = null,
+        string?   assignmentScope      = null,
+        Guid?     currentUserId        = null,
+        Guid?     generationRuleId     = null,
+        Guid?     generatingTemplateId = null,
+        bool      excludeTerminal      = false,
+        int       page                 = 1,
+        int       pageSize             = 50,
+        CancellationToken ct           = default)
     {
         var (items, total) = await _tasks.SearchAsync(
             tenantId, search, status, priority, scope,
@@ -132,6 +137,7 @@ public class TaskService : ITaskService
             sourceEntityType, sourceEntityId,
             linkedEntityType, linkedEntityId,
             assignmentScope, currentUserId,
+            generationRuleId, generatingTemplateId, excludeTerminal,
             page, pageSize, ct);
         return new TaskListResponse(items.Select(TaskDto.From).ToList(), total, page, pageSize);
     }

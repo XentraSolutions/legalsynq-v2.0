@@ -34,6 +34,8 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DueAt").HasColumnType("datetime(6)");
                     b.Property<string>("Priority").IsRequired().HasMaxLength(20).HasDefaultValue("MEDIUM").HasColumnType("varchar(20)");
                     b.Property<string>("Scope").IsRequired().HasMaxLength(20).HasDefaultValue("GENERAL").HasColumnType("varchar(20)");
+                    b.Property<Guid?>("GeneratingTemplateId").HasColumnType("char(36)");
+                    b.Property<Guid?>("GenerationRuleId").HasColumnType("char(36)");
                     b.Property<Guid?>("SourceEntityId").HasColumnType("char(36)");
                     b.Property<string>("SourceEntityType").HasMaxLength(100).HasColumnType("varchar(100)");
                     b.Property<string>("SourceProductCode").HasMaxLength(50).HasColumnType("varchar(50)");
@@ -54,6 +56,8 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.HasIndex(new[] { "WorkflowInstanceId" }, "IX_Tasks_WorkflowInstanceId");
                     b.HasIndex(new[] { "TenantId", "SourceEntityType", "SourceEntityId" }, "IX_Tasks_SourceEntity");
                     b.HasIndex(new[] { "TenantId", "AssignedUserId", "Status" }, "IX_Tasks_TenantId_AssignedUser_Status");
+                    b.HasIndex(new[] { "TenantId", "SourceProductCode", "GenerationRuleId" }, "IX_Tasks_TenantId_Product_GenerationRule");
+                    b.HasIndex(new[] { "TenantId", "SourceProductCode", "GeneratingTemplateId" }, "IX_Tasks_TenantId_Product_GeneratingTemplate");
                     b.ToTable("tasks_Tasks");
                 });
 

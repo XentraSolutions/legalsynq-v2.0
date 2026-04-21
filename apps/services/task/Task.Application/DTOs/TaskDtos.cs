@@ -4,22 +4,26 @@ namespace Task.Application.DTOs;
 
 public record CreateTaskRequest(
     string    Title,
-    string?   Description        = null,
-    string?   Priority           = null,
-    string?   Scope              = null,
-    Guid?     AssignedUserId     = null,
-    string?   SourceProductCode  = null,
-    string?   SourceEntityType   = null,
-    Guid?     SourceEntityId     = null,
-    DateTime? DueAt              = null,
-    Guid?     WorkflowInstanceId = null,
-    string?   WorkflowStepKey    = null,
+    string?   Description          = null,
+    string?   Priority             = null,
+    string?   Scope                = null,
+    Guid?     AssignedUserId       = null,
+    string?   SourceProductCode    = null,
+    string?   SourceEntityType     = null,
+    Guid?     SourceEntityId       = null,
+    DateTime? DueAt                = null,
+    Guid?     WorkflowInstanceId   = null,
+    string?   WorkflowStepKey      = null,
     /// <summary>
     /// TASK-B04 — Optional client-supplied ID. When provided the task is created with this ID
     /// instead of a server-generated one. Used by Liens consumer cutover so that Liens task IDs
     /// and canonical Task service IDs are the same Guid (no cross-reference table needed).
     /// </summary>
-    Guid?     ExternalId         = null);
+    Guid?     ExternalId           = null,
+    /// <summary>TASK-B04-01 — ID of the generation rule that triggered auto-creation (null for manual tasks).</summary>
+    Guid?     GenerationRuleId     = null,
+    /// <summary>TASK-B04-01 — ID of the template applied during auto-generation.</summary>
+    Guid?     GeneratingTemplateId = null);
 
 public record UpdateTaskRequest(
     string    Title,

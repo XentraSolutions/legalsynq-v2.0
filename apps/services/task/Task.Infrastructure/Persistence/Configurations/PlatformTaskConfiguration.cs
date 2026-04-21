@@ -42,6 +42,10 @@ public class PlatformTaskConfiguration : IEntityTypeConfiguration<PlatformTask>
         builder.Property(t => t.SourceEntityType).HasMaxLength(100);
         builder.Property(t => t.SourceEntityId);
 
+        // TASK-B04-01 — generation traceability columns
+        builder.Property(t => t.GenerationRuleId);
+        builder.Property(t => t.GeneratingTemplateId);
+
         builder.Property(t => t.CurrentStageId);
 
         // Flow linkage fields
@@ -83,5 +87,12 @@ public class PlatformTaskConfiguration : IEntityTypeConfiguration<PlatformTask>
 
         builder.HasIndex(t => new { t.TenantId, t.AssignedUserId, t.Status })
             .HasDatabaseName("IX_Tasks_TenantId_AssignedUser_Status");
+
+        // TASK-B04-01 — supports duplicate-prevention queries from LienTaskGenerationEngine
+        builder.HasIndex(t => new { t.TenantId, t.SourceProductCode, t.GenerationRuleId })
+            .HasDatabaseName("IX_Tasks_TenantId_Product_GenerationRule");
+
+        builder.HasIndex(t => new { t.TenantId, t.SourceProductCode, t.GeneratingTemplateId })
+            .HasDatabaseName("IX_Tasks_TenantId_Product_GeneratingTemplate");
     }
 }

@@ -34,24 +34,27 @@ public static class TaskEndpoints
     private static async System.Threading.Tasks.Task<IResult> ListTasks(
         ITaskService           taskService,
         ICurrentRequestContext ctx,
-        string?   search              = null,
-        string?   status              = null,
-        string?   priority            = null,
-        string?   scope               = null,
-        Guid?     assignedUserId      = null,
-        string?   sourceProductCode   = null,
-        Guid?     stageId             = null,
-        DateTime? dueBefore           = null,
-        DateTime? dueAfter            = null,
-        Guid?     workflowInstanceId  = null,
-        string?   sourceEntityType    = null,
-        Guid?     sourceEntityId      = null,
-        string?   linkedEntityType    = null,
-        Guid?     linkedEntityId      = null,
-        string?   assignmentScope     = null,
-        int       page                = 1,
-        int       pageSize            = 50,
-        CancellationToken ct          = default)
+        string?   search               = null,
+        string?   status               = null,
+        string?   priority             = null,
+        string?   scope                = null,
+        Guid?     assignedUserId       = null,
+        string?   sourceProductCode    = null,
+        Guid?     stageId              = null,
+        DateTime? dueBefore            = null,
+        DateTime? dueAfter             = null,
+        Guid?     workflowInstanceId   = null,
+        string?   sourceEntityType     = null,
+        Guid?     sourceEntityId       = null,
+        string?   linkedEntityType     = null,
+        Guid?     linkedEntityId       = null,
+        string?   assignmentScope      = null,
+        Guid?     generationRuleId     = null,
+        Guid?     generatingTemplateId = null,
+        bool      excludeTerminal      = false,
+        int       page                 = 1,
+        int       pageSize             = 50,
+        CancellationToken ct           = default)
     {
         var tenantId    = RequireTenantId(ctx);
         var currentUser = ctx.UserId;
@@ -62,6 +65,7 @@ public static class TaskEndpoints
             sourceEntityType, sourceEntityId,
             linkedEntityType, linkedEntityId,
             assignmentScope, currentUser,
+            generationRuleId, generatingTemplateId, excludeTerminal,
             page, pageSize, ct);
         return Results.Ok(result);
     }

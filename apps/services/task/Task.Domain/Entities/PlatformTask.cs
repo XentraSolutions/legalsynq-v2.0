@@ -19,9 +19,15 @@ public class PlatformTask : AuditableEntity
     public Guid?   AssignedUserId     { get; private set; }
 
     public string  Scope              { get; private set; } = TaskScope.General;
-    public string? SourceProductCode  { get; private set; }
-    public string? SourceEntityType   { get; private set; }
-    public Guid?   SourceEntityId     { get; private set; }
+    public string? SourceProductCode    { get; private set; }
+    public string? SourceEntityType    { get; private set; }
+    public Guid?   SourceEntityId      { get; private set; }
+
+    /// <summary>TASK-B04-01 — ID of the generation rule that created this task (null for manually created tasks).</summary>
+    public Guid?   GenerationRuleId     { get; private set; }
+
+    /// <summary>TASK-B04-01 — ID of the template that was applied when this task was auto-generated.</summary>
+    public Guid?   GeneratingTemplateId { get; private set; }
 
     /// <summary>
     /// Optional reference to the current execution stage from <see cref="TaskStageConfig"/>.
@@ -48,18 +54,20 @@ public class PlatformTask : AuditableEntity
         Guid      tenantId,
         string    title,
         Guid      createdByUserId,
-        string?   description        = null,
-        string?   priority           = null,
-        string?   scope              = null,
-        Guid?     assignedUserId     = null,
-        string?   sourceProductCode  = null,
-        string?   sourceEntityType   = null,
-        Guid?     sourceEntityId     = null,
-        DateTime? dueAt              = null,
-        Guid?     currentStageId     = null,
-        Guid?     workflowInstanceId = null,
-        string?   workflowStepKey    = null,
-        Guid?     externalId         = null)
+        string?   description          = null,
+        string?   priority             = null,
+        string?   scope                = null,
+        Guid?     assignedUserId       = null,
+        string?   sourceProductCode    = null,
+        string?   sourceEntityType     = null,
+        Guid?     sourceEntityId       = null,
+        DateTime? dueAt                = null,
+        Guid?     currentStageId       = null,
+        Guid?     workflowInstanceId   = null,
+        string?   workflowStepKey      = null,
+        Guid?     externalId           = null,
+        Guid?     generationRuleId     = null,
+        Guid?     generatingTemplateId = null)
     {
         if (tenantId == Guid.Empty)        throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
@@ -79,17 +87,19 @@ public class PlatformTask : AuditableEntity
         var now = DateTime.UtcNow;
         return new PlatformTask
         {
-            Id                = externalId ?? Guid.NewGuid(),
-            TenantId          = tenantId,
-            Title             = title.Trim(),
-            Description       = description?.Trim(),
-            Status            = TaskStatus.Open,
-            Priority          = effectivePriority,
-            Scope             = effectiveScope,
-            AssignedUserId    = assignedUserId,
-            SourceProductCode = sourceProductCode?.Trim().ToUpperInvariant(),
-            SourceEntityType  = sourceEntityType?.Trim(),
-            SourceEntityId    = sourceEntityId,
+            Id                    = externalId ?? Guid.NewGuid(),
+            TenantId              = tenantId,
+            Title                 = title.Trim(),
+            Description           = description?.Trim(),
+            Status                = TaskStatus.Open,
+            Priority              = effectivePriority,
+            Scope                 = effectiveScope,
+            AssignedUserId        = assignedUserId,
+            SourceProductCode     = sourceProductCode?.Trim().ToUpperInvariant(),
+            SourceEntityType      = sourceEntityType?.Trim(),
+            SourceEntityId        = sourceEntityId,
+            GenerationRuleId      = generationRuleId,
+            GeneratingTemplateId  = generatingTemplateId,
             DueAt                    = dueAt,
             CurrentStageId           = currentStageId,
             WorkflowInstanceId       = workflowInstanceId,

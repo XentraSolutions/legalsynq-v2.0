@@ -51,18 +51,21 @@ public sealed class LiensTaskServiceClient : ILiensTaskServiceClient
     {
         var body = new
         {
-            title              = request.Title,
-            description        = request.Description,
-            priority           = request.Priority,
-            scope              = TaskScope,
-            assignedUserId     = request.AssignedUserId,
-            sourceProductCode  = SourceProductCode,
-            sourceEntityType   = request.CaseId.HasValue ? SourceEntityType : (string?)null,
-            sourceEntityId     = request.CaseId,
-            dueAt              = request.DueDate,
-            workflowInstanceId = (Guid?)null,
-            workflowStepKey    = (string?)null,
-            externalId         = (Guid?)externalId,
+            title                = request.Title,
+            description          = request.Description,
+            priority             = request.Priority,
+            scope                = TaskScope,
+            assignedUserId       = request.AssignedUserId,
+            sourceProductCode    = SourceProductCode,
+            sourceEntityType     = request.CaseId.HasValue ? SourceEntityType : (string?)null,
+            sourceEntityId       = request.CaseId,
+            dueAt                = request.DueDate,
+            workflowInstanceId   = (Guid?)null,
+            workflowStepKey      = (string?)null,
+            externalId           = (Guid?)externalId,
+            // TASK-B04-01 — generation provenance for duplicate-prevention
+            generationRuleId     = request.GenerationRuleId,
+            generatingTemplateId = request.GeneratingTemplateId,
         };
 
         var response = await PostAsync<object, TaskApiDto>(
@@ -170,6 +173,76 @@ public sealed class LiensTaskServiceClient : ILiensTaskServiceClient
 
         parts.Add($"page={page}");
         parts.Add($"pageSize={pageSize}");
+
+        return string.Join("&", parts);
+    }
+
+    // ── TASK-B04-01 — Duplicate-prevention helpers ────────────────────────────────
+
+    public async Task<bool> HasOpenTaskForRuleAsync(
+        Guid  tenantId,
+        Guid  ruleId,
+        Guid? caseId,
+        Guid? lienId,
+        CancellationToken ct = default)
+    {
+        var qs = BuildDupCheckQuery(
+            ruleId, null, caseId, lienId);
+        if (qs is null) return false;
+
+        var list = await GetAsync<TaskListApiDto>(tenantId, $"/api/tasks?{qs}", ct);
+        return list is { Total: > 0 };
+    }
+
+    public async Task<bool> HasOpenTaskForTemplateAsync(
+        Guid  tenantId,
+        Guid  templateId,
+        Guid? caseId,
+        Guid? lienId,
+        CancellationToken ct = default)
+    {
+        var qs = BuildDupCheckQuery(
+            null, templateId, caseId, lienId);
+        if (qs is null) return false;
+
+        var list = await GetAsync<TaskListApiDto>(tenantId, $"/api/tasks?{qs}", ct);
+        return list is { Total: > 0 };
+    }
+
+    /// <summary>
+    /// Builds a minimal query string for the duplicate-prevention search.
+    /// Exactly one of <paramref name="ruleId"/> / <paramref name="templateId"/> must be set.
+    /// Returns null if neither entity scope (caseId nor lienId) is provided.
+    /// </summary>
+    private static string? BuildDupCheckQuery(
+        Guid? ruleId, Guid? templateId, Guid? caseId, Guid? lienId)
+    {
+        if (!caseId.HasValue && !lienId.HasValue)
+            return null;
+
+        var parts = new List<string>
+        {
+            $"sourceProductCode={SourceProductCode}",
+            "excludeTerminal=true",
+            "pageSize=1",
+            "page=1",
+        };
+
+        if (ruleId.HasValue)
+            parts.Add($"generationRuleId={ruleId.Value}");
+        else if (templateId.HasValue)
+            parts.Add($"generatingTemplateId={templateId.Value}");
+
+        if (caseId.HasValue)
+        {
+            parts.Add($"sourceEntityType={SourceEntityType}");
+            parts.Add($"sourceEntityId={caseId.Value}");
+        }
+        else if (lienId.HasValue)
+        {
+            parts.Add($"linkedEntityType={LinkedEntityType}");
+            parts.Add($"linkedEntityId={lienId.Value}");
+        }
 
         return string.Join("&", parts);
     }
