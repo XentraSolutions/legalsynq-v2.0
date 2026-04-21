@@ -13,10 +13,11 @@ public static class TaskStageEndpoints
             .RequireAuthorization(Policies.AuthenticatedUser)
             .WithTags("TaskStages");
 
-        group.MapGet("/",          ListStages);
-        group.MapGet("/{id:guid}", GetStageById);
-        group.MapPost("/",         CreateStage).RequireAuthorization(Policies.PlatformOrTenantAdmin);
-        group.MapPut("/{id:guid}", UpdateStage).RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        group.MapGet("/",               ListStages);
+        group.MapGet("/{id:guid}",      GetStageById);
+        group.MapPost("/",              CreateStage).RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        group.MapPut("/{id:guid}",      UpdateStage).RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        group.MapPost("/from-source",   UpsertFromSource).RequireAuthorization(Policies.PlatformOrTenantAdmin);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -69,6 +70,18 @@ public static class TaskStageEndpoints
         var tenantId = RequireTenantId(ctx);
         var userId   = RequireUserId(ctx);
         var result   = await stageService.UpdateAsync(tenantId, id, userId, request, ct);
+        return Results.Ok(result);
+    }
+
+    private static async System.Threading.Tasks.Task<IResult> UpsertFromSource(
+        UpsertFromSourceStageRequest request,
+        ITaskStageService            stageService,
+        ICurrentRequestContext       ctx,
+        CancellationToken            ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId   = RequireUserId(ctx);
+        var result   = await stageService.UpsertFromSourceAsync(tenantId, userId, request, ct);
         return Results.Ok(result);
     }
 }

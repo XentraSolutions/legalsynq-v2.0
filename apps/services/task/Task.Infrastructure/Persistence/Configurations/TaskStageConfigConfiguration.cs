@@ -27,6 +27,9 @@ public class TaskStageConfigConfiguration : IEntityTypeConfiguration<TaskStageCo
         builder.Property(s => s.DisplayOrder).IsRequired();
         builder.Property(s => s.IsActive).IsRequired().HasDefaultValue(true);
 
+        builder.Property(s => s.ProductSettingsJson)
+            .HasColumnType("TEXT");
+
         builder.Property(s => s.CreatedByUserId).IsRequired();
         builder.Property(s => s.UpdatedByUserId);
         builder.Property(s => s.CreatedAtUtc).IsRequired();

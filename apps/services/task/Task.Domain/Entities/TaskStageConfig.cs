@@ -18,6 +18,12 @@ public class TaskStageConfig : AuditableEntity
     public int     DisplayOrder      { get; private set; }
     public bool    IsActive          { get; private set; } = true;
 
+    /// <summary>
+    /// Opaque JSON blob for product-specific stage extensions.
+    /// For SYNQ_LIENS rows: { description, defaultOwnerRole, slaMetadata }
+    /// </summary>
+    public string? ProductSettingsJson { get; private set; }
+
     private TaskStageConfig() { }
 
     public static TaskStageConfig Create(
@@ -26,7 +32,9 @@ public class TaskStageConfig : AuditableEntity
         string  name,
         int     displayOrder,
         Guid    createdByUserId,
-        string? sourceProductCode = null)
+        string? sourceProductCode   = null,
+        string? productSettingsJson = null,
+        Guid?   id                  = null)
     {
         if (tenantId == Guid.Empty)        throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
@@ -36,33 +44,36 @@ public class TaskStageConfig : AuditableEntity
         var now = DateTime.UtcNow;
         return new TaskStageConfig
         {
-            Id                = Guid.NewGuid(),
-            TenantId          = tenantId,
-            SourceProductCode = sourceProductCode?.Trim().ToUpperInvariant(),
-            Code              = code.Trim().ToUpperInvariant(),
-            Name              = name.Trim(),
-            DisplayOrder      = displayOrder,
-            IsActive          = true,
-            CreatedByUserId   = createdByUserId,
-            UpdatedByUserId   = createdByUserId,
-            CreatedAtUtc      = now,
-            UpdatedAtUtc      = now,
+            Id                  = id ?? Guid.NewGuid(),
+            TenantId            = tenantId,
+            SourceProductCode   = sourceProductCode?.Trim().ToUpperInvariant(),
+            Code                = code.Trim().ToUpperInvariant(),
+            Name                = name.Trim(),
+            DisplayOrder        = displayOrder,
+            IsActive            = true,
+            ProductSettingsJson = productSettingsJson,
+            CreatedByUserId     = createdByUserId,
+            UpdatedByUserId     = createdByUserId,
+            CreatedAtUtc        = now,
+            UpdatedAtUtc        = now,
         };
     }
 
     public void Update(
-        string name,
-        int    displayOrder,
-        bool   isActive,
-        Guid   updatedByUserId)
+        string  name,
+        int     displayOrder,
+        bool    isActive,
+        Guid    updatedByUserId,
+        string? productSettingsJson = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        Name             = name.Trim();
-        DisplayOrder     = displayOrder;
-        IsActive         = isActive;
-        UpdatedByUserId  = updatedByUserId;
-        UpdatedAtUtc     = DateTime.UtcNow;
+        Name                = name.Trim();
+        DisplayOrder        = displayOrder;
+        IsActive            = isActive;
+        ProductSettingsJson = productSettingsJson;
+        UpdatedByUserId     = updatedByUserId;
+        UpdatedAtUtc        = DateTime.UtcNow;
     }
 
     public void Deactivate(Guid updatedByUserId)

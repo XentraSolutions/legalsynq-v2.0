@@ -672,6 +672,62 @@ public sealed class LiensTaskServiceClient : ILiensTaskServiceClient
         response.EnsureSuccessStatusCode();
     }
 
+    // ── TASK-MIG-03 — Stage config round-trip ────────────────────────────────────
+
+    public async Task<TaskServiceStageResponse?> GetStageAsync(
+        Guid tenantId,
+        Guid stageId,
+        CancellationToken ct = default)
+    {
+        var url = $"/api/tasks/stages/{stageId}";
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Add("X-Tenant-Id", tenantId.ToString());
+
+        var response = await _http.SendAsync(req, ct);
+
+        if (response.StatusCode == HttpStatusCode.NotFound ||
+            response.StatusCode == HttpStatusCode.NoContent)
+            return null;
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<TaskServiceStageResponse>(_json, ct);
+    }
+
+    public async Task<List<TaskServiceStageResponse>> GetAllStagesAsync(
+        Guid   tenantId,
+        string productCode,
+        CancellationToken ct = default)
+    {
+        var url = $"/api/tasks/stages?sourceProductCode={Uri.EscapeDataString(productCode)}";
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Add("X-Tenant-Id", tenantId.ToString());
+
+        var response = await _http.SendAsync(req, ct);
+        response.EnsureSuccessStatusCode();
+
+        var list = await response.Content
+            .ReadFromJsonAsync<List<TaskServiceStageResponse>>(_json, ct);
+        return list ?? [];
+    }
+
+    public async System.Threading.Tasks.Task UpsertStageFromSourceAsync(
+        Guid   tenantId,
+        Guid   actingUserId,
+        TaskServiceStageUpsertRequest payload,
+        CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/tasks/stages/from-source")
+        {
+            Content = JsonContent.Create(payload, options: _json),
+        };
+        req.Headers.Add("X-Tenant-Id", tenantId.ToString());
+        req.Headers.Add("X-User-Id",   actingUserId.ToString());
+
+        var response = await _http.SendAsync(req, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
     // ── Local wire types (match Task service camelCase JSON) ─────────────────────
 
     private sealed class TaskApiDto

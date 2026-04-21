@@ -160,6 +160,36 @@ public interface ILiensTaskServiceClient
         TaskServiceTemplateUpsertRequest payload,
         CancellationToken ct = default);
 
+    // ── TASK-MIG-03 — Stage config round-trip with Task service ─────────────────
+
+    /// <summary>
+    /// Fetches a single stage config from the Task service by ID.
+    /// Returns null if not found (HTTP 404).
+    /// </summary>
+    Task<TaskServiceStageResponse?> GetStageAsync(
+        Guid tenantId,
+        Guid stageId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lists all stage configs for the given tenant and product from the Task service.
+    /// Returns an empty list if none exist.
+    /// </summary>
+    Task<List<TaskServiceStageResponse>> GetAllStagesAsync(
+        Guid   tenantId,
+        string productCode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates or updates a stage config in the Task service via the from-source endpoint.
+    /// Used by LiensStageSyncService and write-through on admin saves.
+    /// </summary>
+    System.Threading.Tasks.Task UpsertStageFromSourceAsync(
+        Guid   tenantId,
+        Guid   actingUserId,
+        TaskServiceStageUpsertRequest payload,
+        CancellationToken ct = default);
+
     // ── TASK-B04-01 — Duplicate-prevention helpers for LienTaskGenerationEngine ──
 
     /// <summary>

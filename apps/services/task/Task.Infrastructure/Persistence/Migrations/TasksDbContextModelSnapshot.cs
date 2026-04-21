@@ -117,6 +117,7 @@ namespace Task.Infrastructure.Persistence.Migrations
                     b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnType("varchar(200)");
                     b.Property<int>("DisplayOrder").HasColumnType("int");
                     b.Property<bool>("IsActive").IsRequired().HasDefaultValue(true).HasColumnType("tinyint(1)");
+                    b.Property<string>("ProductSettingsJson").HasColumnType("TEXT");
                     b.Property<Guid>("CreatedByUserId").HasColumnType("char(36)");
                     b.Property<Guid?>("UpdatedByUserId").HasColumnType("char(36)");
                     b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");

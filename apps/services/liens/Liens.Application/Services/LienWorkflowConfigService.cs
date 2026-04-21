@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BuildingBlocks.Exceptions;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
@@ -12,19 +13,26 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
 {
     private const string ProductCode = "SYNQ_LIENS";
 
-    private readonly ILienWorkflowConfigRepository _repo;
-    private readonly IAuditPublisher               _audit;
+    private static readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
+
+    private readonly ILienWorkflowConfigRepository      _repo;
+    private readonly ILiensTaskServiceClient            _taskClient;
+    private readonly IAuditPublisher                    _audit;
     private readonly ILogger<LienWorkflowConfigService> _logger;
 
     public LienWorkflowConfigService(
-        ILienWorkflowConfigRepository repo,
-        IAuditPublisher audit,
+        ILienWorkflowConfigRepository      repo,
+        ILiensTaskServiceClient            taskClient,
+        IAuditPublisher                    audit,
         ILogger<LienWorkflowConfigService> logger)
     {
-        _repo   = repo;
-        _audit  = audit;
-        _logger = logger;
+        _repo       = repo;
+        _taskClient = taskClient;
+        _audit      = audit;
+        _logger     = logger;
     }
+
+    // ── GetByTenantAsync — dual-read for stages ──────────────────────────────────
 
     public async Task<WorkflowConfigResponse?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default)
     {
@@ -33,7 +41,44 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
 
         await EnsureDefaultTransitionsAsync(entity, ct);
 
-        return MapToResponse(entity);
+        // TASK-MIG-03: try to load stage list from Task service first
+        var stages = await TryLoadStagesFromTaskServiceAsync(tenantId, entity, ct);
+        return MapToResponseWithStages(entity, stages);
+    }
+
+    // ── GetStageForRuntimeAsync — dual-read for single stage ─────────────────────
+
+    public async Task<WorkflowStageResponse?> GetStageForRuntimeAsync(
+        Guid tenantId, Guid stageId, CancellationToken ct = default)
+    {
+        // 1. Try Task service
+        try
+        {
+            var dto = await _taskClient.GetStageAsync(tenantId, stageId, ct);
+            if (dto is not null)
+            {
+                _logger.LogDebug(
+                    "stage_source=task_service StageId={StageId} TenantId={TenantId}", stageId, tenantId);
+                return MapFromTaskServiceStage(dto, workflowConfigId: null);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "stage_source=task_service_error StageId={StageId} TenantId={TenantId}; falling back to Liens DB.",
+                stageId, tenantId);
+        }
+
+        // 2. Fall back to Liens DB
+        var stage = await _repo.GetStageGlobalAsync(stageId, ct);
+        if (stage is not null)
+        {
+            _logger.LogDebug(
+                "stage_source=liens_fallback StageId={StageId} TenantId={TenantId}", stageId, tenantId);
+            return MapStageToResponse(stage);
+        }
+
+        return null;
     }
 
     public async Task<WorkflowConfigResponse> CreateAsync(
@@ -74,7 +119,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityType:  "LienWorkflowConfig",
             entityId:    entity.Id.ToString());
 
-        return MapToResponse(entity);
+        return MapToResponseWithStages(entity, null);
     }
 
     public async Task<WorkflowConfigResponse> UpdateAsync(
@@ -107,7 +152,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityType:  "LienWorkflowConfig",
             entityId:    entity.Id.ToString());
 
-        return MapToResponse(entity);
+        return MapToResponseWithStages(entity, null);
     }
 
     public async Task<WorkflowConfigResponse> AddStageAsync(
@@ -137,8 +182,11 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityType:  "LienWorkflowStage",
             entityId:    stage.Id.ToString());
 
+        // TASK-MIG-03: best-effort write-through to Task service
+        await TrySyncStageToTaskServiceAsync(tenantId, actingUserId, stage, ct);
+
         var updated = await _repo.GetByIdAsync(tenantId, id, ct);
-        return MapToResponse(updated!);
+        return MapToResponseWithStages(updated!, null);
     }
 
     public async Task<WorkflowConfigResponse> UpdateStageAsync(
@@ -168,8 +216,11 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityType:  "LienWorkflowStage",
             entityId:    stage.Id.ToString());
 
+        // TASK-MIG-03: best-effort write-through to Task service
+        await TrySyncStageToTaskServiceAsync(tenantId, actingUserId, stage, ct);
+
         var updated = await _repo.GetByIdAsync(tenantId, id, ct);
-        return MapToResponse(updated!);
+        return MapToResponseWithStages(updated!, null);
     }
 
     public async Task<WorkflowConfigResponse> RemoveStageAsync(
@@ -194,14 +245,19 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityType:  "LienWorkflowStage",
             entityId:    stage.Id.ToString());
 
+        // TASK-MIG-03: best-effort write-through to Task service (stage is now inactive)
+        await TrySyncStageToTaskServiceAsync(tenantId, actingUserId, stage, ct);
+
         var updated = await _repo.GetByIdAsync(tenantId, id, ct);
-        return MapToResponse(updated!);
+        return MapToResponseWithStages(updated!, null);
     }
 
     public async Task<WorkflowConfigResponse> ReorderStagesAsync(
         Guid tenantId, Guid id, Guid actingUserId, ReorderStagesRequest request, CancellationToken ct = default)
     {
         var entity = await RequireConfig(tenantId, id, ct);
+
+        var reorderedStages = new List<LienWorkflowStage>();
 
         foreach (var entry in request.Stages)
         {
@@ -210,6 +266,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             stage.Update(stage.StageName, entry.StageOrder, stage.IsActive, actingUserId,
                 stage.Description, stage.DefaultOwnerRole, stage.SlaMetadata);
             await _repo.UpdateStageAsync(stage, ct);
+            reorderedStages.Add(stage);
         }
 
         entity.Update(entity.WorkflowName, entity.IsActive, entity.LastUpdatedSource, actingUserId, entity.LastUpdatedByName);
@@ -224,8 +281,12 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityType:  "LienWorkflowConfig",
             entityId:    entity.Id.ToString());
 
+        // TASK-MIG-03: best-effort write-through for each reordered stage
+        foreach (var stage in reorderedStages)
+            await TrySyncStageToTaskServiceAsync(tenantId, actingUserId, stage, ct);
+
         var updated = await _repo.GetByIdAsync(tenantId, id, ct);
-        return MapToResponse(updated!);
+        return MapToResponseWithStages(updated!, null);
     }
 
     // ── Transition management (LS-LIENS-FLOW-005) ─────────────────────────────
@@ -289,7 +350,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityId:    transition.Id.ToString());
 
         var updated = await _repo.GetByIdAsync(tenantId, id, ct);
-        return MapToResponse(updated!);
+        return MapToResponseWithStages(updated!, null);
     }
 
     public async Task<WorkflowConfigResponse> DeactivateTransitionAsync(
@@ -315,7 +376,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityId:    transitionId.ToString());
 
         var updated = await _repo.GetByIdAsync(tenantId, id, ct);
-        return MapToResponse(updated!);
+        return MapToResponseWithStages(updated!, null);
     }
 
     public async Task<IReadOnlyList<WorkflowTransitionResponse>> SaveTransitionsAsync(
@@ -467,8 +528,153 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             entityId:    entity.Id.ToString());
     }
 
-    private static WorkflowConfigResponse MapToResponse(LienWorkflowConfig entity)
+    // ── TASK-MIG-03 — Private helpers ────────────────────────────────────────────
+
+    /// <summary>
+    /// Attempts to load the stage list from the Task service.
+    /// On success returns the mapped WorkflowStageResponse list.
+    /// On empty result or failure returns null (caller falls back to entity.Stages).
+    /// </summary>
+    private async Task<List<WorkflowStageResponse>?> TryLoadStagesFromTaskServiceAsync(
+        Guid tenantId, LienWorkflowConfig entity, CancellationToken ct)
     {
+        try
+        {
+            var dtos = await _taskClient.GetAllStagesAsync(tenantId, ProductCode, ct);
+            if (dtos.Count == 0)
+                return null;
+
+            _logger.LogDebug(
+                "stage_list_source=task_service TenantId={TenantId} Count={Count}", tenantId, dtos.Count);
+
+            return dtos
+                .Select(d => MapFromTaskServiceStage(d, workflowConfigId: entity.Id))
+                .OrderBy(s => s.StageOrder)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "stage_list_source=task_service_error TenantId={TenantId}; falling back to Liens DB stages.",
+                tenantId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Best-effort sync of a single Liens stage to the Task service.
+    /// Failures are logged but never propagate to the caller.
+    /// </summary>
+    private async System.Threading.Tasks.Task TrySyncStageToTaskServiceAsync(
+        Guid tenantId, Guid actingUserId, LienWorkflowStage stage, CancellationToken ct)
+    {
+        try
+        {
+            var payload = BuildStageUpsertPayload(stage);
+            await _taskClient.UpsertStageFromSourceAsync(tenantId, actingUserId, payload, ct);
+            _logger.LogInformation(
+                "stage_sync=ok StageId={StageId} TenantId={TenantId}", stage.Id, tenantId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "stage_sync=failed StageId={StageId} TenantId={TenantId}; Liens DB remains authoritative.",
+                stage.Id, tenantId);
+        }
+    }
+
+    /// <summary>
+    /// Builds the Task service upsert payload from a Liens stage entity.
+    /// Serializes Liens-specific fields (Description, DefaultOwnerRole, SlaMetadata) into ProductSettingsJson.
+    /// </summary>
+    public static TaskServiceStageUpsertRequest BuildStageUpsertPayload(LienWorkflowStage stage)
+    {
+        var extensions = new LiensStageExtensions
+        {
+            Description      = stage.Description,
+            DefaultOwnerRole = stage.DefaultOwnerRole,
+            SlaMetadata      = stage.SlaMetadata,
+        };
+
+        return new TaskServiceStageUpsertRequest
+        {
+            Id                  = stage.Id,
+            SourceProductCode   = ProductCode,
+            Name                = stage.StageName,
+            DisplayOrder        = stage.StageOrder,
+            IsActive            = stage.IsActive,
+            ProductSettingsJson = JsonSerializer.Serialize(extensions, _json),
+        };
+    }
+
+    /// <summary>Maps a Task service stage response to a Liens WorkflowStageResponse.</summary>
+    private static WorkflowStageResponse MapFromTaskServiceStage(
+        TaskServiceStageResponse dto,
+        Guid? workflowConfigId)
+    {
+        var ext = DeserializeStageExtensions(dto.ProductSettingsJson);
+
+        return new WorkflowStageResponse
+        {
+            Id               = dto.Id,
+            WorkflowConfigId = workflowConfigId ?? Guid.Empty,
+            StageName        = dto.Name,
+            StageOrder       = dto.DisplayOrder,
+            Description      = ext.Description,
+            IsActive         = dto.IsActive,
+            DefaultOwnerRole = ext.DefaultOwnerRole,
+            SlaMetadata      = ext.SlaMetadata,
+            CreatedAtUtc     = dto.CreatedAtUtc,
+            UpdatedAtUtc     = dto.UpdatedAtUtc,
+        };
+    }
+
+    /// <summary>Maps a Liens stage entity to a WorkflowStageResponse.</summary>
+    private static WorkflowStageResponse MapStageToResponse(LienWorkflowStage s) => new()
+    {
+        Id               = s.Id,
+        WorkflowConfigId = s.WorkflowConfigId,
+        StageName        = s.StageName,
+        StageOrder       = s.StageOrder,
+        Description      = s.Description,
+        IsActive         = s.IsActive,
+        DefaultOwnerRole = s.DefaultOwnerRole,
+        SlaMetadata      = s.SlaMetadata,
+        CreatedAtUtc     = s.CreatedAtUtc,
+        UpdatedAtUtc     = s.UpdatedAtUtc,
+    };
+
+    private static LiensStageExtensions DeserializeStageExtensions(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return new LiensStageExtensions();
+
+        try
+        {
+            return JsonSerializer.Deserialize<LiensStageExtensions>(json, _json)
+                   ?? new LiensStageExtensions();
+        }
+        catch
+        {
+            return new LiensStageExtensions();
+        }
+    }
+
+    /// <summary>
+    /// Maps entity to WorkflowConfigResponse.
+    /// <paramref name="stages"/> overrides entity.Stages when non-null (Task-service dual-read path).
+    /// Falls back to entity.Stages when null (Liens DB fallback).
+    /// Transitions always come from entity (not yet migrated to Task service).
+    /// </summary>
+    private static WorkflowConfigResponse MapToResponseWithStages(
+        LienWorkflowConfig entity,
+        List<WorkflowStageResponse>? stages)
+    {
+        var stageList = stages ?? entity.Stages
+            .OrderBy(s => s.StageOrder)
+            .Select(MapStageToResponse)
+            .ToList();
+
         return new WorkflowConfigResponse
         {
             Id                  = entity.Id,
@@ -483,21 +689,7 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
             LastUpdatedSource   = entity.LastUpdatedSource,
             CreatedAtUtc        = entity.CreatedAtUtc,
             UpdatedAtUtc        = entity.UpdatedAtUtc,
-            Stages = entity.Stages
-                .OrderBy(s => s.StageOrder)
-                .Select(s => new WorkflowStageResponse
-                {
-                    Id               = s.Id,
-                    WorkflowConfigId = s.WorkflowConfigId,
-                    StageName        = s.StageName,
-                    StageOrder       = s.StageOrder,
-                    Description      = s.Description,
-                    IsActive         = s.IsActive,
-                    DefaultOwnerRole = s.DefaultOwnerRole,
-                    SlaMetadata      = s.SlaMetadata,
-                    CreatedAtUtc     = s.CreatedAtUtc,
-                    UpdatedAtUtc     = s.UpdatedAtUtc,
-                }).ToList(),
+            Stages = stageList,
             Transitions = entity.Transitions
                 .Where(t => t.IsActive)
                 .OrderBy(t => t.SortOrder)
@@ -515,4 +707,8 @@ public sealed class LienWorkflowConfigService : ILienWorkflowConfigService
                 }).ToList(),
         };
     }
+
+    private static WorkflowConfigResponse MapToResponse(LienWorkflowConfig entity)
+        => MapToResponseWithStages(entity, null);
 }
+

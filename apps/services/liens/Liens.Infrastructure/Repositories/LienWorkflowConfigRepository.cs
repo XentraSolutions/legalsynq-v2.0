@@ -47,6 +47,13 @@ public sealed class LienWorkflowConfigRepository : ILienWorkflowConfigRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<List<LienWorkflowConfig>> GetAllConfigsAsync(CancellationToken ct = default)
+    {
+        return await _db.LienWorkflowConfigs
+            .Include(w => w.Stages)
+            .ToListAsync(ct);
+    }
+
     public async Task AddAsync(LienWorkflowConfig entity, CancellationToken ct = default)
     {
         await _db.LienWorkflowConfigs.AddAsync(entity, ct);

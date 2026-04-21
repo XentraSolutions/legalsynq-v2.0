@@ -21,6 +21,7 @@ public sealed class LienTaskService : ILienTaskService
     private readonly IAuditPublisher                      _audit;
     private readonly INotificationPublisher               _notifications;
     private readonly ILienWorkflowConfigRepository        _workflowRepo;
+    private readonly ILienWorkflowConfigService           _workflowConfigService;
     private readonly IWorkflowTransitionValidationService _transitionValidator;
     private readonly ILienTaskGovernanceService           _governanceService;
     private readonly IFlowInstanceResolver                _flowResolver;
@@ -32,20 +33,22 @@ public sealed class LienTaskService : ILienTaskService
         IAuditPublisher                       audit,
         INotificationPublisher                notifications,
         ILienWorkflowConfigRepository         workflowRepo,
+        ILienWorkflowConfigService            workflowConfigService,
         IWorkflowTransitionValidationService  transitionValidator,
         ILienTaskGovernanceService            governanceService,
         IFlowInstanceResolver                 flowResolver,
         ILogger<LienTaskService>              logger)
     {
-        _taskClient          = taskClient;
-        _lienRepo            = lienRepo;
-        _audit               = audit;
-        _notifications       = notifications;
-        _workflowRepo        = workflowRepo;
-        _transitionValidator = transitionValidator;
-        _governanceService   = governanceService;
-        _flowResolver        = flowResolver;
-        _logger              = logger;
+        _taskClient            = taskClient;
+        _lienRepo              = lienRepo;
+        _audit                 = audit;
+        _notifications         = notifications;
+        _workflowRepo          = workflowRepo;
+        _workflowConfigService = workflowConfigService;
+        _transitionValidator   = transitionValidator;
+        _governanceService     = governanceService;
+        _flowResolver          = flowResolver;
+        _logger                = logger;
     }
 
     // ── Search ───────────────────────────────────────────────────────────────────
@@ -251,19 +254,22 @@ public sealed class LienTaskService : ILienTaskService
             && request.WorkflowStageId.HasValue
             && existing.WorkflowStageId.Value != request.WorkflowStageId.Value)
         {
-            var fromStage = await _workflowRepo.GetStageGlobalAsync(existing.WorkflowStageId.Value, ct);
-            if (fromStage is not null)
+            // TASK-MIG-03: stage lookup uses dual-read (Task service first, Liens DB fallback)
+            var fromStageResp = await _workflowConfigService.GetStageForRuntimeAsync(
+                tenantId, existing.WorkflowStageId.Value, ct);
+            if (fromStageResp is not null)
             {
                 var allowed = await _transitionValidator.IsTransitionAllowedAsync(
-                    fromStage.WorkflowConfigId,
+                    fromStageResp.WorkflowConfigId,
                     existing.WorkflowStageId.Value,
                     request.WorkflowStageId.Value, ct);
 
                 if (!allowed)
                 {
-                    var toStage  = await _workflowRepo.GetStageGlobalAsync(request.WorkflowStageId.Value, ct);
-                    var fromName = fromStage.StageName;
-                    var toName   = toStage?.StageName ?? request.WorkflowStageId.Value.ToString();
+                    var toStageResp = await _workflowConfigService.GetStageForRuntimeAsync(
+                        tenantId, request.WorkflowStageId.Value, ct);
+                    var fromName = fromStageResp.StageName;
+                    var toName   = toStageResp?.StageName ?? request.WorkflowStageId.Value.ToString();
                     throw new ValidationException("Validation failed.", new Dictionary<string, string[]>
                     {
                         ["workflowStageId"] = [
@@ -420,7 +426,9 @@ public sealed class LienTaskService : ILienTaskService
         if (governance.DefaultStartStageMode == StartStageMode.ExplicitStage
             && governance.ExplicitStartStageId.HasValue)
         {
-            var explicit_ = await _workflowRepo.GetStageGlobalAsync(governance.ExplicitStartStageId.Value, ct);
+            // TASK-MIG-03: dual-read (Task service first, Liens DB fallback)
+            var explicit_ = await _workflowConfigService.GetStageForRuntimeAsync(
+                tenantId, governance.ExplicitStartStageId.Value, ct);
             if (explicit_ is { IsActive: true })
                 return explicit_.Id;
 
@@ -429,7 +437,8 @@ public sealed class LienTaskService : ILienTaskService
                 governance.ExplicitStartStageId.Value);
         }
 
-        var config = await _workflowRepo.GetByTenantProductAsync(tenantId, LiensPermissions.ProductCode, ct);
+        // TASK-MIG-03: dual-read config (Task service stages first, Liens DB fallback)
+        var config = await _workflowConfigService.GetByTenantAsync(tenantId, ct);
         if (config is null) return null;
 
         var firstStage = config.Stages

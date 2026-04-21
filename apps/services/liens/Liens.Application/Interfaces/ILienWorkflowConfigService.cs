@@ -6,6 +6,13 @@ public interface ILienWorkflowConfigService
 {
     Task<WorkflowConfigResponse?> GetByTenantAsync(Guid tenantId, CancellationToken ct = default);
 
+    /// <summary>
+    /// TASK-MIG-03 dual-read: looks up a single stage by ID.
+    /// Tries Task service first (GET /api/tasks/stages/{stageId}); falls back to Liens DB.
+    /// Returns null if not found in either. Never throws — failures fall back silently.
+    /// </summary>
+    Task<WorkflowStageResponse?> GetStageForRuntimeAsync(Guid tenantId, Guid stageId, CancellationToken ct = default);
+
     Task<WorkflowConfigResponse> CreateAsync(Guid tenantId, Guid actingUserId, CreateWorkflowConfigRequest request, CancellationToken ct = default);
 
     Task<WorkflowConfigResponse> UpdateAsync(Guid tenantId, Guid id, Guid actingUserId, UpdateWorkflowConfigRequest request, CancellationToken ct = default);

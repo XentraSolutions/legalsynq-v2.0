@@ -10,6 +10,9 @@ public interface ILienWorkflowConfigRepository
 
     /// <summary>Look up a stage without knowing its workflow config (used for runtime task validation).</summary>
     Task<LienWorkflowStage?> GetStageGlobalAsync(Guid stageId, CancellationToken ct = default);
+
+    /// <summary>Full scan of all workflow configs across all tenants (used for startup sync).</summary>
+    Task<List<LienWorkflowConfig>> GetAllConfigsAsync(CancellationToken ct = default);
     Task AddAsync(LienWorkflowConfig entity, CancellationToken ct = default);
     Task UpdateAsync(LienWorkflowConfig entity, CancellationToken ct = default);
     Task AddStageAsync(LienWorkflowStage stage, CancellationToken ct = default);

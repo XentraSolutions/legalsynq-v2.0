@@ -48,13 +48,62 @@ public class TaskStageService : ITaskStageService
         var stage = await _stages.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Stage config {id} not found.");
 
-        stage.Update(request.Name, request.DisplayOrder, request.IsActive, userId);
+        stage.Update(request.Name, request.DisplayOrder, request.IsActive, userId, request.ProductSettingsJson);
         await _uow.SaveChangesAsync(ct);
 
         _logger.LogInformation(
             "Stage config {StageId} updated by {UserId} in tenant {TenantId}", id, userId, tenantId);
 
         return TaskStageDto.From(stage);
+    }
+
+    public async System.Threading.Tasks.Task<TaskStageDto> UpsertFromSourceAsync(
+        Guid tenantId, Guid userId, UpsertFromSourceStageRequest request, CancellationToken ct = default)
+    {
+        var productCode = KnownProductCodes.ValidateOptional(request.SourceProductCode)
+                          ?? throw new ArgumentException($"Unknown product code '{request.SourceProductCode}'.", nameof(request.SourceProductCode));
+
+        var code = request.Id.ToString("N").ToUpperInvariant();
+
+        var existing = await _stages.GetByIdAnyTenantAsync(request.Id, ct);
+
+        if (existing is null)
+        {
+            var stage = TaskStageConfig.Create(
+                tenantId:           tenantId,
+                code:               code,
+                name:               request.Name,
+                displayOrder:       request.DisplayOrder,
+                createdByUserId:    userId,
+                sourceProductCode:  productCode,
+                productSettingsJson: request.ProductSettingsJson,
+                id:                 request.Id);
+
+            await _stages.AddAsync(stage, ct);
+
+            if (!request.IsActive)
+                stage.Deactivate(userId);
+
+            await _uow.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "Stage config {StageId} ({Code}) upserted (created) for tenant {TenantId} product {Product}",
+                stage.Id, code, tenantId, productCode);
+
+            return TaskStageDto.From(stage);
+        }
+        else
+        {
+            existing.Update(request.Name, request.DisplayOrder, request.IsActive, userId, request.ProductSettingsJson);
+            await _stages.UpdateAsync(existing, ct);
+            await _uow.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "Stage config {StageId} ({Code}) upserted (updated) for tenant {TenantId} product {Product}",
+                existing.Id, code, tenantId, productCode);
+
+            return TaskStageDto.From(existing);
+        }
     }
 
     public async System.Threading.Tasks.Task<IReadOnlyList<TaskStageDto>> ListAsync(

@@ -14,6 +14,11 @@ public class TaskStageRepository : ITaskStageRepository
         => await _db.StageConfigs
             .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == id, ct);
 
+    public async System.Threading.Tasks.Task<TaskStageConfig?> GetByIdAnyTenantAsync(
+        Guid id, CancellationToken ct = default)
+        => await _db.StageConfigs
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+
     public async System.Threading.Tasks.Task<IReadOnlyList<TaskStageConfig>> GetByTenantAsync(
         Guid tenantId, string? sourceProductCode = null, bool activeOnly = true, CancellationToken ct = default)
     {
@@ -31,4 +36,11 @@ public class TaskStageRepository : ITaskStageRepository
     public async System.Threading.Tasks.Task AddAsync(
         TaskStageConfig stage, CancellationToken ct = default)
         => await _db.StageConfigs.AddAsync(stage, ct);
+
+    public System.Threading.Tasks.Task UpdateAsync(
+        TaskStageConfig stage, CancellationToken ct = default)
+    {
+        _db.StageConfigs.Update(stage);
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
 }
