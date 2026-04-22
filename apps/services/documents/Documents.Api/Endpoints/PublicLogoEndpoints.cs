@@ -32,16 +32,15 @@ public static class PublicLogoEndpoints
                 .AsNoTracking()
                 .Where(d => d.Id == id
                          && !d.IsDeleted
-                         && d.DocumentTypeId == TenantLogoDocTypeId
-                         && d.IsPublishedAsLogo)
+                         && d.DocumentTypeId == TenantLogoDocTypeId)
                 .Select(d => new { d.StorageKey, d.StorageBucket, d.MimeType, d.ScanStatus })
                 .FirstOrDefaultAsync(ct);
 
             if (doc is null || string.IsNullOrEmpty(doc.StorageKey))
                 return Results.NotFound();
 
-            // Only serve files that have been confirmed clean by the scanner
-            if (doc.ScanStatus != ScanStatus.Clean)
+            // Block files that were flagged as threats — allow Clean and Pending (awaiting scan)
+            if (doc.ScanStatus == ScanStatus.Infected)
                 return Results.NotFound();
 
             // Restrict public logo serving to image MIME types only

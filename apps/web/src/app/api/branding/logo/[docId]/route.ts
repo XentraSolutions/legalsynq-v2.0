@@ -1,49 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 
 const DOCS_URL = 'http://127.0.0.1:5006';
 
+/**
+ * GET /api/branding/logo/[docId]
+ *
+ * Proxies a tenant logo from the Documents service.
+ * Logos are public-facing so we use the public endpoint directly —
+ * this avoids the S3 presigned-URL + Authorization-header conflict
+ * that occurs when following a 302 redirect with auth headers.
+ */
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ docId: string }> },
 ) {
   const { docId } = await params;
 
-  const jar   = await cookies();
-  const token = jar.get('platform_session')?.value;
-
-  if (token) {
-    try {
-      const res = await fetch(`${DOCS_URL}/documents/${docId}/content`, {
-        headers: { Authorization: `Bearer ${token}` },
-        redirect: 'follow',
-      });
-
-      if (res.ok) {
-        const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
-        const buffer      = await res.arrayBuffer();
-        return new NextResponse(buffer, {
-          status:  200,
-          headers: {
-            'Content-Type':  contentType,
-            'Cache-Control': 'private, max-age=3600',
-          },
-        });
-      }
-
-      if (res.status === 401 || res.status === 403) {
-        return new NextResponse(null, { status: res.status });
-      }
-    } catch {
-      // Network/redirect failure — fall through to public endpoint
-    }
-  }
-
   try {
-    const pubRes = await fetch(`${DOCS_URL}/public/logo/${docId}`);
-    if (pubRes.ok) {
-      const contentType = pubRes.headers.get('content-type') ?? 'image/png';
-      const buffer      = await pubRes.arrayBuffer();
+    const res = await fetch(`${DOCS_URL}/public/logo/${docId}`, {
+      redirect: 'follow',
+    });
+
+    if (res.ok) {
+      const contentType = res.headers.get('content-type') ?? 'image/png';
+      const buffer      = await res.arrayBuffer();
       return new NextResponse(buffer, {
         status:  200,
         headers: {
@@ -53,7 +33,7 @@ export async function GET(
       });
     }
   } catch {
-    // ignore
+    // fall through to 404
   }
 
   return new NextResponse(null, { status: 404 });
