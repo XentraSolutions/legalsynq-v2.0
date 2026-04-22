@@ -27,6 +27,7 @@ build_project apps/services/liens/Liens.Api/Liens.Api.csproj
 build_project apps/services/identity/Identity.Api/Identity.Api.csproj
 build_project apps/services/documents/Documents.Api/Documents.Api.csproj
 build_project apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj
+build_project apps/services/notifications/Notifications.Api/Notifications.Api.csproj
 build_project apps/gateway/Gateway.Api/Gateway.Api.csproj
 
 echo "=== Post-merge setup complete ==="
