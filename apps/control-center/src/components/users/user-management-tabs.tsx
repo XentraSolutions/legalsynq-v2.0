@@ -59,10 +59,10 @@ export function UserManagementTabs({
   const baseHref = search ? `?search=${encodeURIComponent(search)}&` : '?';
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0 overflow-x-hidden">
 
       {/* ── Sub-tab nav ────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-0 border-b border-gray-200 -mb-2">
+      <div className="flex items-center gap-0 border-b border-gray-200">
         <SubTabButton id="users"       label="Users"       count={totalCount} active={tab === 'users'}       onClick={() => setTab('users')} />
         <SubTabButton id="groups"      label="Groups"                         active={tab === 'groups'}      onClick={() => setTab('groups')} />
         <SubTabButton id="permissions" label="Permissions"                    active={tab === 'permissions'} onClick={() => setTab('permissions')} />
@@ -73,16 +73,16 @@ export function UserManagementTabs({
         <div className="space-y-4">
 
           {/* Controls */}
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <form method="GET" className="flex items-center gap-2">
-              <div className="relative">
+          <div className="flex items-center justify-between gap-4 flex-wrap min-w-0">
+            <form method="GET" className="flex items-center gap-2 min-w-0">
+              <div className="relative min-w-0">
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 <input
                   type="text"
                   name="search"
                   defaultValue={search}
                   placeholder="Search by name, email or role…"
-                  className="pl-8 pr-3 py-1.5 w-full sm:w-72 text-sm border border-gray-200 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400"
+                  className="pl-8 pr-3 py-1.5 w-52 max-w-full text-sm border border-gray-200 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400"
                 />
               </div>
               <button

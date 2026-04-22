@@ -33,7 +33,7 @@ export function TenantNavTabs({
   return (
     <div className="flex items-center gap-0 border-b border-gray-200">
       <Tab href={overviewHref}      label="Overview"       active={isOverview} />
-      <Tab href={usersHref}         label="Users"          active={isUsers} />
+      <Tab href={usersHref}         label="User Management" active={isUsers} />
       <Tab href={notificationsHref} label="Notifications"  active={isNotifications} />
       <Tab href={activityHref}      label="User Activity"  active={isActivity} />
     </div>
