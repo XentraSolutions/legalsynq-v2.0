@@ -1,9 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 import type { AttachmentSummary } from '@/types/careconnect';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const FILTER_BAR_THRESHOLD = 5;
+
+type ScopeFilter = 'All' | 'Shared' | 'Private';
+type SortOrder  = 'newest' | 'oldest';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -53,6 +60,73 @@ function ViewButton({ onView, loading, error }: ViewButtonProps) {
   );
 }
 
+// ── Filter bar ────────────────────────────────────────────────────────────────
+
+interface FilterBarProps {
+  search:    string;
+  onSearch:  (v: string) => void;
+  scope:     ScopeFilter;
+  onScope:   (v: ScopeFilter) => void;
+  sortOrder: SortOrder;
+  onSort:    (v: SortOrder) => void;
+  hasScopes: boolean;
+}
+
+function FilterBar({
+  search, onSearch,
+  scope, onScope,
+  sortOrder, onSort,
+  hasScopes,
+}: FilterBarProps) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-4 p-2 bg-gray-50 border border-gray-200 rounded-md">
+      {/* Search input */}
+      <div className="relative flex-1 min-w-[140px]">
+        <svg
+          className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5 pointer-events-none"
+          fill="none" stroke="currentColor" strokeWidth={2}
+          viewBox="0 0 24 24" aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <path d="M21 21l-4.35-4.35" strokeLinecap="round" />
+        </svg>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+          placeholder="Search by filename…"
+          className="w-full pl-7 pr-2 py-1 text-xs rounded border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
+        />
+      </div>
+
+      {/* Scope filter — only shown when at least one attachment has a scope */}
+      {hasScopes && (
+        <select
+          value={scope}
+          onChange={(e) => onScope(e.target.value as ScopeFilter)}
+          className="text-xs rounded border border-gray-200 bg-white px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400"
+          aria-label="Filter by scope"
+        >
+          <option value="All">All scopes</option>
+          <option value="Shared">Shared</option>
+          <option value="Private">Private</option>
+        </select>
+      )}
+
+      {/* Sort order */}
+      <select
+        value={sortOrder}
+        onChange={(e) => onSort(e.target.value as SortOrder)}
+        className="text-xs rounded border border-gray-200 bg-white px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400"
+        aria-label="Sort by date"
+      >
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+      </select>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function AttachmentPanel({ entityType, entityId }: AttachmentPanelProps) {
@@ -65,6 +139,11 @@ export function AttachmentPanel({ entityType, entityId }: AttachmentPanelProps) 
   const [viewState, setViewState] = useState<
     Record<string, { loading: boolean; error: string | null }>
   >({});
+
+  // Filter / search state
+  const [search,    setSearch]    = useState('');
+  const [scope,     setScope]     = useState<ScopeFilter>('All');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -136,7 +215,6 @@ export function AttachmentPanel({ entityType, entityId }: AttachmentPanelProps) 
       );
     } finally {
       setUploading(false);
-      // Reset the input so the same file can be re-uploaded after an error
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
@@ -151,7 +229,6 @@ export function AttachmentPanel({ entityType, entityId }: AttachmentPanelProps) 
 
     try {
       const { data } = await apiGetSignedUrl(attachmentId);
-      // Open in a new tab — do not persist the URL in state
       window.open(data.url, '_blank', 'noopener,noreferrer');
       setViewState((prev) => ({
         ...prev,
@@ -173,6 +250,48 @@ export function AttachmentPanel({ entityType, entityId }: AttachmentPanelProps) 
       }));
     }
   }
+
+  // ── Reset filter state when the entity changes ─────────────────────────────
+
+  useEffect(() => {
+    setSearch('');
+    setScope('All');
+    setSortOrder('newest');
+  }, [entityType, entityId]);
+
+  // ── Derived values ──────────────────────────────────────────────────────────
+
+  const showFilterBar = attachments.length >= FILTER_BAR_THRESHOLD;
+  const hasScopes     = attachments.some((a) => a.scope != null);
+
+  const visibleAttachments = useMemo(() => {
+    let result = [...attachments];
+
+    // Filename search
+    const term = search.trim().toLowerCase();
+    if (term) {
+      result = result.filter((a) =>
+        a.fileName.toLowerCase().includes(term),
+      );
+    }
+
+    // Scope filter — only applied when at least one attachment has a scope,
+    // preventing stale scope state from hiding documents when scopes disappear.
+    if (hasScopes && scope !== 'All') {
+      result = result.filter((a) =>
+        a.scope?.toLowerCase() === scope.toLowerCase(),
+      );
+    }
+
+    // Sort by upload date
+    result.sort((a, b) => {
+      const diff =
+        new Date(a.createdAtUtc).getTime() - new Date(b.createdAtUtc).getTime();
+      return sortOrder === 'newest' ? -diff : diff;
+    });
+
+    return result;
+  }, [attachments, search, scope, sortOrder]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -220,12 +339,24 @@ export function AttachmentPanel({ entityType, entityId }: AttachmentPanelProps) 
         </div>
       )}
 
+      {/* Search / filter bar — only shown when there are 5+ documents */}
+      {showFilterBar && (
+        <FilterBar
+          search={search}     onSearch={setSearch}
+          scope={scope}       onScope={setScope}
+          sortOrder={sortOrder} onSort={setSortOrder}
+          hasScopes={hasScopes}
+        />
+      )}
+
       {/* Attachment list */}
       {attachments.length === 0 && !loadError ? (
         <p className="text-sm text-gray-400 italic">No documents uploaded yet.</p>
+      ) : visibleAttachments.length === 0 ? (
+        <p className="text-sm text-gray-400 italic">No documents match your search.</p>
       ) : (
         <ul className="divide-y divide-gray-100">
-          {attachments.map((a) => {
+          {visibleAttachments.map((a) => {
             const vs = viewState[a.id] ?? { loading: false, error: null };
             return (
               <li
@@ -236,6 +367,18 @@ export function AttachmentPanel({ entityType, entityId }: AttachmentPanelProps) 
                   <p className="text-sm font-medium text-gray-800 truncate">{a.fileName}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {formatBytes(a.fileSizeBytes)} · {formatDate(a.createdAtUtc)}
+                    {a.scope && (
+                      <span
+                        className={[
+                          'ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium',
+                          a.scope.toLowerCase() === 'private'
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-blue-50 text-blue-700',
+                        ].join(' ')}
+                      >
+                        {a.scope}
+                      </span>
+                    )}
                     {a.notes && ` · ${a.notes}`}
                   </p>
                 </div>

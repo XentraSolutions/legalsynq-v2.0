@@ -310,6 +310,8 @@ export interface AttachmentSummary {
   contentType:             string;
   fileSizeBytes:           number;
   status:                  string;
+  /** Visibility scope: 'Shared' | 'Private' (optional — omitted means unscoped) */
+  scope?:                  string;
   notes?:                  string;
   externalDocumentId?:     string;
   externalStorageProvider?: string;
