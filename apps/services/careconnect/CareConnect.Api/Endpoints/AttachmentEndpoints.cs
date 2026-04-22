@@ -1,14 +1,44 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
+using CareConnect.Api.Options;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace CareConnect.Api.Endpoints;
 
 public static class AttachmentEndpoints
 {
+    /// <summary>
+    /// Validates file size and content type against configured limits.
+    /// Returns a 400 BadRequest result when validation fails, or null when the file is acceptable.
+    /// </summary>
+    private static IResult? ValidateUpload(IFormFile file, AttachmentUploadOptions options)
+    {
+        if (file.Length > options.MaxFileSizeBytes)
+        {
+            var limitMb = options.MaxFileSizeBytes / (1024 * 1024);
+            return Results.BadRequest(new
+            {
+                error = $"File size {file.Length:N0} bytes exceeds the maximum allowed size of {limitMb} MB ({options.MaxFileSizeBytes:N0} bytes)."
+            });
+        }
+
+        var normalizedContentType = file.ContentType?.Split(';')[0].Trim().ToLowerInvariant() ?? string.Empty;
+        if (!options.AllowedContentTypes.Contains(normalizedContentType, StringComparer.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new
+            {
+                error   = $"Content type '{file.ContentType}' is not permitted.",
+                allowed = options.AllowedContentTypes
+            });
+        }
+
+        return null;
+    }
+
     public static void MapAttachmentEndpoints(this WebApplication app)
     {
         // ── Referral attachments ──────────────────────────────────────────────
@@ -46,6 +76,7 @@ public static class AttachmentEndpoints
             HttpRequest httpRequest,
             IReferralAttachmentService service,
             ICurrentRequestContext ctx,
+            IOptions<AttachmentUploadOptions> uploadOptions,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
@@ -57,9 +88,14 @@ public static class AttachmentEndpoints
             if (form.Files.Count == 0)
                 return Results.BadRequest(new { error = "No file was provided." });
 
-            var file         = form.Files[0];
-            var scope        = form["scope"].FirstOrDefault() ?? AttachmentScope.Shared;
-            var notes        = form["notes"].FirstOrDefault();
+            var file    = form.Files[0];
+            var options = uploadOptions.Value;
+
+            var validationError = ValidateUpload(file, options);
+            if (validationError is not null) return validationError;
+
+            var scope         = form["scope"].FirstOrDefault() ?? AttachmentScope.Shared;
+            var notes         = form["notes"].FirstOrDefault();
             var uploadRequest = new UploadAttachmentRequest { Scope = scope, Notes = notes };
 
             await using var stream = file.OpenReadStream();
@@ -152,6 +188,7 @@ public static class AttachmentEndpoints
             HttpRequest httpRequest,
             IAppointmentAttachmentService service,
             ICurrentRequestContext ctx,
+            IOptions<AttachmentUploadOptions> uploadOptions,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
@@ -163,7 +200,12 @@ public static class AttachmentEndpoints
             if (form.Files.Count == 0)
                 return Results.BadRequest(new { error = "No file was provided." });
 
-            var file          = form.Files[0];
+            var file    = form.Files[0];
+            var options = uploadOptions.Value;
+
+            var validationError = ValidateUpload(file, options);
+            if (validationError is not null) return validationError;
+
             var notes         = form["notes"].FirstOrDefault();
             var scope         = form["scope"].FirstOrDefault() ?? AttachmentScope.Shared;
             var uploadRequest = new UploadAttachmentRequest { Scope = scope, Notes = notes };

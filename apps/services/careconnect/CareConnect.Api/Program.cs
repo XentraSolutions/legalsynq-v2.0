@@ -5,9 +5,11 @@ using BuildingBlocks.Context;
 using BuildingBlocks.FlowClient;
 using CareConnect.Api.Endpoints;
 using CareConnect.Api.Middleware;
+using CareConnect.Api.Options;
 using CareConnect.Infrastructure;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -59,6 +61,37 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddInfrastructure(builder.Configuration);
 // LS-FLOW-MERGE-P4 — shared Flow HTTP adapter (bearer pass-through, retry, 503 mapping).
 builder.Services.AddFlowClient(builder.Configuration, serviceName: "careconnect");
+
+// Upload validation limits — bound from "AttachmentUpload" section of appsettings.json.
+builder.Services.Configure<AttachmentUploadOptions>(
+    builder.Configuration.GetSection(AttachmentUploadOptions.SectionName));
+
+// Set Kestrel's request body size limit and ASP.NET's multipart body length limit
+// well above the configured upload ceiling so that oversized-but-realistic uploads
+// always reach our handler and receive a custom 400 error, rather than being cut
+// off by the framework with a bare 413/400.  The application-level check in
+// AttachmentEndpoints is the authoritative gate.
+// A hard backstop of 512 MB still protects against truly absurd payloads.
+{
+    var uploadSection = builder.Configuration.GetSection(AttachmentUploadOptions.SectionName);
+    var configuredMax = uploadSection.GetValue<long?>("MaxFileSizeBytes")
+                        ?? new AttachmentUploadOptions().MaxFileSizeBytes;
+    const long backstopBytes = 512L * 1024 * 1024;
+    var effectiveLimit = Math.Max(configuredMax * 10, backstopBytes);
+
+    builder.WebHost.ConfigureKestrel(kestrel =>
+    {
+        kestrel.Limits.MaxRequestBodySize = effectiveLimit;
+    });
+
+    // ASP.NET Core's multipart parser enforces its own separate length limit
+    // (default ~128 MB). Align it with the same backstop so it doesn't reject
+    // uploads before endpoint code can return a meaningful error.
+    builder.Services.Configure<FormOptions>(form =>
+    {
+        form.MultipartBodyLengthLimit = effectiveLimit;
+    });
+}
 
 // Request context
 builder.Services.AddHttpContextAccessor();
