@@ -36,8 +36,25 @@ public sealed class NotificationsServiceOptions
     ///
     /// Leave empty if email delivery is not yet configured; the admin-reset-
     /// password endpoint will use the environment-gated token fallback instead.
+    ///
+    /// When <see cref="PortalBaseDomain"/> is also set, it takes precedence over
+    /// this value for tenant-subdomain URL construction.
     /// </summary>
     public string? PortalBaseUrl { get; set; }
+
+    /// <summary>
+    /// LS-ID-TNT-016-01: Base domain for tenant-subdomain portal URLs in user-management emails.
+    ///
+    /// When set, all user-management email links are generated as:
+    ///   https://{tenantSubdomain}.{PortalBaseDomain}/{path}?token=...
+    ///
+    /// Example: "demo.legalsynq.com" → "https://acme.demo.legalsynq.com/accept-invite?token=..."
+    ///
+    /// When empty or unset, the legacy <see cref="PortalBaseUrl"/> value is used instead.
+    /// Set this in production to the same base domain used for tenant subdomains (Route53.BaseDomain).
+    /// Leave empty in development to continue using PortalBaseUrl (localhost).
+    /// </summary>
+    public string? PortalBaseDomain { get; set; }
 }
 
 /// <summary>

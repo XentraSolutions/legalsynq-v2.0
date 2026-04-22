@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Identity.Api.Helpers;
 using Identity.Application;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
@@ -675,17 +676,19 @@ public static class AuthEndpoints
             // ── Deliver the raw token out-of-band via email ───────────────────
             // The raw token is NEVER returned in any API response. It is only
             // usable by the account owner who receives the email.
-            var portalBase = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
-            if (string.IsNullOrWhiteSpace(portalBase))
+            // LS-ID-TNT-016-01: Build tenant-subdomain-aware reset link.
+            // tenant is already resolved earlier in this handler (via tenantCode lookup).
+            var resetLink = TenantPortalUrlHelper.Build(tenant, "reset-password", rawToken, notifOptions.Value);
+            if (resetLink is null)
             {
                 logger.LogError(
-                    "[forgot-password] NotificationsService:PortalBaseUrl is not configured. " +
-                    "Reset email for user {UserId} ({Email}) cannot be sent.",
+                    "[forgot-password] Neither PortalBaseDomain nor PortalBaseUrl is configured. " +
+                    "Reset email for user {UserId} ({Email}) cannot be sent. " +
+                    "Set NotificationsService:PortalBaseDomain (or PortalBaseUrl) in configuration.",
                     user.Id, user.Email);
             }
             else
             {
-                var resetLink    = $"{portalBase}/reset-password?token={Uri.EscapeDataString(rawToken)}";
                 var displayName  = !string.IsNullOrWhiteSpace(user.FirstName)
                     ? $"{user.FirstName} {user.LastName}".Trim()
                     : user.Email;

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using BuildingBlocks.Authorization.Filters;
 using PermCodes = BuildingBlocks.Authorization.PermissionCodes;
+using Identity.Api.Helpers;
 using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
@@ -2043,13 +2044,11 @@ public static class AdminEndpoints
             Tags = ["user-management", "security", "password-reset"],
         });
 
-        // LS-ID-TNT-006: Attempt email delivery via notifications service when configured.
-        // The reset link is built from PortalBaseUrl (co-located in NotificationsServiceOptions)
-        // using the same token encoding as the self-service forgot-password BFF route.
-        var portalBaseUrl = notificationsOptions.Value.PortalBaseUrl?.TrimEnd('/');
-        if (!string.IsNullOrWhiteSpace(portalBaseUrl))
+        // LS-ID-TNT-016-01: Build tenant-subdomain-aware reset link.
+        var resetTenant = await db.Tenants.FindAsync([user.TenantId], ct);
+        var resetLink   = TenantPortalUrlHelper.Build(resetTenant, "reset-password", rawToken, notificationsOptions.Value);
+        if (resetLink is not null)
         {
-            var resetLink   = $"{portalBaseUrl}/reset-password?token={Uri.EscapeDataString(rawToken)}";
             var displayName = $"{user.FirstName} {user.LastName}".Trim();
             if (string.IsNullOrWhiteSpace(displayName)) displayName = user.Email;
 
@@ -3933,24 +3932,23 @@ public static class AdminEndpoints
             Tags = ["user-management", "invite"],
         });
 
-        // LS-ID-TNT-007: Send invitation email when PortalBaseUrl is configured.
+        // LS-ID-TNT-016-01: Build tenant-subdomain-aware activation link.
+        // tenant is already resolved above (FindAsync on body.TenantId).
         var logger         = loggerFactory.CreateLogger("AdminEndpoints.InviteUser");
-        var portalBase     = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
+        var activationLink = TenantPortalUrlHelper.Build(tenant, "accept-invite", rawToken, notifOptions.Value);
 
-        if (string.IsNullOrWhiteSpace(portalBase))
+        if (activationLink is null)
         {
             logger.LogError(
-                "[LS-ID-TNT-007] PortalBaseUrl is not configured. " +
+                "[LS-ID-TNT-016-01] Neither PortalBaseDomain nor PortalBaseUrl is configured. " +
                 "Invitation email for user {UserId} ({Email}, tenant={TenantId}) cannot be sent. " +
-                "Set NotificationsService:PortalBaseUrl in configuration.",
+                "Set NotificationsService:PortalBaseDomain (or PortalBaseUrl) in configuration.",
                 user.Id, emailLower, body.TenantId);
             return Results.Problem(
-                "User created but invitation email could not be sent: PortalBaseUrl is not configured. " +
-                "Configure NotificationsService:PortalBaseUrl so invitation links can be generated.",
+                "User created but invitation email could not be sent: portal URL is not configured. " +
+                "Configure NotificationsService:PortalBaseDomain so invitation links can be generated.",
                 statusCode: 503);
         }
-
-        var activationLink = $"{portalBase}/accept-invite?token={Uri.EscapeDataString(rawToken)}";
         var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();
 
         var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
@@ -4042,24 +4040,23 @@ public static class AdminEndpoints
             Tags = ["user-management", "invite"],
         });
 
-        // LS-ID-TNT-007: Send invitation email when PortalBaseUrl is configured.
-        var logger     = loggerFactory.CreateLogger("AdminEndpoints.ResendInvite");
-        var portalBase = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
+        // LS-ID-TNT-016-01: Build tenant-subdomain-aware activation link.
+        var logger        = loggerFactory.CreateLogger("AdminEndpoints.ResendInvite");
+        var inviteTenant  = await db.Tenants.FindAsync([user.TenantId], ct);
+        var activationLink = TenantPortalUrlHelper.Build(inviteTenant, "accept-invite", rawToken, notifOptions.Value);
 
-        if (string.IsNullOrWhiteSpace(portalBase))
+        if (activationLink is null)
         {
             logger.LogError(
-                "[LS-ID-TNT-007] PortalBaseUrl is not configured. " +
+                "[LS-ID-TNT-016-01] Neither PortalBaseDomain nor PortalBaseUrl is configured. " +
                 "Resend-invite email for user {UserId} ({Email}, tenant={TenantId}) cannot be sent. " +
-                "Set NotificationsService:PortalBaseUrl in configuration.",
+                "Set NotificationsService:PortalBaseDomain (or PortalBaseUrl) in configuration.",
                 id, user.Email, user.TenantId);
             return Results.Problem(
-                "Invitation refreshed but email could not be sent: PortalBaseUrl is not configured. " +
-                "Configure NotificationsService:PortalBaseUrl so invitation links can be generated.",
+                "Invitation refreshed but email could not be sent: portal URL is not configured. " +
+                "Configure NotificationsService:PortalBaseDomain so invitation links can be generated.",
                 statusCode: 503);
         }
-
-        var activationLink = $"{portalBase}/accept-invite?token={Uri.EscapeDataString(rawToken)}";
         var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();
 
         var (emailConfigured, emailSuccess, emailError) = await emailClient.SendInviteEmailAsync(
@@ -5978,12 +5975,12 @@ public static partial class AdminEndpointsLscc010
             Tags           = ["user-management", "provider", "autoprovision"],
         });
 
-        // Best-effort invitation email
-        var invitationSent = false;
-        var portalBase     = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
-        if (!string.IsNullOrWhiteSpace(portalBase))
+        // Best-effort invitation email — LS-ID-TNT-016-01: tenant-subdomain-aware link.
+        var invitationSent  = false;
+        var providerTenant  = await db.Tenants.FindAsync([org.TenantId], ct);
+        var activationLink  = TenantPortalUrlHelper.Build(providerTenant, "accept-invite", rawToken, notifOptions.Value);
+        if (activationLink is not null)
         {
-            var activationLink  = $"{portalBase}/accept-invite?token={Uri.EscapeDataString(rawToken)}";
             var displayName     = $"{user.FirstName} {user.LastName}".Trim();
             var (_, emailOk, _) = await emailClient.SendInviteEmailAsync(
                 emailLower, displayName, activationLink, org.TenantId, ct);
@@ -5996,7 +5993,7 @@ public static partial class AdminEndpointsLscc010
         else
         {
             logger.LogWarning(
-                "LSCC-010 ProvisionProviderUser: NotificationsService:PortalBaseUrl not set — " +
+                "LSCC-010 ProvisionProviderUser: PortalBaseDomain/PortalBaseUrl not configured — " +
                 "invitation link cannot be generated for user {UserId} ({Email}).",
                 user.Id, emailLower);
         }
