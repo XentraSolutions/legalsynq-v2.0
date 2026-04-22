@@ -554,6 +554,7 @@ export interface ProviderSearchResult {
   npi?:              string;
   isActive:          boolean;
   acceptingReferrals: boolean;
+  accessStage:       string;
 }
 
 /** Body for POST /api/networks/{id}/providers — match-or-create */
@@ -583,6 +584,14 @@ export interface NetworkSummary {
   updatedAtUtc:  string;
 }
 
+// CC2-INT-B06-02: Provider access-stage constants (mirrors ProviderAccessStage domain constants)
+export const ProviderAccessStage = {
+  Url:          'URL',
+  CommonPortal: 'COMMON_PORTAL',
+  Tenant:       'TENANT',
+} as const;
+export type ProviderAccessStageValue = typeof ProviderAccessStage[keyof typeof ProviderAccessStage];
+
 export interface NetworkProviderItem {
   id:                string;
   name:              string;
@@ -593,6 +602,7 @@ export interface NetworkProviderItem {
   state:             string;
   isActive:          boolean;
   acceptingReferrals: boolean;
+  accessStage:       string;
 }
 
 export interface NetworkDetail {

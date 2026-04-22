@@ -53,6 +53,19 @@ public class ProviderConfiguration : IEntityTypeConfiguration<Provider>
         builder.HasIndex(p => p.Npi)
             .HasDatabaseName("IX_Providers_Npi");
 
+        // CC2-INT-B06-02: Access-stage lifecycle fields
+        builder.Property(p => p.AccessStage)
+            .IsRequired()
+            .HasMaxLength(20)
+            .HasDefaultValue("URL");
+        builder.Property(p => p.IdentityUserId);
+        builder.Property(p => p.CommonPortalActivatedAtUtc);
+        builder.Property(p => p.TenantProvisionedAtUtc);
+        builder.HasIndex(p => p.AccessStage)
+            .HasDatabaseName("IX_Providers_AccessStage");
+        builder.HasIndex(p => p.IdentityUserId)
+            .HasDatabaseName("IX_Providers_IdentityUserId");
+
         builder.HasIndex(p => new { p.TenantId, p.Email }).IsUnique();
         builder.HasIndex(p => new { p.TenantId, p.Name });
         builder.HasIndex(p => new { p.TenantId, p.City, p.State });

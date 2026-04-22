@@ -57,3 +57,40 @@ export function UrgencyBadge({ urgency }: { urgency: string }) {
     </span>
   );
 }
+
+// ── CC2-INT-B06-02: Provider access-stage badge ───────────────────────────────
+
+const ACCESS_STAGE_CONFIG: Record<string, { label: string; style: string; title: string }> = {
+  URL: {
+    label: 'URL Only',
+    style: 'bg-gray-50 text-gray-500 border-gray-200',
+    title: 'Receives referrals via signed token URL only. No portal access.',
+  },
+  COMMON_PORTAL: {
+    label: 'Common Portal',
+    style: 'bg-blue-50 text-blue-700 border-blue-200',
+    title: 'Has an Identity account and can log in to the shared provider portal.',
+  },
+  TENANT: {
+    label: 'Tenant',
+    style: 'bg-purple-50 text-purple-700 border-purple-200',
+    title: 'Fully provisioned as a LegalSynq tenant with their own portal.',
+  },
+};
+
+export function AccessStageBadge({ stage }: { stage: string }) {
+  const cfg = ACCESS_STAGE_CONFIG[stage] ?? {
+    label: stage,
+    style: 'bg-gray-50 text-gray-400 border-gray-200',
+    title: 'Unknown access stage.',
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${cfg.style}`}
+      title={cfg.title}
+    >
+      {cfg.label}
+    </span>
+  );
+}

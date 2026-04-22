@@ -323,7 +323,12 @@ public class ProviderService : IProviderService
             HasGeoLocation   = p.Latitude.HasValue && p.Longitude.HasValue,
             PrimaryCategory  = primary,
             DisplayLabel     = label,
-            MarkerSubtitle   = subtitle
+            MarkerSubtitle   = subtitle,
+            // CC2-INT-B06-02
+            AccessStage                = p.AccessStage,
+            IdentityUserId             = p.IdentityUserId,
+            CommonPortalActivatedAtUtc = p.CommonPortalActivatedAtUtc,
+            TenantProvisionedAtUtc     = p.TenantProvisionedAtUtc,
         };
     }
 

@@ -31,7 +31,8 @@ public sealed record NetworkProviderItem(
     string City,
     string State,
     bool   IsActive,
-    bool   AcceptingReferrals);
+    bool   AcceptingReferrals,
+    string AccessStage);
 
 // ── Map markers ───────────────────────────────────────────────────────────────
 
@@ -66,7 +67,8 @@ public sealed record ProviderSearchResult(
     string  PostalCode,
     string? Npi,
     bool    IsActive,
-    bool    AcceptingReferrals);
+    bool    AcceptingReferrals,
+    string  AccessStage);
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 

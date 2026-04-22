@@ -266,11 +266,12 @@ public class NetworkService : INetworkService
             n.UpdatedAtUtc);
 
     private static NetworkProviderItem ToProviderItem(Provider p) =>
-        new(p.Id, p.Name, p.OrganizationName, p.Email, p.Phone, p.City, p.State, p.IsActive, p.AcceptingReferrals);
+        new(p.Id, p.Name, p.OrganizationName, p.Email, p.Phone, p.City, p.State,
+            p.IsActive, p.AcceptingReferrals, p.AccessStage);
 
     private static ProviderSearchResult ToSearchResult(Provider p) =>
         new(p.Id, p.Name, p.OrganizationName, p.Email, p.Phone, p.City, p.State,
-            p.AddressLine1, p.PostalCode, p.Npi, p.IsActive, p.AcceptingReferrals);
+            p.AddressLine1, p.PostalCode, p.Npi, p.IsActive, p.AcceptingReferrals, p.AccessStage);
 
     // ── Validation ────────────────────────────────────────────────────────────
 

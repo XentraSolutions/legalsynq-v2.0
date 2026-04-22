@@ -32,4 +32,10 @@ public class ProviderResponse
     public string?   PrimaryCategory  { get; set; }
     public string    DisplayLabel     { get; set; } = string.Empty;
     public string    MarkerSubtitle   { get; set; } = string.Empty;
+
+    // CC2-INT-B06-02: Provider access-stage lifecycle
+    public string    AccessStage                  { get; set; } = "URL";
+    public Guid?     IdentityUserId               { get; set; }
+    public DateTime? CommonPortalActivatedAtUtc   { get; set; }
+    public DateTime? TenantProvisionedAtUtc       { get; set; }
 }

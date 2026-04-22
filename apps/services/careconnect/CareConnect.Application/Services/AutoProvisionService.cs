@@ -164,8 +164,29 @@ public class AutoProvisionService : IAutoProvisionService
         // Non-fatal: if the invitation call fails, the provider org is already linked
         // and the activation request will still exist in the LSCC-009 queue. A platform
         // admin can resend the invitation from Identity. We never block the provision.
-        var (invitationSent, userAlreadyExisted) = await TryInviteProviderUserAsync(
+        var (invitationSent, userAlreadyExisted, identityUserId) = await TryInviteProviderUserAsync(
             orgId.Value, requesterEmail, requesterName, ct);
+
+        // CC2-INT-B06-02: Transition to COMMON_PORTAL stage.
+        // EF identity resolution means `provider` is the same tracked entity that
+        // LinkOrganizationAsync already updated — so OrganizationId is already set on it.
+        // MarkCommonPortalActivated is idempotent (won't downgrade from TENANT).
+        try
+        {
+            provider.MarkCommonPortalActivated(identityUserId);
+            await _providers.UpdateAsync(provider, ct);
+            _logger.LogInformation(
+                "CC2-INT-B06-02 Provider {ProviderId} transitioned to COMMON_PORTAL stage. IdentityUserId={IdentityUserId}.",
+                provider.Id, identityUserId);
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal — the provider is already linked. Stage will remain URL until next
+            // successful provisioning attempt, but the admin can update it manually.
+            _logger.LogWarning(ex,
+                "CC2-INT-B06-02 Failed to set COMMON_PORTAL stage for provider {ProviderId}. Non-fatal — provision continues.",
+                provider.Id);
+        }
 
         // Step 7: Approve/upsert the LSCC-009 activation request
         try
@@ -218,9 +239,10 @@ public class AutoProvisionService : IAutoProvisionService
     /// CC2-INT-B04 Token → Identity Bridge.
     /// Attempts to create an Identity user for the activating person and send an invitation.
     /// Always returns without throwing — failure is non-fatal to the provision flow.
-    /// Returns (invitationSent, userAlreadyExisted).
+    /// Returns (invitationSent, userAlreadyExisted, identityUserId).
+    /// identityUserId is non-null on success — used by CC2-INT-B06-02 to set IdentityUserId on Provider.
     /// </summary>
-    private async Task<(bool invitationSent, bool userAlreadyExisted)> TryInviteProviderUserAsync(
+    private async Task<(bool invitationSent, bool userAlreadyExisted, Guid? identityUserId)> TryInviteProviderUserAsync(
         Guid              orgId,
         string?           email,
         string?           requesterName,
@@ -230,7 +252,7 @@ public class AutoProvisionService : IAutoProvisionService
         {
             _logger.LogDebug(
                 "CC2-INT-B04 Skipping user invitation for org {OrgId}: no requester email provided.", orgId);
-            return (false, false);
+            return (false, false, null);
         }
 
         try
@@ -246,15 +268,15 @@ public class AutoProvisionService : IAutoProvisionService
             }
 
             var result = await _identityOrgs.InviteProviderUserAsync(orgId, email, firstName, lastName, ct);
-            if (result is null) return (false, false);
+            if (result is null) return (false, false, null);
 
-            return (result.InvitationSent, !result.IsNew);
+            return (result.InvitationSent, !result.IsNew, result.UserId);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
                 "CC2-INT-B04 User invitation failed for org {OrgId} — non-fatal, provision continues.", orgId);
-            return (false, false);
+            return (false, false, null);
         }
     }
 
