@@ -103,6 +103,9 @@ public static class DependencyInjection
         services.AddScoped<IIdentityOrganizationService, HttpIdentityOrganizationService>();
         services.AddScoped<IAutoProvisionService, AutoProvisionService>();
 
+        // CC2-INT-B09: Provider tenant self-onboarding
+        services.AddScoped<IProviderOnboardingService, ProviderOnboardingService>();
+
         // LSCC-011: Activation funnel analytics
         services.AddScoped<IActivationFunnelAnalyticsService, ActivationFunnelAnalyticsService>();
 

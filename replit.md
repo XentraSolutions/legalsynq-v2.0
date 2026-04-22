@@ -5807,3 +5807,47 @@ delete tenant-scoped networks and manage their provider membership.
 
 ### Report
 `analysis/CC2-INT-B06-report.md`
+
+---
+
+## CC2-INT-B09 — Provider Tenant Self-Onboarding (2026-04-22)
+
+Enables COMMON_PORTAL providers to self-provision their own tenant workspace. After onboarding the provider logs into their dedicated tenant subdomain with CareConnect available. No duplicate Identity user or provider record is created.
+
+### Identity Service (`apps/services/identity`)
+- `GET /api/admin/tenants/check-code` — checks tenant code/subdomain availability
+- `POST /api/admin/tenants/self-provision` — creates new Tenant + PROVIDER org for existing user, deactivates old org memberships, updates `User.TenantId` via `ExecuteUpdateAsync`, creates TenantAdmin role + SYNQ_CARECONNECT product, triggers DNS
+
+### CareConnect Service (`apps/services/careconnect`)
+
+**Application layer:**
+- `IIdentityOrganizationService` (consolidated single interface) — added `CheckTenantCodeAvailableAsync` + `SelfProvisionProviderTenantAsync`
+- `TenantCodeCheckResult`, `SelfProvisionTenantResult` — new result types
+- `IProviderOnboardingService` + `ProviderOnboardingException` + error code enum
+- `ProviderOnboardingService` — orchestrates COMMON_PORTAL → TENANT transition (validate stage → call Identity → `provider.MarkTenantProvisioned` → persist)
+- `IProviderRepository.GetByIdentityUserIdAsync` — cross-tenant provider lookup by Identity user ID
+- `ProviderOnboardingDtos` — `ProviderOnboardingRequest/Response`, `TenantCodeAvailabilityResponse`
+
+**Infrastructure layer:**
+- `ProviderRepository.GetByIdentityUserIdAsync` — EF Core implementation
+- `HttpIdentityOrganizationService` — implements two new interface methods + private `BuildIdentityClient()` helper; new `CheckCodeResponse` + `SelfProvisionResponse` private models
+
+**API layer:**
+- `ProviderOnboardingEndpoints.cs` — `GET /api/provider/onboarding/status`, `GET /api/provider/onboarding/check-code`, `POST /api/provider/onboarding/provision-tenant` (all `RequireAuthorization`)
+- Registered via `app.MapProviderOnboardingEndpoints()` in `Program.cs`
+- DI: `services.AddScoped<IProviderOnboardingService, ProviderOnboardingService>()` in `DependencyInjection.cs`
+
+### Frontend (apps/web)
+- `careConnectServerApi.onboarding.getStatus()` — server-side status check
+- `careConnectApi.onboarding.{checkCode, provisionTenant}` — client-side API calls
+- `/provider/dashboard` — `OnboardingCtaBanner` shown when `canOnboard=true`; status fetched in parallel with referrals via `Promise.allSettled`
+- `/provider/onboarding` — client-side multi-step form: live code availability check (on blur), validation, provisioning spinner, success screen with portal URL link
+
+### Key Design Decisions
+- No new Identity user created — existing user's TenantId is updated server-side
+- `GetByIdentityUserIdAsync` is cross-tenant (no tenantId filter) — needed at COMMON_PORTAL stage when the user's TenantId is still COMMON_PORTAL
+- Dashboard CTA silently omitted if status endpoint returns 404 (non-provider users, law firms)
+- `ProviderOnboardingException` carries typed error codes so endpoints can map to correct HTTP status codes (404/422/409/503)
+
+### Report
+`analysis/CC2-INT-B09-report.md`

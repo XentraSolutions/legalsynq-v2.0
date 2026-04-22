@@ -24,4 +24,11 @@ public interface IProviderRepository
     Task<List<Provider>> GetUnlinkedAsync(Guid tenantId, CancellationToken ct = default);
 
     Task<Provider?> GetByOrganizationIdAsync(Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// CC2-INT-B09: Looks up a provider by their Identity user ID (sub claim).
+    /// Cross-tenant — used during provider self-onboarding to find the provider record
+    /// for the authenticated COMMON_PORTAL user without knowing the tenantId.
+    /// </summary>
+    Task<Provider?> GetByIdentityUserIdAsync(Guid identityUserId, CancellationToken ct = default);
 }

@@ -12,6 +12,37 @@ import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import type { ReferralSummary } from '@/types/careconnect';
 
+// ── Onboarding CTA banner (COMMON_PORTAL stage) ───────────────────────────────
+
+function OnboardingCtaBanner() {
+  return (
+    <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4 flex items-start gap-4">
+      <div className="mt-0.5 flex-shrink-0 w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center">
+        <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-indigo-900">Set up your dedicated workspace</p>
+        <p className="text-sm text-indigo-700 mt-0.5">
+          Create your own secure tenant portal with CareConnect, custom subdomain, and team management.
+        </p>
+      </div>
+      <Link
+        href="/provider/onboarding"
+        className="flex-shrink-0 self-center inline-flex items-center gap-1.5 px-4 py-2 rounded-lg
+                   bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors"
+      >
+        Get started
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </Link>
+    </div>
+  );
+}
+
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<string, string> = {
@@ -119,11 +150,18 @@ export default async function ProviderDashboardPage() {
 
   let referrals: ReferralSummary[] = [];
   let fetchError: string | null = null;
+  let showOnboardingCta = false;
 
-  try {
-    const result = await careConnectServerApi.referrals.search({ pageSize: 100 });
-    referrals = result.items ?? [];
-  } catch (err) {
+  // Fetch referrals and onboarding status in parallel.
+  const [referralsResult, onboardingStatus] = await Promise.allSettled([
+    careConnectServerApi.referrals.search({ pageSize: 100 }),
+    careConnectServerApi.onboarding.getStatus(),
+  ]);
+
+  if (referralsResult.status === 'fulfilled') {
+    referrals = referralsResult.value.items ?? [];
+  } else {
+    const err = referralsResult.reason;
     if (err instanceof ServerApiError) {
       fetchError = err.isForbidden
         ? 'You do not have access to this data. Please contact your administrator.'
@@ -133,8 +171,16 @@ export default async function ProviderDashboardPage() {
     }
   }
 
+  if (onboardingStatus.status === 'fulfilled') {
+    showOnboardingCta = onboardingStatus.value.canOnboard === true;
+  }
+  // If onboarding status fails (e.g. not a provider with a record), silently omit CTA.
+
   return (
     <div className="space-y-5">
+      {/* Workspace setup CTA — shown to COMMON_PORTAL stage providers only */}
+      {showOnboardingCta && <OnboardingCtaBanner />}
+
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>

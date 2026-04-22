@@ -238,4 +238,31 @@ export const careConnectApi = {
     getMarkers: (id: string) =>
       apiClient.get<NetworkProviderMarker[]>(`/careconnect/api/networks/${id}/providers/markers`),
   },
+
+  // CC2-INT-B09: Provider tenant self-onboarding
+  onboarding: {
+    /**
+     * GET /api/provider/onboarding/check-code?code=xxx
+     * Checks whether the given tenant code is available.
+     */
+    checkCode: (code: string) =>
+      apiClient.get<{ available: boolean; normalizedCode: string; message?: string }>(
+        `/careconnect/api/provider/onboarding/check-code?code=${encodeURIComponent(code)}`,
+      ),
+
+    /**
+     * POST /api/provider/onboarding/provision-tenant
+     * Transitions the authenticated COMMON_PORTAL provider to TENANT stage.
+     */
+    provisionTenant: (body: { tenantName: string; tenantCode: string }) =>
+      apiClient.post<{
+        providerId:         string;
+        tenantId:           string;
+        tenantCode:         string;
+        subdomain:          string;
+        provisioningStatus: string;
+        portalUrl:          string | null;
+        message:            string;
+      }>(`/careconnect/api/provider/onboarding/provision-tenant`, body),
+  },
 };

@@ -29,9 +29,11 @@ public static class AdminEndpoints
     public static IEndpointRouteBuilder MapAdminEndpoints(this IEndpointRouteBuilder routes)
     {
         // ── Tenants ──────────────────────────────────────────────────────────
-        routes.MapGet("/api/admin/tenants",           ListTenants);
-        routes.MapPost("/api/admin/tenants",          CreateTenant);
-        routes.MapGet("/api/admin/tenants/{id:guid}", GetTenant);
+        routes.MapGet("/api/admin/tenants",                      ListTenants);
+        routes.MapPost("/api/admin/tenants",                     CreateTenant);
+        routes.MapGet("/api/admin/tenants/check-code",           CheckTenantCode);        // CC2-INT-B09
+        routes.MapPost("/api/admin/tenants/self-provision",      SelfProvisionTenant);    // CC2-INT-B09
+        routes.MapGet("/api/admin/tenants/{id:guid}",            GetTenant);
         routes.MapPost("/api/admin/tenants/{id:guid}/entitlements/{productCode}", UpdateEntitlement);
         routes.MapPatch("/api/admin/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings);
         routes.MapPatch("/api/admin/tenants/{id:guid}/logo",             SetTenantLogo);
@@ -582,6 +584,193 @@ public static class AdminEndpoints
                     enabled     = p.Enabled,
                     orgProductsCreated = p.OrganizationProductsCreated,
                 }).ToList(),
+            });
+    }
+
+    // ── CC2-INT-B09: Provider tenant code availability check ──────────────────
+    /// <summary>
+    /// GET /api/admin/tenants/check-code?code=xxx
+    ///
+    /// Returns whether the normalised tenant code is available for use.
+    /// Called by CareConnect during provider self-onboarding subdomain validation.
+    /// </summary>
+    private static async Task<IResult> CheckTenantCode(
+        string            code,
+        IdentityDbContext db,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return Results.BadRequest(new { error = "code query parameter is required." });
+
+        var normalized = SlugGenerator.Normalize(code);
+        var (valid, validationError) = SlugGenerator.Validate(normalized);
+
+        if (!valid)
+            return Results.Ok(new
+            {
+                available     = false,
+                normalizedCode = normalized,
+                message       = validationError,
+            });
+
+        var taken = await db.Tenants.AnyAsync(t => t.Code == normalized, ct);
+        return Results.Ok(new
+        {
+            available      = !taken,
+            normalizedCode = normalized,
+            message        = taken ? $"The subdomain '{normalized}' is already taken." : null as string,
+        });
+    }
+
+    // ── CC2-INT-B09: Provider tenant self-provisioning ─────────────────────────
+    /// <summary>
+    /// POST /api/admin/tenants/self-provision
+    ///
+    /// Creates a brand-new tenant + PROVIDER org for an EXISTING Identity user
+    /// (identified by ownerUserId) WITHOUT creating a duplicate user record.
+    ///
+    /// Used by CareConnect to promote a COMMON_PORTAL provider to TENANT stage:
+    ///  1. Tenant + org are created.
+    ///  2. Existing user's TenantId is updated to the new tenant (enables login).
+    ///  3. Old org memberships for that user are deactivated.
+    ///  4. New UserOrganizationMembership (Admin) is created for the new org.
+    ///  5. TenantAdmin ScopedRoleAssignment is created for the new tenant.
+    ///  6. SYNQ_CARECONNECT product is provisioned.
+    ///  7. Subdomain DNS provisioning is triggered.
+    /// </summary>
+    private static async Task<IResult> SelfProvisionTenant(
+        SelfProvisionTenantRequest       body,
+        IdentityDbContext                db,
+        IProductProvisioningService      productProvisioningEngine,
+        ITenantProvisioningService       provisioningService,
+        IAuditEventClient                auditClient,
+        ILoggerFactory                   loggerFactory,
+        CancellationToken                ct)
+    {
+        var log = loggerFactory.CreateLogger("Identity.Api.SelfProvisionTenant");
+
+        // ── Input validation ──────────────────────────────────────────────────
+        if (string.IsNullOrWhiteSpace(body.TenantName))
+            return Results.BadRequest(new { error = "tenantName is required." });
+
+        if (string.IsNullOrWhiteSpace(body.TenantCode))
+            return Results.BadRequest(new { error = "tenantCode is required." });
+
+        if (body.OwnerUserId == Guid.Empty)
+            return Results.BadRequest(new { error = "ownerUserId is required." });
+
+        var code = SlugGenerator.Normalize(body.TenantCode);
+        var (slugValid, slugError) = SlugGenerator.Validate(code);
+        if (!slugValid)
+            return Results.BadRequest(new { error = slugError });
+
+        // ── Code uniqueness ───────────────────────────────────────────────────
+        var codeExists = await db.Tenants.AnyAsync(t => t.Code == code, ct);
+        if (codeExists)
+            return Results.Conflict(new { error = $"The subdomain '{code}' is already taken." });
+
+        // ── Load existing Identity user ───────────────────────────────────────
+        var user = await db.Users.FindAsync([body.OwnerUserId], ct);
+        if (user is null)
+            return Results.NotFound(new { error = $"Identity user {body.OwnerUserId} not found." });
+
+        if (!user.IsActive)
+            return Results.UnprocessableEntity(new { error = "The Identity user account is not active." });
+
+        // ── Find TenantAdmin role ─────────────────────────────────────────────
+        var tenantAdminRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "TenantAdmin", ct);
+        if (tenantAdminRole is null)
+            return Results.Problem("TenantAdmin role not found.", statusCode: 500);
+
+        // ── Create Tenant + PROVIDER Org ──────────────────────────────────────
+        var tenant = Tenant.Create(body.TenantName.Trim(), code);
+        db.Tenants.Add(tenant);
+
+        var providerOrgTypeId = new Guid("70000000-0000-0000-0000-000000000003"); // PROVIDER
+        var org = Organization.Create(
+            tenantId:           tenant.Id,
+            name:               body.TenantName.Trim(),
+            organizationTypeId: providerOrgTypeId,
+            displayName:        body.TenantName.Trim());
+        db.Organizations.Add(org);
+
+        // ── Deactivate old org memberships so the new one becomes primary ─────
+        // GetPrimaryOrgMembershipAsync orders by JoinedAtUtc ASC; deactivating
+        // old memberships ensures the new tenant's org is returned as primary.
+        await db.UserOrganizationMemberships
+            .Where(m => m.UserId == body.OwnerUserId && m.IsActive)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.IsActive, false), ct);
+
+        // ── Create new membership + admin role in new tenant ──────────────────
+        var membership = UserOrganizationMembership.Create(
+            userId:         body.OwnerUserId,
+            organizationId: org.Id,
+            memberRole:     MemberRole.Admin);
+        db.UserOrganizationMemberships.Add(membership);
+
+        var sra = ScopedRoleAssignment.Create(
+            userId:    body.OwnerUserId,
+            roleId:    tenantAdminRole.Id,
+            scopeType: ScopedRoleAssignment.ScopeTypes.Global,
+            tenantId:  tenant.Id);
+        db.ScopedRoleAssignments.Add(sra);
+
+        await db.SaveChangesAsync(ct);
+
+        // ── Move user to new tenant (enables login at new subdomain) ──────────
+        // EF Core ExecuteUpdateAsync works even with private setters (SQL-only update).
+        await db.Users
+            .Where(u => u.Id == body.OwnerUserId)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.TenantId, tenant.Id), ct);
+
+        // ── Provision subdomain (DNS + TenantDomain record) ───────────────────
+        var provResult = await provisioningService.ProvisionAsync(tenant, ct);
+        if (provResult.Success)
+            log.LogInformation("CC2-INT-B09 Subdomain provisioned: {Code} → {Hostname}", code, provResult.Hostname);
+        else
+            log.LogWarning("CC2-INT-B09 Subdomain provisioning queued/failed for {Code}: {Err}", code, provResult.ErrorMessage);
+
+        // ── Provision SYNQ_CARECONNECT product for the new tenant ─────────────
+        try
+        {
+            await productProvisioningEngine.ProvisionAsync(
+                new ProvisionProductRequest(tenant.Id, "SYNQ_CARECONNECT", true), ct);
+            log.LogInformation("CC2-INT-B09 SYNQ_CARECONNECT entitlement added to tenant {TenantId}", tenant.Id);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "CC2-INT-B09 SYNQ_CARECONNECT provisioning failed for tenant {TenantId} (non-fatal)", tenant.Id);
+        }
+
+        // ── Audit ─────────────────────────────────────────────────────────────
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.provider.tenant.self-provisioned",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Platform },
+            Actor         = new AuditEventActorDto { Type = ActorType.User, Id = body.OwnerUserId.ToString() },
+            Entity        = new AuditEventEntityDto { Type = "Tenant", Id = tenant.Id.ToString() },
+            Action        = "ProviderTenantSelfProvisioned",
+            Description   = $"Provider user {body.OwnerUserId} self-provisioned tenant '{code}' ('{body.TenantName}').",
+            After         = JsonSerializer.Serialize(new { tenantId = tenant.Id, code, subdomain = tenant.Subdomain, ownerUserId = body.OwnerUserId }),
+            IdempotencyKey = IdempotencyKey.For("identity-service", "careconnect.provider.tenant.self-provisioned", tenant.Id.ToString()),
+            Tags = ["careconnect", "provider-onboarding", "tenant-self-provision"],
+        });
+
+        return Results.Created(
+            $"/api/admin/tenants/{tenant.Id}",
+            new
+            {
+                tenantId           = tenant.Id,
+                tenantCode         = tenant.Code,
+                subdomain          = tenant.Subdomain,
+                provisioningStatus = tenant.ProvisioningStatus.ToString(),
+                hostname           = provResult.Hostname,
             });
     }
 
@@ -4974,6 +5163,12 @@ public static class AdminEndpoints
         string? OrgType = null,
         string? PreferredSubdomain = null,
         List<string>? Products = null);
+
+    // CC2-INT-B09: self-provision for existing Identity user (no duplicate user created)
+    private record SelfProvisionTenantRequest(
+        Guid   OwnerUserId,
+        string TenantName,
+        string TenantCode);
     private record InfraSubdomainRequest(string Subdomain);
     private record SetPasswordRequest(string NewPassword);
     private record EntitlementRequest(bool Enabled);

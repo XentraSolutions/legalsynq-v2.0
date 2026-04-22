@@ -161,6 +161,15 @@ export const careConnectServerApi = {
       ),
   },
 
+  // CC2-INT-B09: Provider tenant self-onboarding (server-side)
+  onboarding: {
+    /** GET /api/provider/onboarding/status — check if authenticated provider can self-onboard */
+    getStatus: () =>
+      serverApi.get<{ providerId: string; accessStage: string; canOnboard: boolean }>(
+        `/careconnect/api/provider/onboarding/status`,
+      ),
+  },
+
   // CC2-INT-B06: Provider networks (server-side data fetching for RSC pages)
   networks: {
     /** GET /api/networks — list tenant networks */

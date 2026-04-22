@@ -174,4 +174,11 @@ public class ProviderRepository : IProviderRepository
         return await _db.Providers
             .FirstOrDefaultAsync(p => p.OrganizationId == organizationId, ct);
     }
+
+    /// <inheritdoc />
+    public async Task<Provider?> GetByIdentityUserIdAsync(Guid identityUserId, CancellationToken ct = default)
+    {
+        return await _db.Providers
+            .FirstOrDefaultAsync(p => p.IdentityUserId == identityUserId, ct);
+    }
 }

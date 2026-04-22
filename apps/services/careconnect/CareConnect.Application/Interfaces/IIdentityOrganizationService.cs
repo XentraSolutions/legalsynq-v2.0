@@ -1,16 +1,15 @@
-// LSCC-010 / CC2-INT-B04: Cross-service calls to the Identity service for provider provisioning.
-// CareConnect calls these during auto-provisioning to:
-//   1. Create/resolve the Identity Organization linked to the provider record.
-//   2. Create an Identity user + send an invitation email to the activating person.
+// LSCC-010 / CC2-INT-B04 / CC2-INT-B09: Cross-service calls to the Identity service.
+// CareConnect calls these during provider auto-provisioning and self-onboarding.
 namespace CareConnect.Application.Interfaces;
 
 /// <summary>
 /// Thin cross-service abstraction over Identity service endpoints used during
-/// provider auto-provisioning. Returns null on any failure — all failures trigger
-/// LSCC-009 queue fallback (for org creation) or are non-fatal warnings (for user invitation).
+/// provider auto-provisioning and tenant self-provisioning.
 /// </summary>
 public interface IIdentityOrganizationService
 {
+    // ── LSCC-010: Provider org creation ──────────────────────────────────────
+
     /// <summary>
     /// Creates or resolves a minimal PROVIDER Organization in the Identity service
     /// for the given CareConnect provider.
@@ -27,9 +26,9 @@ public interface IIdentityOrganizationService
         string            providerName,
         CancellationToken ct = default);
 
+    // ── CC2-INT-B04: Token → Identity Bridge — user invitation ───────────────
+
     /// <summary>
-    /// CC2-INT-B04 — Token → Identity Bridge.
-    ///
     /// Creates an inactive Identity user under the given org's tenant and sends
     /// them an invitation email so they can set a password and log in.
     ///
@@ -37,9 +36,7 @@ public interface IIdentityOrganizationService
     /// the existing user record is returned and no duplicate is created.
     ///
     /// Returns a result on success (isNew=true for new users, false for existing).
-    /// Returns null on any failure — the caller logs a warning but does NOT fail the
-    /// overall provision flow. The provider org link is already established at this
-    /// point, so losing the invitation is recoverable (admin can resend from Identity).
+    /// Returns null on any failure — non-fatal; provider org link is already established.
     /// </summary>
     Task<ProvisionProviderUserResult?> InviteProviderUserAsync(
         Guid              orgId,
@@ -47,15 +44,58 @@ public interface IIdentityOrganizationService
         string            firstName,
         string?           lastName,
         CancellationToken ct = default);
+
+    // ── CC2-INT-B09: Provider tenant self-provisioning ───────────────────────
+
+    /// <summary>
+    /// Checks whether a tenant code/subdomain is available for self-provisioning.
+    ///
+    /// Returns null on any failure — callers should treat null as "unknown availability,
+    /// proceed cautiously" (the provision step will still enforce uniqueness).
+    /// </summary>
+    Task<TenantCodeCheckResult?> CheckTenantCodeAvailableAsync(
+        string            code,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Self-provisions a new tenant for an existing Identity user
+    /// identified by <paramref name="ownerUserId"/>.
+    ///
+    /// NO new Identity user is created. The existing user's home TenantId is updated
+    /// to the new tenant so they can log in at the new subdomain.
+    ///
+    /// Returns the provisioning result on success, null on any failure (caller should
+    /// surface an error to the provider — this is NOT a silent fallback).
+    /// </summary>
+    Task<SelfProvisionTenantResult?> SelfProvisionProviderTenantAsync(
+        Guid              ownerUserId,
+        string            tenantName,
+        string            tenantCode,
+        CancellationToken ct = default);
 }
 
-/// <summary>
-/// Result of a successful call to IIdentityOrganizationService.InviteProviderUserAsync.
-/// </summary>
+// ── Result types ──────────────────────────────────────────────────────────────
+
 public sealed class ProvisionProviderUserResult
 {
     public Guid  UserId         { get; init; }
     public Guid? InvitationId   { get; init; }
     public bool  IsNew          { get; init; }
     public bool  InvitationSent { get; init; }
+}
+
+public sealed class TenantCodeCheckResult
+{
+    public bool    Available      { get; init; }
+    public string  NormalizedCode { get; init; } = string.Empty;
+    public string? Message        { get; init; }
+}
+
+public sealed class SelfProvisionTenantResult
+{
+    public Guid   TenantId           { get; init; }
+    public string TenantCode         { get; init; } = string.Empty;
+    public string Subdomain          { get; init; } = string.Empty;
+    public string ProvisioningStatus { get; init; } = string.Empty;
+    public string? Hostname          { get; init; }
 }
