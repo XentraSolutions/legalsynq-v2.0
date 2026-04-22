@@ -77,7 +77,11 @@ export default async function AppointmentDetailPage({ params }: AppointmentDetai
 
       {/* Documents — CC2-INT-B03 */}
       {appointment && (
-        <AttachmentPanel entityType="appointment" entityId={appointment.id} />
+        <AttachmentPanel
+          entityType="appointment"
+          entityId={appointment.id}
+          canUpload={session.isPlatformAdmin || session.isTenantAdmin}
+        />
       )}
 
       {/* Confirm / NoShow / Reschedule actions */}

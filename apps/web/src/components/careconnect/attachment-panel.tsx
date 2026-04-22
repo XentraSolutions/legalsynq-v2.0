@@ -17,6 +17,7 @@ type SortOrder  = 'newest' | 'oldest';
 interface AttachmentPanelProps {
   entityType: 'referral' | 'appointment';
   entityId:   string;
+  canUpload?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -129,7 +130,7 @@ function FilterBar({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function AttachmentPanel({ entityType, entityId }: AttachmentPanelProps) {
+export function AttachmentPanel({ entityType, entityId, canUpload = false }: AttachmentPanelProps) {
   const [attachments, setAttachments]     = useState<AttachmentSummary[]>([]);
   const [loadError,   setLoadError]       = useState<string | null>(null);
   const [uploading,   setUploading]       = useState(false);
@@ -208,11 +209,13 @@ export function AttachmentPanel({ entityType, entityId }: AttachmentPanelProps) 
       const { data: created } = await apiUpload(file);
       setAttachments((prev) => [...prev, created]);
     } catch (err) {
-      setUploadError(
-        err instanceof ApiError
+      const message =
+        err instanceof ApiError && err.isForbidden
+          ? 'You don\'t have permission to upload documents.'
+          : err instanceof ApiError
           ? err.message
-          : 'Upload failed. Please try again.',
-      );
+          : 'Upload failed. Please try again.';
+      setUploadError(message);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -302,27 +305,37 @@ export function AttachmentPanel({ entityType, entityId }: AttachmentPanelProps) 
           Documents
         </h3>
 
-        {/* Upload trigger */}
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="sr-only"
-            id={`attachment-upload-${entityId}`}
-            onChange={handleFileChange}
-            disabled={uploading}
-          />
-          <label
-            htmlFor={`attachment-upload-${entityId}`}
-            className={[
-              'inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded',
-              'bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer',
-              uploading ? 'opacity-50 pointer-events-none' : '',
-            ].join(' ')}
+        {/* Upload trigger — admins only */}
+        {canUpload ? (
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="sr-only"
+              id={`attachment-upload-${entityId}`}
+              onChange={handleFileChange}
+              disabled={uploading}
+            />
+            <label
+              htmlFor={`attachment-upload-${entityId}`}
+              className={[
+                'inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded',
+                'bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors cursor-pointer',
+                uploading ? 'opacity-50 pointer-events-none' : '',
+              ].join(' ')}
+            >
+              {uploading ? 'Uploading…' : '+ Upload'}
+            </label>
+          </div>
+        ) : (
+          <span
+            title="You don't have permission to upload documents"
+            className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded bg-gray-50 text-gray-400 cursor-not-allowed select-none"
+            aria-disabled="true"
           >
-            {uploading ? 'Uploading…' : '+ Upload'}
-          </label>
-        </div>
+            + Upload
+          </span>
+        )}
       </div>
 
       {/* Upload error */}

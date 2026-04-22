@@ -104,7 +104,11 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
           <ReferralDetailPanel referral={referral} hideHeader />
 
           {/* 3b. Documents — CC2-INT-B03 */}
-          <AttachmentPanel entityType="referral" entityId={referral.id} />
+          <AttachmentPanel
+            entityType="referral"
+            entityId={referral.id}
+            canUpload={session.isPlatformAdmin || session.isTenantAdmin}
+          />
 
           {/* 4. Delivery / access controls — referrers only */}
           {isReferrerOfReferral && <ReferralDeliveryCard referral={referral} />}
