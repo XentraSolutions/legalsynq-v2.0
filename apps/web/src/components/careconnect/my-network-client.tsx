@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
 import { careConnectApi }    from '@/lib/careconnect-api';
 import { AccessStageBadge }  from '@/components/careconnect/status-badge';
 import type {
@@ -8,6 +9,14 @@ import type {
   NetworkProviderItem,
   ProviderSearchResult,
 } from '@/types/careconnect';
+
+interface AddressSuggestion {
+  displayName:  string;
+  addressLine1: string;
+  city:         string;
+  state:        string;
+  postalCode:   string;
+}
 
 interface MyNetworkClientProps {
   initialNetwork: NetworkDetail | null;
@@ -42,6 +51,12 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
   const [networkUrl,   setNetworkUrl]   = useState<string>('');
   const [urlCopied,    setUrlCopied]    = useState(false);
 
+  // Address autocomplete state
+  const [addrSuggestions, setAddrSuggestions] = useState<AddressSuggestion[]>([]);
+  const [addrLoading,     setAddrLoading]     = useState(false);
+  const [addrOpen,        setAddrOpen]        = useState(false);
+  const addrDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     setNetworkUrl(window.location.origin + '/careconnect/network');
   }, []);
@@ -55,9 +70,9 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
         name: 'My Preferred Providers',
         description: 'Our preferred provider network.',
       });
-      // Reload network detail via getById — use search API to get full detail
+      // Reload network detail via getById
       const detailRes = await fetch(
-        `/api/careconnect/networks/${data.id}`,
+        `/api/careconnect/api/networks/${data.id}`,
         { credentials: 'include' },
       );
       if (detailRes.ok) {
@@ -91,6 +106,43 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     } catch {
       showToast('Could not copy URL. Please copy it manually.');
     }
+  }
+
+  // ── Address autocomplete ──────────────────────────────────────────────────
+
+  function handleAddressChange(value: string) {
+    setNewForm(f => ({ ...f, addressLine1: value }));
+    if (addrDebounce.current) clearTimeout(addrDebounce.current);
+    if (value.trim().length < 3) {
+      setAddrSuggestions([]);
+      setAddrOpen(false);
+      return;
+    }
+    addrDebounce.current = setTimeout(async () => {
+      setAddrLoading(true);
+      try {
+        const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}`, { credentials: 'include' });
+        if (res.ok) {
+          const suggestions: AddressSuggestion[] = await res.json();
+          setAddrSuggestions(suggestions);
+          setAddrOpen(suggestions.length > 0);
+        }
+      } catch { /* silently ignore */ } finally {
+        setAddrLoading(false);
+      }
+    }, 300);
+  }
+
+  function selectAddress(s: AddressSuggestion) {
+    setNewForm(f => ({
+      ...f,
+      addressLine1: s.addressLine1,
+      city:         s.city,
+      state:        s.state,
+      postalCode:   s.postalCode,
+    }));
+    setAddrSuggestions([]);
+    setAddrOpen(false);
   }
 
   // ── Add panel open/close ──────────────────────────────────────────────────
@@ -619,15 +671,37 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                       className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                     />
                   </div>
-                  <div>
+                  <div className="relative">
                     <label className="block text-xs font-medium text-gray-600 mb-1">Address *</label>
-                    <input
-                      required
-                      value={newForm.addressLine1}
-                      onChange={e => setNewForm(f => ({ ...f, addressLine1: e.target.value }))}
-                      placeholder="123 Main St"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
+                    <div className="relative">
+                      <input
+                        required
+                        autoComplete="off"
+                        value={newForm.addressLine1}
+                        onChange={e => handleAddressChange(e.target.value)}
+                        onFocus={() => addrSuggestions.length > 0 && setAddrOpen(true)}
+                        onBlur={() => setTimeout(() => setAddrOpen(false), 150)}
+                        placeholder="123 Main St"
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none pr-7"
+                      />
+                      {addrLoading && (
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                      )}
+                    </div>
+                    {addrOpen && addrSuggestions.length > 0 && (
+                      <ul className="absolute z-50 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg text-sm overflow-hidden">
+                        {addrSuggestions.map((s, i) => (
+                          <li
+                            key={i}
+                            onMouseDown={() => selectAddress(s)}
+                            className="flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-0"
+                          >
+                            <i className="ri-map-pin-line text-gray-400 mt-0.5 shrink-0" />
+                            <span className="text-gray-700">{s.displayName}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">City *</label>

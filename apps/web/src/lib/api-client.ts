@@ -81,7 +81,14 @@ async function request<T>(
     return { data: undefined as T, correlationId, status: res.status };
   }
 
-  const data: T = await res.json();
+  // Guard against non-JSON 2xx responses (e.g. YARP gateway HTML error pages)
+  // that would otherwise surface a raw SyntaxError to the caller.
+  let data: T;
+  try {
+    data = await res.json();
+  } catch {
+    throw new ApiError(res.status, 'Unexpected server response. Please try again.', correlationId);
+  }
   return { data, correlationId, status: res.status };
 }
 
