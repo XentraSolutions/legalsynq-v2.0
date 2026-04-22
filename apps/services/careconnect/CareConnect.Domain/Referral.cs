@@ -223,4 +223,18 @@ public class Referral : AuditableEntity
         SubjectDobSnapshot  = dobSnapshot;
         UpdatedAtUtc        = DateTime.UtcNow;
     }
+
+    /// <summary>
+    /// Reassigns this referral to a different provider, updating the provider ID and
+    /// the receiving organization context. Incrementing the token version ensures any
+    /// previously issued view tokens (tied to the old provider) are revoked automatically.
+    /// </summary>
+    public void ReassignProvider(Guid newProviderId, Guid? newReceivingOrganizationId, Guid? updatedByUserId)
+    {
+        ProviderId              = newProviderId;
+        ReceivingOrganizationId = newReceivingOrganizationId;
+        TokenVersion           += 1;
+        UpdatedByUserId         = updatedByUserId;
+        UpdatedAtUtc            = DateTime.UtcNow;
+    }
 }

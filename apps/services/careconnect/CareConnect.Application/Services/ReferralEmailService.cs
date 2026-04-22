@@ -254,6 +254,7 @@ public class ReferralEmailService : IReferralEmailService
         Referral referral,
         Provider provider,
         Guid?    actingUserId,
+        string   dedupeKeySuffix = "",
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(provider.Email))
@@ -264,7 +265,7 @@ public class ReferralEmailService : IReferralEmailService
             return;
         }
 
-        var dedupeKey = $"referral:{referral.Id}:provider_assigned:{provider.Id}";
+        var dedupeKey = $"referral:{referral.Id}:provider_assigned:{provider.Id}{dedupeKeySuffix}";
         var token     = GenerateViewToken(referral.Id, referral.TokenVersion);
         var viewLink  = $"{_appBaseUrl}/referrals/view?token={token}";
         var subject   = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";

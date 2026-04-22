@@ -37,6 +37,12 @@ namespace CareConnect.Tests.Application;
 ///     - SendProviderAssignedNotificationAsync: submits referral.provider_assigned to producer
 ///     - SendProviderAssignedNotificationAsync: skips when provider has no email
 ///     - SendProviderAssignedNotificationAsync: deduplicates correctly
+///
+///   Provider reassignment:
+///     - SendProviderAssignedNotificationAsync: reassign suffix fires notification to new provider
+///     - SendProviderAssignedNotificationAsync: two reassignments to same provider use distinct dedupe keys
+///     - Referral.ReassignProvider: updates ProviderId, ReceivingOrganizationId, and increments TokenVersion
+///     - Referral.ReassignProvider: null receiving org is accepted
 /// </summary>
 public class DocumentsIntegrationTests
 {
@@ -385,6 +391,98 @@ public class DocumentsIntegrationTests
             It.IsAny<Guid>(), It.IsAny<string>(),
             It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
             It.IsAny<string?>(), It.IsAny<string?>(), default), Times.Never);
+    }
+
+    // ── Provider reassignment — notification and dedupe-key behaviour ────────────
+
+    [Fact]
+    public async Task SendProviderAssignedNotificationAsync_WithReassignSuffix_SubmitsToProducer()
+    {
+        var referral  = CreateTestReferral(Guid.NewGuid(), Guid.NewGuid());
+        var provider  = CreateTestProvider("provider@example.com");
+        var producer  = new Mock<INotificationsProducer>();
+        var notifRepo = new Mock<INotificationRepository>();
+
+        notifRepo.Setup(r => r.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        producer.Setup(p => p.SubmitAsync(
+                It.IsAny<Guid>(), "referral.provider_assigned",
+                "provider@example.com", It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string?>(), It.IsAny<string?>(), default))
+            .Returns(Task.CompletedTask);
+
+        notifRepo.Setup(r => r.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var svc = BuildEmailService(notifRepo.Object, producer.Object);
+
+        await svc.SendProviderAssignedNotificationAsync(
+            referral, provider, actingUserId: null,
+            dedupeKeySuffix: $":reassigned:{DateTimeOffset.UtcNow.UtcTicks}");
+
+        producer.Verify(p => p.SubmitAsync(
+            It.IsAny<Guid>(), "referral.provider_assigned",
+            "provider@example.com", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), default), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendProviderAssignedNotificationAsync_ReassignSuffix_AllowsDuplicateProviderReassignment()
+    {
+        // Two successive reassignments to the same provider use different tick-based suffixes,
+        // so TryAddWithDedupeAsync is called with two different keys — both succeed.
+        var referral  = CreateTestReferral(Guid.NewGuid(), Guid.NewGuid());
+        var provider  = CreateTestProvider("provider@example.com");
+        var producer  = new Mock<INotificationsProducer>();
+        var notifRepo = new Mock<INotificationRepository>();
+
+        notifRepo.Setup(r => r.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        notifRepo.Setup(r => r.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var svc = BuildEmailService(notifRepo.Object, producer.Object);
+
+        await svc.SendProviderAssignedNotificationAsync(
+            referral, provider, actingUserId: null,
+            dedupeKeySuffix: $":reassigned:100");
+
+        await svc.SendProviderAssignedNotificationAsync(
+            referral, provider, actingUserId: null,
+            dedupeKeySuffix: $":reassigned:200");
+
+        // Both submissions should have gone through since the dedupe keys differ.
+        notifRepo.Verify(r => r.TryAddWithDedupeAsync(
+            It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public void Referral_ReassignProvider_UpdatesProviderIdAndIncrementsTokenVersion()
+    {
+        var originalProviderId  = Guid.NewGuid();
+        var newProviderId       = Guid.NewGuid();
+        var newReceivingOrgId   = Guid.NewGuid();
+        var actingUserId        = Guid.NewGuid();
+        var referral = CreateTestReferral(Guid.NewGuid(), originalProviderId);
+        var originalTokenVersion = referral.TokenVersion;
+
+        referral.ReassignProvider(newProviderId, newReceivingOrgId, actingUserId);
+
+        Assert.Equal(newProviderId,     referral.ProviderId);
+        Assert.Equal(newReceivingOrgId, referral.ReceivingOrganizationId);
+        Assert.Equal(originalTokenVersion + 1, referral.TokenVersion);
+    }
+
+    [Fact]
+    public void Referral_ReassignProvider_NullReceivingOrg_SetsOrgToNull()
+    {
+        var referral = CreateTestReferral(Guid.NewGuid(), Guid.NewGuid());
+
+        referral.ReassignProvider(Guid.NewGuid(), newReceivingOrganizationId: null, updatedByUserId: null);
+
+        Assert.Null(referral.ReceivingOrganizationId);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

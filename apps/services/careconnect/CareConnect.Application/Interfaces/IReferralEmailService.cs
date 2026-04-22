@@ -52,11 +52,20 @@ public interface IReferralEmailService
     /// CC2-INT-B03: Sends a PROVIDER_ASSIGNED notification when a provider is associated
     /// with a referral after initial creation (e.g. re-assignment or delayed assignment).
     /// Routes through the platform Notifications service like all other events.
+    /// <para>
+    /// <paramref name="dedupeKeySuffix"/> is appended to the base dedupe key
+    /// (<c>referral:{id}:provider_assigned:{providerId}</c>) to differentiate re-assignment
+    /// events from the initial assignment and from each other. Pass an empty string (default)
+    /// for the initial assignment, or a unique suffix (e.g. <c>:reassigned:{ticks}</c>) for
+    /// each manual re-assignment so the notification is always delivered regardless of how
+    /// many times the same provider is assigned.
+    /// </para>
     /// </summary>
     Task SendProviderAssignedNotificationAsync(
         Referral referral,
         Provider provider,
         Guid?    actingUserId,
+        string   dedupeKeySuffix   = "",
         CancellationToken ct = default);
 
     /// <summary>

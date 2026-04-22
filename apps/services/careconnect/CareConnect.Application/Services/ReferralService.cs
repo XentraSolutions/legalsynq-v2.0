@@ -177,7 +177,7 @@ public class ReferralService : IReferralService
                 logger.LogWarning(ex,
                     "Background referral notification failed for referral {ReferralId}.", referral.Id);
             }
-            try { await emailSvc.SendProviderAssignedNotificationAsync(referral, provider, null, CancellationToken.None); }
+            try { await emailSvc.SendProviderAssignedNotificationAsync(referral, provider, actingUserId: null, ct: CancellationToken.None); }
             catch (Exception ex)
             {
                 logger.LogWarning(ex,
@@ -345,6 +345,103 @@ public class ReferralService : IReferralService
             ? await _referrals.GetByIdGlobalAsync(referral.Id, ct)
             : await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
         return ToResponse(loaded!);
+    }
+
+    /// <summary>
+    /// Reassigns the referral to a new provider and fires a PROVIDER_ASSIGNED notification.
+    /// Token version is bumped so any view links issued to the previous provider are revoked.
+    /// Each reassignment appends a fresh GUID to the dedupe key, guaranteeing the notification
+    /// fires even when the same provider is re-assigned more than once.
+    /// </summary>
+    public async Task<ReferralResponse> ReassignProviderAsync(
+        Guid  tenantId,
+        Guid  referralId,
+        Guid  newProviderId,
+        Guid? actingUserId,
+        bool  isPlatformAdmin = false,
+        CancellationToken ct = default)
+    {
+        // Always fetch globally so platform admins can cross tenant boundaries.
+        // Tenant admins are then bound by an explicit tenant check below.
+        var referral = await _referrals.GetByIdGlobalAsync(referralId, ct)
+            ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        // Enforce tenant scoping for non-platform-admin callers.
+        // Return NotFoundException (not 403) per platform convention to avoid confirming
+        // cross-tenant record existence.
+        if (!isPlatformAdmin && referral.TenantId != tenantId)
+            throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        var effectiveTenantId = referral.TenantId;
+
+        var newProvider = await _providers.GetByIdCrossAsync(newProviderId, ct)
+            ?? throw new NotFoundException($"Provider '{newProviderId}' was not found.");
+
+        var previousProviderId = referral.ProviderId;
+
+        referral.ReassignProvider(newProviderId, newProvider.OrganizationId, actingUserId);
+        await _referrals.UpdateAsync(referral, history: null, ct);
+
+        // Fire-and-observe: send PROVIDER_ASSIGNED notification to the new provider.
+        // Uses a GUID-based dedupe key suffix so each reassignment event is unique,
+        // even when the same provider is re-assigned multiple times concurrently.
+        var scopeFactory      = _scopeFactory;
+        var logger            = _logger;
+        var reassignEventGuid = Guid.NewGuid(); // GUID suffix guarantees uniqueness across concurrent reassignments
+        _ = Task.Run(async () =>
+        {
+            using var scope   = scopeFactory.CreateScope();
+            var       emailSvc = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
+            try
+            {
+                await emailSvc.SendProviderAssignedNotificationAsync(
+                    referral:        referral,
+                    provider:        newProvider,
+                    actingUserId:    actingUserId,
+                    dedupeKeySuffix: $":reassigned:{reassignEventGuid}",
+                    ct:              CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Background provider-assigned notification failed after reassignment " +
+                    "for referral {ReferralId}.", referralId);
+            }
+        });
+
+        // Canonical audit event — fire-and-observe.
+        var auditNow = DateTimeOffset.UtcNow;
+        _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "careconnect.referral.provider_reassigned",
+            EventCategory = EventCategory.Business,
+            SourceSystem  = "care-connect",
+            SourceService = "referral-service",
+            Visibility    = AuditVisibility.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = auditNow,
+            Scope = new AuditEventScopeDto
+            {
+                ScopeType = ScopeType.Tenant,
+                TenantId  = effectiveTenantId.ToString(),
+            },
+            Actor = new AuditEventActorDto
+            {
+                Id   = actingUserId?.ToString(),
+                Type = actingUserId.HasValue ? ActorType.User : ActorType.System,
+            },
+            Entity      = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+            Action      = "ReferralProviderReassigned",
+            Description = $"Referral {referral.Id} reassigned from provider '{previousProviderId}' to '{newProviderId}'.",
+            Before      = JsonSerializer.Serialize(new { providerId = previousProviderId }),
+            After       = JsonSerializer.Serialize(new { providerId = newProviderId }),
+            RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
+            IdempotencyKey = IdempotencyKey.ForWithTimestamp(auditNow, "care-connect", "careconnect.referral.provider_reassigned", referral.Id.ToString()),
+            Tags = ["referral", "provider", "reassigned"],
+        });
+
+        var reloaded = await _referrals.GetByIdGlobalAsync(referral.Id, ct);
+        return ToResponse(reloaded!);
     }
 
     public async Task<List<ReferralStatusHistoryResponse>> GetHistoryAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false)

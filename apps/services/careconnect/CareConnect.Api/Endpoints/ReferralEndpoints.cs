@@ -292,6 +292,34 @@ public static class ReferralEndpoints
         .RequireOrgProductAccess(ProductCodes.SynqCareConnect)
         .RequirePermission(PermissionCodes.ReferralCreate);
 
+        // POST /api/referrals/{id}/reassign-provider — manually reassign the referral to a new provider.
+        // Restricted to platform admins and tenant admins (enforced by PlatformOrTenantAdmin policy).
+        // Fires a PROVIDER_ASSIGNED notification to the incoming provider and revokes old view tokens.
+        group.MapPost("/{id:guid}/reassign-provider", async (
+            Guid id,
+            [FromBody] ReassignProviderRequest request,
+            IReferralService service,
+            ICurrentRequestContext ctx,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+
+            if (request.NewProviderId == Guid.Empty)
+                return Results.BadRequest(new { error = "newProviderId is required." });
+
+            try
+            {
+                var referral = await service.ReassignProviderAsync(tenantId, id, request.NewProviderId, ctx.UserId, ctx.IsPlatformAdmin, ct);
+                return Results.Ok(referral);
+            }
+            catch (NotFoundException)
+            {
+                return Results.NotFound();
+            }
+        })
+        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+        .RequireProductAccess(ProductCodes.SynqCareConnect);
+
         // POST /api/referrals/{id}/revoke-token — invalidate all previously issued view tokens
         group.MapPost("/{id:guid}/revoke-token", async (
             Guid id,
@@ -451,4 +479,9 @@ internal sealed class ReferralSearchParams
     public DateTime? CreatedTo   { get; init; }
     public int?      Page        { get; init; }
     public int?      PageSize    { get; init; }
+}
+
+internal sealed class ReassignProviderRequest
+{
+    public Guid NewProviderId { get; init; }
 }
