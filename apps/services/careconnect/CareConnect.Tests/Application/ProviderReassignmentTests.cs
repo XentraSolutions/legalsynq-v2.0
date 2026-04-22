@@ -16,12 +16,14 @@ using Xunit;
 namespace CareConnect.Tests.Application;
 
 /// <summary>
-/// Task-135 — ReferralService.ReassignProviderAsync integration tests:
+/// Task-135 / Task-139 — ReferralService.ReassignProviderAsync integration tests:
 ///
 ///   Happy path:
 ///     - ProviderId and TokenVersion are updated before UpdateAsync is called
 ///     - SendProviderAssignedNotificationAsync is called once for the new provider
 ///       with a non-empty reassignment dedupe suffix
+///     - IAuditEventClient.IngestAsync is called with event type
+///       "careconnect.referral.provider_reassigned"
 ///
 ///   Tenant security:
 ///     - A tenant admin calling with a tenantId that does not match the referral's
@@ -79,9 +81,10 @@ public class ProviderReassignmentTests
     /// IReferralEmailService; we wire the factory to return the provided email mock.
     /// </summary>
     private static (ReferralService svc,
-                    Mock<IReferralRepository> referralRepo,
+                    Mock<IReferralRepository>  referralRepo,
                     Mock<IProviderRepository>  providerRepo,
-                    Mock<IReferralEmailService> emailSvc)
+                    Mock<IReferralEmailService> emailSvc,
+                    Mock<IAuditEventClient>    auditClient)
         BuildService(Referral? referralInRepo = null, Provider? providerInRepo = null)
     {
         var referralRepo = new Mock<IReferralRepository>();
@@ -147,7 +150,7 @@ public class ProviderReassignmentTests
             httpCtx.Object,
             activationRequests: null);
 
-        return (svc, referralRepo, providerRepo, emailSvc);
+        return (svc, referralRepo, providerRepo, emailSvc, auditClient);
     }
 
     // ── Happy path ────────────────────────────────────────────────────────────
@@ -162,7 +165,7 @@ public class ProviderReassignmentTests
         var newProvider      = BuildProvider();
         var originalToken    = referral.TokenVersion;
 
-        var (svc, referralRepo, _, _) = BuildService(referralInRepo: referral, providerInRepo: newProvider);
+        var (svc, referralRepo, _, _, _) = BuildService(referralInRepo: referral, providerInRepo: newProvider);
 
         await svc.ReassignProviderAsync(tenantId, referral.Id, newProviderId, actingUserId: null);
 
@@ -183,7 +186,7 @@ public class ProviderReassignmentTests
         var newProvider  = BuildProvider();
         var newProviderId = Guid.NewGuid();
 
-        var (svc, _, _, emailSvc) = BuildService(referralInRepo: referral, providerInRepo: newProvider);
+        var (svc, _, _, emailSvc, _) = BuildService(referralInRepo: referral, providerInRepo: newProvider);
 
         await svc.ReassignProviderAsync(tenantId, referral.Id, newProviderId, actingUserId: null);
 
@@ -194,7 +197,8 @@ public class ProviderReassignmentTests
             It.IsAny<Referral>(),
             It.IsAny<Provider>(),
             It.IsAny<Guid?>(),
-            It.Is<string>(s => s.Contains(":reassigned:")),
+            It.Is<string>(s => s.Contains(":reassigned:") &&
+                               s.Length > ":reassigned:".Length),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -208,7 +212,7 @@ public class ProviderReassignmentTests
         var tenantB  = Guid.NewGuid();
         var referral = BuildReferral(tenantA, Guid.NewGuid());
 
-        var (svc, _, _, _) = BuildService(referralInRepo: referral, providerInRepo: BuildProvider());
+        var (svc, _, _, _, _) = BuildService(referralInRepo: referral, providerInRepo: BuildProvider());
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
             svc.ReassignProviderAsync(tenantB, referral.Id, Guid.NewGuid(),
@@ -224,7 +228,7 @@ public class ProviderReassignmentTests
         var newProviderId = Guid.NewGuid();
         var referral     = BuildReferral(tenantA, Guid.NewGuid());
 
-        var (svc, referralRepo, _, _) = BuildService(referralInRepo: referral, providerInRepo: BuildProvider());
+        var (svc, referralRepo, _, _, _) = BuildService(referralInRepo: referral, providerInRepo: BuildProvider());
 
         await svc.ReassignProviderAsync(tenantB, referral.Id, newProviderId,
             actingUserId: null, isPlatformAdmin: true);
@@ -240,7 +244,7 @@ public class ProviderReassignmentTests
     [Fact]
     public async Task ReassignProviderAsync_ReferralNotFound_ThrowsNotFoundException()
     {
-        var (svc, _, _, _) = BuildService(referralInRepo: null, providerInRepo: BuildProvider());
+        var (svc, _, _, _, _) = BuildService(referralInRepo: null, providerInRepo: BuildProvider());
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
             svc.ReassignProviderAsync(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null));
@@ -252,9 +256,31 @@ public class ProviderReassignmentTests
         var tenantId = Guid.NewGuid();
         var referral = BuildReferral(tenantId, Guid.NewGuid());
 
-        var (svc, _, _, _) = BuildService(referralInRepo: referral, providerInRepo: null);
+        var (svc, _, _, _, _) = BuildService(referralInRepo: referral, providerInRepo: null);
 
         await Assert.ThrowsAsync<NotFoundException>(() =>
             svc.ReassignProviderAsync(tenantId, referral.Id, Guid.NewGuid(), null));
+    }
+
+    // ── Audit event ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ReassignProviderAsync_HappyPath_EmitsProviderReassignedAuditEvent()
+    {
+        var tenantId      = Guid.NewGuid();
+        var newProviderId = Guid.NewGuid();
+        var referral      = BuildReferral(tenantId, Guid.NewGuid());
+        var newProvider   = BuildProvider();
+
+        var (svc, _, providerRepo, _, auditClient) = BuildService(referralInRepo: referral, providerInRepo: newProvider);
+
+        await svc.ReassignProviderAsync(tenantId, referral.Id, newProviderId, actingUserId: null);
+
+        providerRepo.Verify(p => p.GetByIdCrossAsync(newProviderId, It.IsAny<CancellationToken>()), Times.Once);
+
+        auditClient.Verify(a => a.IngestAsync(
+            It.Is<LegalSynq.AuditClient.DTOs.IngestAuditEventRequest>(
+                req => req.EventType == "careconnect.referral.provider_reassigned"),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }
