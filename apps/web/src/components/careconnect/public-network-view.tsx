@@ -1,25 +1,23 @@
 'use client';
 
 /**
- * CC2-INT-B07 — Public Network View.
+ * CC2-INT-B07 — Public Network View (Yelp-style).
  * CC2-INT-B08 — Public Referral Initiation modal.
  *
- * Interactive client component for the public /network page.
- * Shows a searchable provider list with stage badges and "Request Referral" CTAs.
+ * Split-panel layout: sticky search header, scrollable numbered list on the
+ * left, sticky live map on the right (hidden on mobile).
  *
  * Stage enforcement (CC2-INT-B06-02):
- *  - URL           → No portal link. Provider receives referrals via signed token URLs.
- *  - COMMON_PORTAL → "Access Portal" link → redirects to /login (common portal login).
- *  - TENANT        → "Tenant Portal" link → redirects to /login (tenant portal login).
+ *  - URL           → No portal link.
+ *  - COMMON_PORTAL → "Access Portal" link → /login.
+ *  - TENANT        → "Tenant Portal" link → /login.
  *
  * Referral flow (CC2-INT-B08):
- *  - "Request Referral" on accepting providers opens a modal form.
- *  - Form submits to POST /api/public/careconnect/api/public/referrals via the BFF.
- *  - The BFF forwards X-Tenant-Id (set here from the server-resolved tenantId prop).
- *  - On success, a confirmation screen is shown.
+ *  - "Request Referral" opens a modal; submits to the BFF which forwards
+ *    X-Tenant-Id to the AllowAnonymous CareConnect public referral endpoint.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import type {
   PublicNetworkDetail,
@@ -28,10 +26,11 @@ import type {
   PublicReferralRequest,
   PublicReferralResponse,
 } from '@/lib/public-network-api';
+import type { NumberedMarker } from './public-network-map';
 
 const PublicNetworkMap = dynamic(
   () => import('./public-network-map').then(m => m.PublicNetworkMap),
-  { ssr: false, loading: () => <div className="h-full w-full bg-gray-100 animate-pulse rounded-lg" /> },
+  { ssr: false, loading: () => <div className="h-full w-full bg-gray-100 animate-pulse" /> },
 );
 
 interface PublicNetworkViewProps {
@@ -40,27 +39,28 @@ interface PublicNetworkViewProps {
   tenantId:   string;
 }
 
+type Filter = 'accepting' | 'all';
+
+// ── Main view ─────────────────────────────────────────────────────────────────
+
 export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetworkViewProps) {
-  const [search, setSearch]         = useState('');
-  const [filterActive, setFilter]   = useState<'all' | 'accepting'>('accepting');
-  const [modalProvider, setModal]   = useState<PublicProviderItem | null>(null);
-  const [view, setView]             = useState<'list' | 'map'>('list');
-  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
+  const [search,    setSearch]  = useState('');
+  const [filter,    setFilter]  = useState<Filter>('accepting');
+  const [modal,     setModal]   = useState<PublicProviderItem | null>(null);
+  const [hoveredId, setHovered] = useState<string | null>(null);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  const hasMarkers = detail.markers.length > 0;
+  // Build a lookup of marker data by provider id
+  const markerById = useMemo<Record<string, PublicProviderMarker>>(() => {
+    const m: Record<string, PublicProviderMarker> = {};
+    for (const mk of detail.markers) m[mk.id] = mk;
+    return m;
+  }, [detail.markers]);
 
-  function handleMapReferral(m: PublicProviderMarker) {
-    const provider = detail.providers.find(p => p.id === m.id) ?? null;
-    if (provider) setModal(provider);
-  }
-
+  // Filtered + searched provider list
   const filtered = useMemo(() => {
     let list = detail.providers;
-
-    if (filterActive === 'accepting') {
-      list = list.filter(p => p.acceptingReferrals);
-    }
-
+    if (filter === 'accepting') list = list.filter(p => p.acceptingReferrals);
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter(p =>
@@ -70,152 +70,161 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
         p.state.toLowerCase().includes(q),
       );
     }
-
     return list;
-  }, [detail.providers, search, filterActive]);
+  }, [detail.providers, search, filter]);
+
+  // Numbered map markers — only providers that have geo data, in filtered order
+  const displayedMarkers = useMemo<NumberedMarker[]>(() => {
+    const result: NumberedMarker[] = [];
+    let idx = 1;
+    for (const p of filtered) {
+      const mk = markerById[p.id];
+      if (mk) result.push({ ...mk, index: idx++ });
+    }
+    return result;
+  }, [filtered, markerById]);
+
+  // Map marker index for a given provider id
+  const indexFor = (id: string) =>
+    displayedMarkers.find(m => m.id === id)?.index ?? null;
+
+  function handleMapReferral(m: PublicProviderMarker) {
+    const provider = detail.providers.find(p => p.id === m.id) ?? null;
+    if (provider) setModal(provider);
+  }
+
+  function handleMapSelect(id: string) {
+    setHovered(id);
+    // Scroll the matching card into view
+    cardRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  const hasMarkers = detail.markers.length > 0;
 
   return (
-    <div className="space-y-4">
-      {/* Network header */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <h2 className="text-base font-semibold text-gray-900">{detail.networkName}</h2>
-        {detail.networkDescription && (
-          <p className="mt-1 text-sm text-gray-500">{detail.networkDescription}</p>
-        )}
-        <p className="mt-2 text-xs text-gray-400">
-          {detail.providers.length} provider{detail.providers.length !== 1 ? 's' : ''} in this network
-        </p>
-      </div>
+    <div className="flex flex-col min-h-screen bg-gray-50">
 
-      {/* Toolbar — search / filter / view toggle */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        {/* Search (only relevant in list view) */}
-        {view === 'list' && (
-          <input
-            type="search"
-            placeholder="Search by name, city, or state…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-          />
-        )}
-
-        <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-          {/* Accepting / All filter (list view only) */}
-          {view === 'list' && (
-            <div className="flex rounded-md overflow-hidden border border-gray-200 text-sm">
-              <button
-                onClick={() => setFilter('accepting')}
-                className={[
-                  'px-3 py-2 transition-colors',
-                  filterActive === 'accepting'
-                    ? 'bg-primary text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-50',
-                ].join(' ')}
-              >
-                Accepting referrals
-              </button>
-              <button
-                onClick={() => setFilter('all')}
-                className={[
-                  'px-3 py-2 border-l border-gray-200 transition-colors',
-                  filterActive === 'all'
-                    ? 'bg-primary text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-50',
-                ].join(' ')}
-              >
-                All providers
-              </button>
+      {/* ── Sticky header ────────────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center gap-4">
+          {/* Brand + network name */}
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            <div className="w-7 h-7 rounded-md bg-red-600 flex items-center justify-center">
+              <i className="ri-heart-pulse-line text-white text-sm" />
             </div>
-          )}
-
-          {/* List / Map toggle (only when markers exist) */}
-          {hasMarkers && (
-            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setView('list')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  view === 'list'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <i className="ri-list-unordered text-xs" />
-                List
-              </button>
-              <button
-                onClick={() => setView('map')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  view === 'map'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <i className="ri-map-2-line text-xs" />
-                Map
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── MAP VIEW ─────────────────────────────────────────────────────────── */}
-      {view === 'map' && (
-        <div
-          className="relative rounded-lg overflow-hidden border border-gray-200"
-          style={{ height: 520 }}
-        >
-          {/* Marker count badge */}
-          <div className="absolute top-3 right-3 z-[9999] bg-white/90 border border-gray-200 rounded-md px-2.5 py-1 text-xs text-gray-500 shadow-sm pointer-events-none">
-            {detail.markers.length} {detail.markers.length === 1 ? 'provider' : 'providers'}
+            <span className="font-bold text-gray-900 text-base hidden sm:block truncate max-w-[200px]">
+              {detail.networkName}
+            </span>
           </div>
 
-          {/* Legend */}
-          <div className="absolute bottom-6 left-3 z-[9999] bg-white/90 border border-gray-200 rounded-md px-3 py-2 text-xs text-gray-600 shadow-sm space-y-1 pointer-events-none">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-green-600 inline-block" />
-              Accepting referrals
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-gray-400 inline-block" />
-              Not accepting
-            </div>
+          {/* Search bar */}
+          <div className="flex-1 relative">
+            <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none" />
+            <input
+              type="search"
+              placeholder="Search providers, specialties, cities…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-sm bg-gray-100 border border-gray-200 rounded-full
+                         focus:outline-none focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100
+                         transition-colors"
+            />
           </div>
 
-          <PublicNetworkMap
-            markers={detail.markers}
-            selectedId={selectedMarkerId}
-            onSelect={setSelectedMarkerId}
-            onRequestReferral={handleMapReferral}
-          />
+          {/* Provider count */}
+          <span className="text-xs text-gray-400 flex-shrink-0 hidden md:block">
+            {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+          </span>
         </div>
-      )}
 
-      {/* ── LIST VIEW ────────────────────────────────────────────────────────── */}
-      {view === 'list' && (
-        <>
-          {filtered.length === 0 ? (
-            <p className="text-sm text-gray-500 py-8 text-center">
-              No providers match your search.
+        {/* Filter chips */}
+        <div className="max-w-[1600px] mx-auto px-4 pb-2 flex items-center gap-2">
+          <FilterChip
+            label="Accepting referrals"
+            icon="ri-checkbox-circle-line"
+            active={filter === 'accepting'}
+            onClick={() => setFilter('accepting')}
+          />
+          <FilterChip
+            label="All providers"
+            icon="ri-team-line"
+            active={filter === 'all'}
+            onClick={() => setFilter('all')}
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="ml-auto text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
+            >
+              <i className="ri-close-line" />
+              Clear search
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* ── Split body ───────────────────────────────────────────────────────── */}
+      <div
+        className="flex flex-1 overflow-hidden"
+        style={{ height: 'calc(100vh - 97px)' }}
+      >
+        {/* Left: scrollable provider list */}
+        <div className="w-full lg:w-[460px] xl:w-[520px] flex-shrink-0 overflow-y-auto">
+          {/* Result summary strip */}
+          <div className="px-4 pt-3 pb-1">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              {filtered.length === 0
+                ? 'No providers found'
+                : `${filtered.length} provider${filtered.length !== 1 ? 's' : ''} found`}
             </p>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="px-4 py-12 text-center">
+              <div className="mx-auto w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                <i className="ri-map-pin-line text-gray-400 text-xl" />
+              </div>
+              <p className="text-sm font-medium text-gray-600">No providers match your search</p>
+              <p className="text-xs text-gray-400 mt-1">Try adjusting your filters or search terms</p>
+            </div>
           ) : (
-            <div className="space-y-3">
-              {filtered.map(p => (
-                <PublicProviderCard
-                  key={p.id}
-                  provider={p}
+            <div className="p-3 space-y-2">
+              {filtered.map((provider, i) => (
+                <ProviderCard
+                  key={provider.id}
+                  provider={provider}
+                  number={indexFor(provider.id) ?? i + 1}
+                  highlighted={hoveredId === provider.id}
+                  onHover={setHovered}
                   onRequestReferral={setModal}
+                  ref={el => { cardRefs.current[provider.id] = el; }}
                 />
               ))}
             </div>
           )}
-        </>
-      )}
+        </div>
 
-      {/* Referral modal */}
-      {modalProvider && (
+        {/* Right: sticky map */}
+        <div className="hidden lg:block flex-1 relative">
+          {hasMarkers ? (
+            <PublicNetworkMap
+              markers={displayedMarkers}
+              selectedId={hoveredId}
+              onSelect={handleMapSelect}
+              onRequestReferral={handleMapReferral}
+            />
+          ) : (
+            <div className="h-full bg-gray-100 flex items-center justify-center">
+              <p className="text-sm text-gray-400">No location data available</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Referral modal ───────────────────────────────────────────────────── */}
+      {modal && (
         <ReferralModal
-          provider={modalProvider}
+          provider={modal}
           tenantId={tenantId}
           onClose={() => setModal(null)}
         />
@@ -224,80 +233,152 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
   );
 }
 
-// ── Provider card ─────────────────────────────────────────────────────────────
+// ── Filter chip ───────────────────────────────────────────────────────────────
 
-function PublicProviderCard({
-  provider,
-  onRequestReferral,
+function FilterChip({
+  label, icon, active, onClick,
 }: {
-  provider: PublicProviderItem;
-  onRequestReferral: (p: PublicProviderItem) => void;
+  label: string; icon: string; active: boolean; onClick: () => void;
 }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-start justify-between gap-4">
-      {/* Provider details */}
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="font-medium text-gray-900 truncate">{provider.name}</p>
-          <AccessStagePill stage={provider.accessStage} />
-          {provider.acceptingReferrals ? (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20">
-              Accepting referrals
-            </span>
-          ) : (
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 ring-1 ring-inset ring-gray-300/40">
-              Not accepting
-            </span>
-          )}
-        </div>
-
-        {provider.organizationName && (
-          <p className="text-sm text-gray-600 truncate">{provider.organizationName}</p>
-        )}
-
-        <p className="text-xs text-gray-500">
-          {provider.city}, {provider.state} {provider.postalCode}
-        </p>
-
-        {provider.phone && (
-          <a
-            href={`tel:${provider.phone}`}
-            className="text-xs text-primary hover:underline"
-          >
-            {provider.phone}
-          </a>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div className="shrink-0 flex flex-col items-end gap-2">
-        <StageAction stage={provider.accessStage} />
-        {provider.acceptingReferrals && (
-          <button
-            onClick={() => onRequestReferral(provider)}
-            className="text-xs font-medium px-3 py-1.5 rounded-md bg-primary text-white hover:bg-primary/90 transition-colors"
-          >
-            Request Referral
-          </button>
-        )}
-      </div>
-    </div>
+    <button
+      onClick={onClick}
+      className={[
+        'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors',
+        active
+          ? 'bg-red-600 border-red-600 text-white'
+          : 'bg-white border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600',
+      ].join(' ')}
+    >
+      <i className={`${icon} text-xs`} />
+      {label}
+    </button>
   );
 }
 
-// ── Stage badge ───────────────────────────────────────────────────────────────
+// ── Provider card ─────────────────────────────────────────────────────────────
 
-function AccessStagePill({ stage }: { stage: string }) {
+import React from 'react';
+
+const ProviderCard = React.forwardRef<
+  HTMLDivElement,
+  {
+    provider:          PublicProviderItem;
+    number:            number;
+    highlighted:       boolean;
+    onHover:           (id: string | null) => void;
+    onRequestReferral: (p: PublicProviderItem) => void;
+  }
+>(function ProviderCard({ provider, number, highlighted, onHover, onRequestReferral }, ref) {
+  return (
+    <div
+      ref={ref}
+      onMouseEnter={() => onHover(provider.id)}
+      onMouseLeave={() => onHover(null)}
+      className={[
+        'bg-white rounded-xl border p-4 cursor-default transition-all duration-150',
+        highlighted
+          ? 'border-red-400 shadow-md ring-1 ring-red-200'
+          : 'border-gray-200 shadow-sm hover:border-gray-300 hover:shadow',
+      ].join(' ')}
+    >
+      <div className="flex gap-3">
+        {/* Number badge */}
+        <div
+          className={[
+            'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white mt-0.5',
+            provider.acceptingReferrals ? 'bg-red-600' : 'bg-gray-400',
+          ].join(' ')}
+        >
+          {number}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          {/* Name row */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="font-bold text-gray-900 text-sm leading-snug truncate">
+                {provider.name}
+              </h3>
+              {provider.organizationName && (
+                <p className="text-xs text-gray-500 truncate">{provider.organizationName}</p>
+              )}
+            </div>
+
+            {/* Stage badge */}
+            <StagePill stage={provider.accessStage} />
+          </div>
+
+          {/* Status pills */}
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+            {provider.acceptingReferrals ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 ring-1 ring-inset ring-green-600/20">
+                <i className="ri-checkbox-circle-fill text-xs" />
+                Accepting referrals
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 ring-1 ring-inset ring-gray-300/40">
+                <i className="ri-close-circle-line text-xs" />
+                Not accepting
+              </span>
+            )}
+            {provider.primaryCategory && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                {provider.primaryCategory}
+              </span>
+            )}
+          </div>
+
+          {/* Location + phone */}
+          <div className="mt-2 space-y-0.5">
+            <p className="flex items-center gap-1.5 text-xs text-gray-500">
+              <i className="ri-map-pin-line text-gray-400 flex-shrink-0" />
+              {provider.city}, {provider.state} {provider.postalCode}
+            </p>
+            {provider.phone && (
+              <a
+                href={`tel:${provider.phone}`}
+                className="flex items-center gap-1.5 text-xs text-red-600 hover:underline w-fit"
+              >
+                <i className="ri-phone-line flex-shrink-0" />
+                {provider.phone}
+              </a>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="mt-3 flex items-center gap-2">
+            {provider.acceptingReferrals && (
+              <button
+                onClick={() => onRequestReferral(provider)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors"
+              >
+                <i className="ri-send-plane-line" />
+                Request Referral
+              </button>
+            )}
+            <StageAction stage={provider.accessStage} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ── Stage pill ────────────────────────────────────────────────────────────────
+
+function StagePill({ stage }: { stage: string }) {
   if (stage === 'COMMON_PORTAL') {
     return (
-      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20">
+      <span className="flex-shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20 whitespace-nowrap">
         Portal active
       </span>
     );
   }
   if (stage === 'TENANT') {
     return (
-      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-600/20">
+      <span className="flex-shrink-0 inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-600/20 whitespace-nowrap">
         Tenant portal
       </span>
     );
@@ -305,16 +386,16 @@ function AccessStagePill({ stage }: { stage: string }) {
   return null;
 }
 
-// ── Stage-based portal action ─────────────────────────────────────────────────
+// ── Stage action ──────────────────────────────────────────────────────────────
 
 function StageAction({ stage }: { stage: string }) {
   if (stage === 'COMMON_PORTAL') {
     return (
       <a
         href="/login"
-        className="text-xs font-medium text-primary hover:underline"
-        title="This provider has activated their portal account"
+        className="flex items-center gap-1 text-xs text-blue-600 font-medium hover:underline"
       >
+        <i className="ri-external-link-line" />
         View portal
       </a>
     );
@@ -323,9 +404,9 @@ function StageAction({ stage }: { stage: string }) {
     return (
       <a
         href="/login"
-        className="text-xs font-medium text-purple-600 hover:underline"
-        title="This provider has a dedicated tenant portal"
+        className="flex items-center gap-1 text-xs text-purple-600 font-medium hover:underline"
       >
+        <i className="ri-external-link-line" />
         Tenant portal
       </a>
     );
@@ -441,24 +522,29 @@ function ReferralModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-gray-100">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900">Request Referral</h2>
-            <p className="mt-0.5 text-sm text-gray-500 truncate">
-              {provider.name}{provider.organizationName ? ` · ${provider.organizationName}` : ''}
-            </p>
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <i className="ri-send-plane-line text-red-600 text-sm" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Request Referral</h2>
+              <p className="mt-0.5 text-sm text-gray-500 truncate max-w-[320px]">
+                {provider.name}{provider.organizationName ? ` · ${provider.organizationName}` : ''}
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="ml-4 text-gray-400 hover:text-gray-600 transition-colors text-xl leading-none"
+            className="ml-4 w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors"
             aria-label="Close"
           >
-            ×
+            <i className="ri-close-line text-sm" />
           </button>
         </div>
 
@@ -469,7 +555,7 @@ function ReferralModal({
           ) : state === 'error' ? (
             <ErrorScreen message={errorMessage} onRetry={() => setState('form')} onClose={onClose} />
           ) : (
-            <ReferralForm
+            <ReferralFormBody
               form={form}
               fieldErrors={fieldErrors}
               submitting={state === 'submitting'}
@@ -486,13 +572,8 @@ function ReferralModal({
 
 // ── Form ──────────────────────────────────────────────────────────────────────
 
-function ReferralForm({
-  form,
-  fieldErrors,
-  submitting,
-  onUpdate,
-  onSubmit,
-  onCancel,
+function ReferralFormBody({
+  form, fieldErrors, submitting, onUpdate, onSubmit, onCancel,
 }: {
   form:        ReferralForm;
   fieldErrors: Record<string, string>;
@@ -503,176 +584,83 @@ function ReferralForm({
 }) {
   return (
     <form onSubmit={onSubmit} className="space-y-5">
-      {/* Sender info */}
       <fieldset className="space-y-3">
-        <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          Your information
-        </legend>
+        <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Your information</legend>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field
-            label="Your name"
-            required
-            error={fieldErrors['senderName']}
-          >
-            <input
-              type="text"
-              required
-              autoComplete="name"
-              value={form.senderName}
-              onChange={e => onUpdate('senderName', e.target.value)}
-              disabled={submitting}
-              className={inputClass(!!fieldErrors['senderName'])}
-              placeholder="Jane Smith"
-            />
+          <Field label="Your name" required error={fieldErrors['senderName']}>
+            <input type="text" required autoComplete="name" value={form.senderName}
+              onChange={e => onUpdate('senderName', e.target.value)} disabled={submitting}
+              className={inputCls(!!fieldErrors['senderName'])} placeholder="Jane Smith" />
           </Field>
-          <Field
-            label="Your email"
-            required
-            error={fieldErrors['senderEmail']}
-          >
-            <input
-              type="email"
-              required
-              autoComplete="email"
-              value={form.senderEmail}
-              onChange={e => onUpdate('senderEmail', e.target.value)}
-              disabled={submitting}
-              className={inputClass(!!fieldErrors['senderEmail'])}
-              placeholder="jane@lawfirm.com"
-            />
+          <Field label="Your email" required error={fieldErrors['senderEmail']}>
+            <input type="email" required autoComplete="email" value={form.senderEmail}
+              onChange={e => onUpdate('senderEmail', e.target.value)} disabled={submitting}
+              className={inputCls(!!fieldErrors['senderEmail'])} placeholder="jane@lawfirm.com" />
           </Field>
         </div>
       </fieldset>
 
-      {/* Patient info */}
       <fieldset className="space-y-3">
-        <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          Patient information
-        </legend>
+        <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Patient information</legend>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field
-            label="First name"
-            required
-            error={fieldErrors['patientFirstName']}
-          >
-            <input
-              type="text"
-              required
-              value={form.patientFirstName}
-              onChange={e => onUpdate('patientFirstName', e.target.value)}
-              disabled={submitting}
-              className={inputClass(!!fieldErrors['patientFirstName'])}
-              placeholder="John"
-            />
+          <Field label="First name" required error={fieldErrors['patientFirstName']}>
+            <input type="text" required value={form.patientFirstName}
+              onChange={e => onUpdate('patientFirstName', e.target.value)} disabled={submitting}
+              className={inputCls(!!fieldErrors['patientFirstName'])} placeholder="John" />
           </Field>
-          <Field
-            label="Last name"
-            required
-            error={fieldErrors['patientLastName']}
-          >
-            <input
-              type="text"
-              required
-              value={form.patientLastName}
-              onChange={e => onUpdate('patientLastName', e.target.value)}
-              disabled={submitting}
-              className={inputClass(!!fieldErrors['patientLastName'])}
-              placeholder="Doe"
-            />
+          <Field label="Last name" required error={fieldErrors['patientLastName']}>
+            <input type="text" required value={form.patientLastName}
+              onChange={e => onUpdate('patientLastName', e.target.value)} disabled={submitting}
+              className={inputCls(!!fieldErrors['patientLastName'])} placeholder="Doe" />
           </Field>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field
-            label="Phone"
-            required
-            error={fieldErrors['patientPhone']}
-          >
-            <input
-              type="tel"
-              required
-              autoComplete="tel"
-              value={form.patientPhone}
-              onChange={e => onUpdate('patientPhone', e.target.value)}
-              disabled={submitting}
-              className={inputClass(!!fieldErrors['patientPhone'])}
-              placeholder="(555) 000-0000"
-            />
+          <Field label="Phone" required error={fieldErrors['patientPhone']}>
+            <input type="tel" required autoComplete="tel" value={form.patientPhone}
+              onChange={e => onUpdate('patientPhone', e.target.value)} disabled={submitting}
+              className={inputCls(!!fieldErrors['patientPhone'])} placeholder="(555) 000-0000" />
           </Field>
-          <Field
-            label="Email"
-            hint="Optional"
-            error={fieldErrors['patientEmail']}
-          >
-            <input
-              type="email"
-              autoComplete="email"
-              value={form.patientEmail}
-              onChange={e => onUpdate('patientEmail', e.target.value)}
-              disabled={submitting}
-              className={inputClass(!!fieldErrors['patientEmail'])}
-              placeholder="patient@example.com"
-            />
+          <Field label="Email" hint="Optional" error={fieldErrors['patientEmail']}>
+            <input type="email" autoComplete="email" value={form.patientEmail}
+              onChange={e => onUpdate('patientEmail', e.target.value)} disabled={submitting}
+              className={inputCls(!!fieldErrors['patientEmail'])} placeholder="patient@example.com" />
           </Field>
         </div>
       </fieldset>
 
-      {/* Optional details */}
       <fieldset className="space-y-3">
-        <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          Referral details
-        </legend>
-        <Field
-          label="Service type"
-          hint="Optional"
-          error={fieldErrors['serviceType']}
-        >
-          <input
-            type="text"
-            value={form.serviceType}
-            onChange={e => onUpdate('serviceType', e.target.value)}
-            disabled={submitting}
-            className={inputClass(!!fieldErrors['serviceType'])}
-            placeholder="e.g. Physical therapy, Occupational therapy"
-          />
+        <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Referral details</legend>
+        <Field label="Service type" hint="Optional" error={fieldErrors['serviceType']}>
+          <input type="text" value={form.serviceType}
+            onChange={e => onUpdate('serviceType', e.target.value)} disabled={submitting}
+            className={inputCls(!!fieldErrors['serviceType'])}
+            placeholder="e.g. Physical therapy, Occupational therapy" />
         </Field>
-        <Field
-          label="Case notes"
-          hint="Optional"
-          error={fieldErrors['notes']}
-        >
-          <textarea
-            rows={3}
-            value={form.notes}
-            onChange={e => onUpdate('notes', e.target.value)}
-            disabled={submitting}
-            className={inputClass(!!fieldErrors['notes'])}
-            placeholder="Any relevant background or context for the provider…"
-          />
+        <Field label="Case notes" hint="Optional" error={fieldErrors['notes']}>
+          <textarea rows={3} value={form.notes}
+            onChange={e => onUpdate('notes', e.target.value)} disabled={submitting}
+            className={inputCls(!!fieldErrors['notes'])}
+            placeholder="Any relevant background or context for the provider…" />
         </Field>
       </fieldset>
 
-      {/* Footer */}
-      <div className="flex justify-end gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={submitting}
-          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
-        >
+      <div className="flex justify-end gap-3 pt-1">
+        <button type="button" onClick={onCancel} disabled={submitting}
+          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50">
           Cancel
         </button>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center gap-2"
-        >
+        <button type="submit" disabled={submitting}
+          className="px-5 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60 flex items-center gap-2">
           {submitting ? (
             <>
-              <span className="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               Sending…
             </>
           ) : (
-            'Send Referral'
+            <>
+              <i className="ri-send-plane-line" />
+              Send Referral
+            </>
           )}
         </button>
       </div>
@@ -680,42 +668,63 @@ function ReferralForm({
   );
 }
 
-// ── Success screen ────────────────────────────────────────────────────────────
+// ── Shared form helpers ───────────────────────────────────────────────────────
 
-function SuccessScreen({
-  result,
-  onClose,
+function Field({
+  label, hint, required, error, children,
 }: {
-  result:  PublicReferralResponse;
-  onClose: () => void;
+  label: string; hint?: string; required?: boolean; error?: string; children: React.ReactNode;
 }) {
   return (
-    <div className="text-center py-4 space-y-4">
-      <div className="mx-auto w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-2xl">
-        ✓
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+        {hint && <span className="ml-1 text-gray-400 font-normal">({hint})</span>}
+      </label>
+      {children}
+      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+function inputCls(hasError: boolean) {
+  return [
+    'w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors',
+    hasError
+      ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
+      : 'border-gray-200 focus:border-red-400 focus:ring-red-100',
+  ].join(' ');
+}
+
+// ── Success screen ────────────────────────────────────────────────────────────
+
+function SuccessScreen({ result, onClose }: { result: PublicReferralResponse; onClose: () => void }) {
+  return (
+    <div className="text-center py-6 space-y-4">
+      <div className="mx-auto w-14 h-14 rounded-full bg-green-50 flex items-center justify-center">
+        <i className="ri-checkbox-circle-line text-green-600 text-3xl" />
       </div>
       <div>
-        <h3 className="text-base font-semibold text-gray-900">Referral sent successfully</h3>
+        <h3 className="text-base font-bold text-gray-900">Referral sent!</h3>
         <p className="mt-1 text-sm text-gray-500">{result.message}</p>
-        <p className="mt-1 text-xs text-gray-400">
-          Provider: {result.providerName}
-        </p>
+        <p className="mt-0.5 text-xs text-gray-400">Provider: {result.providerName}</p>
       </div>
       {result.providerStage === 'URL' && (
-        <p className="text-xs text-gray-500 bg-blue-50 rounded-md p-3">
+        <p className="text-xs text-gray-500 bg-blue-50 rounded-lg p-3">
           This provider will receive a secure link to view and respond to your referral by email.
         </p>
       )}
       {(result.providerStage === 'COMMON_PORTAL' || result.providerStage === 'TENANT') && (
-        <p className="text-xs text-gray-500 bg-blue-50 rounded-md p-3">
+        <p className="text-xs text-gray-500 bg-blue-50 rounded-lg p-3">
           This provider has an active portal and will be notified immediately.
         </p>
       )}
       <button
         onClick={onClose}
-        className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 transition-colors"
+        className="px-5 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
       >
-        Close
+        Done
       </button>
     </div>
   );
@@ -723,77 +732,26 @@ function SuccessScreen({
 
 // ── Error screen ──────────────────────────────────────────────────────────────
 
-function ErrorScreen({
-  message,
-  onRetry,
-  onClose,
-}: {
-  message:  string;
-  onRetry:  () => void;
-  onClose:  () => void;
-}) {
+function ErrorScreen({ message, onRetry, onClose }: { message: string; onRetry: () => void; onClose: () => void }) {
   return (
-    <div className="text-center py-4 space-y-4">
-      <div className="mx-auto w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-2xl">
-        !
+    <div className="text-center py-6 space-y-4">
+      <div className="mx-auto w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
+        <i className="ri-error-warning-line text-red-500 text-3xl" />
       </div>
       <div>
-        <h3 className="text-base font-semibold text-gray-900">Submission failed</h3>
+        <h3 className="text-base font-bold text-gray-900">Submission failed</h3>
         <p className="mt-1 text-sm text-gray-500">{message}</p>
       </div>
       <div className="flex justify-center gap-3">
-        <button
-          onClick={onClose}
-          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors"
-        >
+        <button onClick={onClose}
+          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
           Close
         </button>
-        <button
-          onClick={onRetry}
-          className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 transition-colors"
-        >
+        <button onClick={onRetry}
+          className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors">
           Try again
         </button>
       </div>
     </div>
   );
-}
-
-// ── Field wrapper ─────────────────────────────────────────────────────────────
-
-function Field({
-  label,
-  hint,
-  required,
-  error,
-  children,
-}: {
-  label:    string;
-  hint?:    string;
-  required?: boolean;
-  error?:   string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="flex items-center gap-1 text-xs font-medium text-gray-700">
-        {label}
-        {required && <span className="text-red-500">*</span>}
-        {hint && <span className="text-gray-400 font-normal">({hint})</span>}
-      </label>
-      {children}
-      {error && <p className="text-xs text-red-600">{error}</p>}
-    </div>
-  );
-}
-
-function inputClass(hasError: boolean) {
-  return [
-    'w-full rounded-md border px-3 py-2 text-sm text-gray-900 placeholder-gray-400',
-    'focus:outline-none focus:ring-2 transition-colors',
-    'disabled:bg-gray-50 disabled:text-gray-500',
-    hasError
-      ? 'border-red-300 focus:ring-red-200 focus:border-red-400'
-      : 'border-gray-200 focus:ring-primary/30 focus:border-primary',
-  ].join(' ');
 }

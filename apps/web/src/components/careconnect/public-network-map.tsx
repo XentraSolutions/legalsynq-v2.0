@@ -1,16 +1,66 @@
 'use client';
 
 import 'leaflet/dist/leaflet.css';
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import { useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import type { PublicProviderMarker } from '@/lib/public-network-api';
 
-const US_CENTER: [number, number] = [39.5, -98.35];
+export interface NumberedMarker extends PublicProviderMarker {
+  index: number;
+}
 
 interface PublicNetworkMapProps {
-  markers:           PublicProviderMarker[];
+  markers:           NumberedMarker[];
   selectedId:        string | null;
   onSelect:          (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
+}
+
+const US_CENTER: [number, number] = [39.5, -98.35];
+
+function makePinIcon(index: number, accepting: boolean, selected: boolean) {
+  const bg      = selected ? '#1d4ed8' : accepting ? '#dc2626' : '#6b7280';
+  const ring    = selected ? '#bfdbfe' : 'transparent';
+  const size    = selected ? 34 : 28;
+  const font    = selected ? 13 : 11;
+  const outline = selected ? `box-shadow:0 0 0 3px ${ring};` : '';
+
+  return L.divIcon({
+    className: '',
+    iconSize:  [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2 + 4)],
+    html: `
+      <div style="
+        width:${size}px; height:${size}px;
+        background:${bg};
+        border-radius:50%;
+        display:flex; align-items:center; justify-content:center;
+        color:#fff; font-weight:700; font-size:${font}px;
+        font-family:system-ui,sans-serif;
+        border:2px solid #fff;
+        ${outline}
+        transition:all .15s;
+        box-shadow:0 2px 6px rgba(0,0,0,.35);
+      ">${index}</div>
+    `,
+  });
+}
+
+function FlyToMarkers({ markers }: { markers: NumberedMarker[] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (markers.length === 0) return;
+    if (markers.length === 1) {
+      map.setView([markers[0].latitude, markers[0].longitude], 12);
+      return;
+    }
+    const bounds = L.latLngBounds(markers.map(m => [m.latitude, m.longitude]));
+    map.fitBounds(bounds, { padding: [40, 40] });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
 }
 
 export function PublicNetworkMap({
@@ -19,87 +69,87 @@ export function PublicNetworkMap({
   onSelect,
   onRequestReferral,
 }: PublicNetworkMapProps) {
-  const center = US_CENTER;
-  const zoom   = markers.length === 1 ? 11 : 5;
-
   return (
     <MapContainer
-      center={center}
-      zoom={zoom}
+      center={US_CENTER}
+      zoom={4}
       style={{ height: '100%', width: '100%' }}
       scrollWheelZoom
+      zoomControl
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {markers.map(m => {
-        const isSelected = m.id === selectedId;
-        return (
-          <CircleMarker
-            key={m.id}
-            center={[m.latitude, m.longitude]}
-            radius={isSelected ? 11 : 7}
-            pathOptions={{
-              fillColor:   m.acceptingReferrals ? '#16a34a' : '#6b7280',
-              fillOpacity: 0.85,
-              color:       isSelected ? '#1d4ed8' : '#ffffff',
-              weight:      isSelected ? 3 : 1.5,
-            }}
-            eventHandlers={{ click: () => onSelect(m.id) }}
-          >
-            <Popup minWidth={220}>
-              <div style={{ fontFamily: 'inherit' }}>
-                <p style={{ fontWeight: 600, fontSize: 14, marginBottom: 2, color: '#111827' }}>
+      <FlyToMarkers markers={markers} />
+
+      {markers.map(m => (
+        <Marker
+          key={m.id}
+          position={[m.latitude, m.longitude]}
+          icon={makePinIcon(m.index, m.acceptingReferrals, m.id === selectedId)}
+          eventHandlers={{ click: () => onSelect(m.id) }}
+          zIndexOffset={m.id === selectedId ? 1000 : 0}
+        >
+          <Popup minWidth={220} closeButton={false}>
+            <div style={{ fontFamily: 'system-ui,sans-serif' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{
+                  width: 22, height: 22, borderRadius: '50%',
+                  background: m.acceptingReferrals ? '#dc2626' : '#6b7280',
+                  color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 700, flexShrink: 0,
+                }}>{m.index}</span>
+                <p style={{ fontWeight: 700, fontSize: 14, color: '#111827', margin: 0 }}>
                   {m.name}
                 </p>
-                {m.organizationName && (
-                  <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
-                    {m.organizationName}
-                  </p>
-                )}
-                <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 8 }}>
-                  {m.city}, {m.state}
-                </p>
-
-                {m.acceptingReferrals ? (
-                  <span style={{
-                    fontSize: 11, color: '#15803d', background: '#f0fdf4',
-                    border: '1px solid #bbf7d0', borderRadius: 9999,
-                    padding: '2px 8px', display: 'inline-block', marginBottom: 10,
-                  }}>
-                    Accepting referrals
-                  </span>
-                ) : (
-                  <span style={{
-                    fontSize: 11, color: '#6b7280', background: '#f9fafb',
-                    border: '1px solid #e5e7eb', borderRadius: 9999,
-                    padding: '2px 8px', display: 'inline-block', marginBottom: 10,
-                  }}>
-                    Not accepting referrals
-                  </span>
-                )}
-
-                {m.acceptingReferrals && (
-                  <div>
-                    <button
-                      onClick={() => onRequestReferral(m)}
-                      style={{
-                        fontSize: 12, color: '#ffffff', background: '#2563eb',
-                        border: 'none', borderRadius: 6, padding: '5px 12px',
-                        cursor: 'pointer', fontWeight: 500, display: 'block', width: '100%',
-                      }}
-                    >
-                      Request Referral
-                    </button>
-                  </div>
-                )}
               </div>
-            </Popup>
-          </CircleMarker>
-        );
-      })}
+              {m.organizationName && (
+                <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 4px' }}>
+                  {m.organizationName}
+                </p>
+              )}
+              <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 8px' }}>
+                {m.city}, {m.state}
+              </p>
+
+              {m.acceptingReferrals ? (
+                <span style={{
+                  fontSize: 11, color: '#15803d', background: '#f0fdf4',
+                  border: '1px solid #bbf7d0', borderRadius: 9999,
+                  padding: '2px 8px', display: 'inline-block', marginBottom: 10,
+                }}>
+                  Accepting referrals
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: 11, color: '#6b7280', background: '#f9fafb',
+                  border: '1px solid #e5e7eb', borderRadius: 9999,
+                  padding: '2px 8px', display: 'inline-block', marginBottom: 10,
+                }}>
+                  Not accepting referrals
+                </span>
+              )}
+
+              {m.acceptingReferrals && (
+                <div>
+                  <button
+                    onClick={() => onRequestReferral(m)}
+                    style={{
+                      fontSize: 12, color: '#fff', background: '#dc2626',
+                      border: 'none', borderRadius: 6, padding: '6px 14px',
+                      cursor: 'pointer', fontWeight: 600, display: 'block', width: '100%',
+                    }}
+                  >
+                    Request Referral
+                  </button>
+                </div>
+              )}
+            </div>
+          </Popup>
+        </Marker>
+      ))}
     </MapContainer>
   );
 }
