@@ -64,3 +64,54 @@ public sealed record PublicNetworkDetail(
 public sealed record StageRedirectInfo(
     string Stage,
     string TargetUrl);
+
+// ── CC2-INT-B08: Public referral initiation ──────────────────────────────────
+
+/// <summary>
+/// Input for POST /api/public/referrals.
+/// Submitted from the public network directory without authentication.
+/// Fields map to CreateReferralRequest which drives the existing referral pipeline.
+/// </summary>
+public sealed class PublicReferralRequest
+{
+    /// <summary>Target provider (from the public directory card).</summary>
+    public Guid ProviderId { get; set; }
+
+    /// <summary>Name of the person submitting the referral (law firm staff).</summary>
+    public string SenderName { get; set; } = string.Empty;
+
+    /// <summary>Email of the person submitting (used for confirmation).</summary>
+    public string SenderEmail { get; set; } = string.Empty;
+
+    /// <summary>Patient first name.</summary>
+    public string PatientFirstName { get; set; } = string.Empty;
+
+    /// <summary>Patient last name.</summary>
+    public string PatientLastName { get; set; } = string.Empty;
+
+    /// <summary>Patient phone number.</summary>
+    public string PatientPhone { get; set; } = string.Empty;
+
+    /// <summary>Patient email (optional).</summary>
+    public string? PatientEmail { get; set; }
+
+    /// <summary>
+    /// Type of service requested (optional free text).
+    /// Defaults to "General Referral" when omitted.
+    /// </summary>
+    public string? ServiceType { get; set; }
+
+    /// <summary>Additional case notes (optional).</summary>
+    public string? Notes { get; set; }
+}
+
+/// <summary>
+/// Success response for POST /api/public/referrals.
+/// Returns the minimum necessary to confirm submission — no PII echoed back.
+/// </summary>
+public sealed record PublicReferralResponse(
+    Guid   ReferralId,
+    Guid   ProviderId,
+    string ProviderName,
+    string ProviderStage,
+    string Message);

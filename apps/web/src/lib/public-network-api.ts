@@ -137,3 +137,30 @@ export async function fetchPublicNetworkDetail(
   if (!res.ok) return null;
   return res.json();
 }
+
+// ── CC2-INT-B08: Public referral initiation ─────────────────────────────────
+
+export interface PublicReferralRequest {
+  providerId:       string;
+  senderName:       string;
+  senderEmail:      string;
+  patientFirstName: string;
+  patientLastName:  string;
+  patientPhone:     string;
+  patientEmail?:    string;
+  serviceType?:     string;
+  notes?:           string;
+}
+
+export interface PublicReferralResponse {
+  referralId:    string;
+  providerId:    string;
+  providerName:  string;
+  providerStage: string;
+  message:       string;
+}
+
+export interface PublicReferralError {
+  message: string;
+  errors?: Record<string, string>;
+}

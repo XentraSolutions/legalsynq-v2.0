@@ -92,7 +92,7 @@ export default async function PublicNetworkPage({ searchParams }: PageProps) {
 
       {/* Main view — interactive provider list + map */}
       {detail ? (
-        <PublicNetworkView detail={detail} tenantCode={tenantCode} />
+        <PublicNetworkView detail={detail} tenantCode={tenantCode} tenantId={tenant.tenantId} />
       ) : (
         <p className="text-sm text-gray-500">
           This network has no providers yet.

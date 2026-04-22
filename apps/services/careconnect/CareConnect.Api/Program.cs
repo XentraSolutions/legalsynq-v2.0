@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Threading.RateLimiting;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Context;
@@ -10,6 +11,7 @@ using CareConnect.Infrastructure;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -97,6 +99,25 @@ builder.Services.Configure<AttachmentUploadOptions>(
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
 
+// CC2-INT-B08: Rate limiting for the public referral endpoint.
+// Fixed window: 10 submissions per minute per IP address.
+// Rejected requests receive 429 Too Many Requests.
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("public-referral-limit", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 10,
+                Window               = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
 var app = builder.Build();
 
 // Auto-migrate — apply pending EF Core migrations on startup in all environments.
@@ -176,6 +197,7 @@ catch (Exception ex)
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter(); // CC2-INT-B08: rate limit public referral endpoint
 
 // Health & info
 app.MapGet("/health", async (CareConnectDbContext db, CancellationToken ct) =>

@@ -1,10 +1,14 @@
+using BuildingBlocks.Exceptions;
 using CareConnect.Application.DTOs;
+using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
+using System.Net.Mail;
 
 namespace CareConnect.Api.Endpoints;
 
 // CC2-INT-B07 — Public Network Surface.
+// CC2-INT-B08 — Public Referral Initiation (POST /api/public/referrals).
 // These endpoints are intentionally anonymous — no JWT or platform_session required.
 // Tenant isolation is enforced via the X-Tenant-Id header, which is resolved
 // server-side by the Next.js BFF from the request subdomain → Identity lookup.
@@ -32,7 +36,6 @@ public static class PublicNetworkEndpoints
 
             var networks = await repo.GetAllByTenantAsync(tenantId.Value, ct);
 
-            // For each network, get the provider count
             var summaries = new List<PublicNetworkSummary>(networks.Count);
             foreach (var n in networks)
             {
@@ -48,9 +51,6 @@ public static class PublicNetworkEndpoints
         }).AllowAnonymous();
 
         // ── GET /api/public/network/{id}/providers ──────────────────────────
-        // Lists public provider information for a specific network.
-        // Applies stage-aware data: all providers returned regardless of stage,
-        // but the stage field allows the frontend to decorate or redirect.
         group.MapGet("/{id:guid}/providers", async (
             Guid       id,
             HttpContext http,
@@ -61,7 +61,6 @@ public static class PublicNetworkEndpoints
             if (tenantId == null)
                 return Results.BadRequest(new { message = "X-Tenant-Id header is required." });
 
-            // Verify the network belongs to this tenant
             var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
             if (network == null)
                 return Results.NotFound();
@@ -80,15 +79,13 @@ public static class PublicNetworkEndpoints
                     p.IsActive,
                     p.AcceptingReferrals,
                     p.AccessStage,
-                    null))  // PrimaryCategory: placeholder for future specialty tag
+                    null))
                 .ToList();
 
             return Results.Ok(items);
         }).AllowAnonymous();
 
         // ── GET /api/public/network/{id}/providers/markers ──────────────────
-        // Returns geo-coded map markers for providers in a network.
-        // Only providers with Latitude/Longitude are included.
         group.MapGet("/{id:guid}/providers/markers", async (
             Guid       id,
             HttpContext http,
@@ -122,8 +119,6 @@ public static class PublicNetworkEndpoints
         }).AllowAnonymous();
 
         // ── GET /api/public/network/{id}/detail ────────────────────────────
-        // Combined endpoint: returns network info + providers + markers in a
-        // single round-trip — optimal for the public landing page SSR.
         group.MapGet("/{id:guid}/detail", async (
             Guid       id,
             HttpContext http,
@@ -177,6 +172,114 @@ public static class PublicNetworkEndpoints
 
             return Results.Ok(detail);
         }).AllowAnonymous();
+
+        // ── POST /api/public/referrals ──────────────────────────────────────
+        // CC2-INT-B08 — Public referral initiation.
+        // Accepts an unauthenticated referral submission from the public network directory.
+        // Rate-limited (10 req/min per IP, policy registered in Program.cs) to prevent abuse.
+        // Tenant isolation: X-Tenant-Id set server-side by Next.js BFF from subdomain — never
+        // read from user input.
+        // Token/notification flow: delegated to IReferralService.CreateAsync, which fires:
+        //   - SendNewReferralNotificationAsync  (email + signed token for URL-stage providers)
+        //   - SendProviderAssignedNotificationAsync (platform Notifications → portal visibility)
+        app.MapPost("/api/public/referrals", async (
+            PublicReferralRequest req,
+            HttpContext           http,
+            IProviderRepository  providerRepo,
+            IReferralService     referralSvc,
+            ILoggerFactory       loggerFactory,
+            CancellationToken    ct) =>
+        {
+            var logger = loggerFactory.CreateLogger("CareConnect.PublicReferrals");
+            return await HandlePublicReferral(req, http, providerRepo, referralSvc, logger, ct);
+        })
+        .AllowAnonymous()
+        .RequireRateLimiting("public-referral-limit");
+    }
+
+    private static async Task<IResult> HandlePublicReferral(
+        PublicReferralRequest req,
+        HttpContext           http,
+        IProviderRepository  providerRepo,
+        IReferralService     referralSvc,
+        ILogger              logger,
+        CancellationToken    ct)
+    {
+            var tenantId = ResolveTenantId(http);
+            if (tenantId == null)
+                return Results.BadRequest(new { message = "X-Tenant-Id header is required." });
+
+            // Input validation
+            var errors = ValidatePublicReferralRequest(req);
+            if (errors.Count > 0)
+                return Results.UnprocessableEntity(new { message = "Validation failed.", errors });
+
+            // Provider lookup + AcceptingReferrals guard.
+            // Cross-tenant lookup because providers are a platform-wide marketplace.
+            Provider? provider;
+            try { provider = await providerRepo.GetByIdCrossAsync(req.ProviderId, ct); }
+            catch { provider = null; }
+
+            if (provider is null)
+                return Results.NotFound(new { message = "Provider not found." });
+
+            if (!provider.AcceptingReferrals)
+                return Results.UnprocessableEntity(new
+                {
+                    message = "This provider is not currently accepting referrals."
+                });
+
+            // Map to the internal CreateReferralRequest.
+            // ReferrerName/ReferrerEmail drive the signed-token email notification flow.
+            var createReq = new CreateReferralRequest
+            {
+                ProviderId              = req.ProviderId,
+                ClientFirstName         = req.PatientFirstName.Trim(),
+                ClientLastName          = req.PatientLastName.Trim(),
+                ClientPhone             = req.PatientPhone.Trim(),
+                ClientEmail             = req.PatientEmail?.Trim() ?? string.Empty,
+                RequestedService        = string.IsNullOrWhiteSpace(req.ServiceType)
+                                            ? "General Referral"
+                                            : req.ServiceType.Trim(),
+                Urgency                 = Referral.ValidUrgencies.Normal,
+                Notes                   = req.Notes?.Trim(),
+                ReferrerName            = req.SenderName.Trim(),
+                ReferrerEmail           = req.SenderEmail.Trim(),
+                ReferringOrganizationId = null,   // public — no org context
+                ReceivingOrganizationId = null,
+            };
+
+            // Create referral via the existing pipeline.
+            // CreateAsync persists the referral and fires fire-and-observe notifications.
+            // userId = null (anonymous submission).
+            try
+            {
+                var referral = await referralSvc.CreateAsync(tenantId.Value, userId: null, createReq, ct);
+
+                logger.LogInformation(
+                    "Public referral submitted: ReferralId={ReferralId} ProviderId={ProviderId} " +
+                    "Stage={Stage} Tenant={TenantId}",
+                    referral.Id, req.ProviderId, provider.AccessStage, tenantId.Value);
+
+                var response = new PublicReferralResponse(
+                    referral.Id,
+                    provider.Id,
+                    provider.Name,
+                    provider.AccessStage,
+                    "Referral submitted successfully. The provider will be in touch shortly.");
+
+                return Results.Created($"/api/public/referrals/{referral.Id}", response);
+            }
+            catch (NotFoundException ex)
+            {
+                logger.LogWarning(ex, "Public referral: provider not found mid-creation.");
+                return Results.NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Public referral creation failed for provider {ProviderId}.", req.ProviderId);
+                return Results.Problem("An unexpected error occurred while submitting your referral.");
+            }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -192,5 +295,59 @@ public static class PublicNetworkEndpoints
         var raw = http.Request.Headers["X-Tenant-Id"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(raw)) return null;
         return Guid.TryParse(raw, out var id) ? id : null;
+    }
+
+    /// <summary>
+    /// CC2-INT-B08: Validates a public referral submission.
+    /// Returns a dictionary of field → error message for any validation failures.
+    /// </summary>
+    private static Dictionary<string, string> ValidatePublicReferralRequest(PublicReferralRequest req)
+    {
+        var errors = new Dictionary<string, string>();
+
+        if (req.ProviderId == Guid.Empty)
+            errors["providerId"] = "A valid provider ID is required.";
+
+        if (string.IsNullOrWhiteSpace(req.SenderName) || req.SenderName.Trim().Length < 2)
+            errors["senderName"] = "Your name is required (minimum 2 characters).";
+        else if (req.SenderName.Length > 200)
+            errors["senderName"] = "Name must not exceed 200 characters.";
+
+        if (string.IsNullOrWhiteSpace(req.SenderEmail))
+            errors["senderEmail"] = "Your email address is required.";
+        else if (!IsValidEmail(req.SenderEmail))
+            errors["senderEmail"] = "A valid email address is required.";
+
+        if (string.IsNullOrWhiteSpace(req.PatientFirstName) || req.PatientFirstName.Trim().Length < 1)
+            errors["patientFirstName"] = "Patient first name is required.";
+        else if (req.PatientFirstName.Length > 100)
+            errors["patientFirstName"] = "First name must not exceed 100 characters.";
+
+        if (string.IsNullOrWhiteSpace(req.PatientLastName) || req.PatientLastName.Trim().Length < 1)
+            errors["patientLastName"] = "Patient last name is required.";
+        else if (req.PatientLastName.Length > 100)
+            errors["patientLastName"] = "Last name must not exceed 100 characters.";
+
+        if (string.IsNullOrWhiteSpace(req.PatientPhone))
+            errors["patientPhone"] = "Patient phone number is required.";
+        else if (req.PatientPhone.Trim().Length < 7 || req.PatientPhone.Length > 30)
+            errors["patientPhone"] = "Please enter a valid phone number.";
+
+        if (!string.IsNullOrWhiteSpace(req.PatientEmail) && !IsValidEmail(req.PatientEmail))
+            errors["patientEmail"] = "Please enter a valid patient email address.";
+
+        if (req.ServiceType is not null && req.ServiceType.Length > 200)
+            errors["serviceType"] = "Service type must not exceed 200 characters.";
+
+        if (req.Notes is not null && req.Notes.Length > 2000)
+            errors["notes"] = "Notes must not exceed 2000 characters.";
+
+        return errors;
+    }
+
+    private static bool IsValidEmail(string email)
+    {
+        try { _ = new MailAddress(email.Trim()); return true; }
+        catch { return false; }
     }
 }
