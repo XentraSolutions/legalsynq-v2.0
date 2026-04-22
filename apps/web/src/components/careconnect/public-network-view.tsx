@@ -17,7 +17,7 @@
  *    X-Tenant-Id to the AllowAnonymous CareConnect public referral endpoint.
  */
 
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, forwardRef, type FormEvent, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import type {
   PublicNetworkDetail,
@@ -258,9 +258,7 @@ function FilterChip({
 
 // ── Provider card ─────────────────────────────────────────────────────────────
 
-import React from 'react';
-
-const ProviderCard = React.forwardRef<
+const ProviderCard = forwardRef<
   HTMLDivElement,
   {
     provider:          PublicProviderItem;
@@ -463,7 +461,7 @@ function ReferralModal({
     [],
   );
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     setState('submitting');
     setErrors({});
@@ -579,7 +577,7 @@ function ReferralFormBody({
   fieldErrors: Record<string, string>;
   submitting:  boolean;
   onUpdate:    (field: keyof ReferralForm, value: string) => void;
-  onSubmit:    (e: React.FormEvent) => void;
+  onSubmit:    (e: FormEvent) => void;
   onCancel:    () => void;
 }) {
   return (
@@ -673,7 +671,7 @@ function ReferralFormBody({
 function Field({
   label, hint, required, error, children,
 }: {
-  label: string; hint?: string; required?: boolean; error?: string; children: React.ReactNode;
+  label: string; hint?: string; required?: boolean; error?: string; children: ReactNode;
 }) {
   return (
     <div>

@@ -3,7 +3,6 @@
 import 'leaflet/dist/leaflet.css';
 import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
 import type { PublicProviderMarker } from '@/lib/public-network-api';
 
 export interface NumberedMarker extends PublicProviderMarker {
@@ -19,47 +18,61 @@ interface PublicNetworkMapProps {
 
 const US_CENTER: [number, number] = [39.5, -98.35];
 
+/**
+ * Build a numbered circle pin using Leaflet's divIcon.
+ * Leaflet is NOT imported at the module level (it accesses `window` at init time
+ * and would break SSR even behind a dynamic import).  Instead we require() it
+ * lazily inside this function, which only runs on the client.
+ */
 function makePinIcon(index: number, accepting: boolean, selected: boolean) {
-  const bg      = selected ? '#1d4ed8' : accepting ? '#dc2626' : '#6b7280';
-  const ring    = selected ? '#bfdbfe' : 'transparent';
-  const size    = selected ? 34 : 28;
-  const font    = selected ? 13 : 11;
-  const outline = selected ? `box-shadow:0 0 0 3px ${ring};` : '';
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const L = require('leaflet') as typeof import('leaflet');
+
+  const bg   = selected ? '#1d4ed8' : accepting ? '#dc2626' : '#6b7280';
+  const size = selected ? 34 : 28;
+  const font = selected ? 13 : 11;
+  const ring = selected ? 'box-shadow:0 0 0 3px #bfdbfe;' : '';
 
   return L.divIcon({
-    className: '',
-    iconSize:  [size, size],
-    iconAnchor: [size / 2, size / 2],
+    className:   '',
+    iconSize:    [size, size],
+    iconAnchor:  [size / 2, size / 2],
     popupAnchor: [0, -(size / 2 + 4)],
     html: `
       <div style="
-        width:${size}px; height:${size}px;
-        background:${bg};
-        border-radius:50%;
-        display:flex; align-items:center; justify-content:center;
-        color:#fff; font-weight:700; font-size:${font}px;
-        font-family:system-ui,sans-serif;
-        border:2px solid #fff;
-        ${outline}
-        transition:all .15s;
-        box-shadow:0 2px 6px rgba(0,0,0,.35);
+        width:${size}px;height:${size}px;background:${bg};border-radius:50%;
+        display:flex;align-items:center;justify-content:center;
+        color:#fff;font-weight:700;font-size:${font}px;font-family:system-ui,sans-serif;
+        border:2px solid #fff;${ring}
+        box-shadow:0 2px 6px rgba(0,0,0,.35);transition:all .15s;
       ">${index}</div>
     `,
   });
 }
 
+/**
+ * Fits the map to the given markers on first render.
+ * `useEffect` guarantees this only runs on the client.
+ */
 function FlyToMarkers({ markers }: { markers: NumberedMarker[] }) {
   const map = useMap();
+
   useEffect(() => {
     if (markers.length === 0) return;
     if (markers.length === 1) {
       map.setView([markers[0].latitude, markers[0].longitude], 12);
       return;
     }
-    const bounds = L.latLngBounds(markers.map(m => [m.latitude, m.longitude]));
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const L = require('leaflet') as typeof import('leaflet');
+    const bounds = L.latLngBounds(
+      markers.map(m => [m.latitude, m.longitude] as [number, number]),
+    );
     map.fitBounds(bounds, { padding: [40, 40] });
+  // Only run on initial mount — intentionally omitting deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
   return null;
 }
 
@@ -113,25 +126,19 @@ export function PublicNetworkMap({
               <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 8px' }}>
                 {m.city}, {m.state}
               </p>
-
               {m.acceptingReferrals ? (
                 <span style={{
                   fontSize: 11, color: '#15803d', background: '#f0fdf4',
                   border: '1px solid #bbf7d0', borderRadius: 9999,
                   padding: '2px 8px', display: 'inline-block', marginBottom: 10,
-                }}>
-                  Accepting referrals
-                </span>
+                }}>Accepting referrals</span>
               ) : (
                 <span style={{
                   fontSize: 11, color: '#6b7280', background: '#f9fafb',
                   border: '1px solid #e5e7eb', borderRadius: 9999,
                   padding: '2px 8px', display: 'inline-block', marginBottom: 10,
-                }}>
-                  Not accepting referrals
-                </span>
+                }}>Not accepting referrals</span>
               )}
-
               {m.acceptingReferrals && (
                 <div>
                   <button
