@@ -1,16 +1,21 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { careConnectApi } from '@/lib/careconnect-api';
-import type { NetworkDetail, NetworkProviderMarker, ProviderMarker } from '@/types/careconnect';
+import type {
+  NetworkDetail,
+  NetworkProviderItem,
+  NetworkProviderMarker,
+  ProviderMarker,
+  ProviderSearchResult,
+} from '@/types/careconnect';
 
 const ProviderMap = dynamic(
   () => import('./provider-map').then(m => m.ProviderMap),
   { ssr: false, loading: () => <div className="h-80 w-full bg-gray-100 animate-pulse rounded-lg" /> },
 );
 
-/** Adapt NetworkProviderMarker to the ProviderMap's ProviderMarker contract. */
 function toProviderMarker(m: NetworkProviderMarker): ProviderMarker {
   return {
     ...m,
@@ -26,37 +31,125 @@ interface NetworkDetailClientProps {
   initialMarkers: NetworkProviderMarker[];
 }
 
+type AddMode = 'search' | 'create';
+
+const EMPTY_FORM = {
+  name: '', organizationName: '', email: '', phone: '',
+  addressLine1: '', city: '', state: '', postalCode: '',
+  npi: '', isActive: true, acceptingReferrals: true,
+};
+
 export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailClientProps) {
-  const [providers, setProviders] = useState(network.providers);
+  const [providers, setProviders] = useState<NetworkProviderItem[]>(network.providers);
   const [markers, setMarkers] = useState<NetworkProviderMarker[]>(initialMarkers);
-  const [searchProviderId, setSearchProviderId] = useState('');
-  const [adding, setAdding] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
-  const [removingId, setRemovingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'providers' | 'map'>('providers');
 
-  async function handleAddProvider(e: React.FormEvent) {
+  // Add provider state
+  const [addMode, setAddMode] = useState<AddMode>('search');
+  const [searchQuery, setSearchQuery] = useState({ name: '', phone: '', npi: '', city: '' });
+  const [searchResults, setSearchResults] = useState<ProviderSearchResult[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  // New provider form
+  const [newForm, setNewForm] = useState(EMPTY_FORM);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  // Remove
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  // Adding association from search
+  const [addingId, setAddingId] = useState<string | null>(null);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Search ──────────────────────────────────────────────────────────────────
+
+  async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    const pid = searchProviderId.trim();
-    if (!pid) {
-      setAddError('Enter a Provider ID (UUID).');
+    const hasQuery = Object.values(searchQuery).some(v => v.trim() !== '');
+    if (!hasQuery) {
+      setSearchError('Enter at least one search field.');
       return;
     }
-    setAdding(true);
-    setAddError(null);
+    setSearching(true);
+    setSearchError(null);
+    setSearchResults(null);
     try {
-      await careConnectApi.networks.addProvider(network.id, pid);
-      // Reload to get the updated provider list and markers from the server
-      window.location.reload();
+      const { data } = await careConnectApi.networks.searchProviders(network.id, {
+        name:  searchQuery.name  || undefined,
+        phone: searchQuery.phone || undefined,
+        npi:   searchQuery.npi   || undefined,
+        city:  searchQuery.city  || undefined,
+      });
+      setSearchResults(data ?? []);
     } catch {
-      setAddError('Failed to add provider. Check the ID and try again.');
+      setSearchError('Search failed. Please try again.');
     } finally {
-      setAdding(false);
+      setSearching(false);
     }
   }
 
+  // ── Associate existing ──────────────────────────────────────────────────────
+
+  async function handleAssociate(provider: ProviderSearchResult) {
+    setAddingId(provider.id);
+    try {
+      const { data } = await careConnectApi.networks.addProvider(network.id, {
+        existingProviderId: provider.id,
+      });
+      if (data && !providers.find(p => p.id === data.id)) {
+        setProviders(prev => [...prev, data]);
+      }
+      setSearchResults(null);
+      setSearchQuery({ name: '', phone: '', npi: '', city: '' });
+    } catch {
+      setSearchError('Failed to add provider to network. Please try again.');
+    } finally {
+      setAddingId(null);
+    }
+  }
+
+  // ── Create new ──────────────────────────────────────────────────────────────
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const { data } = await careConnectApi.networks.addProvider(network.id, {
+        newProvider: {
+          name:               newForm.name.trim(),
+          organizationName:   newForm.organizationName.trim() || undefined,
+          email:              newForm.email.trim(),
+          phone:              newForm.phone.trim(),
+          addressLine1:       newForm.addressLine1.trim(),
+          city:               newForm.city.trim(),
+          state:              newForm.state.trim(),
+          postalCode:         newForm.postalCode.trim(),
+          isActive:           newForm.isActive,
+          acceptingReferrals: newForm.acceptingReferrals,
+          npi:                newForm.npi.trim() || undefined,
+        },
+      });
+      if (data && !providers.find(p => p.id === data.id)) {
+        setProviders(prev => [...prev, data]);
+      }
+      setNewForm(EMPTY_FORM);
+      setAddMode('search');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to add provider. Please try again.';
+      setCreateError(msg);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  // ── Remove ──────────────────────────────────────────────────────────────────
+
   async function handleRemoveProvider(providerId: string) {
-    if (!confirm('Remove this provider from the network?')) return;
+    if (!confirm('Remove this provider from the network? The provider stays in the shared registry.')) return;
     setRemovingId(providerId);
     try {
       await careConnectApi.networks.removeProvider(network.id, providerId);
@@ -70,6 +163,7 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
   }
 
   const providerMarkers = markers.map(toProviderMarker);
+  const alreadyInNetwork = new Set(providers.map(p => p.id));
 
   return (
     <div>
@@ -84,28 +178,265 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
         </p>
       </div>
 
-      {/* Add Provider */}
+      {/* Add Provider Panel */}
       <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">Add Provider</h2>
-        <form onSubmit={handleAddProvider} className="flex gap-2 items-start">
-          <div className="flex-1">
-            <input
-              type="text"
-              value={searchProviderId}
-              onChange={e => setSearchProviderId(e.target.value)}
-              placeholder="Paste Provider ID (UUID)"
-              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-            />
-            {addError && <p className="text-xs text-red-600 mt-1">{addError}</p>}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700">Add Provider</h2>
+          <div className="flex rounded-md overflow-hidden border border-gray-300 text-xs">
+            <button
+              onClick={() => { setAddMode('search'); setCreateError(null); }}
+              className={`px-3 py-1 ${addMode === 'search' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            >
+              Search Registry
+            </button>
+            <button
+              onClick={() => { setAddMode('create'); setSearchResults(null); setSearchError(null); }}
+              className={`px-3 py-1 border-l border-gray-300 ${addMode === 'create' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+            >
+              Add New
+            </button>
           </div>
-          <button
-            type="submit"
-            disabled={adding}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap"
-          >
-            {adding ? 'Adding…' : 'Add Provider'}
-          </button>
-        </form>
+        </div>
+
+        {/* Shared registry notice */}
+        <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded px-3 py-2 mb-3">
+          <i className="ri-information-line mr-1" />
+          Providers are shared across the platform. Adding to this network creates an association — you are not taking ownership.
+        </p>
+
+        {/* ── Search Mode ── */}
+        {addMode === 'search' && (
+          <>
+            <form onSubmit={handleSearch} className="space-y-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery.name}
+                  onChange={e => setSearchQuery(q => ({ ...q, name: e.target.value }))}
+                  placeholder="Name or org"
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  value={searchQuery.phone}
+                  onChange={e => setSearchQuery(q => ({ ...q, phone: e.target.value }))}
+                  placeholder="Phone"
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  value={searchQuery.npi}
+                  onChange={e => setSearchQuery(q => ({ ...q, npi: e.target.value }))}
+                  placeholder="NPI number"
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                />
+                <input
+                  type="text"
+                  value={searchQuery.city}
+                  onChange={e => setSearchQuery(q => ({ ...q, city: e.target.value }))}
+                  placeholder="City"
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              {searchError && <p className="text-xs text-red-600">{searchError}</p>}
+              <button
+                type="submit"
+                disabled={searching}
+                className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {searching ? 'Searching…' : 'Search Shared Registry'}
+              </button>
+            </form>
+
+            {/* Search Results */}
+            {searchResults !== null && (
+              <div className="mt-3">
+                {searchResults.length === 0 ? (
+                  <div className="rounded-md bg-yellow-50 border border-yellow-200 px-3 py-2 text-sm text-yellow-800">
+                    No providers found. Switch to <button onClick={() => setAddMode('create')} className="underline font-medium">Add New</button> to register a new provider.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100 rounded-md border border-gray-200 bg-white overflow-hidden max-h-72 overflow-y-auto">
+                    {searchResults.map(p => {
+                      const inNetwork = alreadyInNetwork.has(p.id);
+                      return (
+                        <div key={p.id} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                            {p.organizationName && (
+                              <p className="text-xs text-gray-500 truncate">{p.organizationName}</p>
+                            )}
+                            <p className="text-xs text-gray-400">
+                              {p.city}, {p.state}
+                              {p.npi && <span className="ml-2 font-mono">NPI: {p.npi}</span>}
+                            </p>
+                          </div>
+                          <div className="ml-3 flex-shrink-0">
+                            {inNetwork ? (
+                              <span className="text-xs text-green-600 font-medium">
+                                <i className="ri-check-line mr-1" />In network
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleAssociate(p)}
+                                disabled={addingId === p.id}
+                                className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                              >
+                                {addingId === p.id ? 'Adding…' : 'Add to Network'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Create Mode ── */}
+        {addMode === 'create' && (
+          <form onSubmit={handleCreate} className="space-y-3">
+            <p className="text-xs text-gray-500">
+              Fill in the provider details. The NPI field is strongly recommended — it prevents duplicate records in the shared registry.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+                <input
+                  required
+                  value={newForm.name}
+                  onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                  placeholder="Dr. Jane Smith"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Organization / Practice</label>
+                <input
+                  value={newForm.organizationName}
+                  onChange={e => setNewForm(f => ({ ...f, organizationName: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                  placeholder="Smith Family Practice"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
+                <input
+                  required
+                  type="email"
+                  value={newForm.email}
+                  onChange={e => setNewForm(f => ({ ...f, email: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                  placeholder="jane@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Phone *</label>
+                <input
+                  required
+                  type="tel"
+                  value={newForm.phone}
+                  onChange={e => setNewForm(f => ({ ...f, phone: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                  placeholder="(555) 000-0000"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">NPI Number</label>
+                <input
+                  value={newForm.npi}
+                  onChange={e => setNewForm(f => ({ ...f, npi: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none font-mono"
+                  placeholder="1234567890"
+                  maxLength={10}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Address *</label>
+                <input
+                  required
+                  value={newForm.addressLine1}
+                  onChange={e => setNewForm(f => ({ ...f, addressLine1: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                  placeholder="123 Main St"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">City *</label>
+                <input
+                  required
+                  value={newForm.city}
+                  onChange={e => setNewForm(f => ({ ...f, city: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">State *</label>
+                  <input
+                    required
+                    value={newForm.state}
+                    onChange={e => setNewForm(f => ({ ...f, state: e.target.value }))}
+                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                    placeholder="CA"
+                    maxLength={2}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Postal Code *</label>
+                  <input
+                    required
+                    value={newForm.postalCode}
+                    onChange={e => setNewForm(f => ({ ...f, postalCode: e.target.value }))}
+                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                    placeholder="90210"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-4 text-sm">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newForm.isActive}
+                  onChange={e => setNewForm(f => ({ ...f, isActive: e.target.checked }))}
+                  className="rounded border-gray-300"
+                />
+                <span className="text-xs text-gray-700">Active</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newForm.acceptingReferrals}
+                  onChange={e => setNewForm(f => ({ ...f, acceptingReferrals: e.target.checked }))}
+                  className="rounded border-gray-300"
+                />
+                <span className="text-xs text-gray-700">Accepting referrals</span>
+              </label>
+            </div>
+            {createError && <p className="text-xs text-red-600">{createError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={creating}
+                className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {creating ? 'Adding…' : 'Register & Add to Network'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAddMode('search'); setNewForm(EMPTY_FORM); setCreateError(null); }}
+                className="rounded-md border border-gray-300 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       {/* Tabs */}
@@ -133,6 +464,7 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
           <div className="rounded-lg border-2 border-dashed border-gray-200 py-12 text-center">
             <i className="ri-hospital-line text-3xl text-gray-300" />
             <p className="mt-2 text-sm text-gray-500">No providers in this network yet.</p>
+            <p className="text-xs text-gray-400 mt-1">Search the registry above to add providers.</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white overflow-hidden">
@@ -159,7 +491,7 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
                     onClick={() => handleRemoveProvider(provider.id)}
                     disabled={removingId === provider.id}
                     className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40"
-                    title="Remove from network"
+                    title="Remove from network (association only)"
                   >
                     <i className="ri-close-circle-line text-base" />
                   </button>
@@ -179,12 +511,12 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
             </div>
           ) : (
             <ProviderMap
-            markers={providerMarkers}
-            selectedId={null}
-            onSelect={() => {}}
-            onViewportChange={() => {}}
-            isReferrer={false}
-          />
+              markers={providerMarkers}
+              selectedId={null}
+              onSelect={() => {}}
+              onViewportChange={() => {}}
+              isReferrer={false}
+            />
           )}
         </div>
       )}

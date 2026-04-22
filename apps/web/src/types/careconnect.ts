@@ -538,7 +538,41 @@ export interface ReferralPerformanceResult {
   providers:  ProviderPerformanceRow[];
 }
 
-// ── CC2-INT-B06: Provider Networks ────────────────────────────────────────────
+// ── CC2-INT-B06 / CC2-INT-B06-01: Provider Networks + Shared Registry ────────
+
+/** Result from GET /api/networks/{id}/providers/search — shared global registry */
+export interface ProviderSearchResult {
+  id:                string;
+  name:              string;
+  organizationName?: string;
+  email:             string;
+  phone:             string;
+  city:              string;
+  state:             string;
+  addressLine1:      string;
+  postalCode:        string;
+  npi?:              string;
+  isActive:          boolean;
+  acceptingReferrals: boolean;
+}
+
+/** Body for POST /api/networks/{id}/providers — match-or-create */
+export interface AddProviderToNetworkRequest {
+  existingProviderId?: string;
+  newProvider?: {
+    name:               string;
+    organizationName?:  string;
+    email:              string;
+    phone:              string;
+    addressLine1:       string;
+    city:               string;
+    state:              string;
+    postalCode:         string;
+    isActive:           boolean;
+    acceptingReferrals: boolean;
+    npi?:               string;
+  };
+}
 
 export interface NetworkSummary {
   id:            string;

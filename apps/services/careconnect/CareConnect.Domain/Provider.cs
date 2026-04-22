@@ -25,6 +25,13 @@ public class Provider : AuditableEntity
     // Phase 5: link Provider to an Identity Organization (nullable during migration window)
     public Guid? OrganizationId { get; private set; }
 
+    /// <summary>
+    /// National Provider Identifier — globally unique across the shared provider registry.
+    /// Used as the primary deduplication key when adding providers to networks.
+    /// Null when unknown; set once and immutable via SetNpi().
+    /// </summary>
+    public string? Npi { get; private set; }
+
     public List<ProviderCategory> ProviderCategories { get; private set; } = new();
 
     /// <summary>
@@ -54,7 +61,8 @@ public class Provider : AuditableEntity
         Guid?   createdByUserId,
         double? latitude       = null,
         double? longitude      = null,
-        string? geoPointSource = null)
+        string? geoPointSource = null,
+        string? npi            = null)
     {
         return new Provider
         {
@@ -70,6 +78,7 @@ public class Provider : AuditableEntity
             PostalCode       = postalCode.Trim(),
             IsActive         = isActive,
             AcceptingReferrals = acceptingReferrals,
+            Npi              = string.IsNullOrWhiteSpace(npi) ? null : npi.Trim(),
             Latitude         = latitude,
             Longitude        = longitude,
             GeoPointSource   = latitude.HasValue ? (geoPointSource ?? "Manual") : null,
@@ -79,6 +88,16 @@ public class Provider : AuditableEntity
             CreatedAtUtc     = DateTime.UtcNow,
             UpdatedAtUtc     = DateTime.UtcNow
         };
+    }
+
+    /// <summary>
+    /// Set the NPI for an existing provider that didn't have one at creation.
+    /// NPI is globally unique — caller must check for conflicts first.
+    /// </summary>
+    public void SetNpi(string npi)
+    {
+        Npi          = npi.Trim();
+        UpdatedAtUtc = DateTime.UtcNow;
     }
 
     // LSCC-01-003: Admin-safe idempotent activation — sets IsActive + AcceptingReferrals = true.

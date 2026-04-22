@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CareConnect.Api.Endpoints;
 
-// CC2-INT-B06 — provider network management endpoints.
+// CC2-INT-B06 / CC2-INT-B06-01 — provider network management + shared provider registry.
 // Access: CARECONNECT_NETWORK_MANAGER product role, or PlatformAdmin / TenantAdmin bypass.
 public static class NetworkEndpoints
 {
@@ -81,17 +81,40 @@ public static class NetworkEndpoints
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
 
-        // ── Add provider to network ────────────────────────────────────────────
-        group.MapPost("/{id:guid}/providers/{providerId:guid}", async (
+        // ── Search shared provider registry ────────────────────────────────────
+        // CC2-INT-B06-01: Global cross-tenant search. Returns up to 20 matching providers.
+        // Used by the tenant portal "Add Provider" search box.
+        group.MapGet("/{id:guid}/providers/search", async (
             Guid id,
-            Guid providerId,
+            [FromQuery] string? name,
+            [FromQuery] string? phone,
+            [FromQuery] string? npi,
+            [FromQuery] string? city,
             INetworkService service,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await service.AddProviderAsync(tenantId, id, providerId, ctx.UserId, ct);
-            return Results.NoContent();
+            // Access control — verify the network belongs to this tenant
+            _ = await service.GetByIdAsync(tenantId, id, ct);
+            var results = await service.SearchProvidersAsync(name, phone, npi, city, ct);
+            return Results.Ok(results);
+        })
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+
+        // ── Add provider to network (match-or-create) ──────────────────────────
+        // CC2-INT-B06-01: Body: { existingProviderId } | { newProvider: {...} }
+        // Match → associate. No match + new data → create in registry → associate.
+        group.MapPost("/{id:guid}/providers", async (
+            Guid id,
+            [FromBody] AddProviderToNetworkRequest request,
+            INetworkService service,
+            ICurrentRequestContext ctx,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var provider = await service.AddProviderAsync(tenantId, id, request, ctx.UserId, ct);
+            return Results.Ok(provider);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
 

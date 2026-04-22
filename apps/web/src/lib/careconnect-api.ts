@@ -22,9 +22,12 @@ import type {
   SignedUrlResponse,
   NetworkSummary,
   NetworkDetail,
+  NetworkProviderItem,
   CreateNetworkRequest,
   UpdateNetworkRequest,
   NetworkProviderMarker,
+  ProviderSearchResult,
+  AddProviderToNetworkRequest,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -205,11 +208,29 @@ export const careConnectApi = {
     delete: (id: string) =>
       apiClient.delete<void>(`/careconnect/api/networks/${id}`),
 
-    /** POST /api/networks/{id}/providers/{providerId} — add provider to network */
-    addProvider: (networkId: string, providerId: string) =>
-      apiClient.post<void>(`/careconnect/api/networks/${networkId}/providers/${providerId}`, {}),
+    /**
+     * CC2-INT-B06-01: Search the shared global provider registry.
+     * GET /api/networks/{id}/providers/search?name=&phone=&npi=&city=
+     */
+    searchProviders: (networkId: string, params: { name?: string; phone?: string; npi?: string; city?: string }) => {
+      const qs = new URLSearchParams();
+      if (params.name)  qs.set('name',  params.name);
+      if (params.phone) qs.set('phone', params.phone);
+      if (params.npi)   qs.set('npi',   params.npi);
+      if (params.city)  qs.set('city',  params.city);
+      return apiClient.get<ProviderSearchResult[]>(
+        `/careconnect/api/networks/${networkId}/providers/search?${qs.toString()}`
+      );
+    },
 
-    /** DELETE /api/networks/{id}/providers/{providerId} — remove provider from network */
+    /**
+     * CC2-INT-B06-01: Add a provider to a network (match-or-create).
+     * POST /api/networks/{id}/providers — body: { existingProviderId } | { newProvider: {...} }
+     */
+    addProvider: (networkId: string, request: AddProviderToNetworkRequest) =>
+      apiClient.post<NetworkProviderItem>(`/careconnect/api/networks/${networkId}/providers`, request),
+
+    /** DELETE /api/networks/{id}/providers/{providerId} — removes association only */
     removeProvider: (networkId: string, providerId: string) =>
       apiClient.delete<void>(`/careconnect/api/networks/${networkId}/providers/${providerId}`),
 

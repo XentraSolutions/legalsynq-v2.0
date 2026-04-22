@@ -45,6 +45,14 @@ public class ProviderConfiguration : IEntityTypeConfiguration<Provider>
         builder.HasIndex(p => p.OrganizationId)
             .HasDatabaseName("IX_Providers_OrganizationId");
 
+        // CC2-INT-B06-01: NPI — globally unique across the shared provider registry.
+        // Null allowed (NPI not always known). When set, must be unique platform-wide.
+        // MySQL 8.0 does not support partial/filtered indexes — no HasFilter here.
+        // Uniqueness enforced at application layer (NetworkService.FindByNpiAsync).
+        builder.Property(p => p.Npi).HasMaxLength(20);
+        builder.HasIndex(p => p.Npi)
+            .HasDatabaseName("IX_Providers_Npi");
+
         builder.HasIndex(p => new { p.TenantId, p.Email }).IsUnique();
         builder.HasIndex(p => new { p.TenantId, p.Name });
         builder.HasIndex(p => new { p.TenantId, p.City, p.State });

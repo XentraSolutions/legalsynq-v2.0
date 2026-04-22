@@ -51,6 +51,23 @@ public sealed record NetworkProviderMarker(
     double Longitude,
     string? GeoPointSource);
 
+// ── Shared provider search ────────────────────────────────────────────────────
+
+/// <summary>Returned by GET /api/networks/{id}/providers/search</summary>
+public sealed record ProviderSearchResult(
+    Guid    Id,
+    string  Name,
+    string? OrganizationName,
+    string  Email,
+    string  Phone,
+    string  City,
+    string  State,
+    string  AddressLine1,
+    string  PostalCode,
+    string? Npi,
+    bool    IsActive,
+    bool    AcceptingReferrals);
+
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 public sealed record CreateNetworkRequest(
@@ -60,3 +77,26 @@ public sealed record CreateNetworkRequest(
 public sealed record UpdateNetworkRequest(
     string Name,
     string Description);
+
+/// <summary>
+/// CC2-INT-B06-01: Add a provider to a network.
+/// Exactly one of ExistingProviderId or NewProvider must be set.
+/// - ExistingProviderId → associate existing shared provider (no new record)
+/// - NewProvider        → create in shared registry then associate
+/// </summary>
+public sealed record AddProviderToNetworkRequest(
+    Guid?                  ExistingProviderId,
+    NewProviderData?       NewProvider);
+
+public sealed record NewProviderData(
+    string  Name,
+    string? OrganizationName,
+    string  Email,
+    string  Phone,
+    string  AddressLine1,
+    string  City,
+    string  State,
+    string  PostalCode,
+    bool    IsActive,
+    bool    AcceptingReferrals,
+    string? Npi);
