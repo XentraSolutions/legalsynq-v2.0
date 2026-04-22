@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { careConnectApi }    from '@/lib/careconnect-api';
 import { AccessStageBadge }  from '@/components/careconnect/status-badge';
 import type {
@@ -39,6 +39,12 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
   const [createError,  setCreateError]  = useState<string | null>(null);
   const [removingId,   setRemovingId]   = useState<string | null>(null);
   const [toast,        setToast]        = useState<string | null>(null);
+  const [networkUrl,   setNetworkUrl]   = useState<string>('');
+  const [urlCopied,    setUrlCopied]    = useState(false);
+
+  useEffect(() => {
+    setNetworkUrl(window.location.origin + '/careconnect/network');
+  }, []);
 
   // ── Network creation ──────────────────────────────────────────────────────
 
@@ -74,6 +80,17 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
   function showToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(null), 4000);
+  }
+
+  async function copyNetworkUrl() {
+    if (!networkUrl) return;
+    try {
+      await navigator.clipboard.writeText(networkUrl);
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 2000);
+    } catch {
+      showToast('Could not copy URL. Please copy it manually.');
+    }
   }
 
   // ── Add panel open/close ──────────────────────────────────────────────────
@@ -250,7 +267,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-semibold text-gray-900">{network.name}</h1>
             <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 border border-blue-200">
@@ -259,6 +276,25 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
           </div>
           {network.description && (
             <p className="text-sm text-gray-500 mt-0.5">{network.description}</p>
+          )}
+
+          {/* Network URL */}
+          {networkUrl && (
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-400 shrink-0">Network URL</span>
+              <div className="flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 min-w-0">
+                <i className="ri-link text-gray-400 text-xs shrink-0" />
+                <span className="text-xs text-gray-600 font-mono truncate">{networkUrl}</span>
+              </div>
+              <button
+                onClick={copyNetworkUrl}
+                title="Copy network URL"
+                className="shrink-0 inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                <i className={urlCopied ? 'ri-check-line text-green-600' : 'ri-clipboard-line'} />
+                {urlCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
           )}
         </div>
 
