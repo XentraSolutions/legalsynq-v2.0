@@ -124,7 +124,7 @@ export const CC_NAV: NavSection[] = [
   {
     heading: 'CATALOG',
     items: [
-      { href: '/products', label: 'Products', icon: 'ri-apps-line', badge: 'MOCKUP' },
+      { href: '/products', label: 'Products', icon: 'ri-apps-line', badge: 'IN PROGRESS' },
     ],
   },
 
