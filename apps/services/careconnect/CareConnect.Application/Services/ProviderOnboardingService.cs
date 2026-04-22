@@ -88,14 +88,35 @@ public sealed class ProviderOnboardingService : IProviderOnboardingService
         if (provision is null)
         {
             _logger.LogError(
-                "CC2-INT-B09 OnboardingFailed: Identity SelfProvision returned null for provider {ProviderId}.",
-                provider.Id);
+                "CC2-INT-B09 OnboardingFailed: Identity SelfProvision returned null (unexpected failure) " +
+                "for provider {ProviderId}.", provider.Id);
+            throw new ProviderOnboardingException(
+                ProviderOnboardingErrorCode.IdentityServiceFailed,
+                "Unable to create your workspace at this time. Please try again or contact support.");
+        }
+
+        if (!provision.IsSuccess)
+        {
+            if (provision.FailureCode == "CODE_TAKEN")
+            {
+                _logger.LogWarning(
+                    "CC2-INT-B09 OnboardingFailed: tenant code '{TenantCode}' already taken for provider {ProviderId}.",
+                    tenantCode, provider.Id);
+                throw new ProviderOnboardingException(
+                    ProviderOnboardingErrorCode.TenantCodeUnavailable,
+                    $"The subdomain '{tenantCode}' is already taken. Please choose a different code.");
+            }
+
+            _logger.LogError(
+                "CC2-INT-B09 OnboardingFailed: Identity SelfProvision returned failure code '{FailureCode}' " +
+                "for provider {ProviderId}.", provision.FailureCode, provider.Id);
             throw new ProviderOnboardingException(
                 ProviderOnboardingErrorCode.IdentityServiceFailed,
                 "Unable to create your workspace at this time. Please try again or contact support.");
         }
 
         // ── 4. Transition provider to TENANT stage ───────────────────────────
+        // provision.IsSuccess == true and provision.TenantId is valid.
         provider.MarkTenantProvisioned(provision.TenantId);
         await _providerRepo.UpdateAsync(provider, ct);
 

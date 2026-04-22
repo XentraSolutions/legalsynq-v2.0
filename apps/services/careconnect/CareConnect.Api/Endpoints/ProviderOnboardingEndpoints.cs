@@ -2,6 +2,7 @@
 // Authenticated — requires a valid JWT (COMMON_PORTAL provider).
 // Gateway route: /careconnect/api/provider/onboarding/* → RequireAuthorization (protected)
 using BuildingBlocks.Context;
+using CareConnect.Api.Helpers;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
@@ -44,6 +45,7 @@ public static class ProviderOnboardingEndpoints
         // ── GET /api/provider/onboarding/check-code ───────────────────────────
         // Checks whether a tenant code is available for self-provisioning.
         // Called live from the onboarding form as the user types.
+        // RequireAuthorization: prevents anonymous probing of all tenant subdomain names.
         app.MapGet("/api/provider/onboarding/check-code", async (
             string                      code,
             IProviderOnboardingService  onboardingSvc,
@@ -52,16 +54,25 @@ public static class ProviderOnboardingEndpoints
             if (string.IsNullOrWhiteSpace(code))
                 return Results.BadRequest(new { message = "code query parameter is required." });
 
-            var result = await onboardingSvc.CheckCodeAvailableAsync(code.Trim(), ct);
+            var trimmed = code.Trim().ToLowerInvariant();
+
+            if (!TenantCodeValidator.IsValid(trimmed))
+                return Results.Ok(new TenantCodeAvailabilityResponse
+                {
+                    Available      = false,
+                    NormalizedCode = trimmed,
+                    Message        = TenantCodeValidator.FormatHint,
+                });
+
+            var result = await onboardingSvc.CheckCodeAvailableAsync(trimmed, ct);
 
             if (result is null)
             {
-                // Identity service unreachable — return an optimistic response so the user can proceed.
-                // The provision step enforces uniqueness and will still fail if the code is taken.
+                // Identity service unreachable — optimistic response; provision step enforces uniqueness.
                 return Results.Ok(new TenantCodeAvailabilityResponse
                 {
                     Available      = true,
-                    NormalizedCode = code.Trim().ToLowerInvariant(),
+                    NormalizedCode = trimmed,
                     Message        = "Availability could not be confirmed — the code will be validated on submission.",
                 });
             }
@@ -72,7 +83,7 @@ public static class ProviderOnboardingEndpoints
                 NormalizedCode = result.NormalizedCode,
                 Message        = result.Message,
             });
-        });
+        }).RequireAuthorization();
 
         // ── POST /api/provider/onboarding/provision-tenant ────────────────────
         // Creates a new tenant workspace for the authenticated COMMON_PORTAL provider.
@@ -88,7 +99,7 @@ public static class ProviderOnboardingEndpoints
             if (identityUserId is null)
                 return Results.Unauthorized();
 
-            // Input validation.
+            // Input validation — name.
             if (string.IsNullOrWhiteSpace(req.TenantName) || req.TenantName.Trim().Length < 2)
                 return Results.UnprocessableEntity(new
                 {
@@ -99,13 +110,15 @@ public static class ProviderOnboardingEndpoints
                     },
                 });
 
-            if (string.IsNullOrWhiteSpace(req.TenantCode) || req.TenantCode.Trim().Length < 2)
+            // Input validation — code (format + length).
+            var codeNormalized = req.TenantCode?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (!TenantCodeValidator.IsValid(codeNormalized))
                 return Results.UnprocessableEntity(new
                 {
                     message = "Validation failed.",
                     errors  = new Dictionary<string, string>
                     {
-                        ["tenantCode"] = "Subdomain code must be at least 2 characters.",
+                        ["tenantCode"] = TenantCodeValidator.FormatHint,
                     },
                 });
 
@@ -114,7 +127,7 @@ public static class ProviderOnboardingEndpoints
                 var result = await onboardingSvc.ProvisionToTenantAsync(
                     identityUserId.Value,
                     req.TenantName.Trim(),
-                    req.TenantCode.Trim(),
+                    codeNormalized,         // already lowercased + trimmed above
                     ct);
 
                 return Results.Created(

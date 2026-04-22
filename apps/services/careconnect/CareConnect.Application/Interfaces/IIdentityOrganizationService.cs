@@ -93,6 +93,19 @@ public sealed class TenantCodeCheckResult
 
 public sealed class SelfProvisionTenantResult
 {
+    /// <summary>
+    /// True when the provisioning succeeded. False when Identity returned a
+    /// known business error (e.g. CODE_TAKEN). Null / callers receive null when
+    /// there was an unexpected failure (network, 5xx) — see HTTP service.
+    /// </summary>
+    public bool    IsSuccess         { get; init; } = true;
+
+    /// <summary>
+    /// Machine-readable failure code when IsSuccess = false.
+    /// "CODE_TAKEN" — the requested tenant code is already in use (Identity 409).
+    /// </summary>
+    public string? FailureCode       { get; init; }
+
     public Guid   TenantId           { get; init; }
     public string TenantCode         { get; init; } = string.Empty;
     public string Subdomain          { get; init; } = string.Empty;

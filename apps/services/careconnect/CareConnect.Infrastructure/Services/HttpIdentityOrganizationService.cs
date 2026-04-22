@@ -311,6 +311,22 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
+
+                // 409 Conflict → tenant code already taken. Return a typed failure result
+                // so the caller can map it to TenantCodeUnavailable (→ HTTP 409 to the provider)
+                // rather than treating it as an unexpected infrastructure failure.
+                if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+                {
+                    _logger.LogWarning(
+                        "CC2-INT-B09 SelfProvisionTenant: tenant code '{TenantCode}' already taken (409) for user {UserId}.",
+                        tenantCode, ownerUserId);
+                    return new SelfProvisionTenantResult
+                    {
+                        IsSuccess   = false,
+                        FailureCode = "CODE_TAKEN",
+                    };
+                }
+
                 _logger.LogWarning(
                     "CC2-INT-B09 SelfProvisionTenant returned HTTP {Status} for user {UserId}: {Body}",
                     (int)response.StatusCode, ownerUserId, errorBody);

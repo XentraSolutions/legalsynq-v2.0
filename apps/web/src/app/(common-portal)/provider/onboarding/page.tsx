@@ -11,6 +11,7 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { careConnectApi } from '@/lib/careconnect-api';
+import { ApiError } from '@/lib/api-client';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -82,14 +83,19 @@ export default function ProviderOnboardingPage() {
     setCodeStatus({ checked: false, available: null, normalized: '', message: null });
     try {
       const res = await careConnectApi.onboarding.checkCode(code);
+      const normalized = res.data.normalizedCode || code;
       setCodeStatus({
         checked:   true,
         available: res.data.available,
-        normalized: res.data.normalizedCode,
+        normalized,
         message:   res.data.message ?? null,
       });
+      // Reflect the server-normalized code back into the input field (e.g. strips edge hyphens).
+      if (normalized !== code) {
+        setTenantCode(normalized);
+      }
     } catch {
-      // Silently ignore — provision step enforces uniqueness
+      // Silently ignore — provision step enforces uniqueness.
       setCodeStatus({ checked: true, available: true, normalized: code.toLowerCase(), message: null });
     } finally {
       setFormState('idle');
@@ -97,8 +103,10 @@ export default function ProviderOnboardingPage() {
   }, []);
 
   const handleCodeBlur = () => {
-    if (tenantCode.trim().length >= 2) {
-      checkCode(tenantCode.trim().toLowerCase());
+    const trimmed = tenantCode.trim().toLowerCase();
+    if (trimmed.length >= 2) {
+      setTenantCode(trimmed); // Normalize immediately on blur even before the API call.
+      checkCode(trimmed);
     }
   };
 
@@ -138,8 +146,23 @@ export default function ProviderOnboardingPage() {
       });
       setFormState('success');
     } catch (err: unknown) {
+      // 409 Conflict → tenant code already taken; surface back into the code field.
+      if (err instanceof ApiError && err.isConflict) {
+        setCodeStatus({
+          checked:   true,
+          available: false,
+          normalized: code,
+          message:   err.message,
+        });
+        setServerError(null);
+        setFormState('error');
+        return;
+      }
+
       const msg =
-        err && typeof err === 'object' && 'message' in err
+        err instanceof ApiError
+          ? err.message
+          : err && typeof err === 'object' && 'message' in err
           ? String((err as { message?: unknown }).message)
           : 'Something went wrong. Please try again or contact support.';
       setServerError(msg);
