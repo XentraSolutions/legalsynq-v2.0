@@ -34,6 +34,14 @@ public class Tenant
     public Guid? LogoDocumentId { get; private set; }
     public Guid? LogoWhiteDocumentId { get; private set; }
 
+    public string? AddressLine1 { get; private set; }
+    public string? City         { get; private set; }
+    public string? State        { get; private set; }
+    public string? PostalCode   { get; private set; }
+    public double? Latitude     { get; private set; }
+    public double? Longitude    { get; private set; }
+    public string? GeoPointSource { get; private set; }
+
     public string? Subdomain { get; private set; }
     public ProvisioningStatus ProvisioningStatus { get; private set; }
     public DateTime? LastProvisioningAttemptUtc { get; private set; }
@@ -198,6 +206,25 @@ public class Tenant
     {
         Subdomain = slug;
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetAddress(
+        string? addressLine1,
+        string? city,
+        string? state,
+        string? postalCode,
+        double? latitude,
+        double? longitude,
+        string? geoPointSource = null)
+    {
+        AddressLine1  = addressLine1?.Trim();
+        City          = city?.Trim();
+        State         = state?.Trim();
+        PostalCode    = postalCode?.Trim();
+        Latitude      = latitude;
+        Longitude     = longitude;
+        GeoPointSource = geoPointSource;
+        UpdatedAtUtc  = DateTime.UtcNow;
     }
 }
 

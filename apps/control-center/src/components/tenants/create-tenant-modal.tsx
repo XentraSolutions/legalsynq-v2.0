@@ -1,9 +1,19 @@
 'use client';
 
-import { useState, useRef, useId, useEffect } from 'react';
-import { useRouter }                           from 'next/navigation';
-import { createTenantAction }                  from '@/app/tenants/actions';
-import type { CreateTenantResult }             from '@/app/tenants/actions';
+import { useState, useRef, useId, useEffect, useCallback } from 'react';
+import { useRouter }                                        from 'next/navigation';
+import { createTenantAction }                               from '@/app/tenants/actions';
+import type { CreateTenantResult }                          from '@/app/tenants/actions';
+
+interface AddressSuggestion {
+  displayName:  string;
+  addressLine1: string;
+  city:         string;
+  state:        string;
+  postalCode:   string;
+  latitude:     number;
+  longitude:    number;
+}
 
 interface CreateTenantModalProps {
   onClose: () => void;
@@ -15,26 +25,42 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
   const titleId = useId();
   const router  = useRouter();
 
-  const [step, setStep]         = useState<Step>('form');
+  const [step, setStep]          = useState<Step>('form');
   const [isPending, setIsPending] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-  const [result, setResult]     = useState<NonNullable<CreateTenantResult['adminUser']> & NonNullable<CreateTenantResult['tenant']> | null>(null);
-  const [copied, setCopied]     = useState(false);
+  const [error, setError]        = useState<string | null>(null);
+  const [result, setResult]      = useState<NonNullable<CreateTenantResult['adminUser']> & NonNullable<CreateTenantResult['tenant']> | null>(null);
+  const [copied, setCopied]      = useState(false);
 
   const firstInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
-    name:               '',
-    code:               '',
-    orgType:            'LAW_FIRM',
-    adminEmail:         '',
-    adminFirstName:     '',
-    adminLastName:      '',
+    name:           '',
+    code:           '',
+    orgType:        'LAW_FIRM',
+    adminEmail:     '',
+    adminFirstName: '',
+    adminLastName:  '',
   });
 
-  useEffect(() => {
-    firstInputRef.current?.focus();
-  }, []);
+  const [address, setAddress] = useState({
+    raw:          '',
+    addressLine1: '',
+    city:         '',
+    state:        '',
+    postalCode:   '',
+    latitude:     null as number | null,
+    longitude:    null as number | null,
+  });
+
+  const [suggestions, setSuggestions]     = useState<AddressSuggestion[]>([]);
+  const [addrLoading, setAddrLoading]     = useState(false);
+  const [showDropdown, setShowDropdown]   = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const addrInputRef  = useRef<HTMLInputElement>(null);
+  const dropdownRef   = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { firstInputRef.current?.focus(); }, []);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -43,6 +69,21 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [onClose, isPending]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node) &&
+        addrInputRef.current &&
+        !addrInputRef.current.contains(e.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   function deriveCode(name: string) {
     return name
@@ -64,13 +105,83 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
     }));
   }
 
+  const fetchSuggestions = useCallback(async (q: string) => {
+    if (q.trim().length < 3) {
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
+    setAddrLoading(true);
+    try {
+      const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(q)}`);
+      if (!res.ok) return;
+      const data: AddressSuggestion[] = await res.json();
+      setSuggestions(data);
+      setShowDropdown(data.length > 0);
+      setSelectedIndex(-1);
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setAddrLoading(false);
+    }
+  }, []);
+
+  function handleAddressInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setAddress(a => ({ ...a, raw: val, addressLine1: '', city: '', state: '', postalCode: '', latitude: null, longitude: null }));
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchSuggestions(val), 300);
+  }
+
+  function handleAddressKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!showDropdown || suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex(i => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter' && selectedIndex >= 0) {
+      e.preventDefault();
+      selectSuggestion(suggestions[selectedIndex]);
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false);
+    }
+  }
+
+  function selectSuggestion(s: AddressSuggestion) {
+    setAddress({
+      raw:          s.displayName,
+      addressLine1: s.addressLine1,
+      city:         s.city,
+      state:        s.state,
+      postalCode:   s.postalCode,
+      latitude:     s.latitude,
+      longitude:    s.longitude,
+    });
+    setSuggestions([]);
+    setShowDropdown(false);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setIsPending(true);
 
     try {
-      const res = await createTenantAction(form);
+      const payload = {
+        ...form,
+        ...(address.addressLine1 ? {
+          addressLine1:   address.addressLine1,
+          city:           address.city,
+          state:          address.state,
+          postalCode:     address.postalCode,
+          latitude:       address.latitude ?? undefined,
+          longitude:      address.longitude ?? undefined,
+          geoPointSource: 'nominatim',
+        } : {}),
+      };
+      const res = await createTenantAction(payload);
       if (!res.success || !res.tenant || !res.adminUser) {
         setError(res.error ?? 'Something went wrong.');
         return;
@@ -102,10 +213,10 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-xl shadow-xl border border-gray-200"
+        className="relative z-10 w-full max-w-lg mx-4 bg-white rounded-xl shadow-xl border border-gray-200 max-h-[90vh] overflow-y-auto"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
           <h2 id={titleId} className="text-sm font-semibold text-gray-900">
             {step === 'form' ? 'Create Tenant' : 'Tenant Created'}
           </h2>
@@ -186,7 +297,111 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
                   Determines what the tenant can do on the platform.
                 </p>
               </div>
+            </fieldset>
 
+            {/* Divider */}
+            <div className="border-t border-gray-100" />
+
+            {/* Address */}
+            <fieldset className="space-y-3">
+              <legend className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Address <span className="text-gray-400 font-normal normal-case">(optional)</span>
+              </legend>
+
+              <div className="relative">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Street Address
+                </label>
+                <div className="relative">
+                  <input
+                    ref={addrInputRef}
+                    type="text"
+                    autoComplete="off"
+                    value={address.raw}
+                    onChange={handleAddressInput}
+                    onKeyDown={handleAddressKeyDown}
+                    onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
+                    placeholder="Start typing to search…"
+                    className={inputClass}
+                  />
+                  {addrLoading && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <span className="h-3.5 w-3.5 rounded-full border-2 border-gray-300 border-t-indigo-500 animate-spin block" />
+                    </span>
+                  )}
+                  {address.latitude !== null && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-green-500" title="Coordinates captured">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
+                  )}
+                </div>
+
+                {showDropdown && suggestions.length > 0 && (
+                  <div
+                    ref={dropdownRef}
+                    className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg overflow-hidden"
+                  >
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={s.displayName}
+                        type="button"
+                        onMouseDown={e => { e.preventDefault(); selectSuggestion(s); }}
+                        className={[
+                          'w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 transition-colors',
+                          i === selectedIndex ? 'bg-indigo-50 text-indigo-900' : 'text-gray-800',
+                          i > 0 ? 'border-t border-gray-100' : '',
+                        ].join(' ')}
+                      >
+                        <span className="font-medium">{s.addressLine1}</span>
+                        <span className="text-gray-500 ml-1">{s.city}, {s.state} {s.postalCode}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {address.addressLine1 && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">City</label>
+                    <input
+                      type="text"
+                      value={address.city}
+                      onChange={e => setAddress(a => ({ ...a, city: e.target.value }))}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">State</label>
+                    <input
+                      type="text"
+                      maxLength={2}
+                      value={address.state}
+                      onChange={e => setAddress(a => ({ ...a, state: e.target.value.toUpperCase() }))}
+                      className={`${inputClass} font-mono uppercase`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">ZIP</label>
+                    <input
+                      type="text"
+                      maxLength={10}
+                      value={address.postalCode}
+                      onChange={e => setAddress(a => ({ ...a, postalCode: e.target.value }))}
+                      className={`${inputClass} font-mono`}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {address.latitude !== null && address.longitude !== null && (
+                <p className="text-[11px] text-gray-400">
+                  Coordinates captured:{' '}
+                  <span className="font-mono">{address.latitude.toFixed(5)}, {address.longitude.toFixed(5)}</span>
+                </p>
+              )}
             </fieldset>
 
             {/* Divider */}

@@ -433,6 +433,17 @@ public static class AdminEndpoints
 
         // ── Create tenant + org + user + membership + role assignment ──────────
         var tenant = Tenant.Create(body.Name.Trim(), code);
+        if (!string.IsNullOrWhiteSpace(body.AddressLine1) || !string.IsNullOrWhiteSpace(body.City))
+        {
+            tenant.SetAddress(
+                addressLine1:   body.AddressLine1,
+                city:           body.City,
+                state:          body.State,
+                postalCode:     body.PostalCode,
+                latitude:       body.Latitude,
+                longitude:      body.Longitude,
+                geoPointSource: body.GeoPointSource ?? "nominatim");
+        }
         db.Tenants.Add(tenant);
 
         var org = Organization.Create(
@@ -579,6 +590,13 @@ public static class AdminEndpoints
                 subdomain           = tenant.Subdomain,
                 provisioningStatus  = tenant.ProvisioningStatus.ToString(),
                 hostname            = provResult.Hostname,
+                addressLine1        = tenant.AddressLine1,
+                city                = tenant.City,
+                state               = tenant.State,
+                postalCode          = tenant.PostalCode,
+                latitude            = tenant.Latitude,
+                longitude           = tenant.Longitude,
+                geoPointSource      = tenant.GeoPointSource,
                 productsProvisioned = productResults.Select(p => new
                 {
                     productCode = p.ProductCode,
@@ -5191,7 +5209,14 @@ public static class AdminEndpoints
         string  AdminLastName,
         string? OrgType = null,
         string? PreferredSubdomain = null,
-        List<string>? Products = null);
+        List<string>? Products = null,
+        string? AddressLine1 = null,
+        string? City = null,
+        string? State = null,
+        string? PostalCode = null,
+        double? Latitude = null,
+        double? Longitude = null,
+        string? GeoPointSource = null);
 
     // CC2-INT-B09: self-provision for existing Identity user (no duplicate user created)
     private record SelfProvisionTenantRequest(

@@ -29,6 +29,25 @@ public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
         builder.Property(t => t.UpdatedAtUtc)
             .IsRequired();
 
+        builder.Property(t => t.AddressLine1)
+            .HasMaxLength(200);
+
+        builder.Property(t => t.City)
+            .HasMaxLength(100);
+
+        builder.Property(t => t.State)
+            .HasMaxLength(50);
+
+        builder.Property(t => t.PostalCode)
+            .HasMaxLength(20);
+
+        builder.Property(t => t.Latitude);
+
+        builder.Property(t => t.Longitude);
+
+        builder.Property(t => t.GeoPointSource)
+            .HasMaxLength(50);
+
         builder.Property(t => t.Subdomain)
             .HasMaxLength(63);
 

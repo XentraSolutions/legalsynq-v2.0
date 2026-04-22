@@ -28,6 +28,13 @@ export async function createTenantAction(data: {
   adminEmail:         string;
   adminFirstName:     string;
   adminLastName:      string;
+  addressLine1?:      string;
+  city?:              string;
+  state?:             string;
+  postalCode?:        string;
+  latitude?:          number;
+  longitude?:         number;
+  geoPointSource?:    string;
 }): Promise<CreateTenantResult> {
   await requirePlatformAdmin();
 
