@@ -4,7 +4,23 @@ set -e
 echo "=== Post-merge setup ==="
 
 echo "Installing frontend dependencies..."
-pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+# Cap Node.js heap to avoid SIGABRT in memory-constrained environment.
+# Three-tier fallback: frozen → regular → ignore-scripts (packages already cached).
+export NODE_OPTIONS="--max-old-space-size=512"
+
+pnpm_install() {
+  if pnpm install --frozen-lockfile 2>/dev/null; then
+    return 0
+  fi
+  echo "  (frozen-lockfile failed, retrying without it...)"
+  if pnpm install 2>/dev/null; then
+    return 0
+  fi
+  echo "  (retry failed, falling back to --ignore-scripts...)"
+  pnpm install --ignore-scripts
+}
+
+pnpm_install
 
 echo "Building .NET services (restore + build)..."
 # Build one project at a time and apply aggressive memory limits to avoid OOM
