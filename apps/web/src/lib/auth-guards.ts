@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getServerSession, requireSession } from '@/lib/session';
 import type { PlatformSession, ProductRoleValue } from '@/types';
+import { OrgType } from '@/types';
 import { CC_ACCESS_DENIED_URL, CC_LOGIN_URL } from '@/lib/control-center-config';
 
 // ── LS-ID-TNT-010: Frontend-friendly product codes ────────────────────────────
@@ -128,4 +129,34 @@ export async function requireCCPlatformAdmin(): Promise<PlatformSession> {
  */
 export async function getOptionalSession(): Promise<PlatformSession | null> {
   return getServerSession();
+}
+
+/**
+ * CC2-INT-B05 — Common Portal guard.
+ *
+ * Requires an authenticated Identity-backed session belonging to an external
+ * actor: orgType === PROVIDER or orgType === LAW_FIRM.
+ *
+ * - Unauthenticated → /login?returnTo={currentPath}
+ * - No org → /no-org
+ * - Wrong org type (tenant/platform user) → /dashboard
+ *
+ * Usage (Common Portal layouts and pages):
+ *   const session = await requireExternalPortal(request);
+ */
+export async function requireExternalPortal(
+  returnTo?: string,
+): Promise<PlatformSession & { orgId: string }> {
+  const session = await getServerSession();
+  if (!session) {
+    const loginUrl = returnTo
+      ? `/login?returnTo=${encodeURIComponent(returnTo)}`
+      : '/login';
+    redirect(loginUrl);
+  }
+  if (!session.hasOrg) redirect('/no-org');
+  if (session.orgType !== OrgType.Provider && session.orgType !== OrgType.LawFirm) {
+    redirect('/dashboard');
+  }
+  return session as PlatformSession & { orgId: string };
 }

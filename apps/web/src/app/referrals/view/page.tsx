@@ -54,11 +54,11 @@ export default async function ReferralViewPage({ searchParams }: Props) {
     routeType = 'invalid';
   }
 
-  // LSCC-01-002-01: Both pending and active providers go to login.
-  // The returnTo path lands them on the authenticated referral detail
-  // page where acceptance is the only mechanism.
+  // LSCC-01-002-01 / CC2-INT-B05:
+  // Both pending and active providers go to login; returnTo lands them in the
+  // Common Portal (provider section) rather than the Tenant Portal.
   if ((routeType === 'pending' || routeType === 'active') && referralId) {
-    const returnTo = encodeURIComponent(`/careconnect/referrals/${referralId}`);
+    const returnTo = encodeURIComponent(`/provider/referrals/${referralId}`);
     redirect(`/login?returnTo=${returnTo}&reason=referral-view`);
   }
 

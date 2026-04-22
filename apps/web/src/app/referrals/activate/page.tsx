@@ -67,7 +67,8 @@ export default async function ActivatePage({ searchParams }: PageProps) {
   }
 
   const clientName = [summary.clientFirstName, summary.clientLastName].filter(Boolean).join(' ');
-  const loginUrl   = `/login?returnTo=${encodeURIComponent(`/careconnect/referrals/${referralId}`)}&reason=referral-view`;
+  // CC2-INT-B05: land providers in the Common Portal after login, not the Tenant Portal.
+  const loginUrl   = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${referralId}`)}&reason=referral-view`;
 
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">

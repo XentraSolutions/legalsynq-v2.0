@@ -36,8 +36,9 @@ export function ActivationForm({ summary, token, referralId }: ActivationFormPro
 
   const clientName = [summary.clientFirstName, summary.clientLastName].filter(Boolean).join(' ');
 
-  // Fallback login URL used if the auto-provision endpoint does not return one
-  const fallbackLoginUrl = `/login?returnTo=${encodeURIComponent(`/careconnect/referrals/${referralId}`)}&reason=referral-view`;
+  // CC2-INT-B05: land providers in the Common Portal after login, not the Tenant Portal.
+  // Fallback login URL used if the auto-provision endpoint does not return one.
+  const fallbackLoginUrl = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${referralId}`)}&reason=referral-view`;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

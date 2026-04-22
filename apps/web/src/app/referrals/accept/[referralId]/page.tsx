@@ -122,7 +122,8 @@ function InvalidScreen({ reason }: { reason: string }) {
 
 function AlreadyAcceptedScreen({ summary }: { summary: PublicSummary }) {
   const clientName = [summary.clientFirstName, summary.clientLastName].filter(Boolean).join(' ');
-  const loginUrl   = `/login?returnTo=${encodeURIComponent(`/careconnect/referrals/${summary.referralId}`)}&reason=referral-view`;
+  // CC2-INT-B05: land providers in the Common Portal after login.
+  const loginUrl   = `/login?returnTo=${encodeURIComponent(`/provider/referrals/${summary.referralId}`)}&reason=referral-view`;
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
