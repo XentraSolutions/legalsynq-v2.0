@@ -20,12 +20,19 @@
  */
 
 import { useState, useMemo, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import type {
   PublicNetworkDetail,
   PublicProviderItem,
+  PublicProviderMarker,
   PublicReferralRequest,
   PublicReferralResponse,
 } from '@/lib/public-network-api';
+
+const PublicNetworkMap = dynamic(
+  () => import('./public-network-map').then(m => m.PublicNetworkMap),
+  { ssr: false, loading: () => <div className="h-full w-full bg-gray-100 animate-pulse rounded-lg" /> },
+);
 
 interface PublicNetworkViewProps {
   detail:     PublicNetworkDetail;
@@ -37,6 +44,15 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
   const [search, setSearch]         = useState('');
   const [filterActive, setFilter]   = useState<'all' | 'accepting'>('accepting');
   const [modalProvider, setModal]   = useState<PublicProviderItem | null>(null);
+  const [view, setView]             = useState<'list' | 'map'>('list');
+  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
+
+  const hasMarkers = detail.markers.length > 0;
+
+  function handleMapReferral(m: PublicProviderMarker) {
+    const provider = detail.providers.find(p => p.id === m.id) ?? null;
+    if (provider) setModal(provider);
+  }
 
   const filtered = useMemo(() => {
     let list = detail.providers;
@@ -71,56 +87,129 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
         </p>
       </div>
 
-      {/* Search + filter bar */}
+      {/* Toolbar — search / filter / view toggle */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <input
-          type="search"
-          placeholder="Search by name, city, or state…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-        />
-        <div className="flex rounded-md overflow-hidden border border-gray-200 text-sm">
-          <button
-            onClick={() => setFilter('accepting')}
-            className={[
-              'px-3 py-2 transition-colors',
-              filterActive === 'accepting'
-                ? 'bg-primary text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50',
-            ].join(' ')}
-          >
-            Accepting referrals
-          </button>
-          <button
-            onClick={() => setFilter('all')}
-            className={[
-              'px-3 py-2 border-l border-gray-200 transition-colors',
-              filterActive === 'all'
-                ? 'bg-primary text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-50',
-            ].join(' ')}
-          >
-            All providers
-          </button>
+        {/* Search (only relevant in list view) */}
+        {view === 'list' && (
+          <input
+            type="search"
+            placeholder="Search by name, city, or state…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          />
+        )}
+
+        <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+          {/* Accepting / All filter (list view only) */}
+          {view === 'list' && (
+            <div className="flex rounded-md overflow-hidden border border-gray-200 text-sm">
+              <button
+                onClick={() => setFilter('accepting')}
+                className={[
+                  'px-3 py-2 transition-colors',
+                  filterActive === 'accepting'
+                    ? 'bg-primary text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50',
+                ].join(' ')}
+              >
+                Accepting referrals
+              </button>
+              <button
+                onClick={() => setFilter('all')}
+                className={[
+                  'px-3 py-2 border-l border-gray-200 transition-colors',
+                  filterActive === 'all'
+                    ? 'bg-primary text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-50',
+                ].join(' ')}
+              >
+                All providers
+              </button>
+            </div>
+          )}
+
+          {/* List / Map toggle (only when markers exist) */}
+          {hasMarkers && (
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setView('list')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  view === 'list'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <i className="ri-list-unordered text-xs" />
+                List
+              </button>
+              <button
+                onClick={() => setView('map')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  view === 'map'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <i className="ri-map-2-line text-xs" />
+                Map
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Provider list */}
-      {filtered.length === 0 ? (
-        <p className="text-sm text-gray-500 py-8 text-center">
-          No providers match your search.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map(p => (
-            <PublicProviderCard
-              key={p.id}
-              provider={p}
-              onRequestReferral={setModal}
-            />
-          ))}
+      {/* ── MAP VIEW ─────────────────────────────────────────────────────────── */}
+      {view === 'map' && (
+        <div
+          className="relative rounded-lg overflow-hidden border border-gray-200"
+          style={{ height: 520 }}
+        >
+          {/* Marker count badge */}
+          <div className="absolute top-3 right-3 z-[9999] bg-white/90 border border-gray-200 rounded-md px-2.5 py-1 text-xs text-gray-500 shadow-sm pointer-events-none">
+            {detail.markers.length} {detail.markers.length === 1 ? 'provider' : 'providers'}
+          </div>
+
+          {/* Legend */}
+          <div className="absolute bottom-6 left-3 z-[9999] bg-white/90 border border-gray-200 rounded-md px-3 py-2 text-xs text-gray-600 shadow-sm space-y-1 pointer-events-none">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-green-600 inline-block" />
+              Accepting referrals
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-gray-400 inline-block" />
+              Not accepting
+            </div>
+          </div>
+
+          <PublicNetworkMap
+            markers={detail.markers}
+            selectedId={selectedMarkerId}
+            onSelect={setSelectedMarkerId}
+            onRequestReferral={handleMapReferral}
+          />
         </div>
+      )}
+
+      {/* ── LIST VIEW ────────────────────────────────────────────────────────── */}
+      {view === 'list' && (
+        <>
+          {filtered.length === 0 ? (
+            <p className="text-sm text-gray-500 py-8 text-center">
+              No providers match your search.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {filtered.map(p => (
+                <PublicProviderCard
+                  key={p.id}
+                  provider={p}
+                  onRequestReferral={setModal}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Referral modal */}
