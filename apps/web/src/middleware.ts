@@ -44,6 +44,9 @@ const PUBLIC_PATHS = [
   '/referrals/accept',
   // LSCC-008: Provider activation funnel — no session required
   '/referrals/activate',
+  // CC2-INT-B07: Public tenant network directory — no session required
+  '/network',
+  '/api/public/',
 ];
 
 export function middleware(request: NextRequest) {

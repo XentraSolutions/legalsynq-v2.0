@@ -107,6 +107,14 @@ var app = builder.Build();
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<CareConnectDbContext>();
+
+    // ── Schema divergence repair (CC2-INT-B07) ────────────────────────────
+    // Guards against a known RDS state where __EFMigrationsHistory records
+    // migrations as applied but the actual DDL was never executed.
+    // Uses idempotent DDL (CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS)
+    // to guarantee the B06+ schema objects exist before handing off to EF.
+    await EnsureSchemaObjectsAsync(db, app.Logger);
+
     db.Database.Migrate();
     app.Logger.LogInformation("CareConnect database migrations applied successfully.");
 }
@@ -217,5 +225,150 @@ app.MapAppointmentNoteEndpoints();
 app.MapAttachmentEndpoints();
 app.MapNotificationEndpoints();
 app.MapNetworkEndpoints();             // CC2-INT-B06: provider network management
+app.MapPublicNetworkEndpoints();       // CC2-INT-B07: public network surface (anonymous)
 
 app.Run();
+
+// ── Schema repair helper (CC2-INT-B07) ───────────────────────────────────────
+// Applies idempotent DDL to guarantee B06+ schema objects exist regardless of the
+// __EFMigrationsHistory state. MySQL DDL is non-transactional, so a partially-applied
+// migration can leave history rows written but tables absent.
+// Notes:
+//   - CREATE TABLE IF NOT EXISTS is safe cross-version.
+//   - ADD COLUMN IF NOT EXISTS requires MySQL ≥ 8.0.29 and is NOT available on RDS;
+//     we therefore check information_schema first, then ADD COLUMN (no IF NOT EXISTS).
+//   - FK constraints are omitted from manual DDL to avoid charset/collation mismatches;
+//     EF enforces referential integrity at the application layer.
+static async Task EnsureSchemaObjectsAsync(
+    CareConnect.Infrastructure.Data.CareConnectDbContext db,
+    ILogger logger)
+{
+    var conn = db.Database.GetDbConnection();
+    if (conn.State != System.Data.ConnectionState.Open)
+        await conn.OpenAsync();
+
+    // Resolve the actual database name from the open connection
+    string dbName;
+    using (var dbCmd = conn.CreateCommand())
+    {
+        dbCmd.CommandText = "SELECT DATABASE()";
+        dbName = (string)(await dbCmd.ExecuteScalarAsync() ?? "careconnect_db");
+    }
+
+    // Helper: returns true if the table exists in the live schema
+    async Task<bool> TableExists(string table)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            $"SELECT COUNT(*) FROM information_schema.tables " +
+            $"WHERE table_schema='{dbName}' AND table_name='{table}'";
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+    }
+
+    // Helper: returns true if the column exists on the given table
+    async Task<bool> ColumnExists(string table, string column)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            $"SELECT COUNT(*) FROM information_schema.columns " +
+            $"WHERE table_schema='{dbName}' AND table_name='{table}' AND column_name='{column}'";
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+    }
+
+    // Helper: execute a DDL statement, log any errors but continue
+    async Task<bool> Exec(string sql, string label)
+    {
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            await cmd.ExecuteNonQueryAsync();
+            logger.LogInformation("EnsureSchemaObjects: {Label} — applied.", label);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "EnsureSchemaObjects: {Label} — DDL failed.", label);
+            return false;
+        }
+    }
+
+    int applied = 0;
+
+    // ── 20260422000000_AddProviderReassignmentLog ───────────────────────────
+    if (!await TableExists("cc_ReferralProviderReassignments"))
+        if (await Exec("""
+            CREATE TABLE `cc_ReferralProviderReassignments` (
+                `Id`                char(36)    NOT NULL,
+                `ReferralId`        char(36)    NOT NULL,
+                `TenantId`          char(36)    NOT NULL,
+                `PreviousProviderId` char(36)   NULL,
+                `NewProviderId`     char(36)    NOT NULL,
+                `ReassignedByUserId` char(36)  NULL,
+                `ReassignedAtUtc`   datetime(6) NOT NULL,
+                PRIMARY KEY (`Id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+            """, "cc_ReferralProviderReassignments")) applied++;
+
+    // ── 20260422100000_AddProviderNetworks ──────────────────────────────────
+    if (!await TableExists("cc_ProviderNetworks"))
+        if (await Exec("""
+            CREATE TABLE `cc_ProviderNetworks` (
+                `Id`              char(36)      NOT NULL,
+                `TenantId`        char(36)      NOT NULL,
+                `Name`            varchar(200)  NOT NULL,
+                `Description`     varchar(1000) NOT NULL DEFAULT '',
+                `IsDeleted`       tinyint(1)    NOT NULL DEFAULT 0,
+                `CreatedAtUtc`    datetime(6)   NOT NULL,
+                `UpdatedAtUtc`    datetime(6)   NOT NULL,
+                `CreatedByUserId` varchar(255)  NULL,
+                `UpdatedByUserId` varchar(255)  NULL,
+                PRIMARY KEY (`Id`),
+                KEY `IX_cc_ProviderNetworks_TenantId_Name` (`TenantId`, `Name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+            """, "cc_ProviderNetworks")) applied++;
+
+    if (!await TableExists("cc_NetworkProviders"))
+        // FK constraints are omitted — column types/collations vary by RDS instance;
+        // EF enforces referential integrity at the application layer.
+        if (await Exec("""
+            CREATE TABLE `cc_NetworkProviders` (
+                `Id`                char(36)     NOT NULL,
+                `TenantId`          char(36)     NOT NULL,
+                `ProviderNetworkId` char(36)     NOT NULL,
+                `ProviderId`        char(36)     NOT NULL,
+                `CreatedAtUtc`      datetime(6)  NOT NULL,
+                `UpdatedAtUtc`      datetime(6)  NOT NULL,
+                `CreatedByUserId`   varchar(255) NULL,
+                `UpdatedByUserId`   varchar(255) NULL,
+                PRIMARY KEY (`Id`),
+                UNIQUE KEY `IX_cc_NetworkProviders_ProviderNetworkId_ProviderId` (`ProviderNetworkId`, `ProviderId`),
+                KEY `IX_cc_NetworkProviders_TenantId` (`TenantId`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+            """, "cc_NetworkProviders")) applied++;
+
+    // ── 20260422120000_AddProviderNpi ───────────────────────────────────────
+    // ADD COLUMN IF NOT EXISTS is only available on MySQL ≥ 8.0.29; check first.
+    if (!await ColumnExists("cc_Providers", "Npi"))
+        if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `Npi` varchar(20) NULL",
+            "cc_Providers.Npi")) applied++;
+
+    // ── 20260422130000_AddProviderAccessStage ───────────────────────────────
+    if (!await ColumnExists("cc_Providers", "AccessStage"))
+        if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `AccessStage` varchar(20) NOT NULL DEFAULT 'URL'",
+            "cc_Providers.AccessStage")) applied++;
+
+    if (!await ColumnExists("cc_Providers", "IdentityUserId"))
+        if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `IdentityUserId` char(36) NULL",
+            "cc_Providers.IdentityUserId")) applied++;
+
+    if (!await ColumnExists("cc_Providers", "CommonPortalActivatedAtUtc"))
+        if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `CommonPortalActivatedAtUtc` datetime(6) NULL",
+            "cc_Providers.CommonPortalActivatedAtUtc")) applied++;
+
+    if (!await ColumnExists("cc_Providers", "TenantProvisionedAtUtc"))
+        if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `TenantProvisionedAtUtc` datetime(6) NULL",
+            "cc_Providers.TenantProvisionedAtUtc")) applied++;
+
+    logger.LogInformation("EnsureSchemaObjects: {Count} DDL change(s) applied.", applied);
+}
