@@ -37,7 +37,7 @@
  *   apiFetch emits structured log entries at each lifecycle point:
  *     api.request.start       — method, endpoint, tenantId, impersonation
  *     api.request.success     — status, durationMs
- *     api.request.redirect_401— session expired, durationMs
+ *     api.request.unauthorized_401 — downstream service auth failure, durationMs
  *     api.request.error       — status, message, durationMs (4xx/5xx)
  *     api.network_failure     — network-level error before HTTP response
  *     security.session.missing_token — pre-flight abort (no cookie at all)
@@ -51,7 +51,7 @@
  *
  * ── Error handling ────────────────────────────────────────────────────────────
  *
- *   HTTP 401 → redirects to /login?reason=session_expired
+ *   HTTP 401 → throws ApiError(401) — session guards redirect before any call
  *   HTTP 403 → throws ApiError (Forbidden)
  *   Other non-2xx → throws ApiError with status + message
  *   Network error → throws the original fetch error
@@ -138,7 +138,7 @@ export interface ApiFetchOptions {
  *   3. Build Next.js cache config based on method + revalidateSeconds
  *   4. Log api.request.start
  *   5. Call fetch() — network errors are caught and logged separately
- *   6. Log api.request.redirect_401 + redirect on 401
+ *   6. Log api.request.unauthorized_401 + throw ApiError(401) on 401
  *   7. Log api.request.error + throw ApiError on non-2xx
  *   8. Log api.request.success
  *   9. Return parsed JSON body (or undefined for 204)
@@ -255,10 +255,26 @@ export async function apiFetch<T>(
   const durationMs = Date.now() - startMs;
 
   // ── 6. Handle 401 ─────────────────────────────────────────────────────────
+  //
+  // Throw ApiError(401) rather than calling redirect() here.
+  //
+  // Rationale: requirePlatformAdmin() already validates the platform session
+  // cookie via /identity/api/auth/me BEFORE any downstream API call is made.
+  // If that guard passes, the session is valid. A 401 from a downstream service
+  // (e.g. the Audit Event Service) therefore means the service has different
+  // auth requirements — NOT that the session has expired. Redirecting to login
+  // in that case drops the user out of an otherwise-authenticated session.
+  //
+  // Callers (synqaudit pages, etc.) catch ApiError(401) and show an error
+  // banner with a descriptive message so the admin knows what failed.
+  //
+  // If the session truly expires, the NEXT page load's requirePlatformAdmin()
+  // will call /identity/api/auth/me, receive a 401, return null, and redirect
+  // to /login?reason=unauthenticated — which is the correct UX flow.
 
   if (res.status === 401) {
-    logInfo('api.request.redirect_401', { ...logMeta, durationMs, status: 401 });
-    redirect('/login?reason=session_expired');
+    logWarn('api.request.unauthorized_401', { ...logMeta, durationMs, status: 401 });
+    throw new ApiError(401, 'Not authorised — the downstream service rejected the platform token.');
   }
 
   // ── 7. Handle non-2xx ─────────────────────────────────────────────────────
