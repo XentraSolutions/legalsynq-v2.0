@@ -13,8 +13,10 @@ public static class Policies
     public const string ServiceSubmission = "ServiceSubmission";
 
     // Capability-based policies (coarse product role gates — use for route groups)
-    public const string CanReferCareConnect   = "CanReferCareConnect";
-    public const string CanReceiveCareConnect = "CanReceiveCareConnect";
+    public const string CanReferCareConnect          = "CanReferCareConnect";
+    public const string CanReceiveCareConnect        = "CanReceiveCareConnect";
+    // CC2-INT-B06: role-based network management (not orgType-based)
+    public const string CanManageCareConnectNetworks = "CanManageCareConnectNetworks";
     public const string CanSellLien           = "CanSellLien";
     public const string CanBuyLien            = "CanBuyLien";
     public const string CanReferFund          = "CanReferFund";

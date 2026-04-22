@@ -147,6 +147,10 @@ public static class DependencyInjection
         services.AddScoped<IBlockedAccessLogRepository, BlockedAccessLogRepository>();
         services.AddScoped<IBlockedAccessLogService, BlockedAccessLogService>();
 
+        // CC2-INT-B06: Provider network management (role-based, not orgType-based)
+        services.AddScoped<INetworkRepository, NetworkRepository>();
+        services.AddScoped<INetworkService, NetworkService>();
+
         return services;
     }
 }

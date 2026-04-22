@@ -28,8 +28,10 @@ export type SystemRoleValue = typeof SystemRole[keyof typeof SystemRole];
 
 export const ProductRole = {
   // CareConnect (product code: SYNQ_CARECONNECT)
-  CareConnectReferrer: 'SYNQ_CARECONNECT:CARECONNECT_REFERRER',
-  CareConnectReceiver: 'SYNQ_CARECONNECT:CARECONNECT_RECEIVER',
+  CareConnectReferrer:       'SYNQ_CARECONNECT:CARECONNECT_REFERRER',
+  CareConnectReceiver:       'SYNQ_CARECONNECT:CARECONNECT_RECEIVER',
+  // CC2-INT-B06: role-based network management (not orgType-based)
+  CareConnectNetworkManager: 'SYNQ_CARECONNECT:CARECONNECT_NETWORK_MANAGER',
   // SynqFund (product code: SYNQ_FUND)
   SynqFundReferrer:        'SYNQ_FUND:SYNQFUND_REFERRER',
   SynqFundFunder:          'SYNQ_FUND:SYNQFUND_FUNDER',

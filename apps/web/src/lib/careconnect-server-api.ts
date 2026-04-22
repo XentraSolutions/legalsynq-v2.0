@@ -23,6 +23,9 @@ import type {
   BlockedProviderLogPage,
   AdminReferralPage,
   ReferralPerformanceResult,
+  NetworkSummary,
+  NetworkDetail,
+  NetworkProviderMarker,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -156,5 +159,20 @@ export const careConnectServerApi = {
       serverApi.get<ReferralPerformanceResult>(
         `/careconnect/api/admin/performance${toQs(params as Record<string, unknown>)}`,
       ),
+  },
+
+  // CC2-INT-B06: Provider networks (server-side data fetching for RSC pages)
+  networks: {
+    /** GET /api/networks — list tenant networks */
+    list: () =>
+      serverApi.get<NetworkSummary[]>(`/careconnect/api/networks`),
+
+    /** GET /api/networks/{id} — get network detail with provider list */
+    getById: (id: string) =>
+      serverApi.get<NetworkDetail>(`/careconnect/api/networks/${id}`),
+
+    /** GET /api/networks/{id}/providers/markers — map markers for providers in network */
+    getMarkers: (id: string) =>
+      serverApi.get<NetworkProviderMarker[]>(`/careconnect/api/networks/${id}/providers/markers`),
   },
 };

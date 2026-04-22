@@ -20,6 +20,11 @@ import type {
   PagedResponse,
   AttachmentSummary,
   SignedUrlResponse,
+  NetworkSummary,
+  NetworkDetail,
+  CreateNetworkRequest,
+  UpdateNetworkRequest,
+  NetworkProviderMarker,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -184,5 +189,32 @@ export const careConnectApi = {
       apiClient.get<SignedUrlResponse>(
         `/careconnect/api/appointments/${appointmentId}/attachments/${attachmentId}/url${download ? '?download=true' : ''}`,
       ),
+  },
+
+  // CC2-INT-B06: Provider networks (client-side mutations from interactive pages)
+  networks: {
+    /** POST /api/networks — create a new network */
+    create: (data: CreateNetworkRequest) =>
+      apiClient.post<NetworkSummary>(`/careconnect/api/networks`, data),
+
+    /** PUT /api/networks/{id} — update network name/description */
+    update: (id: string, data: UpdateNetworkRequest) =>
+      apiClient.put<NetworkSummary>(`/careconnect/api/networks/${id}`, data),
+
+    /** DELETE /api/networks/{id} — soft-delete a network */
+    delete: (id: string) =>
+      apiClient.delete<void>(`/careconnect/api/networks/${id}`),
+
+    /** POST /api/networks/{id}/providers/{providerId} — add provider to network */
+    addProvider: (networkId: string, providerId: string) =>
+      apiClient.post<void>(`/careconnect/api/networks/${networkId}/providers/${providerId}`, {}),
+
+    /** DELETE /api/networks/{id}/providers/{providerId} — remove provider from network */
+    removeProvider: (networkId: string, providerId: string) =>
+      apiClient.delete<void>(`/careconnect/api/networks/${networkId}/providers/${providerId}`),
+
+    /** GET /api/networks/{id}/providers/markers — map markers for the network */
+    getMarkers: (id: string) =>
+      apiClient.get<NetworkProviderMarker[]>(`/careconnect/api/networks/${id}/providers/markers`),
   },
 };

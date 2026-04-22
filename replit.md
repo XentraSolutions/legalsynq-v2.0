@@ -5766,3 +5766,44 @@ Full cutover of Liens task runtime to the canonical Task microservice. Liens ser
 
 ### Known Post-Cutover TODO
 - `LienTaskGenerationEngine.HasOpenTaskForRuleAsync` / `HasOpenTaskForTemplateAsync` still query `liens_Tasks` locally — must be updated to call Task service search API after step 4 above.
+
+## CC2-INT-B06 — Tenant Portal: Role-Based Provider Network Management (2026-04-22)
+
+### Summary
+Adds provider network management to the CareConnect Tenant Portal. Any user with the
+`CARECONNECT_NETWORK_MANAGER` product role (regardless of orgType) can create, edit, and
+delete tenant-scoped networks and manage their provider membership.
+
+### New Role
+- `CARECONNECT_NETWORK_MANAGER` (`SYNQ_CARECONNECT:CARECONNECT_NETWORK_MANAGER`)
+- Added to `ProductRoleCodes` and `Policies` in BuildingBlocks
+- Enforced via `RequireProductRoleFilter` on all `/api/networks/*` endpoints
+
+### Backend (CareConnect service)
+- Domain: `ProviderNetwork` (soft-delete), `NetworkProvider` (join entity)
+- EF configs: `ProviderNetworkConfiguration`, `NetworkProviderConfiguration`
+- DbContext: `ProviderNetworks`, `NetworkProviders` DbSets
+- Migration: `20260422100000_AddProviderNetworks`
+- Repository: `INetworkRepository` / `NetworkRepository`
+- Service: `INetworkService` / `NetworkService`
+- Endpoints: `NetworkEndpoints` → `/api/networks/*` (9 routes)
+- DI registration in `CareConnect.Infrastructure/DependencyInjection.cs`
+
+### Frontend (apps/web)
+- `ProductRole.CareConnectNetworkManager` in `types/index.ts`
+- Network types (`NetworkSummary`, `NetworkDetail`, `NetworkProviderMarker`, etc.) in `types/careconnect.ts`
+- `Networks` nav item in `lib/nav.ts` (visible only to Network Managers)
+- Server API: `careConnectServerApi.networks.{list, getById, getMarkers}`
+- Client API: `careConnectApi.networks.{create, update, delete, addProvider, removeProvider, getMarkers}`
+- Route: `/careconnect/networks` — network list with inline create/edit/delete
+- Route: `/careconnect/networks/[id]` — detail with provider list + Leaflet map tab
+- Route guard: `networks/layout.tsx` calls `requireProductRole(ProductRole.CareConnectNetworkManager)`
+
+### Key Design Decisions
+- Role-only access (no orgType check): any org type can hold Network Manager role
+- Soft-delete: networks marked `IsDeleted`; providers cascade-delete on hard delete
+- Map reuses existing `ProviderMap` component via `toProviderMarker()` adapter
+- Add provider by UUID (paste-in): a future task can add search-based picker
+
+### Report
+`analysis/CC2-INT-B06-report.md`

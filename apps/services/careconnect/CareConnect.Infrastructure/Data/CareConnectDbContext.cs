@@ -36,6 +36,10 @@ public class CareConnectDbContext : DbContext
     // LSCC-01-004: Operational visibility — blocked access event log.
     public DbSet<BlockedProviderAccessLog> BlockedProviderAccessLogs => Set<BlockedProviderAccessLog>();
 
+    // CC2-INT-B06: Provider networks (role-based network management)
+    public DbSet<ProviderNetwork>  ProviderNetworks  => Set<ProviderNetwork>();
+    public DbSet<NetworkProvider>  NetworkProviders  => Set<NetworkProvider>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CareConnectDbContext).Assembly);

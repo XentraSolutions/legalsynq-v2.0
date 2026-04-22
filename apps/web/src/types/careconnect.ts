@@ -537,3 +537,62 @@ export interface ReferralPerformanceResult {
   aging:      AgingDistribution;
   providers:  ProviderPerformanceRow[];
 }
+
+// ── CC2-INT-B06: Provider Networks ────────────────────────────────────────────
+
+export interface NetworkSummary {
+  id:            string;
+  name:          string;
+  description:   string;
+  providerCount: number;
+  createdAtUtc:  string;
+  updatedAtUtc:  string;
+}
+
+export interface NetworkProviderItem {
+  id:                string;
+  name:              string;
+  organizationName?: string;
+  email:             string;
+  phone:             string;
+  city:              string;
+  state:             string;
+  isActive:          boolean;
+  acceptingReferrals: boolean;
+}
+
+export interface NetworkDetail {
+  id:          string;
+  name:        string;
+  description: string;
+  providers:   NetworkProviderItem[];
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface NetworkProviderMarker {
+  id:                string;
+  name:              string;
+  organizationName?: string;
+  city:              string;
+  state:             string;
+  addressLine1:      string;
+  postalCode:        string;
+  email:             string;
+  phone:             string;
+  acceptingReferrals: boolean;
+  isActive:          boolean;
+  latitude:          number;
+  longitude:         number;
+  geoPointSource?:   string;
+}
+
+export interface CreateNetworkRequest {
+  name:        string;
+  description: string;
+}
+
+export interface UpdateNetworkRequest {
+  name:        string;
+  description: string;
+}

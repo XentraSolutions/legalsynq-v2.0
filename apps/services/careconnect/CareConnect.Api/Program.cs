@@ -216,5 +216,6 @@ app.MapReferralNoteEndpoints();
 app.MapAppointmentNoteEndpoints();
 app.MapAttachmentEndpoints();
 app.MapNotificationEndpoints();
+app.MapNetworkEndpoints();             // CC2-INT-B06: provider network management
 
 app.Run();
