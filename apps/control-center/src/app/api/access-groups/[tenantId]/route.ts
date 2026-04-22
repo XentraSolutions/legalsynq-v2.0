@@ -3,9 +3,31 @@ import { requireAdmin }                   from '@/lib/auth-guards';
 import { controlCenterServerApi }         from '@/lib/control-center-api';
 import { ServerApiError }                 from '@/lib/server-api-client';
 
+type Ctx = { params: Promise<{ tenantId: string }> };
+
+export async function GET(
+  _request: NextRequest,
+  { params }: Ctx,
+): Promise<NextResponse> {
+  const { tenantId } = await params;
+  try { await requireAdmin(); }
+  catch { return NextResponse.json({ message: 'Unauthorized' }, { status: 401 }); }
+
+  try {
+    const groups = await controlCenterServerApi.accessGroups.list(tenantId);
+    return NextResponse.json(groups);
+  } catch (err) {
+    if (err instanceof ServerApiError) {
+      return NextResponse.json({ message: err.message }, { status: err.status });
+    }
+    const message = err instanceof Error ? err.message : 'Failed to load groups.';
+    return NextResponse.json({ message }, { status: 500 });
+  }
+}
+
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ tenantId: string }> },
+  { params }: Ctx,
 ): Promise<NextResponse> {
   const { tenantId } = await params;
   try { await requireAdmin(); }
