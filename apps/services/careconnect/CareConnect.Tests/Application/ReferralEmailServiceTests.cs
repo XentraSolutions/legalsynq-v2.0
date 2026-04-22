@@ -268,14 +268,15 @@ public class ReferralEmailServiceTests
     // ── Dev fallback ─────────────────────────────────────────────────────────
 
     [Fact]
-    public void Service_NoSecretConfigured_StillGeneratesValidTokens()
+    public void Service_NoSecretConfigured_InDevelopment_StillGeneratesValidTokens()
     {
-        // When ReferralToken:Secret is absent the service falls back to a dev constant.
-        // Tokens must still round-trip correctly (dev environments work).
+        // CC2-INT-B03: When ReferralToken:Secret is absent but environment is Development,
+        // the service falls back to the dev constant. Tokens must still round-trip correctly.
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["AppBaseUrl"] = TestBaseUrl,
+                ["AppBaseUrl"]             = TestBaseUrl,
+                ["ASPNETCORE_ENVIRONMENT"] = "Development",
                 // NOTE: ReferralToken:Secret intentionally omitted
             })
             .Build();

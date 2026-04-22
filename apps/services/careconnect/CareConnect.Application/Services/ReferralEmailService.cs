@@ -48,13 +48,30 @@ public class ReferralEmailService : IReferralEmailService
         _notifications = notifications;
         _producer      = producer;
         _logger        = logger;
-        _tokenSecret   = configuration["ReferralToken:Secret"] ?? DevFallbackSecret;
         _appBaseUrl    = (configuration["AppBaseUrl"] ?? "http://localhost:3000").TrimEnd('/');
 
-        if (configuration["ReferralToken:Secret"] is null)
+        // CC2-INT-B03: Hard enforcement — DevFallbackSecret is blocked outside Development.
+        // IsNullOrWhiteSpace ensures a blank/whitespace-only value is treated the same as a missing secret.
+        var secret      = configuration["ReferralToken:Secret"];
+        var environment = configuration["ASPNETCORE_ENVIRONMENT"] ?? "Production";
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            var isDevelopment = string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase);
+            if (!isDevelopment)
+                throw new InvalidOperationException(
+                    "ReferralToken:Secret must be configured in non-Development environments. " +
+                    "Set the 'ReferralToken:Secret' configuration key to a strong random value. " +
+                    $"Current environment: '{environment}'.");
+
+            _tokenSecret = DevFallbackSecret;
             _logger.LogWarning(
                 "ReferralToken:Secret is not configured. Using development fallback — " +
                 "DO NOT use this in production.");
+        }
+        else
+        {
+            _tokenSecret = secret;
+        }
     }
 
     // ── Token helpers ─────────────────────────────────────────────────────────
@@ -228,6 +245,56 @@ public class ReferralEmailService : IReferralEmailService
         await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct);
     }
 
+    /// <summary>
+    /// CC2-INT-B03: PROVIDER_ASSIGNED event — fires when a provider is explicitly assigned
+    /// to an existing referral (e.g. re-assignment or delayed assignment after creation).
+    /// Routes through the platform Notifications service exactly like all other events.
+    /// </summary>
+    public async Task SendProviderAssignedNotificationAsync(
+        Referral referral,
+        Provider provider,
+        Guid?    actingUserId,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(provider.Email))
+        {
+            _logger.LogWarning(
+                "Cannot send provider-assigned notification: provider {ProviderId} has no email address.",
+                provider.Id);
+            return;
+        }
+
+        var dedupeKey = $"referral:{referral.Id}:provider_assigned:{provider.Id}";
+        var token     = GenerateViewToken(referral.Id, referral.TokenVersion);
+        var viewLink  = $"{_appBaseUrl}/referrals/view?token={token}";
+        var subject   = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";
+        var body      = BuildProviderAssignedEmailHtml(referral, provider, viewLink);
+
+        var notification = CareConnectNotification.Create(
+            tenantId:          referral.TenantId,
+            notificationType:  NotificationType.ReferralProviderAssigned,
+            relatedEntityType: NotificationRelatedEntityType.Referral,
+            relatedEntityId:   referral.Id,
+            recipientType:     NotificationRecipientType.Provider,
+            recipientAddress:  provider.Email,
+            subject:           subject,
+            message:           viewLink,
+            scheduledForUtc:   null,
+            createdByUserId:   actingUserId,
+            triggerSource:     NotificationSource.Initial,
+            dedupeKey:         dedupeKey);
+
+        if (!await _notifications.TryAddWithDedupeAsync(notification, ct))
+        {
+            _logger.LogInformation(
+                "Duplicate provider-assigned notification skipped for referral {ReferralId}.", referral.Id);
+            return;
+        }
+
+        await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct,
+            nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1));
+    }
+
     public async Task SendAcceptanceConfirmationsAsync(
         Referral referral,
         Provider provider,
@@ -377,6 +444,12 @@ public class ReferralEmailService : IReferralEmailService
                     nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
             }
         }
+        else
+        {
+            _logger.LogWarning(
+                "Skipping provider rejection email for referral {ReferralId}: provider {ProviderId} has no email address.",
+                referral.Id, provider.Id);
+        }
 
         if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
         {
@@ -445,6 +518,12 @@ public class ReferralEmailService : IReferralEmailService
                 tasks.Add(TrySendAndUpdateAsync(provNotif, provider.Email, provSubject, provBody, ct,
                     nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1)));
             }
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Skipping provider cancellation email for referral {ReferralId}: provider {ProviderId} has no email address.",
+                referral.Id, provider.Id);
         }
 
         if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
@@ -612,6 +691,21 @@ public class ReferralEmailService : IReferralEmailService
                 body    = BuildReferrerCancellationHtml(referral, provider);
                 break;
             }
+            case NotificationType.ReferralProviderAssigned:
+            {
+                if (string.IsNullOrWhiteSpace(provider.Email))
+                {
+                    notification.ClearRetrySchedule();
+                    await _notifications.UpdateAsync(notification, ct);
+                    return;
+                }
+                var token    = GenerateViewToken(referral.Id, referral.TokenVersion);
+                var viewLink = $"{_appBaseUrl}/referrals/view?token={token}";
+                subject   = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";
+                body      = BuildProviderAssignedEmailHtml(referral, provider, viewLink);
+                toAddress = provider.Email;
+                break;
+            }
             default:
                 _logger.LogWarning(
                     "RetryNotificationAsync: unsupported type '{Type}' for notification {Id}. Clearing retry.",
@@ -691,9 +785,10 @@ public class ReferralEmailService : IReferralEmailService
     private static string NotificationTypeToEventKey(string notificationType) =>
         notificationType switch
         {
-            NotificationType.ReferralCreated          => "referral.created",
-            NotificationType.ReferralEmailResent      => "referral.invite.resent",
-            NotificationType.ReferralEmailAutoRetry   => "referral.invite.retry",
+            NotificationType.ReferralCreated           => "referral.created",
+            NotificationType.ReferralProviderAssigned  => "referral.provider_assigned",
+            NotificationType.ReferralEmailResent       => "referral.invite.resent",
+            NotificationType.ReferralEmailAutoRetry    => "referral.invite.retry",
             NotificationType.ReferralAcceptedProvider => "referral.accepted.provider",
             NotificationType.ReferralAcceptedReferrer => "referral.accepted.referrer",
             NotificationType.ReferralAcceptedClient   => "referral.accepted.client",
@@ -719,6 +814,38 @@ public class ReferralEmailService : IReferralEmailService
                 A new referral has been sent to you for
                 <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
                 requesting <strong>{r.RequestedService}</strong>.
+              </p>
+              <table style="border-collapse:collapse;width:100%;margin:16px 0">
+                <tr><td style="padding:6px 0;color:#555;width:140px">Urgency</td><td><strong>{r.Urgency}</strong></td></tr>
+                {(r.CaseNumber is not null ? $"<tr><td style='padding:6px 0;color:#555'>Case #</td><td>{r.CaseNumber}</td></tr>" : "")}
+                {(r.Notes is not null ? $"<tr><td style='padding:6px 0;color:#555'>Notes</td><td>{r.Notes}</td></tr>" : "")}
+              </table>
+              <p style="margin-top:24px">
+                <a href="{viewLink}"
+                   style="background:#1a56db;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold">
+                  View Referral
+                </a>
+              </p>
+              <p style="margin-top:32px;font-size:12px;color:#888">
+                This link expires in 30 days. If it has expired, please contact the referring party.
+              </p>
+            </body>
+            </html>
+            """;
+    }
+
+    private static string BuildProviderAssignedEmailHtml(Referral r, Provider p, string viewLink)
+    {
+        var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        return $"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
+              <h2 style="color:#1a56db">Referral Assigned to You</h2>
+              <p>Hello{(!string.IsNullOrWhiteSpace(provName) ? $" {provName}" : "")},</p>
+              <p>
+                A referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
+                requesting <strong>{r.RequestedService}</strong> has been assigned to you.
               </p>
               <table style="border-collapse:collapse;width:100%;margin:16px 0">
                 <tr><td style="padding:6px 0;color:#555;width:140px">Urgency</td><td><strong>{r.Urgency}</strong></td></tr>

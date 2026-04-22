@@ -3,6 +3,7 @@ using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
 using CareConnect.Infrastructure.Data;
+using CareConnect.Infrastructure.Documents;
 using CareConnect.Infrastructure.Notifications;
 using CareConnect.Infrastructure.Repositories;
 using CareConnect.Infrastructure.Services;
@@ -16,8 +17,40 @@ namespace CareConnect.Infrastructure;
 
 public static class DependencyInjection
 {
+    /// <summary>
+    /// CC2-INT-B03: Validates CareConnect required configuration at startup (before any traffic is served).
+    /// Throws <see cref="InvalidOperationException"/> for any missing/invalid required settings
+    /// in non-Development environments.
+    /// </summary>
+    public static void ValidateRequiredConfiguration(IConfiguration configuration)
+    {
+        var environment = configuration["ASPNETCORE_ENVIRONMENT"] ?? "Production";
+        var isDev       = string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase);
+
+        var tokenSecret = configuration["ReferralToken:Secret"];
+        if (string.IsNullOrWhiteSpace(tokenSecret) && !isDev)
+            throw new InvalidOperationException(
+                "ReferralToken:Secret must be configured in non-Development environments. " +
+                "Set the 'ReferralToken:Secret' configuration key to a strong random value. " +
+                $"Current environment: '{environment}'.");
+
+        // CC2-INT-B03: Documents service requires a valid documentTypeId UUID for every upload.
+        // An empty value causes runtime 400s from the Documents API. Fail fast here.
+        var docTypeId = configuration["DocumentsService:DocumentTypeId"];
+        if (string.IsNullOrWhiteSpace(docTypeId) && !isDev)
+            throw new InvalidOperationException(
+                "DocumentsService:DocumentTypeId must be configured in non-Development environments. " +
+                "Set the 'DocumentsService:DocumentTypeId' configuration key to a valid UUID. " +
+                $"Current environment: '{environment}'.");
+    }
+
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        // CC2-INT-B03: Fail fast at startup if required configuration is missing.
+        // This runs during service registration (before app.Run()), ensuring the app never
+        // starts serving traffic without a valid HMAC signing secret.
+        ValidateRequiredConfiguration(configuration);
+
         var connectionString = configuration.GetConnectionString("CareConnectDb")
             ?? throw new InvalidOperationException("Connection string 'CareConnectDb' is not configured.");
 
@@ -75,6 +108,16 @@ public static class DependencyInjection
 
         // LSCC-01-005: Referral performance metrics
         services.AddScoped<IReferralPerformanceService, ReferralPerformanceService>();
+
+        // CC2-INT-B03: Documents service HTTP client + client implementation.
+        // CareConnect proxies file uploads to Documents service; only documentId is stored locally.
+        var docsBaseUrl = configuration["DocumentsService:BaseUrl"] ?? "http://localhost:5006";
+        services.AddHttpClient("DocumentsService", client =>
+        {
+            client.BaseAddress = new Uri(docsBaseUrl);
+            client.Timeout     = TimeSpan.FromSeconds(30);
+        });
+        services.AddScoped<IDocumentServiceClient, DocumentServiceClient>();
 
         // LS-NOTIF-CORE-023: Canonical notification producer — routes outbound emails
         // through POST /v1/notifications on the platform Notifications service.

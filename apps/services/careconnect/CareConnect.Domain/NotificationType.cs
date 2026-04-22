@@ -4,6 +4,7 @@ public static class NotificationType
 {
     public const string ReferralStatusChanged    = "ReferralStatusChanged";
     public const string ReferralCreated          = "ReferralCreated";
+    public const string ReferralProviderAssigned = "ReferralProviderAssigned";
     public const string ReferralAcceptedProvider = "ReferralAcceptedProvider";
     public const string ReferralAcceptedReferrer = "ReferralAcceptedReferrer";
     public const string ReferralAcceptedClient   = "ReferralAcceptedClient";
@@ -20,7 +21,7 @@ public static class NotificationType
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>
     {
-        ReferralStatusChanged, ReferralCreated,
+        ReferralStatusChanged, ReferralCreated, ReferralProviderAssigned,
         ReferralAcceptedProvider, ReferralAcceptedReferrer, ReferralAcceptedClient,
         ReferralRejectedProvider, ReferralRejectedReferrer,
         ReferralCancelledProvider, ReferralCancelledReferrer,

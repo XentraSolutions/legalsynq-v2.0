@@ -159,20 +159,29 @@ public class ReferralService : IReferralService
 
         await _referrals.AddAsync(referral, ct);
 
-        // LSCC-005: Fire provider email notification (fire-and-observe — never gates creation).
+        // LSCC-005: Fire provider email notifications (fire-and-observe — never gates creation).
+        // CC2-INT-B03: SendProviderAssignedNotificationAsync is also fired here; this is the initial
+        // provider-assignment event (referral.provider_assigned) which the Notifications service
+        // routes with a different event key from referral.created, enabling distinct downstream handling.
         // A fresh DI scope is created so the background task gets its own DbContext instance,
         // avoiding a concurrent-access conflict with the request-scoped context still in use below.
         var scopeFactory = _scopeFactory;
         var logger       = _logger;
         _ = Task.Run(async () =>
         {
-            using var scope       = scopeFactory.CreateScope();
-            var       emailSvc    = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
+            using var scope    = scopeFactory.CreateScope();
+            var       emailSvc = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
             try { await emailSvc.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None); }
             catch (Exception ex)
             {
                 logger.LogWarning(ex,
                     "Background referral notification failed for referral {ReferralId}.", referral.Id);
+            }
+            try { await emailSvc.SendProviderAssignedNotificationAsync(referral, provider, null, CancellationToken.None); }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Background provider-assigned notification failed for referral {ReferralId}.", referral.Id);
             }
         });
 

@@ -4,8 +4,8 @@ using CareConnect.Domain;
 namespace CareConnect.Application.Interfaces;
 
 /// <summary>
-/// LSCC-005 / LSCC-005-01 / LSCC-01-002: Handles secure token generation and email notification
-/// dispatch for the referral flow.
+/// LSCC-005 / LSCC-005-01 / LSCC-01-002 / CC2-INT-B03: Handles secure token generation and email
+/// notification dispatch for the referral flow.
 ///
 /// Token strategy (LSCC-005-01): HMAC-SHA256 signed token encoding referralId + tokenVersion + expiry (30 days).
 /// Token format: {referralId}:{tokenVersion}:{expiryUnixSeconds}:{hmacHex}, Base64url-encoded.
@@ -14,6 +14,9 @@ namespace CareConnect.Application.Interfaces;
 /// Email strategy: notification records are always created in the DB (Pending state).
 /// An SMTP send is then attempted immediately. On success → Sent; on failure → Failed.
 /// AttemptCount and LastAttemptAtUtc are updated on each attempt. Never a silent failure.
+///
+/// Secret hardening (CC2-INT-B03): ReferralToken:Secret must be explicitly configured in all
+/// non-Development environments. Missing secret in Production/Staging throws on startup.
 /// </summary>
 public interface IReferralEmailService
 {
@@ -38,10 +41,22 @@ public interface IReferralEmailService
     /// Queues a "new referral received" notification to the provider's email address
     /// and attempts an immediate SMTP send.
     /// Called after referral creation (fire-and-observe pattern — never gates creation).
+    /// Also covers TOKEN_GENERATED event since a signed token is included in the email.
     /// </summary>
     Task SendNewReferralNotificationAsync(
         Referral referral,
         Provider provider,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// CC2-INT-B03: Sends a PROVIDER_ASSIGNED notification when a provider is associated
+    /// with a referral after initial creation (e.g. re-assignment or delayed assignment).
+    /// Routes through the platform Notifications service like all other events.
+    /// </summary>
+    Task SendProviderAssignedNotificationAsync(
+        Referral referral,
+        Provider provider,
+        Guid?    actingUserId,
         CancellationToken ct = default);
 
     /// <summary>
