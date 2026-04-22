@@ -14,11 +14,13 @@ const NOMINATIM = 'https://nominatim.openstreetmap.org';
 const USER_AGENT = 'LegalSynq/2.0 contact@legalsynq.com';
 
 export interface AddressSuggestion {
-  displayName: string;
+  displayName:  string;
   addressLine1: string;
   city:         string;
   state:        string;
   postalCode:   string;
+  latitude:     number;
+  longitude:    number;
 }
 
 const STATE_ABBR: Record<string, string> = {
@@ -66,6 +68,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const addr = item.address as Record<string, string> | undefined;
     if (!addr) continue;
 
+    const lat = parseFloat(item.lat as string);
+    const lon = parseFloat(item.lon as string);
+    if (isNaN(lat) || isNaN(lon)) continue;
+
     const houseNumber = addr.house_number ?? '';
     const road = addr.road ?? '';
     const addressLine1 = houseNumber ? `${houseNumber} ${road}` : road;
@@ -92,9 +98,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       postalCode ? `${state} ${postalCode}` : state,
     ].filter(Boolean).join(', ');
 
-    // Deduplicate
     if (!suggestions.some(s => s.displayName === displayName)) {
-      suggestions.push({ displayName, addressLine1, city, state, postalCode });
+      suggestions.push({ displayName, addressLine1, city, state, postalCode, latitude: lat, longitude: lon });
     }
     if (suggestions.length >= 5) break;
   }

@@ -1,7 +1,7 @@
 'use client';
 
 import 'leaflet/dist/leaflet.css';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import type { PublicProviderMarker } from '@/lib/public-network-api';
 
@@ -51,15 +51,21 @@ function makePinIcon(index: number, accepting: boolean, selected: boolean) {
 }
 
 /**
- * Fits the map to the given markers on first render.
- * `useEffect` guarantees this only runs on the client.
+ * Fits the map to the given markers whenever they first become available.
+ * Runs on mount and again whenever the marker count grows from 0 → N,
+ * which handles the async geocoding case.
  */
 function FlyToMarkers({ markers }: { markers: NumberedMarker[] }) {
-  const map = useMap();
+  const map  = useMap();
+  const prev = useRef(0);
 
   useEffect(() => {
-    if (markers.length === 0) return;
-    if (markers.length === 1) {
+    const cur = markers.length;
+    // Only act when we transition from no-markers to markers
+    if (cur === 0 || prev.current === cur) { prev.current = cur; return; }
+    prev.current = cur;
+
+    if (cur === 1) {
       map.setView([markers[0].latitude, markers[0].longitude], 12);
       return;
     }
@@ -69,9 +75,7 @@ function FlyToMarkers({ markers }: { markers: NumberedMarker[] }) {
       markers.map(m => [m.latitude, m.longitude] as [number, number]),
     );
     map.fitBounds(bounds, { padding: [40, 40] });
-  // Only run on initial mount — intentionally omitting deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [map, markers]);
 
   return null;
 }

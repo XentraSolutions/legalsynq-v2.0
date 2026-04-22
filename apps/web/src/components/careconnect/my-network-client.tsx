@@ -16,6 +16,8 @@ interface AddressSuggestion {
   city:         string;
   state:        string;
   postalCode:   string;
+  latitude:     number;
+  longitude:    number;
 }
 
 interface MyNetworkClientProps {
@@ -55,6 +57,8 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
   const [addrSuggestions, setAddrSuggestions] = useState<AddressSuggestion[]>([]);
   const [addrLoading,     setAddrLoading]     = useState(false);
   const [addrOpen,        setAddrOpen]        = useState(false);
+  const [geoLat,          setGeoLat]          = useState<number | null>(null);
+  const [geoLng,          setGeoLng]          = useState<number | null>(null);
   const addrDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -112,6 +116,8 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
 
   function handleAddressChange(value: string) {
     setNewForm(f => ({ ...f, addressLine1: value }));
+    setGeoLat(null);
+    setGeoLng(null);
     if (addrDebounce.current) clearTimeout(addrDebounce.current);
     if (value.trim().length < 3) {
       setAddrSuggestions([]);
@@ -141,6 +147,8 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
       state:        s.state,
       postalCode:   s.postalCode,
     }));
+    setGeoLat(s.latitude);
+    setGeoLng(s.longitude);
     setAddrSuggestions([]);
     setAddrOpen(false);
   }
@@ -154,6 +162,8 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     setConfirmTarget(null);
     setNewForm(EMPTY_NEW_FORM);
     setCreateError(null);
+    setGeoLat(null);
+    setGeoLng(null);
     setPanelMode('search');
   }
 
@@ -163,6 +173,8 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     setConfirmTarget(null);
     setCreateError(null);
     setSearchError(null);
+    setGeoLat(null);
+    setGeoLng(null);
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -238,6 +250,9 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
           isActive:           newForm.isActive,
           acceptingReferrals: newForm.acceptingReferrals,
           npi:                newForm.npi.trim() || undefined,
+          ...(geoLat !== null && geoLng !== null
+            ? { latitude: geoLat, longitude: geoLng, geoPointSource: 'nominatim' }
+            : {}),
         },
       });
       if (data && !providers.find(p => p.id === data.id)) {

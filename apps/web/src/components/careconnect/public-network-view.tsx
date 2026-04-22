@@ -17,7 +17,7 @@
  *    X-Tenant-Id to the AllowAnonymous CareConnect public referral endpoint.
  */
 
-import { useState, useMemo, useCallback, useRef, forwardRef, type FormEvent, type ReactNode } from 'react';
+import { useState, useMemo, useCallback, useRef, forwardRef, useEffect, type FormEvent, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import type {
   PublicNetworkDetail,
@@ -50,12 +50,65 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
   const [hoveredId, setHovered] = useState<string | null>(null);
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  // Markers: start from what the backend returned; auto-geocode missing ones
+  const [markers, setMarkers] = useState<PublicProviderMarker[]>(detail.markers);
+
+  useEffect(() => {
+    // Nothing to geocode if the backend already gave us coordinates
+    if (detail.providers.length === 0) return;
+    const missing = detail.providers.filter(
+      p => !detail.markers.some(m => m.id === p.id),
+    );
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+
+    async function geocodeMissing() {
+      const results: PublicProviderMarker[] = [...detail.markers];
+
+      await Promise.all(
+        missing.map(async p => {
+          const q = [p.city, p.state, p.postalCode].filter(Boolean).join(' ');
+          if (!q) return;
+          try {
+            const res = await fetch(
+              `/api/geocode/address?q=${encodeURIComponent(q)}`,
+            );
+            if (!res.ok) return;
+            const suggestions = await res.json() as Array<{
+              latitude: number; longitude: number;
+            }>;
+            if (suggestions.length === 0) return;
+            const { latitude, longitude } = suggestions[0];
+            results.push({
+              id:               p.id,
+              name:             p.name,
+              organizationName: p.organizationName,
+              city:             p.city,
+              state:            p.state,
+              acceptingReferrals: p.acceptingReferrals,
+              latitude,
+              longitude,
+            });
+          } catch { /* ignore */ }
+        }),
+      );
+
+      if (!cancelled) setMarkers(results);
+    }
+
+    geocodeMissing();
+    return () => { cancelled = true; };
+  // Only run once on mount — detail is server-side stable
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Build a lookup of marker data by provider id
   const markerById = useMemo<Record<string, PublicProviderMarker>>(() => {
     const m: Record<string, PublicProviderMarker> = {};
-    for (const mk of detail.markers) m[mk.id] = mk;
+    for (const mk of markers) m[mk.id] = mk;
     return m;
-  }, [detail.markers]);
+  }, [markers]);
 
   // Filtered + searched provider list
   const filtered = useMemo(() => {
@@ -99,7 +152,7 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
     cardRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  const hasMarkers = detail.markers.length > 0;
+  const hasMarkers = markers.length > 0;
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
