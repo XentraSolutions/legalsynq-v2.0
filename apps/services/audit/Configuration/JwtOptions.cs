@@ -75,4 +75,15 @@ public sealed class JwtOptions
     /// Environment variable: Jwt__RequireConfigurationInBearerMode
     /// </summary>
     public bool RequireConfigurationInBearerMode { get; set; } = true;
+
+    /// <summary>
+    /// Symmetric signing key used to validate JWT signatures directly, bypassing OIDC discovery.
+    /// When set, <see cref="Authority"/> is ignored and the token signature is validated using
+    /// a <see cref="Microsoft.IdentityModel.Tokens.SymmetricSecurityKey"/> built from this value.
+    /// Must match the key used by the issuing service (e.g. Identity.Api).
+    /// In production, inject via the Jwt__SigningKey environment variable — never commit a real key.
+    /// Example (dev only): "dev-only-signing-key-minimum-32-chars-long!"
+    /// Environment variable: Jwt__SigningKey
+    /// </summary>
+    public string? SigningKey { get; set; }
 }

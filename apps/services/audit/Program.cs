@@ -372,10 +372,14 @@ try
     {
         if (jwtOpts.RequireConfigurationInBearerMode)
         {
-            if (string.IsNullOrWhiteSpace(jwtOpts.Authority))
+            // A signing key (symmetric) or an authority (OIDC discovery) is required — not both.
+            var hasSigningKey = !string.IsNullOrWhiteSpace(jwtOpts.SigningKey);
+            var hasAuthority  = !string.IsNullOrWhiteSpace(jwtOpts.Authority);
+
+            if (!hasSigningKey && !hasAuthority)
                 throw new InvalidOperationException(
-                    "QueryAuth:Mode=Bearer requires Jwt:Authority to be configured. " +
-                    "Set Jwt__Authority environment variable or configure Jwt:Authority in appsettings.");
+                    "QueryAuth:Mode=Bearer requires either Jwt:SigningKey (symmetric) or Jwt:Authority (OIDC). " +
+                    "Set Jwt__SigningKey or Jwt__Authority environment variable, or configure in appsettings.");
 
             if (string.IsNullOrWhiteSpace(jwtOpts.Audience))
                 throw new InvalidOperationException(
@@ -385,11 +389,13 @@ try
 
         authBuilder.AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
         {
-            options.Authority           = jwtOpts.Authority;
+            // MapInboundClaims = false: preserve raw JWT claim names (e.g. "role", "sub")
+            // so ClaimsCallerResolver can match them with RoleClaimType / UserIdClaimType.
+            options.MapInboundClaims    = false;
             options.Audience            = jwtOpts.Audience;
             options.RequireHttpsMetadata = jwtOpts.RequireHttpsMetadata;
 
-            options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            var tvp = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
             {
                 ValidateIssuer    = jwtOpts.ValidateIssuer,
                 ValidateAudience  = jwtOpts.ValidateAudience,
@@ -400,11 +406,30 @@ try
                     ? jwtOpts.ValidIssuers
                     : null,
             };
+
+            if (!string.IsNullOrWhiteSpace(jwtOpts.SigningKey))
+            {
+                // Symmetric key path: validate token signature directly without OIDC discovery.
+                // Authority is intentionally left unset to prevent the JWT middleware from
+                // attempting to fetch /.well-known/openid-configuration (which does not exist
+                // on the internal Identity service).
+                tvp.IssuerSigningKey          = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+                    System.Text.Encoding.UTF8.GetBytes(jwtOpts.SigningKey));
+                tvp.ValidateIssuerSigningKey  = true;
+            }
+            else
+            {
+                // OIDC discovery path: authority fetches the signing key automatically.
+                options.Authority = jwtOpts.Authority;
+            }
+
+            options.TokenValidationParameters = tvp;
         });
 
         Log.Information(
-            "JWT Bearer: configured. Authority={Authority} Audience={Audience} " +
+            "JWT Bearer: configured. KeyMode={KeyMode} Authority={Authority} Audience={Audience} " +
             "RequireHttps={Https} ValidateAudience={Aud} ValidateIssuer={Iss}",
+            string.IsNullOrWhiteSpace(jwtOpts.SigningKey) ? "OIDC" : "Symmetric",
             jwtOpts.Authority, jwtOpts.Audience,
             jwtOpts.RequireHttpsMetadata, jwtOpts.ValidateAudience, jwtOpts.ValidateIssuer);
     }
@@ -683,11 +708,18 @@ try
         await next(ctx);
     });
 
+    // UseAuthentication populates HttpContext.User from the JWT Bearer token.
+    // Must run before any middleware that reads User claims (IngestAuth, QueryAuth).
+    app.UseAuthentication();
+    app.UseAuthorization();
+
     // IngestAuthMiddleware must run after CorrelationId (so TraceId is available for
     // error responses) and before Serilog request logging (so auth outcomes appear in logs).
     app.UseMiddleware<IngestAuthMiddleware>();
 
     // QueryAuthMiddleware resolves the caller context for /audit/* endpoints.
+    // Runs after UseAuthentication so that HttpContext.User is populated with JWT claims
+    // before ClaimsCallerResolver reads them.
     // Fine-grained scope enforcement (403) is applied in the controller via IQueryAuthorizer.
     app.UseMiddleware<QueryAuthMiddleware>();
 
@@ -717,10 +749,6 @@ try
         });
     }
 
-    // UseAuthentication populates HttpContext.User from the JWT Bearer token.
-    // Must come before UseAuthorization and all middleware that reads User claims.
-    app.UseAuthentication();
-    app.UseAuthorization();
     app.MapControllers();
     app.MapHealthChecks("/health");
 

@@ -635,8 +635,8 @@ shared/
 | `/careconnect/**` | Bearer JWT required | CareConnect :5003 |
 | `/audit-service/health` | Anonymous | Audit :5007 |
 | `/audit-service/info` | Anonymous | Audit :5007 |
-| `/audit-service/audit/**` | Anonymous (audit service handles own auth via QueryAuth__Mode) | Audit :5007 |
-| `/audit-service/export/**` | Anonymous (audit service handles own auth via QueryAuth__Mode) | Audit :5007 |
+| `/audit-service/audit/**` | Bearer JWT required (gateway) + QueryAuth=Bearer (audit service) | Audit :5007 |
+| `/audit-service/export/**` | Bearer JWT required (gateway) + QueryAuth=Bearer (audit service) | Audit :5007 |
 | `/notifications/health` | Anonymous | Notifications :5008 |
 | `/notifications/**` | Bearer JWT required | Notifications :5008 |
 | `/documents/health` | Anonymous | Documents :5006 |
@@ -2199,11 +2199,14 @@ Path segment takes precedence over matching query-string param. All scoped endpo
 `Unknown(0)` → `UserSelf(1)` → `TenantUser(2)` → `Restricted(3)` → `OrganizationAdmin(4)` → `TenantAdmin(5)` → `PlatformAdmin(6)`
 
 ### Authorization pipeline
-- **`QueryAuthMiddleware`** — path-scoped to `/audit/*`; resolves caller context; issues 401 when Mode≠None and caller is unresolved
+- **`QueryAuthMiddleware`** — path-scoped to `/audit/*`; resolves caller context; issues 401 when Mode≠None and caller is unresolved. **Must run after `UseAuthentication()`** so `HttpContext.User` is populated before `ClaimsCallerResolver` reads it (middleware order fixed in bug-fix session).
 - **`IQueryCallerResolver`** — contract; `AnonymousCallerResolver` (Mode=None, dev only) and `ClaimsCallerResolver` (Mode=Bearer, reads `HttpContext.User.Claims`)
 - **`IQueryAuthorizer` / `QueryAuthorizer`** — Phase 1: access check (cross-tenant, unknown scope, self-scope without UserId); Phase 2: constraint application (overrides TenantId, OrgId, ActorId, MaxVisibility)
 - **`QueryCallerContext`** — immutable record stored in `HttpContext.Items`; factory helpers `Anonymous()`, `Authenticated()`, `Failed()`
 - **`QueryAuthorizationResult`** — carries IsAuthorized, DenialReason, StatusCode
+- **JWT configuration (dev):** `Jwt:SigningKey = "dev-only-signing-key-minimum-32-chars-long!"` — symmetric key, bypasses OIDC discovery (no `Authority`). Same key as Identity.Api and Gateway.Api dev configs. `MapInboundClaims = false` preserves raw claim names (`"role"`, `"sub"`) so `ClaimsCallerResolver` can match `RoleClaimType = "role"`. `PlatformAdminRoles` includes `"PlatformAdmin"` (the role emitted by Identity.Api's JwtTokenService).
+- **JWT configuration (prod):** Inject `Jwt__SigningKey` env var. Must match the key Identity.Api and Gateway.Api sign/validate with. `Authority` is unused when `SigningKey` is set.
+- **Build note:** `PlatformAuditEventService.csproj` is NOT in `LegalSynq.sln`. `run-dev.sh` has an explicit `dotnet build` step for it before `dotnet run --no-build`.
 
 ### Configuration additions to `QueryAuthOptions`
 `OrganizationAdminRoles`, `RestrictedRoles`, `TenantUserRoles`, `UserSelfRoles`, `TenantIdClaimType`, `OrganizationIdClaimType`, `UserIdClaimType`, `RoleClaimType`
