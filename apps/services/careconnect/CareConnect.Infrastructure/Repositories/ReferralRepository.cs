@@ -99,12 +99,15 @@ public class ReferralRepository : IReferralRepository
         await _db.SaveChangesAsync(ct);
     }
 
-    public async Task UpdateAsync(Referral referral, ReferralStatusHistory? history = null, CancellationToken ct = default)
+    public async Task UpdateAsync(Referral referral, ReferralStatusHistory? history = null, ReferralProviderReassignment? providerReassignment = null, CancellationToken ct = default)
     {
         _db.Referrals.Update(referral);
 
         if (history is not null)
             await _db.ReferralStatusHistories.AddAsync(history, ct);
+
+        if (providerReassignment is not null)
+            await _db.ReferralProviderReassignments.AddAsync(providerReassignment, ct);
 
         await _db.SaveChangesAsync(ct);
     }
@@ -114,6 +117,20 @@ public class ReferralRepository : IReferralRepository
         return await _db.ReferralStatusHistories
             .Where(h => h.TenantId == tenantId && h.ReferralId == referralId)
             .OrderByDescending(h => h.ChangedAtUtc)
+            .ToListAsync(ct);
+    }
+
+    public async Task AddProviderReassignmentAsync(ReferralProviderReassignment reassignment, CancellationToken ct = default)
+    {
+        await _db.ReferralProviderReassignments.AddAsync(reassignment, ct);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<List<ReferralProviderReassignment>> GetProviderReassignmentsByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
+    {
+        return await _db.ReferralProviderReassignments
+            .Where(r => r.TenantId == tenantId && r.ReferralId == referralId)
+            .OrderBy(r => r.ReassignedAtUtc)
             .ToListAsync(ct);
     }
 }

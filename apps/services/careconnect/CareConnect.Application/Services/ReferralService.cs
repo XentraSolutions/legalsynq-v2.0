@@ -97,7 +97,7 @@ public class ReferralService : IReferralService
                 referral.Id, referral.TenantId,
                 Referral.ValidStatuses.New, Referral.ValidStatuses.NewOpened,
                 null, "Referral opened by receiver.");
-            await _referrals.UpdateAsync(referral, history, ct);
+            await _referrals.UpdateAsync(referral, history, ct: ct);
         }
     }
 
@@ -261,7 +261,7 @@ public class ReferralService : IReferralService
         bool statusChanged = history is not null;
 
         referral.Update(request.RequestedService, request.Urgency, request.Status, request.Notes, userId);
-        await _referrals.UpdateAsync(referral, history, ct);
+        await _referrals.UpdateAsync(referral, history, ct: ct);
 
         if (statusChanged)
         {
@@ -380,7 +380,16 @@ public class ReferralService : IReferralService
         var previousProviderId = referral.ProviderId;
 
         referral.ReassignProvider(newProviderId, newProvider.OrganizationId, actingUserId);
-        await _referrals.UpdateAsync(referral, history: null, ct);
+
+        // Persist the reassignment log entry atomically with the referral update so
+        // the timeline record is never missing if the update itself succeeds.
+        var reassignment = ReferralProviderReassignment.Create(
+            referralId:         referral.Id,
+            tenantId:           effectiveTenantId,
+            previousProviderId: previousProviderId,
+            newProviderId:      newProviderId,
+            reassignedByUserId: actingUserId);
+        await _referrals.UpdateAsync(referral, history: null, providerReassignment: reassignment, ct);
 
         // Fire-and-observe: send PROVIDER_ASSIGNED notification to the new provider.
         // Uses a GUID-based dedupe key suffix so each reassignment event is unique,
@@ -603,7 +612,7 @@ public class ReferralService : IReferralService
             notes: "Accepted via public token link.");
 
         referral.Accept(updatedByUserId: null);
-        await _referrals.UpdateAsync(referral, history, ct);
+        await _referrals.UpdateAsync(referral, history, ct: ct);
 
         // LSCC-005 / LSCC-005-01: Fire confirmation emails (fire-and-observe — never gates acceptance).
         // Fresh scope so the background DbContext is isolated from the request scope used below.
@@ -755,7 +764,7 @@ public class ReferralService : IReferralService
 
         var oldVersion = referral.TokenVersion;
         referral.IncrementTokenVersion();
-        await _referrals.UpdateAsync(referral, null, ct);
+        await _referrals.UpdateAsync(referral, null, ct: ct);
 
         _logger.LogInformation(
             "Referral {ReferralId} token revoked: version {OldVersion} → {NewVersion}.",
@@ -1045,6 +1054,28 @@ public class ReferralService : IReferralService
                 OccurredAt = n.LastAttemptAtUtc ?? n.CreatedAtUtc,
                 Detail     = detail,
                 Category   = category,
+            });
+        }
+
+        // ── Source 3: provider reassignment log ───────────────────────────────
+        var reassignments = await _referrals.GetProviderReassignmentsByReferralAsync(effectiveTenantId, referralId, ct);
+        foreach (var r in reassignments)
+        {
+            var providerChange = r.PreviousProviderId.HasValue
+                ? $"Provider changed from {r.PreviousProviderId} to {r.NewProviderId}."
+                : $"Provider assigned to {r.NewProviderId}.";
+            var actorSuffix = r.ReassignedByUserId.HasValue
+                ? $" By user {r.ReassignedByUserId}."
+                : string.Empty;
+            var detail = providerChange + actorSuffix;
+
+            events.Add(new ReferralAuditEventResponse
+            {
+                EventType  = "referral.provider.reassigned",
+                Label      = "Provider Reassigned",
+                OccurredAt = r.ReassignedAtUtc,
+                Detail     = detail,
+                Category   = "info",
             });
         }
 

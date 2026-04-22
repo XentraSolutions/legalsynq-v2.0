@@ -98,7 +98,7 @@ public class ProviderReassignmentTests
 
         referralRepo.Setup(r => r.GetByIdGlobalAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(referralInRepo);
-        referralRepo.Setup(r => r.UpdateAsync(It.IsAny<Referral>(), It.IsAny<ReferralStatusHistory?>(), It.IsAny<CancellationToken>()))
+        referralRepo.Setup(r => r.UpdateAsync(It.IsAny<Referral>(), It.IsAny<ReferralStatusHistory?>(), It.IsAny<ReferralProviderReassignment?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         providerRepo.Setup(r => r.GetByIdCrossAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -175,6 +175,7 @@ public class ProviderReassignmentTests
                 ref_.ProviderId    == newProviderId &&
                 ref_.TokenVersion  == originalToken + 1),
             It.IsAny<ReferralStatusHistory?>(),
+            It.IsAny<ReferralProviderReassignment?>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -236,6 +237,7 @@ public class ProviderReassignmentTests
         referralRepo.Verify(r => r.UpdateAsync(
             It.Is<Referral>(ref_ => ref_.ProviderId == newProviderId),
             It.IsAny<ReferralStatusHistory?>(),
+            It.IsAny<ReferralProviderReassignment?>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 

@@ -1416,6 +1416,39 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.ToTable("cc_ReferralStatusHistories", (string)null);
                 });
 
+            modelBuilder.Entity("CareConnect.Domain.ReferralProviderReassignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("NewProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("PreviousProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("ReassignedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("ReassignedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("ReferralId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ReferralId");
+
+                    b.HasIndex("TenantId", "ReassignedAtUtc");
+
+                    b.ToTable("cc_ReferralProviderReassignments", (string)null);
+                });
+
             modelBuilder.Entity("CareConnect.Domain.ServiceOffering", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1751,6 +1784,17 @@ namespace CareConnect.Infrastructure.Data.Migrations
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ReferralStatusHistory", b =>
+                {
+                    b.HasOne("CareConnect.Domain.Referral", "Referral")
+                        .WithMany()
+                        .HasForeignKey("ReferralId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Referral");
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.ReferralProviderReassignment", b =>
                 {
                     b.HasOne("CareConnect.Domain.Referral", "Referral")
                         .WithMany()

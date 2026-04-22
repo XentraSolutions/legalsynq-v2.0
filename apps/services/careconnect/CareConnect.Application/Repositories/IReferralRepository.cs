@@ -13,6 +13,8 @@ public interface IReferralRepository
     /// </summary>
     Task<Referral?> GetByIdGlobalAsync(Guid id, CancellationToken ct = default);
     Task AddAsync(Referral referral, CancellationToken ct = default);
-    Task UpdateAsync(Referral referral, ReferralStatusHistory? history = null, CancellationToken ct = default);
+    Task UpdateAsync(Referral referral, ReferralStatusHistory? history = null, ReferralProviderReassignment? providerReassignment = null, CancellationToken ct = default);
     Task<List<ReferralStatusHistory>> GetHistoryByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
+    Task AddProviderReassignmentAsync(ReferralProviderReassignment reassignment, CancellationToken ct = default);
+    Task<List<ReferralProviderReassignment>> GetProviderReassignmentsByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
 }

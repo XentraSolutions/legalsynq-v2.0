@@ -3,9 +3,10 @@ namespace CareConnect.Application.DTOs;
 /// <summary>
 /// LSCC-005-02: A single item in the referral operational audit timeline.
 ///
-/// Sourced from two local data stores:
+/// Sourced from three local data stores:
 ///   1. ReferralStatusHistory — status transitions (Created, Accepted, Cancelled, etc.)
 ///   2. CareConnectNotifications — email delivery events (Sent, Failed, Retrying, RetryExhausted, Resent)
+///   3. ReferralProviderReassignments — provider reassignment events (old provider ID → new provider ID)
 ///
 /// Ordered chronologically (oldest first) for display in the ReferralAuditTimeline component.
 /// </summary>
