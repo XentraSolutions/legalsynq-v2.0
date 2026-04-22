@@ -7,13 +7,11 @@ import type { NetworkDetail }      from '@/types/careconnect';
 export const dynamic = 'force-dynamic';
 
 /**
- * /careconnect/network — My Preferred Provider Network
+ * /careconnect/my-network — Preferred Provider Network management.
  *
- * Loads the tenant's first (default) network and renders the full
- * provider management table. If no network exists yet, the client
- * component guides the user to create one.
- *
- * Accessible to any CareConnect user — no NetworkManager role required.
+ * Authenticated view. Allows the tenant to create, populate, and manage
+ * their preferred provider network. The public-facing read-only view lives
+ * at /careconnect/network (no auth required).
  */
 export default async function MyNetworkPage() {
   await requireOrg();

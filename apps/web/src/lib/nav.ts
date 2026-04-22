@@ -10,8 +10,8 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         { href: '/careconnect/dashboard',    label: 'Dashboard',    icon: 'ri-dashboard-line' },
         { href: '/careconnect/providers',    label: 'Providers',    icon: 'ri-hospital-line', requiredRoles: [ProductRole.CareConnectReferrer] },
         { href: '/careconnect/referrals',    label: 'Referrals',    icon: 'ri-file-list-3-line', badgeKey: 'newReferrals' },
-        // Preferred provider network — visible to all CareConnect users (lien companies, etc.)
-        { href: '/careconnect/network',      label: 'Network',      icon: 'ri-share-circle-line' },
+        // Preferred provider network management — authenticated view for lien companies
+        { href: '/careconnect/my-network',   label: 'Network',      icon: 'ri-share-circle-line' },
         // CC2-INT-B06: full multi-network management — only visible to Network Managers
         { href: '/careconnect/networks',     label: 'Networks',     icon: 'ri-share-forward-2-line', requiredRoles: [ProductRole.CareConnectNetworkManager] },
       ],

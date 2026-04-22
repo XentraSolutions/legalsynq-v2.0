@@ -46,6 +46,7 @@ const PUBLIC_PATHS = [
   '/referrals/activate',
   // CC2-INT-B07: Public tenant network directory — no session required
   '/network',
+  '/careconnect/network',
   '/api/public/',
 ];
 
