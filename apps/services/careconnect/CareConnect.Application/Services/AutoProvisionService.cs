@@ -156,7 +156,18 @@ public class AutoProvisionService : IAutoProvisionService
                 "Account setup could not complete. Our team will activate your account shortly.");
         }
 
-        // Step 6: Approve/upsert the LSCC-009 activation request
+        // Step 6: CC2-INT-B04 — Invite the activating person as an Identity user
+        //
+        // This is the Token → Identity Bridge: creates an inactive Identity user and
+        // sends them an invitation email so they can set a password and log in.
+        //
+        // Non-fatal: if the invitation call fails, the provider org is already linked
+        // and the activation request will still exist in the LSCC-009 queue. A platform
+        // admin can resend the invitation from Identity. We never block the provision.
+        var (invitationSent, userAlreadyExisted) = await TryInviteProviderUserAsync(
+            orgId.Value, requesterEmail, requesterName, ct);
+
+        // Step 7: Approve/upsert the LSCC-009 activation request
         try
         {
             // Upsert so the activation request has up-to-date requester context
@@ -190,17 +201,62 @@ public class AutoProvisionService : IAutoProvisionService
                 "Provider is still linked — this is non-fatal.", provider.Id);
         }
 
-        // Step 7: Emit success event
+        // Step 8: Emit success event
         EmitEvent("AutoProvisionSucceeded", referral, provider, null);
 
         _logger.LogInformation(
-            "LSCC-010 Auto-provision succeeded for provider {ProviderId} referral {ReferralId}.",
-            provider.Id, referral.Id);
+            "LSCC-010 Auto-provision succeeded for provider {ProviderId} referral {ReferralId}. " +
+            "InvitationSent={InvitationSent}.",
+            provider.Id, referral.Id, invitationSent);
 
-        return AutoProvisionResult.Provisioned(orgId.Value, loginUrl);
+        return AutoProvisionResult.Provisioned(orgId.Value, loginUrl, invitationSent, userAlreadyExisted);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// CC2-INT-B04 Token → Identity Bridge.
+    /// Attempts to create an Identity user for the activating person and send an invitation.
+    /// Always returns without throwing — failure is non-fatal to the provision flow.
+    /// Returns (invitationSent, userAlreadyExisted).
+    /// </summary>
+    private async Task<(bool invitationSent, bool userAlreadyExisted)> TryInviteProviderUserAsync(
+        Guid              orgId,
+        string?           email,
+        string?           requesterName,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            _logger.LogDebug(
+                "CC2-INT-B04 Skipping user invitation for org {OrgId}: no requester email provided.", orgId);
+            return (false, false);
+        }
+
+        try
+        {
+            // Split requesterName into first/last (best-effort)
+            var firstName = "Provider";
+            var lastName  = default(string?);
+            if (!string.IsNullOrWhiteSpace(requesterName))
+            {
+                var parts = requesterName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                firstName = parts[0];
+                lastName  = parts.Length > 1 ? parts[1] : null;
+            }
+
+            var result = await _identityOrgs.InviteProviderUserAsync(orgId, email, firstName, lastName, ct);
+            if (result is null) return (false, false);
+
+            return (result.InvitationSent, !result.IsNew);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "CC2-INT-B04 User invitation failed for org {OrgId} — non-fatal, provision continues.", orgId);
+            return (false, false);
+        }
+    }
 
     private string BuildLoginUrl(Guid referralId)
     {

@@ -33,11 +33,19 @@ public sealed class AutoProvisionResult
 
     // ── Convenience factories ─────────────────────────────────────────────────
 
-    public static AutoProvisionResult Provisioned(Guid orgId, string loginUrl) => new()
+    /// <summary>True if an Identity user was created and an invitation email was dispatched.</summary>
+    public bool  InvitationSent  { get; set; }
+
+    /// <summary>True if the Identity user already existed (no new invitation issued).</summary>
+    public bool  UserAlreadyExisted { get; set; }
+
+    public static AutoProvisionResult Provisioned(Guid orgId, string loginUrl, bool invitationSent = false, bool userAlreadyExisted = false) => new()
     {
-        Success        = true,
-        OrganizationId = orgId,
-        LoginUrl       = loginUrl,
+        Success             = true,
+        OrganizationId      = orgId,
+        LoginUrl            = loginUrl,
+        InvitationSent      = invitationSent,
+        UserAlreadyExisted  = userAlreadyExisted,
     };
 
     public static AutoProvisionResult AlreadyActiveResult(string loginUrl) => new()

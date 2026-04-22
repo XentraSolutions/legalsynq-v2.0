@@ -73,9 +73,11 @@ public static class AdminEndpoints
         // Internal service-to-service endpoint.  Token-gated at the gateway.
         // Creates a minimal PROVIDER Organization for a CareConnect provider.
         // Idempotent: returns the existing org if already provisioned.
-        routes.MapGet("/api/admin/organizations",           ListOrganizations);
-        routes.MapPost("/api/admin/organizations",          AdminEndpointsLscc010.CreateProviderOrganization);
-        routes.MapGet("/api/admin/organizations/{id:guid}", AdminEndpointsLscc010.GetOrganizationById);
+        routes.MapGet("/api/admin/organizations",                                    ListOrganizations);
+        routes.MapPost("/api/admin/organizations",                                   AdminEndpointsLscc010.CreateProviderOrganization);
+        routes.MapGet("/api/admin/organizations/{id:guid}",                          AdminEndpointsLscc010.GetOrganizationById);
+        // CC2-INT-B04: M2M user provisioning for provider activation (no permission gate — internal only)
+        routes.MapPost("/api/admin/organizations/{id:guid}/provision-user",          AdminEndpointsLscc010.ProvisionProviderUser);
         routes.MapPut("/api/admin/organizations/{id:guid}", UpdateOrganization);
         routes.MapPatch("/api/admin/organizations/{id:guid}/provider-mode", UpdateOrganizationProviderMode);
 
@@ -5682,6 +5684,133 @@ public static partial class AdminEndpointsLscc010
         return org is null ? Results.NotFound() : Results.Ok(org);
     }
 
+    /// <summary>
+    /// POST /api/admin/organizations/{orgId}/provision-user
+    ///
+    /// LSCC-010 / CC2-INT-B04: M2M endpoint called by CareConnect during auto-provisioning
+    /// to create an Identity user for the person activating a provider account.
+    ///
+    /// Idempotent — if a user with this email already exists in the org's tenant, the
+    /// existing record is returned (isNew=false). No duplicate is created.
+    ///
+    /// No permission guard — this is a trusted internal M2M path. It is intentionally
+    /// NOT behind RequirePermission(TenantInvitationsManage) because CareConnect calls
+    /// it without a user JWT. Requests arriving here have already crossed the internal
+    /// service boundary (no public gateway route exists for this path).
+    /// </summary>
+    public static async Task<IResult> ProvisionProviderUser(
+        Guid                                  orgId,
+        ProvisionProviderUserRequest          body,
+        IdentityDbContext                     db,
+        IPasswordHasher                       passwordHasher,
+        IAuditEventClient                     auditClient,
+        IOptions<NotificationsServiceOptions> notifOptions,
+        INotificationsEmailClient             emailClient,
+        ILoggerFactory                        loggerFactory,
+        CancellationToken                     ct)
+    {
+        var logger = loggerFactory.CreateLogger("AdminEndpointsLscc010.ProvisionProviderUser");
+
+        if (string.IsNullOrWhiteSpace(body.Email))
+            return Results.BadRequest(new { error = "email is required." });
+        if (string.IsNullOrWhiteSpace(body.FirstName))
+            return Results.BadRequest(new { error = "firstName is required." });
+
+        var org = await db.Organizations
+            .AsNoTracking()
+            .Where(o => o.Id == orgId)
+            .Select(o => new { o.Id, o.TenantId, o.Name })
+            .FirstOrDefaultAsync(ct);
+
+        if (org is null)
+            return Results.NotFound(new { error = $"Organization '{orgId}' not found." });
+
+        var emailLower = body.Email.ToLowerInvariant().Trim();
+
+        // Idempotency: return existing user if already present in the tenant
+        var existingUser = await db.Users
+            .AsNoTracking()
+            .Where(u => u.TenantId == org.TenantId && u.Email == emailLower)
+            .Select(u => new { u.Id })
+            .FirstOrDefaultAsync(ct);
+
+        if (existingUser is not null)
+        {
+            logger.LogInformation(
+                "LSCC-010 ProvisionProviderUser: user {Email} already exists in tenant {TenantId} (org {OrgId}). Returning existing.",
+                emailLower, org.TenantId, orgId);
+            return Results.Ok(new ProvisionProviderUserResponse(
+                existingUser.Id, InvitationId: null, IsNew: false, InvitationSent: false));
+        }
+
+        // Create inactive user
+        var lastName = string.IsNullOrWhiteSpace(body.LastName) ? "User" : body.LastName.Trim();
+        var tempHash = passwordHasher.Hash(Guid.NewGuid().ToString());
+        var user     = User.Create(org.TenantId, emailLower, tempHash, body.FirstName.Trim(), lastName);
+        user.Deactivate();
+        db.Users.Add(user);
+
+        // Create invitation
+        var rawToken   = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var tokenHash  = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(rawToken)));
+        var invitation = UserInvitation.Create(
+            user.Id, org.TenantId, tokenHash,
+            UserInvitation.PortalOrigins.TenantPortal,
+            invitedByUserId: null);
+        db.UserInvitations.Add(invitation);
+
+        await db.SaveChangesAsync(ct);
+
+        // Fire-and-forget audit
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.user.provider.provisioned",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Tenant,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = org.TenantId.ToString() },
+            Actor         = new AuditEventActorDto { Type = ActorType.System, Name = "careconnect-autoprovision" },
+            Entity        = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action        = "ProviderUserProvisioned",
+            Description   = $"Provider user '{emailLower}' provisioned via CareConnect auto-provision (org {orgId}).",
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.provider.provisioned", invitation.Id.ToString()),
+            Tags           = ["user-management", "provider", "autoprovision"],
+        });
+
+        // Best-effort invitation email
+        var invitationSent = false;
+        var portalBase     = notifOptions.Value.PortalBaseUrl?.TrimEnd('/');
+        if (!string.IsNullOrWhiteSpace(portalBase))
+        {
+            var activationLink  = $"{portalBase}/accept-invite?token={Uri.EscapeDataString(rawToken)}";
+            var displayName     = $"{user.FirstName} {user.LastName}".Trim();
+            var (_, emailOk, _) = await emailClient.SendInviteEmailAsync(
+                emailLower, displayName, activationLink, org.TenantId, ct);
+            invitationSent = emailOk;
+            if (!emailOk)
+                logger.LogWarning(
+                    "LSCC-010 ProvisionProviderUser: invitation email not sent for user {UserId} ({Email}). Continuing.",
+                    user.Id, emailLower);
+        }
+        else
+        {
+            logger.LogWarning(
+                "LSCC-010 ProvisionProviderUser: NotificationsService:PortalBaseUrl not set — " +
+                "invitation link cannot be generated for user {UserId} ({Email}).",
+                user.Id, emailLower);
+        }
+
+        return Results.Created(
+            $"/api/admin/users/{user.Id}",
+            new ProvisionProviderUserResponse(user.Id, invitation.Id, IsNew: true, invitationSent));
+    }
+
     // Keep the request/response records accessible to the route registration above
     public record CreateProviderOrgRequest(
         Guid   TenantId,
@@ -5692,6 +5821,17 @@ public static partial class AdminEndpointsLscc010
         Guid   Id,
         string Name,
         bool   IsNew);
+
+    public record ProvisionProviderUserRequest(
+        string  Email,
+        string  FirstName,
+        string? LastName = null);
+
+    public record ProvisionProviderUserResponse(
+        Guid  UserId,
+        Guid? InvitationId,
+        bool  IsNew,
+        bool  InvitationSent);
 
     // =========================================================================
     // LS-COR-AUT-011D: AUTHORIZATION SIMULATION

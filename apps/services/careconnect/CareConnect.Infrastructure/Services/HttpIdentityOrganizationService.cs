@@ -120,6 +120,108 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         }
     }
 
+    // ── CC2-INT-B04: Token → Identity Bridge — user invitation ───────────────
+
+    /// <inheritdoc />
+    public async Task<ProvisionProviderUserResult?> InviteProviderUserAsync(
+        Guid              orgId,
+        string            email,
+        string            firstName,
+        string?           lastName,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+        {
+            _logger.LogDebug(
+                "CC2-INT-B04 Identity user invitation skipped (BaseUrl not configured) for org {OrgId}.",
+                orgId);
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            _logger.LogDebug(
+                "CC2-INT-B04 Identity user invitation skipped (no email) for org {OrgId}.", orgId);
+            return null;
+        }
+
+        try
+        {
+            using var client = _httpClientFactory.CreateClient("IdentityService");
+            client.BaseAddress = new Uri(_options.BaseUrl!.TrimEnd('/') + "/");
+            client.Timeout     = TimeSpan.FromSeconds(_options.TimeoutSeconds);
+
+            if (!string.IsNullOrWhiteSpace(_options.AuthHeaderName) &&
+                !string.IsNullOrWhiteSpace(_options.AuthHeaderValue))
+            {
+                client.DefaultRequestHeaders.TryAddWithoutValidation(
+                    _options.AuthHeaderName, _options.AuthHeaderValue);
+            }
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            var body = new
+            {
+                email     = email,
+                firstName = firstName,
+                lastName  = lastName,
+            };
+
+            using var response = await client.PostAsJsonAsync(
+                $"api/admin/organizations/{orgId}/provision-user", body, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "CC2-INT-B04 Identity user provision returned HTTP {Status} for org {OrgId}. " +
+                    "Invitation not sent — provider org link is still valid.",
+                    (int)response.StatusCode, orgId);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<ProvisionProviderUserResponse>(
+                cancellationToken: cts.Token);
+
+            if (result is null || result.UserId == Guid.Empty)
+            {
+                _logger.LogWarning(
+                    "CC2-INT-B04 Identity user provision returned null/empty userId for org {OrgId}.",
+                    orgId);
+                return null;
+            }
+
+            _logger.LogInformation(
+                "CC2-INT-B04 Identity user {UserId} {IsNew} for org {OrgId}. InvitationSent={InvitationSent}.",
+                result.UserId,
+                result.IsNew ? "created" : "already existed",
+                orgId,
+                result.InvitationSent);
+
+            return new ProvisionProviderUserResult
+            {
+                UserId         = result.UserId,
+                InvitationId   = result.InvitationId,
+                IsNew          = result.IsNew,
+                InvitationSent = result.InvitationSent,
+            };
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "CC2-INT-B04 Identity user provision timed out for org {OrgId}. Invitation not sent.", orgId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "CC2-INT-B04 Identity user provision failed for org {OrgId}. Invitation not sent.", orgId);
+            return null;
+        }
+    }
+
+    // ── Private response models ───────────────────────────────────────────────
+
     private sealed class CreateProviderOrgResponse
     {
         [JsonPropertyName("id")]
@@ -130,5 +232,20 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
         [JsonPropertyName("isNew")]
         public bool   IsNew { get; set; }
+    }
+
+    private sealed class ProvisionProviderUserResponse
+    {
+        [JsonPropertyName("userId")]
+        public Guid  UserId         { get; set; }
+
+        [JsonPropertyName("invitationId")]
+        public Guid? InvitationId   { get; set; }
+
+        [JsonPropertyName("isNew")]
+        public bool  IsNew          { get; set; }
+
+        [JsonPropertyName("invitationSent")]
+        public bool  InvitationSent { get; set; }
     }
 }
