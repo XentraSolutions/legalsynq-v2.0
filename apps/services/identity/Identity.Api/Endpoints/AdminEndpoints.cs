@@ -2695,8 +2695,21 @@ public static class AdminEndpoints
         new("platform.portalBaseUrl",    "Portal Base URL",       "", "string", "Fallback portal URL used when Portal Base Domain is not set (e.g. https://portal.legalsynq.com).",                       true),
     ];
 
-    private static IResult ListSettings()
+    // Synchronise one entry in the mutable display list without touching others.
+    private static void SyncSettingDisplay(string key, object? value)
     {
+        var idx = _settings.FindIndex(s => s.key == key);
+        if (idx >= 0) _settings[idx] = _settings[idx] with { value = value };
+    }
+
+    private static IResult ListSettings(IOptions<NotificationsServiceOptions> notifOptions)
+    {
+        // Mirror the live (possibly env-var-seeded) NotificationsServiceOptions values into
+        // the display list so the Control Center always shows the real in-process values,
+        // even when they were not set via PATCH /settings (e.g. set by environment variable).
+        SyncSettingDisplay("platform.portalBaseDomain", notifOptions.Value.PortalBaseDomain ?? "");
+        SyncSettingDisplay("platform.portalBaseUrl",    notifOptions.Value.PortalBaseUrl    ?? "");
+
         return Results.Ok(new
         {
             items      = _settings,
@@ -2706,7 +2719,10 @@ public static class AdminEndpoints
         });
     }
 
-    private static IResult UpdateSetting(string key, SettingUpdateRequest body)
+    private static IResult UpdateSetting(
+        string               key,
+        SettingUpdateRequest body,
+        IOptions<NotificationsServiceOptions> notifOptions)
     {
         var idx = _settings.FindIndex(s => s.key == key);
         if (idx < 0) return Results.NotFound();
@@ -2714,6 +2730,16 @@ public static class AdminEndpoints
         if (!_settings[idx].editable) return Results.Problem("This setting is read-only.", statusCode: 403);
 
         _settings[idx] = _settings[idx] with { value = body.Value };
+
+        // Mirror portal-URL settings to the live NotificationsServiceOptions singleton.
+        // IOptions<T>.Value is cached once per process — mutating it here means every
+        // subsequent email handler call (forgot-password, invite, etc.) sees the new value
+        // immediately, without a service restart.
+        if (key == "platform.portalBaseDomain")
+            notifOptions.Value.PortalBaseDomain = body.Value?.ToString();
+        else if (key == "platform.portalBaseUrl")
+            notifOptions.Value.PortalBaseUrl = body.Value?.ToString();
+
         return Results.Ok(_settings[idx]);
     }
 
