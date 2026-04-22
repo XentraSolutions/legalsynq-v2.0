@@ -15,7 +15,6 @@ import type { TenantUser } from '@/types/tenant';
 import { TaskDetailDrawer } from './task-detail-drawer';
 import { CreateEditTaskForm } from './forms/create-edit-task-form';
 import { TaskManagerHeader } from './task-manager-header';
-import { TaskManagerStatsStrip } from './task-manager-stats-strip';
 import { TaskManagerToolbar } from './task-manager-toolbar';
 import { TaskBoard } from './task-board';
 
@@ -137,22 +136,19 @@ export function CaseTaskManager({ caseId, workflowStageId }: CaseTaskManagerProp
   return (
     <div className="space-y-2">
 
-      {/* Row 1 — Compact header */}
+      {/* Row 1 — Header with inline stats */}
       <TaskManagerHeader
         title="Tasks"
-        taskCount={tasks.length}
+        stats={[
+          { label: 'Total',       value: kpis.total,      icon: 'ri-task-line',          color: 'text-gray-500'  },
+          { label: 'In Progress', value: kpis.inProgress,  icon: 'ri-loader-4-line',      color: 'text-blue-600'  },
+          { label: 'Blocked',     value: kpis.blocked,     icon: 'ri-pause-circle-line',  color: 'text-amber-600' },
+          { label: 'Overdue',     value: kpis.overdue,     icon: 'ri-alarm-warning-line', color: 'text-red-600'   },
+        ]}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onNewTask={() => setShowCreate(true)}
       />
-
-      {/* Row 2 — Stat chips */}
-      <TaskManagerStatsStrip stats={[
-        { label: 'Total',       value: kpis.total,      icon: 'ri-task-line',          color: 'text-gray-500'  },
-        { label: 'In Progress', value: kpis.inProgress,  icon: 'ri-loader-4-line',      color: 'text-blue-600'  },
-        { label: 'Blocked',     value: kpis.blocked,     icon: 'ri-pause-circle-line',  color: 'text-amber-600' },
-        { label: 'Overdue',     value: kpis.overdue,     icon: 'ri-alarm-warning-line', color: 'text-red-600'   },
-      ]} />
 
       {/* Row 3 — Toolbar */}
       <TaskManagerToolbar

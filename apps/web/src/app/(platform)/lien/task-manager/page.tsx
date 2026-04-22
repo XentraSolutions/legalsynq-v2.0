@@ -16,7 +16,6 @@ import { useLienStore } from '@/stores/lien-store';
 import { CreateEditTaskForm } from '@/components/lien/forms/create-edit-task-form';
 import { TaskDetailDrawer } from '@/components/lien/task-detail-drawer';
 import { TaskManagerHeader } from '@/components/lien/task-manager-header';
-import { TaskManagerStatsStrip } from '@/components/lien/task-manager-stats-strip';
 import { TaskManagerToolbar } from '@/components/lien/task-manager-toolbar';
 import { TaskBoard } from '@/components/lien/task-board';
 
@@ -139,23 +138,20 @@ export default function TaskManagerPage() {
   return (
     <div className="space-y-3">
 
-      {/* Row 1 — Compact header */}
+      {/* Row 1 — Header with inline stats */}
       <TaskManagerHeader
         title="Task Manager"
-        taskCount={totalCount}
+        stats={[
+          { label: 'Total',       value: kpis.total,      icon: 'ri-task-line',          color: 'text-gray-500'  },
+          { label: 'New',         value: kpis.new_,        icon: 'ri-time-line',          color: 'text-gray-500'  },
+          { label: 'In Progress', value: kpis.inProgress,  icon: 'ri-loader-4-line',      color: 'text-blue-600'  },
+          { label: 'Blocked',     value: kpis.blocked,     icon: 'ri-pause-circle-line',  color: 'text-amber-600' },
+          { label: 'Overdue',     value: kpis.overdue,     icon: 'ri-alarm-warning-line', color: 'text-red-600'   },
+        ]}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onNewTask={() => setShowCreate(true)}
       />
-
-      {/* Row 2 — Stat chips */}
-      <TaskManagerStatsStrip stats={[
-        { label: 'Total',       value: kpis.total,      icon: 'ri-task-line',          color: 'text-gray-500'  },
-        { label: 'New',         value: kpis.new_,        icon: 'ri-time-line',          color: 'text-gray-500'  },
-        { label: 'In Progress', value: kpis.inProgress,  icon: 'ri-loader-4-line',      color: 'text-blue-600'  },
-        { label: 'Blocked',     value: kpis.blocked,     icon: 'ri-pause-circle-line',  color: 'text-amber-600' },
-        { label: 'Overdue',     value: kpis.overdue,     icon: 'ri-alarm-warning-line', color: 'text-red-600'   },
-      ]} />
 
       {/* Row 3 — Toolbar */}
       <TaskManagerToolbar
