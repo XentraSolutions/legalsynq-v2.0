@@ -32,11 +32,26 @@ export MSBUILDDISABLENODEREUSE=1
 # Cap the GC heap to ~400 MB per build process
 export DOTNET_GCHeapHardLimit=419430400
 
+# build_project: restore + build with one retry on transient failure.
+# The platform can CANCEL a build under concurrent-merge resource pressure;
+# a single retry recovers without failing the entire post-merge run.
 build_project() {
   local proj="$1"
   echo "  -> building $proj"
-  dotnet restore "$proj" --verbosity quiet
-  dotnet build   "$proj" --no-restore --verbosity quiet -maxcpucount:1 -nodeReuse:false
+  local attempt=0
+  while true; do
+    attempt=$((attempt + 1))
+    if dotnet restore "$proj" --verbosity quiet \
+       && dotnet build "$proj" --no-restore --verbosity quiet -maxcpucount:1 -nodeReuse:false; then
+      return 0
+    fi
+    if [ "$attempt" -ge 2 ]; then
+      echo "  ERROR: $proj failed after $attempt attempt(s)" >&2
+      return 1
+    fi
+    echo "  (attempt $attempt failed, retrying after 5s...)"
+    sleep 5
+  done
 }
 
 build_project apps/services/liens/Liens.Api/Liens.Api.csproj
