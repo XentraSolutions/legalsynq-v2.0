@@ -85,14 +85,58 @@ async function request<T>(
   return { data, correlationId, status: res.status };
 }
 
+// ── Multipart / form-data upload ──────────────────────────────────────────────
+
+async function requestForm<T>(
+  path: string,
+  formData: FormData,
+  method: 'POST' | 'PUT' = 'POST',
+): Promise<ApiResponse<T>> {
+  const url = `${GATEWAY_PREFIX}${path}`;
+
+  const res = await fetch(url, {
+    method,
+    credentials: 'include',
+    body: formData,
+    // Do NOT set Content-Type — browser sets it automatically with the boundary.
+  });
+
+  const correlationId = res.headers.get('X-Correlation-Id') ?? 'unknown';
+
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const errBody = await res.json();
+      const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+      message =
+        str(errBody?.message)        ??
+        str(errBody?.error)          ??
+        str(errBody?.detail)         ??
+        str(errBody?.title)          ??
+        message;
+    } catch {
+      // non-JSON error body
+    }
+    throw new ApiError(res.status, message, correlationId);
+  }
+
+  if (res.status === 204) {
+    return { data: undefined as T, correlationId, status: res.status };
+  }
+
+  const data: T = await res.json();
+  return { data, correlationId, status: res.status };
+}
+
 // ── Public API client ─────────────────────────────────────────────────────────
 
 export const apiClient = {
-  get:    <T>(path: string)                    => request<T>(path),
-  post:   <T>(path: string, body: unknown)     => request<T>(path, { method: 'POST', body }),
-  put:    <T>(path: string, body: unknown)     => request<T>(path, { method: 'PUT',  body }),
-  patch:  <T>(path: string, body: unknown)     => request<T>(path, { method: 'PATCH', body }),
-  delete: <T>(path: string)                    => request<T>(path, { method: 'DELETE' }),
+  get:      <T>(path: string)                              => request<T>(path),
+  post:     <T>(path: string, body: unknown)               => request<T>(path, { method: 'POST', body }),
+  put:      <T>(path: string, body: unknown)               => request<T>(path, { method: 'PUT',  body }),
+  patch:    <T>(path: string, body: unknown)               => request<T>(path, { method: 'PATCH', body }),
+  delete:   <T>(path: string)                              => request<T>(path, { method: 'DELETE' }),
+  postForm: <T>(path: string, formData: FormData)          => requestForm<T>(path, formData),
 };
 
 // ── Usage convention ──────────────────────────────────────────────────────────

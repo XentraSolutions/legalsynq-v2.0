@@ -18,6 +18,8 @@ import type {
   CreateAppointmentRequest,
   AppointmentSearchParams,
   PagedResponse,
+  AttachmentSummary,
+  SignedUrlResponse,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -132,5 +134,55 @@ export const careConnectApi = {
     /** POST /api/appointments/{id}/reschedule */
     reschedule: (id: string, body: { newAppointmentSlotId: string; notes?: string }) =>
       apiClient.post<AppointmentDetail>(`/careconnect/api/appointments/${id}/reschedule`, body),
+  },
+
+  // CC2-INT-B03: Attachment endpoints — server-side upload proxy + signed URLs
+
+  referralAttachments: {
+    /** GET /api/referrals/{id}/attachments — list all attachments for a referral */
+    list: (referralId: string) =>
+      apiClient.get<AttachmentSummary[]>(`/careconnect/api/referrals/${referralId}/attachments`),
+
+    /** POST /api/referrals/{id}/attachments/upload — upload a file via multipart/form-data */
+    upload: (referralId: string, file: File, options: { scope?: string; notes?: string } = {}) => {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      if (options.scope) form.append('scope', options.scope);
+      if (options.notes) form.append('notes', options.notes);
+      return apiClient.postForm<AttachmentSummary>(
+        `/careconnect/api/referrals/${referralId}/attachments/upload`,
+        form,
+      );
+    },
+
+    /** GET /api/referrals/{id}/attachments/{attachmentId}/url — get a short-lived signed URL */
+    getSignedUrl: (referralId: string, attachmentId: string, download = false) =>
+      apiClient.get<SignedUrlResponse>(
+        `/careconnect/api/referrals/${referralId}/attachments/${attachmentId}/url${download ? '?download=true' : ''}`,
+      ),
+  },
+
+  appointmentAttachments: {
+    /** GET /api/appointments/{id}/attachments — list all attachments for an appointment */
+    list: (appointmentId: string) =>
+      apiClient.get<AttachmentSummary[]>(`/careconnect/api/appointments/${appointmentId}/attachments`),
+
+    /** POST /api/appointments/{id}/attachments/upload — upload a file via multipart/form-data */
+    upload: (appointmentId: string, file: File, options: { scope?: string; notes?: string } = {}) => {
+      const form = new FormData();
+      form.append('file', file, file.name);
+      if (options.scope) form.append('scope', options.scope);
+      if (options.notes) form.append('notes', options.notes);
+      return apiClient.postForm<AttachmentSummary>(
+        `/careconnect/api/appointments/${appointmentId}/attachments/upload`,
+        form,
+      );
+    },
+
+    /** GET /api/appointments/{id}/attachments/{attachmentId}/url — get a short-lived signed URL */
+    getSignedUrl: (appointmentId: string, attachmentId: string, download = false) =>
+      apiClient.get<SignedUrlResponse>(
+        `/careconnect/api/appointments/${appointmentId}/attachments/${attachmentId}/url${download ? '?download=true' : ''}`,
+      ),
   },
 };

@@ -22,6 +22,12 @@ const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
  *
  * Cookie reading: uses cookies() from next/headers (server-side store) rather
  * than request.cookies — more reliable inside App Router Route Handlers.
+ *
+ * Multipart support (CC2-INT-B03):
+ *   For multipart/form-data requests (file uploads), the raw binary body and
+ *   the original Content-Type header (which carries the multipart boundary)
+ *   are forwarded verbatim. Setting Content-Type to application/json for those
+ *   requests would corrupt the boundary and make the backend reject the upload.
  */
 type RouteContext = { params: Promise<{ path: string[] }> };
 
@@ -36,14 +42,24 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
   const qs = request.nextUrl.searchParams.toString();
   const url = `${GATEWAY_URL}${gatewayPath}${qs ? `?${qs}` : ''}`;
 
-  const reqHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
+  const incomingContentType = request.headers.get('Content-Type') ?? '';
+  const isMultipart = incomingContentType.startsWith('multipart/form-data');
+
+  const reqHeaders: Record<string, string> = {};
   if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
 
-  let body: string | undefined;
+  let body: ArrayBuffer | string | undefined;
+
   if (!['GET', 'HEAD'].includes(request.method)) {
-    try { body = await request.text(); } catch { /* empty body */ }
+    if (isMultipart) {
+      // Preserve the full Content-Type (which includes the multipart boundary)
+      // and read the body as raw bytes so the file payload is not corrupted.
+      reqHeaders['Content-Type'] = incomingContentType;
+      try { body = await request.arrayBuffer(); } catch { /* empty body */ }
+    } else {
+      reqHeaders['Content-Type'] = 'application/json';
+      try { body = await request.text(); } catch { /* empty body */ }
+    }
   }
 
   let gatewayRes: Response;

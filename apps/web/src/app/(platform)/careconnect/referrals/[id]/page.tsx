@@ -13,6 +13,7 @@ import { ReferralStatusActions } from '@/components/careconnect/referral-status-
 import { ReferralTimeline } from '@/components/careconnect/referral-timeline';
 import { ReferralAuditTimeline } from '@/components/careconnect/referral-audit-timeline';
 import { ReferralAccessBlocked } from '@/components/careconnect/referral-access-blocked';
+import { AttachmentPanel } from '@/components/careconnect/attachment-panel';
 
 interface ReferralDetailPageProps {
   params:       Promise<{ id: string }>;
@@ -101,6 +102,9 @@ export default async function ReferralDetailPage({ params, searchParams }: Refer
 
           {/* 3. Referral details — body only (header rendered above) */}
           <ReferralDetailPanel referral={referral} hideHeader />
+
+          {/* 3b. Documents — CC2-INT-B03 */}
+          <AttachmentPanel entityType="referral" entityId={referral.id} />
 
           {/* 4. Delivery / access controls — referrers only */}
           {isReferrerOfReferral && <ReferralDeliveryCard referral={referral} />}

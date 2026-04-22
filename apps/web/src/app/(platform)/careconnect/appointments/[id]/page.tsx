@@ -7,6 +7,7 @@ import { ServerApiError } from '@/lib/server-api-client';
 import { AppointmentDetailPanel } from '@/components/careconnect/appointment-detail-panel';
 import { AppointmentActions } from '@/components/careconnect/appointment-actions';
 import { AppointmentCancelButton } from '@/components/careconnect/appointment-cancel-button';
+import { AttachmentPanel } from '@/components/careconnect/attachment-panel';
 
 interface AppointmentDetailPageProps {
   params: Promise<{ id: string }>;
@@ -73,6 +74,11 @@ export default async function AppointmentDetailPage({ params }: AppointmentDetai
       )}
 
       {appointment && <AppointmentDetailPanel appointment={appointment} />}
+
+      {/* Documents — CC2-INT-B03 */}
+      {appointment && (
+        <AttachmentPanel entityType="appointment" entityId={appointment.id} />
+      )}
 
       {/* Confirm / NoShow / Reschedule actions */}
       {appointment && (() => {

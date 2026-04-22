@@ -297,6 +297,36 @@ export interface AppointmentSearchParams {
   pageSize?:   number;
 }
 
+// ── CC2-INT-B03: Attachments ──────────────────────────────────────────────────
+
+/**
+ * One attachment record returned by GET /referrals/{id}/attachments or
+ * GET /appointments/{id}/attachments.
+ * Matches the backend AttachmentMetadataResponse DTO.
+ */
+export interface AttachmentSummary {
+  id:                      string;
+  fileName:                string;
+  contentType:             string;
+  fileSizeBytes:           number;
+  status:                  string;
+  notes?:                  string;
+  externalDocumentId?:     string;
+  externalStorageProvider?: string;
+  createdByUserId?:        string;
+  createdAtUtc:            string;
+}
+
+/**
+ * Response from GET /referrals/{id}/attachments/{attachmentId}/url or
+ * GET /appointments/{id}/attachments/{attachmentId}/url.
+ * Matches the backend SignedUrlResponse DTO.
+ */
+export interface SignedUrlResponse {
+  url:              string;
+  expiresInSeconds: number;
+}
+
 // ── Pagination ────────────────────────────────────────────────────────────────
 
 /** Matches the backend PagedResponse<T> envelope */
