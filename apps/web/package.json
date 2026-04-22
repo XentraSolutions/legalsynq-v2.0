@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3000",
     "type-check": "tsc --noEmit",
-    "test": "tsx --test src/lib/__tests__/*.test.ts"
+    "test": "tsx --test src/lib/__tests__/*.test.ts && vitest run"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.21",
