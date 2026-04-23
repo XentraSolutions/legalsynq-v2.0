@@ -4,12 +4,16 @@ import { NextRequest, NextResponse } from 'next/server';
  * Read-source-aware tenant branding BFF endpoint.
  *
  * TENANT-B07: Hardened with explicit timeouts + improved failure logging.
+ * TENANT-B09: Default read source changed from Identity → Tenant.
+ *             Identity mode is now deprecated. A deprecation warning is logged
+ *             whenever Identity mode is active. Rollback: set
+ *             TENANT_BRANDING_READ_SOURCE=Identity or HybridFallback.
  *
- * Mode selection (TENANT_BRANDING_READ_SOURCE env var, default: Identity):
- *   Identity      — legacy path: forwards to Identity service (no behavior change)
- *   Tenant        — reads from Tenant service public branding endpoint
+ * Mode selection (TENANT_BRANDING_READ_SOURCE env var, default: Tenant):
+ *   Tenant        — reads from Tenant service public branding endpoint (default, B09)
  *   HybridFallback — tries Tenant first (4s timeout), falls back to Identity on
  *                    timeout / transport failure / 404 / incomplete payload
+ *   Identity      — DEPRECATED: legacy path — forwards to Identity service
  *
  * Response is always in TenantBranding shape regardless of source.
  * The client (TenantBrandingProvider) is fully source-agnostic.
@@ -19,7 +23,8 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
-const READ_SOURCE = (process.env.TENANT_BRANDING_READ_SOURCE ?? 'Identity') as ReadSource;
+// TENANT-B09: Default changed from 'Identity' to 'Tenant'. See TENANT-B09-report.md §4.
+const READ_SOURCE = (process.env.TENANT_BRANDING_READ_SOURCE ?? 'Tenant') as ReadSource;
 
 const TENANT_TIMEOUT_MS  = 4_000;
 const IDENTITY_TIMEOUT_MS = 5_000;
@@ -178,7 +183,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
   } else {
-    // Identity mode — default, legacy-equivalent behavior
+    // Identity mode — DEPRECATED [TENANT-B09]. Retained for rollback only.
+    console.warn(
+      '[DEPRECATION] [tenant-branding] TENANT_BRANDING_READ_SOURCE=Identity is deprecated as of TENANT-B09. ' +
+      'Switch to Tenant or HybridFallback. See TENANT-B09-report.md §4.',
+      { tenantCode },
+    );
     const { data, failReason } = await fetchFromIdentity(tenantCode, req);
     if (data) {
       branding = data;

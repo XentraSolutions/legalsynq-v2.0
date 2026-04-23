@@ -12,35 +12,37 @@ public static class TenantBrandingEndpoints
         // ── GET /api/tenants/current/branding ────────────────────────────────
         // Anonymous — must never require auth (the login page loads this before auth).
         //
-        // COMPATIBILITY-ONLY [TENANT-B08]: This endpoint is the Identity-sourced branding
-        // bootstrap path. It is the active read source when TENANT_BRANDING_READ_SOURCE=Identity
-        // (the safe default). When the platform migrates to Tenant-primary mode
-        // (TENANT_BRANDING_READ_SOURCE=Tenant or HybridFallback), this endpoint becomes the
-        // fallback path only. After sustained Tenant-primary production validation (≥30 days),
-        // this endpoint can be retired and replaced by the Tenant service's
-        // GET /tenant/api/v1/public/branding/by-code/{code}.
+        // DEPRECATED [TENANT-B09]: This endpoint is now the fallback-only path.
         //
-        // WRITE-THROUGH [TENANT-B08]: LogoDocumentId and LogoWhiteDocumentId are still
-        // read from the Identity Tenant entity. They are also written to the Tenant service
-        // via dual-write from AdminEndpoints.SetTenantLogo/SetTenantLogoWhite. When branding
-        // read source switches to Tenant, these fields will be read from TenantBranding instead.
+        // The Tenant service (GET /tenant/api/v1/public/branding/by-code/{code}) is the
+        // authoritative read source as of TENANT-B09. This endpoint remains active for:
+        //   1. HybridFallback mode — called when the Tenant service is unavailable.
+        //   2. Rollback — when TENANT_BRANDING_READ_SOURCE is reverted to Identity.
+        //   3. Login page safety net — the login page must always render.
+        //
+        // Removal target: after ≥30 days of Tenant-primary production with zero Identity
+        // fallback triggers in logs. See TENANT-B09-report.md §9.
         //
         // Tenant resolution priority:
         //   1. X-Tenant-Code header  — sent by Next.js in dev (NEXT_PUBLIC_TENANT_CODE)
         //   2. Host header           — subdomain-based, production only
         //      e.g. "firm-a.legalsynq.com" → TenantDomains lookup
-        //
-        // Caching: safe to cache for 5–15 minutes at the CDN/gateway layer.
-        // The branding data changes infrequently; stale data is a minor cosmetic issue.
-        //
-        // LogoDocumentId: when set, the authenticated portal proxies the logo via
-        //   the Documents service (GET /documents/{id}/content).
-        //   Anonymous contexts (login page) receive null — default LegalSynq branding applies.
         app.MapGet("/api/tenants/current/branding", async (
             HttpContext httpContext,
             ITenantRepository tenantRepository,
+            ILoggerFactory loggerFactory,
             CancellationToken ct) =>
         {
+            var log = loggerFactory.CreateLogger("Identity.Api.TenantBrandingEndpoints");
+            log.LogWarning(
+                "[DEPRECATED] Identity branding endpoint invoked. " +
+                "This path is now fallback-only. Preferred: Tenant service /api/v1/public/branding/by-code/{code}.");
+
+            // Emit deprecation header so gateway/BFF/clients can detect legacy path usage.
+            httpContext.Response.Headers["X-Deprecated"] = "true";
+            httpContext.Response.Headers["X-Deprecated-By"] = "TENANT-B09";
+            httpContext.Response.Headers["X-Preferred-Endpoint"] = "/tenant/api/v1/public/branding/by-code/{code}";
+
             var tenant = await ResolveTenantAsync(httpContext, tenantRepository, ct);
 
             if (tenant is null || !tenant.IsActive)
@@ -64,8 +66,8 @@ public static class TenantBrandingEndpoints
                 LogoUrl:        null,
                 LogoDocumentId: tenant.LogoDocumentId?.ToString(),
                 LogoWhiteDocumentId: tenant.LogoWhiteDocumentId?.ToString(),
-                PrimaryColor:   null,       // Phase 2: from TenantBranding table
-                FaviconUrl:     null));     // Phase 2: from TenantBranding table
+                PrimaryColor:   null,
+                FaviconUrl:     null));
         })
         .AllowAnonymous();
     }

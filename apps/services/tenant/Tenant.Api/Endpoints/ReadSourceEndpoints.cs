@@ -13,9 +13,30 @@ public static class ReadSourceEndpoints
     {
         // ── GET /api/v1/admin/read-source ──────────────────────────────────────
         // Returns current read-source feature flag config for operators.
-        app.MapGet("/api/v1/admin/read-source", (IOptions<TenantFeatures> opts) =>
+        // TENANT-B09: Emits a deprecation warning log if any path is still in Identity mode.
+        app.MapGet("/api/v1/admin/read-source", (
+            IOptions<TenantFeatures> opts,
+            ILoggerFactory loggerFactory) =>
         {
             var f = opts.Value;
+            var log = loggerFactory.CreateLogger("Tenant.Api.ReadSourceEndpoints");
+
+            var effectiveBranding   = f.TenantBrandingReadSource.ToString();
+            var effectiveResolution = f.TenantResolutionReadSource.ToString();
+
+            // TENANT-B09: warn if any path still routes reads through Identity.
+            if (f.TenantReadSource == TenantReadSource.Identity
+                || f.TenantBrandingReadSource == TenantReadSource.Identity
+                || f.TenantResolutionReadSource == TenantReadSource.Identity)
+            {
+                log.LogWarning(
+                    "[DEPRECATION] Identity read-source mode is active. " +
+                    "TenantReadSource={TenantReadSource} TenantBrandingReadSource={BrandingSource} " +
+                    "TenantResolutionReadSource={ResolutionSource}. " +
+                    "Switch to Tenant or HybridFallback. See TENANT-B09-report.md §4.",
+                    f.TenantReadSource, f.TenantBrandingReadSource, f.TenantResolutionReadSource);
+            }
+
             return Results.Ok(new
             {
                 tenantReadSource            = f.TenantReadSource.ToString(),
@@ -23,12 +44,8 @@ public static class ReadSourceEndpoints
                 tenantResolutionReadSource  = f.TenantResolutionReadSource.ToString(),
                 tenantDualWriteEnabled      = f.TenantDualWriteEnabled,
                 tenantDualWriteStrictMode   = f.TenantDualWriteStrictMode,
-                effectiveBrandingSource     = f.TenantBrandingReadSource != TenantReadSource.Identity
-                    ? f.TenantBrandingReadSource.ToString()
-                    : f.TenantReadSource.ToString(),
-                effectiveResolutionSource   = f.TenantResolutionReadSource != TenantReadSource.Identity
-                    ? f.TenantResolutionReadSource.ToString()
-                    : f.TenantReadSource.ToString(),
+                effectiveBrandingSource     = effectiveBranding,
+                effectiveResolutionSource   = effectiveResolution,
                 caching = new
                 {
                     enabled    = f.TenantReadCachingEnabled,

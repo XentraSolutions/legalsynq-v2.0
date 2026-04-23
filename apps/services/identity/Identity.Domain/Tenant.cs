@@ -31,6 +31,9 @@ public class Tenant
 
     public int? SessionTimeoutMinutes { get; private set; }
 
+    // DEPRECATED [TENANT-B09]: These fields are now write-through only.
+    // Tenant service (TenantBranding table) is the source of truth for logo reads.
+    // DO NOT add new read usages. DO NOT drop columns — required for dual-write sync.
     public Guid? LogoDocumentId { get; private set; }
     public Guid? LogoWhiteDocumentId { get; private set; }
 
@@ -42,6 +45,9 @@ public class Tenant
     public double? Longitude    { get; private set; }
     public string? GeoPointSource { get; private set; }
 
+    // DEPRECATED [TENANT-B09]: Subdomain is write-through only.
+    // Tenant service (TenantDomain table) is the source of truth for subdomain reads.
+    // DO NOT add new read usages. DO NOT drop column — required for DNS provisioning.
     public string? Subdomain { get; private set; }
     public ProvisioningStatus ProvisioningStatus { get; private set; }
     public DateTime? LastProvisioningAttemptUtc { get; private set; }
