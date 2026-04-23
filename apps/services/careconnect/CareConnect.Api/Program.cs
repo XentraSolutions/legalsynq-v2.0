@@ -118,6 +118,27 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
+// ── BLK-SEC-01: Production fail-fast ──────────────────────────────────────────
+// Both provisioning tokens must be set in non-Development environments.
+// An empty token means no X-Provisioning-Token header is sent to downstream services,
+// which will reject calls if they have a real ProvisioningSecret configured.
+if (!builder.Environment.IsDevelopment())
+{
+    var tenantToken = builder.Configuration["TenantService:ProvisioningToken"];
+    if (string.IsNullOrWhiteSpace(tenantToken))
+        throw new InvalidOperationException(
+            "TenantService:ProvisioningToken is not configured. " +
+            "Set this value to authenticate CareConnect → Tenant service calls. " +
+            "In Development, an empty token is intentional (Tenant service dev-mode bypass).");
+
+    var identityToken = builder.Configuration["IdentityService:ProvisioningToken"];
+    if (string.IsNullOrWhiteSpace(identityToken))
+        throw new InvalidOperationException(
+            "IdentityService:ProvisioningToken is not configured. " +
+            "Set this value to authenticate CareConnect → Identity membership calls. " +
+            "In Development, an empty token is intentional (Identity service dev-mode bypass).");
+}
+
 var app = builder.Build();
 
 // Auto-migrate — apply pending EF Core migrations on startup in all environments.

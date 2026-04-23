@@ -49,6 +49,16 @@ if (!builder.Environment.IsDevelopment())
         throw new InvalidOperationException(
             "NotificationsService:PortalBaseUrl is not configured. " +
             "Set this value so invitation and password-reset links point to the correct tenant portal URL.");
+
+    // BLK-SEC-01: Provisioning secret must be set in non-Development environments.
+    // An empty secret activates dev-mode bypass on /assign-tenant, /assign-roles,
+    // and /api/internal/tenant-provisioning/provision — making them publicly callable.
+    var provisioningSecret = builder.Configuration["TenantService:ProvisioningSecret"];
+    if (string.IsNullOrWhiteSpace(provisioningSecret))
+        throw new InvalidOperationException(
+            "TenantService:ProvisioningSecret is not configured. " +
+            "Set this secret to secure all internal provisioning and membership endpoints. " +
+            "In Development, an empty secret activates dev-mode bypass intentionally.");
 }
 
 builder.Services

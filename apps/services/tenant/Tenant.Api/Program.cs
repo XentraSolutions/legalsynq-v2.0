@@ -57,6 +57,20 @@ builder.Services.Configure<TenantFeatures>(
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
+// ── BLK-SEC-01: Production fail-fast ──────────────────────────────────────────
+// Provisioning secret must be set in non-Development environments.
+// An empty secret activates dev-mode bypass on all token guards, which would make
+// every internal provisioning endpoint publicly callable in production.
+if (!builder.Environment.IsDevelopment())
+{
+    var provisioningSecret = builder.Configuration["TenantService:ProvisioningSecret"];
+    if (string.IsNullOrWhiteSpace(provisioningSecret))
+        throw new InvalidOperationException(
+            "TenantService:ProvisioningSecret is not configured. " +
+            "Set this secret to secure the /provision endpoint against unauthenticated access. " +
+            "In Development, an empty secret activates dev-mode bypass intentionally.");
+}
+
 var app = builder.Build();
 
 var env = app.Environment.EnvironmentName;

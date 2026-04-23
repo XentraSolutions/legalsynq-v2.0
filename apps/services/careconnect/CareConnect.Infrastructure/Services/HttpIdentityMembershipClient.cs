@@ -115,6 +115,9 @@ public sealed class HttpIdentityMembershipClient : IIdentityMembershipClient
     }
 
     // ── Shared HTTP client builder ─────────────────────────────────────────────
+    //
+    // BLK-SEC-01: Token injection standardised — always sends X-Provisioning-Token
+    // when ProvisioningToken is configured. Mirrors HttpTenantServiceClient pattern.
 
     private HttpClient BuildClient()
     {
@@ -122,9 +125,16 @@ public sealed class HttpIdentityMembershipClient : IIdentityMembershipClient
         client.BaseAddress = new Uri(_options.BaseUrl!.TrimEnd('/') + "/");
         client.Timeout     = TimeSpan.FromSeconds(_options.TimeoutSeconds);
 
-        if (!string.IsNullOrWhiteSpace(_options.AuthHeaderName) &&
-            !string.IsNullOrWhiteSpace(_options.AuthHeaderValue))
+        // BLK-SEC-01: Use explicit ProvisioningToken (takes precedence over legacy AuthHeaderName/Value).
+        if (!string.IsNullOrWhiteSpace(_options.ProvisioningToken))
         {
+            client.DefaultRequestHeaders.TryAddWithoutValidation(
+                "X-Provisioning-Token", _options.ProvisioningToken);
+        }
+        else if (!string.IsNullOrWhiteSpace(_options.AuthHeaderName) &&
+                 !string.IsNullOrWhiteSpace(_options.AuthHeaderValue))
+        {
+            // Legacy fallback — retained for backward compatibility.
             client.DefaultRequestHeaders.TryAddWithoutValidation(
                 _options.AuthHeaderName, _options.AuthHeaderValue);
         }
