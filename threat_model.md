@@ -54,21 +54,32 @@ Production assumptions for this scan:
 ## Confirmed Hotspot Anchors
 
 These areas produced real production findings in the current scan and should remain top-priority anchors for future review:
-- `apps/services/identity/Identity.Api/Endpoints/AuthEndpoints.cs`
-- `apps/web/src/app/api/auth/**`
-- `apps/services/careconnect/CareConnect.Api/Endpoints/InternalProvisionEndpoints.cs`
-- `apps/services/careconnect/CareConnect.Api/Endpoints/ReferralEndpoints.cs`
-- `apps/services/careconnect/CareConnect.Api/Endpoints/AdminDashboardEndpoints.cs`
-- `apps/services/documents/Documents.Api/Endpoints/DocumentEndpoints.cs`
-- `apps/services/documents/Documents.Api/Endpoints/AccessEndpoints.cs`
+- `apps/web/src/app/api/public/careconnect/[...path]/route.ts`
+- `apps/services/careconnect/CareConnect.Api/Endpoints/PublicNetworkEndpoints.cs`
+- `apps/services/identity/Identity.Api/Endpoints/TenantBrandingEndpoints.cs`
+- `apps/services/careconnect/CareConnect.Api/Endpoints/ReferralNoteEndpoints.cs`
+- `apps/services/careconnect/CareConnect.Api/Endpoints/AppointmentNoteEndpoints.cs`
+- `apps/services/careconnect/CareConnect.Api/Endpoints/AttachmentEndpoints.cs`
+- `apps/services/careconnect/CareConnect.Api/Endpoints/NotificationEndpoints.cs`
 - `apps/services/documents/Documents.Api/Endpoints/PublicLogoEndpoints.cs`
-- `apps/services/documents/Documents.Application/Services/{DocumentService,AccessTokenService,ScanService}.cs`
-- `apps/services/notifications/Notifications.Api/Endpoints/NotificationEndpoints.cs`
-- `apps/services/notifications/Notifications.Api/Authorization/ServiceSubmissionRequirement.cs`
-- `apps/services/notifications/Notifications.Api/Endpoints/WebhookEndpoints.cs`
-- `apps/services/audit/**`
+- `apps/services/documents/Documents.Application/Services/{DocumentService,AccessTokenService}.cs`
+- `apps/services/documents/Documents.Infrastructure/DependencyInjection.cs`
+- `shared/building-blocks/BuildingBlocks/Context/CurrentRequestContext.cs`
+- `apps/services/task/Task.Api/Program.cs`
+- `apps/services/monitoring/Monitoring.Api/Authentication/AuthenticationServiceCollectionExtensions.cs`
 - `apps/services/monitoring/Monitoring.Api/Endpoints/MonitoredEntityEndpoints.cs`
-- `apps/gateway/Gateway.Api/appsettings.json`
+- `apps/services/monitoring/Monitoring.Api/Endpoints/MonitoringAlertEndpoints.cs`
+- `apps/control-center/src/app/api/auth/login/route.ts`
+- `apps/control-center/src/app/api/monitoring/latency/route.ts`
+- `apps/control-center/src/app/api/monitoring/alerts/history/route.ts`
+- `apps/control-center/src/app/api/reports/summary/route.ts`
+- `apps/services/reports/src/Reports.Application/Overrides/TenantReportOverrideService.cs`
+- `apps/services/reports/src/Reports.Application/Scheduling/ReportScheduleService.cs`
+- `apps/services/reports/src/Reports.Application/Execution/ReportExecutionService.cs`
+- `apps/services/audit/Controllers/AuditEventQueryController.cs`
+- `apps/services/audit/Services/AuditEventQueryService.cs`
+- `apps/services/audit/Controllers/AuditExportController.cs`
+- `apps/services/audit/Services/AuditExportService.cs`
 
 ## Deterministic Scan Calibration
 
@@ -77,6 +88,7 @@ The repo generates recurring scanner noise that should be revalidated before pro
 - `scripts/**` dev proxy / local tooling findings are out of scope unless the script is part of the deployed runtime.
 - Seeded bcrypt hashes in migrations and similar test/demo seed artifacts are not automatically active credential leaks in production.
 - React/HTML template heuristics and logging-content heuristics should not be reported unless they reach a real rendering sink, privileged browser context, or materially sensitive disclosure path.
+- `apps/services/reports/src/Reports.Api/Middleware/TenantValidationMiddleware.cs` does block mismatched `tenantId` values in authenticated query/body inputs; future reports should avoid claiming raw tenant-parameter spoofing there unless they also prove a path around that middleware. The remaining reports risk is unscoped GUID-based object access.
 
 These notes are calibration guidance, not blanket dismissals. Future scans should still report any instance from these classes when it is production-reachable and exploitable.
 
