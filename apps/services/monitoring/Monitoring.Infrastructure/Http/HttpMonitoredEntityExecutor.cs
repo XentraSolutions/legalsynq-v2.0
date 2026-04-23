@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Monitoring.Application.Scheduling;
@@ -69,6 +71,22 @@ public sealed class HttpMonitoredEntityExecutor : IMonitoredEntityExecutor
                 entity.Id, entity.Name, entity.Target?.Length ?? 0);
             return Build(entity, false, CheckOutcome.InvalidTarget, null, 0,
                 "invalid http(s) URL");
+        }
+
+        // SSRF guard: reject targets that resolve to loopback, link-local,
+        // or RFC-1918 private addresses. This prevents the monitoring
+        // scheduler from being used as a blind HTTP pivot into internal
+        // infrastructure, cloud metadata endpoints, or other services on
+        // the host network.
+        if (IsSsrfProneUri(uri))
+        {
+            _logger.LogWarning(
+                "HTTP check blocked for entity {EntityId} ({EntityName}): " +
+                "target resolves to a private, loopback, or link-local address. " +
+                "TargetLength={TargetLength}.",
+                entity.Id, entity.Name, entity.Target?.Length ?? 0);
+            return Build(entity, false, CheckOutcome.InvalidTarget, null, 0,
+                "target blocked: private or loopback address");
         }
 
         // Build a sanitized log-only representation of the target. Userinfo
@@ -185,5 +203,73 @@ public sealed class HttpMonitoredEntityExecutor : IMonitoredEntityExecutor
         var hostPort = isDefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}";
         // AbsolutePath includes the leading '/'.
         return $"{uri.Scheme}://{hostPort}{uri.AbsolutePath}";
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> if the URI's host is a known SSRF-prone address:
+    /// "localhost", a loopback IP (127.x.x.x / ::1), a link-local address
+    /// (169.254.x.x / fe80::/10), or an RFC-1918 private range
+    /// (10.x.x.x, 172.16-31.x.x, 192.168.x.x). IPv6 unique-local
+    /// (fc00::/7) is also blocked.
+    ///
+    /// <para>When the host is a DNS name that is not "localhost" this method
+    /// returns <c>false</c> — DNS-based SSRF via a rebinding-style attack is
+    /// a separate concern handled at the network/egress layer. The check here
+    /// eliminates the most common and trivially exploitable cases where an
+    /// attacker supplies a bare IP or "localhost".</para>
+    /// </summary>
+    private static bool IsSsrfProneUri(Uri uri)
+    {
+        var host = uri.Host;
+
+        if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (IPAddress.TryParse(host, out var ip))
+        {
+            return IsPrivateOrReservedAddress(ip);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks whether an <see cref="IPAddress"/> falls in a loopback,
+    /// link-local, private, or otherwise reserved range that should never
+    /// be reachable from an outbound monitoring probe.
+    /// </summary>
+    private static bool IsPrivateOrReservedAddress(IPAddress ip)
+    {
+        if (IPAddress.IsLoopback(ip))
+        {
+            return true;
+        }
+
+        if (ip.AddressFamily == AddressFamily.InterNetwork)
+        {
+            var b = ip.GetAddressBytes();
+            // 10.0.0.0/8
+            if (b[0] == 10) return true;
+            // 172.16.0.0/12
+            if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
+            // 192.168.0.0/16
+            if (b[0] == 192 && b[1] == 168) return true;
+            // 169.254.0.0/16 — link-local and AWS/GCP/Azure IMDS
+            if (b[0] == 169 && b[1] == 254) return true;
+            // 127.0.0.0/8 — additional loopback range beyond IPAddress.IsLoopback
+            if (b[0] == 127) return true;
+        }
+        else if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            var b = ip.GetAddressBytes();
+            // fc00::/7 — unique local
+            if ((b[0] & 0xfe) == 0xfc) return true;
+            // fe80::/10 — link-local
+            if (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) return true;
+        }
+
+        return false;
     }
 }

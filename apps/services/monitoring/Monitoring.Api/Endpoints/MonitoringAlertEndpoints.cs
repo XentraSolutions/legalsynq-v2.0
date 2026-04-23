@@ -9,8 +9,8 @@ namespace Monitoring.Api.Endpoints;
 ///
 /// <para><b>Route group</b>: <c>/monitoring/admin/alerts</c>.
 /// All routes require the <see cref="MonitoringPolicies.AdminWrite"/> policy
-/// (satisfied by a valid service-token with <c>sub=service:*</c> or a bearer
-/// JWT with the <c>PlatformAdmin</c> role).</para>
+/// (satisfied only by a bearer JWT with the <c>PlatformAdmin</c> role;
+/// service tokens are explicitly excluded from admin write access).</para>
 ///
 /// <para><b>Manual-resolve / scheduler interaction</b>: manually resolving an
 /// alert that belongs to an entity still in Down state will clear the active

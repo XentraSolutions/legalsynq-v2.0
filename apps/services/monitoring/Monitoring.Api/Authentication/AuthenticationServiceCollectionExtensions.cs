@@ -135,19 +135,14 @@ public static class AuthenticationServiceCollectionExtensions
         services.AddAuthorization(options =>
         {
             // MonitoringAdmin: grants access to write/admin endpoints.
-            // Accepts either:
-            //   (a) a valid user JWT with the PlatformAdmin role, or
-            //   (b) a valid service token with a subject starting with "service:".
-            // Both schemes are tried; if either succeeds the request is admitted.
+            // Requires a valid user JWT with the PlatformAdmin role only.
+            // Service tokens are intentionally excluded from admin write access;
+            // they may authenticate against read endpoints but must never be
+            // able to register monitoring targets or resolve alerts.
             options.AddPolicy(MonitoringPolicies.AdminWrite, policy =>
                 policy
-                    .AddAuthenticationSchemes(
-                        JwtBearerDefaults.AuthenticationScheme,
-                        ServiceTokenAuthenticationDefaults.Scheme)
-                    .RequireAssertion(ctx =>
-                        ctx.User.IsInRole("PlatformAdmin") ||
-                        (ctx.User.FindFirst("sub")?.Value
-                             ?.StartsWith("service:", StringComparison.Ordinal) == true)));
+                    .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+                    .RequireRole("PlatformAdmin"));
         });
 
         return services;

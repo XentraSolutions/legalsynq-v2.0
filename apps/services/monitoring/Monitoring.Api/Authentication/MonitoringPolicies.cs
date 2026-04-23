@@ -7,12 +7,10 @@ namespace Monitoring.Api.Authentication;
 public static class MonitoringPolicies
 {
     /// <summary>
-    /// Grants access to write/admin endpoints (entity create, update).
-    /// Satisfied by either:
-    /// <list type="bullet">
-    ///   <item>A valid user JWT with the <c>PlatformAdmin</c> role (Bearer scheme), or</item>
-    ///   <item>A valid service token with subject <c>service:*</c> (ServiceToken scheme).</item>
-    /// </list>
+    /// Grants access to write/admin endpoints (entity create, update, alert resolve).
+    /// Satisfied only by a valid user JWT with the <c>PlatformAdmin</c> role (Bearer scheme).
+    /// Service tokens are explicitly excluded to prevent privilege escalation through
+    /// compromised platform services or the shared service-token secret.
     /// </summary>
     public const string AdminWrite = "MonitoringAdmin";
 }

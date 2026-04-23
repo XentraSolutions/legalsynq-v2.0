@@ -167,6 +167,7 @@ Public response includes: tenantId, code, displayName, brandName, logoDocumentId
 | tenant_Brandings table (16 columns) | ✅ | Confirmed via DESCRIBE + SHOW TABLES |
 | Health endpoint | ✅ | `{"status":"ok","service":"tenant"}` |
 | Info endpoint | ✅ | `{"service":"tenant","environment":"Development","version":"v1"}` |
+| GET /info | ✅ | `{"service":"tenant","environment":"Development","version":"v1"}` |
 | GET /api/v1/tenants (auth guard) | ✅ | 401 without token |
 | POST /api/v1/tenants (auth guard) | ✅ | 401 without token |
 | GET /api/v1/tenants/by-code/{code} (auth guard) | ✅ | 401 without token |
@@ -177,9 +178,10 @@ Public response includes: tenantId, code, displayName, brandName, logoDocumentId
 | Duplicate code conflict | ✅ | 409 Conflict |
 | Email validation | ✅ | 400 Bad Request; MailAddress parse in TenantService + BrandingService |
 | URL validation | ✅ | 400 Bad Request; Uri.TryCreate + http/https scheme check |
-| Hex color validation | ✅ | 400 Bad Request; Regex ^#([A-Fa-f0-9]{6}\|[A-Fa-f0-9]{3})$ in BrandingService |
+| Hex color validation | ✅ | 400 Bad Request; Regex ^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$ in BrandingService |
 | CountryCode validation | ✅ | Must be 2 chars if supplied |
 | Subdomain uniqueness check | ✅ | ExistsBySubdomainAsync with excludeId for self-update |
+| Duplicate code conflict | ✅ | 409 status code |
 
 ## 8. Known Gaps / Deferred Items
 
