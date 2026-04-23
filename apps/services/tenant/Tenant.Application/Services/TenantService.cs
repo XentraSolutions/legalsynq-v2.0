@@ -13,6 +13,88 @@ public class TenantService : ITenantService
 
     public TenantService(ITenantRepository repository) => _repository = repository;
 
+    // ── BLK-TS-01: Tenant code format rules ──────────────────────────────────
+
+    /// <summary>
+    /// Valid code: lowercase alphanumeric + hyphens, no leading/trailing hyphens, 2–50 chars.
+    /// Examples: "acme", "liens-company", "abc123"
+    /// </summary>
+    private static readonly Regex CodeFormatRegex = new(
+        @"^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$",
+        RegexOptions.Compiled);
+
+    private const int CodeMinLength = 2;
+    private const int CodeMaxLength = 50;
+
+    private static bool IsValidCodeFormat(string normalizedCode, out string error)
+    {
+        if (normalizedCode.Length < CodeMinLength)
+        {
+            error = $"Code must be at least {CodeMinLength} characters.";
+            return false;
+        }
+        if (normalizedCode.Length > CodeMaxLength)
+        {
+            error = $"Code must be at most {CodeMaxLength} characters.";
+            return false;
+        }
+        if (!CodeFormatRegex.IsMatch(normalizedCode))
+        {
+            error = "Code must contain only lowercase letters, digits, and hyphens, and must not start or end with a hyphen.";
+            return false;
+        }
+        error = string.Empty;
+        return true;
+    }
+
+    // ── BLK-TS-01: Check code availability ───────────────────────────────────
+
+    public async Task<CheckCodeResponse> CheckCodeAsync(string code, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return new CheckCodeResponse(false, string.Empty, "Code cannot be empty.");
+
+        var normalized = code.Trim().ToLowerInvariant();
+
+        if (!IsValidCodeFormat(normalized, out var formatError))
+            return new CheckCodeResponse(false, normalized, formatError);
+
+        if (await _repository.ExistsByCodeAsync(normalized, ct))
+            return new CheckCodeResponse(false, normalized, $"The code '{normalized}' is already taken.");
+
+        return new CheckCodeResponse(true, normalized);
+    }
+
+    // ── BLK-TS-01: Minimal provision ─────────────────────────────────────────
+
+    public async Task<ProvisionResponse> ProvisionAsync(ProvisionRequest request, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.TenantName, nameof(request.TenantName));
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.TenantCode, nameof(request.TenantCode));
+
+        var code = request.TenantCode.Trim().ToLowerInvariant();
+
+        if (!IsValidCodeFormat(code, out var formatError))
+            throw new ValidationException("Invalid tenant code.",
+                new Dictionary<string, string[]> { ["tenantCode"] = [formatError] });
+
+        if (await _repository.ExistsByCodeAsync(code, ct))
+            throw new ConflictException($"A tenant with code '{code}' already exists.");
+
+        var subdomain = code;
+        if (await _repository.ExistsBySubdomainAsync(subdomain, null, ct))
+            throw new ConflictException($"The subdomain '{subdomain}' is already taken.");
+
+        var tenant = Domain.Tenant.Create(
+            code:        code,
+            displayName: request.TenantName.Trim(),
+            subdomain:   subdomain);
+
+        await _repository.AddAsync(tenant, ct);
+
+        return new ProvisionResponse(tenant.Id, tenant.Code, tenant.Subdomain ?? subdomain);
+    }
+
     public async Task<TenantResponse?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var tenant = await _repository.GetByIdAsync(id, ct);
@@ -47,6 +129,10 @@ public class TenantService : ITenantService
         var errors = new Dictionary<string, string[]>();
 
         var code = request.Code.Trim().ToLowerInvariant();
+
+        if (!IsValidCodeFormat(code, out var codeFormatError))
+            throw new ValidationException("Invalid tenant code.",
+                new Dictionary<string, string[]> { ["code"] = [codeFormatError] });
 
         if (await _repository.ExistsByCodeAsync(code, ct))
             throw new ConflictException($"A tenant with code '{code}' already exists.");

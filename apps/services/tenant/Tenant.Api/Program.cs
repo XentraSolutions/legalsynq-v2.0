@@ -100,6 +100,7 @@ app.MapGet("/info", () =>
     .AllowAnonymous();
 
 app.MapTenantEndpoints();
+app.MapProvisionEndpoints();
 app.MapBrandingEndpoints();
 app.MapDomainEndpoints();
 app.MapResolutionEndpoints();
