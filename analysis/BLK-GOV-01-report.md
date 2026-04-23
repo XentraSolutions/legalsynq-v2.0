@@ -258,6 +258,7 @@ audited services:
 
 ## 6. Commit Summary
 
+**Commit:** `744b5b3635b7c482a539a70a7a4247ab9a66a2ba`
 **Message:** `BLK-GOV-01: Role & Policy Governance Audit`
 
 - `AdminBackfillEndpoints`: add PlatformAdmin path with required `?tenantId` query param —
