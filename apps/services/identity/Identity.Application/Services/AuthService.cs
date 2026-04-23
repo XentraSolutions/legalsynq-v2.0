@@ -177,7 +177,7 @@ public class AuthService : IAuthService
             EventCategory = EventCategory.Security,
             SourceSystem  = "identity-service",
             SourceService = "auth-api",
-            Visibility    = VisibilityScope.Tenant,
+            Visibility    = VisibilityScope.User,
             Severity      = SeverityLevel.Info,
             OccurredAtUtc = now,
             Scope = new AuditEventScopeDto

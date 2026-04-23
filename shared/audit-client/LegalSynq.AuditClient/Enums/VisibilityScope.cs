@@ -7,4 +7,5 @@ public enum VisibilityScope
     Tenant       = 3,
     Organization = 4,
     Service      = 5,
+    User         = 6,
 }

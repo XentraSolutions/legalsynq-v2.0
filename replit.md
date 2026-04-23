@@ -5859,3 +5859,38 @@ Enables COMMON_PORTAL providers to self-provision their own tenant workspace. Af
 
 ### Report
 `analysis/CC2-INT-B09-report.md`
+
+## Bug Fix — Activity Log Page "No activity recorded yet" (2026-04-23)
+
+### Root Causes (3 compounding issues)
+
+**1. Role name format mismatch in audit service config**
+The Identity service stores and emits roles as `"TenantAdmin"` / `"StandardUser"` (PascalCase), but the audit service's `QueryAuth` role lists only had hyphen-format values (`"tenant-admin"`, `"user"`). Since `StringComparer.OrdinalIgnoreCase` still differentiates hyphens from no-hyphens, all users fell back to `CallerScope.TenantUser` regardless of actual role.
+
+**2. Visibility floor mismatch for TenantUser scope**
+`CallerScope.TenantUser` has `VisibilityFloorFor = VisibilityScope.User (4)`. The repository filter returns records where `VisibilityScope >= MaxVisibility`, so only User(4) events are visible. All auth events were stored as `VisibilityScope.Tenant (2)` — excluded for TenantUser callers.
+
+**3. `User` member missing from shared audit client enum**
+`LegalSynq.AuditClient.Enums.VisibilityScope` had no `User` value, preventing producers (Identity) from storing events at user-level visibility.
+
+### Fixes Applied
+
+**`shared/audit-client/LegalSynq.AuditClient/Enums/VisibilityScope.cs`**
+Added `User = 6` to the client enum. The audit service maps by JSON string name (`"user"` → `VisibilityScope.User = 4`) so the integer value is irrelevant cross-boundary.
+
+**`apps/services/audit/appsettings.json` / `appsettings.Development.json` / `appsettings.Production.json`**
+Added actual Identity role names to all three role lists:
+- `PlatformAdminRoles`: added `"PlatformAdmin"` 
+- `TenantAdminRoles`: added `"TenantAdmin"` (was only `"tenant-admin"`)
+- `TenantUserRoles`: added `"StandardUser"` (was only `"tenant-user"`, `"user"`)
+
+**`apps/services/identity/Identity.Application/Services/AuthService.cs`**
+Changed `identity.user.login.succeeded` event from `VisibilityScope.Tenant` → `VisibilityScope.User`. Security events (`login.failed`, `session.invalidated`, `access.version.stale`, `login.blocked`) remain `Tenant`-scoped for admin-only review.
+
+**`apps/services/identity/Identity.Api/Endpoints/AuthEndpoints.cs`**
+Changed all 8 self-service user events (logout, password_changed, avatar_set/removed, invite_accepted, password_reset_requested/completed, mfa events) from `VisibilityScope.Tenant` → `VisibilityScope.User`.
+
+### Result
+- `TenantAdmin` users → `CallerScope.TenantAdmin`, `MaxVisibility = Tenant(2)` → see Tenant+Org+User events ✓
+- `StandardUser` users → `CallerScope.TenantUser`, `MaxVisibility = User(4)` → see self-service User-scoped events ✓
+- Admin-only security events (`login.failed`, session invalidation) remain `Tenant`-scoped — not visible to regular users ✓
