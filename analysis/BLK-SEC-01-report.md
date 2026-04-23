@@ -219,3 +219,11 @@ to remove these from the public attack surface.
 **Single shared secret:** All three services share the same provisioning token.
 A future security upgrade could introduce per-service secrets (Tenant→Identity distinct
 from CareConnect→Tenant). Phase 1 (this block) uses one shared secret for simplicity.
+
+---
+
+## 11. GitHub Diff Reference
+
+- **Commit ID:** `3ddf2ae4c9e7e82ead668aa8789206e382306023`
+- **Diff file:** `analysis/BLK-SEC-01-commit.diff.txt`
+- **Summary file:** `analysis/BLK-SEC-01-commit-summary.md`
