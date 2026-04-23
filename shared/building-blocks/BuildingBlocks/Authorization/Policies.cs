@@ -12,10 +12,22 @@ public static class Policies
     // callers that supply a valid X-Tenant-Id header (backward-compat transition).
     public const string ServiceSubmission = "ServiceSubmission";
 
-    // Capability-based policies (coarse product role gates — use for route groups)
+    // Capability-based policies (coarse product role gates — use for route groups).
+    //
+    // REGISTRATION STATUS (BLK-GOV-01 audit, 2026-04-23):
+    //   CanReferCareConnect          — registered in Flow.Api (ProductWorkflowsController)
+    //   CanReceiveCareConnect        — NOT YET REGISTERED. Reserved for future receive-side gate.
+    //                                  Do NOT use with RequireAuthorization() — it will throw at
+    //                                  request time. Use RequireProductRole(...) directly instead.
+    //   CanManageCareConnectNetworks — NOT YET REGISTERED. CC2-INT-B06 uses RequireProductRole()
+    //                                  (RequireProductRoleFilter) instead. Do not use with
+    //                                  RequireAuthorization() — it will throw at request time.
+    //   CanSellLien                  — registered in Flow.Api
+    //   CanBuyLien                   — registered in Flow.Api (if used) or Liens.Api
+    //   CanReferFund                 — registered in Flow.Api and Fund.Api
+    //   CanFundApplications          — registered in Fund.Api
     public const string CanReferCareConnect          = "CanReferCareConnect";
     public const string CanReceiveCareConnect        = "CanReceiveCareConnect";
-    // CC2-INT-B06: role-based network management (not orgType-based)
     public const string CanManageCareConnectNetworks = "CanManageCareConnectNetworks";
     public const string CanSellLien           = "CanSellLien";
     public const string CanBuyLien            = "CanBuyLien";

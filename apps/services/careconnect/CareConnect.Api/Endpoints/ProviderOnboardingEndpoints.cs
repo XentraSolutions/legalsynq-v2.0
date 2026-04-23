@@ -1,6 +1,20 @@
 // CC2-INT-B09: Provider tenant self-onboarding endpoints.
 // Authenticated — requires a valid JWT (COMMON_PORTAL provider).
 // Gateway route: /careconnect/api/provider/onboarding/* → RequireAuthorization (protected)
+//
+// BLK-GOV-01 access model (EXPECTED BY DESIGN):
+//   All three endpoints use RequireAuthorization() (JWT required, no product role).
+//   This is intentional: COMMON_PORTAL providers hold a regular JWT without a product role
+//   because they have not yet completed onboarding.  Product-role gates would block the
+//   very flow that assigns those roles.
+//
+//   Access control is enforced at the service layer via two ownership checks:
+//     1. identityUserId from JWT → provider record lookup (returns 404 if no record).
+//     2. Provider.AccessStage == COMMON_PORTAL guard in ProvisionToTenantAsync
+//        (returns WrongAccessStage for already-provisioned or admin-created providers).
+//
+//   TenantAdmin / PlatformAdmin users who hit these endpoints receive a 404 because they
+//   have no COMMON_PORTAL provider record, which is the correct behaviour.
 using BuildingBlocks.Context;
 using CareConnect.Api.Helpers;
 using CareConnect.Application.DTOs;

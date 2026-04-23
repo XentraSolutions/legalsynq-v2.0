@@ -43,18 +43,35 @@ public static class AdminBackfillEndpoints
     }
 
     // LSCC-002-01: Walk legacy appointments with missing org IDs; copy from parent Referral.
+    // BLK-GOV-01: PlatformAdmin must supply ?tenantId=<guid> — operation is always tenant-scoped.
+    //             TenantAdmin is automatically scoped to their own tenant.
     private static async Task<IResult> BackfillAppointmentOrgIdsAsync(
         CareConnectDbContext    db,
         ICurrentRequestContext ctx,
+        [FromQuery] Guid?      tenantId,
         CancellationToken      ct)
     {
-        var tenantId = ctx.TenantId
-            ?? throw new InvalidOperationException("tenant_id claim is missing.");
+        Guid scopeTenantId;
+        if (ctx.IsPlatformAdmin)
+        {
+            if (!tenantId.HasValue)
+                return Results.BadRequest(new
+                {
+                    error = "PlatformAdmin must supply ?tenantId=<guid>. " +
+                            "This endpoint operates on a single tenant at a time.",
+                });
+            scopeTenantId = tenantId.Value;
+        }
+        else
+        {
+            scopeTenantId = ctx.TenantId
+                ?? throw new InvalidOperationException("tenant_id claim is missing.");
+        }
 
         // Load all appointments where at least one org ID is missing.
         var candidates = await db.Appointments
             .Include(a => a.Referral)
-            .Where(a => a.TenantId == tenantId
+            .Where(a => a.TenantId == scopeTenantId
                         && (a.ReferringOrganizationId == null || a.ReceivingOrganizationId == null))
             .ToListAsync(ct);
 
