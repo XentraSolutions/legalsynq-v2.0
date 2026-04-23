@@ -12,7 +12,7 @@
   "dependencies": {
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.4.1",
-    "next": "15.2.9",
+    "next": "15.5.15",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "remixicon": "^4.9.1"
@@ -28,7 +28,10 @@
   },
   "pnpm": {
     "overrides": {
-      "lodash": "4.17.21"
+      "lodash": "4.17.21",
+      "file-type": "^22.0.1",
+      "fast-xml-parser": "^5.7.1",
+      "uuid": "^11.0.5"
     }
   }
 }
