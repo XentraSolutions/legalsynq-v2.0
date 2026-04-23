@@ -51,6 +51,17 @@ public static class DependencyInjection
         services.AddScoped<IMigrationUtilityService, MigrationUtilityService>();
         services.AddScoped<ITenantSyncAdapter,       NoOpTenantSyncAdapter>();
 
+        // ── TENANT-B10: Documents service adapter ─────────────────────────────
+        // Used by logo admin endpoints to register/deregister logos in the
+        // Documents service so the anonymous /public/logo/{id} endpoint can serve them.
+        services.AddHttpClient("DocumentsInternal", client =>
+        {
+            var docsUrl = configuration["DocumentsService:InternalUrl"] ?? "http://127.0.0.1:5006";
+            client.BaseAddress = new Uri(docsUrl);
+        });
+
+        services.AddScoped<IDocumentsAdapter, HttpDocumentsAdapter>();
+
         return services;
     }
 }

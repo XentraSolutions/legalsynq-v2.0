@@ -115,6 +115,42 @@ public partial class BrandingService : IBrandingService
         return ToResponse(branding);
     }
 
+    // ── TENANT-B10: targeted logo mutations ───────────────────────────────────
+
+    /// <inheritdoc/>
+    public async Task<BrandingResponse> SetLogoAsync(Guid tenantId, Guid? documentId, CancellationToken ct = default)
+    {
+        var tenant = await _tenantRepo.GetByIdAsync(tenantId, ct)
+            ?? throw new NotFoundException($"Tenant '{tenantId}' was not found.");
+
+        var branding = await _brandingRepo.GetByTenantIdAsync(tenantId, ct)
+                       ?? await CreateEmptyAsync(tenantId, ct);
+
+        branding.SetLogo(documentId);
+        await _brandingRepo.UpdateAsync(branding, ct);
+
+        EvictPublicCache(tenant.Code, tenant.Subdomain);
+
+        return ToResponse(branding);
+    }
+
+    /// <inheritdoc/>
+    public async Task<BrandingResponse> SetLogoWhiteAsync(Guid tenantId, Guid? documentId, CancellationToken ct = default)
+    {
+        var tenant = await _tenantRepo.GetByIdAsync(tenantId, ct)
+            ?? throw new NotFoundException($"Tenant '{tenantId}' was not found.");
+
+        var branding = await _brandingRepo.GetByTenantIdAsync(tenantId, ct)
+                       ?? await CreateEmptyAsync(tenantId, ct);
+
+        branding.SetLogoWhite(documentId);
+        await _brandingRepo.UpdateAsync(branding, ct);
+
+        EvictPublicCache(tenant.Code, tenant.Subdomain);
+
+        return ToResponse(branding);
+    }
+
     public async Task<PublicBrandingResponse?> GetPublicByCodeAsync(string code, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);

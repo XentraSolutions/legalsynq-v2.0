@@ -15,6 +15,19 @@ function parseJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+/**
+ * POST /api/tenants/[id]/logo-white — upload a white/reversed logo for the tenant.
+ *
+ * TENANT-B10: Write path now goes through the Tenant service.
+ *
+ * Flow:
+ *   1. Upload the image to the Documents service.
+ *   2. Persist the returned document ID via
+ *      PATCH /tenant/api/v1/admin/tenants/{id}/logo-white  (Tenant service).
+ *      The Tenant service calls Documents internally to register the logo.
+ *
+ * Identity's PATCH /identity/api/admin/tenants/{id}/logo-white is deprecated (TENANT-B10).
+ */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -38,6 +51,7 @@ export async function POST(
   if (!file || file.size === 0)
     return NextResponse.json({ error: 'FILE_REQUIRED' }, { status: 400 });
 
+  // Step 1: upload the image file to the Documents service.
   const uploadForm = new FormData();
   uploadForm.append('tenantId',       targetTenantId);
   uploadForm.append('documentTypeId', TENANT_LOGO_DOC_TYPE);
@@ -64,11 +78,15 @@ export async function POST(
   const { data } = (await docsRes.json()) as { data: { id: string } };
   const docId    = data.id;
 
-  const patchRes = await fetch(`${GATEWAY_URL}/identity/api/admin/tenants/${targetTenantId}/logo-white`, {
-    method:  'PATCH',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ documentId: docId }),
-  });
+  // Step 2: TENANT-B10 — write to Tenant service (was: Identity service).
+  const patchRes = await fetch(
+    `${GATEWAY_URL}/tenant/api/v1/admin/tenants/${targetTenantId}/logo-white`,
+    {
+      method:  'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ documentId: docId }),
+    },
+  );
 
   if (!patchRes.ok) {
     const err = await patchRes.text();
@@ -78,6 +96,11 @@ export async function POST(
   return NextResponse.json({ logoWhiteDocumentId: docId });
 }
 
+/**
+ * DELETE /api/tenants/[id]/logo-white — remove the tenant white/reversed logo.
+ *
+ * TENANT-B10: Write path now goes through the Tenant service.
+ */
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -88,10 +111,14 @@ export async function DELETE(
 
   const { id: targetTenantId } = await params;
 
-  const delRes = await fetch(`${GATEWAY_URL}/identity/api/admin/tenants/${targetTenantId}/logo-white`, {
-    method:  'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  // TENANT-B10 — write to Tenant service (was: Identity service).
+  const delRes = await fetch(
+    `${GATEWAY_URL}/tenant/api/v1/admin/tenants/${targetTenantId}/logo-white`,
+    {
+      method:  'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 
   if (!delRes.ok) {
     const err = await delRes.text();

@@ -68,7 +68,23 @@ public class TenantBranding
             UpdatedAtUtc = DateTime.UtcNow
         };
 
-    // ── Mutator ───────────────────────────────────────────────────────────────
+    // ── Targeted logo mutators ────────────────────────────────────────────────
+
+    /// <summary>Sets only the primary logo reference without touching any other field.</summary>
+    public void SetLogo(Guid? documentId)
+    {
+        LogoDocumentId = documentId;
+        UpdatedAtUtc   = DateTime.UtcNow;
+    }
+
+    /// <summary>Sets only the white/reversed logo reference without touching any other field.</summary>
+    public void SetLogoWhite(Guid? documentId)
+    {
+        LogoWhiteDocumentId = documentId;
+        UpdatedAtUtc        = DateTime.UtcNow;
+    }
+
+    // ── Full-replace mutator ──────────────────────────────────────────────────
 
     public void Update(
         string? brandName           = null,

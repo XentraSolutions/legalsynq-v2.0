@@ -18,10 +18,17 @@ function parseJwtPayload(token: string): Record<string, unknown> | null {
 /**
  * POST /api/tenants/[id]/logo — upload a new logo for the tenant.
  *
+ * TENANT-B10: Write path now goes through the Tenant service.
+ *
  * Flow:
  *   1. Upload the image to the Documents service (referenceType: "Tenant").
- *   2. Persist the returned document ID on the tenant record via
- *      PATCH /identity/api/admin/tenants/{id}/logo.
+ *   2. Persist the returned document ID on the tenant's branding record via
+ *      PATCH /tenant/api/v1/admin/tenants/{id}/logo  (Tenant service).
+ *      The Tenant service also calls Documents internally to register the logo.
+ *   3. Belt-and-suspenders: also call Documents logo-registration directly
+ *      (idempotent — no harm if called twice).
+ *
+ * Identity's PATCH /identity/api/admin/tenants/{id}/logo is deprecated (TENANT-B10).
  */
 export async function POST(
   req: NextRequest,
@@ -46,6 +53,7 @@ export async function POST(
   if (!file || file.size === 0)
     return NextResponse.json({ error: 'FILE_REQUIRED' }, { status: 400 });
 
+  // Step 1: upload the image file to the Documents service.
   const uploadForm = new FormData();
   uploadForm.append('tenantId',       targetTenantId);
   uploadForm.append('documentTypeId', TENANT_LOGO_DOC_TYPE);
@@ -72,19 +80,23 @@ export async function POST(
   const { data } = (await docsRes.json()) as { data: { id: string } };
   const docId    = data.id;
 
-  const patchRes = await fetch(`${GATEWAY_URL}/identity/api/admin/tenants/${targetTenantId}/logo`, {
-    method:  'PATCH',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ documentId: docId }),
-  });
+  // Step 2: TENANT-B10 — write to Tenant service (was: Identity service).
+  const patchRes = await fetch(
+    `${GATEWAY_URL}/tenant/api/v1/admin/tenants/${targetTenantId}/logo`,
+    {
+      method:  'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ documentId: docId }),
+    },
+  );
 
   if (!patchRes.ok) {
     const err = await patchRes.text();
     return NextResponse.json({ error: 'LOGO_UPDATE_FAILED', detail: err }, { status: patchRes.status });
   }
 
-  // Register the document as the active published logo in the Documents service.
-  // This is required so that the anonymous /public/logo/{id} endpoint will serve it.
+  // Step 3: belt-and-suspenders logo-registration (Tenant service also calls this
+  // internally, but we keep the explicit call here for defence-in-depth).
   const regRes = await fetch(
     `${GATEWAY_URL}/documents/documents/${docId}/logo-registration`,
     {
@@ -106,6 +118,8 @@ export async function POST(
 
 /**
  * DELETE /api/tenants/[id]/logo — remove the tenant logo.
+ *
+ * TENANT-B10: Write path now goes through the Tenant service.
  */
 export async function DELETE(
   _req: NextRequest,
@@ -117,20 +131,22 @@ export async function DELETE(
 
   const { id: targetTenantId } = await params;
 
-  const delRes = await fetch(`${GATEWAY_URL}/identity/api/admin/tenants/${targetTenantId}/logo`, {
-    method:  'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  // TENANT-B10 — write to Tenant service (was: Identity service).
+  const delRes = await fetch(
+    `${GATEWAY_URL}/tenant/api/v1/admin/tenants/${targetTenantId}/logo`,
+    {
+      method:  'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 
   if (!delRes.ok) {
     const err = await delRes.text();
     return NextResponse.json({ error: 'DELETE_FAILED', detail: err }, { status: delRes.status });
   }
 
-  // Clear all logo registrations for the tenant in the Documents service so the
-  // anonymous /public/logo/{id} endpoint no longer serves the old logo.
-  // X-Admin-Target-Tenant ensures the Documents service clears the correct
-  // tenant's registrations when a platform-admin operates on another tenant.
+  // Clear all logo registrations for the tenant in the Documents service.
+  // The Tenant service also does this internally; calling it here is idempotent.
   await fetch(`${GATEWAY_URL}/documents/documents/logo-registration`, {
     method:  'DELETE',
     headers: {
@@ -138,8 +154,6 @@ export async function DELETE(
       'X-Admin-Target-Tenant': targetTenantId,
     },
   });
-  // Ignore errors on the logo deregistration to avoid breaking the delete flow
-  // if the Documents service is temporarily unavailable.
 
   return NextResponse.json({ ok: true });
 }

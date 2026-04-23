@@ -1149,6 +1149,12 @@ public static class AdminEndpoints
         ITenantSyncAdapter  syncAdapter,
         CancellationToken   ct)
     {
+        // TENANT-B10: This endpoint is deprecated. The authoritative write path
+        // is now PATCH /tenant/api/v1/admin/tenants/{id}/logo (Tenant service).
+        httpContext.Response.Headers.Append("X-Deprecated",    "true");
+        httpContext.Response.Headers.Append("X-Deprecated-By", "TENANT-B10");
+        Console.Error.WriteLine($"[Identity][DEPRECATED] PATCH /api/admin/tenants/{id}/logo called. Use Tenant service endpoint. (TENANT-B10)");
+
         if (string.IsNullOrWhiteSpace(body.DocumentId))
             return Results.BadRequest(new { error = "documentId is required." });
 
@@ -1221,10 +1227,17 @@ public static class AdminEndpoints
     private static async Task<IResult> ClearTenantLogo(
         Guid                id,
         ClaimsPrincipal     caller,
+        HttpContext         httpContext,
         IdentityDbContext   db,
         IAuditEventClient   auditClient,
         CancellationToken   ct)
     {
+        // TENANT-B10: This endpoint is deprecated. The authoritative write path
+        // is now DELETE /tenant/api/v1/admin/tenants/{id}/logo (Tenant service).
+        httpContext.Response.Headers.Append("X-Deprecated",    "true");
+        httpContext.Response.Headers.Append("X-Deprecated-By", "TENANT-B10");
+        Console.Error.WriteLine($"[Identity][DEPRECATED] DELETE /api/admin/tenants/{id}/logo called. Use Tenant service endpoint. (TENANT-B10)");
+
         var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);
         if (tenant is null) return Results.NotFound();
 
@@ -1276,6 +1289,12 @@ public static class AdminEndpoints
         ITenantSyncAdapter  syncAdapter,
         CancellationToken   ct)
     {
+        // TENANT-B10: This endpoint is deprecated. The authoritative write path
+        // is now PATCH /tenant/api/v1/admin/tenants/{id}/logo-white (Tenant service).
+        httpContext.Response.Headers.Append("X-Deprecated",    "true");
+        httpContext.Response.Headers.Append("X-Deprecated-By", "TENANT-B10");
+        Console.Error.WriteLine($"[Identity][DEPRECATED] PATCH /api/admin/tenants/{id}/logo-white called. Use Tenant service endpoint. (TENANT-B10)");
+
         if (string.IsNullOrWhiteSpace(body.DocumentId))
             return Results.BadRequest(new { error = "documentId is required." });
 
@@ -1342,10 +1361,17 @@ public static class AdminEndpoints
     private static async Task<IResult> ClearTenantLogoWhite(
         Guid                id,
         ClaimsPrincipal     caller,
+        HttpContext         httpContext,
         IdentityDbContext   db,
         IAuditEventClient   auditClient,
         CancellationToken   ct)
     {
+        // TENANT-B10: This endpoint is deprecated. The authoritative write path
+        // is now DELETE /tenant/api/v1/admin/tenants/{id}/logo-white (Tenant service).
+        httpContext.Response.Headers.Append("X-Deprecated",    "true");
+        httpContext.Response.Headers.Append("X-Deprecated-By", "TENANT-B10");
+        Console.Error.WriteLine($"[Identity][DEPRECATED] DELETE /api/admin/tenants/{id}/logo-white called. Use Tenant service endpoint. (TENANT-B10)");
+
         var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == id, ct);
         if (tenant is null) return Results.NotFound();
 

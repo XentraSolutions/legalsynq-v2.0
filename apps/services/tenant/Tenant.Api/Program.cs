@@ -110,5 +110,6 @@ app.MapMigrationEndpoints();
 app.MapReadSourceEndpoints();
 app.MapSyncEndpoints();
 app.MapRuntimeMetricsEndpoints();
+app.MapLogoAdminEndpoints();
 
 app.Run();
