@@ -2,22 +2,32 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Exceptions;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
+using Tenant.Application.Metrics;
 
 namespace Tenant.Api.Endpoints;
 
 /// <summary>
-/// TENANT-B11/B12 — Admin-focused tenant management endpoints.
+/// TENANT-B11/B12/STABILIZATION — Admin-focused tenant management endpoints.
 ///
 /// B11: GET list, GET detail, PATCH status.
 /// B12: POST create (canonical Tenant-first creation),
 ///      POST entitlement toggle (Tenant-first, best-effort Identity sync).
+/// STABILIZATION: Three Identity admin operations now proxied via Tenant service
+///      so Control Center routes all tenant admin through a single owner:
+///
+///   PATCH  /api/v1/admin/tenants/{id}/session-settings  — proxy → Identity
+///   POST   /api/v1/admin/tenants/{id}/provisioning/retry — proxy → Identity
+///   POST   /api/v1/admin/tenants/{id}/verification/retry — proxy → Identity
 ///
 /// Routes (all require AdminOnly):
 ///   GET    /api/v1/admin/tenants                                     — paged list
 ///   GET    /api/v1/admin/tenants/{id}                                — full detail
 ///   PATCH  /api/v1/admin/tenants/{id}/status                         — status update
+///   PATCH  /api/v1/admin/tenants/{id}/session-settings               — proxy → Identity
 ///   POST   /api/v1/admin/tenants                                     — CANONICAL CREATE (B12)
 ///   POST   /api/v1/admin/tenants/{id}/entitlements/{productCode}     — entitlement toggle (B12)
+///   POST   /api/v1/admin/tenants/{id}/provisioning/retry             — proxy → Identity
+///   POST   /api/v1/admin/tenants/{id}/verification/retry             — proxy → Identity
 /// </summary>
 public static class TenantAdminEndpoints
 {
@@ -84,6 +94,27 @@ public static class TenantAdminEndpoints
             return Results.Ok(result);
         });
 
+        // ── PATCH /api/v1/admin/tenants/{id}/session-settings ─────────────────
+        // TENANT-STABILIZATION — Proxy to Identity. Control Center routes this
+        // through Tenant so Identity is not called directly by any CC client.
+
+        group.MapPatch("/{id:guid}/session-settings", async (
+            Guid                     id,
+            SessionSettingsRequest   body,
+            IIdentityCompatAdapter   compat,
+            TenantRuntimeMetrics     metrics,
+            CancellationToken        ct) =>
+        {
+            var ok = await compat.SetSessionTimeoutAsync(id, body.SessionTimeoutMinutes, ct);
+
+            if (ok) metrics.IncrementIdentityProxySessionSettingsOk();
+            else    metrics.IncrementIdentityProxySessionSettingsFail();
+
+            return ok
+                ? Results.Ok(new { tenantId = id, sessionTimeoutMinutes = body.SessionTimeoutMinutes })
+                : Results.StatusCode(502);
+        });
+
         // ── POST /api/v1/admin/tenants/{id}/entitlements/{productCode} ─────────
         // TENANT-B12 — Admin entitlement toggle (Tenant-first, best-effort Identity sync).
         // Response shape is compatible with control-center mapEntitlementResponse mapper.
@@ -101,8 +132,74 @@ public static class TenantAdminEndpoints
             var result = await svc.ToggleEntitlementAsync(id, productCode, body.Enabled, ct);
             return Results.Ok(result);
         });
+
+        // ── POST /api/v1/admin/tenants/{id}/provisioning/retry ────────────────
+        // TENANT-STABILIZATION — Proxy to Identity admin retry endpoint.
+
+        group.MapPost("/{id:guid}/provisioning/retry", async (
+            Guid                          id,
+            IIdentityProvisioningAdapter  provisioning,
+            TenantRuntimeMetrics          metrics,
+            CancellationToken             ct) =>
+        {
+            var result = await provisioning.RetryProvisioningAsync(id, ct);
+
+            var isTransportFailure = result.Error?.Contains("timed out") == true ||
+                                     result.Error?.Contains("error:") == true;
+
+            if (isTransportFailure)
+            {
+                metrics.IncrementIdentityProxyRetryProvisioningFail();
+                return Results.StatusCode(502);
+            }
+
+            if (result.Success) metrics.IncrementIdentityProxyRetryProvisioningOk();
+            else                metrics.IncrementIdentityProxyRetryProvisioningFail();
+
+            return Results.Ok(new
+            {
+                success            = result.Success,
+                provisioningStatus = result.ProvisioningStatus,
+                hostname           = result.Hostname,
+                error              = result.Error,
+            });
+        });
+
+        // ── POST /api/v1/admin/tenants/{id}/verification/retry ────────────────
+        // TENANT-STABILIZATION — Proxy to Identity admin retry endpoint.
+
+        group.MapPost("/{id:guid}/verification/retry", async (
+            Guid                          id,
+            IIdentityProvisioningAdapter  provisioning,
+            TenantRuntimeMetrics          metrics,
+            CancellationToken             ct) =>
+        {
+            var result = await provisioning.RetryVerificationAsync(id, ct);
+
+            var isTransportFailure = result.Error?.Contains("timed out") == true ||
+                                     result.Error?.Contains("error:") == true;
+
+            if (isTransportFailure)
+            {
+                metrics.IncrementIdentityProxyRetryVerificationFail();
+                return Results.StatusCode(502);
+            }
+
+            if (result.Success) metrics.IncrementIdentityProxyRetryVerificationOk();
+            else                metrics.IncrementIdentityProxyRetryVerificationFail();
+
+            return Results.Ok(new
+            {
+                success            = result.Success,
+                provisioningStatus = result.ProvisioningStatus,
+                hostname           = result.Hostname,
+                failureStage       = result.FailureStage,
+                error              = result.Error,
+            });
+        });
     }
 
     private record StatusUpdateRequest(string? Status);
     private record EntitlementToggleRequest(bool Enabled);
+    private record SessionSettingsRequest(int? SessionTimeoutMinutes);
 }

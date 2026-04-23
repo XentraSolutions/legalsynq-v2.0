@@ -18,8 +18,13 @@ const DEFAULT_BRANDING: TenantBranding = {
 const TenantBrandingContext = createContext<TenantBranding>(DEFAULT_BRANDING);
 
 /**
- * Fetches tenant branding from /identity/api/tenants/current/branding.
- * This endpoint is anonymous and keyed to the subdomain via the Host header.
+ * Fetches tenant branding from /api/tenant-branding (the BFF branding route).
+ *
+ * The BFF route is source-aware and reads from the Tenant service by default
+ * (TENANT_BRANDING_READ_SOURCE=Tenant). Identity mode is retained for rollback
+ * via env config only. See TENANT-B09-report.md and TENANT-STABILIZATION-report.md.
+ *
+ * This provider is source-agnostic — it never calls Identity directly.
  * Injects CSS variables (--color-primary) and updates the favicon.
  *
  * Loaded before auth — the login page must show correct tenant branding.

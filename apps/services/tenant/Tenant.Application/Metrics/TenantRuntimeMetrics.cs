@@ -2,6 +2,9 @@ namespace Tenant.Application.Metrics;
 
 /// <summary>
 /// TENANT-B08 — In-process runtime metrics singleton for the Tenant service.
+/// TENANT-STABILIZATION — Added identity proxy call counters for observability
+///   during the B13 observation window. Tracks all operations proxied to Identity
+///   via IIdentityCompatAdapter and IIdentityProvisioningAdapter.
 ///
 /// All counters use Interlocked for thread-safety. Counters are process-lifetime
 /// only and reset on service restart. Use GET /api/v1/admin/runtime-metrics to read.
@@ -61,23 +64,55 @@ public sealed class TenantRuntimeMetrics
     public void IncrementSyncSucceeded() => Interlocked.Increment(ref _syncSucceeded);
     public void IncrementSyncFailed()    => Interlocked.Increment(ref _syncFailed);
 
+    // ── Identity proxy calls (TENANT-STABILIZATION) ───────────────────────────
+    // Tracks all calls that the Tenant service proxies to Identity admin endpoints.
+    // These must remain non-zero only if Identity still owns the operation.
+    // Target for B13 gate: only proxy counters should be non-zero (no direct CC→Identity calls).
+
+    private long _identityProxySessionSettingsOk;
+    private long _identityProxySessionSettingsFail;
+    private long _identityProxyRetryProvisioningOk;
+    private long _identityProxyRetryProvisioningFail;
+    private long _identityProxyRetryVerificationOk;
+    private long _identityProxyRetryVerificationFail;
+
+    public long IdentityProxySessionSettingsOk       => Interlocked.Read(ref _identityProxySessionSettingsOk);
+    public long IdentityProxySessionSettingsFail     => Interlocked.Read(ref _identityProxySessionSettingsFail);
+    public long IdentityProxyRetryProvisioningOk     => Interlocked.Read(ref _identityProxyRetryProvisioningOk);
+    public long IdentityProxyRetryProvisioningFail   => Interlocked.Read(ref _identityProxyRetryProvisioningFail);
+    public long IdentityProxyRetryVerificationOk     => Interlocked.Read(ref _identityProxyRetryVerificationOk);
+    public long IdentityProxyRetryVerificationFail   => Interlocked.Read(ref _identityProxyRetryVerificationFail);
+
+    public void IncrementIdentityProxySessionSettingsOk()     => Interlocked.Increment(ref _identityProxySessionSettingsOk);
+    public void IncrementIdentityProxySessionSettingsFail()   => Interlocked.Increment(ref _identityProxySessionSettingsFail);
+    public void IncrementIdentityProxyRetryProvisioningOk()   => Interlocked.Increment(ref _identityProxyRetryProvisioningOk);
+    public void IncrementIdentityProxyRetryProvisioningFail() => Interlocked.Increment(ref _identityProxyRetryProvisioningFail);
+    public void IncrementIdentityProxyRetryVerificationOk()   => Interlocked.Increment(ref _identityProxyRetryVerificationOk);
+    public void IncrementIdentityProxyRetryVerificationFail() => Interlocked.Increment(ref _identityProxyRetryVerificationFail);
+
     // ── Snapshot ──────────────────────────────────────────────────────────────
     public MetricsSnapshot Snapshot() => new(
-        StartedAtUtc:              StartedAtUtc,
-        UptimeSeconds:             (long)(DateTimeOffset.UtcNow - StartedAtUtc).TotalSeconds,
-        BrandingAttempted:         BrandingPublicReadsAttempted,
-        BrandingSucceeded:         BrandingPublicReadsSucceeded,
-        BrandingFailed:            BrandingPublicReadsFailed,
-        BrandingCacheHits:         BrandingCacheHits,
-        BrandingCacheMisses:       BrandingCacheMisses,
-        ResolutionAttempted:       ResolutionReadsAttempted,
-        ResolutionSucceeded:       ResolutionReadsSucceeded,
-        ResolutionFailed:          ResolutionReadsFailed,
-        ResolutionCacheHits:       ResolutionCacheHits,
-        ResolutionCacheMisses:     ResolutionCacheMisses,
-        SyncAttemptsReceived:      SyncAttemptsReceived,
-        SyncSucceeded:             SyncSucceeded,
-        SyncFailed:                SyncFailed);
+        StartedAtUtc:                    StartedAtUtc,
+        UptimeSeconds:                   (long)(DateTimeOffset.UtcNow - StartedAtUtc).TotalSeconds,
+        BrandingAttempted:               BrandingPublicReadsAttempted,
+        BrandingSucceeded:               BrandingPublicReadsSucceeded,
+        BrandingFailed:                  BrandingPublicReadsFailed,
+        BrandingCacheHits:               BrandingCacheHits,
+        BrandingCacheMisses:             BrandingCacheMisses,
+        ResolutionAttempted:             ResolutionReadsAttempted,
+        ResolutionSucceeded:             ResolutionReadsSucceeded,
+        ResolutionFailed:                ResolutionReadsFailed,
+        ResolutionCacheHits:             ResolutionCacheHits,
+        ResolutionCacheMisses:           ResolutionCacheMisses,
+        SyncAttemptsReceived:            SyncAttemptsReceived,
+        SyncSucceeded:                   SyncSucceeded,
+        SyncFailed:                      SyncFailed,
+        IdentityProxySessionSettingsOk:     IdentityProxySessionSettingsOk,
+        IdentityProxySessionSettingsFail:   IdentityProxySessionSettingsFail,
+        IdentityProxyRetryProvisioningOk:   IdentityProxyRetryProvisioningOk,
+        IdentityProxyRetryProvisioningFail: IdentityProxyRetryProvisioningFail,
+        IdentityProxyRetryVerificationOk:   IdentityProxyRetryVerificationOk,
+        IdentityProxyRetryVerificationFail: IdentityProxyRetryVerificationFail);
 }
 
 public record MetricsSnapshot(
@@ -95,4 +130,11 @@ public record MetricsSnapshot(
     long           ResolutionCacheMisses,
     long           SyncAttemptsReceived,
     long           SyncSucceeded,
-    long           SyncFailed);
+    long           SyncFailed,
+    // Identity proxy counters — TENANT-STABILIZATION
+    long           IdentityProxySessionSettingsOk,
+    long           IdentityProxySessionSettingsFail,
+    long           IdentityProxyRetryProvisioningOk,
+    long           IdentityProxyRetryProvisioningFail,
+    long           IdentityProxyRetryVerificationOk,
+    long           IdentityProxyRetryVerificationFail);

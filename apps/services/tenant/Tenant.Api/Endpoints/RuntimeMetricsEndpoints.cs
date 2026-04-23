@@ -7,10 +7,13 @@ namespace Tenant.Api.Endpoints;
 
 /// <summary>
 /// TENANT-B08 — Admin diagnostics endpoint for in-process runtime metrics.
+/// TENANT-STABILIZATION — Extended with identity proxy counters and cutover check.
 ///
 /// GET /api/v1/admin/runtime-metrics
-///   Returns lifetime read, sync, and cache counters for the Tenant service.
+///   Returns lifetime read, sync, cache, and identity-proxy counters.
 ///   Counters are process-memory only and reset on service restart.
+///   The cutoverCheck object summarises B13 gate prerequisites visible from
+///   the Tenant service perspective.
 ///   Requires PlatformAdmin role.
 /// </summary>
 public static class RuntimeMetricsEndpoints
@@ -23,6 +26,16 @@ public static class RuntimeMetricsEndpoints
         {
             var s = metrics.Snapshot();
             var f = opts.Value;
+
+            var totalIdentityProxyCalls =
+                s.IdentityProxySessionSettingsOk   + s.IdentityProxySessionSettingsFail   +
+                s.IdentityProxyRetryProvisioningOk + s.IdentityProxyRetryProvisioningFail +
+                s.IdentityProxyRetryVerificationOk + s.IdentityProxyRetryVerificationFail;
+
+            var totalIdentityProxyFails =
+                s.IdentityProxySessionSettingsFail  +
+                s.IdentityProxyRetryProvisioningFail +
+                s.IdentityProxyRetryVerificationFail;
 
             return Results.Ok(new
             {
@@ -59,10 +72,57 @@ public static class RuntimeMetricsEndpoints
                         ? (double?)null
                         : Math.Round((double)s.SyncSucceeded / s.SyncAttemptsReceived * 100, 1),
                 },
+                identityProxy = new
+                {
+                    sessionSettings = new
+                    {
+                        ok   = s.IdentityProxySessionSettingsOk,
+                        fail = s.IdentityProxySessionSettingsFail,
+                    },
+                    retryProvisioning = new
+                    {
+                        ok   = s.IdentityProxyRetryProvisioningOk,
+                        fail = s.IdentityProxyRetryProvisioningFail,
+                    },
+                    retryVerification = new
+                    {
+                        ok   = s.IdentityProxyRetryVerificationOk,
+                        fail = s.IdentityProxyRetryVerificationFail,
+                    },
+                    totalCalls = totalIdentityProxyCalls,
+                    totalFails = totalIdentityProxyFails,
+                    proxyFailRate = totalIdentityProxyCalls == 0
+                        ? (double?)null
+                        : Math.Round((double)totalIdentityProxyFails / totalIdentityProxyCalls * 100, 1),
+                },
                 cacheConfig = new
                 {
                     enabled    = f.TenantReadCachingEnabled,
                     ttlSeconds = f.TenantReadCacheTtlSeconds,
+                },
+                cutoverCheck = new
+                {
+                    branding = new
+                    {
+                        readSourceCanonical  = f.TenantBrandingReadSource.ToString(),
+                        brandingProxyActive  = f.TenantBrandingReadSource.ToString() != "Identity",
+                        note = "Identity branding reads: check /api/admin/branding-metrics on the web BFF for HybridFallback counters.",
+                    },
+                    resolution = new
+                    {
+                        readSourceCanonical = f.TenantResolutionReadSource.ToString(),
+                        resolutionActive    = f.TenantResolutionReadSource.ToString() != "Identity",
+                    },
+                    identityProxyRouting = new
+                    {
+                        sessionSettingsRouted    = true,
+                        retryProvisioningRouted  = true,
+                        retryVerificationRouted  = true,
+                        note = "All three CC→Identity operations now route via Tenant service proxy endpoints (TENANT-STABILIZATION).",
+                    },
+                    note = "B13 gate: branding/resolution read sources must be Tenant, " +
+                           "proxy counters must be non-zero (proving traffic flows), " +
+                           "proxy fail rate must be <5% over ≥7 days.",
                 },
                 note = "Counters are process-memory only and reset on service restart.",
             });

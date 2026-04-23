@@ -8,16 +8,17 @@ namespace Tenant.Infrastructure.Services;
 
 /// <summary>
 /// TENANT-B12 — HTTP implementation of <see cref="IIdentityProvisioningAdapter"/>.
+/// TENANT-STABILIZATION — Extended with RetryProvisioningAsync and RetryVerificationAsync.
 ///
-/// Calls the Identity internal provisioning endpoint
-/// <c>POST /api/internal/tenant-provisioning/provision</c> to create the
-/// auth/admin context for a tenant whose canonical record already exists
-/// in the Tenant service DB.
+/// Calls the Identity admin/internal endpoints for:
+///   - Initial provisioning: POST /api/internal/tenant-provisioning/provision
+///   - Retry provisioning:   POST /api/admin/tenants/{id}/provisioning/retry
+///   - Retry verification:   POST /api/admin/tenants/{id}/verification/retry
 ///
-/// Auth:    X-Provisioning-Token header sent to Identity.
-///          When IdentityService:ProvisioningSecret is empty (dev), skipped.
-/// Timeout: 30 s (provisioning includes DNS + product work).
-/// Failure: never throws — returns IdentityProvisioningResult with Success=false.
+/// Auth:    X-Provisioning-Token header sent to Identity for internal provisioning.
+///          Retry endpoints use the "IdentityInternal" HttpClient (mTLS/trusted network).
+/// Timeout: 30 s for initial provisioning; 15 s for retries.
+/// Failure: never throws — returns result with Success=false.
 /// </summary>
 public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
 {
@@ -34,6 +35,8 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
         _configuration     = configuration;
         _logger            = logger;
     }
+
+    // ── Initial provisioning ──────────────────────────────────────────────────
 
     public async Task<IdentityProvisioningResult> ProvisionAsync(
         IdentityProvisioningRequest request,
@@ -146,10 +149,119 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
         }
     }
 
+    // ── Retry provisioning proxy ──────────────────────────────────────────────
+
+    public async Task<ProvisioningRetryResult> RetryProvisioningAsync(
+        Guid              tenantId,
+        CancellationToken ct = default)
+    {
+        return await ProxyRetryAsync(
+            tenantId,
+            $"/api/admin/tenants/{tenantId}/provisioning/retry",
+            "RetryProvisioning",
+            ct);
+    }
+
+    // ── Retry verification proxy ──────────────────────────────────────────────
+
+    public async Task<ProvisioningRetryResult> RetryVerificationAsync(
+        Guid              tenantId,
+        CancellationToken ct = default)
+    {
+        return await ProxyRetryAsync(
+            tenantId,
+            $"/api/admin/tenants/{tenantId}/verification/retry",
+            "RetryVerification",
+            ct);
+    }
+
+    // ── Shared proxy helper ───────────────────────────────────────────────────
+
+    private async Task<ProvisioningRetryResult> ProxyRetryAsync(
+        Guid              tenantId,
+        string            path,
+        string            operationName,
+        CancellationToken ct)
+    {
+        try
+        {
+            using var client = _httpClientFactory.CreateClient("IdentityInternal");
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(15));
+
+            var content  = new StringContent("{}", Encoding.UTF8, "application/json");
+            var response = await client.PostAsync(path, content, cts.Token);
+            var body     = await response.Content.ReadAsStringAsync(cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "[IdentityProvisioning] {Operation} returned {StatusCode} for TenantId={TenantId}: {Body}",
+                    operationName, (int)response.StatusCode, tenantId, body);
+
+                return new ProvisioningRetryResult(
+                    Success:           false,
+                    ProvisioningStatus: "Unknown",
+                    Hostname:           null,
+                    FailureStage:       null,
+                    Error:              $"Identity returned HTTP {(int)response.StatusCode}");
+            }
+
+            using var doc = JsonDocument.Parse(body);
+            var root      = doc.RootElement;
+
+            return new ProvisioningRetryResult(
+                Success:           TryGetBool(root, "success"),
+                ProvisioningStatus: TryGetString(root, "provisioningStatus") ?? "Unknown",
+                Hostname:           TryGetString(root, "hostname"),
+                FailureStage:       TryGetString(root, "failureStage"),
+                Error:              TryGetString(root, "error"));
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "[IdentityProvisioning] {Operation} timed out for TenantId={TenantId}",
+                operationName, tenantId);
+
+            return new ProvisioningRetryResult(
+                Success:           false,
+                ProvisioningStatus: "Unknown",
+                Hostname:           null,
+                FailureStage:       null,
+                Error:              $"{operationName} timed out (15s).");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[IdentityProvisioning] {Operation} unexpected failure for TenantId={TenantId}",
+                operationName, tenantId);
+
+            return new ProvisioningRetryResult(
+                Success:           false,
+                ProvisioningStatus: "Unknown",
+                Hostname:           null,
+                FailureStage:       null,
+                Error:              $"{operationName} error: {ex.Message}");
+        }
+    }
+
+    // ── JSON helpers ──────────────────────────────────────────────────────────
+
     private static string? TryGetString(JsonElement root, string prop)
     {
         if (root.TryGetProperty(prop, out var el) && el.ValueKind == JsonValueKind.String)
             return el.GetString();
         return null;
+    }
+
+    private static bool TryGetBool(JsonElement root, string prop)
+    {
+        if (root.TryGetProperty(prop, out var el))
+        {
+            if (el.ValueKind == JsonValueKind.True)  return true;
+            if (el.ValueKind == JsonValueKind.False) return false;
+        }
+        return false;
     }
 }

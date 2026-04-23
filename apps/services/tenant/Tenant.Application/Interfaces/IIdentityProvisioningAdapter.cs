@@ -3,17 +3,18 @@ namespace Tenant.Application.Interfaces;
 /// <summary>
 /// TENANT-B12 — Adapter that orchestrates Identity-side provisioning work
 /// after the Tenant service has created the canonical Tenant record.
+/// TENANT-STABILIZATION — Extended with RetryProvisioningAsync and RetryVerificationAsync
+/// so the Tenant service can proxy admin retry operations from Control Center.
 ///
 /// Responsibilities:
-///   - Create the Identity.Tenant entity (using the Tenant-service-generated ID)
-///   - Create the default admin Organization, User, Membership, and RoleAssignment
-///   - Trigger DNS/subdomain provisioning
-///   - Trigger product provisioning (if products specified)
-///   - Return a structured result with admin credentials and provisioning outcome
+///   - ProvisionAsync: create the Identity.Tenant entity plus admin user/org/provisioning
+///   - RetryProvisioningAsync: proxy POST /api/admin/tenants/{id}/provisioning/retry
+///   - RetryVerificationAsync: proxy POST /api/admin/tenants/{id}/verification/retry
 ///
 /// Rules:
 ///   - HTTP/internal service calls only — no direct DB access
-///   - 3 s timeout; failures return IdentityProvisioningResult with Success=false
+///   - ProvisionAsync: 30 s timeout (full provisioning includes DNS + product work)
+///   - Retry operations: 15 s timeout
 ///   - Never throws — always returns a result
 /// </summary>
 public interface IIdentityProvisioningAdapter
@@ -24,6 +25,22 @@ public interface IIdentityProvisioningAdapter
     /// </summary>
     Task<IdentityProvisioningResult> ProvisionAsync(
         IdentityProvisioningRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Proxies POST /api/admin/tenants/{id}/provisioning/retry to Identity.
+    /// Returns a ProvisioningRetryResult; never throws.
+    /// </summary>
+    Task<ProvisioningRetryResult> RetryProvisioningAsync(
+        Guid              tenantId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Proxies POST /api/admin/tenants/{id}/verification/retry to Identity.
+    /// Returns a ProvisioningRetryResult; never throws.
+    /// </summary>
+    Task<ProvisioningRetryResult> RetryVerificationAsync(
+        Guid              tenantId,
         CancellationToken ct = default);
 }
 
@@ -57,3 +74,14 @@ public record IdentityProvisioningResult(
     string?  Subdomain,
     List<string> Warnings,
     List<string> Errors);
+
+/// <summary>
+/// Unified result for provisioning/verification retry proxy calls.
+/// Maps the { success, provisioningStatus, hostname?, error? } Identity response shape.
+/// </summary>
+public record ProvisioningRetryResult(
+    bool    Success,
+    string  ProvisioningStatus,
+    string? Hostname,
+    string? FailureStage,
+    string? Error);

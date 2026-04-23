@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { tenantBrandingCounters } from '@/lib/branding-metrics';
 
 /**
  * Read-source-aware tenant branding BFF endpoint.
@@ -8,6 +9,9 @@ import { NextRequest, NextResponse } from 'next/server';
  *             Identity mode is now deprecated. A deprecation warning is logged
  *             whenever Identity mode is active. Rollback: set
  *             TENANT_BRANDING_READ_SOURCE=Identity or HybridFallback.
+ * TENANT-STABILIZATION: Added branding-metrics counters for observability.
+ *             HybridFallback activations now increment telemetry counters.
+ *             Identity fallback events are measurable, not just logged.
  *
  * Mode selection (TENANT_BRANDING_READ_SOURCE env var, default: Tenant):
  *   Tenant        — reads from Tenant service public branding endpoint (default, B09)
@@ -144,11 +148,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   let fallbackReason: string | undefined;
 
   if (READ_SOURCE === 'Tenant') {
+    tenantBrandingCounters.tenantAttempted();
     const { data, failReason } = await fetchFromTenant(tenantCode);
     if (data) {
+      tenantBrandingCounters.tenantSucceeded();
       branding = data;
       source   = 'tenant';
     } else {
+      tenantBrandingCounters.tenantFailed();
       fallbackReason = failReason ?? 'unknown';
       console.warn('[tenant-branding] Tenant mode: read failed, no Identity fallback', {
         tenantCode,
@@ -157,14 +164,22 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }
 
   } else if (READ_SOURCE === 'HybridFallback') {
+    tenantBrandingCounters.tenantAttempted();
     const { data: tenantData, failReason: tenantFail } = await fetchFromTenant(tenantCode);
 
     if (isUsable(tenantData)) {
+      tenantBrandingCounters.tenantSucceeded();
       branding = tenantData;
       source   = 'tenant';
     } else {
+      tenantBrandingCounters.tenantFailed();
       fallbackTriggered = true;
       fallbackReason    = tenantFail === null ? 'incomplete_payload' : tenantFail;
+
+      // Increment detailed fallback metrics
+      tenantBrandingCounters.hybridTriggered();
+      tenantBrandingCounters.hybridReason(fallbackReason);
+
       console.warn('[tenant-branding] HybridFallback: Tenant fetch failed, falling back to Identity', {
         tenantCode,
         fallbackReason,
@@ -172,9 +187,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
       const { data: idData, failReason: idFail } = await fetchFromIdentity(tenantCode, req);
       if (idData) {
+        tenantBrandingCounters.identityFallbackOk();
         branding = idData;
         source   = 'identity';
       } else {
+        tenantBrandingCounters.identityFallbackFail();
         console.error('[tenant-branding] HybridFallback: Identity fallback also failed', {
           tenantCode,
           idFail,
@@ -184,6 +201,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   } else {
     // Identity mode — DEPRECATED [TENANT-B09]. Retained for rollback only.
+    tenantBrandingCounters.identityModeRead();
     console.warn(
       '[DEPRECATION] [tenant-branding] TENANT_BRANDING_READ_SOURCE=Identity is deprecated as of TENANT-B09. ' +
       'Switch to Tenant or HybridFallback. See TENANT-B09-report.md §4.',
@@ -191,9 +209,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
     const { data, failReason } = await fetchFromIdentity(tenantCode, req);
     if (data) {
+      tenantBrandingCounters.identityFallbackOk();
       branding = data;
       source   = 'identity';
     } else {
+      tenantBrandingCounters.identityFallbackFail();
       fallbackReason = failReason ?? 'unknown';
       console.error('[tenant-branding] Identity read failed', { tenantCode, failReason });
     }

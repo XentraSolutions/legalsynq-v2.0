@@ -1,10 +1,15 @@
 /**
  * CC2-INT-B07 — Server-side public network API helpers.
+ * TENANT-STABILIZATION — Tenant resolution switched from Identity to Tenant service.
  *
  * Used exclusively by Server Components (e.g., /network/page.tsx).
  * These functions call the CareConnect backend directly via the gateway,
  * passing the X-Tenant-Id resolved from the tenant subdomain.
  * No authentication token is required — endpoints are AllowAnonymous.
+ *
+ * Resolution: GET /tenant/api/v1/public/resolve/by-code/{code}
+ *   Previously called /identity/api/tenants/current/branding.
+ *   Switched to Tenant service as the canonical resolution source.
  */
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
@@ -58,8 +63,11 @@ export interface ResolvedTenant {
 // ── Tenant resolution ──────────────────────────────────────────────────────
 
 /**
- * Resolves a tenant from a subdomain or tenant code by calling the
- * Identity branding endpoint (anonymous).
+ * Resolves a tenant from a tenant code by calling the Tenant service
+ * resolution endpoint (anonymous).
+ *
+ * Primary: GET /tenant/api/v1/public/resolve/by-code/{code}
+ * Fallback: GET /identity/api/tenants/current/branding (only if TENANT_RESOLUTION_FALLBACK_IDENTITY=true)
  *
  * @param tenantCode - The tenant slug/code extracted from the request subdomain.
  * @returns ResolvedTenant or null when the tenant is not found.
@@ -67,28 +75,49 @@ export interface ResolvedTenant {
 export async function resolveTenantFromCode(
   tenantCode: string,
 ): Promise<ResolvedTenant | null> {
-  const url = `${GATEWAY_URL}/identity/api/tenants/current/branding`;
-
-  let res: Response;
+  // Primary: Tenant service resolution (Tenant-first, TENANT-STABILIZATION)
   try {
-    res = await fetch(url, {
-      headers: { 'X-Tenant-Code': tenantCode },
-      cache:   'no-store',
-    });
+    const url = `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-code/${encodeURIComponent(tenantCode)}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.tenantId) {
+        return {
+          tenantId:    data.tenantId,
+          tenantCode:  data.code ?? tenantCode,
+          displayName: data.displayName ?? tenantCode,
+        };
+      }
+    }
   } catch {
-    return null;
+    // Fall through to fallback
   }
 
-  if (!res.ok) return null;
+  // Fallback: Identity branding endpoint (only if explicitly enabled for rollback)
+  if (process.env.TENANT_RESOLUTION_FALLBACK_IDENTITY === 'true') {
+    console.warn('[public-network-api] Tenant resolution failed; falling back to Identity', { tenantCode });
+    try {
+      const url = `${GATEWAY_URL}/identity/api/tenants/current/branding`;
+      const res = await fetch(url, {
+        headers: { 'X-Tenant-Code': tenantCode },
+        cache:   'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.tenantId) {
+          return {
+            tenantId:    data.tenantId,
+            tenantCode:  data.tenantCode ?? tenantCode,
+            displayName: data.displayName ?? tenantCode,
+          };
+        }
+      }
+    } catch {
+      // Both failed
+    }
+  }
 
-  const data = await res.json();
-  if (!data.tenantId) return null;
-
-  return {
-    tenantId:    data.tenantId,
-    tenantCode:  data.tenantCode,
-    displayName: data.displayName,
-  };
+  return null;
 }
 
 // ── Public network endpoints ───────────────────────────────────────────────

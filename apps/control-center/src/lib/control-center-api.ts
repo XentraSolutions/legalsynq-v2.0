@@ -443,8 +443,10 @@ export const controlCenterServerApi = {
     },
 
     /**
-     * PATCH /identity/api/admin/tenants/{id}/session-settings
+     * PATCH /tenant/api/v1/admin/tenants/{id}/session-settings
      *
+     * TENANT-STABILIZATION: Switched from Identity to Tenant service proxy.
+     * The Tenant service proxies this to Identity's PATCH /api/admin/tenants/{id}/session-settings.
      * Updates the per-tenant idle session timeout.
      * Pass null to reset to the platform default (30 minutes).
      */
@@ -453,7 +455,7 @@ export const controlCenterServerApi = {
       sessionTimeoutMinutes: number | null,
     ): Promise<void> => {
       await apiClient.patch<unknown>(
-        `/identity/api/admin/tenants/${encodeURIComponent(tenantId)}/session-settings`,
+        `/tenant/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/session-settings`,
         { sessionTimeoutMinutes },
       );
       safeRevalidateTag(CACHE_TAGS.tenants);
@@ -520,6 +522,10 @@ export const controlCenterServerApi = {
       return raw;
     },
 
+    /**
+     * TENANT-STABILIZATION: Switched from Identity to Tenant service proxy.
+     * The Tenant service proxies this to Identity's POST /api/admin/tenants/{id}/provisioning/retry.
+     */
     retryProvisioning: async (tenantId: string): Promise<{
       success:            boolean;
       provisioningStatus: string;
@@ -531,11 +537,15 @@ export const controlCenterServerApi = {
         provisioningStatus: string;
         hostname?:          string;
         error?:             string;
-      }>(`/identity/api/admin/tenants/${tenantId}/provisioning/retry`, {});
+      }>(`/tenant/api/v1/admin/tenants/${tenantId}/provisioning/retry`, {});
       safeRevalidateTag(CACHE_TAGS.tenants);
       return raw;
     },
 
+    /**
+     * TENANT-STABILIZATION: Switched from Identity to Tenant service proxy.
+     * The Tenant service proxies this to Identity's POST /api/admin/tenants/{id}/verification/retry.
+     */
     retryVerification: async (tenantId: string): Promise<{
       success:            boolean;
       provisioningStatus: string;
@@ -549,7 +559,7 @@ export const controlCenterServerApi = {
         hostname?:          string;
         error?:             string;
         failureStage?:      string;
-      }>(`/identity/api/admin/tenants/${tenantId}/verification/retry`, {});
+      }>(`/tenant/api/v1/admin/tenants/${tenantId}/verification/retry`, {});
       safeRevalidateTag(CACHE_TAGS.tenants);
       return raw;
     },

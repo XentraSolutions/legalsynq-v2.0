@@ -1,21 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logoCounters } from '@/lib/branding-metrics';
 
 /**
  * TENANT-B07 — Source-aware public logo proxy.
+ * TENANT-STABILIZATION — Default changed from 'Identity' → 'Tenant'.
  *
- * Reads TENANT_BRANDING_READ_SOURCE (default: Identity) to decide where to
- * fetch the tenant's logoDocumentId from:
+ * Reads TENANT_BRANDING_READ_SOURCE to decide where to fetch the tenant's
+ * logoDocumentId from:
  *
- *   Identity      — Identity service  /identity/api/tenants/current/branding
- *   Tenant        — Tenant service    /tenant/api/v1/public/branding/by-code/{code}
+ *   Tenant        — Tenant service /tenant/api/v1/public/branding/by-code/{code} (DEFAULT)
  *   HybridFallback — Tenant first, Identity fallback on failure/no-logo
+ *   Identity      — Identity service /identity/api/tenants/current/branding (ROLLBACK ONLY)
  *
  * The actual image bytes are always proxied from the Documents service
  * (/documents/public/logo/{docId}) regardless of the branding read source.
+ *
+ * Metrics: logoCounters (branding-metrics.ts) are incremented for each path.
+ * Rollback: set TENANT_BRANDING_READ_SOURCE=Identity in env to revert.
  */
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
-const READ_SOURCE = (process.env.TENANT_BRANDING_READ_SOURCE ?? 'Identity') as ReadSource;
+// TENANT-STABILIZATION: Default changed from 'Identity' to 'Tenant'. Identity remains available for rollback.
+const READ_SOURCE = (process.env.TENANT_BRANDING_READ_SOURCE ?? 'Tenant') as ReadSource;
 
 const BRANDING_TIMEOUT_MS = 4_000;
 
@@ -88,20 +94,41 @@ export async function GET(req: NextRequest) {
   let source = 'none';
 
   if (READ_SOURCE === 'Tenant') {
+    logoCounters.tenantAttempted();
     docId  = await fetchLogoDocFromTenant(tenantCode);
-    source = docId ? 'tenant' : 'none';
-
-  } else if (READ_SOURCE === 'HybridFallback') {
-    docId = await fetchLogoDocFromTenant(tenantCode);
     if (docId) {
+      logoCounters.tenantSucceeded();
       source = 'tenant';
     } else {
+      source = 'none';
+    }
+
+  } else if (READ_SOURCE === 'HybridFallback') {
+    logoCounters.tenantAttempted();
+    docId = await fetchLogoDocFromTenant(tenantCode);
+    if (docId) {
+      logoCounters.tenantSucceeded();
+      source = 'tenant';
+    } else {
+      logoCounters.hybridTriggered();
+      console.warn('[logo-public] HybridFallback: Tenant fetch returned no logoDocumentId, falling back to Identity', { tenantCode });
       docId  = await fetchLogoDocFromIdentity(tenantCode);
-      source = docId ? 'identity_fallback' : 'none';
+      if (docId) {
+        logoCounters.identityFallbackOk();
+        source = 'identity_fallback';
+      } else {
+        source = 'none';
+      }
     }
 
   } else {
-    // Identity mode — legacy behavior
+    // Identity mode — ROLLBACK ONLY. Set TENANT_BRANDING_READ_SOURCE=Identity explicitly.
+    console.warn(
+      '[DEPRECATION] [logo-public] TENANT_BRANDING_READ_SOURCE=Identity is deprecated. ' +
+      'Switch to Tenant. Identity mode retained for emergency rollback only.',
+      { tenantCode },
+    );
+    logoCounters.identityModeRead();
     docId  = await fetchLogoDocFromIdentity(tenantCode);
     source = docId ? 'identity' : 'none';
   }

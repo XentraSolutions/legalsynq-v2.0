@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Tenant.Application.Interfaces;
@@ -6,12 +7,13 @@ namespace Tenant.Infrastructure.Services;
 
 /// <summary>
 /// TENANT-B11 — HTTP read-through to Identity for compat data.
+/// TENANT-STABILIZATION — Extended with SetSessionTimeoutAsync proxy.
 ///
 /// Reads Identity-owned fields (e.g. sessionTimeoutMinutes) via the Identity
 /// admin endpoint and surfaces them in the Tenant admin aggregate response.
 ///
 /// All operations are best-effort: a timeout, non-success status, or
-/// deserialisation failure returns null instead of throwing.
+/// deserialisation failure returns null/false instead of throwing.
 /// </summary>
 public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
 {
@@ -25,6 +27,8 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
         _httpClientFactory = httpClientFactory;
         _logger            = logger;
     }
+
+    // ── Read: session timeout ─────────────────────────────────────────────────
 
     public async Task<int?> GetSessionTimeoutMinutesAsync(Guid tenantId, CancellationToken ct = default)
     {
@@ -72,6 +76,54 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
                 "IdentityCompatAdapter: failed reading sessionTimeoutMinutes for tenant {TenantId}",
                 tenantId);
             return null;
+        }
+    }
+
+    // ── Write: session timeout proxy ──────────────────────────────────────────
+
+    public async Task<bool> SetSessionTimeoutAsync(
+        Guid              tenantId,
+        int?              sessionTimeoutMinutes,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var client = _httpClientFactory.CreateClient("IdentityInternal");
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+
+            var payload = JsonSerializer.Serialize(new { sessionTimeoutMinutes });
+            var content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+            var response = await client.PatchAsync(
+                $"/api/admin/tenants/{tenantId}/session-settings",
+                content,
+                cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "IdentityCompatAdapter: PATCH session-settings for tenant {TenantId} returned {StatusCode}",
+                    tenantId, (int)response.StatusCode);
+                return false;
+            }
+
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "IdentityCompatAdapter: timed out setting sessionTimeout for tenant {TenantId}",
+                tenantId);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "IdentityCompatAdapter: failed setting sessionTimeout for tenant {TenantId}",
+                tenantId);
+            return false;
         }
     }
 }

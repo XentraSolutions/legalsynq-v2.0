@@ -4,14 +4,20 @@ const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 /**
  * CC2-INT-B07 — Public CareConnect BFF proxy.
+ * TENANT-STABILIZATION — Tenant resolution switched from Identity to Tenant service.
  *
  * Handles unauthenticated requests to the public network surface.
  * Unlike the authenticated /api/careconnect proxy, this handler does NOT
  * inject an Authorization header — the backend endpoints are AllowAnonymous.
  *
  * Tenant isolation: The X-Tenant-Id header is resolved server-side from the
- * incoming request's Host header by calling the Identity branding endpoint.
+ * incoming request's Host header by calling the Tenant resolution endpoint.
  * The client-supplied X-Tenant-Id header is never trusted or forwarded.
+ *
+ * Resolution: GET /tenant/api/v1/public/resolve/by-host?host={host}
+ *   Returns { tenantId, code, displayName, ... } from Tenant service.
+ *   Falls back to Identity branding endpoint if Tenant resolution fails
+ *   and TENANT_RESOLUTION_FALLBACK_IDENTITY=true (default: false).
  *
  * Routing:
  *   Browser fetch → /api/public/careconnect/api/public/network
@@ -21,32 +27,50 @@ const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
  */
 type RouteContext = { params: Promise<{ path: string[] }> };
 
+const ENABLE_IDENTITY_FALLBACK = process.env.TENANT_RESOLUTION_FALLBACK_IDENTITY === 'true';
+
 /**
  * Resolves the tenant GUID from the incoming request's Host header by calling
- * the Identity branding endpoint server-side. Returns null if the host cannot
- * be mapped to a known active tenant.
+ * the Tenant service resolution endpoint. Returns null if the host cannot be
+ * mapped to a known active tenant.
+ *
+ * Falls back to Identity branding endpoint only if TENANT_RESOLUTION_FALLBACK_IDENTITY=true.
  *
  * This prevents callers from impersonating arbitrary tenants by supplying a
  * spoofed X-Tenant-Id header. The tenant is always derived from the subdomain,
  * which is controlled by the platform's DNS/routing layer.
  */
 async function resolveTenantIdFromHost(host: string): Promise<string | null> {
+  // Primary: Tenant service resolution (Tenant-first, TENANT-STABILIZATION)
   try {
-    const brandingUrl = `${GATEWAY_URL}/identity/api/tenants/current/branding`;
-    const res = await fetch(brandingUrl, {
-      method: 'GET',
-      headers: {
-        'X-Forwarded-Host': host,
-        'Host': host,
-      },
-    });
-    if (!res.ok) return null;
-    const body = await res.json() as { tenantId?: string };
-    if (!body.tenantId || body.tenantId === '') return null;
-    return body.tenantId;
+    const url = `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-host?host=${encodeURIComponent(host)}`;
+    const res = await fetch(url, { method: 'GET' });
+    if (res.ok) {
+      const body = await res.json() as { tenantId?: string };
+      if (body.tenantId && body.tenantId !== '') return body.tenantId;
+    }
   } catch {
-    return null;
+    // Fall through to fallback
   }
+
+  // Fallback: Identity branding endpoint (only if explicitly enabled for rollback)
+  if (ENABLE_IDENTITY_FALLBACK) {
+    console.warn('[careconnect-proxy] Tenant resolution failed; falling back to Identity branding endpoint', { host });
+    try {
+      const res = await fetch(`${GATEWAY_URL}/identity/api/tenants/current/branding`, {
+        method: 'GET',
+        headers: { 'X-Forwarded-Host': host, 'Host': host },
+      });
+      if (res.ok) {
+        const body = await res.json() as { tenantId?: string };
+        if (body.tenantId && body.tenantId !== '') return body.tenantId;
+      }
+    } catch {
+      // Both failed
+    }
+  }
+
+  return null;
 }
 
 async function proxy(request: NextRequest, { params }: RouteContext): Promise<NextResponse> {
