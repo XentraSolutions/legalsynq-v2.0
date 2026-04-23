@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<ICapabilityService,      CapabilityService>();
         services.AddScoped<ISettingService,         SettingService>();
         services.AddScoped<IMigrationUtilityService, MigrationUtilityService>();
+        services.AddScoped<ITenantSyncAdapter,       NoOpTenantSyncAdapter>();
 
         return services;
     }

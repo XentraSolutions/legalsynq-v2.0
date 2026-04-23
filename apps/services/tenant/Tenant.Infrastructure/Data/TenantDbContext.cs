@@ -7,12 +7,14 @@ public class TenantDbContext : DbContext
 {
     public TenantDbContext(DbContextOptions<TenantDbContext> options) : base(options) { }
 
-    public DbSet<Domain.Tenant>              Tenants            => Set<Domain.Tenant>();
-    public DbSet<TenantBranding>             Brandings          => Set<TenantBranding>();
-    public DbSet<TenantDomain>               Domains            => Set<TenantDomain>();
+    public DbSet<Domain.Tenant>              Tenants             => Set<Domain.Tenant>();
+    public DbSet<TenantBranding>             Brandings           => Set<TenantBranding>();
+    public DbSet<TenantDomain>               Domains             => Set<TenantDomain>();
     public DbSet<TenantProductEntitlement>   ProductEntitlements => Set<TenantProductEntitlement>();
-    public DbSet<TenantCapability>           Capabilities       => Set<TenantCapability>();
-    public DbSet<TenantSetting>              Settings           => Set<TenantSetting>();
+    public DbSet<TenantCapability>           Capabilities        => Set<TenantCapability>();
+    public DbSet<TenantSetting>              Settings            => Set<TenantSetting>();
+    public DbSet<MigrationRun>               MigrationRuns       => Set<MigrationRun>();
+    public DbSet<MigrationRunItem>           MigrationRunItems   => Set<MigrationRunItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
