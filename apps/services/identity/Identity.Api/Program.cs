@@ -522,6 +522,7 @@ app.MapUserEndpoints();
 app.MapAuthEndpoints();
 app.MapTenantBrandingEndpoints();
 app.MapAdminEndpoints();
+app.MapTenantProvisioningEndpoints();
 app.MapAccessSourceEndpoints();
 app.MapGroupEndpoints();
 app.MapPermissionCatalogEndpoints();

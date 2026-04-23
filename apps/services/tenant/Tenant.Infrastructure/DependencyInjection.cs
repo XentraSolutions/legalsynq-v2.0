@@ -63,6 +63,13 @@ public static class DependencyInjection
 
         services.AddScoped<IIdentityCompatAdapter, HttpIdentityCompatAdapter>();
 
+        // ── TENANT-B12: Identity provisioning adapter (canonical create, Tenant-first) ──
+        // Shares the "IdentityInternal" named client already wired above.
+        // Calls POST /api/internal/tenant-provisioning/provision on Identity service.
+        // The X-Provisioning-Token is added by HttpIdentityProvisioningAdapter at call time
+        // (read from IConfiguration["IdentityService:ProvisioningSecret"]).
+        services.AddScoped<IIdentityProvisioningAdapter, HttpIdentityProvisioningAdapter>();
+
         // ── TENANT-B10: Documents service adapter ─────────────────────────────
         // Used by logo admin endpoints to register/deregister logos in the
         // Documents service so the anonymous /public/logo/{id} endpoint can serve them.

@@ -31,10 +31,16 @@ public static class AdminEndpoints
     {
         // ── Tenants ──────────────────────────────────────────────────────────
         routes.MapGet("/api/admin/tenants",                      ListTenants);
+        // DEPRECATED [TENANT-B12] — Tenant creation is now owned by the Tenant service.
+        // New canonical entry point: POST /tenant/api/v1/admin/tenants
+        // This endpoint is kept for backward compatibility only. Do not add new callers.
         routes.MapPost("/api/admin/tenants",                     CreateTenant);
         routes.MapGet("/api/admin/tenants/check-code",           CheckTenantCode);        // CC2-INT-B09
         routes.MapPost("/api/admin/tenants/self-provision",      SelfProvisionTenant);    // CC2-INT-B09
         routes.MapGet("/api/admin/tenants/{id:guid}",            GetTenant);
+        // DEPRECATED [TENANT-B12] — Entitlement toggle is now owned by the Tenant service.
+        // New canonical entry point: POST /tenant/api/v1/admin/tenants/{id}/entitlements/{productCode}
+        // This endpoint is kept for backward compatibility only. Do not add new callers.
         routes.MapPost("/api/admin/tenants/{id:guid}/entitlements/{productCode}", UpdateEntitlement);
         routes.MapPatch("/api/admin/tenants/{id:guid}/session-settings", UpdateTenantSessionSettings);
         routes.MapPatch("/api/admin/tenants/{id:guid}/logo",             SetTenantLogo);

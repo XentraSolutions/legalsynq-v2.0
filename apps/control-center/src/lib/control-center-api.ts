@@ -419,16 +419,14 @@ export const controlCenterServerApi = {
     },
 
     /**
-     * POST /identity/api/admin/tenants/{id}/entitlements/{productCode}
+     * POST /tenant/api/v1/admin/tenants/{id}/entitlements/{productCode}
      *
+     * TENANT-B12: Switched to Tenant service (canonical owner of entitlements).
      * Enables or disables a product entitlement for a tenant.
      * Response is normalised via mapEntitlementResponse.
      *
      * Revalidates: cc:tenants — so the next tenants.list / getById call
      * bypasses the cache and fetches fresh data.
-     *
-     * TODO: integrate with Identity service entitlement endpoint
-     * TODO: add Redis or edge caching
      */
     updateEntitlement: async (
       tenantId:    string,
@@ -436,7 +434,7 @@ export const controlCenterServerApi = {
       enabled:     boolean,
     ): Promise<ProductEntitlementSummary> => {
       const raw = await apiClient.post<unknown>(
-        `/identity/api/admin/tenants/${encodeURIComponent(tenantId)}/entitlements/${encodeURIComponent(productCode)}`,
+        `/tenant/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/entitlements/${encodeURIComponent(productCode)}`,
         { enabled },
       );
       const result = mapEntitlementResponse(raw);
@@ -462,10 +460,15 @@ export const controlCenterServerApi = {
     },
 
     /**
-     * POST /identity/api/admin/tenants
+     * POST /tenant/api/v1/admin/tenants
      *
-     * Creates a new tenant with a default admin user. Returns the new tenant's
-     * ID/code/name plus the one-time temporary password for the admin user.
+     * TENANT-B12: Switched to Tenant service (canonical owner of tenant creation).
+     * Creates a new tenant (Tenant-first) and triggers Identity provisioning downstream.
+     * Returns the new tenant's ID/code/name plus the one-time temporary password
+     * from the Identity provisioning step.
+     *
+     * If Identity provisioning fails, identityProvisioned=false is returned and the
+     * Tenant record remains (canonical). The admin can retry via retryProvisioning.
      *
      * Revalidates: cc:tenants so the list refreshes immediately.
      */
@@ -488,25 +491,31 @@ export const controlCenterServerApi = {
       displayName:         string;
       code:                string;
       status:              string;
-      adminUserId:         string;
+      adminUserId:         string | null;
       adminEmail:          string;
-      temporaryPassword:   string;
+      temporaryPassword:   string | null;
       subdomain?:          string;
       provisioningStatus?: string;
       hostname?:           string;
+      tenantCreated:       boolean;
+      identityProvisioned: boolean;
+      nextAction?:         string;
     }> => {
       const raw = await apiClient.post<{
         tenantId:            string;
         displayName:         string;
         code:                string;
         status:              string;
-        adminUserId:         string;
+        adminUserId:         string | null;
         adminEmail:          string;
-        temporaryPassword:   string;
+        temporaryPassword:   string | null;
         subdomain?:          string;
         provisioningStatus?: string;
         hostname?:           string;
-      }>('/identity/api/admin/tenants', body);
+        tenantCreated:       boolean;
+        identityProvisioned: boolean;
+        nextAction?:         string;
+      }>('/tenant/api/v1/admin/tenants', body);
       safeRevalidateTag(CACHE_TAGS.tenants);
       return raw;
     },

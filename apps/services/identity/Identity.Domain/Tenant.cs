@@ -95,6 +95,56 @@ public class Tenant
         };
     }
 
+    /// <summary>
+    /// TENANT-B12 — Creates an Identity Tenant record that shares the canonical UUID
+    /// already assigned by the Tenant service DB. Use this when the Tenant service is
+    /// the source-of-record and Identity is provisioning downstream entities.
+    /// </summary>
+    public static Tenant Rehydrate(
+        Guid    id,
+        string  code,
+        string? displayName  = null,
+        string? status       = null,
+        string? subdomain    = null,
+        string? addressLine1 = null,
+        string? city         = null,
+        string? state        = null,
+        string? postalCode   = null,
+        double? latitude     = null,
+        double? longitude    = null,
+        string? geoPointSource = null)
+    {
+        if (id == Guid.Empty) throw new ArgumentException("id must not be empty.", nameof(id));
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+
+        var slug = SlugGenerator.Normalize(code);
+        var name = displayName?.Trim() ?? slug;
+
+        var now = DateTime.UtcNow;
+        return new Tenant
+        {
+            Id                       = id,
+            Name                     = name,
+            Code                     = slug,
+            IsActive                 = true,
+            Subdomain                = subdomain?.Trim().ToLowerInvariant(),
+            PreferredSubdomain       = subdomain?.Trim().ToLowerInvariant() ?? slug,
+            ProvisioningStatus       = ProvisioningStatus.Pending,
+            ProvisioningFailureStage = ProvisioningFailureStage.None,
+            VerificationAttemptCount = 0,
+            IsVerificationRetryExhausted = false,
+            AddressLine1             = addressLine1?.Trim(),
+            City                     = city?.Trim(),
+            State                    = state?.Trim(),
+            PostalCode               = postalCode?.Trim(),
+            Latitude                 = latitude,
+            Longitude                = longitude,
+            GeoPointSource           = geoPointSource,
+            CreatedAtUtc             = now,
+            UpdatedAtUtc             = now,
+        };
+    }
+
     public void SetSessionTimeout(int? minutes)
     {
         if (minutes.HasValue && (minutes.Value < 5 || minutes.Value > 480))
