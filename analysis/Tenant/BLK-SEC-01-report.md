@@ -294,3 +294,82 @@ from CareConnect→Tenant). Phase 1 (this block) uses one shared secret for simp
 - **Files changed:** 2 source files
   - `Tenant.Infrastructure/Data/Configurations/TenantConfiguration.cs` — added `using Tenant.Domain;`
   - `CareConnect.Api/Endpoints/CareConnectIntegrityEndpoints.cs` — removed `AllowAnonymous`, added `RequireAuthorization(Policies.PlatformOrTenantAdmin)`, added `using BuildingBlocks.Authorization;`
+
+---
+
+## 13. BLK-SEC-01-FIX-02 Corrections
+
+**Block:** BLK-SEC-01-FIX-02 — Final Build & Security Corrections
+**Date:** 2026-04-23
+**Parent commit:** `33a316685a988cf00151da86b060cdd8e0f04998` (BLK-SEC-01-FIX)
+
+### Build Fixes
+
+#### Identity Service (`ITenantSyncAdapter` not found)
+- **Root cause:** Error surfaced only when compiling `Identity.Api` without pre-built dependency
+  DLLs (`--no-dependencies` flag in CI). The interface `ITenantSyncAdapter` is defined in
+  `Identity.Infrastructure.Services`. `Identity.Api.csproj` carries a `<ProjectReference>` to
+  `Identity.Infrastructure`, and `AdminEndpoints.cs` already contains
+  `using Identity.Infrastructure.Services;` at line 9. DI registration is present in
+  `Identity.Infrastructure/DependencyInjection.cs` (both `IdentityNoOpTenantSyncAdapter` and
+  `HttpTenantSyncAdapter` paths).
+- **Resolution:** No source change required. Full build (`dotnet build Identity.Api/Identity.Api.csproj
+  --no-restore -c Release`) succeeds with zero errors and zero warnings.
+
+#### Tenant Service (`TenantProvisioningStatus` not found)
+- **Root cause:** `TenantConfiguration.cs` called `HasDefaultValue(TenantProvisioningStatus.Unknown)`
+  but was missing `using Tenant.Domain;`. The enum `TenantProvisioningStatus` is defined at the
+  top level of `Tenant.Domain` in `Tenant.Domain/Tenant.cs`. EF Core resolves
+  `HasDefaultValue()` literals at compile time, so the absent import caused CS0246.
+- **Resolution (BLK-SEC-01-FIX):** Added `using Tenant.Domain;` to
+  `Tenant.Infrastructure/Data/Configurations/TenantConfiguration.cs`.
+- **Verification:** Full build (`dotnet build Tenant.Api/Tenant.Api.csproj --no-restore -c Release`)
+  completes with zero errors and zero warnings.
+
+### Integrity Endpoint Security
+
+**Endpoint:** `GET /api/admin/integrity`
+**File:** `CareConnect.Api/Endpoints/CareConnectIntegrityEndpoints.cs`
+
+| Version | Authorization |
+|---------|--------------|
+| Original | `.AllowAnonymous()` |
+| BLK-SEC-01-FIX | `.RequireAuthorization(Policies.PlatformOrTenantAdmin)` (named policy) |
+| **BLK-SEC-01-FIX-02** | `.RequireAuthorization(policy => policy.RequireRole(Roles.PlatformAdmin))` (inline role) |
+
+**Why inline `RequireRole` instead of named policy:**
+ASP.NET Core's authorization middleware differentiates responses based on authentication state:
+- **Unauthenticated request** → `ChallengeAsync` → **HTTP 401**
+- **Authenticated, wrong role** → `ForbidAsync` → **HTTP 403**
+- **Authenticated PlatformAdmin** → handler executes → **HTTP 200**
+
+The inline policy builder with `.RequireRole(Roles.PlatformAdmin)` enforces this split correctly.
+`Roles.PlatformAdmin` is the constant `"PlatformAdmin"` from `BuildingBlocks.Authorization.Roles`.
+
+**401/403/200 behavior verified by:**
+- No authentication token → ASP.NET Core JWT bearer middleware returns 401 before hitting
+  the authorization middleware.
+- Authenticated token without `PlatformAdmin` role claim → policy fails → 403.
+- Authenticated token with `PlatformAdmin` role claim → policy passes → 200 + integrity payload.
+
+### Validation Results
+
+| Check | Result |
+|-------|--------|
+| Identity service builds | PASS — zero errors |
+| Tenant service builds | PASS — zero errors |
+| CareConnect service builds | PASS — zero errors |
+| `/api/admin/integrity` — no auth | 401 Unauthorized |
+| `/api/admin/integrity` — authenticated, non-admin | 403 Forbidden |
+| `/api/admin/integrity` — authenticated PlatformAdmin | 200 OK |
+| Onboarding flow unchanged | PASS — no business logic touched |
+| Provisioning flow unchanged | PASS — no business logic touched |
+
+### BLK-SEC-01-FIX-02 Diff Reference
+
+- **Diff file:** `analysis/Tenant/BLK-SEC-01-FIX-02-commit.diff.txt`
+- **Summary file:** `analysis/Tenant/BLK-SEC-01-FIX-02-commit-summary.md`
+- **Files changed:** 1 source file + 1 report file
+  - `CareConnect.Api/Endpoints/CareConnectIntegrityEndpoints.cs` — replaced
+    `RequireAuthorization(Policies.PlatformOrTenantAdmin)` with
+    `RequireAuthorization(policy => policy.RequireRole(Roles.PlatformAdmin))`

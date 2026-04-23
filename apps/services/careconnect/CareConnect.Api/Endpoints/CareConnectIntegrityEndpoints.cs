@@ -23,10 +23,11 @@ public static class CareConnectIntegrityEndpoints
     public static IEndpointRouteBuilder MapCareConnectIntegrityEndpoints(
         this IEndpointRouteBuilder routes)
     {
-        // BLK-SEC-01-FIX: Require PlatformAdmin or TenantAdmin JWT.
-        // Previously AllowAnonymous — internal diagnostic data must not be publicly accessible.
+        // BLK-SEC-01-FIX-02: Role-based auth on admin diagnostic endpoint.
+        // Unauthenticated → 401 (ChallengeAsync).  Authenticated non-admin → 403 (ForbidAsync).
+        // Previously AllowAnonymous — internal integrity counters must not be publicly accessible.
         routes.MapGet("/api/admin/integrity", GetIntegrityReport)
-              .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+              .RequireAuthorization(policy => policy.RequireRole(Roles.PlatformAdmin));
         return routes;
     }
 
