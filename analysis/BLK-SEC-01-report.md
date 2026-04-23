@@ -200,7 +200,9 @@ uses (e.g. non-membership calls), but the membership client no longer uses them.
 
 ## 9. GitHub Commits (MANDATORY)
 
-*(Populated after commit)*
+| Commit | Description |
+|--------|-------------|
+| `3ddf2ae` | BLK-SEC-01: Add secure provisioning tokens for inter-service communication — production fail-fast guards, IdentityServiceOptions.ProvisioningToken, HttpIdentityMembershipClient standardised |
 
 ---
 
