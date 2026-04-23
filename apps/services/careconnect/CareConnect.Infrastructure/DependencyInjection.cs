@@ -59,6 +59,11 @@ public static class DependencyInjection
             configuration.GetSection(IdentityServiceOptions.SectionName));
         services.AddHttpClient("IdentityService");
 
+        // BLK-CC-01: Tenant service options + named HTTP client for tenant lifecycle calls
+        services.Configure<TenantServiceOptions>(
+            configuration.GetSection(TenantServiceOptions.SectionName));
+        services.AddHttpClient("TenantService");
+
         services.AddAuditEventClient(configuration);
 
         services.AddDbContext<CareConnectDbContext>(options =>
@@ -103,7 +108,13 @@ public static class DependencyInjection
         services.AddScoped<IIdentityOrganizationService, HttpIdentityOrganizationService>();
         services.AddScoped<IAutoProvisionService, AutoProvisionService>();
 
-        // CC2-INT-B09: Provider tenant self-onboarding
+        // BLK-CC-01: Tenant service client (check-code, provision) — replaces retired Identity endpoints
+        services.AddScoped<ITenantServiceClient, HttpTenantServiceClient>();
+
+        // BLK-CC-01: Identity membership client (assign-tenant) — uses BLK-ID-02 APIs
+        services.AddScoped<IIdentityMembershipClient, HttpIdentityMembershipClient>();
+
+        // CC2-INT-B09 / BLK-CC-01: Provider tenant self-onboarding (now uses Tenant + Identity membership)
         services.AddScoped<IProviderOnboardingService, ProviderOnboardingService>();
 
         // LSCC-011: Activation funnel analytics

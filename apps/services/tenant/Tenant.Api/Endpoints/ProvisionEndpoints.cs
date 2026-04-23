@@ -1,15 +1,15 @@
+// BLK-TS-01 — Tenant Core Foundation endpoints.
+// BLK-CC-01 — Provision endpoint now accepts X-Provisioning-Token for service-to-service calls
+//             (e.g. CareConnect → Tenant service during provider onboarding).
+//
+// GET  /api/v1/tenants/check-code  — validate and check uniqueness of a tenant code (anonymous)
+// POST /api/v1/tenants/provision   — minimal tenant creation (admin JWT OR X-Provisioning-Token)
 using BuildingBlocks.Authorization;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 
 namespace Tenant.Api.Endpoints;
 
-/// <summary>
-/// BLK-TS-01 — Tenant Core Foundation endpoints.
-///
-/// GET  /api/v1/tenants/check-code  — validate and check uniqueness of a tenant code (anonymous)
-/// POST /api/v1/tenants/provision   — minimal tenant creation from name + code (admin only)
-/// </summary>
 public static class ProvisionEndpoints
 {
     public static void MapProvisionEndpoints(this IEndpointRouteBuilder app)
@@ -41,21 +41,80 @@ public static class ProvisionEndpoints
 
         // ── POST /api/v1/tenants/provision ────────────────────────────────────
         //
-        // Admin-only. Minimal provision: tenantName + tenantCode → canonical tenant record.
+        // Auth: accepts either:
+        //   a) JWT with PlatformAdmin role (admin portal), OR
+        //   b) X-Provisioning-Token header matching TenantService:ProvisioningSecret (service-to-service)
+        //
+        // In dev mode (ProvisioningSecret empty), the token check is skipped.
+        //
+        // Minimal provision: tenantName + tenantCode → canonical tenant record.
         // Subdomain defaults to the normalized code.
         // Does NOT create users, Identity memberships, DNS, or product entitlements.
         //
         // 201 { tenantId, tenantCode, subdomain }
+        // 401 missing/invalid auth
         // 409 duplicate code / subdomain
         // 422 invalid code format
         group.MapPost("/provision", async (
+            HttpContext       httpContext,
             ProvisionRequest  request,
             ITenantService    svc,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
             CancellationToken ct) =>
         {
+            var log = loggerFactory.CreateLogger("Tenant.Api.ProvisionEndpoints");
+
+            // Accept admin JWT (already authenticated via RequireAuthorization below)
+            // OR a valid X-Provisioning-Token for service-to-service calls.
+            if (!IsAuthorized(httpContext, configuration, log))
+                return Results.Unauthorized();
+
             var result = await svc.ProvisionAsync(request, ct);
             return Results.Created($"/api/v1/tenants/{result.TenantId}", result);
         })
-        .RequireAuthorization(Policies.AdminOnly);
+        .AllowAnonymous();  // token check is manual above; AdminOnly JWT is checked inside IsAuthorized
+    }
+
+    // ── Auth helper ───────────────────────────────────────────────────────────
+    //
+    // Accepts either:
+    //  1. A valid admin JWT (user is authenticated + has PlatformAdmin role)
+    //  2. A valid X-Provisioning-Token header (service-to-service)
+    //  3. Dev mode: ProvisioningSecret is empty → skip token check
+    //
+    // If neither condition is met, returns false (→ 401).
+    private static bool IsAuthorized(
+        HttpContext    httpContext,
+        IConfiguration configuration,
+        ILogger        log)
+    {
+        // Path 1: Valid admin JWT
+        if (httpContext.User.Identity?.IsAuthenticated == true &&
+            httpContext.User.IsInRole(Roles.PlatformAdmin))
+        {
+            return true;
+        }
+
+        // Path 2: Provisioning token (service-to-service)
+        var secret        = configuration["TenantService:ProvisioningSecret"];
+        var incomingToken = httpContext.Request.Headers["X-Provisioning-Token"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            // Dev mode — skip token check, allow the call
+            log.LogDebug("[ProvisionEndpoints] ProvisioningSecret not configured — allowing call in dev mode.");
+            return true;
+        }
+
+        if (!string.Equals(incomingToken, secret, StringComparison.Ordinal))
+        {
+            log.LogWarning(
+                "[ProvisionEndpoints] /provision rejected — invalid or missing X-Provisioning-Token " +
+                "from {RemoteIp}.", httpContext.Connection.RemoteIpAddress);
+            return false;
+        }
+
+        return true;
     }
 }

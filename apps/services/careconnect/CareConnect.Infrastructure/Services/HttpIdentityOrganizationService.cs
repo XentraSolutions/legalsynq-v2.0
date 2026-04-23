@@ -1,5 +1,8 @@
-// LSCC-010: HTTP client that calls the Identity service to create/resolve
+// LSCC-010 / CC2-INT-B04: HTTP client that calls the Identity service to create/resolve
 // a minimal PROVIDER Organization for the auto-provision flow.
+//
+// BLK-CC-01: Retired methods removed — check-code and self-provision now live in
+// HttpTenantServiceClient (ITenantServiceClient) and HttpIdentityMembershipClient.
 //
 // Failure policy: ALL failures (network, 4xx, 5xx, parse) return null.
 // The caller (AutoProvisionService) interprets null as "fall back to LSCC-009".
@@ -53,16 +56,8 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
         try
         {
-            using var client = _httpClientFactory.CreateClient("IdentityService");
-            client.BaseAddress = new Uri(_options.BaseUrl!.TrimEnd('/') + "/");
-            client.Timeout     = TimeSpan.FromSeconds(_options.TimeoutSeconds);
-
-            if (!string.IsNullOrWhiteSpace(_options.AuthHeaderName) &&
-                !string.IsNullOrWhiteSpace(_options.AuthHeaderValue))
-            {
-                client.DefaultRequestHeaders.TryAddWithoutValidation(
-                    _options.AuthHeaderName, _options.AuthHeaderValue);
-            }
+            using var client = BuildIdentityClient();
+            client.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
@@ -147,16 +142,7 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
         try
         {
-            using var client = _httpClientFactory.CreateClient("IdentityService");
-            client.BaseAddress = new Uri(_options.BaseUrl!.TrimEnd('/') + "/");
-            client.Timeout     = TimeSpan.FromSeconds(_options.TimeoutSeconds);
-
-            if (!string.IsNullOrWhiteSpace(_options.AuthHeaderName) &&
-                !string.IsNullOrWhiteSpace(_options.AuthHeaderValue))
-            {
-                client.DefaultRequestHeaders.TryAddWithoutValidation(
-                    _options.AuthHeaderName, _options.AuthHeaderValue);
-            }
+            using var client = BuildIdentityClient();
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
@@ -220,157 +206,6 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         }
     }
 
-    // ── CC2-INT-B09: Tenant code availability check ──────────────────────────
-
-    public async Task<TenantCodeCheckResult?> CheckTenantCodeAvailableAsync(
-        string            code,
-        CancellationToken ct = default)
-    {
-        if (!_isEnabled)
-        {
-            _logger.LogDebug("CC2-INT-B09 CheckTenantCode skipped (BaseUrl not configured).");
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(code))
-            return null;
-
-        try
-        {
-            using var client = BuildIdentityClient();
-            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
-
-            using var response = await client.GetAsync(
-                $"api/admin/tenants/check-code?code={Uri.EscapeDataString(code)}", cts.Token);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning(
-                    "CC2-INT-B09 CheckTenantCode returned HTTP {Status} for code '{Code}'.",
-                    (int)response.StatusCode, code);
-                return null;
-            }
-
-            var result = await response.Content.ReadFromJsonAsync<CheckCodeResponse>(
-                cancellationToken: cts.Token);
-
-            if (result is null) return null;
-
-            return new TenantCodeCheckResult
-            {
-                Available      = result.Available,
-                NormalizedCode = result.NormalizedCode ?? code,
-                Message        = result.Message,
-            };
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            _logger.LogWarning("CC2-INT-B09 CheckTenantCode timed out for '{Code}'.", code);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "CC2-INT-B09 CheckTenantCode failed for '{Code}'.", code);
-            return null;
-        }
-    }
-
-    // ── CC2-INT-B09: Provider tenant self-provisioning ───────────────────────
-
-    public async Task<SelfProvisionTenantResult?> SelfProvisionProviderTenantAsync(
-        Guid              ownerUserId,
-        string            tenantName,
-        string            tenantCode,
-        CancellationToken ct = default)
-    {
-        if (!_isEnabled)
-        {
-            _logger.LogWarning(
-                "CC2-INT-B09 SelfProvisionTenant skipped (BaseUrl not configured) for user {UserId}.",
-                ownerUserId);
-            return null;
-        }
-
-        try
-        {
-            using var client = BuildIdentityClient();
-            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(Math.Max(_options.TimeoutSeconds, 30)));
-
-            var body = new
-            {
-                ownerUserId = ownerUserId,
-                tenantName  = tenantName,
-                tenantCode  = tenantCode,
-            };
-
-            using var response = await client.PostAsJsonAsync(
-                "api/admin/tenants/self-provision", body, cts.Token);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorBody = await response.Content.ReadAsStringAsync(cts.Token);
-
-                // 409 Conflict → tenant code already taken. Return a typed failure result
-                // so the caller can map it to TenantCodeUnavailable (→ HTTP 409 to the provider)
-                // rather than treating it as an unexpected infrastructure failure.
-                if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
-                {
-                    _logger.LogWarning(
-                        "CC2-INT-B09 SelfProvisionTenant: tenant code '{TenantCode}' already taken (409) for user {UserId}.",
-                        tenantCode, ownerUserId);
-                    return new SelfProvisionTenantResult
-                    {
-                        IsSuccess   = false,
-                        FailureCode = "CODE_TAKEN",
-                    };
-                }
-
-                _logger.LogWarning(
-                    "CC2-INT-B09 SelfProvisionTenant returned HTTP {Status} for user {UserId}: {Body}",
-                    (int)response.StatusCode, ownerUserId, errorBody);
-                return null;
-            }
-
-            var result = await response.Content.ReadFromJsonAsync<SelfProvisionResponse>(
-                cancellationToken: cts.Token);
-
-            if (result is null || result.TenantId == Guid.Empty)
-            {
-                _logger.LogWarning(
-                    "CC2-INT-B09 SelfProvisionTenant returned null/empty TenantId for user {UserId}.",
-                    ownerUserId);
-                return null;
-            }
-
-            _logger.LogInformation(
-                "CC2-INT-B09 Tenant '{TenantCode}' self-provisioned for user {UserId}. TenantId={TenantId}.",
-                result.TenantCode, ownerUserId, result.TenantId);
-
-            return new SelfProvisionTenantResult
-            {
-                TenantId           = result.TenantId,
-                TenantCode         = result.TenantCode ?? string.Empty,
-                Subdomain          = result.Subdomain  ?? string.Empty,
-                ProvisioningStatus = result.ProvisioningStatus ?? string.Empty,
-                Hostname           = result.Hostname,
-            };
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            _logger.LogWarning(
-                "CC2-INT-B09 SelfProvisionTenant timed out for user {UserId}.", ownerUserId);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "CC2-INT-B09 SelfProvisionTenant failed for user {UserId}.", ownerUserId);
-            return null;
-        }
-    }
-
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildIdentityClient()
@@ -416,37 +251,5 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
 
         [JsonPropertyName("invitationSent")]
         public bool  InvitationSent { get; set; }
-    }
-
-    // CC2-INT-B09 response models
-
-    private sealed class CheckCodeResponse
-    {
-        [JsonPropertyName("available")]
-        public bool    Available      { get; set; }
-
-        [JsonPropertyName("normalizedCode")]
-        public string? NormalizedCode { get; set; }
-
-        [JsonPropertyName("message")]
-        public string? Message        { get; set; }
-    }
-
-    private sealed class SelfProvisionResponse
-    {
-        [JsonPropertyName("tenantId")]
-        public Guid    TenantId           { get; set; }
-
-        [JsonPropertyName("tenantCode")]
-        public string? TenantCode         { get; set; }
-
-        [JsonPropertyName("subdomain")]
-        public string? Subdomain          { get; set; }
-
-        [JsonPropertyName("provisioningStatus")]
-        public string? ProvisioningStatus { get; set; }
-
-        [JsonPropertyName("hostname")]
-        public string? Hostname           { get; set; }
     }
 }

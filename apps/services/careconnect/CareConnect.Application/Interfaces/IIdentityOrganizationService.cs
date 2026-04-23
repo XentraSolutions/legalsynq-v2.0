@@ -1,10 +1,18 @@
-// LSCC-010 / CC2-INT-B04 / CC2-INT-B09: Cross-service calls to the Identity service.
-// CareConnect calls these during provider auto-provisioning and self-onboarding.
+// LSCC-010 / CC2-INT-B04: Cross-service calls to the Identity service.
+// Identity service = membership / access only (BLK-CC-01).
+//
+// Retired methods (BLK-ID-01 → now use ITenantServiceClient + IIdentityMembershipClient):
+//   - CheckTenantCodeAvailableAsync  (was GET /api/admin/tenants/check-code)
+//   - SelfProvisionProviderTenantAsync (was POST /api/admin/tenants/self-provision)
 namespace CareConnect.Application.Interfaces;
 
 /// <summary>
 /// Thin cross-service abstraction over Identity service endpoints used during
-/// provider auto-provisioning and tenant self-provisioning.
+/// provider auto-provisioning and user invitation.
+///
+/// Scope (BLK-CC-01): Identity = org creation + user invitation ONLY.
+/// Tenant lifecycle (check-code, provision) is handled by ITenantServiceClient.
+/// Tenant membership (assign-tenant, assign-roles) is handled by IIdentityMembershipClient.
 /// </summary>
 public interface IIdentityOrganizationService
 {
@@ -44,37 +52,9 @@ public interface IIdentityOrganizationService
         string            firstName,
         string?           lastName,
         CancellationToken ct = default);
-
-    // ── CC2-INT-B09: Provider tenant self-provisioning ───────────────────────
-
-    /// <summary>
-    /// Checks whether a tenant code/subdomain is available for self-provisioning.
-    ///
-    /// Returns null on any failure — callers should treat null as "unknown availability,
-    /// proceed cautiously" (the provision step will still enforce uniqueness).
-    /// </summary>
-    Task<TenantCodeCheckResult?> CheckTenantCodeAvailableAsync(
-        string            code,
-        CancellationToken ct = default);
-
-    /// <summary>
-    /// Self-provisions a new tenant for an existing Identity user
-    /// identified by <paramref name="ownerUserId"/>.
-    ///
-    /// NO new Identity user is created. The existing user's home TenantId is updated
-    /// to the new tenant so they can log in at the new subdomain.
-    ///
-    /// Returns the provisioning result on success, null on any failure (caller should
-    /// surface an error to the provider — this is NOT a silent fallback).
-    /// </summary>
-    Task<SelfProvisionTenantResult?> SelfProvisionProviderTenantAsync(
-        Guid              ownerUserId,
-        string            tenantName,
-        string            tenantCode,
-        CancellationToken ct = default);
 }
 
-// ── Result types ──────────────────────────────────────────────────────────────
+// ── Result types ───────────────────────────────────────────────────────────────
 
 public sealed class ProvisionProviderUserResult
 {
@@ -82,33 +62,4 @@ public sealed class ProvisionProviderUserResult
     public Guid? InvitationId   { get; init; }
     public bool  IsNew          { get; init; }
     public bool  InvitationSent { get; init; }
-}
-
-public sealed class TenantCodeCheckResult
-{
-    public bool    Available      { get; init; }
-    public string  NormalizedCode { get; init; } = string.Empty;
-    public string? Message        { get; init; }
-}
-
-public sealed class SelfProvisionTenantResult
-{
-    /// <summary>
-    /// True when the provisioning succeeded. False when Identity returned a
-    /// known business error (e.g. CODE_TAKEN). Null / callers receive null when
-    /// there was an unexpected failure (network, 5xx) — see HTTP service.
-    /// </summary>
-    public bool    IsSuccess         { get; init; } = true;
-
-    /// <summary>
-    /// Machine-readable failure code when IsSuccess = false.
-    /// "CODE_TAKEN" — the requested tenant code is already in use (Identity 409).
-    /// </summary>
-    public string? FailureCode       { get; init; }
-
-    public Guid   TenantId           { get; init; }
-    public string TenantCode         { get; init; } = string.Empty;
-    public string Subdomain          { get; init; } = string.Empty;
-    public string ProvisioningStatus { get; init; } = string.Empty;
-    public string? Hostname          { get; init; }
 }
