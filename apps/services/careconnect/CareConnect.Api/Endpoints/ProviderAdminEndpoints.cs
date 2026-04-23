@@ -1,9 +1,14 @@
 // LSCC-002: Admin provider org-linkage backfill endpoint.
 // LSCC-002-01: Extended with unlinked-list and bulk-link endpoints.
 // LSCC-01-003: Extended with CareConnect receiver activation endpoint.
+// BLK-OBS-01: Audit events added for activate-for-careconnect and link-organization.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using CareConnect.Application.Interfaces;
+using LegalSynq.AuditClient;
+using LegalSynq.AuditClient.DTOs;
+using LegalSynq.AuditClient.Enums;
+using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CareConnect.Api.Endpoints;
@@ -47,17 +52,32 @@ public static class ProviderAdminEndpoints
     }
 
     // LSCC-002: Single provider org-link backfill — idempotent, explicit.
+    // BLK-OBS-01: emits careconnect.provider.org-linked audit event.
     private static async Task<IResult> LinkOrganizationAsync(
         Guid                 id,
         [FromBody] LinkOrganizationRequest request,
         IProviderService     service,
         ICurrentRequestContext ctx,
+        IAuditEventClient    auditClient,
+        HttpContext          http,
         CancellationToken    ct)
     {
         var tenantId = ctx.TenantId
             ?? throw new InvalidOperationException("tenant_id claim is missing.");
 
         var result = await service.LinkOrganizationAsync(tenantId, id, request.OrganizationId, ct);
+
+        // BLK-OBS-01: audit the admin org-link action.
+        var correlationId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
+        _ = EmitAuditAsync(auditClient,
+            eventType:     "careconnect.provider.org-linked",
+            action:        "OrgLinked",
+            description:   $"Provider '{id}' linked to organization '{request.OrganizationId}' by admin.",
+            tenantId:      tenantId,
+            actorUserId:   ctx.UserId,
+            providerId:    id,
+            correlationId: correlationId);
+
         return Results.Ok(result);
     }
 
@@ -105,10 +125,13 @@ public static class ProviderAdminEndpoints
     // Requires PlatformOrTenantAdmin.
     // BLK-SEC-02-01: TenantAdmin may only activate providers within their own tenant.
     //   PlatformAdmin may activate any provider (platform-wide tooling intent).
+    // BLK-OBS-01: emits careconnect.provider.activated audit event.
     private static async Task<IResult> ActivateForCareConnectAsync(
         Guid                   id,
         IProviderService       service,
         ICurrentRequestContext ctx,
+        IAuditEventClient      auditClient,
+        HttpContext            http,
         CancellationToken      ct)
     {
         // BLK-SEC-02-01: For non-PlatformAdmin, verify provider belongs to caller's tenant.
@@ -125,6 +148,23 @@ public static class ProviderAdminEndpoints
         }
 
         var result = await service.ActivateForCareConnectAsync(id, ct);
+
+        // BLK-OBS-01: emit audit event for this admin activation.
+        var tenantId      = ctx.TenantId;
+        var correlationId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
+
+        if (tenantId.HasValue)
+        {
+            _ = EmitAuditAsync(auditClient,
+                eventType:     "careconnect.provider.activated",
+                action:        "ActivatedForCareConnect",
+                description:   $"Provider '{id}' activated for CareConnect by admin. AlreadyActive={result.AlreadyActive}.",
+                tenantId:      tenantId.Value,
+                actorUserId:   ctx.UserId,
+                providerId:    id,
+                correlationId: correlationId);
+        }
+
         return Results.Ok(new
         {
             providerId         = result.ProviderId,
@@ -132,6 +172,60 @@ public static class ProviderAdminEndpoints
             isActive           = result.IsActive,
             acceptingReferrals = result.AcceptingReferrals,
         });
+    }
+
+    // ── Shared audit helper ───────────────────────────────────────────────────
+
+    private static Task EmitAuditAsync(
+        IAuditEventClient auditClient,
+        string            eventType,
+        string            action,
+        string            description,
+        Guid              tenantId,
+        Guid?             actorUserId,
+        Guid              providerId,
+        string            correlationId)
+    {
+        try
+        {
+            return auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = eventType,
+                EventCategory = EventCategory.Business,
+                SourceSystem  = "care-connect",
+                SourceService = "provider-admin",
+                Visibility    = AuditVisibility.Tenant,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+                Scope = new AuditEventScopeDto
+                {
+                    ScopeType = ScopeType.Tenant,
+                    TenantId  = tenantId.ToString(),
+                },
+                Actor = new AuditEventActorDto
+                {
+                    Type = actorUserId.HasValue ? ActorType.User : ActorType.System,
+                    Id   = actorUserId?.ToString() ?? "system",
+                    Name = "Admin",
+                },
+                Entity = new AuditEventEntityDto
+                {
+                    Type = "Provider",
+                    Id   = providerId.ToString(),
+                },
+                Action        = action,
+                Description   = description,
+                Outcome       = "success",
+                CorrelationId = correlationId,
+                IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                    DateTimeOffset.UtcNow, "care-connect", eventType, providerId.ToString()),
+                Tags = ["admin", "provider", "activation"],
+            });
+        }
+        catch
+        {
+            return Task.CompletedTask;
+        }
     }
 }
 

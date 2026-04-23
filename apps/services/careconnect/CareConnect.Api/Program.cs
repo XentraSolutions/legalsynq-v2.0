@@ -215,6 +215,7 @@ catch (Exception ex)
         "CareConnect Phase H startup diagnostic skipped — could not query the database at startup.");
 }
 
+app.UseMiddleware<CorrelationIdMiddleware>();    // BLK-OBS-01: assign X-Correlation-Id first
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();

@@ -248,6 +248,8 @@ public class ActivationRequestService : IActivationRequestService
                 Action      = "Approved",
                 Description = $"Activation request '{request.Id}' approved. Provider '{request.ProviderId}' linked to org '{organizationId}'.",
                 Outcome     = "success",
+                CorrelationId  = _httpContextAccessor.HttpContext?.Request.Headers["X-Correlation-Id"].FirstOrDefault()
+                                   ?? _httpContextAccessor.HttpContext?.Items["CorrelationId"]?.ToString(),
                 RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
                 IdempotencyKey = IdempotencyKey.ForWithTimestamp(
                     DateTimeOffset.UtcNow, "care-connect",

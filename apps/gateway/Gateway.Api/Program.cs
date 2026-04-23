@@ -48,6 +48,29 @@ var env = app.Environment.EnvironmentName;
 
 app.Logger.LogInformation("Starting {Service} v{Version} in {Environment}", ServiceName, Version, env);
 
+// BLK-OBS-01: Correlation ID — assign X-Correlation-Id at the platform edge so every request
+// entering the Gateway has a consistent trace identifier propagated to all downstream services.
+// Convention aligns with the Audit, Documents, and Reports service CorrelationIdMiddleware.
+app.Use(async (ctx, next) =>
+{
+    const string header   = "X-Correlation-Id";
+    const int    maxLen   = 100;
+    var incoming = ctx.Request.Headers[header].FirstOrDefault();
+    var correlationId =
+        !string.IsNullOrWhiteSpace(incoming)
+        && incoming.Length <= maxLen
+        && System.Text.RegularExpressions.Regex.IsMatch(incoming, @"^[a-zA-Z0-9\-_]+$")
+            ? incoming
+            : Guid.NewGuid().ToString();
+    ctx.Items["CorrelationId"] = correlationId;
+    ctx.Response.OnStarting(() =>
+    {
+        ctx.Response.Headers[header] = correlationId;
+        return Task.CompletedTask;
+    });
+    await next();
+});
+
 // Security headers
 app.Use(async (ctx, next) =>
 {

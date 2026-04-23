@@ -333,12 +333,15 @@ public static class PublicNetworkEndpoints
 
         var secret = config["PublicTrustBoundary:InternalRequestSecret"];
 
+        // BLK-OBS-01: resolve correlation/request ID for all security-event log entries.
+        var requestId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
+
         if (string.IsNullOrWhiteSpace(secret))
         {
             logger.LogWarning(
                 "PublicTrustBoundary:InternalRequestSecret is not configured — " +
                 "trust boundary validation is DISABLED. Set this value in all non-dev environments. " +
-                "Path={Path}", http.Request.Path);
+                "Path={Path} RequestId={RequestId}", http.Request.Path, requestId);
             return ResolveTenantIdRaw(http);
         }
 
@@ -348,8 +351,8 @@ public static class PublicNetworkEndpoints
         {
             logger.LogWarning(
                 "Public request rejected: X-Internal-Gateway-Secret mismatch (Layer 1). " +
-                "RemoteIp={RemoteIp} Path={Path}",
-                http.Connection.RemoteIpAddress, http.Request.Path);
+                "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
+                http.Connection.RemoteIpAddress, http.Request.Path, requestId);
             return null;
         }
 
@@ -361,8 +364,8 @@ public static class PublicNetworkEndpoints
         {
             logger.LogWarning(
                 "Public request rejected: X-Tenant-Id header missing (Layer 2). " +
-                "RemoteIp={RemoteIp} Path={Path}",
-                http.Connection.RemoteIpAddress, http.Request.Path);
+                "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
+                http.Connection.RemoteIpAddress, http.Request.Path, requestId);
             return null;
         }
 
@@ -370,8 +373,8 @@ public static class PublicNetworkEndpoints
         {
             logger.LogWarning(
                 "Public request rejected: X-Tenant-Id-Sig header missing (Layer 2). " +
-                "RemoteIp={RemoteIp} Path={Path}",
-                http.Connection.RemoteIpAddress, http.Request.Path);
+                "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
+                http.Connection.RemoteIpAddress, http.Request.Path, requestId);
             return null;
         }
 
@@ -379,8 +382,8 @@ public static class PublicNetworkEndpoints
         {
             logger.LogWarning(
                 "Public request rejected: X-Tenant-Id-Sig HMAC validation failed (Layer 2). " +
-                "RemoteIp={RemoteIp} Path={Path}",
-                http.Connection.RemoteIpAddress, http.Request.Path);
+                "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
+                http.Connection.RemoteIpAddress, http.Request.Path, requestId);
             return null;
         }
 
@@ -388,8 +391,8 @@ public static class PublicNetworkEndpoints
         {
             logger.LogWarning(
                 "Public request rejected: X-Tenant-Id is not a valid GUID. " +
-                "RemoteIp={RemoteIp} Path={Path}",
-                http.Connection.RemoteIpAddress, http.Request.Path);
+                "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
+                http.Connection.RemoteIpAddress, http.Request.Path, requestId);
             return null;
         }
 
