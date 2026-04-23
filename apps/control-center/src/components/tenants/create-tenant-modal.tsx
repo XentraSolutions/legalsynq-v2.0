@@ -198,12 +198,16 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
       };
       const res = await createTenantAction(payload);
       if (!res.success || !res.tenant || !res.adminUser) {
-        setError(res.error ?? 'Something went wrong.');
+        setError(res.error ?? 'Something went wrong. Please try again.');
         return;
       }
       setResult({ ...res.tenant, ...res.adminUser });
       setStep('success');
       router.refresh();
+    } catch (err) {
+      // Re-throw Next.js internal errors (redirect, notFound) so the framework handles them.
+      if (err && typeof err === 'object' && 'digest' in err) throw err;
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.');
     } finally {
       setIsPending(false);
     }
