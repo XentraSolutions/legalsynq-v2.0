@@ -66,7 +66,15 @@ These areas produced real production findings in the current scan and should rem
 - `apps/services/documents/Documents.Infrastructure/DependencyInjection.cs`
 - `shared/building-blocks/BuildingBlocks/Context/CurrentRequestContext.cs`
 - `apps/services/task/Task.Api/Program.cs`
+ - `apps/web/src/app/api/auth/login/route.ts`
+ - `apps/web/src/app/api/identity/[...path]/route.ts`
+ - `apps/services/identity/Identity.Api/Endpoints/AdminEndpoints.cs`
+ - `apps/services/careconnect/CareConnect.Application/Services/ReferralService.cs`
 - `apps/services/monitoring/Monitoring.Api/Authentication/AuthenticationServiceCollectionExtensions.cs`
+ - `apps/services/monitoring/Monitoring.Api/Endpoints/MonitoringReadEndpoints.cs`
+ - `apps/services/monitoring/Monitoring.Api/Endpoints/MonitoringAlertHistoryEndpoints.cs`
+ - `apps/services/monitoring/Monitoring.Api/Endpoints/UptimeReadEndpoints.cs`
+ - `apps/gateway/Gateway.Api/appsettings.json`
 - `apps/services/monitoring/Monitoring.Api/Endpoints/MonitoredEntityEndpoints.cs`
 - `apps/services/monitoring/Monitoring.Api/Endpoints/MonitoringAlertEndpoints.cs`
 - `apps/control-center/src/app/api/auth/login/route.ts`
