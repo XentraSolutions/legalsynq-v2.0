@@ -1,7 +1,7 @@
 # Commit Summary — BLK-SEC-02-02
 
 ## Commit ID
-*(Updated after commit)*
+`9ee0f92559388d5203baf4e6cd8a5f1fd8195ab2`
 
 ## Commit Message
 `[BLK-SEC-02-02] Public tenant header trust boundary hardening — HMAC signing + gateway origin marker`

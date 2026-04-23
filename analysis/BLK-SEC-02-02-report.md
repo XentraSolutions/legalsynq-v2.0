@@ -301,7 +301,7 @@ INTERNAL_REQUEST_SECRET=dev-internal-request-secret-minimum-32-chars!!
 
 ## 9. GitHub Commits
 
-*(Updated after commit)*
+- `9ee0f92559388d5203baf4e6cd8a5f1fd8195ab2` — BLK-SEC-02-02: Public tenant header trust boundary hardening — HMAC signing + gateway origin marker
 
 ---
 
@@ -335,8 +335,7 @@ INTERNAL_REQUEST_SECRET=dev-internal-request-secret-minimum-32-chars!!
 
 ## 11. GitHub Diff Reference
 
-*(Updated after commit)*
-
+- **Commit ID:** `9ee0f92559388d5203baf4e6cd8a5f1fd8195ab2`
 - **Diff file:** `analysis/BLK-SEC-02-02-commit.diff.txt`
 - **Summary file:** `analysis/BLK-SEC-02-02-commit-summary.md`
 - **Files changed:** 8 source files, 444 diff lines
