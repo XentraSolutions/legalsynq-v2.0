@@ -312,3 +312,9 @@ id = "hBjqix6cNT8PFq8nUtIzb"
 uri = "file://analysis/code-review-remediation-report-2026-04-21.md"
 type = "text"
 title = "Code Review Remediation Report — April 21, 2026"
+
+[[outputs]]
+id = "vIEXlItXKUwGY-XxYQyQV"
+uri = "file://legalsynq-source-2026-04-23_16-54-42.tar.gz"
+type = "unspecified"
+title = "LegalSynq Source Code — 2026-04-23 16:54:42 UTC"
