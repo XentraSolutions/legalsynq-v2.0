@@ -95,5 +95,6 @@ app.MapGet("/info", () =>
     .AllowAnonymous();
 
 app.MapTenantEndpoints();
+app.MapBrandingEndpoints();
 
 app.Run();

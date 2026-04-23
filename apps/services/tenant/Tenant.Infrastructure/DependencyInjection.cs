@@ -22,8 +22,10 @@ public static class DependencyInjection
                 connectionString,
                 new MySqlServerVersion(new Version(8, 0, 0))));
 
-        services.AddScoped<ITenantRepository, TenantRepository>();
-        services.AddScoped<ITenantService, TenantService>();
+        services.AddScoped<ITenantRepository,  TenantRepository>();
+        services.AddScoped<IBrandingRepository, BrandingRepository>();
+        services.AddScoped<ITenantService,     TenantService>();
+        services.AddScoped<IBrandingService,   BrandingService>();
 
         return services;
     }

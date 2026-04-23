@@ -16,8 +16,14 @@ public class TenantRepository : ITenantRepository
     public Task<Domain.Tenant?> GetByCodeAsync(string code, CancellationToken ct = default) =>
         _db.Tenants.FirstOrDefaultAsync(t => t.Code == code, ct);
 
+    public Task<Domain.Tenant?> GetBySubdomainAsync(string subdomain, CancellationToken ct = default) =>
+        _db.Tenants.FirstOrDefaultAsync(t => t.Subdomain == subdomain, ct);
+
     public Task<bool> ExistsByCodeAsync(string code, CancellationToken ct = default) =>
         _db.Tenants.AnyAsync(t => t.Code == code, ct);
+
+    public Task<bool> ExistsBySubdomainAsync(string subdomain, Guid? excludeId, CancellationToken ct = default) =>
+        _db.Tenants.AnyAsync(t => t.Subdomain == subdomain && (excludeId == null || t.Id != excludeId), ct);
 
     public async Task<(List<Domain.Tenant> Items, int Total)> ListAsync(
         int page,

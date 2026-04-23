@@ -1,3 +1,5 @@
+using System.Net.Mail;
+using System.Text.RegularExpressions;
 using BuildingBlocks.Exceptions;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
@@ -29,8 +31,8 @@ public class TenantService : ITenantService
         int pageSize,
         CancellationToken ct = default)
     {
-        if (page < 1)    page     = 1;
-        if (pageSize < 1) pageSize = 20;
+        if (page < 1)       page     = 1;
+        if (pageSize < 1)   pageSize = 20;
         if (pageSize > 200) pageSize = 200;
 
         var (items, total) = await _repository.ListAsync(page, pageSize, ct);
@@ -42,16 +44,44 @@ public class TenantService : ITenantService
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Code,        nameof(request.Code));
         ArgumentException.ThrowIfNullOrWhiteSpace(request.DisplayName, nameof(request.DisplayName));
 
+        var errors = new Dictionary<string, string[]>();
+
         var code = request.Code.Trim().ToLowerInvariant();
 
         if (await _repository.ExistsByCodeAsync(code, ct))
             throw new ConflictException($"A tenant with code '{code}' already exists.");
 
+        if (request.Subdomain is not null)
+        {
+            var sub = request.Subdomain.Trim().ToLowerInvariant();
+            if (await _repository.ExistsBySubdomainAsync(sub, null, ct))
+                throw new ConflictException($"The subdomain '{sub}' is already taken.");
+        }
+
+        ValidateOptionalEmail(request.SupportEmail, "supportEmail", errors);
+        ValidateOptionalUrl(request.WebsiteUrl,     "websiteUrl",   errors);
+        ValidateOptionalCountryCode(request.CountryCode, "countryCode", errors);
+
+        if (errors.Count > 0)
+            throw new ValidationException("One or more validation errors occurred.", errors);
+
         var tenant = Domain.Tenant.Create(
             code,
             request.DisplayName,
             request.LegalName,
-            request.Subdomain);
+            request.Subdomain,
+            request.Description,
+            request.WebsiteUrl,
+            request.TimeZone,
+            request.Locale,
+            request.SupportEmail,
+            request.SupportPhone,
+            request.AddressLine1,
+            request.AddressLine2,
+            request.City,
+            request.StateOrProvince,
+            request.PostalCode,
+            request.CountryCode);
 
         await _repository.AddAsync(tenant, ct);
         return ToResponse(tenant);
@@ -64,7 +94,39 @@ public class TenantService : ITenantService
         var tenant = await _repository.GetByIdAsync(id, ct)
             ?? throw new NotFoundException($"Tenant '{id}' was not found.");
 
-        tenant.UpdateProfile(request.DisplayName, request.LegalName, request.TimeZone);
+        var errors = new Dictionary<string, string[]>();
+
+        if (request.Subdomain is not null)
+        {
+            var sub = request.Subdomain.Trim().ToLowerInvariant();
+            if (await _repository.ExistsBySubdomainAsync(sub, id, ct))
+                throw new ConflictException($"The subdomain '{sub}' is already taken.");
+        }
+
+        ValidateOptionalEmail(request.SupportEmail, "supportEmail", errors);
+        ValidateOptionalUrl(request.WebsiteUrl,     "websiteUrl",   errors);
+        ValidateOptionalCountryCode(request.CountryCode, "countryCode", errors);
+
+        if (errors.Count > 0)
+            throw new ValidationException("One or more validation errors occurred.", errors);
+
+        tenant.UpdateProfile(
+            request.DisplayName,
+            request.LegalName,
+            request.Description,
+            request.WebsiteUrl,
+            request.TimeZone,
+            request.Locale,
+            request.SupportEmail,
+            request.SupportPhone);
+
+        tenant.UpdateAddress(
+            request.AddressLine1,
+            request.AddressLine2,
+            request.City,
+            request.StateOrProvince,
+            request.PostalCode,
+            request.CountryCode);
 
         if (request.Subdomain is not null)
             tenant.SetSubdomain(request.Subdomain);
@@ -96,16 +158,53 @@ public class TenantService : ITenantService
         await _repository.UpdateAsync(tenant, ct);
     }
 
-    private static TenantResponse ToResponse(Domain.Tenant t) => new(
+    // ── Validation helpers ────────────────────────────────────────────────────
+
+    private static void ValidateOptionalEmail(string? value, string field, Dictionary<string, string[]> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        try { _ = new MailAddress(value); }
+        catch { errors[field] = [$"'{value}' is not a valid email address."]; }
+    }
+
+    private static void ValidateOptionalUrl(string? value, string field, Dictionary<string, string[]> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            errors[field] = [$"'{value}' is not a valid http/https URL."];
+    }
+
+    private static void ValidateOptionalCountryCode(string? value, string field, Dictionary<string, string[]> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        if (value.Trim().Length != 2)
+            errors[field] = ["Country code must be a 2-character ISO 3166-1 alpha-2 value."];
+    }
+
+    // ── Mapping ───────────────────────────────────────────────────────────────
+
+    internal static TenantResponse ToResponse(Domain.Tenant t) => new(
         t.Id,
         t.Code,
         t.DisplayName,
         t.LegalName,
+        t.Description,
         t.Status.ToString(),
         t.Subdomain,
         t.LogoDocumentId,
         t.LogoWhiteDocumentId,
+        t.WebsiteUrl,
         t.TimeZone,
+        t.Locale,
+        t.SupportEmail,
+        t.SupportPhone,
+        t.AddressLine1,
+        t.AddressLine2,
+        t.City,
+        t.StateOrProvince,
+        t.PostalCode,
+        t.CountryCode,
         t.CreatedAtUtc,
         t.UpdatedAtUtc);
 }

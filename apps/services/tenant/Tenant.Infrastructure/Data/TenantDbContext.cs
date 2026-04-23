@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Tenant.Domain;
 
 namespace Tenant.Infrastructure.Data;
 
@@ -6,7 +7,8 @@ public class TenantDbContext : DbContext
 {
     public TenantDbContext(DbContextOptions<TenantDbContext> options) : base(options) { }
 
-    public DbSet<Domain.Tenant> Tenants => Set<Domain.Tenant>();
+    public DbSet<Domain.Tenant>  Tenants  => Set<Domain.Tenant>();
+    public DbSet<TenantBranding> Brandings => Set<TenantBranding>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -19,6 +21,12 @@ public class TenantDbContext : DbContext
         var now = DateTime.UtcNow;
 
         foreach (var entry in ChangeTracker.Entries<Domain.Tenant>())
+        {
+            if (entry.State == EntityState.Modified)
+                entry.Property("UpdatedAtUtc").CurrentValue = now;
+        }
+
+        foreach (var entry in ChangeTracker.Entries<TenantBranding>())
         {
             if (entry.State == EntityState.Modified)
                 entry.Property("UpdatedAtUtc").CurrentValue = now;
