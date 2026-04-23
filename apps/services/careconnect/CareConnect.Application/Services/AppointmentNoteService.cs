@@ -20,12 +20,30 @@ public class AppointmentNoteService : IAppointmentNoteService
     public async Task<List<AppointmentNoteResponse>> GetByAppointmentAsync(
         Guid tenantId,
         Guid appointmentId,
+        Guid? callerOrgId,
+        bool isAdmin,
         CancellationToken ct = default)
     {
-        _ = await _appointments.GetByIdAsync(tenantId, appointmentId, ct)
+        var appointment = await _appointments.GetByIdAsync(tenantId, appointmentId, ct)
             ?? throw new NotFoundException($"Appointment '{appointmentId}' was not found.");
 
+        if (!isAdmin)
+        {
+            var isParticipant =
+                (callerOrgId.HasValue && appointment.ReferringOrganizationId == callerOrgId) ||
+                (callerOrgId.HasValue && appointment.ReceivingOrganizationId  == callerOrgId);
+
+            if (!isParticipant)
+                throw new NotFoundException($"Appointment '{appointmentId}' was not found.");
+        }
+
         var rows = await _notes.GetByAppointmentAsync(tenantId, appointmentId, ct);
+
+        if (!isAdmin)
+        {
+            rows = rows.Where(n => !n.IsInternal).ToList();
+        }
+
         return rows.Select(ToResponse).ToList();
     }
 
@@ -33,11 +51,22 @@ public class AppointmentNoteService : IAppointmentNoteService
         Guid tenantId,
         Guid appointmentId,
         Guid? userId,
+        Guid? callerOrgId,
         CreateAppointmentNoteRequest request,
         CancellationToken ct = default)
     {
-        _ = await _appointments.GetByIdAsync(tenantId, appointmentId, ct)
+        var appointment = await _appointments.GetByIdAsync(tenantId, appointmentId, ct)
             ?? throw new NotFoundException($"Appointment '{appointmentId}' was not found.");
+
+        if (callerOrgId.HasValue)
+        {
+            var isParticipant =
+                appointment.ReferringOrganizationId == callerOrgId ||
+                appointment.ReceivingOrganizationId  == callerOrgId;
+
+            if (!isParticipant)
+                throw new NotFoundException($"Appointment '{appointmentId}' was not found.");
+        }
 
         ValidateNoteRequest(request.NoteType, request.Content);
 

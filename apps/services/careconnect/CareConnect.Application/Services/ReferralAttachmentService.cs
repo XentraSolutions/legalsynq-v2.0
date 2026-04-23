@@ -25,10 +25,22 @@ public class ReferralAttachmentService : IReferralAttachmentService
     public async Task<List<AttachmentMetadataResponse>> GetByReferralAsync(
         Guid tenantId,
         Guid referralId,
+        Guid? callerOrgId,
+        bool isAdmin,
         CancellationToken ct = default)
     {
-        _ = await _referrals.GetByIdAsync(tenantId, referralId, ct)
+        var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
             ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
+
+        if (!isAdmin)
+        {
+            var isParticipant =
+                (callerOrgId.HasValue && referral.ReferringOrganizationId == callerOrgId) ||
+                (callerOrgId.HasValue && referral.ReceivingOrganizationId  == callerOrgId);
+
+            if (!isParticipant)
+                throw new NotFoundException($"Referral '{referralId}' was not found.");
+        }
 
         var rows = await _attachments.GetByReferralAsync(tenantId, referralId, ct);
         return rows.Select(ToResponse).ToList();

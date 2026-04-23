@@ -4,7 +4,7 @@ namespace CareConnect.Application.Interfaces;
 
 public interface IReferralAttachmentService
 {
-    Task<List<AttachmentMetadataResponse>> GetByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default);
+    Task<List<AttachmentMetadataResponse>> GetByReferralAsync(Guid tenantId, Guid referralId, Guid? callerOrgId, bool isAdmin, CancellationToken ct = default);
 
     Task<AttachmentMetadataResponse> CreateAsync(Guid tenantId, Guid referralId, Guid? userId, CreateAttachmentMetadataRequest request, CancellationToken ct = default);
 

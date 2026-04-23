@@ -25,10 +25,22 @@ public class AppointmentAttachmentService : IAppointmentAttachmentService
     public async Task<List<AttachmentMetadataResponse>> GetByAppointmentAsync(
         Guid tenantId,
         Guid appointmentId,
+        Guid? callerOrgId,
+        bool isAdmin,
         CancellationToken ct = default)
     {
-        _ = await _appointments.GetByIdAsync(tenantId, appointmentId, ct)
+        var appointment = await _appointments.GetByIdAsync(tenantId, appointmentId, ct)
             ?? throw new NotFoundException($"Appointment '{appointmentId}' was not found.");
+
+        if (!isAdmin)
+        {
+            var isParticipant =
+                (callerOrgId.HasValue && appointment.ReferringOrganizationId == callerOrgId) ||
+                (callerOrgId.HasValue && appointment.ReceivingOrganizationId  == callerOrgId);
+
+            if (!isParticipant)
+                throw new NotFoundException($"Appointment '{appointmentId}' was not found.");
+        }
 
         var rows = await _attachments.GetByAppointmentAsync(tenantId, appointmentId, ct);
         return rows.Select(ToResponse).ToList();

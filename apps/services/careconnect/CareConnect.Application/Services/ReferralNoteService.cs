@@ -20,12 +20,33 @@ public class ReferralNoteService : IReferralNoteService
     public async Task<List<ReferralNoteResponse>> GetByReferralAsync(
         Guid tenantId,
         Guid referralId,
+        Guid? callerOrgId,
+        bool isAdmin,
         CancellationToken ct = default)
     {
-        _ = await _referrals.GetByIdAsync(tenantId, referralId, ct)
+        var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
             ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
 
+        if (!isAdmin)
+        {
+            var isParticipant =
+                (callerOrgId.HasValue && referral.ReferringOrganizationId == callerOrgId) ||
+                (callerOrgId.HasValue && referral.ReceivingOrganizationId  == callerOrgId);
+
+            if (!isParticipant)
+                throw new NotFoundException($"Referral '{referralId}' was not found.");
+        }
+
         var rows = await _notes.GetByReferralAsync(tenantId, referralId, ct);
+
+        if (!isAdmin)
+        {
+            rows = rows.Where(n =>
+                n.VisibilityScope != "INTERNAL" ||
+                (callerOrgId.HasValue && n.OwnerOrganizationId == callerOrgId))
+                .ToList();
+        }
+
         return rows.Select(ToResponse).ToList();
     }
 
@@ -33,6 +54,7 @@ public class ReferralNoteService : IReferralNoteService
         Guid tenantId,
         Guid referralId,
         Guid? userId,
+        Guid? callerOrgId,
         CreateReferralNoteRequest request,
         CancellationToken ct = default)
     {
@@ -42,7 +64,7 @@ public class ReferralNoteService : IReferralNoteService
         ValidateNoteRequest(request.NoteType, request.Content);
 
         var visibilityScope = request.IsInternal ? "INTERNAL" : "SHARED";
-        var note = ReferralNote.Create(tenantId, referralId, ownerOrganizationId: null, visibilityScope, request.NoteType, request.Content, userId);
+        var note = ReferralNote.Create(tenantId, referralId, ownerOrganizationId: callerOrgId, visibilityScope, request.NoteType, request.Content, userId);
         await _notes.AddAsync(note, ct);
 
         var loaded = await _notes.GetByIdAsync(tenantId, note.Id, ct);

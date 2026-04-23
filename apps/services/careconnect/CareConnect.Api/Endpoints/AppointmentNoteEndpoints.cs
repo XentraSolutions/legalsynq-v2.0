@@ -18,7 +18,9 @@ public static class AppointmentNoteEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var result = await service.GetByAppointmentAsync(tenantId, appointmentId, ct);
+            var isAdmin  = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
+
+            var result = await service.GetByAppointmentAsync(tenantId, appointmentId, ctx.OrgId, isAdmin, ct);
             return Results.Ok(result);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
@@ -32,7 +34,7 @@ public static class AppointmentNoteEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var result = await service.CreateAsync(tenantId, appointmentId, ctx.UserId, request, ct);
+            var result = await service.CreateAsync(tenantId, appointmentId, ctx.UserId, ctx.OrgId, request, ct);
             return Results.Created($"/api/appointments/{appointmentId}/notes/{result.Id}", result);
         })
         .RequireAuthorization(Policies.PlatformOrTenantAdmin)

@@ -18,7 +18,9 @@ public static class ReferralNoteEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var result = await service.GetByReferralAsync(tenantId, referralId, ct);
+            var isAdmin  = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
+
+            var result = await service.GetByReferralAsync(tenantId, referralId, ctx.OrgId, isAdmin, ct);
             return Results.Ok(result);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
@@ -32,7 +34,7 @@ public static class ReferralNoteEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            var result = await service.CreateAsync(tenantId, referralId, ctx.UserId, request, ct);
+            var result = await service.CreateAsync(tenantId, referralId, ctx.UserId, ctx.OrgId, request, ct);
             return Results.Created($"/api/referrals/{referralId}/notes/{result.Id}", result);
         })
         .RequireAuthorization(Policies.PlatformOrTenantAdmin)

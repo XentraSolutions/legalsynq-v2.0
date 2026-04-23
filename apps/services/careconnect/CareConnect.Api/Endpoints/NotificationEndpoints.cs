@@ -10,6 +10,9 @@ public static class NotificationEndpoints
 {
     public static void MapNotificationEndpoints(this WebApplication app)
     {
+        // Generic notification search is restricted to platform and tenant admins.
+        // Regular authenticated users must use the referral-scoped notification endpoint
+        // (GET /api/referrals/{id}/notifications) which enforces participant checks.
         app.MapGet("/api/notifications", async (
             string?   status,
             string?   notificationType,
@@ -40,9 +43,11 @@ public static class NotificationEndpoints
             var result = await service.SearchAsync(tenantId, query, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
         .RequireProductAccess(ProductCodes.SynqCareConnect);
 
+        // Generic notification lookup by ID is restricted to platform and tenant admins.
+        // Regular users can view referral-specific notifications via the referral detail endpoint.
         app.MapGet("/api/notifications/{id:guid}", async (
             Guid id,
             INotificationService service,
@@ -53,7 +58,7 @@ public static class NotificationEndpoints
             var result = await service.GetByIdAsync(tenantId, id, ct);
             return Results.Ok(result);
         })
-        .RequireAuthorization(Policies.AuthenticatedUser)
+        .RequireAuthorization(Policies.PlatformOrTenantAdmin)
         .RequireProductAccess(ProductCodes.SynqCareConnect);
     }
 }
