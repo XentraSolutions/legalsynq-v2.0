@@ -178,7 +178,7 @@ provider before identity assignment, allow resume).
 
 ## 9. GitHub Commits (MANDATORY)
 
-*(Populated after commit)*
+- `9ecc1c9` — BLK-CC-01: Update provider onboarding to use new Tenant and Identity membership services
 
 ---
 
