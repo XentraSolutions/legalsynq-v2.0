@@ -342,7 +342,7 @@ const ProviderRow = forwardRef<
             ? 'bg-blue-600 text-white'
             : 'bg-gray-100 text-gray-400 hover:bg-gray-200',
         ].join(' ')}
-        title={selected ? 'Remove from selection' : 'Add to referral'}
+        title={selected ? 'Remove from selection' : 'Select provider'}
       >
         <i className={selected ? 'ri-check-line text-xs' : 'ri-add-line text-xs'} />
       </button>

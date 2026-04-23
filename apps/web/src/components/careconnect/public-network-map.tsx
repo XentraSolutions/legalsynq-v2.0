@@ -153,7 +153,7 @@ export function PublicNetworkMap({
                       cursor: 'pointer', fontWeight: 600, display: 'block', width: '100%',
                     }}
                   >
-                    Request Referral
+                    Send Referral
                   </button>
                 </div>
               )}
