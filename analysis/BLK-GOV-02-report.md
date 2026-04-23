@@ -3,6 +3,7 @@
 
 **Block:** BLK-GOV-02  
 **Parent window:** TENANT-STABILIZATION (2026-04-23 → 2026-05-07)  
+**Commit:** `91122b779a3cd567ca3a69b934ed46cc561351ff`  
 **Preceded by:** BLK-GOV-01 (commit `744b5b3635b7c482a539a70a7a4247ab9a66a2ba`)  
 **Status:** COMPLETE  
 **Artifacts:**  

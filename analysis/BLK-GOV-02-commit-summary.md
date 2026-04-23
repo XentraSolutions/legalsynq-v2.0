@@ -1,6 +1,7 @@
 # BLK-GOV-02 — Commit Summary: Governance Enforcement & Least-Privilege Model
 
 **Block:** BLK-GOV-02  
+**Commit:** `91122b779a3cd567ca3a69b934ed46cc561351ff`  
 **Window:** TENANT-STABILIZATION (2026-04-23 → 2026-05-07)  
 **Date:** 2026-04-23  
 **Projects affected:** BuildingBlocks · BuildingBlocks.Tests · CareConnect.Api
