@@ -78,15 +78,28 @@ public sealed class HttpMonitoredEntityExecutor : IMonitoredEntityExecutor
         // scheduler from being used as a blind HTTP pivot into internal
         // infrastructure, cloud metadata endpoints, or other services on
         // the host network.
+        //
+        // Exception: when AllowInternalTargets is explicitly enabled (co-located
+        // deployment — e.g. Replit dev, single-host Docker), internal addresses
+        // are intentional. A warning is still logged so the config is visible in
+        // the audit trail, but the check is not blocked.
         if (IsSsrfProneUri(uri))
         {
-            _logger.LogWarning(
-                "HTTP check blocked for entity {EntityId} ({EntityName}): " +
-                "target resolves to a private, loopback, or link-local address. " +
-                "TargetLength={TargetLength}.",
-                entity.Id, entity.Name, entity.Target?.Length ?? 0);
-            return Build(entity, false, CheckOutcome.InvalidTarget, null, 0,
-                "target blocked: private or loopback address");
+            if (!_options.Value.AllowInternalTargets)
+            {
+                _logger.LogWarning(
+                    "HTTP check blocked for entity {EntityId} ({EntityName}): " +
+                    "target resolves to a private, loopback, or link-local address. " +
+                    "TargetLength={TargetLength}.",
+                    entity.Id, entity.Name, entity.Target?.Length ?? 0);
+                return Build(entity, false, CheckOutcome.InvalidTarget, null, 0,
+                    "target blocked: private or loopback address");
+            }
+
+            _logger.LogDebug(
+                "HTTP check for entity {EntityId} ({EntityName}) is targeting an internal address. " +
+                "AllowInternalTargets=true — proceeding (co-located deployment mode).",
+                entity.Id, entity.Name);
         }
 
         // Build a sanitized log-only representation of the target. Userinfo
