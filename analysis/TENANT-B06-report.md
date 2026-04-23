@@ -193,7 +193,21 @@ None. Identity service is not modified in this block.
 
 ## 8. Validation Results
 
-_To be completed after implementation._
+**Build**
+- `dotnet build Tenant.Api.csproj` — 0 errors, 0 new warnings
+- `tsc --noEmit` (web) — 0 errors
+
+**Smoke tests**
+
+| Endpoint | Expected | Result |
+|---|---|---|
+| `GET /api/v1/admin/read-source` (Tenant, no token) | HTTP 401 | ✅ HTTP 401 |
+| `GET /api/tenant-branding` (web BFF, Identity mode default) | HTTP 200 (Identity branding) | ✅ HTTP 200 |
+| `GET /tenant/api/v1/public/branding/by-code/nonexistent` (Gateway) | HTTP 404 (not 401) | ✅ HTTP 404 |
+| `GET /tenant/api/v1/public/resolve/by-code/nonexistent` (Gateway) | HTTP 404 (not 401) | ✅ HTTP 404 |
+| `GET /tenant/api/v1/public/resolve/by-host?host=…` (Gateway) | HTTP 404 (not 401) | ✅ HTTP 404 |
+
+All gateway anonymous routes confirmed accessible without token. Web BFF in Identity mode calls Identity service correctly. Admin endpoint protected by AdminOnly as designed.
 
 ---
 

@@ -33,7 +33,7 @@ export function TenantBrandingProvider({ children }: { children: ReactNode }) {
         const tenantCode = resolveTenantCode();
         if (!tenantCode) return;
 
-        const res = await fetch('/api/identity/api/tenants/current/branding', {
+        const res = await fetch('/api/tenant-branding', {
           headers: { 'X-Tenant-Code': tenantCode },
           cache: 'no-store',
         });

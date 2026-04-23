@@ -39,6 +39,8 @@ const PUBLIC_PATHS = [
   // Public branding / logo routes — no session required (used by login page)
   '/api/branding',
   '/api/identity/api/tenants/current/branding',
+  // Read-source-aware branding endpoint (B06: replaces identity-only call)
+  '/api/tenant-branding',
   // LSCC-005: Public referral token routes — no session required
   '/referrals/view',
   '/referrals/accept',
