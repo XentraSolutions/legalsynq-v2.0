@@ -84,7 +84,7 @@ export const CC_NAV: NavSection[] = [
   },
 
   {
-    heading: 'SYNQAUDIT',
+    heading: 'AUDIT',
     items: [
       { href: '/synqaudit',                  label: 'Overview',       icon: 'ri-shield-check-line',   badge: 'LIVE' },
       { href: '/synqaudit/user-activity',    label: 'User Activity',  icon: 'ri-user-heart-line',     badge: 'LIVE' },
