@@ -4,6 +4,7 @@ using Contracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Tenant.Api.Configuration;
 using Tenant.Api.Endpoints;
 using Tenant.Api.Middleware;
 using Tenant.Infrastructure;
@@ -49,6 +50,10 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(Policies.AdminOnly, policy =>
         policy.RequireRole(Roles.PlatformAdmin));
 });
+
+// ── Feature flags ─────────────────────────────────────────────────────────────
+builder.Services.Configure<TenantFeatures>(
+    builder.Configuration.GetSection(TenantFeatures.SectionName));
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -102,5 +107,6 @@ app.MapEntitlementEndpoints();
 app.MapCapabilityEndpoints();
 app.MapSettingEndpoints();
 app.MapMigrationEndpoints();
+app.MapReadSourceEndpoints();
 
 app.Run();
