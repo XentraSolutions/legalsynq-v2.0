@@ -7,6 +7,7 @@ using Tenant.Application.Services;
 using Tenant.Infrastructure.Data;
 using Tenant.Infrastructure.Repositories;
 using Tenant.Infrastructure.Services;
+using Microsoft.Extensions.Logging;
 
 namespace Tenant.Infrastructure;
 
@@ -50,6 +51,17 @@ public static class DependencyInjection
         services.AddScoped<ISettingService,         SettingService>();
         services.AddScoped<IMigrationUtilityService, MigrationUtilityService>();
         services.AddScoped<ITenantSyncAdapter,       NoOpTenantSyncAdapter>();
+        services.AddScoped<ITenantAdminService,      TenantAdminService>();
+
+        // ── TENANT-B11: Identity compat adapter (read-through for sessionTimeoutMinutes) ──
+        services.AddHttpClient("IdentityInternal", client =>
+        {
+            var identityUrl = configuration["IdentityService:InternalUrl"] ?? "http://127.0.0.1:5001";
+            client.BaseAddress = new Uri(identityUrl);
+            client.DefaultRequestHeaders.Add("X-Internal-Client", "tenant-service");
+        });
+
+        services.AddScoped<IIdentityCompatAdapter, HttpIdentityCompatAdapter>();
 
         // ── TENANT-B10: Documents service adapter ─────────────────────────────
         // Used by logo admin endpoints to register/deregister logos in the

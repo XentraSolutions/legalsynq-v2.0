@@ -111,5 +111,6 @@ app.MapReadSourceEndpoints();
 app.MapSyncEndpoints();
 app.MapRuntimeMetricsEndpoints();
 app.MapLogoAdminEndpoints();
+app.MapTenantAdminEndpoints();
 
 app.Run();

@@ -383,11 +383,9 @@ export const controlCenterServerApi = {
       const qs = toQs({
         page:     params.page     ?? 1,
         pageSize: params.pageSize ?? 20,
-        search:   params.search,
-        tenantId: params.tenantId,
       });
       const raw = await apiClient.get<unknown>(
-        `/identity/api/admin/tenants${qs}`,
+        `/tenant/api/v1/admin/tenants${qs}`,
         60,
         [CACHE_TAGS.tenants],
       );
@@ -395,10 +393,12 @@ export const controlCenterServerApi = {
     },
 
     /**
-     * GET /identity/api/admin/tenants/{id}
+     * GET /tenant/api/v1/admin/tenants/{id}
      *
-     * Returns full TenantDetail including product entitlements, or null if
-     * the tenant does not exist. Response is normalised via mapTenantDetail.
+     * TENANT-B11: Switched from Identity to Tenant service. Returns full
+     * TenantDetail including product entitlements from Tenant DB,
+     * branding logos, and Identity compat fields (sessionTimeoutMinutes).
+     * Response is normalised via mapTenantDetail (mapper unchanged).
      *
      * Cache: 60 s  Tag: cc:tenants
      *   Same cache lifecycle as tenants.list.
@@ -407,7 +407,7 @@ export const controlCenterServerApi = {
     getById: async (id: string): Promise<TenantDetail | null> => {
       try {
         const raw = await apiClient.get<unknown>(
-          `/identity/api/admin/tenants/${encodeURIComponent(id)}`,
+          `/tenant/api/v1/admin/tenants/${encodeURIComponent(id)}`,
           60,
           [CACHE_TAGS.tenants],
         );

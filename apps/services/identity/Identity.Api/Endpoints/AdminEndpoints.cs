@@ -1230,6 +1230,7 @@ public static class AdminEndpoints
         HttpContext         httpContext,
         IdentityDbContext   db,
         IAuditEventClient   auditClient,
+        ITenantSyncAdapter  syncAdapter,
         CancellationToken   ct)
     {
         // TENANT-B10: This endpoint is deprecated. The authoritative write path
@@ -1243,6 +1244,19 @@ public static class AdminEndpoints
 
         tenant.ClearLogo();
         await db.SaveChangesAsync(ct);
+
+        // ── TENANT-B11: Sync logo-clear to Tenant service (fixes B10 gap) ────
+        _ = syncAdapter.SyncAsync(new IdentityTenantSyncRequest(
+            TenantId:            tenant.Id,
+            Code:                tenant.Code,
+            DisplayName:         tenant.Name,
+            Status:              tenant.IsActive ? "Active" : "Inactive",
+            Subdomain:           tenant.Subdomain,
+            LogoDocumentId:      null,
+            LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
+            SourceCreatedAtUtc:  tenant.CreatedAtUtc,
+            SourceUpdatedAtUtc:  tenant.UpdatedAtUtc,
+            EventType:           "Update"));
 
         var callerId     = caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub");
         var callerEmail  = caller.FindFirstValue(ClaimTypes.Email) ?? caller.FindFirstValue("email");
@@ -1364,6 +1378,7 @@ public static class AdminEndpoints
         HttpContext         httpContext,
         IdentityDbContext   db,
         IAuditEventClient   auditClient,
+        ITenantSyncAdapter  syncAdapter,
         CancellationToken   ct)
     {
         // TENANT-B10: This endpoint is deprecated. The authoritative write path
@@ -1377,6 +1392,19 @@ public static class AdminEndpoints
 
         tenant.ClearLogoWhite();
         await db.SaveChangesAsync(ct);
+
+        // ── TENANT-B11: Sync logo-white-clear to Tenant service (fixes B10 gap) ──
+        _ = syncAdapter.SyncAsync(new IdentityTenantSyncRequest(
+            TenantId:            tenant.Id,
+            Code:                tenant.Code,
+            DisplayName:         tenant.Name,
+            Status:              tenant.IsActive ? "Active" : "Inactive",
+            Subdomain:           tenant.Subdomain,
+            LogoDocumentId:      tenant.LogoDocumentId,
+            LogoWhiteDocumentId: null,
+            SourceCreatedAtUtc:  tenant.CreatedAtUtc,
+            SourceUpdatedAtUtc:  tenant.UpdatedAtUtc,
+            EventType:           "Update"));
 
         var callerId     = caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub");
         var callerEmail  = caller.FindFirstValue(ClaimTypes.Email) ?? caller.FindFirstValue("email");
