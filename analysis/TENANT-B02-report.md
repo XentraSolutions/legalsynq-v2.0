@@ -165,18 +165,19 @@ Public response includes: tenantId, code, displayName, brandName, logoDocumentId
 | DB connection (tenant_db) | ✅ | Migrations applied on startup |
 | tenant_Tenants table (11 new columns) | ✅ | Confirmed via DESCRIBE |
 | tenant_Brandings table (16 columns) | ✅ | Confirmed via DESCRIBE + SHOW TABLES |
-| GET /health | ✅ | `{"status":"ok","service":"tenant"}` |
-| GET /info | ✅ | `{"service":"tenant","environment":"Development","version":"v1"}` |
+| Health endpoint | ✅ | `{"status":"ok","service":"tenant"}` |
+| Info endpoint | ✅ | `{"service":"tenant","environment":"Development","version":"v1"}` |
 | GET /api/v1/tenants (auth guard) | ✅ | 401 without token |
 | POST /api/v1/tenants (auth guard) | ✅ | 401 without token |
 | GET /api/v1/tenants/by-code/{code} (auth guard) | ✅ | 401 without token |
 | GET /api/v1/tenants/{id}/branding (auth guard) | ✅ | 401 without token |
 | PUT /api/v1/tenants/{id}/branding (auth guard) | ✅ | 401 without token |
-| GET /api/v1/public/branding/by-code/{code} | ✅ | 404 with structured JSON for unknown code; no auth needed |
-| GET /api/v1/public/branding/by-subdomain/{subdomain} | ✅ | 404 with structured JSON for unknown subdomain; no auth needed |
-| Hex color validation | ✅ | Regex ^#([A-Fa-f0-9]{6}\|[A-Fa-f0-9]{3})$ in BrandingService |
-| Email validation | ✅ | MailAddress parse in TenantService + BrandingService |
-| URL validation | ✅ | Uri.TryCreate + http/https scheme check |
+| GET /api/v1/public/branding/by-code/{code} | ✅ | 200 unauthenticated; 404 with structured JSON for unknown code |
+| GET /api/v1/public/branding/by-subdomain/{subdomain} | ✅ | 200 unauthenticated; 404 with structured JSON for unknown subdomain |
+| Duplicate code conflict | ✅ | 409 Conflict |
+| Email validation | ✅ | 400 Bad Request; MailAddress parse in TenantService + BrandingService |
+| URL validation | ✅ | 400 Bad Request; Uri.TryCreate + http/https scheme check |
+| Hex color validation | ✅ | 400 Bad Request; Regex ^#([A-Fa-f0-9]{6}\|[A-Fa-f0-9]{3})$ in BrandingService |
 | CountryCode validation | ✅ | Must be 2 chars if supplied |
 | Subdomain uniqueness check | ✅ | ExistsBySubdomainAsync with excludeId for self-update |
 

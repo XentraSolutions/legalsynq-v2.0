@@ -50,29 +50,27 @@ builder.Services
 
 builder.Services.AddAuthorization(options =>
 {
-    // Accept both standard user JWTs and machine-to-machine service tokens
-    // (e.g. Liens service calling GET /api/tasks on behalf of a tenant).
+    // Accepts only standard user JWTs. Service tokens must use the
+    // InternalService policy on dedicated /api/tasks/internal/* endpoints;
+    // they must not reach user-identity endpoints because the acting user
+    // cannot be verified without a signed actor claim in scope.
     options.AddPolicy(Policies.AuthenticatedUser, policy =>
         policy
-            .AddAuthenticationSchemes(
-                JwtBearerDefaults.AuthenticationScheme,
-                ServiceTokenAuthenticationDefaults.Scheme)
+            .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
             .RequireAuthenticatedUser());
 
     options.AddPolicy(Policies.AdminOnly, policy =>
         policy.RequireRole(Roles.PlatformAdmin));
 
-    // Also accepts service tokens so Liens/Flow can call admin-tier stage/transition
-    // setup endpoints (e.g. POST /api/tasks/stages/from-source) on behalf of a tenant.
+    // Restricted to real admin roles only; service tokens are not granted
+    // admin-tier access because they can carry an arbitrary tenant claim and
+    // would otherwise bypass tenant-scoped authorization on admin endpoints.
     options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
         policy
-            .AddAuthenticationSchemes(
-                JwtBearerDefaults.AuthenticationScheme,
-                ServiceTokenAuthenticationDefaults.Scheme)
+            .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
             .RequireRole(
                 Roles.PlatformAdmin,
-                Roles.TenantAdmin,
-                ServiceTokenAuthenticationDefaults.ServiceRole));
+                Roles.TenantAdmin));
 
     // TASK-B05 (TASK-013) — internal service-to-service endpoint gate.
     // Only accepts tokens with scheme=ServiceToken and role=service.

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
 using Microsoft.AspNetCore.Http;
 
@@ -24,12 +25,14 @@ public class CurrentRequestContext : ICurrentRequestContext
                 return uid;
 
             // Service-token callers (sub = "service:*"): the acting user's GUID is
-            // forwarded in the X-User-Id header by the delegating handler on the caller side.
-            var ctx = _httpContextAccessor.HttpContext;
-            if (ctx is not null &&
-                ctx.Request.Headers.TryGetValue("X-User-Id", out var headerVal) &&
-                Guid.TryParse(headerVal, out var headerUid))
-                return headerUid;
+            // carried in the signed "actor" claim (format: "user:<guid>") minted by
+            // ServiceTokenIssuer. The unsigned X-User-Id transport header is ignored
+            // because it is not authenticated and can be forged by any caller.
+            var actor = User?.FindFirstValue(ServiceTokenAuthenticationDefaults.ActorClaim);
+            if (actor is not null &&
+                actor.StartsWith("user:", StringComparison.OrdinalIgnoreCase) &&
+                Guid.TryParse(actor.AsSpan(5), out var actorUid))
+                return actorUid;
 
             return null;
         }
