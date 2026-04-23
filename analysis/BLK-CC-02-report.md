@@ -197,9 +197,7 @@ is bounded by Identity service response time.
 
 | Commit | Description |
 |--------|-------------|
-| TBD    | BLK-CC-02: Add Provider onboarding recovery state fields, migration, two-save resumable ProviderOnboardingService |
-
-*(Commit hash populated after push)*
+| `ebd1cdf` | BLK-CC-02: Add Provider onboarding recovery state fields, migration, two-save resumable ProviderOnboardingService |
 
 ---
 
