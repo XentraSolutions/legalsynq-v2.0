@@ -1,3 +1,4 @@
+using BuildingBlocks.Authorization;
 using CareConnect.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,7 +23,10 @@ public static class CareConnectIntegrityEndpoints
     public static IEndpointRouteBuilder MapCareConnectIntegrityEndpoints(
         this IEndpointRouteBuilder routes)
     {
-        routes.MapGet("/api/admin/integrity", GetIntegrityReport).AllowAnonymous();
+        // BLK-SEC-01-FIX: Require PlatformAdmin or TenantAdmin JWT.
+        // Previously AllowAnonymous — internal diagnostic data must not be publicly accessible.
+        routes.MapGet("/api/admin/integrity", GetIntegrityReport)
+              .RequireAuthorization(Policies.PlatformOrTenantAdmin);
         return routes;
     }
 

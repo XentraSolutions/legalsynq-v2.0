@@ -227,3 +227,70 @@ from CareConnect→Tenant). Phase 1 (this block) uses one shared secret for simp
 - **Commit ID:** `3ddf2ae4c9e7e82ead668aa8789206e382306023`
 - **Diff file:** `analysis/BLK-SEC-01-commit.diff.txt`
 - **Summary file:** `analysis/BLK-SEC-01-commit-summary.md`
+
+---
+
+## 12. BLK-SEC-01-FIX Corrections
+
+**Block:** BLK-SEC-01-FIX — Final Security Corrections
+**Date:** 2026-04-23
+**Parent commit:** `3ddf2ae4c9e7e82ead668aa8789206e382306023`
+
+### Build Fixes
+
+#### Identity Service
+- **Root cause:** The `ITenantSyncAdapter` interface (defined in `Identity.Infrastructure.Services`)
+  was reported missing when building with `--no-dependencies` (no pre-compiled dependency DLLs
+  available in CI). The `using Identity.Infrastructure.Services;` directive was already present at
+  line 9 of `AdminEndpoints.cs`, and `Identity.Api.csproj` has a `<ProjectReference>` to
+  `Identity.Infrastructure`. No source change was required.
+- **Verification:** Full project build (`dotnet build Identity.Api/Identity.Api.csproj --no-restore
+  -c Release --verbosity quiet`) completed with zero errors and zero warnings.
+
+#### Tenant Service
+- **Root cause:** `TenantConfiguration.cs` referenced `TenantProvisioningStatus.Unknown` as a
+  default-value literal, but lacked a `using Tenant.Domain;` directive. The enum
+  `TenantProvisioningStatus` is defined in `Tenant.Domain` (top-level namespace, `Tenant.cs`).
+  EF Core's `HasDefaultValue()` call is resolved at compile time, so the missing import caused
+  CS0246 regardless of the fact that the runtime projection was correct.
+- **Fix:** Added `using Tenant.Domain;` to
+  `Tenant.Infrastructure/Data/Configurations/TenantConfiguration.cs`.
+- **Verification:** Full project build (`dotnet build Tenant.Api/Tenant.Api.csproj --no-restore
+  -c Release --verbosity quiet`) completed with zero errors and zero warnings.
+
+### Integrity Endpoint Security
+
+**Endpoint:** `GET /api/admin/integrity`
+**File:** `CareConnect.Api/Endpoints/CareConnectIntegrityEndpoints.cs`
+
+| Before | After |
+|--------|-------|
+| `.AllowAnonymous()` | `.RequireAuthorization(Policies.PlatformOrTenantAdmin)` |
+
+- **Auth method:** JWT bearer — policy `PlatformOrTenantAdmin` (registered in CareConnect
+  `Program.cs`), which enforces role membership in `PlatformAdmin` or `TenantAdmin`.
+- **Unauthorized response:** ASP.NET Core returns HTTP 401 automatically when the policy gate
+  rejects an unauthenticated request.
+- **No environment bypass:** `RequireAuthorization` is unconditional — no dev/non-prod path
+  can circumvent it.
+- **Added import:** `using BuildingBlocks.Authorization;` added so `Policies` constant is
+  resolved without a fully-qualified name.
+
+### Validation Results
+
+| Check | Result |
+|-------|--------|
+| Identity service builds | PASS — zero errors |
+| Tenant service builds | PASS — zero errors |
+| CareConnect service builds | PASS — zero errors |
+| `/api/admin/integrity` without auth | 401 Unauthorized (policy gate) |
+| `/api/admin/integrity` with valid admin JWT | 200 OK |
+| Onboarding flow unchanged | PASS — no business logic touched |
+| Provisioning flow unchanged | PASS — no business logic touched |
+
+### BLK-SEC-01-FIX Diff Reference
+
+- **Commit ID:** *(see `analysis/BLK-SEC-01-FIX-commit.diff.txt`)*
+- **Files changed:** 2 source files
+  - `Tenant.Infrastructure/Data/Configurations/TenantConfiguration.cs` — added `using Tenant.Domain;`
+  - `CareConnect.Api/Endpoints/CareConnectIntegrityEndpoints.cs` — removed `AllowAnonymous`, added `RequireAuthorization(Policies.PlatformOrTenantAdmin)`, added `using BuildingBlocks.Authorization;`
