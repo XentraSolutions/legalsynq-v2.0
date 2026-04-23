@@ -9,13 +9,20 @@ public static class TaskEndpoints
 {
     public static void MapTaskEndpoints(this WebApplication app)
     {
+        // "AuthenticatedUserOrService" accepts both portal user JWTs (JwtBearer) and
+        // internal platform service tokens (ServiceToken). This allows Liens, Flow and
+        // other platform services to call these endpoints with signed service tokens.
         var group = app.MapGroup("/api/tasks")
-            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireAuthorization("AuthenticatedUserOrService")
             .WithTags("Tasks");
 
         group.MapGet("/",                       ListTasks);
-        group.MapGet("/my",                     GetMyTasks);
-        group.MapGet("/my/summary",             GetMyTaskSummary);
+        // /my and /my/summary require a real authenticated user — service tokens carry
+        // no real user sub and will be rejected by RequireUserId inside the handler.
+        group.MapGet("/my",                     GetMyTasks)
+             .RequireAuthorization(Policies.AuthenticatedUser);
+        group.MapGet("/my/summary",             GetMyTaskSummary)
+             .RequireAuthorization(Policies.AuthenticatedUser);
         group.MapGet("/{id:guid}",              GetTaskById);
         group.MapPost("/",                      CreateTask);
         group.MapPut("/{id:guid}",              UpdateTask);

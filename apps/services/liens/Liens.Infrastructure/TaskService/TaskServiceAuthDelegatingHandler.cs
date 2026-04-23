@@ -35,7 +35,12 @@ public sealed class TaskServiceAuthDelegatingHandler : DelegatingHandler
             {
                 try
                 {
-                    var token = _issuer.IssueToken(tenantId);
+                    // Forward the acting user id (X-User-Id) into the signed actor claim
+                    // so that CurrentRequestContext.UserId resolves correctly on write endpoints.
+                    request.Headers.TryGetValues("X-User-Id", out var userIdVals);
+                    var actorUserId = userIdVals?.FirstOrDefault();
+
+                    var token = _issuer.IssueToken(tenantId, actorUserId);
                     request.Headers.Authorization =
                         new AuthenticationHeaderValue("Bearer", token);
                 }

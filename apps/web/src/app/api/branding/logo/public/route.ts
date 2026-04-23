@@ -67,10 +67,17 @@ async function fetchLogoDocFromTenant(tenantCode: string): Promise<string | null
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), BRANDING_TIMEOUT_MS);
   try {
-    const res = await fetch(
+    // Try by-code first; fall back to by-subdomain when code ≠ subdomain (e.g. liens-company).
+    let res = await fetch(
       `${GATEWAY_URL}/tenant/api/v1/public/branding/by-code/${encodeURIComponent(tenantCode)}`,
       { signal: controller.signal },
     );
+    if (res.status === 404) {
+      res = await fetch(
+        `${GATEWAY_URL}/tenant/api/v1/public/branding/by-subdomain/${encodeURIComponent(tenantCode)}`,
+        { signal: controller.signal },
+      );
+    }
     if (!res.ok) return null;
     const data = await res.json();
     return data?.logoDocumentId ?? null;

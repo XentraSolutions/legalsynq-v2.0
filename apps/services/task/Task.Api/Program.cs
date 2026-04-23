@@ -50,13 +50,21 @@ builder.Services
 
 builder.Services.AddAuthorization(options =>
 {
-    // Accepts only standard user JWTs. Service tokens must use the
-    // InternalService policy on dedicated /api/tasks/internal/* endpoints;
-    // they must not reach user-identity endpoints because the acting user
-    // cannot be verified without a signed actor claim in scope.
+    // Accepts only standard user JWTs.
     options.AddPolicy(Policies.AuthenticatedUser, policy =>
         policy
             .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+            .RequireAuthenticatedUser());
+
+    // Accepts either a user JWT (JwtBearer) or an internal service token (ServiceToken).
+    // Used on /api/tasks endpoints so platform services (e.g. Liens, Flow) can query
+    // and mutate tasks on behalf of their tenants using signed service tokens while
+    // portal users continue to use their standard user JWTs.
+    options.AddPolicy("AuthenticatedUserOrService", policy =>
+        policy
+            .AddAuthenticationSchemes(
+                JwtBearerDefaults.AuthenticationScheme,
+                ServiceTokenAuthenticationDefaults.Scheme)
             .RequireAuthenticatedUser());
 
     options.AddPolicy(Policies.AdminOnly, policy =>

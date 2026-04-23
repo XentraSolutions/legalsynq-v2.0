@@ -107,9 +107,20 @@ async function fetchFromIdentity(
 async function fetchFromTenant(
   tenantCode: string,
 ): Promise<{ data: TenantBrandingShape | null; failReason: FetchFailReason }> {
-  const url = `${GATEWAY_URL}/tenant/api/v1/public/branding/by-code/${encodeURIComponent(tenantCode)}`;
+  // Try by-code first; fall back to by-subdomain when code ≠ subdomain (e.g. liens-company).
+  let { res, failReason } = await fetchWithTimeout(
+    `${GATEWAY_URL}/tenant/api/v1/public/branding/by-code/${encodeURIComponent(tenantCode)}`,
+    {},
+    TENANT_TIMEOUT_MS,
+  );
 
-  const { res, failReason } = await fetchWithTimeout(url, {}, TENANT_TIMEOUT_MS);
+  if (!failReason && res!.status === 404) {
+    ({ res, failReason } = await fetchWithTimeout(
+      `${GATEWAY_URL}/tenant/api/v1/public/branding/by-subdomain/${encodeURIComponent(tenantCode)}`,
+      {},
+      TENANT_TIMEOUT_MS,
+    ));
+  }
 
   if (failReason) return { data: null, failReason };
   if (!res!.ok)   return { data: null, failReason: res!.status === 404 ? 'not_found' : 'error_response' };
