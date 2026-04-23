@@ -1090,6 +1090,50 @@ public static class AdminEndpoints
     private record SetLogoRequest(string? DocumentId);
 
     /// <summary>
+    /// Calls PUT /documents/{documentId}/logo-registration on the Documents service
+    /// so that IsPublishedAsLogo is set to true on the document. This allows
+    /// /public/logo/{id} to serve the logo without authentication.
+    ///
+    /// Forwarded headers:
+    ///   Authorization        — the admin caller's JWT
+    ///   X-Admin-Target-Tenant — the target tenant ID so Documents resolves the
+    ///                           correct tenant scope (platform-admin bypass path)
+    /// Non-fatal: a failure here is logged as a warning and does not roll back
+    /// the Identity logo assignment.
+    /// </summary>
+    private static async Task RegisterLogoInDocumentsAsync(
+        IHttpClientFactory httpClientFactory,
+        HttpContext        httpContext,
+        Guid               documentId,
+        Guid               tenantId,
+        CancellationToken  ct)
+    {
+        try
+        {
+            var authHeader = httpContext.Request.Headers["Authorization"].FirstOrDefault();
+            var client     = httpClientFactory.CreateClient("DocumentsInternal");
+
+            using var req = new HttpRequestMessage(HttpMethod.Put, $"/documents/{documentId}/logo-registration");
+            if (!string.IsNullOrEmpty(authHeader))
+                req.Headers.TryAddWithoutValidation("Authorization", authHeader);
+            req.Headers.TryAddWithoutValidation("X-Admin-Target-Tenant", tenantId.ToString());
+
+            var res = await client.SendAsync(req, ct);
+            if (!res.IsSuccessStatusCode)
+            {
+                var body = await res.Content.ReadAsStringAsync(ct);
+                Console.Error.WriteLine(
+                    $"[Identity] RegisterLogoInDocumentsAsync: Documents returned {(int)res.StatusCode} for document {documentId} / tenant {tenantId}. Body: {body}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"[Identity] RegisterLogoInDocumentsAsync: non-fatal error for document {documentId} / tenant {tenantId}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// PATCH /api/admin/tenants/{id}/logo
     /// Sets the tenant's logo by storing the document ID of an already-uploaded image.
     /// The caller is responsible for uploading the image to the Documents service first.
@@ -1098,6 +1142,8 @@ public static class AdminEndpoints
         Guid                id,
         SetLogoRequest      body,
         ClaimsPrincipal     caller,
+        HttpContext         httpContext,
+        IHttpClientFactory  httpClientFactory,
         IdentityDbContext   db,
         IAuditEventClient   auditClient,
         ITenantSyncAdapter  syncAdapter,
@@ -1114,6 +1160,10 @@ public static class AdminEndpoints
 
         tenant.SetLogo(documentId);
         await db.SaveChangesAsync(ct);
+
+        // Register the document as the published logo in the Documents service so that
+        // /public/logo/{id} (which requires IsPublishedAsLogo=true) can serve it.
+        await RegisterLogoInDocumentsAsync(httpClientFactory, httpContext, documentId, tenant.Id, ct);
 
         // ── TENANT-B07: Dual-write logo update to Tenant service ──────────────
         _ = syncAdapter.SyncAsync(new IdentityTenantSyncRequest(
@@ -1219,6 +1269,8 @@ public static class AdminEndpoints
         Guid                id,
         SetLogoRequest      body,
         ClaimsPrincipal     caller,
+        HttpContext         httpContext,
+        IHttpClientFactory  httpClientFactory,
         IdentityDbContext   db,
         IAuditEventClient   auditClient,
         ITenantSyncAdapter  syncAdapter,
@@ -1235,6 +1287,9 @@ public static class AdminEndpoints
 
         tenant.SetLogoWhite(documentId);
         await db.SaveChangesAsync(ct);
+
+        // Register the white logo document as published so /public/logo/{id} can serve it.
+        await RegisterLogoInDocumentsAsync(httpClientFactory, httpContext, documentId, tenant.Id, ct);
 
         // ── TENANT-B07: Dual-write logo-white update to Tenant service ─────────
         _ = syncAdapter.SyncAsync(new IdentityTenantSyncRequest(

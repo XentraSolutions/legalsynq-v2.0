@@ -2,6 +2,7 @@ using System.Text;
 using Documents.Api.Background;
 using Documents.Api.Endpoints;
 using Documents.Api.Middleware;
+using Documents.Domain.Enums;
 using Documents.Domain.Interfaces;
 using Documents.Infrastructure;
 using Documents.Infrastructure.Database;
@@ -224,6 +225,28 @@ catch (Exception ex)
     app.Logger.LogWarning(ex, "Migration coverage self-test could not run");
 }
 
+// ── Logo publication auto-heal ────────────────────────────────────────────────
+// When the is_published_as_logo column was added (migration 20260421), existing
+// logo documents defaulted to false. Identity's SetTenantLogo stored the
+// document ID but did not call RegisterAsLogoAsync, so all previously-uploaded
+// logos were invisible via /public/logo/{id}.
+//
+// This routine is idempotent: for each tenant that has at least one clean,
+// non-deleted logo document but no published one, it marks the most recently
+// created logo as IsPublishedAsLogo=true. Tenants that already have a published
+// logo are left untouched.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<DocsDbContext>();
+    var requireCleanForHeal = app.Configuration.GetValue<bool>("Documents:RequireCleanScanForAccess", defaultValue: true);
+    await HealLogoPublicationAsync(db, app.Logger, requireCleanForHeal);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Logo publication auto-heal could not run — some existing logos may not be publicly accessible.");
+}
+
 // ── Schema safety-net ─────────────────────────────────────────────────────────
 // Creates any tables that were defined in the InitialCreate migration but may
 // have drifted out of production (idempotent CREATE TABLE IF NOT EXISTS).
@@ -300,6 +323,65 @@ app.MapPublicLogoEndpoints();
 }
 
 app.Run();
+
+// ── HealLogoPublicationAsync ───────────────────────────────────────────────────
+// For each tenant that has at least one eligible, non-deleted logo document but
+// has no published logo (IsPublishedAsLogo=true), marks the most recently
+// created logo as published. Safe to run repeatedly — tenants that already have
+// a published logo are untouched.
+//
+// When requireCleanScan is false (dev: Documents:RequireCleanScanForAccess=false)
+// Skipped documents (from NullScannerProvider / pre-mock-scanner uploads) are
+// also eligible. Infected and Failed documents are never healed.
+static async Task HealLogoPublicationAsync(DocsDbContext db, Microsoft.Extensions.Logging.ILogger logger, bool requireCleanScan)
+{
+    var logoDocTypeId = Guid.Parse("20000000-0000-0000-0000-000000000002");
+
+    // Eligible scan statuses: always include Clean; include Skipped when scan not required.
+    var eligibleStatuses = requireCleanScan
+        ? new[] { ScanStatus.Clean }
+        : new[] { ScanStatus.Clean, ScanStatus.Skipped };
+
+    // Tenants that have at least one eligible logo but none currently published
+    var tenantsNeedingHeal = await db.Documents
+        .Where(d => d.DocumentTypeId == logoDocTypeId
+                 && !d.IsDeleted
+                 && eligibleStatuses.Contains(d.ScanStatus))
+        .GroupBy(d => d.TenantId)
+        .Where(g => !g.Any(d => d.IsPublishedAsLogo))
+        .Select(g => g.Key)
+        .ToListAsync();
+
+    if (tenantsNeedingHeal.Count == 0)
+    {
+        logger.LogInformation("Logo auto-heal: all tenants with logo documents already have a published logo.");
+        return;
+    }
+
+    int healed = 0;
+    foreach (var tenantId in tenantsNeedingHeal)
+    {
+        var mostRecent = await db.Documents
+            .Where(d => d.DocumentTypeId == logoDocTypeId
+                     && !d.IsDeleted
+                     && eligibleStatuses.Contains(d.ScanStatus)
+                     && d.TenantId == tenantId)
+            .OrderByDescending(d => d.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (mostRecent is null) continue;
+        mostRecent.IsPublishedAsLogo = true;
+        healed++;
+    }
+
+    if (healed > 0)
+    {
+        await db.SaveChangesAsync();
+        logger.LogInformation(
+            "Logo auto-heal: marked {Count} logo document(s) as published for {TenantCount} tenant(s).",
+            healed, tenantsNeedingHeal.Count);
+    }
+}
 
 // ── EnsureDocsSchemaTablesAsync ────────────────────────────────────────────────
 // Idempotently creates tables from the InitialCreate migration that were not

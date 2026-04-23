@@ -22,6 +22,8 @@ public static class PublicLogoEndpoints
 
     public static void MapPublicLogoEndpoints(this WebApplication app)
     {
+        var requireCleanScan = app.Configuration.GetValue<bool>("Documents:RequireCleanScanForAccess", defaultValue: true);
+
         app.MapGet("/public/logo/{id:guid}", async (
             Guid id,
             DocsDbContext db,
@@ -40,8 +42,12 @@ public static class PublicLogoEndpoints
             if (doc is null || string.IsNullOrEmpty(doc.StorageKey))
                 return Results.NotFound();
 
-            // Only serve files that have passed a clean scan — block Pending, Failed, Skipped, and Infected
-            if (doc.ScanStatus != ScanStatus.Clean)
+            // Block infected and failed documents unconditionally.
+            // When RequireCleanScanForAccess is true (production) also block Pending and Skipped.
+            if (doc.ScanStatus == ScanStatus.Infected || doc.ScanStatus == ScanStatus.Failed)
+                return Results.NotFound();
+
+            if (requireCleanScan && doc.ScanStatus != ScanStatus.Clean)
                 return Results.NotFound();
 
             // Restrict public logo serving to image MIME types only

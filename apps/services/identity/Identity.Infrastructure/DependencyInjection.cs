@@ -153,6 +153,15 @@ public static class DependencyInjection
             services.AddScoped<ITenantSyncAdapter, IdentityNoOpTenantSyncAdapter>();
         }
 
+        // Logo registration client — calls Documents service to set IsPublishedAsLogo=true
+        // after Identity stores a tenant's logo document ID.
+        services.AddHttpClient("DocumentsInternal", client =>
+        {
+            var docsUrl = configuration["DocumentsService:InternalUrl"] ?? "http://127.0.0.1:5006";
+            client.BaseAddress = new Uri(docsUrl);
+            client.Timeout = TimeSpan.FromSeconds(5);
+        });
+
         services.AddScoped<ITenantProductEntitlementService, TenantProductEntitlementService>();
         services.AddScoped<IUserProductAccessService, UserProductAccessService>();
         services.AddScoped<IUserRoleAssignmentService, UserRoleAssignmentService>();
