@@ -6,6 +6,7 @@ settings:
 
 overrides:
   lodash: 4.17.21
+  next: ^15.5.15
   file-type: ^22.0.1
   fast-xml-parser: ^5.7.1
   uuid: ^11.0.5
