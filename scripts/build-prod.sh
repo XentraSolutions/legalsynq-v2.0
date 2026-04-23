@@ -56,7 +56,17 @@ if [ -d "$PNPM_REACT_DOM" ] && [ ! -L "$CC_NM/react-dom" ]; then
 fi
 cd "$ROOT/apps/control-center"
 rm -rf .next
-node "$NEXT_BIN" build
+# The control center ships its own Next.js (15.5.15) which correctly detects
+# the src/ directory layout. Using the root-level Next.js (15.2.9) causes
+# validator.ts to be generated with wrong relative paths (../../app/... instead
+# of ../../src/app/...), failing the TypeScript type-check phase.
+CC_NEXT_BIN="$ROOT/apps/control-center/node_modules/next/dist/bin/next"
+if [ ! -f "$CC_NEXT_BIN" ]; then
+  echo "[control-center] Own next binary not found, falling back to root binary"
+  CC_NEXT_BIN="$NEXT_BIN"
+fi
+echo "[control-center] Using next binary: $CC_NEXT_BIN"
+node "$CC_NEXT_BIN" build
 
 echo "====== Building .NET services ======"
 cd "$ROOT"
