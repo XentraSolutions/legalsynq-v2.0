@@ -147,6 +147,9 @@ public sealed class ReportScheduleService : IReportScheduleService
         if (schedule is null)
             return ServiceResult<ReportScheduleResponse>.NotFound($"Schedule '{scheduleId}' not found.");
 
+        if (!string.Equals(schedule.TenantId, _ctx.TenantId, StringComparison.OrdinalIgnoreCase))
+            return ServiceResult<ReportScheduleResponse>.NotFound($"Schedule '{scheduleId}' not found.");
+
         var validation = ValidateUpdateRequest(request);
         if (validation is not null)
             return ServiceResult<ReportScheduleResponse>.BadRequest(validation);
@@ -192,6 +195,9 @@ public sealed class ReportScheduleService : IReportScheduleService
         if (schedule is null)
             return ServiceResult<ReportScheduleResponse>.NotFound($"Schedule '{scheduleId}' not found.");
 
+        if (!string.Equals(schedule.TenantId, _ctx.TenantId, StringComparison.OrdinalIgnoreCase))
+            return ServiceResult<ReportScheduleResponse>.NotFound($"Schedule '{scheduleId}' not found.");
+
         return ServiceResult<ReportScheduleResponse>.Ok(MapToResponse(schedule));
     }
 
@@ -215,6 +221,9 @@ public sealed class ReportScheduleService : IReportScheduleService
 
         var schedule = await _scheduleRepo.GetByIdAsync(scheduleId, ct);
         if (schedule is null)
+            return ServiceResult<ReportScheduleResponse>.NotFound($"Schedule '{scheduleId}' not found.");
+
+        if (!string.Equals(schedule.TenantId, _ctx.TenantId, StringComparison.OrdinalIgnoreCase))
             return ServiceResult<ReportScheduleResponse>.NotFound($"Schedule '{scheduleId}' not found.");
 
         schedule.IsActive = false;
@@ -242,6 +251,9 @@ public sealed class ReportScheduleService : IReportScheduleService
         if (schedule is null)
             return ServiceResult<ReportScheduleRunResponse>.NotFound($"Schedule '{scheduleId}' not found.");
 
+        if (!string.Equals(schedule.TenantId, _ctx.TenantId, StringComparison.OrdinalIgnoreCase))
+            return ServiceResult<ReportScheduleRunResponse>.NotFound($"Schedule '{scheduleId}' not found.");
+
         var run = await ExecuteScheduleRunAsync(schedule, DateTimeOffset.UtcNow, actorId, ct);
         return ServiceResult<ReportScheduleRunResponse>.Ok(MapRunToResponse(run));
     }
@@ -249,6 +261,13 @@ public sealed class ReportScheduleService : IReportScheduleService
     public async Task<ServiceResult<IReadOnlyList<ReportScheduleRunResponse>>> ListRunsAsync(
         Guid scheduleId, int page, int pageSize, CancellationToken ct)
     {
+        var schedule = await _scheduleRepo.GetByIdAsync(scheduleId, ct);
+        if (schedule is null)
+            return ServiceResult<IReadOnlyList<ReportScheduleRunResponse>>.NotFound($"Schedule '{scheduleId}' not found.");
+
+        if (!string.Equals(schedule.TenantId, _ctx.TenantId, StringComparison.OrdinalIgnoreCase))
+            return ServiceResult<IReadOnlyList<ReportScheduleRunResponse>>.NotFound($"Schedule '{scheduleId}' not found.");
+
         var runs = await _scheduleRepo.ListRunsByScheduleAsync(scheduleId, page, pageSize, ct);
         IReadOnlyList<ReportScheduleRunResponse> result = runs.Select(MapRunToResponse).ToList();
         return ServiceResult<IReadOnlyList<ReportScheduleRunResponse>>.Ok(result);
@@ -258,6 +277,13 @@ public sealed class ReportScheduleService : IReportScheduleService
     {
         var run = await _scheduleRepo.GetRunByIdAsync(runId, ct);
         if (run is null)
+            return ServiceResult<ReportScheduleRunResponse>.NotFound($"Run '{runId}' not found.");
+
+        var owningSchedule = run.ReportSchedule
+            ?? await _scheduleRepo.GetByIdAsync(run.ReportScheduleId, ct);
+
+        if (owningSchedule is null ||
+            !string.Equals(owningSchedule.TenantId, _ctx.TenantId, StringComparison.OrdinalIgnoreCase))
             return ServiceResult<ReportScheduleRunResponse>.NotFound($"Run '{runId}' not found.");
 
         return ServiceResult<ReportScheduleRunResponse>.Ok(MapRunToResponse(run));

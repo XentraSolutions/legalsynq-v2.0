@@ -294,6 +294,10 @@ public sealed class ReportExecutionService : IReportExecutionService
             return ServiceResult<ReportExecutionSummaryResponse>.NotFound(
                 $"Execution '{executionId}' not found.");
 
+        if (!string.Equals(execution.TenantId, _ctx.TenantId, StringComparison.OrdinalIgnoreCase))
+            return ServiceResult<ReportExecutionSummaryResponse>.NotFound(
+                $"Execution '{executionId}' not found.");
+
         return ServiceResult<ReportExecutionSummaryResponse>.Ok(new ReportExecutionSummaryResponse
         {
             ExecutionId = execution.Id,

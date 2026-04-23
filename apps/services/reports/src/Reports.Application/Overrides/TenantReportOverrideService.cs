@@ -15,6 +15,7 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
     private readonly ITemplateRepository _templateRepo;
     private readonly ITemplateAssignmentRepository _assignmentRepo;
     private readonly IAuditAdapter _audit;
+    private readonly ICurrentTenantContext _ctx;
     private readonly ILogger<TenantReportOverrideService> _log;
 
     public TenantReportOverrideService(
@@ -22,12 +23,14 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
         ITemplateRepository templateRepo,
         ITemplateAssignmentRepository assignmentRepo,
         IAuditAdapter audit,
+        ICurrentTenantContext ctx,
         ILogger<TenantReportOverrideService> log)
     {
         _overrideRepo = overrideRepo;
         _templateRepo = templateRepo;
         _assignmentRepo = assignmentRepo;
         _audit = audit;
+        _ctx = ctx;
         _log = log;
     }
 
@@ -141,6 +144,10 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
             return ServiceResult<TenantReportOverrideResponse>.NotFound(
                 $"Override '{overrideId}' not found for template '{templateId}'.");
 
+        if (!string.Equals(existing.TenantId, _ctx.TenantId, StringComparison.OrdinalIgnoreCase))
+            return ServiceResult<TenantReportOverrideResponse>.NotFound(
+                $"Override '{overrideId}' not found for template '{templateId}'.");
+
         var isAssigned = await IsTenantAssignedAsync(templateId, existing.TenantId, ct);
         if (!isAssigned)
             return ServiceResult<TenantReportOverrideResponse>.BadRequest(
@@ -194,6 +201,10 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
             return ServiceResult<TenantReportOverrideResponse>.NotFound(
                 $"Override '{overrideId}' not found for template '{templateId}'.");
 
+        if (!string.Equals(existing.TenantId, _ctx.TenantId, StringComparison.OrdinalIgnoreCase))
+            return ServiceResult<TenantReportOverrideResponse>.NotFound(
+                $"Override '{overrideId}' not found for template '{templateId}'.");
+
         return ServiceResult<TenantReportOverrideResponse>.Ok(MapToResponse(existing));
     }
 
@@ -215,6 +226,10 @@ public sealed class TenantReportOverrideService : ITenantReportOverrideService
     {
         var existing = await _overrideRepo.GetByIdAsync(overrideId, ct);
         if (existing is null || existing.ReportTemplateId != templateId)
+            return ServiceResult<TenantReportOverrideResponse>.NotFound(
+                $"Override '{overrideId}' not found for template '{templateId}'.");
+
+        if (!string.Equals(existing.TenantId, _ctx.TenantId, StringComparison.OrdinalIgnoreCase))
             return ServiceResult<TenantReportOverrideResponse>.NotFound(
                 $"Override '{overrideId}' not found for template '{templateId}'.");
 

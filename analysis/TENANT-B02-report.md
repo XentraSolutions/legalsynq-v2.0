@@ -181,7 +181,6 @@ Public response includes: tenantId, code, displayName, brandName, logoDocumentId
 | Hex color validation | ✅ | 400 Bad Request; Regex ^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$ in BrandingService |
 | CountryCode validation | ✅ | Must be 2 chars if supplied |
 | Subdomain uniqueness check | ✅ | ExistsBySubdomainAsync with excludeId for self-update |
-| Duplicate code conflict | ✅ | 409 status code |
 
 ## 8. Known Gaps / Deferred Items
 
