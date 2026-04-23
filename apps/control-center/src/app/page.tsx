@@ -7,6 +7,7 @@ import { SystemStatusCard }       from '@/components/dashboard/system-status-car
 import { RecentAuditTable }       from '@/components/dashboard/recent-audit-table';
 import { SupportSummaryCard }     from '@/components/dashboard/support-summary-card';
 import { TenantBreakdownCard }    from '@/components/dashboard/tenant-breakdown-card';
+import { NavigationGroupGrid }    from '@/components/dashboard/navigation-group-grid';
 import type { MonitoringSummary, TenantSummary, UserSummary, SupportCase, CanonicalAuditEvent } from '@/types/control-center';
 
 export const dynamic = 'force-dynamic';
@@ -58,7 +59,7 @@ async function loadDashboardData(): Promise<DashboardData> {
   const users = usersResult.status === 'fulfilled' ? usersResult.value : null;
   if (usersResult.status === 'rejected') errors.users = usersResult.reason?.message ?? 'Failed to load users';
 
-  const activeUsers = activeUsersResult.status === 'fulfilled' ? activeUsersResult.value : null;
+  const activeUsers  = activeUsersResult.status  === 'fulfilled' ? activeUsersResult.value  : null;
   const invitedUsers = invitedUsersResult.status === 'fulfilled' ? invitedUsersResult.value : null;
 
   const monitoring = monitoringResult.status === 'fulfilled' ? monitoringResult.value : null;
@@ -80,33 +81,40 @@ export default async function DashboardPage() {
   const data = await loadDashboardData();
 
   const activeTenants = data.tenants?.items.filter(t => t.status === 'Active').length ?? 0;
-  const totalTenants = data.tenants?.totalCount ?? 0;
+  const totalTenants  = data.tenants?.totalCount ?? 0;
 
-  const activeUserCount = data.activeUsers?.totalCount ?? 0;
+  const activeUserCount  = data.activeUsers?.totalCount  ?? 0;
   const invitedUserCount = data.invitedUsers?.totalCount ?? 0;
-  const totalUsers = data.users?.totalCount ?? 0;
+  const totalUsers       = data.users?.totalCount        ?? 0;
 
   const totalUserCount = data.tenants?.items.reduce((sum, t) => sum + (t.userCount ?? 0), 0) ?? 0;
-  const totalOrgCount = data.tenants?.items.reduce((sum, t) => sum + (t.orgCount ?? 0), 0) ?? 0;
+  const totalOrgCount  = data.tenants?.items.reduce((sum, t) => sum + (t.orgCount  ?? 0), 0) ?? 0;
 
   const openSupportCount = data.openSupportCases?.totalCount ?? 0;
-
-  const criticalAlerts = data.monitoring?.alerts.filter(a => a.severity === 'Critical').length ?? 0;
+  const criticalAlerts   = data.monitoring?.alerts.filter(a => a.severity === 'Critical').length ?? 0;
 
   return (
     <CCShell userEmail={session.email}>
       <div className="min-h-full bg-gray-50">
         <div className="max-w-6xl mx-auto px-6 py-8">
 
+          {/* ── Page intro ──────────────────────────────────────────────────── */}
           <div className="mb-6">
             <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Platform overview and key metrics across all services.
+              Platform overview and quick access to all Control Center tools.
             </p>
           </div>
 
+          {/* ── Navigation Hub ──────────────────────────────────────────────── */}
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 px-5 py-5">
+            <NavigationGroupGrid />
+          </div>
+
+          {/* ── System status ───────────────────────────────────────────────── */}
           <SystemStatusCard data={data.monitoring} error={data.errors.monitoring} />
 
+          {/* ── Key metric stat cards ────────────────────────────────────────── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-5">
             <StatCard
               label="Tenants"
@@ -145,6 +153,7 @@ export default async function DashboardPage() {
             />
           </div>
 
+          {/* ── Tenant breakdown + support summary ──────────────────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5">
             <TenantBreakdownCard
               tenants={data.tenants?.items ?? []}
@@ -158,6 +167,7 @@ export default async function DashboardPage() {
             />
           </div>
 
+          {/* ── Recent audit events ──────────────────────────────────────────── */}
           <div className="mt-5">
             <RecentAuditTable
               events={data.auditEvents?.items ?? []}
@@ -165,41 +175,8 @@ export default async function DashboardPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
-            <LinkCard
-              icon="ri-checkbox-circle-line"
-              title="Platform Readiness"
-              description="Migration completion and data coverage"
-              href="/platform-readiness"
-            />
-            <LinkCard
-              icon="ri-shield-check-line"
-              title="SynqAudit"
-              description="Compliance, integrity, and legal holds"
-              href="/synqaudit"
-            />
-            <LinkCard
-              icon="ri-heart-pulse-line"
-              title="CareConnect Integrity"
-              description="Referral and appointment data consistency"
-              href="/careconnect-integrity"
-            />
-          </div>
-
         </div>
       </div>
     </CCShell>
-  );
-}
-
-function LinkCard({ icon, title, description, href }: { icon: string; title: string; description: string; href: string }) {
-  return (
-    <a href={href} className="block bg-white border border-gray-200 rounded-lg px-5 py-4 hover:border-gray-300 hover:shadow-sm transition-all group">
-      <div className="flex items-center gap-3 mb-1">
-        <i className={`${icon} text-base text-gray-500 group-hover:text-gray-700`} />
-        <span className="text-sm font-medium text-gray-800 group-hover:text-gray-900">{title}</span>
-      </div>
-      <p className="text-xs text-gray-400 ml-7">{description}</p>
-    </a>
   );
 }
