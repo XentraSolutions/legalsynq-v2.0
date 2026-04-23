@@ -523,6 +523,7 @@ app.MapAuthEndpoints();
 app.MapTenantBrandingEndpoints();
 app.MapAdminEndpoints();
 app.MapTenantProvisioningEndpoints();
+app.MapUserMembershipEndpoints();      // BLK-ID-02
 app.MapAccessSourceEndpoints();
 app.MapGroupEndpoints();
 app.MapPermissionCatalogEndpoints();

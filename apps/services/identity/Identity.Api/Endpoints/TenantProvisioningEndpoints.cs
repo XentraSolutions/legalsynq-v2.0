@@ -40,6 +40,7 @@ public static class TenantProvisioningEndpoints
             IPasswordHasher              passwordHasher,
             ITenantProvisioningService   provisioningService,
             IProductProvisioningService  productProvisioningEngine,
+            IUserMembershipService       membershipService,          // BLK-ID-02
             IConfiguration              configuration,
             ILoggerFactory              loggerFactory,
             CancellationToken           ct) =>
@@ -96,14 +97,6 @@ public static class TenantProvisioningEndpoints
                 _            => new Guid("70000000-0000-0000-0000-000000000002"),
             };
 
-            // ── Find TenantAdmin role ──────────────────────────────────────
-            var tenantAdminRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "TenantAdmin", ct);
-            if (tenantAdminRole is null)
-            {
-                log.LogError("[TenantProvisioning] TenantAdmin role not found for tenantId={TenantId}", body.TenantId);
-                return Results.Problem("TenantAdmin role not found. Contact platform support.", statusCode: 500);
-            }
-
             // ── Generate temporary password ────────────────────────────────
             var tempPassword = GenerateTemporaryPassword();
             var passwordHash = passwordHasher.Hash(tempPassword);
@@ -147,18 +140,34 @@ public static class TenantProvisioningEndpoints
                 memberRole:     MemberRole.Admin);
             db.UserOrganizationMemberships.Add(membership);
 
-            var sra = ScopedRoleAssignment.Create(
-                userId:    user.Id,
-                roleId:    tenantAdminRole.Id,
-                scopeType: ScopedRoleAssignment.ScopeTypes.Global,
-                tenantId:  identityTenant.Id);
-            db.ScopedRoleAssignments.Add(sra);
-
+            // Save tenant, org, user, and org membership in one batch.
+            // Role assignment is done separately via IUserMembershipService (BLK-ID-02).
             await db.SaveChangesAsync(ct);
 
             log.LogInformation(
                 "[TenantProvisioning] Identity entities created for TenantId={TenantId}, Code={Code}, AdminEmail={Email}",
                 body.TenantId, code, emailNorm);
+
+            // ── BLK-ID-02: Assign roles via the formal membership service ─────
+            // Idempotent — safe on retry. Delegates all ScopedRoleAssignment
+            // creation to UserMembershipService (no direct DB writes here).
+            // Always assign TenantAdmin on provisioning.
+            var rolesResult = await membershipService.AssignRolesAsync(
+                new AssignRolesCommand(
+                    UserId:   user.Id,
+                    TenantId: identityTenant.Id,
+                    Roles:    ["TenantAdmin"]),
+                ct);
+
+            if (rolesResult.AssignedRoles.Count > 0)
+                log.LogInformation(
+                    "[TenantProvisioning] Roles assigned to user {UserId}: [{Roles}]",
+                    user.Id, string.Join(", ", rolesResult.AssignedRoles));
+
+            if (rolesResult.SkippedDuplicates.Count > 0)
+                log.LogWarning(
+                    "[TenantProvisioning] Duplicate role assignments skipped for user {UserId}: [{Roles}]",
+                    user.Id, string.Join(", ", rolesResult.SkippedDuplicates));
 
             // ── Provision subdomain (DNS + TenantDomain record) ───────────
             var provResult = await provisioningService.ProvisionAsync(identityTenant, ct);
