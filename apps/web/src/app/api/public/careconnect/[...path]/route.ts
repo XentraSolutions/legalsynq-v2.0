@@ -1,10 +1,18 @@
+import { createHmac } from 'crypto';
 import { type NextRequest, NextResponse } from 'next/server';
 
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
+// BLK-SEC-02-02: Shared secret for public CareConnect trust boundary.
+// Used to HMAC-sign the resolved X-Tenant-Id before forwarding.
+// Must match PublicTrustBoundary:InternalRequestSecret in Gateway and CareConnect configs.
+// Empty string in unconfigured environments — validation disabled fallback in CareConnect.
+const INTERNAL_REQUEST_SECRET = process.env.INTERNAL_REQUEST_SECRET ?? '';
+
 /**
  * CC2-INT-B07 — Public CareConnect BFF proxy.
  * TENANT-STABILIZATION — Tenant resolution switched from Identity to Tenant service.
+ * BLK-SEC-02-02 — Trust boundary hardening: BFF now signs X-Tenant-Id with HMAC-SHA256.
  *
  * Handles unauthenticated requests to the public network surface.
  * Unlike the authenticated /api/careconnect proxy, this handler does NOT
@@ -14,9 +22,14 @@ const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
  * incoming request's Host header by calling the Tenant resolution endpoint.
  * The client-supplied X-Tenant-Id header is never trusted or forwarded.
  *
+ * Trust boundary: X-Tenant-Id is signed with HMAC-SHA256 using INTERNAL_REQUEST_SECRET.
+ * The signature is sent as X-Tenant-Id-Sig. CareConnect validates both:
+ *   - X-Internal-Gateway-Secret (injected by YARP — proves gateway origin, Layer 1)
+ *   - X-Tenant-Id-Sig HMAC (proves BFF computed the tenant ID, Layer 2)
+ *
  * Resolution: GET /tenant/api/v1/public/resolve/by-host?host={host}
  *   Returns { tenantId, code, displayName, ... } from Tenant service.
- *   Falls back to Identity branding endpoint if Tenant resolution fails
+ *   Falls back to Identity branding endpoint if TENANT_RESOLUTION_FALLBACK_IDENTITY=true
  *   and TENANT_RESOLUTION_FALLBACK_IDENTITY=true (default: false).
  *
  * Routing:
@@ -92,6 +105,17 @@ async function resolveTenantIdFromHost(host: string): Promise<string | null> {
   return null;
 }
 
+/**
+ * Computes HMAC-SHA256(data, secret) and returns the result as a base64 string.
+ * Used to sign X-Tenant-Id before forwarding — CareConnect validates the signature.
+ * Returns empty string if secret is not configured (trust boundary validation
+ * disabled in CareConnect for unconfigured environments).
+ */
+function signTenantId(tenantId: string): string {
+  if (!INTERNAL_REQUEST_SECRET) return '';
+  return createHmac('sha256', INTERNAL_REQUEST_SECRET).update(tenantId).digest('base64');
+}
+
 async function proxy(request: NextRequest, { params }: RouteContext): Promise<NextResponse> {
   const { path: pathSegments } = await params;
   const gatewayPath = `/careconnect/${pathSegments.join('/')}`;
@@ -106,9 +130,14 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
     return NextResponse.json({ message: 'Tenant could not be resolved.' }, { status: 400 });
   }
 
+  // BLK-SEC-02-02: Sign the resolved tenant ID with HMAC-SHA256.
+  // CareConnect validates this signature alongside the gateway origin marker (Layer 2).
+  const sig = signTenantId(tenantId);
+
   const reqHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Tenant-Id': tenantId,
+    ...(sig ? { 'X-Tenant-Id-Sig': sig } : {}),
   };
 
   let body: string | undefined;

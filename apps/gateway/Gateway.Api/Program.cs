@@ -69,6 +69,26 @@ app.MapGet("/info", () =>
     Results.Ok(new InfoResponse(ServiceName, env, Version)))
     .AllowAnonymous();
 
-app.MapReverseProxy().RequireAuthorization();
+app.MapReverseProxy(pipeline =>
+{
+    // BLK-SEC-02-02: Public CareConnect tenant-header trust boundary enforcement.
+    // For /careconnect/api/public/* paths:
+    //   1. Strip any client-supplied X-Internal-Gateway-Secret (prevent forgery from direct callers).
+    //   2. Inject the configured gateway origin marker so CareConnect can verify the request
+    //      passed through this trusted YARP instance (Layer 1 defense).
+    // Non-public and non-CareConnect routes are unaffected.
+    pipeline.Use(async (ctx, next) =>
+    {
+        if (ctx.Request.Path.StartsWithSegments("/careconnect/api/public"))
+        {
+            ctx.Request.Headers.Remove("X-Internal-Gateway-Secret");
+            var secret = ctx.RequestServices
+                .GetRequiredService<IConfiguration>()["PublicTrustBoundary:InternalRequestSecret"];
+            if (!string.IsNullOrWhiteSpace(secret))
+                ctx.Request.Headers["X-Internal-Gateway-Secret"] = secret;
+        }
+        await next();
+    });
+}).RequireAuthorization();
 
 app.Run();

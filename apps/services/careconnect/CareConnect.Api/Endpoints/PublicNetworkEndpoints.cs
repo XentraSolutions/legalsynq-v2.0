@@ -4,6 +4,8 @@ using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
 using System.Net.Mail;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace CareConnect.Api.Endpoints;
 
@@ -11,9 +13,17 @@ namespace CareConnect.Api.Endpoints;
 // CC2-INT-B08 — Public Referral Initiation (POST /api/public/referrals).
 // These endpoints are intentionally anonymous — no JWT or platform_session required.
 // Tenant isolation is enforced via the X-Tenant-Id header, which is resolved
-// server-side by the Next.js BFF from the request subdomain → Identity lookup.
-// The caller (Next.js Server Component) NEVER reads this header from user input;
+// server-side by the Next.js BFF from the request subdomain → Tenant service lookup.
+// The caller (Next.js Server Component / BFF proxy) NEVER reads this header from user input;
 // it resolves the tenant from the subdomain and forwards only the GUID.
+//
+// BLK-SEC-02-02: Trust boundary enforced via two-layer validation:
+//   Layer 1 — X-Internal-Gateway-Secret: proves request passed through the trusted YARP gateway.
+//   Layer 2 — X-Tenant-Id-Sig: HMAC-SHA256 of X-Tenant-Id signed by the BFF using
+//             PublicTrustBoundary:InternalRequestSecret; proves X-Tenant-Id was not spoofed.
+//
+// Spoofed X-Tenant-Id from direct gateway callers → rejected at Layer 2 (no valid HMAC).
+// Direct-to-service requests bypassing the gateway → rejected at Layer 1 (no gateway secret).
 public static class PublicNetworkEndpoints
 {
     public static void MapPublicNetworkEndpoints(this WebApplication app)
@@ -26,13 +36,15 @@ public static class PublicNetworkEndpoints
         // Lists all networks for the resolved tenant.
         // Header: X-Tenant-Id (GUID, resolved from subdomain by Next.js BFF)
         group.MapGet("/", async (
-            HttpContext http,
+            HttpContext    http,
+            IConfiguration config,
             INetworkRepository repo,
             CancellationToken  ct) =>
         {
-            var tenantId = ResolveTenantId(http);
+            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId == null)
-                return Results.BadRequest(new { message = "X-Tenant-Id header is required." });
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
 
             var networks = await repo.GetAllByTenantAsync(tenantId.Value, ct);
 
@@ -52,14 +64,16 @@ public static class PublicNetworkEndpoints
 
         // ── GET /api/public/network/{id}/providers ──────────────────────────
         group.MapGet("/{id:guid}/providers", async (
-            Guid       id,
-            HttpContext http,
+            Guid           id,
+            HttpContext    http,
+            IConfiguration config,
             INetworkRepository repo,
             CancellationToken  ct) =>
         {
-            var tenantId = ResolveTenantId(http);
+            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId == null)
-                return Results.BadRequest(new { message = "X-Tenant-Id header is required." });
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
 
             var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
             if (network == null)
@@ -87,14 +101,16 @@ public static class PublicNetworkEndpoints
 
         // ── GET /api/public/network/{id}/providers/markers ──────────────────
         group.MapGet("/{id:guid}/providers/markers", async (
-            Guid       id,
-            HttpContext http,
+            Guid           id,
+            HttpContext    http,
+            IConfiguration config,
             INetworkRepository repo,
             CancellationToken  ct) =>
         {
-            var tenantId = ResolveTenantId(http);
+            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId == null)
-                return Results.BadRequest(new { message = "X-Tenant-Id header is required." });
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
 
             var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
             if (network == null)
@@ -120,14 +136,16 @@ public static class PublicNetworkEndpoints
 
         // ── GET /api/public/network/{id}/detail ────────────────────────────
         group.MapGet("/{id:guid}/detail", async (
-            Guid       id,
-            HttpContext http,
+            Guid           id,
+            HttpContext    http,
+            IConfiguration config,
             INetworkRepository repo,
             CancellationToken  ct) =>
         {
-            var tenantId = ResolveTenantId(http);
+            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId == null)
-                return Results.BadRequest(new { message = "X-Tenant-Id header is required." });
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
 
             var network = await repo.GetWithProvidersAsync(tenantId.Value, id, ct);
             if (network == null)
@@ -185,13 +203,14 @@ public static class PublicNetworkEndpoints
         app.MapPost("/api/public/referrals", async (
             PublicReferralRequest req,
             HttpContext           http,
+            IConfiguration       config,
             IProviderRepository  providerRepo,
             IReferralService     referralSvc,
             ILoggerFactory       loggerFactory,
             CancellationToken    ct) =>
         {
             var logger = loggerFactory.CreateLogger("CareConnect.PublicReferrals");
-            return await HandlePublicReferral(req, http, providerRepo, referralSvc, logger, ct);
+            return await HandlePublicReferral(req, http, config, providerRepo, referralSvc, logger, ct);
         })
         .AllowAnonymous()
         .RequireRateLimiting("public-referral-limit");
@@ -200,14 +219,16 @@ public static class PublicNetworkEndpoints
     private static async Task<IResult> HandlePublicReferral(
         PublicReferralRequest req,
         HttpContext           http,
+        IConfiguration       config,
         IProviderRepository  providerRepo,
         IReferralService     referralSvc,
         ILogger              logger,
         CancellationToken    ct)
     {
-            var tenantId = ResolveTenantId(http);
+            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId == null)
-                return Results.BadRequest(new { message = "X-Tenant-Id header is required." });
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
 
             // Input validation
             var errors = ValidatePublicReferralRequest(req);
@@ -282,15 +303,130 @@ public static class PublicNetworkEndpoints
             }
     }
 
+    // ── Trust Boundary Validation (BLK-SEC-02-02) ─────────────────────────
+
+    /// <summary>
+    /// Validates the two-layer public trust boundary and returns the resolved TenantId.
+    ///
+    /// Layer 1 — X-Internal-Gateway-Secret:
+    ///   Proves the request was forwarded by the trusted YARP gateway.
+    ///   The gateway strips any client-supplied value and injects its own configured secret.
+    ///   A direct caller bypassing the gateway cannot supply the correct value.
+    ///
+    /// Layer 2 — X-Tenant-Id-Sig (HMAC-SHA256):
+    ///   Proves X-Tenant-Id was signed by the trusted Next.js BFF.
+    ///   HMAC-SHA256(X-Tenant-Id, InternalRequestSecret) computed server-side by the BFF.
+    ///   A caller going through the gateway but supplying an arbitrary X-Tenant-Id
+    ///   cannot forge the signature without knowing the shared secret.
+    ///
+    /// Returns null and logs a warning if validation fails.
+    /// The fallback path (validation disabled / secret not configured) is intentionally
+    /// limited to environments where the secret is not set — logged as a warning.
+    /// </summary>
+    private static Guid? ValidateTrustBoundaryAndResolveTenantId(
+        HttpContext    http,
+        IConfiguration config)
+    {
+        var logger = http.RequestServices
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger("CareConnect.PublicTrustBoundary");
+
+        var secret = config["PublicTrustBoundary:InternalRequestSecret"];
+
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            logger.LogWarning(
+                "PublicTrustBoundary:InternalRequestSecret is not configured — " +
+                "trust boundary validation is DISABLED. Set this value in all non-dev environments. " +
+                "Path={Path}", http.Request.Path);
+            return ResolveTenantIdRaw(http);
+        }
+
+        // Layer 1: validate gateway origin marker
+        var gatewaySecret = http.Request.Headers["X-Internal-Gateway-Secret"].FirstOrDefault();
+        if (gatewaySecret != secret)
+        {
+            logger.LogWarning(
+                "Public request rejected: X-Internal-Gateway-Secret mismatch (Layer 1). " +
+                "RemoteIp={RemoteIp} Path={Path}",
+                http.Connection.RemoteIpAddress, http.Request.Path);
+            return null;
+        }
+
+        // Layer 2: validate HMAC signature of X-Tenant-Id
+        var tenantIdRaw = http.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        var sig         = http.Request.Headers["X-Tenant-Id-Sig"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(tenantIdRaw))
+        {
+            logger.LogWarning(
+                "Public request rejected: X-Tenant-Id header missing (Layer 2). " +
+                "RemoteIp={RemoteIp} Path={Path}",
+                http.Connection.RemoteIpAddress, http.Request.Path);
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(sig))
+        {
+            logger.LogWarning(
+                "Public request rejected: X-Tenant-Id-Sig header missing (Layer 2). " +
+                "RemoteIp={RemoteIp} Path={Path}",
+                http.Connection.RemoteIpAddress, http.Request.Path);
+            return null;
+        }
+
+        if (!TryValidateHmac(tenantIdRaw, sig, secret))
+        {
+            logger.LogWarning(
+                "Public request rejected: X-Tenant-Id-Sig HMAC validation failed (Layer 2). " +
+                "RemoteIp={RemoteIp} Path={Path}",
+                http.Connection.RemoteIpAddress, http.Request.Path);
+            return null;
+        }
+
+        if (!Guid.TryParse(tenantIdRaw, out var tenantId))
+        {
+            logger.LogWarning(
+                "Public request rejected: X-Tenant-Id is not a valid GUID. " +
+                "RemoteIp={RemoteIp} Path={Path}",
+                http.Connection.RemoteIpAddress, http.Request.Path);
+            return null;
+        }
+
+        return tenantId;
+    }
+
+    /// <summary>
+    /// Validates HMAC-SHA256(data, secret) against the provided base64-encoded signature.
+    /// Uses constant-time comparison to prevent timing side-channel attacks.
+    /// </summary>
+    private static bool TryValidateHmac(string data, string sig, string secret)
+    {
+        try
+        {
+            byte[] sigBytes;
+            try { sigBytes = Convert.FromBase64String(sig); }
+            catch { return false; }
+
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+            var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(data));
+
+            if (sigBytes.Length != expected.Length) return false;
+            return CryptographicOperations.FixedTimeEquals(expected, sigBytes);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Reads X-Tenant-Id from the request headers.
-    /// This is set server-side by the Next.js BFF after resolving the
-    /// subdomain → tenant via the Identity service (anonymous branding endpoint).
-    /// Returns null if the header is missing or malformed.
+    /// Raw tenant ID extraction — used only when trust boundary validation is disabled
+    /// (unconfigured secret, typically in local dev without the full gateway stack).
     /// </summary>
-    private static Guid? ResolveTenantId(HttpContext http)
+    private static Guid? ResolveTenantIdRaw(HttpContext http)
     {
         var raw = http.Request.Headers["X-Tenant-Id"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(raw)) return null;
