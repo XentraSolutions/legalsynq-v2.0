@@ -76,6 +76,9 @@ export async function resolveTenantFromCode(
   tenantCode: string,
 ): Promise<ResolvedTenant | null> {
   // Primary: Tenant service resolution (Tenant-first, TENANT-STABILIZATION)
+  // Try by-code first; if not found fall through to by-subdomain.
+  // This covers tenants whose subdomain prefix differs from their code
+  // (e.g. subdomain="liens-company", code="lienscom").
   try {
     const url = `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-code/${encodeURIComponent(tenantCode)}`;
     const res = await fetch(url, { cache: 'no-store' });
@@ -90,7 +93,25 @@ export async function resolveTenantFromCode(
       }
     }
   } catch {
-    // Fall through to fallback
+    // Fall through to subdomain lookup
+  }
+
+  // Secondary: resolve by subdomain (handles tenants where code ≠ subdomain prefix)
+  try {
+    const url = `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-subdomain/${encodeURIComponent(tenantCode)}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.tenantId) {
+        return {
+          tenantId:    data.tenantId,
+          tenantCode:  data.code ?? tenantCode,
+          displayName: data.displayName ?? tenantCode,
+        };
+      }
+    }
+  } catch {
+    // Fall through to Identity fallback
   }
 
   // Fallback: Identity branding endpoint (only if explicitly enabled for rollback)
