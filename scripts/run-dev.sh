@@ -66,6 +66,7 @@ PID_CC=$!
   ) &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/task/Task.Api/Task.Api.csproj" &
+  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
   wait
 ) &

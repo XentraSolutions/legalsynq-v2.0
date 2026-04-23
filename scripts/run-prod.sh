@@ -99,6 +99,7 @@ if command -v dotnet &>/dev/null; then
       "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj"
       "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj"
       "$ROOT/apps/services/task/Task.Api/Task.Api.csproj"
+      "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj"
       "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
     )
 
@@ -179,6 +180,7 @@ if command -v dotnet &>/dev/null; then
           PID_FLOW=$! ;;
         Monitoring.Api) launch_svc "$_svc_label" "$csproj"; PID_MONITORING=$! ;;
         Task.Api)      launch_svc "$_svc_label" "$csproj"; PID_TASK=$! ;;
+        Tenant.Api)    launch_svc "$_svc_label" "$csproj"; PID_TENANT=$! ;;
         Gateway.Api)   launch_svc "$_svc_label" "$csproj"; PID_GATEWAY=$! ;;
         Identity.Api)
           # NotificationsService:BaseUrl and :PortalBaseUrl must be non-empty in
@@ -234,6 +236,7 @@ if command -v dotnet &>/dev/null; then
     _probe_svc "Flow"          5012 /healthz  "${PID_FLOW:-}"          "$PROBE_TIMEOUT_DOTNET"
     _probe_svc "Monitoring"    5015 /health   "${PID_MONITORING:-}"    "$PROBE_TIMEOUT_DOTNET"
     _probe_svc "Task"          5016 /health   "${PID_TASK:-}"          "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Tenant"        5005 /health   "${PID_TENANT:-}"        "$PROBE_TIMEOUT_DOTNET"
 
     wait
   ) &
