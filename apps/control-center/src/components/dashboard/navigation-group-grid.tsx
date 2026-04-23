@@ -2,28 +2,11 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import Link from 'next/link';
 import { getNavGroupModels, getSectionBySlug } from '@/lib/nav-utils';
 import type { NavGroupModel } from '@/lib/nav-utils';
-import type { NavItem } from '@/types';
-
-// ── Badge styles (mirrors cc-sidebar) ───────────────────────────────────────
-const BADGE_STYLES: Record<string, string> = {
-  'LIVE':        'bg-emerald-100 text-emerald-700',
-  'IN PROGRESS': 'bg-amber-100   text-amber-700',
-  'MOCKUP':      'bg-gray-100    text-gray-500',
-  'NEW':         'bg-blue-100    text-blue-700',
-};
-
-function NavBadge({ badge }: { badge: NonNullable<NavItem['badge']> }) {
-  return (
-    <span className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none ${BADGE_STYLES[badge] ?? BADGE_STYLES['MOCKUP']}`}>
-      {badge}
-    </span>
-  );
-}
 
 // ── Group card ───────────────────────────────────────────────────────────────
+
 function GroupCard({
   group,
   isSelected,
@@ -73,65 +56,57 @@ function GroupCard({
             )}
           </p>
         </div>
+        {/* Selected checkmark */}
+        {isSelected && (
+          <i className="ri-check-line text-orange-400 text-[15px] shrink-0 mt-0.5" />
+        )}
       </div>
     </button>
   );
 }
 
-// ── Group detail panel ───────────────────────────────────────────────────────
-function GroupDetailPanel({ group }: { group: NavGroupModel }) {
+// ── Group summary panel — body context (sidebar owns the full menu list) ─────
+
+function GroupSummaryPanel({ group }: { group: NavGroupModel }) {
   return (
-    <div className="mt-5 rounded-xl border border-gray-200 bg-white overflow-hidden">
-      {/* Panel header */}
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 bg-gray-50">
-        <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
-          <i className={`${group.icon} text-[16px] text-orange-500 leading-none`} />
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">{group.heading}</h2>
-          <p className="text-xs text-gray-400">{group.itemCount} tools in this category</p>
-        </div>
+    <div className="mt-5 rounded-xl border border-orange-200 bg-orange-50/40 px-5 py-4 flex items-center gap-4">
+      {/* Icon */}
+      <div className="shrink-0 w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+        <i className={`${group.icon} text-[18px] text-orange-500 leading-none`} />
       </div>
 
-      {/* Item grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-gray-100">
-        {group.items.map(item => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="group flex items-center gap-3 bg-white px-5 py-4 hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-2 focus-visible:ring-orange-400"
-          >
-            <div className="shrink-0 w-8 h-8 rounded-lg bg-gray-100 group-hover:bg-orange-100 flex items-center justify-center transition-colors">
-              {item.icon
-                ? <i className={`${item.icon} text-[15px] text-gray-500 group-hover:text-orange-500 leading-none transition-colors`} />
-                : <span className="w-2 h-2 rounded-full bg-gray-400" />
-              }
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-sm font-medium text-gray-800 group-hover:text-gray-900 truncate">
-                  {item.label}
-                </span>
-                {item.badge && <NavBadge badge={item.badge} />}
-              </div>
-              <p className="text-[11px] text-gray-400 truncate mt-0.5">{item.href}</p>
-            </div>
-            <i className="ri-arrow-right-s-line text-gray-300 group-hover:text-gray-500 shrink-0 transition-colors" />
-          </Link>
-        ))}
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-gray-800">{group.heading}</p>
+        <p className="text-xs text-gray-500 mt-0.5">
+          {group.itemCount} {group.itemCount === 1 ? 'tool' : 'tools'}
+          {group.liveCount > 0 && (
+            <span className="ml-1 text-emerald-600">· {group.liveCount} live</span>
+          )}
+          <span className="mx-1.5 text-gray-300">·</span>
+          {group.itemCount - group.liveCount > 0 && (
+            <span>{group.itemCount - group.liveCount} in progress</span>
+          )}
+        </p>
+      </div>
+
+      {/* Pointer to sidebar */}
+      <div className="shrink-0 flex items-center gap-1.5 text-xs text-orange-500 font-medium">
+        <i className="ri-arrow-left-s-line text-[15px]" />
+        <span className="hidden sm:inline">Navigate from the sidebar</span>
       </div>
     </div>
   );
 }
 
 // ── Inner component (requires Suspense) ─────────────────────────────────────
+
 function NavHubInner() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const selectedSlug = searchParams.get('group');
   const groups       = getNavGroupModels();
-  const selectedSection = selectedSlug ? getSectionBySlug(selectedSlug) : undefined;
-  const selectedGroup   = selectedSlug
+  const selectedGroup = selectedSlug
     ? groups.find(g => g.slug === selectedSlug)
     : undefined;
 
@@ -173,16 +148,16 @@ function NavHubInner() {
         ))}
       </div>
 
-      {/* Detail panel or empty state */}
+      {/* Selected group summary — compact; sidebar owns the full menu list */}
       {selectedGroup ? (
-        <GroupDetailPanel group={selectedGroup} />
+        <GroupSummaryPanel group={selectedGroup} />
       ) : (
         <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-white py-10 flex flex-col items-center justify-center text-center">
           <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
             <i className="ri-layout-grid-line text-[18px] text-gray-400" />
           </div>
           <p className="text-sm font-medium text-gray-500">Select a category above</p>
-          <p className="text-xs text-gray-400 mt-1">Browse tools by group</p>
+          <p className="text-xs text-gray-400 mt-1">Tools will appear in the left sidebar</p>
         </div>
       )}
     </div>
@@ -190,6 +165,7 @@ function NavHubInner() {
 }
 
 // ── Public export (with Suspense boundary) ───────────────────────────────────
+
 export function NavigationGroupGrid() {
   return (
     <Suspense

@@ -1,10 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
 import { useSettings } from '@/contexts/settings-context';
-import { getSectionForPathname } from '@/lib/nav-utils';
+import { getSectionForPathname, getSectionBySlug } from '@/lib/nav-utils';
 import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
 
@@ -13,52 +13,45 @@ const STORAGE_KEY = 'ls_cc_sidebar_collapsed';
 /**
  * Control Center compact sidebar.
  *
- * Always shows:
- *   • Home — routes to /
+ * Active group resolution:
+ *   • On a non-home route  → infer from pathname (getSectionForPathname)
+ *   • On / with ?group=X  → resolve from query param (getSectionBySlug)
+ *   • On / with no param  → undefined, sidebar shows Home only
  *
- * When the active pathname belongs to a nav section (non-home page):
- *   • That section's heading + all its child links (contextual only)
- *
- * On the dashboard (/) the sidebar stays minimal — navigation happens
- * via the NavigationGroupGrid on the page body.
+ * Home highlight:
+ *   Active only when pathname === '/' AND no group is selected.
+ *   When a category group is selected (even from /), Home appears unselected
+ *   so the group context is the clear active state.
  *
  * Collapse toggle (220px ↔ 52px) and Ctrl+[ shortcut are preserved.
  */
-export function CCSidebar() {
-  const pathname = usePathname();
-  const settings = useSettings();
-  const nav      = settings.appearance.nav;
 
-  const [collapsed, setCollapsed] = useState(false);
-  const [mounted,   setMounted]   = useState(false);
+// ── Inner (reads useSearchParams — must live inside a Suspense boundary) ─────
 
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'true') setCollapsed(true);
-    setMounted(true);
-  }, []);
+function CCSidebarInner({ collapsed, mounted, toggle }: {
+  collapsed: boolean;
+  mounted:   boolean;
+  toggle:    () => void;
+}) {
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
+  const settings     = useSettings();
+  const nav          = settings.appearance.nav;
 
-  function toggle() {
-    setCollapsed(prev => {
-      const next = !prev;
-      localStorage.setItem(STORAGE_KEY, String(next));
-      return next;
-    });
-  }
+  const isHome     = pathname === '/';
+  const groupParam = isHome ? searchParams.get('group') : null;
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key === '[') { e.preventDefault(); toggle(); }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Active section: param-based on home, pathname-based elsewhere
+  const contextSection = groupParam
+    ? getSectionBySlug(groupParam)
+    : isHome
+      ? undefined
+      : getSectionForPathname(pathname ?? '');
+
+  // Home is only "active" on pure / with no group selected
+  const homeIsActive = isHome && !groupParam;
 
   const width = !mounted ? 220 : collapsed ? 52 : 220;
-
-  const isHome         = pathname === '/';
-  const contextSection = isHome ? undefined : getSectionForPathname(pathname ?? '');
 
   return (
     <aside
@@ -102,15 +95,16 @@ export function CCSidebar() {
             collapsed={collapsed}
             activeColor={nav.activeColor}
             activeBg={nav.activeBg}
+            forceActive={homeIsActive}
           />
         </nav>
 
-        {/* Contextual section — only when on a non-home route */}
+        {/* Active group section — from ?group param (home) or pathname (deep routes) */}
         {contextSection && (
           <div className="mt-3">
             {/* Section label — expanded mode only */}
             {!collapsed && contextSection.heading && (
-              <div className="px-3 mx-2 mb-0.5">
+              <div className="px-3 mx-2 mb-1">
                 <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 select-none">
                   {contextSection.heading}
                 </span>
@@ -136,21 +130,78 @@ export function CCSidebar() {
             </nav>
           </div>
         )}
+
+        {/* Empty state hint — home with no group, expanded only */}
+        {!contextSection && isHome && !collapsed && (
+          <div className="mx-3 mt-3 px-3 py-3 rounded-lg border border-dashed border-gray-200 text-center">
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              Select a category<br />to see its tools here
+            </p>
+          </div>
+        )}
       </div>
     </aside>
   );
 }
 
+// ── Outer wrapper (manages collapse state, keyboard shortcut, Suspense) ───────
+
+export function CCSidebar() {
+  const [collapsed, setCollapsed] = useState(false);
+  const [mounted,   setMounted]   = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'true') setCollapsed(true);
+    setMounted(true);
+  }, []);
+
+  function toggle() {
+    setCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem(STORAGE_KEY, String(next));
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === '[') { e.preventDefault(); toggle(); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <Suspense
+      fallback={
+        <aside
+          className="shrink-0 flex flex-col bg-white border-r border-gray-200 overflow-hidden"
+          style={{ width: collapsed ? 52 : 220, alignSelf: 'stretch' }}
+        />
+      }
+    >
+      <CCSidebarInner collapsed={collapsed} mounted={mounted} toggle={toggle} />
+    </Suspense>
+  );
+}
+
+// ── SidebarItem ───────────────────────────────────────────────────────────────
+
 function SidebarItem({
-  item, pathname, collapsed, activeColor, activeBg,
+  item, pathname, collapsed, activeColor, activeBg, forceActive,
 }: {
-  item:        NavItem;
-  pathname:    string;
-  collapsed:   boolean;
-  activeColor: string;
-  activeBg:    string;
+  item:         NavItem;
+  pathname:     string;
+  collapsed:    boolean;
+  activeColor:  string;
+  activeBg:     string;
+  forceActive?: boolean;
 }) {
-  const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+  const isActive = forceActive !== undefined
+    ? forceActive
+    : pathname === item.href || pathname.startsWith(item.href + '/');
 
   return (
     <Link
