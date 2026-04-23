@@ -98,6 +98,7 @@ public class ActivationRequestService : IActivationRequestService
         return requests.Select(r => new ActivationRequestSummary
         {
             Id                = r.Id,
+            TenantId          = r.TenantId,   // BLK-SEC-02: propagated for endpoint-layer scoping
             ProviderName      = r.ProviderName,
             ProviderEmail     = r.ProviderEmail,
             RequesterName     = r.RequesterName,

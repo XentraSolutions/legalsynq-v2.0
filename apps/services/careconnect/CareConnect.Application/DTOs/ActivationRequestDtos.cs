@@ -5,6 +5,9 @@ namespace CareConnect.Application.DTOs;
 public sealed class ActivationRequestSummary
 {
     public Guid    Id                { get; set; }
+    // BLK-SEC-02: TenantId included so the endpoint layer can enforce tenant-scoped
+    // list filtering for TenantAdmin callers without a second round-trip.
+    public Guid    TenantId          { get; set; }
     public string  ProviderName      { get; set; } = string.Empty;
     public string  ProviderEmail     { get; set; } = string.Empty;
     public string? RequesterName     { get; set; }

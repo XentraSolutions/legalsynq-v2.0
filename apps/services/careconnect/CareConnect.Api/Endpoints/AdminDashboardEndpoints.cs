@@ -50,24 +50,40 @@ public static class AdminDashboardEndpoints
     //   - distinctBlockedUsersToday
     //   - openReferrals (status ∈ {New, Accepted, InProgress})
     //
-    // No tenant filter — PlatformAdmin sees the full platform; TenantAdmin sees
-    // the same aggregates (cross-tenant read is implicit for admins in CC).
+    // BLK-SEC-02: PlatformAdmin sees platform-wide aggregates.
+    //             TenantAdmin is scoped to their own tenant (tenant_id JWT claim).
     private static async Task<IResult> GetDashboardAsync(
-        CareConnectDbContext db,
-        CancellationToken    ct)
+        CareConnectDbContext    db,
+        ICurrentRequestContext  ctx,
+        CancellationToken       ct)
     {
         var now    = DateTime.UtcNow;
         var today  = now.AddHours(-24);
         var week   = now.AddDays(-7);
 
-        var referralToday   = await db.Referrals.CountAsync(r => r.CreatedAtUtc >= today, ct);
-        var referralWeek    = await db.Referrals.CountAsync(r => r.CreatedAtUtc >= week,  ct);
-        var openReferrals   = await db.Referrals.CountAsync(
+        // BLK-SEC-02: Derive optional tenant scope from the caller's JWT claim.
+        // PlatformAdmin → null (platform-wide).  TenantAdmin → their tenant GUID.
+        Guid? scopeTenantId = ctx.IsPlatformAdmin
+            ? null
+            : (ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing."));
+
+        var referralQuery = db.Referrals.AsQueryable();
+        var blockedQuery  = db.BlockedProviderAccessLogs.AsQueryable();
+
+        if (scopeTenantId.HasValue)
+        {
+            referralQuery = referralQuery.Where(r => r.TenantId == scopeTenantId.Value);
+            blockedQuery  = blockedQuery.Where(l => l.TenantId == scopeTenantId.Value);
+        }
+
+        var referralToday   = await referralQuery.CountAsync(r => r.CreatedAtUtc >= today, ct);
+        var referralWeek    = await referralQuery.CountAsync(r => r.CreatedAtUtc >= week,  ct);
+        var openReferrals   = await referralQuery.CountAsync(
             r => r.Status == "New" || r.Status == "NewOpened" || r.Status == "Accepted" || r.Status == "InProgress", ct);
 
-        var blockedToday    = await db.BlockedProviderAccessLogs.CountAsync(l => l.AttemptedAtUtc >= today, ct);
-        var blockedWeek     = await db.BlockedProviderAccessLogs.CountAsync(l => l.AttemptedAtUtc >= week,  ct);
-        var blockedUsersToday = await db.BlockedProviderAccessLogs
+        var blockedToday    = await blockedQuery.CountAsync(l => l.AttemptedAtUtc >= today, ct);
+        var blockedWeek     = await blockedQuery.CountAsync(l => l.AttemptedAtUtc >= week,  ct);
+        var blockedUsersToday = await blockedQuery
             .Where(l => l.AttemptedAtUtc >= today && l.UserId != null)
             .Select(l => l.UserId)
             .Distinct()
@@ -95,12 +111,15 @@ public static class AdminDashboardEndpoints
     // Remediation link is returned as a relative path so the frontend can
     // construct the full URL without knowing the host:
     //   remediationPath: /careconnect/admin/providers/provisioning?userId=<id>
+    // BLK-SEC-02: TenantAdmin is scoped to their own tenant.
+    // PlatformAdmin sees platform-wide blocked-access logs.
     private static async Task<IResult> GetBlockedProvidersAsync(
-        CareConnectDbContext db,
-        [FromQuery] int      page     = 1,
-        [FromQuery] int      pageSize = 25,
-        [FromQuery] string?  since    = null,
-        CancellationToken    ct       = default)
+        CareConnectDbContext    db,
+        ICurrentRequestContext  ctx,
+        [FromQuery] int         page     = 1,
+        [FromQuery] int         pageSize = 25,
+        [FromQuery] string?     since    = null,
+        CancellationToken       ct       = default)
     {
         page     = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -109,9 +128,18 @@ public static class AdminDashboardEndpoints
             ? parsedSince.ToUniversalTime()
             : DateTime.UtcNow.AddDays(-7);
 
+        // BLK-SEC-02: Scope to caller's tenant for non-PlatformAdmin.
+        Guid? scopeTenantId = ctx.IsPlatformAdmin
+            ? null
+            : (ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing."));
+
         // Group by UserId+FailureReason to produce one row per unique block reason.
         // Take the most recent log row from each group for the display columns.
-        var query = db.BlockedProviderAccessLogs
+        var baseQuery = db.BlockedProviderAccessLogs.AsQueryable();
+        if (scopeTenantId.HasValue)
+            baseQuery = baseQuery.Where(l => l.TenantId == scopeTenantId.Value);
+
+        var query = baseQuery
             .Where(l => l.AttemptedAtUtc >= window)
             .GroupBy(l => new { l.UserId, l.FailureReason })
             .Select(g => new
