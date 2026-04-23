@@ -39,6 +39,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { requirePlatformAdmin } from '@/lib/auth-guards';
 import {
   resolveWindow,
   totalBarsForWindow,
@@ -119,6 +120,12 @@ const NO_STORE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' };
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function GET(request: Request): Promise<NextResponse> {
+  try {
+    await requirePlatformAdmin();
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const window     = resolveWindow(searchParams.get('window'));
   const bars       = totalBarsForWindow(window);

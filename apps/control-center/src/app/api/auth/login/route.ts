@@ -134,6 +134,14 @@ export async function POST(request: NextRequest) {
   const data = await identityRes.json();
   const { accessToken, expiresAtUtc, user } = data;
 
+  const systemRoles: string[] = user.roles ?? [];
+  if (!systemRoles.includes('PlatformAdmin')) {
+    return NextResponse.json(
+      { message: 'Access denied. Control Center requires a platform administrator account.' },
+      { status: 403 },
+    );
+  }
+
   const expiresDate   = new Date(expiresAtUtc);
   const maxAgeSeconds = Math.floor((expiresDate.getTime() - Date.now()) / 1000);
 
@@ -143,7 +151,7 @@ export async function POST(request: NextRequest) {
     tenantId:     user.tenantId,
     tenantCode:   user.tenantCode ?? tenantCode,
     productRoles: user.productRoles ?? [],
-    systemRoles:  user.roles ?? [],
+    systemRoles,
     expiresAtUtc,
   };
 

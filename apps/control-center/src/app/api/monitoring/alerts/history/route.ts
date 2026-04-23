@@ -19,6 +19,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { requirePlatformAdmin } from '@/lib/auth-guards';
 
 const MONITORING_SOURCE = process.env.MONITORING_SOURCE ?? 'local';
 
@@ -37,6 +38,12 @@ export interface AlertHistoryResponse {
 }
 
 export async function GET(request: Request) {
+  try {
+    await requirePlatformAdmin();
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const entityName = searchParams.get('entityName');
   const limit      = searchParams.get('limit') ?? '10';

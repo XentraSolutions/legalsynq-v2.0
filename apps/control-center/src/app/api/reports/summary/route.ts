@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requirePlatformAdmin } from '@/lib/auth-guards';
 
 const REPORTS_BASE = process.env.REPORTS_SERVICE_URL ?? 'http://127.0.0.1:5029';
 
@@ -10,6 +11,12 @@ interface ReadinessCheck {
 }
 
 export async function GET() {
+  try {
+    await requirePlatformAdmin();
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const start = Date.now();
   let serviceStatus: ServiceStatus = 'offline';
   let serviceLatencyMs: number | undefined;
