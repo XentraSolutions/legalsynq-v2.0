@@ -244,7 +244,7 @@ a security gap and is out of scope for this block.
 
 ## 11. GitHub Commits
 
-*(Auto-committed by Replit checkpoint system at end of loop.)*
+- `8a0aaad34602bf45a769e9666fa49383cbf723e9` — BLK-SEC-02-01: Enforce tenant boundaries for analytics, performance, and provider activation
 
 ---
 
@@ -283,6 +283,7 @@ a security gap and is out of scope for this block.
 
 ## 13. GitHub Diff Reference
 
+- **Commit ID:** `8a0aaad34602bf45a769e9666fa49383cbf723e9`
 - **Diff file:** `analysis/BLK-SEC-02-01-commit.diff.txt`
 - **Summary file:** `analysis/BLK-SEC-02-01-commit-summary.md`
 - **Files changed:** 7 source files
