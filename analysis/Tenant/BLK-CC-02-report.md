@@ -235,3 +235,11 @@ A future Phase 3 could add a support endpoint to force-reset pending state.
 **Code conflict detection:** If `PendingTenantCode != null` and user submits a different
 code, the service uses the pending code (ignores the new code). This is safe but may
 surprise users. UX should surface the pending state so users know a code is already reserved.
+
+---
+
+## 13. GitHub Diff Reference
+
+- **Commit ID:** `ebd1cdf1a9bddd70fd3b252410edb46f83fae59c`
+- **Diff file:** `analysis/BLK-CC-02-commit.diff.txt`
+- **Summary file:** `analysis/BLK-CC-02-commit-summary.md`
