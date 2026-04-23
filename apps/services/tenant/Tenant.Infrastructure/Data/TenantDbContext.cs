@@ -7,9 +7,12 @@ public class TenantDbContext : DbContext
 {
     public TenantDbContext(DbContextOptions<TenantDbContext> options) : base(options) { }
 
-    public DbSet<Domain.Tenant>  Tenants  => Set<Domain.Tenant>();
-    public DbSet<TenantBranding> Brandings => Set<TenantBranding>();
-    public DbSet<TenantDomain>   Domains   => Set<TenantDomain>();
+    public DbSet<Domain.Tenant>              Tenants            => Set<Domain.Tenant>();
+    public DbSet<TenantBranding>             Brandings          => Set<TenantBranding>();
+    public DbSet<TenantDomain>               Domains            => Set<TenantDomain>();
+    public DbSet<TenantProductEntitlement>   ProductEntitlements => Set<TenantProductEntitlement>();
+    public DbSet<TenantCapability>           Capabilities       => Set<TenantCapability>();
+    public DbSet<TenantSetting>              Settings           => Set<TenantSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -34,6 +37,24 @@ public class TenantDbContext : DbContext
         }
 
         foreach (var entry in ChangeTracker.Entries<TenantDomain>())
+        {
+            if (entry.State == EntityState.Modified)
+                entry.Property("UpdatedAtUtc").CurrentValue = now;
+        }
+
+        foreach (var entry in ChangeTracker.Entries<TenantProductEntitlement>())
+        {
+            if (entry.State == EntityState.Modified)
+                entry.Property("UpdatedAtUtc").CurrentValue = now;
+        }
+
+        foreach (var entry in ChangeTracker.Entries<TenantCapability>())
+        {
+            if (entry.State == EntityState.Modified)
+                entry.Property("UpdatedAtUtc").CurrentValue = now;
+        }
+
+        foreach (var entry in ChangeTracker.Entries<TenantSetting>())
         {
             if (entry.State == EntityState.Modified)
                 entry.Property("UpdatedAtUtc").CurrentValue = now;

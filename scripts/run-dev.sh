@@ -18,8 +18,36 @@ NEXT_INTERNAL_PORT=$NEXT_INTERNAL_PORT PROXY_PORT=5000 "$NODE" "$ROOT/scripts/de
 PID_PROXY=$!
 
 # Start Control Center — port 5004
+# The CC ships Next.js 15.5.15.  We must NOT use the root node_modules binary
+# (which is the web app's 15.2.9) because the version mismatch causes
+# "routeModule.prepare is not a function" errors at runtime.
+# Resolution order:
+#   1. pnpm store copy (15.5.15) — preferred
+#   2. CC-local node_modules/next — only if it matches the expected major/minor
+#   3. Root binary — last resort (may not work)
 echo "[control-center] Starting Next.js on :5004"
-(cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 MONITORING_SOURCE=service exec "$NODE" "$ROOT/node_modules/next/dist/bin/next" dev -p 5004) &
+# Ensure the CC's node_modules/next resolves to 15.5.15 (not the root's 15.2.9).
+# Without this the runtime module path mismatch causes routeModule.prepare errors.
+PNPM_NEXT15="$ROOT/node_modules/.pnpm/next@15.5.15_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next"
+CC_NM="$ROOT/apps/control-center/node_modules"
+if [ -d "$PNPM_NEXT15" ]; then
+  rm -rf "$CC_NM/next"
+  ln -s "$PNPM_NEXT15" "$CC_NM/next"
+  rm -f "$CC_NM/.bin/next"
+  ln -s "../next/dist/bin/next" "$CC_NM/.bin/next"
+  echo "[control-center] Pinned node_modules/next → 15.5.15"
+fi
+CC_NEXT_BIN="$ROOT/node_modules/.pnpm/next@15.5.15_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next/dist/bin/next"
+if [ ! -f "$CC_NEXT_BIN" ]; then
+  # Fallback: search pnpm store for any next@15.5.x binary
+  CC_NEXT_BIN="$(find "$ROOT/node_modules/.pnpm" -path "*/next@15.5*/node_modules/next/dist/bin/next" 2>/dev/null | head -1)"
+fi
+if [ -z "$CC_NEXT_BIN" ] || [ ! -f "$CC_NEXT_BIN" ]; then
+  echo "[control-center] WARNING: Could not find Next.js 15.5.x binary, falling back to root binary"
+  CC_NEXT_BIN="$ROOT/node_modules/next/dist/bin/next"
+fi
+echo "[control-center] Using next binary: $CC_NEXT_BIN"
+(cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 MONITORING_SOURCE=service exec "$NODE" "$CC_NEXT_BIN" dev -p 5004) &
 PID_CC=$!
 
 # Restore, build, and start .NET services all in background

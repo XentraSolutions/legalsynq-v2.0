@@ -98,5 +98,9 @@ app.MapTenantEndpoints();
 app.MapBrandingEndpoints();
 app.MapDomainEndpoints();
 app.MapResolutionEndpoints();
+app.MapEntitlementEndpoints();
+app.MapCapabilityEndpoints();
+app.MapSettingEndpoints();
+app.MapMigrationEndpoints();
 
 app.Run();
