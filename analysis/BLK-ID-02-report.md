@@ -90,7 +90,7 @@ The `/api/internal/tenant-provisioning/provision` endpoint contained all logic i
 ## 7. GitHub Commits (MANDATORY)
 
 - `ef21554` — BLK-ID-01: Retire Identity tenant creation + code-check endpoints (prior block)
-- BLK-ID-02 commit: auto-checkpoint after this session ends
+- `75d94ca` — BLK-ID-02: Formalize identity service with new membership and role assignment APIs
 
 ---
 
