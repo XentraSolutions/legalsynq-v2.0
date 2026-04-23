@@ -1,6 +1,6 @@
 # TENANT-B05 — Migration Execution + Dual Write Preparation
 
-**Status:** IN PROGRESS  
+**Status:** COMPLETE  
 **Date:** 2026-04-23  
 **Block:** 5 of the Tenant service initiative
 
@@ -161,13 +161,19 @@ Per-tenant execute actions:
 
 ## 8. Validation Results
 
-- [ ] Build: `dotnet build` — clean
-- [ ] Startup: migration `20260423220000` applied, `tenant_MigrationRuns` + `tenant_MigrationRunItems` tables created
-- [ ] `GET /api/admin/migration/dry-run` — still returns 200
-- [ ] `POST /api/admin/migration/execute` — endpoint registered (AdminOnly)
-- [ ] `GET /api/admin/migration/history` — endpoint registered
-- [ ] `GET /api/admin/migration/history/{runId}` — endpoint registered
-- [ ] Dual-write adapter registered but disabled
+- [x] Build: `dotnet build Tenant.Api.csproj` — clean (0 errors)
+- [x] Migration `20260423035637_AddMigrationRunTracking` applied at startup
+- [x] Tables created: `tenant_MigrationRuns`, `tenant_MigrationRunItems` (with FK + indexes)
+- [x] Migration schema fix: removed stray `AddColumn TimeZone` from auto-generated migration (column already existed in live DB from B02 entity — latent snapshot mismatch fixed)
+- [x] `GET /api/admin/migration/dry-run` — HTTP 401 (registered + AdminOnly protected)
+- [x] `POST /api/admin/migration/execute` — HTTP 401 (registered + AdminOnly protected)
+- [x] `GET /api/admin/migration/history` — HTTP 401 (registered + AdminOnly protected)
+- [x] `GET /api/admin/migration/history/{runId}` — HTTP 401 (registered + AdminOnly protected)
+- [x] `NoOpTenantSyncAdapter` registered as `ITenantSyncAdapter` — dual-write disabled by default
+- [x] Tenant service health: `{"status":"ok","service":"tenant"}` — HTTP 200
+- [x] Control Center health: HTTP 200 — unchanged
+- [x] B04 SQL bug fixes applied: `FROM tenants` → `FROM idt_Tenants`, `DisplayName` → `Name`
+- [x] Identity `ProvisioningStatus`-aware status mapping implemented
 
 ---
 
