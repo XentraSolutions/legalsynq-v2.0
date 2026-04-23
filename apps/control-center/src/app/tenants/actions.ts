@@ -14,9 +14,9 @@ export interface CreateTenantResult {
     hostname?:           string;
   };
   adminUser?: {
-    adminUserId:       string;
+    adminUserId:       string | null;
     adminEmail:        string;
-    temporaryPassword: string;
+    temporaryPassword: string | null;
   };
   error?: string;
 }

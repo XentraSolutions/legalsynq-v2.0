@@ -195,7 +195,7 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
   }
 
   async function handleCopy() {
-    if (!result) return;
+    if (!result || !result.temporaryPassword) return;
     await navigator.clipboard.writeText(result.temporaryPassword);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
