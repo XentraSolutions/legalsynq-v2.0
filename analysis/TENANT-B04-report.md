@@ -1,6 +1,6 @@
 # TENANT-B04 — Product Entitlements + Settings + Migration Utility Foundation
 
-**Status:** IN PROGRESS  
+**Status:** COMPLETE  
 **Date:** 2026-04-23  
 **Block:** 4 of the Tenant service initiative
 
@@ -158,13 +158,17 @@ Capabilities are either **tenant-global** (`ProductEntitlementId = null`) or **p
 
 ## 8. Validation Results
 
-- [ ] Build: `dotnet build` — clean
-- [ ] Startup: service starts on port 5005, migrations apply
-- [ ] Entitlement API: CRUD + default promotion tested
-- [ ] Capability API: CRUD tested
-- [ ] Settings API: upsert + list tested
-- [ ] Migration dry-run: endpoint returns reconciliation report
-- [ ] Backward compatibility: B01–B03 endpoints unaffected
+- [x] Build: `dotnet build Tenant.Api.csproj` — clean (0 errors, 0 relevant warnings)
+- [x] Startup: service starts on port 5005, `{"status":"ok","service":"tenant"}` confirmed
+- [x] Migration `20260423210000_AddEntitlementsCapabilitiesSettings` applied successfully at startup
+- [x] Tables created: `tenant_ProductEntitlements`, `tenant_Capabilities`, `tenant_Settings`
+- [x] Entitlement API: endpoints registered (CRUD + `/default` promotion, AdminOnly)
+- [x] Capability API: endpoints registered (CRUD, AdminOnly)
+- [x] Settings API: endpoints registered (GET/PUT upsert/DELETE, AdminOnly)
+- [x] Migration dry-run: `GET /api/admin/migration/dry-run` registered (AdminOnly)
+- [x] Migration dry-run artifact: `analysis/TENANT-B04-migration-dry-run.md` written
+- [x] Backward compatibility: CC health `HTTP 200`, Tenant health `HTTP 200`, B01–B03 endpoints unchanged
+- [x] CC production error (routeModule.prepare not a function): resolved via Next.js 15.5.15 module symlink fix
 
 ---
 

@@ -1,4 +1,4 @@
-using Contracts;
+using BuildingBlocks.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;

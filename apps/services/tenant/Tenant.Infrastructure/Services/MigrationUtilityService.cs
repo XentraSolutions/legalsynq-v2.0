@@ -42,16 +42,26 @@ public class MigrationUtilityService : IMigrationUtilityService
 
         // ── Step 1: load Tenant service tenants ───────────────────────────────
 
-        var tenantRows = await _db.Tenants.AsNoTracking()
+        var tenantRowsRaw = await _db.Tenants.AsNoTracking()
             .Select(t => new
             {
                 t.Id,
                 t.Code,
                 t.DisplayName,
-                Status    = t.Status.ToString(),
+                t.Status,
                 t.Subdomain
             })
             .ToListAsync(ct);
+
+        // Map enum to string after materialization (avoids EF SQL translation issues).
+        var tenantRows = tenantRowsRaw.Select(t => new
+        {
+            t.Id,
+            t.Code,
+            t.DisplayName,
+            Status    = t.Status.ToString(),
+            t.Subdomain
+        }).ToList();
 
         _logger.LogInformation("Tenant service has {Count} tenants", tenantRows.Count);
 
@@ -77,7 +87,6 @@ public class MigrationUtilityService : IMigrationUtilityService
         }
 
         List<IdentityTenantRow> identityTenants;
-        string? accessError = null;
 
         try
         {

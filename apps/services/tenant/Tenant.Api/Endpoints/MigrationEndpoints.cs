@@ -1,4 +1,4 @@
-using Contracts;
+using BuildingBlocks.Authorization;
 using Tenant.Application.Interfaces;
 
 namespace Tenant.Api.Endpoints;
