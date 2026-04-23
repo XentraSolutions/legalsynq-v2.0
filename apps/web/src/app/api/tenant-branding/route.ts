@@ -3,33 +3,37 @@ import { NextRequest, NextResponse } from 'next/server';
 /**
  * Read-source-aware tenant branding BFF endpoint.
  *
- * Replaces the hard-wired `/api/identity/api/tenants/current/branding` call
- * in TenantBrandingProvider with a configurable, source-agnostic proxy.
+ * TENANT-B07: Hardened with explicit timeouts + improved failure logging.
  *
  * Mode selection (TENANT_BRANDING_READ_SOURCE env var, default: Identity):
  *   Identity      — legacy path: forwards to Identity service (no behavior change)
  *   Tenant        — reads from Tenant service public branding endpoint
- *   HybridFallback — tries Tenant first, falls back to Identity on failure/404/incomplete
+ *   HybridFallback — tries Tenant first (4s timeout), falls back to Identity on
+ *                    timeout / transport failure / 404 / incomplete payload
  *
  * Response is always in TenantBranding shape regardless of source.
  * The client (TenantBrandingProvider) is fully source-agnostic.
  *
- * Observability: every call logs mode, source used, fallback trigger + reason.
+ * Observability: every call logs mode, source, fallbackTriggered + fallbackReason.
+ * Failure categories: timeout | transport_error | not_found | incomplete_payload
  */
 
-const GATEWAY_URL  = process.env.GATEWAY_URL  ?? 'http://127.0.0.1:5010';
-const READ_SOURCE  = (process.env.TENANT_BRANDING_READ_SOURCE ?? 'Identity') as ReadSource;
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
+const READ_SOURCE = (process.env.TENANT_BRANDING_READ_SOURCE ?? 'Identity') as ReadSource;
+
+const TENANT_TIMEOUT_MS  = 4_000;
+const IDENTITY_TIMEOUT_MS = 5_000;
 
 type ReadSource = 'Identity' | 'Tenant' | 'HybridFallback';
 
 interface TenantBrandingShape {
-  tenantId?:           string;
-  tenantCode?:         string;
-  displayName?:        string;
-  primaryColor?:       string;
-  logoDocumentId?:     string;
+  tenantId?:            string;
+  tenantCode?:          string;
+  displayName?:         string;
+  primaryColor?:        string;
+  logoDocumentId?:      string;
   logoWhiteDocumentId?: string;
-  faviconUrl?:         string;
+  faviconUrl?:          string;
 }
 
 // ── Tenant code resolution ────────────────────────────────────────────────────
@@ -38,7 +42,7 @@ function resolveTenantCode(req: NextRequest): string | null {
   const headerCode = req.headers.get('x-tenant-code');
   if (headerCode) return headerCode;
 
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? '';
+  const host  = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? '';
   const parts = host.split('.');
   if (parts.length >= 3 && !host.startsWith('localhost')) return parts[0];
 
@@ -48,54 +52,75 @@ function resolveTenantCode(req: NextRequest): string | null {
   return null;
 }
 
-// ── Identity fetch ────────────────────────────────────────────────────────────
+// ── Fetch helpers ─────────────────────────────────────────────────────────────
+
+type FetchFailReason = 'timeout' | 'transport_error' | 'not_found' | 'error_response' | null;
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<{ res: Response | null; failReason: FetchFailReason }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    return { res, failReason: null };
+  } catch (err: unknown) {
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    return { res: null, failReason: isAbort ? 'timeout' : 'transport_error' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function fetchFromIdentity(
   tenantCode: string,
   req: NextRequest,
-): Promise<TenantBrandingShape | null> {
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
-
-  const headers: Record<string, string> = {
-    'X-Tenant-Code': tenantCode,
-  };
+): Promise<{ data: TenantBrandingShape | null; failReason: FetchFailReason }> {
+  const host    = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+  const headers: Record<string, string> = { 'X-Tenant-Code': tenantCode };
   if (host) headers['X-Forwarded-Host'] = host;
 
-  const res = await fetch(
+  const { res, failReason } = await fetchWithTimeout(
     `${GATEWAY_URL}/identity/api/tenants/current/branding`,
     { headers },
+    IDENTITY_TIMEOUT_MS,
   );
 
-  if (!res.ok) return null;
+  if (failReason) return { data: null, failReason };
+  if (!res!.ok)   return { data: null, failReason: res!.status === 404 ? 'not_found' : 'error_response' };
 
-  const data = await res.json();
-  return data as TenantBrandingShape;
+  const data = await res!.json() as TenantBrandingShape;
+  return { data, failReason: null };
 }
 
-// ── Tenant service fetch ──────────────────────────────────────────────────────
-
-async function fetchFromTenant(tenantCode: string): Promise<TenantBrandingShape | null> {
+async function fetchFromTenant(
+  tenantCode: string,
+): Promise<{ data: TenantBrandingShape | null; failReason: FetchFailReason }> {
   const url = `${GATEWAY_URL}/tenant/api/v1/public/branding/by-code/${encodeURIComponent(tenantCode)}`;
-  const res = await fetch(url);
 
-  if (!res.ok) return null;
+  const { res, failReason } = await fetchWithTimeout(url, {}, TENANT_TIMEOUT_MS);
 
-  const data = await res.json();
+  if (failReason) return { data: null, failReason };
+  if (!res!.ok)   return { data: null, failReason: res!.status === 404 ? 'not_found' : 'error_response' };
 
+  const raw = await res!.json();
   return {
-    tenantId:            data.tenantId           ?? undefined,
-    tenantCode:          data.code               ?? undefined,
-    displayName:         data.displayName        ?? undefined,
-    primaryColor:        data.primaryColor       ?? undefined,
-    logoDocumentId:      data.logoDocumentId     ?? undefined,
-    logoWhiteDocumentId: data.logoWhiteDocumentId ?? undefined,
+    data: {
+      tenantId:            raw.tenantId            ?? undefined,
+      tenantCode:          raw.code                ?? undefined,
+      displayName:         raw.displayName         ?? undefined,
+      primaryColor:        raw.primaryColor        ?? undefined,
+      logoDocumentId:      raw.logoDocumentId      ?? undefined,
+      logoWhiteDocumentId: raw.logoWhiteDocumentId ?? undefined,
+    },
+    failReason: null,
   };
 }
 
-// ── Usability check ───────────────────────────────────────────────────────────
-
 function isUsable(b: TenantBrandingShape | null): b is TenantBrandingShape {
-  return !!(b && b.tenantId && (b.tenantCode) && b.displayName);
+  return !!(b && b.tenantId && b.tenantCode && b.displayName);
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
@@ -114,57 +139,53 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   let fallbackReason: string | undefined;
 
   if (READ_SOURCE === 'Tenant') {
-    try {
-      branding = await fetchFromTenant(tenantCode);
-      if (branding) source = 'tenant';
-    } catch (err) {
-      console.error('[tenant-branding] Tenant read failed', {
+    const { data, failReason } = await fetchFromTenant(tenantCode);
+    if (data) {
+      branding = data;
+      source   = 'tenant';
+    } else {
+      fallbackReason = failReason ?? 'unknown';
+      console.warn('[tenant-branding] Tenant mode: read failed, no Identity fallback', {
         tenantCode,
-        error: String(err),
+        failReason,
       });
     }
 
   } else if (READ_SOURCE === 'HybridFallback') {
-    try {
-      const tenantResult = await fetchFromTenant(tenantCode);
-      if (isUsable(tenantResult)) {
-        branding = tenantResult;
-        source   = 'tenant';
-      } else {
-        fallbackTriggered = true;
-        fallbackReason    = tenantResult ? 'incomplete_fields' : 'not_found';
-      }
-    } catch (err) {
-      fallbackTriggered = true;
-      fallbackReason    = 'tenant_unavailable';
-      console.warn('[tenant-branding] Tenant fetch failed, falling back to Identity', {
-        tenantCode,
-        error: String(err),
-      });
-    }
+    const { data: tenantData, failReason: tenantFail } = await fetchFromTenant(tenantCode);
 
-    if (!branding) {
-      try {
-        branding = await fetchFromIdentity(tenantCode, req);
-        if (branding) source = 'identity';
-      } catch (err) {
-        console.error('[tenant-branding] Identity fallback also failed', {
+    if (isUsable(tenantData)) {
+      branding = tenantData;
+      source   = 'tenant';
+    } else {
+      fallbackTriggered = true;
+      fallbackReason    = tenantFail === null ? 'incomplete_payload' : tenantFail;
+      console.warn('[tenant-branding] HybridFallback: Tenant fetch failed, falling back to Identity', {
+        tenantCode,
+        fallbackReason,
+      });
+
+      const { data: idData, failReason: idFail } = await fetchFromIdentity(tenantCode, req);
+      if (idData) {
+        branding = idData;
+        source   = 'identity';
+      } else {
+        console.error('[tenant-branding] HybridFallback: Identity fallback also failed', {
           tenantCode,
-          error: String(err),
+          idFail,
         });
       }
     }
 
   } else {
     // Identity mode — default, legacy-equivalent behavior
-    try {
-      branding = await fetchFromIdentity(tenantCode, req);
-      if (branding) source = 'identity';
-    } catch (err) {
-      console.error('[tenant-branding] Identity read failed', {
-        tenantCode,
-        error: String(err),
-      });
+    const { data, failReason } = await fetchFromIdentity(tenantCode, req);
+    if (data) {
+      branding = data;
+      source   = 'identity';
+    } else {
+      fallbackReason = failReason ?? 'unknown';
+      console.error('[tenant-branding] Identity read failed', { tenantCode, failReason });
     }
   }
 

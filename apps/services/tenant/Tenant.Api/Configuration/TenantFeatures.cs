@@ -33,6 +33,14 @@ public class TenantFeatures
     /// Default: false — dual-write is disabled until Block 7 validation.
     /// </summary>
     public bool TenantDualWriteEnabled { get; set; } = false;
+
+    /// <summary>
+    /// TENANT-B07 — When true, a Tenant sync failure from Identity aborts the originating
+    /// Identity operation (returns 502 to the caller). When false (default), sync failures
+    /// are logged and the Identity operation continues normally.
+    /// Only enable in controlled environments where Tenant service health is confirmed.
+    /// </summary>
+    public bool TenantDualWriteStrictMode { get; set; } = false;
 }
 
 /// <summary>

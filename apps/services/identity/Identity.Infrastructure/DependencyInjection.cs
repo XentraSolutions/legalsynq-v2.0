@@ -123,6 +123,36 @@ public static class DependencyInjection
             services.AddSingleton<INotificationsCacheClientDiagnostics>(sp =>
                 sp.GetRequiredService<NoOpNotificationsCacheClient>());
         }
+        // ── TENANT-B07: Identity → Tenant dual-write adapter ─────────────────────
+        // Registers the real HttpTenantSyncAdapter when Features:TenantDualWriteEnabled=true,
+        // otherwise registers IdentityNoOpTenantSyncAdapter (zero runtime cost, debug log only).
+        var dualWriteEnabled = configuration.GetValue<bool>("Features:TenantDualWriteEnabled", false);
+        var dualWriteStrict  = configuration.GetValue<bool>("Features:TenantDualWriteStrictMode", false);
+
+        if (dualWriteEnabled)
+        {
+            var tenantInternalUrl = configuration.GetValue<string>("TenantService:InternalUrl")
+                                    ?? "http://127.0.0.1:5005";
+            var syncSecret = configuration.GetValue<string>("TenantService:SyncSecret") ?? string.Empty;
+
+            services.AddHttpClient("TenantSyncInternal", client =>
+            {
+                client.BaseAddress = new Uri(tenantInternalUrl);
+                client.Timeout     = TimeSpan.FromSeconds(5);
+                if (!string.IsNullOrWhiteSpace(syncSecret))
+                    client.DefaultRequestHeaders.Add("X-Sync-Token", syncSecret);
+            });
+
+            services.AddScoped<ITenantSyncAdapter>(sp => new HttpTenantSyncAdapter(
+                sp.GetRequiredService<IHttpClientFactory>(),
+                dualWriteStrict,
+                sp.GetRequiredService<ILogger<HttpTenantSyncAdapter>>()));
+        }
+        else
+        {
+            services.AddScoped<ITenantSyncAdapter, IdentityNoOpTenantSyncAdapter>();
+        }
+
         services.AddScoped<ITenantProductEntitlementService, TenantProductEntitlementService>();
         services.AddScoped<IUserProductAccessService, UserProductAccessService>();
         services.AddScoped<IUserRoleAssignmentService, UserRoleAssignmentService>();

@@ -158,6 +158,80 @@ public class TenantService : ITenantService
         await _repository.UpdateAsync(tenant, ct);
     }
 
+    /// <summary>
+    /// TENANT-B07 — Idempotent upsert from an Identity dual-write sync event.
+    ///
+    /// If the tenant already exists in the Tenant service (matched by Id), it is
+    /// updated with the incoming payload fields. If it does not exist, a minimal
+    /// record is created from the payload so the Tenant service can serve it as
+    /// a runtime read source without requiring a full migration run first.
+    ///
+    /// Fields not present in the sync payload (profile metadata, address, etc.)
+    /// are left unchanged on update or left null on create — they will be populated
+    /// by the migration execute endpoint or a subsequent operator update.
+    /// </summary>
+    public async Task UpsertFromSyncAsync(TenantSyncRequest request, CancellationToken ct = default)
+    {
+        var existing = await _repository.GetByIdAsync(request.TenantId, ct);
+
+        if (existing is null)
+        {
+            // Create a minimal record so Tenant service can serve runtime reads.
+            var code = request.Code.Trim().ToLowerInvariant();
+
+            // If the code is already taken by a *different* tenant, skip creation
+            // (this should not happen in practice but guards against race conditions).
+            var byCode = await _repository.GetByCodeAsync(code, ct);
+            if (byCode is not null && byCode.Id != request.TenantId)
+                return;
+
+            if (byCode is null)
+            {
+                var created = Domain.Tenant.Rehydrate(
+                    id:                 request.TenantId,
+                    code:               code,
+                    displayName:        request.DisplayName,
+                    status:             ParseStatus(request.Status),
+                    subdomain:          request.Subdomain,
+                    logoDocumentId:     request.LogoDocumentId,
+                    logoWhiteDocumentId: request.LogoWhiteDocumentId,
+                    createdAtUtc:       request.SourceCreatedAtUtc,
+                    updatedAtUtc:       request.SourceUpdatedAtUtc);
+
+                await _repository.AddAsync(created, ct);
+            }
+        }
+        else
+        {
+            // Update the fields the sync event carries.
+            existing.UpdateProfile(
+                existing.DisplayName != request.DisplayName ? request.DisplayName : existing.DisplayName,
+                existing.LegalName,
+                existing.Description,
+                existing.WebsiteUrl,
+                existing.TimeZone,
+                existing.Locale,
+                existing.SupportEmail,
+                existing.SupportPhone);
+
+            if (request.Subdomain is not null)
+                existing.SetSubdomain(request.Subdomain);
+
+            existing.SetStatus(ParseStatus(request.Status));
+
+            if (request.LogoDocumentId.HasValue)
+                existing.SetLogo(request.LogoDocumentId);
+
+            if (request.LogoWhiteDocumentId.HasValue)
+                existing.SetLogoWhite(request.LogoWhiteDocumentId);
+
+            await _repository.UpdateAsync(existing, ct);
+        }
+    }
+
+    private static TenantStatus ParseStatus(string? status) =>
+        Enum.TryParse<TenantStatus>(status, ignoreCase: true, out var s) ? s : TenantStatus.Active;
+
     // ── Validation helpers ────────────────────────────────────────────────────
 
     private static void ValidateOptionalEmail(string? value, string field, Dictionary<string, string[]> errors)

@@ -373,14 +373,15 @@ public static class AdminEndpoints
     ///   - Code: 2–12 alphanumeric characters (uppercased automatically).
     /// </summary>
     private static async Task<IResult> CreateTenant(
-        CreateTenantRequest       body,
-        IdentityDbContext         db,
-        IPasswordHasher           passwordHasher,
-        IAuditEventClient         auditClient,
-        ITenantProvisioningService provisioningService,
+        CreateTenantRequest         body,
+        IdentityDbContext           db,
+        IPasswordHasher             passwordHasher,
+        IAuditEventClient           auditClient,
+        ITenantProvisioningService  provisioningService,
         IProductProvisioningService productProvisioningEngine,
-        ILoggerFactory            loggerFactory,
-        CancellationToken         ct)
+        ILoggerFactory              loggerFactory,
+        ITenantSyncAdapter          syncAdapter,
+        CancellationToken           ct)
     {
         // ── Validate inputs ───────────────────────────────────────────────────
         if (string.IsNullOrWhiteSpace(body.Name))
@@ -476,8 +477,31 @@ public static class AdminEndpoints
 
         await db.SaveChangesAsync(ct);
 
-        // ── Provision subdomain (DNS + TenantDomain record) ──────────────────
+        // ── TENANT-B07: Dual-write to Tenant service (feature-flagged) ────────
         var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
+        try
+        {
+            await syncAdapter.SyncAsync(new IdentityTenantSyncRequest(
+                TenantId:            tenant.Id,
+                Code:                tenant.Code,
+                DisplayName:         tenant.Name,
+                Status:              "Active",
+                Subdomain:           tenant.Subdomain,
+                LogoDocumentId:      tenant.LogoDocumentId,
+                LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
+                SourceCreatedAtUtc:  tenant.CreatedAtUtc,
+                SourceUpdatedAtUtc:  tenant.UpdatedAtUtc,
+                EventType:           "Create"), ct);
+        }
+        catch (Exception syncEx)
+        {
+            log.LogError(syncEx,
+                "[TenantDualWrite] Strict sync failure in CreateTenant for TenantId={TenantId}, aborting.",
+                tenant.Id);
+            return Results.Problem("Tenant sync failed (strict mode active).", statusCode: 502);
+        }
+
+        // ── Provision subdomain (DNS + TenantDomain record) ──────────────────
         var provResult = await provisioningService.ProvisionAsync(tenant, ct);
 
         if (provResult.Success)
@@ -664,6 +688,7 @@ public static class AdminEndpoints
         ITenantProvisioningService       provisioningService,
         IAuditEventClient                auditClient,
         ILoggerFactory                   loggerFactory,
+        ITenantSyncAdapter               syncAdapter,
         CancellationToken                ct)
     {
         var log = loggerFactory.CreateLogger("Identity.Api.SelfProvisionTenant");
@@ -735,6 +760,29 @@ public static class AdminEndpoints
         db.ScopedRoleAssignments.Add(sra);
 
         await db.SaveChangesAsync(ct);
+
+        // ── TENANT-B07: Dual-write to Tenant service (feature-flagged) ────────
+        try
+        {
+            await syncAdapter.SyncAsync(new IdentityTenantSyncRequest(
+                TenantId:            tenant.Id,
+                Code:                tenant.Code,
+                DisplayName:         tenant.Name,
+                Status:              "Active",
+                Subdomain:           tenant.Subdomain,
+                LogoDocumentId:      null,
+                LogoWhiteDocumentId: null,
+                SourceCreatedAtUtc:  tenant.CreatedAtUtc,
+                SourceUpdatedAtUtc:  tenant.UpdatedAtUtc,
+                EventType:           "Create"), ct);
+        }
+        catch (Exception syncEx)
+        {
+            log.LogError(syncEx,
+                "[TenantDualWrite] Strict sync failure in SelfProvisionTenant for TenantId={TenantId}, aborting.",
+                tenant.Id);
+            return Results.Problem("Tenant sync failed (strict mode active).", statusCode: 502);
+        }
 
         // ── Move user to new tenant (enables login at new subdomain) ──────────
         // EF Core ExecuteUpdateAsync works even with private setters (SQL-only update).
@@ -1052,6 +1100,7 @@ public static class AdminEndpoints
         ClaimsPrincipal     caller,
         IdentityDbContext   db,
         IAuditEventClient   auditClient,
+        ITenantSyncAdapter  syncAdapter,
         CancellationToken   ct)
     {
         if (string.IsNullOrWhiteSpace(body.DocumentId))
@@ -1065,6 +1114,19 @@ public static class AdminEndpoints
 
         tenant.SetLogo(documentId);
         await db.SaveChangesAsync(ct);
+
+        // ── TENANT-B07: Dual-write logo update to Tenant service ──────────────
+        _ = syncAdapter.SyncAsync(new IdentityTenantSyncRequest(
+            TenantId:            tenant.Id,
+            Code:                tenant.Code,
+            DisplayName:         tenant.Name,
+            Status:              tenant.IsActive ? "Active" : "Inactive",
+            Subdomain:           tenant.Subdomain,
+            LogoDocumentId:      tenant.LogoDocumentId,
+            LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
+            SourceCreatedAtUtc:  tenant.CreatedAtUtc,
+            SourceUpdatedAtUtc:  tenant.UpdatedAtUtc,
+            EventType:           "Update"));
 
         var callerId     = caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub");
         var callerEmail  = caller.FindFirstValue(ClaimTypes.Email) ?? caller.FindFirstValue("email");
@@ -1159,6 +1221,7 @@ public static class AdminEndpoints
         ClaimsPrincipal     caller,
         IdentityDbContext   db,
         IAuditEventClient   auditClient,
+        ITenantSyncAdapter  syncAdapter,
         CancellationToken   ct)
     {
         if (string.IsNullOrWhiteSpace(body.DocumentId))
@@ -1172,6 +1235,19 @@ public static class AdminEndpoints
 
         tenant.SetLogoWhite(documentId);
         await db.SaveChangesAsync(ct);
+
+        // ── TENANT-B07: Dual-write logo-white update to Tenant service ─────────
+        _ = syncAdapter.SyncAsync(new IdentityTenantSyncRequest(
+            TenantId:            tenant.Id,
+            Code:                tenant.Code,
+            DisplayName:         tenant.Name,
+            Status:              tenant.IsActive ? "Active" : "Inactive",
+            Subdomain:           tenant.Subdomain,
+            LogoDocumentId:      tenant.LogoDocumentId,
+            LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
+            SourceCreatedAtUtc:  tenant.CreatedAtUtc,
+            SourceUpdatedAtUtc:  tenant.UpdatedAtUtc,
+            EventType:           "Update"));
 
         var callerId     = caller.FindFirstValue(ClaimTypes.NameIdentifier) ?? caller.FindFirstValue("sub");
         var callerEmail  = caller.FindFirstValue(ClaimTypes.Email) ?? caller.FindFirstValue("email");

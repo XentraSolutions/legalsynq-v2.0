@@ -108,5 +108,6 @@ app.MapCapabilityEndpoints();
 app.MapSettingEndpoints();
 app.MapMigrationEndpoints();
 app.MapReadSourceEndpoints();
+app.MapSyncEndpoints();
 
 app.Run();
