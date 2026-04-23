@@ -209,6 +209,20 @@ namespace Tenant.Infrastructure.Data.Migrations
                         .HasMaxLength(63)
                         .HasColumnType("varchar(63)");
 
+                    // BLK-TS-02 — provisioning state
+                    b.Property<string>("ProvisioningStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasDefaultValue("Unknown")
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime?>("ProvisionedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string?>("LastProvisioningError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
                     b.Property<string>("SupportEmail")
                         .HasMaxLength(320)
                         .HasColumnType("varchar(320)");

@@ -1,6 +1,25 @@
 namespace Tenant.Domain;
 
 /// <summary>
+/// DNS/infrastructure provisioning state of a tenant.
+/// Tracked by Tenant service after calling the Identity provisioning adapter.
+/// </summary>
+public enum TenantProvisioningStatus
+{
+    /// <summary>Not yet provisioned (default for new / migrated records).</summary>
+    Unknown,
+
+    /// <summary>Provisioning call in flight.</summary>
+    InProgress,
+
+    /// <summary>DNS + infrastructure successfully provisioned.</summary>
+    Provisioned,
+
+    /// <summary>Provisioning attempted but failed. See LastProvisioningError.</summary>
+    Failed
+}
+
+/// <summary>
 /// Lifecycle status of a tenant record.
 ///
 /// Migration mapping from Identity.Domain.Tenant:
@@ -21,6 +40,22 @@ public enum TenantStatus
 
     /// <summary>Temporarily suspended (billing / compliance hold).</summary>
     Suspended
+}
+
+/// <summary>
+/// Well-known product key constants for Tenant entitlement lookups.
+/// Keys are normalized (lowercase, trimmed) — matches TenantProductEntitlement.NormalizeKey().
+/// </summary>
+public static class ProductKeys
+{
+    /// <summary>CareConnect referral network product.</summary>
+    public const string CareConnect = "synq_careconnect";
+
+    /// <summary>Liens management product.</summary>
+    public const string Liens = "liens";
+
+    /// <summary>Task management product.</summary>
+    public const string Task = "task";
 }
 
 /// <summary>
@@ -61,6 +96,20 @@ public class Tenant
 
     /// <summary>Assigned subdomain slug (unique).</summary>
     public string? Subdomain { get; private set; }
+
+    // ── Provisioning state ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// DNS/infrastructure provisioning state.
+    /// Set by Tenant service after calling the Identity provisioning adapter.
+    /// </summary>
+    public TenantProvisioningStatus ProvisioningStatus { get; private set; }
+
+    /// <summary>UTC timestamp when provisioning succeeded. Null until first successful provision.</summary>
+    public DateTime? ProvisionedAtUtc { get; private set; }
+
+    /// <summary>Last provisioning failure message. Cleared on success. Max 1000 chars.</summary>
+    public string? LastProvisioningError { get; private set; }
 
     // ── Brand / logo references (kept for Identity backward-compat) ───────────
 
@@ -258,5 +307,33 @@ public class Tenant
     {
         LogoWhiteDocumentId = documentId;
         UpdatedAtUtc        = DateTime.UtcNow;
+    }
+
+    // ── BLK-TS-02: Provisioning state ────────────────────────────────────────
+
+    /// <summary>
+    /// Updates the Tenant-owned provisioning state after the Identity provisioning
+    /// adapter returns. Clears LastProvisioningError on success; sets it on failure.
+    /// </summary>
+    public void SetProvisioningStatus(TenantProvisioningStatus status, string? error = null)
+    {
+        ProvisioningStatus = status;
+
+        if (status == TenantProvisioningStatus.Provisioned)
+        {
+            ProvisionedAtUtc      = DateTime.UtcNow;
+            LastProvisioningError = null;
+        }
+        else if (status == TenantProvisioningStatus.Failed)
+        {
+            var truncated = error?.Length > 1000 ? error[..1000] : error;
+            LastProvisioningError = truncated;
+        }
+        else
+        {
+            LastProvisioningError = null;
+        }
+
+        UpdatedAtUtc = DateTime.UtcNow;
     }
 }

@@ -42,6 +42,19 @@ public class TenantConfiguration : IEntityTypeConfiguration<Domain.Tenant>
             .IsUnique()
             .HasFilter("`Subdomain` IS NOT NULL");
 
+        // ── BLK-TS-02: Provisioning state ────────────────────────────────────
+
+        builder.Property(t => t.ProvisioningStatus)
+            .IsRequired()
+            .HasConversion<string>()
+            .HasMaxLength(50)
+            .HasDefaultValue(TenantProvisioningStatus.Unknown);
+
+        builder.Property(t => t.ProvisionedAtUtc);
+
+        builder.Property(t => t.LastProvisioningError)
+            .HasMaxLength(1000);
+
         // ── Logo refs (kept for Identity backward-compat) ─────────────────────
 
         builder.Property(t => t.LogoDocumentId);

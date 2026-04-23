@@ -366,5 +366,9 @@ public class TenantService : ITenantService
         t.PostalCode,
         t.CountryCode,
         t.CreatedAtUtc,
-        t.UpdatedAtUtc);
+        t.UpdatedAtUtc,
+        // BLK-TS-02 — provisioning state
+        ProvisioningStatus:    t.ProvisioningStatus.ToString(),
+        ProvisionedAtUtc:      t.ProvisionedAtUtc,
+        LastProvisioningError: t.LastProvisioningError);
 }

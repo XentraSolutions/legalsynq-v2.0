@@ -118,6 +118,59 @@ public class EntitlementService : IEntitlementService
         await _entitlements.DeleteAsync(entitlement, ct);
     }
 
+    // ── BLK-TS-02: Idempotent activate ───────────────────────────────────────
+
+    public async Task<EntitlementResponse> ActivateProductAsync(
+        Guid              tenantId,
+        string            productKey,
+        string?           displayName = null,
+        CancellationToken ct          = default)
+    {
+        await RequireTenantAsync(tenantId, ct);
+
+        var normalizedKey = TenantProductEntitlement.NormalizeKey(productKey);
+        if (string.IsNullOrWhiteSpace(normalizedKey))
+            throw new ValidationException("ProductKey is required.",
+                new Dictionary<string, string[]> { ["productKey"] = ["ProductKey cannot be empty."] });
+
+        var existing = await _entitlements.GetByTenantAndProductKeyAsync(tenantId, normalizedKey, ct);
+
+        if (existing is not null)
+        {
+            // Idempotent: already exists. Enable it if disabled.
+            if (!existing.IsEnabled)
+            {
+                existing.Enable();
+                await _entitlements.UpdateAsync(existing, ct);
+            }
+            return ToResponse(existing);
+        }
+
+        // Create new entitlement — enabled immediately.
+        var entitlement = TenantProductEntitlement.Create(
+            tenantId:           tenantId,
+            productKey:         normalizedKey,
+            productDisplayName: displayName?.Trim(),
+            isEnabled:          true,
+            isDefault:          false,
+            effectiveFromUtc:   DateTime.UtcNow);
+
+        await _entitlements.AddAsync(entitlement, ct);
+        return ToResponse(entitlement);
+    }
+
+    // ── BLK-TS-02: Active check ───────────────────────────────────────────────
+
+    public async Task<bool> IsProductActiveAsync(
+        Guid              tenantId,
+        string            productKey,
+        CancellationToken ct = default)
+    {
+        var normalizedKey = TenantProductEntitlement.NormalizeKey(productKey);
+        var existing = await _entitlements.GetByTenantAndProductKeyAsync(tenantId, normalizedKey, ct);
+        return existing is { IsEnabled: true };
+    }
+
     // ── Set default ───────────────────────────────────────────────────────────
 
     public async Task<EntitlementResponse> SetDefaultAsync(Guid tenantId, Guid id, CancellationToken ct = default)

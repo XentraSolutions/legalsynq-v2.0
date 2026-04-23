@@ -113,5 +113,6 @@ app.MapSyncEndpoints();
 app.MapRuntimeMetricsEndpoints();
 app.MapLogoAdminEndpoints();
 app.MapTenantAdminEndpoints();
+app.MapActivationEndpoints();     // BLK-TS-02
 
 app.Run();
