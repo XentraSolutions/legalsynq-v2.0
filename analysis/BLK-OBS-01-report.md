@@ -226,7 +226,7 @@ All new audit events follow the existing platform pattern:
 
 ## 10. GitHub Commits
 
-*(Updated after commit)*
+- `e269ca2a32f5e1ad3e36ac0a0d8f0b7095f84219` — BLK-OBS-01: Observability & Audit Enforcement — correlation ID, structured logging, audit events
 
 ---
 
@@ -256,4 +256,7 @@ All new audit events follow the existing platform pattern:
 
 ## 12. GitHub Diff Reference
 
-*(Updated after commit)*
+- **Commit ID:** `e269ca2a32f5e1ad3e36ac0a0d8f0b7095f84219`
+- **Diff file:** `analysis/BLK-OBS-01-commit.diff.txt`
+- **Summary file:** `analysis/BLK-OBS-01-commit-summary.md`
+- **Files changed:** 8 source files + 2 analysis artifacts

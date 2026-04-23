@@ -1,7 +1,7 @@
 # Commit Summary — BLK-OBS-01
 
 ## Commit ID
-*(Updated after commit)*
+`e269ca2a32f5e1ad3e36ac0a0d8f0b7095f84219`
 
 ## Commit Message
 `[BLK-OBS-01] Observability & Audit Enforcement — correlation ID, structured logging, audit events`
