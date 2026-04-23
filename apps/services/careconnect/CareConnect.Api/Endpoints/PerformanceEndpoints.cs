@@ -6,6 +6,7 @@
 //       since=<ISO>  — explicit UTC start (overrides days if both provided)
 //
 //   Auth: PlatformOrTenantAdmin only
+//   BLK-SEC-02-01: TenantAdmin scoped to their own tenant; PlatformAdmin sees platform-wide.
 //
 // Response includes:
 //   - summary (totalReferrals, acceptedReferrals, acceptanceRate, avgTimeToAcceptHours,
@@ -14,6 +15,7 @@
 //   - providers (per-provider totals, rates, avg TTA)
 //   - windowFrom, windowTo (UTC)
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Context;
 using CareConnect.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
@@ -43,6 +45,7 @@ public static class PerformanceEndpoints
     // Both params are optional and shareable in bookmarks/links.
     private static async Task<IResult> GetPerformanceAsync(
         IReferralPerformanceService perf,
+        ICurrentRequestContext      ctx,
         [FromQuery] string?         since    = null,
         [FromQuery] int             days     = 7,
         CancellationToken           ct       = default)
@@ -61,7 +64,12 @@ public static class PerformanceEndpoints
             windowFrom = nowUtc.AddDays(-clampedDays);
         }
 
-        var result = await perf.GetPerformanceAsync(windowFrom, ct);
+        // BLK-SEC-02-01: Scope to caller's tenant for non-PlatformAdmin.
+        Guid? scopeTenantId = ctx.IsPlatformAdmin
+            ? null
+            : (ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing."));
+
+        var result = await perf.GetPerformanceAsync(windowFrom, scopeTenantId, ct);
 
         return Results.Ok(new
         {

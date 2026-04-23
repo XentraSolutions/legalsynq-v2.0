@@ -19,8 +19,13 @@ public interface IReferralPerformanceService
     /// in cohort metrics (total, accepted, acceptance rate, TTA, provider stats).
     /// Aging distribution always covers ALL currently-New referrals.
     /// </param>
+    /// <param name="tenantId">
+    /// BLK-SEC-02-01: When non-null, restricts all queries to the specified tenant.
+    /// Null means platform-wide (PlatformAdmin only).
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     Task<ReferralPerformanceResult> GetPerformanceAsync(
         DateTime          since,
-        CancellationToken ct = default);
+        Guid?             tenantId  = null,
+        CancellationToken ct        = default);
 }

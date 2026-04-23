@@ -35,17 +35,26 @@ public sealed class ReferralPerformanceService : IReferralPerformanceService
         _logger = logger;
     }
 
+    // BLK-SEC-02-01: tenantId scopes all Referral queries for TenantAdmin callers.
+    // null = platform-wide (PlatformAdmin).
     public async Task<ReferralPerformanceResult> GetPerformanceAsync(
         DateTime          since,
-        CancellationToken ct = default)
+        Guid?             tenantId  = null,
+        CancellationToken ct        = default)
     {
         var nowUtc = DateTime.UtcNow;
 
         _logger.LogDebug(
-            "LSCC-01-005 Computing referral performance from {From:O} to {Now:O}.", since, nowUtc);
+            "LSCC-01-005 Computing referral performance from {From:O} to {Now:O} tenant={TenantId}.",
+            since, nowUtc, tenantId?.ToString() ?? "platform");
+
+        // BLK-SEC-02-01: Base query — apply tenant scope once.
+        var referralsBase = _db.Referrals.AsQueryable();
+        if (tenantId.HasValue)
+            referralsBase = referralsBase.Where(r => r.TenantId == tenantId.Value);
 
         // ── 1. Referrals in window (with Provider eager-loaded for name) ─────────
-        var windowReferrals = await _db.Referrals
+        var windowReferrals = await referralsBase
             .AsNoTracking()
             .Include(r => r.Provider)
             .Where(r => r.CreatedAtUtc >= since)
@@ -86,7 +95,8 @@ public sealed class ReferralPerformanceService : IReferralPerformanceService
             .ToList();
 
         // ── 4. All currently-New referrals for aging distribution ────────────────
-        var currentNewReferrals = await _db.Referrals
+        // BLK-SEC-02-01: Use referralsBase (already tenant-scoped) for consistency.
+        var currentNewReferrals = await referralsBase
             .AsNoTracking()
             .Where(r => r.Status == "New")
             .Select(r => new { r.Id, r.CreatedAtUtc })

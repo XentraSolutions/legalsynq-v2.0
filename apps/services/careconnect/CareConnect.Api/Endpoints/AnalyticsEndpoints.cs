@@ -2,7 +2,10 @@
 // Route: GET /api/admin/analytics/funnel
 // Auth:  PlatformOrTenantAdmin
 // Query: ?days=7|30|90  OR  ?startDate=yyyy-MM-dd&endDate=yyyy-MM-dd
+// BLK-SEC-02-01: TenantAdmin callers are scoped to their own tenant.
+//                PlatformAdmin sees platform-wide funnel metrics.
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Context;
 using CareConnect.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,14 +21,20 @@ public static class AnalyticsEndpoints
         // GET /api/admin/analytics/funnel?days=30
         // GET /api/admin/analytics/funnel?startDate=2026-01-01&endDate=2026-03-31
         group.MapGet("/funnel", async (
-            [FromQuery] int?    days,
-            [FromQuery] string? startDate,
-            [FromQuery] string? endDate,
+            [FromQuery] int?                  days,
+            [FromQuery] string?               startDate,
+            [FromQuery] string?               endDate,
             IActivationFunnelAnalyticsService analytics,
-            CancellationToken ct) =>
+            ICurrentRequestContext            ctx,
+            CancellationToken                 ct) =>
         {
+            // BLK-SEC-02-01: Scope to caller's tenant for non-PlatformAdmin.
+            Guid? scopeTenantId = ctx.IsPlatformAdmin
+                ? null
+                : (ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing."));
+
             var (from, to) = ResolveRange(days, startDate, endDate);
-            var metrics = await analytics.GetMetricsAsync(from, to, ct);
+            var metrics = await analytics.GetMetricsAsync(from, to, scopeTenantId, ct);
             return Results.Ok(metrics);
         });
     }

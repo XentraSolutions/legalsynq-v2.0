@@ -102,14 +102,28 @@ public static class ProviderAdminEndpoints
 
     // LSCC-01-003: Activate provider IsActive + AcceptingReferrals = true (idempotent).
     // POST /api/admin/providers/{id}/activate-for-careconnect
-    // Requires PlatformOrTenantAdmin. Cross-tenant: admin activates the provider record
-    // regardless of which tenant owns it. Returns activation result.
+    // Requires PlatformOrTenantAdmin.
+    // BLK-SEC-02-01: TenantAdmin may only activate providers within their own tenant.
+    //   PlatformAdmin may activate any provider (platform-wide tooling intent).
     private static async Task<IResult> ActivateForCareConnectAsync(
         Guid                   id,
         IProviderService       service,
         ICurrentRequestContext ctx,
         CancellationToken      ct)
     {
+        // BLK-SEC-02-01: For non-PlatformAdmin, verify provider belongs to caller's tenant.
+        if (!ctx.IsPlatformAdmin)
+        {
+            var callerTenantId = ctx.TenantId
+                ?? throw new InvalidOperationException("tenant_id claim is missing.");
+
+            var provider = await service.GetByIdAsync(callerTenantId, id, ct);
+            // GetByIdAsync throws NotFoundException if provider is not found in the tenant —
+            // that propagates as 404 through the global error handler, which is correct behavior.
+            // An explicit 403 would confirm the provider exists in another tenant; 404 is safer.
+            _ = provider; // ownership confirmed by scoped lookup
+        }
+
         var result = await service.ActivateForCareConnectAsync(id, ct);
         return Results.Ok(new
         {
