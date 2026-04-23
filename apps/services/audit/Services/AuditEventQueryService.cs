@@ -42,13 +42,16 @@ public sealed class AuditEventQueryService : IAuditEventQueryService
 
     /// <inheritdoc/>
     public async Task<AuditEventRecordResponse?> GetByAuditIdAsync(
-        Guid auditId,
-        CancellationToken ct = default)
+        Guid                    auditId,
+        AuditEventQueryRequest? scopeFilter = null,
+        CancellationToken       ct          = default)
     {
-        var record = await _repository.GetByAuditIdAsync(auditId, ct);
+        var record = await _repository.GetByAuditIdAsync(auditId, scopeFilter, ct);
         if (record is null)
         {
-            _logger.LogDebug("GetByAuditIdAsync: AuditId={AuditId} not found.", auditId);
+            _logger.LogDebug(
+                "GetByAuditIdAsync: AuditId={AuditId} ScopeFilter={HasFilter} not found.",
+                auditId, scopeFilter is not null ? "yes" : "none");
             return null;
         }
 

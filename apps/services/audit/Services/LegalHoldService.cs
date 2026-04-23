@@ -35,7 +35,7 @@ public sealed class LegalHoldService : ILegalHoldService
         CancellationToken       ct = default)
     {
         // Verify the audit record exists
-        var record = await _recordRepository.GetByAuditIdAsync(auditId, ct);
+        var record = await _recordRepository.GetByAuditIdAsync(auditId, ct: ct);
         if (record is null)
         {
             throw new InvalidOperationException(

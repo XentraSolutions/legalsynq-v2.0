@@ -133,11 +133,54 @@ public sealed class AuditExportService : IAuditExportService
 
     /// <inheritdoc/>
     public async Task<ExportStatusResponse?> GetStatusAsync(
-        Guid              exportId,
-        CancellationToken ct = default)
+        Guid                exportId,
+        IQueryCallerContext caller,
+        CancellationToken   ct = default)
     {
         var job = await _jobRepository.GetByExportIdAsync(exportId, ct);
-        return job is null ? null : MapToResponse(job);
+        if (job is null)
+            return null;
+
+        // PlatformAdmin callers may inspect any export job (cross-tenant read).
+        // All other callers must satisfy two independent ownership checks:
+        //
+        //  1. Identity ownership:
+        //     job.RequestedBy must match the caller's effective identity
+        //     (UserId ?? TenantId), which is the value stored at submission time.
+        //
+        //  2. Tenant scope guard (defense-in-depth):
+        //     When the job is explicitly tenant-scoped (ScopeType == Tenant),
+        //     the job's ScopeId must equal the caller's TenantId.
+        //     This guards against the edge case where UserId values are not
+        //     globally unique across tenants — a matching RequestedBy alone would
+        //     not be sufficient without this second, tenant-bound check.
+        //     For non-Tenant-scoped jobs (Organization, Global, Platform) the
+        //     tenant guard is skipped and identity ownership alone applies.
+        if (caller.Scope != Authorization.CallerScope.PlatformAdmin)
+        {
+            var effectiveCallerId = caller.UserId ?? caller.TenantId;
+            var ownershipMatches  = effectiveCallerId is not null
+                                    && job.RequestedBy == effectiveCallerId;
+
+            var tenantScopeOk = job.ScopeType != Enums.ScopeType.Tenant
+                                || caller.TenantId is null
+                                || job.ScopeId == caller.TenantId;
+
+            if (!ownershipMatches || !tenantScopeOk)
+            {
+                _logger.LogWarning(
+                    "GetStatusAsync: ExportId={ExportId} access denied. " +
+                    "Scope={Scope} EffectiveCallerId={CallerId} RequestedBy={RequestedBy} " +
+                    "JobScopeType={ScopeType} JobScopeId={ScopeId} CallerTenantId={TenantId}",
+                    exportId, caller.Scope,
+                    effectiveCallerId ?? "(none)", job.RequestedBy,
+                    job.ScopeType, job.ScopeId ?? "(none)",
+                    caller.TenantId ?? "(none)");
+                return null;
+            }
+        }
+
+        return MapToResponse(job);
     }
 
     /// <inheritdoc/>

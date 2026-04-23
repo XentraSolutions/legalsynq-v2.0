@@ -40,11 +40,21 @@ public interface IAuditExportService
 
     /// <summary>
     /// Return the current status of an existing export job.
-    /// Returns null when no job with the given <paramref name="exportId"/> exists.
+    ///
+    /// Access is restricted to the job's original requester and to PlatformAdmin callers.
+    /// Returns null when no job with the given <paramref name="exportId"/> exists OR
+    /// when the caller is not permitted to view that job.
     /// </summary>
+    /// <param name="exportId">The public export job identifier.</param>
+    /// <param name="caller">
+    /// The caller's resolved authorization context. Used to verify that the caller
+    /// owns the job or holds PlatformAdmin scope before returning the result.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
     Task<ExportStatusResponse?> GetStatusAsync(
-        Guid              exportId,
-        CancellationToken ct = default);
+        Guid                exportId,
+        IQueryCallerContext caller,
+        CancellationToken   ct = default);
 
     /// <summary>
     /// Process an export job that is already in the database (Pending or Processing state).

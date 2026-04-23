@@ -126,15 +126,20 @@ public sealed class AuditEventQueryController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<object>),                   StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetEvent(Guid auditId, CancellationToken ct)
     {
-        // For single-record lookup, authorize with an empty query.
-        // Scope constraints that apply to the single-record response (visibility, etc.)
-        // are enforced at the query level when the record is fetched.
+        // Authorize with an empty query so the authorizer can mutate it with the
+        // caller's scope constraints (TenantId, MaxVisibility, etc.).
+        // Those constraints are then forwarded to the service so the single-record
+        // fetch is tenant-isolated — closing the cross-tenant bypass.
         var probeQuery = new AuditEventQueryRequest();
         var deny = AuthorizeQuery(probeQuery);
         if (deny is not null) return deny;
 
         var traceId = TraceIdAccessor.Current();
-        var record  = await _queryService.GetByAuditIdAsync(auditId, ct);
+
+        // Pass the fully-authorized probeQuery so the repository applies the same
+        // ApplyFilters predicate pipeline used by QueryAsync: TenantId, OrganizationId,
+        // ActorId, MaxVisibility, and all other constraints the authorizer set.
+        var record  = await _queryService.GetByAuditIdAsync(auditId, probeQuery, ct);
 
         if (record is null)
         {

@@ -36,7 +36,12 @@ public sealed class AuditCorrelationService : IAuditCorrelationService
         CancellationToken ct = default)
     {
         // ── 1. Fetch anchor event ────────────────────────────────────────────
-        var anchor = await _queryService.GetByAuditIdAsync(anchorAuditId, ct);
+        // Build a minimal scope filter so the anchor lookup respects the caller's
+        // tenant boundary (same isolation guarantee as a filtered list query).
+        var anchorScopeFilter = callerTenantId is not null
+            ? new AuditEventQueryRequest { TenantId = callerTenantId }
+            : null;
+        var anchor = await _queryService.GetByAuditIdAsync(anchorAuditId, anchorScopeFilter, ct);
         if (anchor is null)
         {
             _logger.LogDebug(

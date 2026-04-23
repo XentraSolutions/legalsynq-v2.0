@@ -23,9 +23,22 @@ public interface IAuditEventRecordRepository
 
     /// <summary>
     /// Retrieve a single record by its public <see cref="AuditEventRecord.AuditId"/>.
-    /// Returns null if not found.
+    ///
+    /// When <paramref name="scopeFilter"/> is supplied the same predicate pipeline used
+    /// by <see cref="QueryAsync"/> is applied before the AuditId point lookup, enforcing
+    /// all scope constraints the caller's authorization produced (TenantId, OrganizationId,
+    /// ActorId, MaxVisibility, etc.). Pass the post-authorization query object from the
+    /// controller so the fetch is subject to the same rules as a filtered list query.
+    ///
+    /// Pass null (default) only for internal callers that operate outside the HTTP
+    /// request scope (e.g. LegalHoldService) and whose access is governed separately.
+    ///
+    /// Returns null if not found or if the record does not satisfy the scope constraints.
     /// </summary>
-    Task<AuditEventRecord?> GetByAuditIdAsync(Guid auditId, CancellationToken ct = default);
+    Task<AuditEventRecord?> GetByAuditIdAsync(
+        Guid                     auditId,
+        AuditRecordQueryRequest? scopeFilter = null,
+        CancellationToken        ct          = default);
 
     /// <summary>
     /// Checks whether a record with the given idempotency key already exists.

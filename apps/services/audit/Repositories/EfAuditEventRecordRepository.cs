@@ -60,13 +60,22 @@ public sealed class EfAuditEventRecordRepository : IAuditEventRecordRepository
     // ── Point lookups ──────────────────────────────────────────────────────────
 
     public async Task<AuditEventRecord?> GetByAuditIdAsync(
-        Guid auditId,
-        CancellationToken ct = default)
+        Guid                     auditId,
+        AuditRecordQueryRequest? scopeFilter = null,
+        CancellationToken        ct          = default)
     {
         await using var db = await _contextFactory.CreateDbContextAsync(ct);
-        return await db.AuditEventRecords
-            .AsNoTracking()
-            .FirstOrDefaultAsync(r => r.AuditId == auditId, ct);
+
+        // Start from the full record set and apply the caller's authorized scope
+        // constraints (TenantId, OrganizationId, ActorId, MaxVisibility, etc.) via
+        // the same shared predicate pipeline used by QueryAsync and StreamForExportAsync.
+        // The AuditId equality predicate is then added on top.
+        IQueryable<AuditEventRecord> query = db.AuditEventRecords.AsNoTracking();
+
+        if (scopeFilter is not null)
+            query = ApplyFilters(query, scopeFilter);
+
+        return await query.FirstOrDefaultAsync(r => r.AuditId == auditId, ct);
     }
 
     public async Task<bool> ExistsIdempotencyKeyAsync(

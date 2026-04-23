@@ -18,11 +18,29 @@ public interface IAuditEventQueryService
 {
     /// <summary>
     /// Retrieve a single audit event record by its stable public identifier.
-    /// Returns null when no record with the given <paramref name="auditId"/> exists.
+    ///
+    /// When <paramref name="scopeFilter"/> is supplied the full set of scope constraints
+    /// produced by <see cref="Authorization.IQueryAuthorizer"/> (TenantId, OrganizationId,
+    /// ActorId, MaxVisibility, etc.) is applied to the lookup via the shared
+    /// <c>ApplyFilters</c> predicate pipeline, giving this point-lookup the same
+    /// isolation guarantees as a filtered list query.
+    ///
+    /// Pass the post-authorization <see cref="AuditEventQueryRequest"/> from the controller
+    /// for user-facing lookups. Pass null only for internal callers whose access is
+    /// governed outside the HTTP request path (e.g. legal-hold verification).
+    ///
+    /// Returns null when no record matches the AuditId or the scope constraints.
     /// </summary>
     /// <param name="auditId">The platform-assigned AuditId (not the surrogate Id).</param>
+    /// <param name="scopeFilter">
+    /// Post-authorization query object whose scope fields constrain the fetch.
+    /// Null skips scope enforcement (internal / admin callers only).
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
-    Task<AuditEventRecordResponse?> GetByAuditIdAsync(Guid auditId, CancellationToken ct = default);
+    Task<AuditEventRecordResponse?> GetByAuditIdAsync(
+        Guid                    auditId,
+        AuditEventQueryRequest? scopeFilter = null,
+        CancellationToken       ct          = default);
 
     /// <summary>
     /// Execute a filtered, paginated query over persisted audit event records.

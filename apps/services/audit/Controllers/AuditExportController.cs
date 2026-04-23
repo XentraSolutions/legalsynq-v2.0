@@ -178,7 +178,13 @@ public sealed class AuditExportController : ControllerBase
         if (!IsExportEnabled(out var disabledResult))
             return disabledResult!;
 
-        var result = await _exportService.GetStatusAsync(exportId, ct);
+        // Resolve the caller context so ownership can be verified by the service.
+        // GetStatusAsync returns null for jobs that don't belong to this caller
+        // (unless the caller is PlatformAdmin), preventing cross-tenant job enumeration.
+        var caller = HttpContext.Items[QueryCallerContext.ItemKey] as IQueryCallerContext
+                     ?? QueryCallerContext.Anonymous();
+
+        var result = await _exportService.GetStatusAsync(exportId, caller, ct);
 
         if (result is null)
         {
