@@ -55,6 +55,12 @@ public sealed class ProviderOnboardingResult
     public string Subdomain          { get; init; } = string.Empty;
     public string ProvisioningStatus { get; init; } = string.Empty;
     public string? PortalUrl         { get; init; }
+
+    /// <summary>
+    /// BLK-CC-02: True when onboarding completed via resume (pending state was reused).
+    /// Frontend can use this to display a "setup resumed" message.
+    /// </summary>
+    public bool IsResumed { get; init; }
 }
 
 /// <summary>

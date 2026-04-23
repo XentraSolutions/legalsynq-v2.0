@@ -837,6 +837,12 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<bool>("AcceptingReferrals")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("AccessStage")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasDefaultValue("URL")
+                        .HasColumnType("varchar(20)");
+
                     b.Property<string>("AddressLine1")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -846,6 +852,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
+
+                    b.Property<DateTime?>("CommonPortalActivatedAtUtc")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -865,8 +874,18 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("GeoUpdatedAtUtc")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("IdentityUserId")
+                        .HasColumnType("char(36)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("LastOnboardingAttemptAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("LastOnboardingError")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
 
                     b.Property<decimal?>("Latitude")
                         .HasColumnType("decimal(10,7)");
@@ -879,12 +898,27 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<string>("Npi")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<Guid?>("OrganizationId")
                         .HasColumnType("char(36)");
 
                     b.Property<string>("OrganizationName")
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
+
+                    b.Property<Guid?>("PendingTenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("PendingTenantCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("PendingTenantSubdomain")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.Property<string>("Phone")
                         .IsRequired()
@@ -904,6 +938,15 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("TenantOnboardingStatus")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasDefaultValue("None")
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateTime?>("TenantProvisionedAtUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -912,8 +955,23 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AccessStage")
+                        .HasDatabaseName("IX_Providers_AccessStage");
+
+                    b.HasIndex("IdentityUserId")
+                        .HasDatabaseName("IX_Providers_IdentityUserId");
+
+                    b.HasIndex("Npi")
+                        .HasDatabaseName("IX_Providers_Npi");
+
                     b.HasIndex("OrganizationId")
                         .HasDatabaseName("IX_Providers_OrganizationId");
+
+                    b.HasIndex("PendingTenantId")
+                        .HasDatabaseName("IX_Providers_PendingTenantId");
+
+                    b.HasIndex("TenantOnboardingStatus")
+                        .HasDatabaseName("IX_Providers_TenantOnboardingStatus");
 
                     b.HasIndex("TenantId", "Email")
                         .IsUnique();

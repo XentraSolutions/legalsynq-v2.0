@@ -39,6 +39,16 @@ public static class ProviderAccessStage
         => Ordinal(current) >= Ordinal(minimum);
 }
 
+/// <summary>BLK-CC-02: Onboarding status constants for TenantOnboardingStatus field.</summary>
+public static class TenantOnboardingStatuses
+{
+    public const string None                = "None";
+    public const string ProvisioningStarted = "ProvisioningStarted";
+    public const string TenantProvisioned   = "TenantProvisioned";
+    public const string Completed           = "Completed";
+    public const string Failed              = "Failed";
+}
+
 public class Provider : AuditableEntity
 {
     public Guid    Id                { get; private set; }
@@ -96,6 +106,31 @@ public class Provider : AuditableEntity
     /// </summary>
     public DateTime? TenantProvisionedAtUtc { get; private set; }
 
+    // ── BLK-CC-02: Onboarding recovery state ─────────────────────────────────
+    // Persisted after Tenant service succeeds but before Identity assignment.
+    // Allows retry to skip re-provisioning the tenant if Identity fails.
+
+    /// <summary>TenantId returned by Tenant service; retained until onboarding completes.</summary>
+    public Guid?     PendingTenantId              { get; private set; }
+
+    /// <summary>TenantCode returned by Tenant service.</summary>
+    public string?   PendingTenantCode            { get; private set; }
+
+    /// <summary>Subdomain returned by Tenant service.</summary>
+    public string?   PendingTenantSubdomain       { get; private set; }
+
+    /// <summary>
+    /// Current onboarding status.
+    /// Values: None | ProvisioningStarted | TenantProvisioned | Completed | Failed
+    /// </summary>
+    public string    TenantOnboardingStatus       { get; private set; } = TenantOnboardingStatuses.None;
+
+    /// <summary>Last failure reason captured for ops visibility.</summary>
+    public string?   LastOnboardingError          { get; private set; }
+
+    /// <summary>When the last onboarding attempt was initiated.</summary>
+    public DateTime? LastOnboardingAttemptAtUtc   { get; private set; }
+
     // ─────────────────────────────────────────────────────────────────────────
 
     public List<ProviderCategory> ProviderCategories { get; private set; } = new();
@@ -111,6 +146,60 @@ public class Provider : AuditableEntity
     }
 
     // ── CC2-INT-B06-02: Stage transitions ─────────────────────────────────────
+
+    // ── BLK-CC-02: Onboarding lifecycle methods ───────────────────────────────
+
+    /// <summary>
+    /// Records that an onboarding attempt is starting.
+    /// Safe to call on every attempt (including retries).
+    /// </summary>
+    public void BeginOnboarding()
+    {
+        TenantOnboardingStatus     = TenantOnboardingStatuses.ProvisioningStarted;
+        LastOnboardingAttemptAtUtc = DateTime.UtcNow;
+        LastOnboardingError        = null;
+        UpdatedAtUtc               = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Persists the tenant details returned by the Tenant service.
+    /// Must be saved to DB before Identity assignment is attempted.
+    /// Calling this a second time (retry) updates the stored values.
+    /// </summary>
+    public void RecordTenantProvisioned(Guid tenantId, string tenantCode, string subdomain)
+    {
+        PendingTenantId        = tenantId;
+        PendingTenantCode      = tenantCode;
+        PendingTenantSubdomain = subdomain;
+        TenantOnboardingStatus = TenantOnboardingStatuses.TenantProvisioned;
+        UpdatedAtUtc           = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Completes onboarding after both Tenant provisioning and Identity assignment succeed.
+    /// Transitions to TENANT stage, clears all pending state.
+    /// </summary>
+    public void CompleteOnboarding(Guid providerTenantId)
+    {
+        MarkTenantProvisioned(providerTenantId);
+        PendingTenantId        = null;
+        PendingTenantCode      = null;
+        PendingTenantSubdomain = null;
+        TenantOnboardingStatus = TenantOnboardingStatuses.Completed;
+        LastOnboardingError    = null;
+        // UpdatedAtUtc already set by MarkTenantProvisioned
+    }
+
+    /// <summary>
+    /// Records that Identity membership assignment failed.
+    /// Pending tenant state is preserved so the next retry can resume.
+    /// </summary>
+    public void RecordOnboardingFailure(string error)
+    {
+        TenantOnboardingStatus = TenantOnboardingStatuses.Failed;
+        LastOnboardingError    = error.Length > 500 ? error[..500] : error;
+        UpdatedAtUtc           = DateTime.UtcNow;
+    }
 
     /// <summary>
     /// Transition to COMMON_PORTAL stage.

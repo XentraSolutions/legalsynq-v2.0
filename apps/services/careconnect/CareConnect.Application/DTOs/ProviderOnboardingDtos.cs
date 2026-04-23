@@ -18,6 +18,12 @@ public sealed class ProviderOnboardingResponse
     public string ProvisioningStatus { get; init; } = string.Empty;
     public string? PortalUrl         { get; init; }
     public string Message            { get; init; } = string.Empty;
+
+    /// <summary>
+    /// BLK-CC-02: True when this request completed a prior partial attempt.
+    /// Frontend can display a "workspace setup resumed" message.
+    /// </summary>
+    public bool IsResumed { get; init; }
 }
 
 /// <summary>Response body for GET /api/provider/onboarding/check-code.</summary>

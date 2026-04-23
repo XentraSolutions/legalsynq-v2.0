@@ -66,6 +66,21 @@ public class ProviderConfiguration : IEntityTypeConfiguration<Provider>
         builder.HasIndex(p => p.IdentityUserId)
             .HasDatabaseName("IX_Providers_IdentityUserId");
 
+        // BLK-CC-02: Onboarding recovery state
+        builder.Property(p => p.PendingTenantId);
+        builder.Property(p => p.PendingTenantCode).HasMaxLength(100);
+        builder.Property(p => p.PendingTenantSubdomain).HasMaxLength(200);
+        builder.Property(p => p.TenantOnboardingStatus)
+            .IsRequired()
+            .HasMaxLength(30)
+            .HasDefaultValue("None");
+        builder.Property(p => p.LastOnboardingError).HasMaxLength(500);
+        builder.Property(p => p.LastOnboardingAttemptAtUtc);
+        builder.HasIndex(p => p.TenantOnboardingStatus)
+            .HasDatabaseName("IX_Providers_TenantOnboardingStatus");
+        builder.HasIndex(p => p.PendingTenantId)
+            .HasDatabaseName("IX_Providers_PendingTenantId");
+
         builder.HasIndex(p => new { p.TenantId, p.Email }).IsUnique();
         builder.HasIndex(p => new { p.TenantId, p.Name });
         builder.HasIndex(p => new { p.TenantId, p.City, p.State });

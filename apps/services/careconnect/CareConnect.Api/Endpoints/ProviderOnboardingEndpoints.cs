@@ -130,6 +130,10 @@ public static class ProviderOnboardingEndpoints
                     codeNormalized,         // already lowercased + trimmed above
                     ct);
 
+                var message = result.IsResumed
+                    ? "We found an existing workspace setup. Setup is now complete."
+                    : "Your workspace is being set up. DNS provisioning may take a few minutes.";
+
                 return Results.Created(
                     $"/api/provider/onboarding/provision-tenant",
                     new ProviderOnboardingResponse
@@ -140,7 +144,8 @@ public static class ProviderOnboardingEndpoints
                         Subdomain          = result.Subdomain,
                         ProvisioningStatus = result.ProvisioningStatus,
                         PortalUrl          = result.PortalUrl,
-                        Message            = "Your workspace is being set up. DNS provisioning may take a few minutes.",
+                        IsResumed          = result.IsResumed,
+                        Message            = message,
                     });
             }
             catch (ProviderOnboardingException ex)
