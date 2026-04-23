@@ -12,6 +12,19 @@ public static class TenantBrandingEndpoints
         // ── GET /api/tenants/current/branding ────────────────────────────────
         // Anonymous — must never require auth (the login page loads this before auth).
         //
+        // COMPATIBILITY-ONLY [TENANT-B08]: This endpoint is the Identity-sourced branding
+        // bootstrap path. It is the active read source when TENANT_BRANDING_READ_SOURCE=Identity
+        // (the safe default). When the platform migrates to Tenant-primary mode
+        // (TENANT_BRANDING_READ_SOURCE=Tenant or HybridFallback), this endpoint becomes the
+        // fallback path only. After sustained Tenant-primary production validation (≥30 days),
+        // this endpoint can be retired and replaced by the Tenant service's
+        // GET /tenant/api/v1/public/branding/by-code/{code}.
+        //
+        // WRITE-THROUGH [TENANT-B08]: LogoDocumentId and LogoWhiteDocumentId are still
+        // read from the Identity Tenant entity. They are also written to the Tenant service
+        // via dual-write from AdminEndpoints.SetTenantLogo/SetTenantLogoWhite. When branding
+        // read source switches to Tenant, these fields will be read from TenantBranding instead.
+        //
         // Tenant resolution priority:
         //   1. X-Tenant-Code header  — sent by Next.js in dev (NEXT_PUBLIC_TENANT_CODE)
         //   2. Host header           — subdomain-based, production only

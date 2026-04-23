@@ -4,7 +4,7 @@ using Contracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Tenant.Api.Configuration;
+using Tenant.Application.Configuration;
 using Tenant.Api.Endpoints;
 using Tenant.Api.Middleware;
 using Tenant.Infrastructure;
@@ -109,5 +109,6 @@ app.MapSettingEndpoints();
 app.MapMigrationEndpoints();
 app.MapReadSourceEndpoints();
 app.MapSyncEndpoints();
+app.MapRuntimeMetricsEndpoints();
 
 app.Run();

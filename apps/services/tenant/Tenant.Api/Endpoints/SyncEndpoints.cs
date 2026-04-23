@@ -1,3 +1,4 @@
+using Tenant.Application.Metrics;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 
@@ -16,18 +17,24 @@ namespace Tenant.Api.Endpoints;
 /// This route is NOT exposed via the YARP gateway — no gateway route exists for
 /// /api/internal/* paths, so it is reachable only by services on the internal
 /// network (i.e. Identity calling directly on the Tenant service port 5005).
+///
+/// TENANT-B08: Emits TenantRuntimeMetrics on each attempt/success/failure and
+/// evicts public read cache entries for the synced tenant.
 /// </summary>
 public static class SyncEndpoints
 {
     public static void MapSyncEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/internal/tenant-sync/upsert", async (
-            HttpContext       httpContext,
-            SyncUpsertBody    body,
-            ITenantService    tenantSvc,
-            IConfiguration    configuration,
-            ILoggerFactory    loggerFactory,
-            CancellationToken ct) =>
+            HttpContext           httpContext,
+            SyncUpsertBody        body,
+            ITenantService        tenantSvc,
+            IBrandingService      brandingSvc,
+            IResolutionService    resolutionSvc,
+            TenantRuntimeMetrics  metrics,
+            IConfiguration        configuration,
+            ILoggerFactory        loggerFactory,
+            CancellationToken     ct) =>
         {
             var log = loggerFactory.CreateLogger("Tenant.Api.SyncEndpoints");
 
@@ -60,6 +67,8 @@ public static class SyncEndpoints
                 body.TenantId,
                 body.Code);
 
+            metrics.IncrementSyncAttempted();
+
             // ── Upsert via Tenant service ──────────────────────────────────────
             try
             {
@@ -74,6 +83,13 @@ public static class SyncEndpoints
                     SourceCreatedAtUtc:  body.SourceCreatedAtUtc,
                     SourceUpdatedAtUtc:  body.SourceUpdatedAtUtc,
                     EventType:           body.EventType ?? "Update"), ct);
+
+                metrics.IncrementSyncSucceeded();
+
+                // ── Evict stale cache entries for this tenant ──────────────────
+                // TENANT-B08: Ensure subsequent reads immediately see the updated data.
+                brandingSvc.EvictPublicCache(body.Code, body.Subdomain);
+                resolutionSvc.EvictCache(body.Code, body.Subdomain);
 
                 log.LogInformation(
                     "[TenantSync] Upserted TenantId={TenantId} Code={Code}",
@@ -90,6 +106,8 @@ public static class SyncEndpoints
             }
             catch (Exception ex)
             {
+                metrics.IncrementSyncFailed();
+
                 log.LogError(
                     ex,
                     "[TenantSync] Upsert failed for TenantId={TenantId} Code={Code}",

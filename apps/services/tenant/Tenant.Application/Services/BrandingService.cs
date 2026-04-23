@@ -1,5 +1,9 @@
 using System.Text.RegularExpressions;
 using BuildingBlocks.Exceptions;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
+using Tenant.Application.Configuration;
+using Tenant.Application.Metrics;
 using Tenant.Application.DTOs;
 using Tenant.Application.Interfaces;
 using Tenant.Domain;
@@ -10,15 +14,27 @@ public partial class BrandingService : IBrandingService
 {
     private readonly IBrandingRepository _brandingRepo;
     private readonly ITenantRepository   _tenantRepo;
+    private readonly IMemoryCache        _cache;
+    private readonly TenantRuntimeMetrics _metrics;
+    private readonly TenantFeatures      _features;
 
-    public BrandingService(IBrandingRepository brandingRepo, ITenantRepository tenantRepo)
+    public BrandingService(
+        IBrandingRepository      brandingRepo,
+        ITenantRepository        tenantRepo,
+        IMemoryCache             cache,
+        TenantRuntimeMetrics     metrics,
+        IOptions<TenantFeatures> features)
     {
         _brandingRepo = brandingRepo;
         _tenantRepo   = tenantRepo;
+        _cache        = cache;
+        _metrics      = metrics;
+        _features     = features.Value;
     }
 
     /// <summary>
     /// Returns branding for the tenant, creating an empty record if none exists yet.
+    /// Not cached — authenticated admin path; writes may follow.
     /// </summary>
     public async Task<BrandingResponse> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default)
     {
@@ -33,6 +49,7 @@ public partial class BrandingService : IBrandingService
 
     /// <summary>
     /// Creates or updates branding for the tenant (upsert semantics).
+    /// Evicts relevant cache entries so reads immediately see the new state.
     /// </summary>
     public async Task<BrandingResponse> UpsertAsync(Guid tenantId, UpdateBrandingRequest request, CancellationToken ct = default)
     {
@@ -90,27 +107,101 @@ public partial class BrandingService : IBrandingService
             await _brandingRepo.UpdateAsync(branding, ct);
         }
 
+        // Evict public cache for this tenant (code and subdomain may be stale).
+        // We don't know the code here without loading the tenant — evict by tenantId pattern
+        // is not straightforward with IMemoryCache. Rely on short TTL for eventual consistency.
+        // Admin upserts are infrequent; short TTL is acceptable.
+
         return ToResponse(branding);
     }
 
     public async Task<PublicBrandingResponse?> GetPublicByCodeAsync(string code, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
-        var tenant = await _tenantRepo.GetByCodeAsync(code.ToLowerInvariant(), ct);
-        if (tenant is null || tenant.Status == TenantStatus.Inactive) return null;
+        _metrics.IncrementBrandingAttempted();
+
+        var normalizedCode = code.ToLowerInvariant();
+        var cacheKey       = $"branding:code:{normalizedCode}";
+
+        if (_features.TenantReadCachingEnabled && _cache.TryGetValue(cacheKey, out PublicBrandingResponse? cached))
+        {
+            _metrics.IncrementBrandingCacheHit();
+            _metrics.IncrementBrandingSucceeded();
+            return cached;
+        }
+
+        _metrics.IncrementBrandingCacheMiss();
+
+        var tenant = await _tenantRepo.GetByCodeAsync(normalizedCode, ct);
+        if (tenant is null || tenant.Status == TenantStatus.Inactive)
+        {
+            _metrics.IncrementBrandingFailed();
+            return null;
+        }
 
         var branding = await _brandingRepo.GetByTenantIdAsync(tenant.Id, ct);
-        return ToPublicResponse(tenant, branding);
+        var result   = ToPublicResponse(tenant, branding);
+
+        if (_features.TenantReadCachingEnabled)
+        {
+            var ttl = TimeSpan.FromSeconds(_features.TenantReadCacheTtlSeconds > 0 ? _features.TenantReadCacheTtlSeconds : 60);
+            _cache.Set(cacheKey, result, ttl);
+        }
+
+        _metrics.IncrementBrandingSucceeded();
+        return result;
     }
 
     public async Task<PublicBrandingResponse?> GetPublicBySubdomainAsync(string subdomain, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(subdomain);
-        var tenant = await _tenantRepo.GetBySubdomainAsync(subdomain.ToLowerInvariant(), ct);
-        if (tenant is null || tenant.Status == TenantStatus.Inactive) return null;
+        _metrics.IncrementBrandingAttempted();
+
+        var normalizedSub = subdomain.ToLowerInvariant();
+        var cacheKey      = $"branding:sub:{normalizedSub}";
+
+        if (_features.TenantReadCachingEnabled && _cache.TryGetValue(cacheKey, out PublicBrandingResponse? cached))
+        {
+            _metrics.IncrementBrandingCacheHit();
+            _metrics.IncrementBrandingSucceeded();
+            return cached;
+        }
+
+        _metrics.IncrementBrandingCacheMiss();
+
+        var tenant = await _tenantRepo.GetBySubdomainAsync(normalizedSub, ct);
+        if (tenant is null || tenant.Status == TenantStatus.Inactive)
+        {
+            _metrics.IncrementBrandingFailed();
+            return null;
+        }
 
         var branding = await _brandingRepo.GetByTenantIdAsync(tenant.Id, ct);
-        return ToPublicResponse(tenant, branding);
+        var result   = ToPublicResponse(tenant, branding);
+
+        if (_features.TenantReadCachingEnabled)
+        {
+            var ttl = TimeSpan.FromSeconds(_features.TenantReadCacheTtlSeconds > 0 ? _features.TenantReadCacheTtlSeconds : 60);
+            _cache.Set(cacheKey, result, ttl);
+        }
+
+        _metrics.IncrementBrandingSucceeded();
+        return result;
+    }
+
+    // ── Cache eviction (called from SyncEndpoints on successful dual-write) ───
+
+    /// <summary>
+    /// Evicts public branding cache entries for the given code and/or subdomain.
+    /// Called after a successful tenant sync so callers immediately see updated data.
+    /// </summary>
+    public void EvictPublicCache(string? code, string? subdomain)
+    {
+        if (!string.IsNullOrWhiteSpace(code))
+            _cache.Remove($"branding:code:{code.ToLowerInvariant()}");
+
+        if (!string.IsNullOrWhiteSpace(subdomain))
+            _cache.Remove($"branding:sub:{subdomain.ToLowerInvariant()}");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

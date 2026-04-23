@@ -23,4 +23,10 @@ public interface IResolutionService
     /// Does not require a TenantDomain record — resolves directly from Tenant.Code.
     /// </summary>
     Task<TenantResolutionResponse?> ResolveByCodeAsync(string code, CancellationToken ct = default);
+
+    /// <summary>
+    /// TENANT-B08 — Evicts resolution cache entries for the given code and/or subdomain.
+    /// Called after a successful tenant sync so resolution reads immediately reflect updated data.
+    /// </summary>
+    void EvictCache(string? code, string? subdomain);
 }

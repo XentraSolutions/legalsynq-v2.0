@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Tenant.Application.Metrics;
 using Tenant.Application.Interfaces;
 using Tenant.Application.Services;
 using Tenant.Infrastructure.Data;
@@ -22,6 +23,12 @@ public static class DependencyInjection
             options.UseMySql(
                 connectionString,
                 new MySqlServerVersion(new Version(8, 0, 0))));
+
+        // ── TENANT-B08: In-process memory cache (BCL; no new package dependency) ──
+        services.AddMemoryCache();
+
+        // ── TENANT-B08: Runtime metrics singleton ─────────────────────────────
+        services.AddSingleton<TenantRuntimeMetrics>();
 
         // ── Repositories ──────────────────────────────────────────────────────
 

@@ -1,7 +1,8 @@
 using BuildingBlocks.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Tenant.Api.Configuration;
+using Tenant.Application.Configuration;
+using Tenant.Application.Metrics;
 using Tenant.Infrastructure.Data;
 
 namespace Tenant.Api.Endpoints;
@@ -28,17 +29,23 @@ public static class ReadSourceEndpoints
                 effectiveResolutionSource   = f.TenantResolutionReadSource != TenantReadSource.Identity
                     ? f.TenantResolutionReadSource.ToString()
                     : f.TenantReadSource.ToString(),
+                caching = new
+                {
+                    enabled    = f.TenantReadCachingEnabled,
+                    ttlSeconds = f.TenantReadCacheTtlSeconds,
+                },
             });
         })
         .RequireAuthorization(Policies.AdminOnly);
 
         // ── GET /api/v1/admin/cutover-check ────────────────────────────────────
-        // TENANT-B07 — Operator-facing cutover validation endpoint.
-        // Returns current read-source config, latest migration run summary, and a
-        // readiness assessment so operators can decide when to switch to Tenant mode.
+        // TENANT-B07 / TENANT-B08 — Operator-facing cutover validation endpoint.
+        // Returns current read-source config, latest migration run summary, tenant
+        // counts, runtime metrics summary, and a readiness assessment.
         app.MapGet("/api/v1/admin/cutover-check", async (
             IOptions<TenantFeatures> opts,
             TenantDbContext          db,
+            TenantRuntimeMetrics     metrics,
             CancellationToken        ct) =>
         {
             var f = opts.Value;
@@ -75,16 +82,58 @@ public static class ReadSourceEndpoints
                 };
             }
 
-            // ── Readiness assessment ───────────────────────────────────────────
-            var migrationOk   = latestRun is not null
-                                && latestRun.Mode == "Execute"
-                                && latestRun.Errors == 0;
-            var brandingReady = effectiveBranding   == "Tenant";
-            var resolveReady  = effectiveResolution  == "Tenant";
+            // ── Tenant DB counts ───────────────────────────────────────────────
+            var tenantCount          = await db.Tenants.CountAsync(ct);
+            var activeTenantCount    = await db.Tenants.CountAsync(t => t.Status == Domain.TenantStatus.Active, ct);
 
-            var readiness = (brandingReady && resolveReady && migrationOk) ? "ready"
-                          : (migrationOk || brandingReady || resolveReady)  ? "partial"
+            // ── Runtime metrics snapshot ───────────────────────────────────────
+            var snap = metrics.Snapshot();
+            var runtimeMetrics = new
+            {
+                uptimeSeconds  = snap.UptimeSeconds,
+                sync = new
+                {
+                    attempted  = snap.SyncAttemptsReceived,
+                    succeeded  = snap.SyncSucceeded,
+                    failed     = snap.SyncFailed,
+                },
+                branding = new
+                {
+                    attempted    = snap.BrandingAttempted,
+                    cacheHitRate = snap.BrandingCacheHits + snap.BrandingCacheMisses == 0
+                        ? (double?)null
+                        : Math.Round((double)snap.BrandingCacheHits / (snap.BrandingCacheHits + snap.BrandingCacheMisses) * 100, 1),
+                },
+                resolution = new
+                {
+                    attempted    = snap.ResolutionAttempted,
+                    cacheHitRate = snap.ResolutionCacheHits + snap.ResolutionCacheMisses == 0
+                        ? (double?)null
+                        : Math.Round((double)snap.ResolutionCacheHits / (snap.ResolutionCacheHits + snap.ResolutionCacheMisses) * 100, 1),
+                },
+            };
+
+            // ── Readiness assessment ───────────────────────────────────────────
+            var migrationOk    = latestRun is not null
+                                 && latestRun.Mode == "Execute"
+                                 && latestRun.Errors == 0;
+            var brandingReady  = effectiveBranding   == "Tenant";
+            var resolveReady   = effectiveResolution  == "Tenant";
+            var dualWriteReady = f.TenantDualWriteEnabled;
+            var syncHealthy    = snap.SyncAttemptsReceived == 0 || snap.SyncFailed == 0;
+
+            var readiness = (brandingReady && resolveReady && migrationOk && dualWriteReady && syncHealthy)
+                            ? "ready"
+                          : (migrationOk || brandingReady || resolveReady || dualWriteReady)
+                            ? "partial"
                           : "not_ready";
+
+            var notes = new List<string?>();
+            if (!brandingReady)  notes.Add("Set TenantBrandingReadSource=Tenant (or use HybridFallback first) to enable Tenant-first branding.");
+            if (!resolveReady)   notes.Add("Set TenantResolutionReadSource=Tenant (or use HybridFallback first) to enable Tenant-first resolution.");
+            if (!migrationOk)    notes.Add("Run POST /api/admin/migration/execute to migrate all tenant records into the Tenant service.");
+            if (!dualWriteReady) notes.Add("Enable TenantDualWriteEnabled=true to keep Tenant data in sync with Identity writes.");
+            if (!syncHealthy)    notes.Add($"Sync failures detected this process lifetime: {snap.SyncFailed} of {snap.SyncAttemptsReceived} attempts failed.");
 
             return Results.Ok(new
             {
@@ -96,14 +145,21 @@ public static class ReadSourceEndpoints
                     effectiveResolutionSource  = effectiveResolution,
                     tenantDualWriteEnabled     = f.TenantDualWriteEnabled,
                     tenantDualWriteStrictMode  = f.TenantDualWriteStrictMode,
+                    caching = new
+                    {
+                        enabled    = f.TenantReadCachingEnabled,
+                        ttlSeconds = f.TenantReadCacheTtlSeconds,
+                    },
                 },
-                migrationSummary,
-                notes = new[]
+                tenantDb = new
                 {
-                    brandingReady  ? null : "Set TenantBrandingReadSource=Tenant (or use HybridFallback first) to enable Tenant-first branding.",
-                    resolveReady   ? null : "Set TenantResolutionReadSource=Tenant (or use HybridFallback first) to enable Tenant-first resolution.",
-                    migrationOk    ? null : "Run POST /api/admin/migration/execute to migrate all tenant records into the Tenant service.",
-                }.Where(n => n is not null).ToArray(),
+                    totalTenants  = tenantCount,
+                    activeTenants = activeTenantCount,
+                    note          = "Identity tenant count not queryable from this service; compare manually if needed.",
+                },
+                runtimeMetrics,
+                migrationSummary,
+                notes = notes.Where(n => n is not null).ToArray(),
             });
         })
         .RequireAuthorization(Policies.AdminOnly);
