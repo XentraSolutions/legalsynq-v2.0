@@ -6,7 +6,7 @@
 //       since=<ISO>  — explicit UTC start (overrides days if both provided)
 //
 //   Auth: PlatformOrTenantAdmin only
-//   BLK-SEC-02-01: TenantAdmin scoped to their own tenant; PlatformAdmin sees platform-wide.
+//   BLK-GOV-02: Uses AdminTenantScope.PlatformWide — replaces inline ternary.
 //
 // Response includes:
 //   - summary (totalReferrals, acceptedReferrals, acceptanceRate, avgTimeToAcceptHours,
@@ -46,6 +46,7 @@ public static class PerformanceEndpoints
     private static async Task<IResult> GetPerformanceAsync(
         IReferralPerformanceService perf,
         ICurrentRequestContext      ctx,
+        HttpContext                 http,
         [FromQuery] string?         since    = null,
         [FromQuery] int             days     = 7,
         CancellationToken           ct       = default)
@@ -64,12 +65,12 @@ public static class PerformanceEndpoints
             windowFrom = nowUtc.AddDays(-clampedDays);
         }
 
-        // BLK-SEC-02-01: Scope to caller's tenant for non-PlatformAdmin.
-        Guid? scopeTenantId = ctx.IsPlatformAdmin
-            ? null
-            : (ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing."));
+        // BLK-GOV-02: PlatformAdmin sees platform-wide (null scope).
+        //             TenantAdmin is scoped to their own tenant.
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
 
-        var result = await perf.GetPerformanceAsync(windowFrom, scopeTenantId, ct);
+        var result = await perf.GetPerformanceAsync(windowFrom, scope.TenantId, ct);
 
         return Results.Ok(new
         {

@@ -4,6 +4,8 @@
 // GET  /api/admin/activations          — list pending activation requests
 // GET  /api/admin/activations/{id}     — detail for one activation request
 // POST /api/admin/activations/{id}/approve — approve + link provider to org
+//
+// BLK-GOV-02: Uses AdminTenantScope helpers — replaces inline manual tenant checks.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using CareConnect.Application.DTOs;
@@ -37,71 +39,65 @@ public static class ActivationAdminEndpoints
 
     // ── Handlers ──────────────────────────────────────────────────────────────
 
-    // BLK-SEC-02: TenantAdmin callers are scoped to their own tenant.
-    // PlatformAdmin sees the full platform-wide queue.
+    // BLK-GOV-02: AdminTenantScope.PlatformWide — PlatformAdmin sees all; TenantAdmin filtered.
     private static async Task<IResult> GetPendingAsync(
         IActivationRequestService service,
         ICurrentRequestContext    ctx,
+        HttpContext               http,
         CancellationToken         ct)
     {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
         var items = await service.GetPendingAsync(ct);
 
         // Non-PlatformAdmin: filter to caller's tenant only.
-        if (!ctx.IsPlatformAdmin)
-        {
-            var callerTenantId = ctx.TenantId
-                ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            items = items.Where(i => i.TenantId == callerTenantId).ToList();
-        }
+        if (!scope.IsPlatformWide)
+            items = items.Where(i => i.TenantId == scope.TenantId!.Value).ToList();
 
         return Results.Ok(new { items, count = items.Count });
     }
 
-    // BLK-SEC-02: TenantAdmin may only retrieve activation requests for their own tenant.
+    // BLK-GOV-02: AdminTenantScope.CheckOwnership — TenantAdmin may only retrieve their own tenant's requests.
     private static async Task<IResult> GetByIdAsync(
         Guid                      id,
         IActivationRequestService service,
         ICurrentRequestContext    ctx,
+        HttpContext               http,
         CancellationToken         ct)
     {
         var detail = await service.GetByIdAsync(id, ct);
         if (detail is null)
             return Results.NotFound(new { error = $"ActivationRequest '{id}' was not found." });
 
-        // Non-PlatformAdmin: reject cross-tenant access.
-        if (!ctx.IsPlatformAdmin)
-        {
-            var callerTenantId = ctx.TenantId
-                ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            if (detail.TenantId != callerTenantId)
-                return Results.Forbid();
-        }
+        var deny = AdminTenantScope.CheckOwnership(ctx, detail.TenantId, http);
+        if (deny is not null) return deny;
 
         return Results.Ok(detail);
     }
 
-    // BLK-SEC-02: TenantAdmin may only approve activation requests for their own tenant.
+    // BLK-GOV-02: AdminTenantScope.CheckOwnership — TenantAdmin may only approve their own tenant's requests.
     private static async Task<IResult> ApproveAsync(
         Guid                      id,
         [FromBody] ApproveActivationRequest request,
         IActivationRequestService service,
         ICurrentRequestContext    ctx,
+        HttpContext               http,
         CancellationToken         ct)
     {
         if (request.OrganizationId == Guid.Empty)
             return Results.BadRequest(new { error = "organizationId is required and must be a valid GUID." });
 
-        // Non-PlatformAdmin: verify the activation request belongs to the caller's tenant
+        // For non-PlatformAdmin: verify the activation request belongs to the caller's tenant
         // before executing the approval.
         if (!ctx.IsPlatformAdmin)
         {
-            var callerTenantId = ctx.TenantId
-                ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var detail = await service.GetByIdAsync(id, ct);
             if (detail is null)
                 return Results.NotFound(new { error = $"ActivationRequest '{id}' was not found." });
-            if (detail.TenantId != callerTenantId)
-                return Results.Forbid();
+
+            var deny = AdminTenantScope.CheckOwnership(ctx, detail.TenantId, http);
+            if (deny is not null) return deny;
         }
 
         var result = await service.ApproveAsync(id, request.OrganizationId, ctx.UserId, ct);

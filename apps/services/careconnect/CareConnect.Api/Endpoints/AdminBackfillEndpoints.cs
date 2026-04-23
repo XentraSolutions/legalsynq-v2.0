@@ -1,4 +1,6 @@
 // LSCC-002-01: Admin appointment org-ID backfill endpoint.
+// BLK-GOV-01: Added PlatformAdmin path with required ?tenantId query parameter.
+// BLK-GOV-02: Migrated to AdminTenantScope.SingleTenant — removes inline branching.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using CareConnect.Infrastructure.Data;
@@ -22,14 +24,15 @@ namespace CareConnect.Api.Endpoints;
 ///   - Safe:          appointments whose parent Referral also has NULL org IDs are counted
 ///                    as "unresolved" and left unchanged.
 ///
+/// Authorization: PlatformOrTenantAdmin.
+///   PlatformAdmin must supply ?tenantId=&lt;guid&gt; (SingleTenant mode — one tenant at a time).
+///   TenantAdmin is automatically scoped to their own tenant.
+///
 /// Response (always 200):
 ///   updated    — appointments that had at least one NULL org ID and were backfilled.
 ///   skipped    — appointments whose parent Referral also had NULL org IDs (no action possible).
 ///   alreadySet — appointments already having both org IDs (not touched).
-///
-/// Authorization: PlatformOrTenantAdmin.
 /// </summary>
-// LSCC-002-01: POST /api/admin/appointments/backfill-org-ids
 public static class AdminBackfillEndpoints
 {
     public static IEndpointRouteBuilder MapAdminBackfillEndpoints(
@@ -43,30 +46,17 @@ public static class AdminBackfillEndpoints
     }
 
     // LSCC-002-01: Walk legacy appointments with missing org IDs; copy from parent Referral.
-    // BLK-GOV-01: PlatformAdmin must supply ?tenantId=<guid> — operation is always tenant-scoped.
-    //             TenantAdmin is automatically scoped to their own tenant.
+    // BLK-GOV-02: AdminTenantScope.SingleTenant — PlatformAdmin requires ?tenantId; TenantAdmin auto-scoped.
     private static async Task<IResult> BackfillAppointmentOrgIdsAsync(
         CareConnectDbContext    db,
-        ICurrentRequestContext ctx,
-        [FromQuery] Guid?      tenantId,
-        CancellationToken      ct)
+        ICurrentRequestContext  ctx,
+        [FromQuery] Guid?       tenantId,
+        HttpContext             http,
+        CancellationToken       ct)
     {
-        Guid scopeTenantId;
-        if (ctx.IsPlatformAdmin)
-        {
-            if (!tenantId.HasValue)
-                return Results.BadRequest(new
-                {
-                    error = "PlatformAdmin must supply ?tenantId=<guid>. " +
-                            "This endpoint operates on a single tenant at a time.",
-                });
-            scopeTenantId = tenantId.Value;
-        }
-        else
-        {
-            scopeTenantId = ctx.TenantId
-                ?? throw new InvalidOperationException("tenant_id claim is missing.");
-        }
+        var scope = AdminTenantScope.SingleTenant(ctx, tenantId, http);
+        if (scope.IsError) return scope.Error!;
+        var scopeTenantId = scope.TenantId!.Value;
 
         // Load all appointments where at least one org ID is missing.
         var candidates = await db.Appointments

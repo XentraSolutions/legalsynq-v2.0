@@ -7,9 +7,8 @@
 //   GET /api/admin/referrals               — referral monitor (platform-wide for PlatformAdmin,
 //                                            tenant-scoped for TenantAdmin)
 //
-// All endpoints require PlatformOrTenantAdmin.  They query CareConnectDbContext
-// directly (no application-layer service needed — queries are purely read-only
-// projections with no domain behaviour).
+// All endpoints require PlatformOrTenantAdmin.
+// BLK-GOV-02: Uses AdminTenantScope helpers — replaces fragile inline ternaries.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using CareConnect.Infrastructure.Data;
@@ -44,36 +43,28 @@ public static class AdminDashboardEndpoints
     // ──────────────────────────────────────────────────────────────────────────
     // GET /api/admin/dashboard
     // ──────────────────────────────────────────────────────────────────────────
-    // Returns aggregate counts over rolling 24-hour and 7-day windows:
-    //   - referralCountToday / referralCountLast7Days
-    //   - blockedAccessCountToday / blockedAccessCountLast7Days
-    //   - distinctBlockedUsersToday
-    //   - openReferrals (status ∈ {New, Accepted, InProgress})
-    //
-    // BLK-SEC-02: PlatformAdmin sees platform-wide aggregates.
-    //             TenantAdmin is scoped to their own tenant (tenant_id JWT claim).
+    // Returns aggregate counts over rolling 24-hour and 7-day windows.
+    // BLK-GOV-02: PlatformAdmin sees platform-wide (null scope); TenantAdmin scoped.
     private static async Task<IResult> GetDashboardAsync(
         CareConnectDbContext    db,
         ICurrentRequestContext  ctx,
+        HttpContext             http,
         CancellationToken       ct)
     {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
         var now    = DateTime.UtcNow;
         var today  = now.AddHours(-24);
         var week   = now.AddDays(-7);
 
-        // BLK-SEC-02: Derive optional tenant scope from the caller's JWT claim.
-        // PlatformAdmin → null (platform-wide).  TenantAdmin → their tenant GUID.
-        Guid? scopeTenantId = ctx.IsPlatformAdmin
-            ? null
-            : (ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing."));
-
         var referralQuery = db.Referrals.AsQueryable();
         var blockedQuery  = db.BlockedProviderAccessLogs.AsQueryable();
 
-        if (scopeTenantId.HasValue)
+        if (scope.TenantId.HasValue)
         {
-            referralQuery = referralQuery.Where(r => r.TenantId == scopeTenantId.Value);
-            blockedQuery  = blockedQuery.Where(l => l.TenantId == scopeTenantId.Value);
+            referralQuery = referralQuery.Where(r => r.TenantId == scope.TenantId.Value);
+            blockedQuery  = blockedQuery.Where(l => l.TenantId == scope.TenantId.Value);
         }
 
         var referralToday   = await referralQuery.CountAsync(r => r.CreatedAtUtc >= today, ct);
@@ -105,22 +96,20 @@ public static class AdminDashboardEndpoints
     // GET /api/admin/providers/blocked
     // ──────────────────────────────────────────────────────────────────────────
     // Returns the most-recent blocked-access log entry per (UserId, FailureReason)
-    // pair, with an attempt count over the last 7 days.  Supports pagination via
-    // ?page=1&pageSize=25 and an optional ?since=<ISO-datetime> window filter.
-    //
-    // Remediation link is returned as a relative path so the frontend can
-    // construct the full URL without knowing the host:
-    //   remediationPath: /careconnect/admin/providers/provisioning?userId=<id>
-    // BLK-SEC-02: TenantAdmin is scoped to their own tenant.
-    // PlatformAdmin sees platform-wide blocked-access logs.
+    // pair, with an attempt count over the last 7 days.
+    // BLK-GOV-02: PlatformAdmin platform-wide; TenantAdmin scoped.
     private static async Task<IResult> GetBlockedProvidersAsync(
         CareConnectDbContext    db,
         ICurrentRequestContext  ctx,
+        HttpContext             http,
         [FromQuery] int         page     = 1,
         [FromQuery] int         pageSize = 25,
         [FromQuery] string?     since    = null,
         CancellationToken       ct       = default)
     {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
         page     = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
@@ -128,16 +117,9 @@ public static class AdminDashboardEndpoints
             ? parsedSince.ToUniversalTime()
             : DateTime.UtcNow.AddDays(-7);
 
-        // BLK-SEC-02: Scope to caller's tenant for non-PlatformAdmin.
-        Guid? scopeTenantId = ctx.IsPlatformAdmin
-            ? null
-            : (ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing."));
-
-        // Group by UserId+FailureReason to produce one row per unique block reason.
-        // Take the most recent log row from each group for the display columns.
         var baseQuery = db.BlockedProviderAccessLogs.AsQueryable();
-        if (scopeTenantId.HasValue)
-            baseQuery = baseQuery.Where(l => l.TenantId == scopeTenantId.Value);
+        if (scope.TenantId.HasValue)
+            baseQuery = baseQuery.Where(l => l.TenantId == scope.TenantId.Value);
 
         var query = baseQuery
             .Where(l => l.AttemptedAtUtc >= window)
@@ -201,9 +183,13 @@ public static class AdminDashboardEndpoints
     //   ?status=New|Accepted|InProgress|Completed|Declined|Cancelled
     //   ?tenantId=<guid>  (PlatformAdmin only; ignored for TenantAdmin)
     //   ?since=<ISO-datetime>
+    //
+    // BLK-GOV-02: PlatformWide scope applied; optional tenantId filter for PlatformAdmin.
+    //             TenantAdmin callerTenantId override is always ignored for safety.
     private static async Task<IResult> GetAdminReferralsAsync(
         CareConnectDbContext    db,
         ICurrentRequestContext  ctx,
+        HttpContext             http,
         [FromQuery] int      page     = 1,
         [FromQuery] int      pageSize = 25,
         [FromQuery] string?  status   = null,
@@ -211,6 +197,9 @@ public static class AdminDashboardEndpoints
         [FromQuery] string?  since    = null,
         CancellationToken    ct       = default)
     {
+        var scope = AdminTenantScope.PlatformWide(ctx, http);
+        if (scope.IsError) return scope.Error!;
+
         page     = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
@@ -222,18 +211,11 @@ public static class AdminDashboardEndpoints
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(r => r.Status == status);
 
-        if (ctx.IsPlatformAdmin)
-        {
-            // PlatformAdmin may optionally narrow to a specific tenant.
-            if (tenantId.HasValue)
-                query = query.Where(r => r.TenantId == tenantId.Value);
-        }
-        else
-        {
-            // TenantAdmin is always scoped to their own tenant — ignore caller-supplied tenantId.
-            var callerTenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            query = query.Where(r => r.TenantId == callerTenantId);
-        }
+        // PlatformAdmin: optional ?tenantId narrow.
+        // TenantAdmin:   always forced to own tenant (scope.TenantId); caller-supplied tenantId ignored.
+        var appliedTenantId = scope.IsPlatformWide ? tenantId : scope.TenantId;
+        if (appliedTenantId.HasValue)
+            query = query.Where(r => r.TenantId == appliedTenantId.Value);
 
         if (since is not null && DateTime.TryParse(since, out var parsedSince))
             query = query.Where(r => r.CreatedAtUtc >= parsedSince.ToUniversalTime());

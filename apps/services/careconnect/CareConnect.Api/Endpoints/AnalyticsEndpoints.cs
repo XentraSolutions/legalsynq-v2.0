@@ -2,8 +2,7 @@
 // Route: GET /api/admin/analytics/funnel
 // Auth:  PlatformOrTenantAdmin
 // Query: ?days=7|30|90  OR  ?startDate=yyyy-MM-dd&endDate=yyyy-MM-dd
-// BLK-SEC-02-01: TenantAdmin callers are scoped to their own tenant.
-//                PlatformAdmin sees platform-wide funnel metrics.
+// BLK-GOV-02: Uses AdminTenantScope.PlatformWide — replaces inline ternary.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using CareConnect.Application.Interfaces;
@@ -26,15 +25,16 @@ public static class AnalyticsEndpoints
             [FromQuery] string?               endDate,
             IActivationFunnelAnalyticsService analytics,
             ICurrentRequestContext            ctx,
+            HttpContext                       http,
             CancellationToken                 ct) =>
         {
-            // BLK-SEC-02-01: Scope to caller's tenant for non-PlatformAdmin.
-            Guid? scopeTenantId = ctx.IsPlatformAdmin
-                ? null
-                : (ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing."));
+            // BLK-GOV-02: PlatformAdmin sees platform-wide funnel (null scope).
+            //             TenantAdmin is scoped to their own tenant.
+            var scope = AdminTenantScope.PlatformWide(ctx, http);
+            if (scope.IsError) return scope.Error!;
 
             var (from, to) = ResolveRange(days, startDate, endDate);
-            var metrics = await analytics.GetMetricsAsync(from, to, scopeTenantId, ct);
+            var metrics = await analytics.GetMetricsAsync(from, to, scope.TenantId, ct);
             return Results.Ok(metrics);
         });
     }

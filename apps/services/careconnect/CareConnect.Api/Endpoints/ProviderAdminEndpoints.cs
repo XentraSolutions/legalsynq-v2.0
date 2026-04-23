@@ -2,6 +2,9 @@
 // LSCC-002-01: Extended with unlinked-list and bulk-link endpoints.
 // LSCC-01-003: Extended with CareConnect receiver activation endpoint.
 // BLK-OBS-01: Audit events added for activate-for-careconnect and link-organization.
+// BLK-GOV-02: Uses AdminTenantScope helpers — fixes PlatformAdmin missing-tenantId 500
+//             on link-organization, get-unlinked, and bulk-link-organization.
+//             ActivateForCareConnect uses CheckOwnership for TenantAdmin boundary.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using CareConnect.Application.Interfaces;
@@ -22,8 +25,9 @@ namespace CareConnect.Api.Endpoints;
 /// POST /api/admin/providers/{id}/activate-for-careconnect   — idempotent CC receiver activation (LSCC-01-003)
 ///
 /// All operations are explicit, idempotent, and require PlatformOrTenantAdmin.
+/// PlatformAdmin must supply ?tenantId=&lt;guid&gt; for single-tenant operations (SingleTenant mode).
+/// TenantAdmin is automatically scoped to their own tenant.
 /// </summary>
-// LSCC-002-01: Provider bulk backfill admin tooling
 public static class ProviderAdminEndpoints
 {
     public static IEndpointRouteBuilder MapProviderAdminEndpoints(
@@ -52,18 +56,21 @@ public static class ProviderAdminEndpoints
     }
 
     // LSCC-002: Single provider org-link backfill — idempotent, explicit.
+    // BLK-GOV-02: SingleTenant — PlatformAdmin must supply ?tenantId; TenantAdmin auto-scoped.
     // BLK-OBS-01: emits careconnect.provider.org-linked audit event.
     private static async Task<IResult> LinkOrganizationAsync(
-        Guid                 id,
+        Guid                            id,
         [FromBody] LinkOrganizationRequest request,
-        IProviderService     service,
-        ICurrentRequestContext ctx,
-        IAuditEventClient    auditClient,
-        HttpContext          http,
-        CancellationToken    ct)
+        [FromQuery] Guid?               targetTenantId,
+        IProviderService                service,
+        ICurrentRequestContext          ctx,
+        IAuditEventClient               auditClient,
+        HttpContext                     http,
+        CancellationToken               ct)
     {
-        var tenantId = ctx.TenantId
-            ?? throw new InvalidOperationException("tenant_id claim is missing.");
+        var scope = AdminTenantScope.SingleTenant(ctx, targetTenantId, http);
+        if (scope.IsError) return scope.Error!;
+        var tenantId = scope.TenantId!.Value;
 
         var result = await service.LinkOrganizationAsync(tenantId, id, request.OrganizationId, ct);
 
@@ -82,32 +89,38 @@ public static class ProviderAdminEndpoints
     }
 
     // LSCC-002-01: Returns all active providers that have no OrganizationId.
+    // BLK-GOV-02: SingleTenant — PlatformAdmin must supply ?tenantId; TenantAdmin auto-scoped.
     // Response: 200 { providers: [...], count: N }
     private static async Task<IResult> GetUnlinkedAsync(
         IProviderService       service,
         ICurrentRequestContext ctx,
+        [FromQuery] Guid?      targetTenantId,
+        HttpContext            http,
         CancellationToken      ct)
     {
-        var tenantId = ctx.TenantId
-            ?? throw new InvalidOperationException("tenant_id claim is missing.");
+        var scope = AdminTenantScope.SingleTenant(ctx, targetTenantId, http);
+        if (scope.IsError) return scope.Error!;
+        var tenantId = scope.TenantId!.Value;
 
         var providers = await service.GetUnlinkedProvidersAsync(tenantId, ct);
         return Results.Ok(new { providers, count = providers.Count });
     }
 
     // LSCC-002-01: Bulk org-link from explicit mapping.
+    // BLK-GOV-02: SingleTenant — PlatformAdmin must supply ?tenantId; TenantAdmin auto-scoped.
     // Body: { items: [{ providerId, organizationId }, ...] }
     // Response: 200 { total, updated, skipped, unresolved }
-    // Skipped   = provider already has an org ID (idempotent no-op per item).
-    // Unresolved = provider ID not found in this tenant.
     private static async Task<IResult> BulkLinkOrganizationAsync(
         [FromBody] BulkLinkOrganizationRequest request,
         IProviderService       service,
         ICurrentRequestContext ctx,
+        [FromQuery] Guid?      targetTenantId,
+        HttpContext            http,
         CancellationToken      ct)
     {
-        var tenantId = ctx.TenantId
-            ?? throw new InvalidOperationException("tenant_id claim is missing.");
+        var scope = AdminTenantScope.SingleTenant(ctx, targetTenantId, http);
+        if (scope.IsError) return scope.Error!;
+        var tenantId = scope.TenantId!.Value;
 
         if (request.Items is null || request.Items.Count == 0)
             return Results.BadRequest("items must be a non-empty array.");
@@ -122,9 +135,7 @@ public static class ProviderAdminEndpoints
 
     // LSCC-01-003: Activate provider IsActive + AcceptingReferrals = true (idempotent).
     // POST /api/admin/providers/{id}/activate-for-careconnect
-    // Requires PlatformOrTenantAdmin.
-    // BLK-SEC-02-01: TenantAdmin may only activate providers within their own tenant.
-    //   PlatformAdmin may activate any provider (platform-wide tooling intent).
+    // BLK-GOV-02: CheckOwnership — PlatformAdmin may activate any; TenantAdmin only their own.
     // BLK-OBS-01: emits careconnect.provider.activated audit event.
     private static async Task<IResult> ActivateForCareConnectAsync(
         Guid                   id,
@@ -134,7 +145,7 @@ public static class ProviderAdminEndpoints
         HttpContext            http,
         CancellationToken      ct)
     {
-        // BLK-SEC-02-01: For non-PlatformAdmin, verify provider belongs to caller's tenant.
+        // BLK-GOV-02: For non-PlatformAdmin, verify provider belongs to caller's tenant.
         if (!ctx.IsPlatformAdmin)
         {
             var callerTenantId = ctx.TenantId
@@ -142,9 +153,12 @@ public static class ProviderAdminEndpoints
 
             var provider = await service.GetByIdAsync(callerTenantId, id, ct);
             // GetByIdAsync throws NotFoundException if provider is not found in the tenant —
-            // that propagates as 404 through the global error handler, which is correct behavior.
-            // An explicit 403 would confirm the provider exists in another tenant; 404 is safer.
+            // propagates as 404 through global error handler (correct; 403 would leak tenant info).
             _ = provider; // ownership confirmed by scoped lookup
+
+            // Explicit cross-tenant ownership assertion via centralized guard.
+            var deny = AdminTenantScope.CheckOwnership(ctx, provider.TenantId, http);
+            if (deny is not null) return deny;
         }
 
         var result = await service.ActivateForCareConnectAsync(id, ct);
