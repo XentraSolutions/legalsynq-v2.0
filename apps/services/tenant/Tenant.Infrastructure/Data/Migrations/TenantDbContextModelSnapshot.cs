@@ -186,11 +186,69 @@ namespace Tenant.Infrastructure.Data.Migrations
                     b.ToTable("tenant_Brandings");
                 });
 
+            modelBuilder.Entity("Tenant.Domain.TenantDomain", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("varchar(253)");
+
+                    b.Property<string>("DomainType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_tenant_Domains_TenantId");
+
+                    b.HasIndex("Host")
+                        .HasDatabaseName("IX_tenant_Domains_Host");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_tenant_Domains_Status");
+
+                    b.ToTable("tenant_Domains");
+                });
+
             modelBuilder.Entity("Tenant.Domain.TenantBranding", b =>
                 {
                     b.HasOne("Tenant.Domain.Tenant", "Tenant")
                         .WithOne("Branding")
                         .HasForeignKey("Tenant.Domain.TenantBranding", "TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Tenant.Domain.TenantDomain", b =>
+                {
+                    b.HasOne("Tenant.Domain.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

@@ -9,6 +9,7 @@ public class TenantDbContext : DbContext
 
     public DbSet<Domain.Tenant>  Tenants  => Set<Domain.Tenant>();
     public DbSet<TenantBranding> Brandings => Set<TenantBranding>();
+    public DbSet<TenantDomain>   Domains   => Set<TenantDomain>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,6 +28,12 @@ public class TenantDbContext : DbContext
         }
 
         foreach (var entry in ChangeTracker.Entries<TenantBranding>())
+        {
+            if (entry.State == EntityState.Modified)
+                entry.Property("UpdatedAtUtc").CurrentValue = now;
+        }
+
+        foreach (var entry in ChangeTracker.Entries<TenantDomain>())
         {
             if (entry.State == EntityState.Modified)
                 entry.Property("UpdatedAtUtc").CurrentValue = now;

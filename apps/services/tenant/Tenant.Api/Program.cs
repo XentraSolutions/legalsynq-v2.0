@@ -96,5 +96,7 @@ app.MapGet("/info", () =>
 
 app.MapTenantEndpoints();
 app.MapBrandingEndpoints();
+app.MapDomainEndpoints();
+app.MapResolutionEndpoints();
 
 app.Run();

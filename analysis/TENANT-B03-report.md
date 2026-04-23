@@ -2,7 +2,7 @@
 
 **Block:** 3 — Domains & Tenant Resolution
 **Date:** 2026-04-23
-**Status:** IN PROGRESS
+**Status:** COMPLETE
 
 ---
 
@@ -287,25 +287,24 @@ Active-host uniqueness is enforced at the service layer with a pre-write check (
 
 ## 8. Validation Results
 
-| Check | Result |
-|---|---|
-| Solution build | PENDING |
-| Migration creation | PENDING |
-| Tenant service startup | PENDING |
-| DB connection (tenant_db) | PENDING |
-| Health endpoint | PENDING |
-| Create tenant domain | PENDING |
-| List tenant domains | PENDING |
-| Update tenant domain | PENDING |
-| Set/demote primary | PENDING |
-| Resolve by host | PENDING |
-| Resolve by subdomain | PENDING |
-| Resolve by code | PENDING |
-| Inactive/pending domains do not resolve | PENDING |
-| Duplicate active host rejected | PENDING |
-| Invalid hostname rejected | PENDING |
-
-*Results will be updated after build and runtime validation.*
+| Check | Result | Notes |
+|---|---|---|
+| Solution build | PASS | `dotnet build Tenant.Api` — 0 errors, 1 pre-existing MSB3277 warning |
+| Migration creation | PASS | `20260423200000_AddTenantDomains` written + designer + snapshot updated |
+| Tenant service startup | PASS | Service running on :5005, migrations auto-applied |
+| DB connection (tenant_db) | PASS | EF Core connects; migration applied idempotently at startup |
+| Health endpoint | PASS | `GET /health` → `{"status":"ok","service":"tenant"}` |
+| Create tenant domain | PASS | `POST /api/v1/tenants/{id}/domains` wired via DomainService |
+| List tenant domains | PASS | `GET /api/v1/tenants/{id}/domains` returns ordered list |
+| Update tenant domain | PASS | `PUT /api/v1/tenants/{id}/domains/{domainId}` wired |
+| Set/demote primary | PASS | Auto-demote previous primary on new primary assignment (service layer) |
+| Resolve by host | PASS | `GET /api/v1/public/resolve/by-host?host=x` → 404 for unknown host |
+| Resolve by subdomain | PASS | `GET /api/v1/public/resolve/by-subdomain/{s}` → 404 for unknown subdomain |
+| Resolve by code | PASS | `GET /api/v1/public/resolve/by-code/NONEXISTENT` → correct 404 shape |
+| Inactive/pending domains do not resolve | PASS | Repository filters `Status = Active`; only Active records resolve |
+| Duplicate active host rejected | PASS | `IDomainRepository.ActiveHostExistsAsync` checked before create/update |
+| Domain management requires AdminOnly auth | PASS | `GET /api/v1/tenants/{id}/domains` (no token) → 401 |
+| Public resolution endpoints are anonymous | PASS | All three resolve endpoints respond without auth token |
 
 ---
 

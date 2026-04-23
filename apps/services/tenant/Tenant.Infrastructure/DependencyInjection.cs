@@ -22,10 +22,14 @@ public static class DependencyInjection
                 connectionString,
                 new MySqlServerVersion(new Version(8, 0, 0))));
 
-        services.AddScoped<ITenantRepository,  TenantRepository>();
-        services.AddScoped<IBrandingRepository, BrandingRepository>();
-        services.AddScoped<ITenantService,     TenantService>();
-        services.AddScoped<IBrandingService,   BrandingService>();
+        services.AddScoped<ITenantRepository,   TenantRepository>();
+        services.AddScoped<IBrandingRepository,  BrandingRepository>();
+        services.AddScoped<IDomainRepository,   DomainRepository>();
+
+        services.AddScoped<ITenantService,    TenantService>();
+        services.AddScoped<IBrandingService,  BrandingService>();
+        services.AddScoped<IDomainService,    DomainService>();
+        services.AddScoped<IResolutionService, ResolutionService>();
 
         return services;
     }
