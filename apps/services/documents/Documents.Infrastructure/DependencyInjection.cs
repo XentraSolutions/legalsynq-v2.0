@@ -60,6 +60,19 @@ public static class DependencyInjection
 
         // ── File scanner ─────────────────────────────────────────────────────
         var scannerProvider = config["Scanner:Provider"] ?? "none";
+
+        // Fail startup if mock scanner is selected outside Development — mock never inspects files
+        var runtimeEnv = config["ASPNETCORE_ENVIRONMENT"]
+            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            ?? "Production";
+        var isDevelopment = runtimeEnv.Equals("Development", StringComparison.OrdinalIgnoreCase);
+        if (scannerProvider.Equals("mock", StringComparison.OrdinalIgnoreCase) && !isDevelopment)
+        {
+            throw new InvalidOperationException(
+                "Configuration error: Scanner:Provider=mock is not permitted outside the Development " +
+                "environment. Configure a real scanner provider (e.g. 'clamav') for production deployments.");
+        }
+
         services.Configure<MockScannerOptions>(config.GetSection("Scanner:Mock"));
         services.Configure<ClamAvOptions>(config.GetSection("Scanner:ClamAv"));
         services.AddSingleton<NullScannerProvider>();
