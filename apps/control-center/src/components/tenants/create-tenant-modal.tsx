@@ -150,9 +150,24 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
   }
 
   function selectSuggestion(s: AddressSuggestion) {
+    // Nominatim often omits the house number from street-level results.
+    // If the user typed a leading number and it's absent from the suggestion, recover it.
+    const typedLeading = address.raw.trim().match(/^(\d+[-\w]*)\s+/);
+    const suggestionHasNumber = /^\d/.test(s.addressLine1);
+    const addressLine1 =
+      typedLeading && !suggestionHasNumber
+        ? `${typedLeading[1]} ${s.addressLine1}`
+        : s.addressLine1;
+
+    const displayName = [
+      addressLine1,
+      s.city,
+      s.postalCode ? `${s.state} ${s.postalCode}` : s.state,
+    ].filter(Boolean).join(', ');
+
     setAddress({
-      raw:          s.displayName,
-      addressLine1: s.addressLine1,
+      raw:          displayName,
+      addressLine1,
       city:         s.city,
       state:        s.state,
       postalCode:   s.postalCode,
@@ -321,7 +336,7 @@ export function CreateTenantModal({ onClose }: CreateTenantModalProps) {
                     onChange={handleAddressInput}
                     onKeyDown={handleAddressKeyDown}
                     onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
-                    placeholder="Start typing to search…"
+                    placeholder="e.g. 123 Main Street…"
                     className={inputClass}
                   />
                   {addrLoading && (
