@@ -30,27 +30,46 @@ type RouteContext = { params: Promise<{ path: string[] }> };
 const ENABLE_IDENTITY_FALLBACK = process.env.TENANT_RESOLUTION_FALLBACK_IDENTITY === 'true';
 
 /**
- * Resolves the tenant GUID from the incoming request's Host header by calling
- * the Tenant service resolution endpoint. Returns null if the host cannot be
- * mapped to a known active tenant.
+ * Resolves the tenant GUID from the incoming request's Host header.
  *
- * Falls back to Identity branding endpoint only if TENANT_RESOLUTION_FALLBACK_IDENTITY=true.
+ * Strategy (same pattern as public-network-api.ts and tenant-branding route):
+ *   1. Extract the subdomain from the host (first segment of a 3+-part hostname)
+ *   2. Try Tenant service /by-code/{subdomain} — works when code == subdomain
+ *   3. Fall back to /by-subdomain/{subdomain} — handles code ≠ subdomain (e.g. liens-company)
+ *   4. Optionally fall back to Identity branding endpoint if TENANT_RESOLUTION_FALLBACK_IDENTITY=true
  *
- * This prevents callers from impersonating arbitrary tenants by supplying a
- * spoofed X-Tenant-Id header. The tenant is always derived from the subdomain,
- * which is controlled by the platform's DNS/routing layer.
+ * Note: /by-host is NOT used here — it resolves custom domains registered in the
+ * TenantDomain table, not the platform's own *.demo.legalsynq.com subdomain routing.
  */
 async function resolveTenantIdFromHost(host: string): Promise<string | null> {
-  // Primary: Tenant service resolution (Tenant-first, TENANT-STABILIZATION)
-  try {
-    const url = `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-host?host=${encodeURIComponent(host)}`;
-    const res = await fetch(url, { method: 'GET' });
-    if (res.ok) {
-      const body = await res.json() as { tenantId?: string };
-      if (body.tenantId && body.tenantId !== '') return body.tenantId;
-    }
-  } catch {
-    // Fall through to fallback
+  // Extract subdomain (first segment) from hostname
+  const parts = host.split('.');
+  const subdomain = parts.length >= 3 ? parts[0] : null;
+
+  if (subdomain) {
+    // Try by-code first (fast path when code matches subdomain)
+    try {
+      const res = await fetch(
+        `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-code/${encodeURIComponent(subdomain)}`,
+        { method: 'GET' },
+      );
+      if (res.ok) {
+        const body = await res.json() as { tenantId?: string };
+        if (body.tenantId && body.tenantId !== '') return body.tenantId;
+      }
+    } catch { /* fall through */ }
+
+    // Fall back to by-subdomain (handles code ≠ subdomain, e.g. lienscom vs liens-company)
+    try {
+      const res = await fetch(
+        `${GATEWAY_URL}/tenant/api/v1/public/resolve/by-subdomain/${encodeURIComponent(subdomain)}`,
+        { method: 'GET' },
+      );
+      if (res.ok) {
+        const body = await res.json() as { tenantId?: string };
+        if (body.tenantId && body.tenantId !== '') return body.tenantId;
+      }
+    } catch { /* fall through */ }
   }
 
   // Fallback: Identity branding endpoint (only if explicitly enabled for rollback)
@@ -66,7 +85,7 @@ async function resolveTenantIdFromHost(host: string): Promise<string | null> {
         if (body.tenantId && body.tenantId !== '') return body.tenantId;
       }
     } catch {
-      // Both failed
+      // All resolution paths failed
     }
   }
 
