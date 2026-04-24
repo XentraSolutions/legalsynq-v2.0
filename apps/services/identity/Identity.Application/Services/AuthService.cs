@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Json;
+using BuildingBlocks.DataGovernance;
 using Identity.Application.DTOs;
 using Identity.Application.Interfaces;
 using Identity.Domain;
@@ -66,8 +67,8 @@ public class AuthService : IAuthService
         {
             var reason = tenant is null ? "TenantNotFound" : "TenantInactive";
             _logger.LogWarning(
-                "LoginAsync failed: branch={Reason} tenantCode={TenantCode} email={Email} ip={Ip}",
-                reason, tenantCodeNorm, emailNorm, ipAddress);
+                "LoginAsync failed: branch={Reason} tenantCode={TenantCode} emailMasked={EmailMasked} ip={Ip}",
+                reason, tenantCodeNorm, PiiGuard.MaskEmail(emailNorm), ipAddress);
             EmitLoginFailed(emailNorm, tenantCode: tenantCodeNorm, userId: null, reason: reason, ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
@@ -92,8 +93,8 @@ public class AuthService : IAuthService
         {
             var reason = user is null ? "UserNotFound" : "UserInactive";
             _logger.LogWarning(
-                "LoginAsync failed: branch={Reason} tenantCode={TenantCode} email={Email} ip={Ip}",
-                reason, tenant.Code, normalizedEmail, ipAddress);
+                "LoginAsync failed: branch={Reason} tenantCode={TenantCode} emailMasked={EmailMasked} ip={Ip}",
+                reason, tenant.Code, PiiGuard.MaskEmail(normalizedEmail), ipAddress);
             EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: null, reason: reason, ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
@@ -102,8 +103,8 @@ public class AuthService : IAuthService
         if (user.IsLocked)
         {
             _logger.LogWarning(
-                "LoginAsync failed: branch=AccountLocked userId={UserId} tenantCode={TenantCode} email={Email} ip={Ip}",
-                user.Id, tenant.Code, normalizedEmail, ipAddress);
+                "LoginAsync failed: branch=AccountLocked userId={UserId} tenantCode={TenantCode} emailMasked={EmailMasked} ip={Ip}",
+                user.Id, tenant.Code, PiiGuard.MaskEmail(normalizedEmail), ipAddress);
             EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "AccountLocked", ipAddress: ipAddress);
             EmitLockedLoginBlocked(user, tenant, ipAddress);
             throw new UnauthorizedAccessException();
@@ -113,8 +114,8 @@ public class AuthService : IAuthService
         if (!valid)
         {
             _logger.LogWarning(
-                "LoginAsync failed: branch=InvalidCredentials userId={UserId} tenantCode={TenantCode} email={Email} ip={Ip}",
-                user.Id, tenant.Code, normalizedEmail, ipAddress);
+                "LoginAsync failed: branch=InvalidCredentials userId={UserId} tenantCode={TenantCode} emailMasked={EmailMasked} ip={Ip}",
+                user.Id, tenant.Code, PiiGuard.MaskEmail(normalizedEmail), ipAddress);
             EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "InvalidCredentials", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
@@ -123,8 +124,8 @@ public class AuthService : IAuthService
         if (userWithRoles is null)
         {
             _logger.LogWarning(
-                "LoginAsync failed: branch=RoleLookupFailed userId={UserId} tenantCode={TenantCode} email={Email} ip={Ip}",
-                user.Id, tenant.Code, normalizedEmail, ipAddress);
+                "LoginAsync failed: branch=RoleLookupFailed userId={UserId} tenantCode={TenantCode} emailMasked={EmailMasked} ip={Ip}",
+                user.Id, tenant.Code, PiiGuard.MaskEmail(normalizedEmail), ipAddress);
             EmitLoginFailed(normalizedEmail, tenantCode: tenant.Code, userId: user.Id.ToString(), reason: "RoleLookupFailed", ipAddress: ipAddress);
             throw new UnauthorizedAccessException();
         }
@@ -194,8 +195,8 @@ public class AuthService : IAuthService
             },
             Entity = new AuditEventEntityDto { Type = "User", Id = userWithRoles.Id.ToString() },
             Action      = "LoginSucceeded",
-            Description = $"User {userWithRoles.Email} authenticated successfully in tenant {tenant.Code}.",
-            Metadata    = JsonSerializer.Serialize(new { tenantCode = tenant.Code, email = userWithRoles.Email }),
+            Description = $"User (id={userWithRoles.Id}) authenticated successfully in tenant {tenant.Code}.",
+            Metadata    = JsonSerializer.Serialize(new { tenantCode = tenant.Code }),
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.login.succeeded", userWithRoles.Id.ToString()),
             Tags = ["auth", "login"],
         });
@@ -403,12 +404,12 @@ public class AuthService : IAuthService
             {
                 Id        = userId,
                 Type      = ActorType.User,
-                Name      = email,
+                Name      = PiiGuard.MaskEmail(email),
                 IpAddress = ipAddress,
             },
             Entity      = userId is not null ? new AuditEventEntityDto { Type = "User", Id = userId } : null,
             Action      = "LoginFailed",
-            Description = $"Failed login attempt for '{email}' in tenant '{tenantCode}'.",
+            Description = $"Failed login attempt for '{PiiGuard.MaskEmail(email)}' in tenant '{tenantCode}'.",
             Metadata    = System.Text.Json.JsonSerializer.Serialize(new
             {
                 tenantCode,
@@ -530,13 +531,13 @@ public class AuthService : IAuthService
             {
                 Id        = user.Id.ToString(),
                 Type      = ActorType.User,
-                Name      = user.Email,
+                Name      = PiiGuard.MaskEmail(user.Email),
                 IpAddress = ipAddress,
             },
             Entity      = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
             Action      = "LoginBlocked",
-            Description = $"Login attempt blocked for locked account '{user.Email}' in tenant {tenant.Code}.",
-            Metadata    = JsonSerializer.Serialize(new { tenantCode = tenant.Code, email = user.Email, reason = "AccountLocked" }),
+            Description = $"Login attempt blocked for locked account (userId={user.Id}) in tenant {tenant.Code}.",
+            Metadata    = JsonSerializer.Serialize(new { tenantCode = tenant.Code, userId = user.Id.ToString(), reason = "AccountLocked" }),
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.login.blocked", user.Id.ToString()),
             Tags = ["auth", "login", "blocked", "security", "locked"],
         });

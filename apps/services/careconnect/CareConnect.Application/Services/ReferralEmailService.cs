@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using BuildingBlocks.DataGovernance;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
@@ -239,8 +240,8 @@ public class ReferralEmailService : IReferralEmailService
         await _notifications.AddAsync(notification, ct);
 
         _logger.LogInformation(
-            "Resending referral notification for referral {ReferralId} (TokenVersion={Version}) to {Email}.",
-            referral.Id, referral.TokenVersion, provider.Email);
+            "Resending referral notification for referral {ReferralId} (TokenVersion={Version}) to {EmailMasked}.",
+            referral.Id, referral.TokenVersion, PiiGuard.MaskEmail(provider.Email));
 
         await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct);
     }
