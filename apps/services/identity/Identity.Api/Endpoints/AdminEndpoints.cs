@@ -50,6 +50,13 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/tenants/{id:guid}/provisioning/retry", RetryProvisioning);
         routes.MapPost("/api/admin/tenants/{id:guid}/verification/retry", RetryVerification);
 
+        // ── PUM-B03: Tenant User Management ──────────────────────────────────
+        routes.MapGet   ("/api/admin/tenants/{tenantId:guid}/users",                                   ListTenantUsers);
+        routes.MapPost  ("/api/admin/tenants/{tenantId:guid}/users",                                   AssignUserToTenant);
+        routes.MapDelete("/api/admin/tenants/{tenantId:guid}/users/{userId:guid}",                     RemoveUserFromTenant);
+        routes.MapPost  ("/api/admin/tenants/{tenantId:guid}/users/{userId:guid}/roles",               AssignTenantRole);
+        routes.MapDelete("/api/admin/tenants/{tenantId:guid}/users/{userId:guid}/roles/{assignmentId:guid}", RevokeTenantRole);
+
         // ── Infrastructure DNS ──────────────────────────────────────────
         routes.MapPost("/api/admin/dns/provision", ProvisionInfraSubdomain);
 
@@ -3363,25 +3370,19 @@ public static class AdminEndpoints
             return Results.NotFound(new { error = $"Role '{identifier}' not found." });
         }
 
-        // ── LS-ID-TNT-009: Platform-role guard ──────────────────────────────
-        // TenantAdmins may only assign system roles that are valid at tenant level.
-        // Platform-only roles (PlatformAdmin, SuperAdmin, SystemAdmin, …) can only
-        // be assigned by a PlatformAdmin regardless of tenant isolation.
+        // ── LS-ID-TNT-009: Platform-role guard (PUM-B03-R07) ────────────────
+        // TenantAdmins may only assign roles with Scope == "Tenant".
+        // Platform-scoped roles can only be assigned by a PlatformAdmin.
         if (role.IsSystemRole)
         {
             var callerIsPlatformAdmin = ctx.User.IsInRole("PlatformAdmin");
-            if (!callerIsPlatformAdmin)
-            {
-                var tenantAssignableSystemRoles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                    { "TenantAdmin", "TenantUser" };
-                if (!tenantAssignableSystemRoles.Contains(role.Name))
-                    return Results.BadRequest(new
-                    {
-                        error   = "ROLE_NOT_TENANT_ASSIGNABLE",
-                        message = "This role cannot be assigned by a tenant administrator. " +
-                                  "Only TenantAdmin and TenantUser roles are assignable at the tenant level.",
-                    });
-            }
+            if (!callerIsPlatformAdmin && role.Scope != RoleScopes.Tenant)
+                return Results.BadRequest(new
+                {
+                    error   = "ROLE_NOT_TENANT_ASSIGNABLE",
+                    message = "This role cannot be assigned by a tenant administrator. " +
+                              "Only roles with Tenant scope are assignable at the tenant level.",
+                });
         }
 
         // ── UIX-002-C: Product Role Eligibility Guardrails ──────────────────
@@ -5945,6 +5946,406 @@ public static class AdminEndpoints
             effects,
         });
     }
+
+    // =========================================================================
+    // PUM-B03 — Tenant User Management
+    // =========================================================================
+
+    /// <summary>
+    /// PUM-B03-R01/R02: GET /api/admin/tenants/{tenantId}/users
+    ///
+    /// Lists all users whose primary tenant is <paramref name="tenantId"/>,
+    /// including their active tenant-scoped role assignments.
+    ///
+    /// Tenant isolation:
+    ///   PlatformAdmin — may query any tenantId.
+    ///   TenantAdmin   — restricted to their own tenant; any other tenantId → 403.
+    /// </summary>
+    private static async Task<IResult> ListTenantUsers(
+        Guid              tenantId,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        int    page     = 1,
+        int    pageSize = 20,
+        string search   = "")
+    {
+        // Tenant isolation check
+        if (IsCrossTenantAccess(caller, tenantId)) return Results.Forbid();
+
+        var tenant = await db.Tenants.FindAsync(tenantId);
+        if (tenant is null) return Results.NotFound(new { error = $"Tenant '{tenantId}' not found." });
+
+        var q = db.Users
+            .Where(u => u.TenantId == tenantId)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+            q = q.Where(u =>
+                u.Email.Contains(search) ||
+                u.FirstName.Contains(search) ||
+                u.LastName.Contains(search));
+
+        var total = await q.CountAsync();
+
+        var users = await q
+            .OrderBy(u => u.Email)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(u => new
+            {
+                userId       = u.Id,
+                email        = u.Email,
+                firstName    = u.FirstName,
+                lastName     = u.LastName,
+                displayName  = u.FirstName + " " + u.LastName,
+                userType     = u.UserType.ToString(),
+                isActive     = u.IsActive,
+                tenantId     = u.TenantId,
+                roles        = db.ScopedRoleAssignments
+                                 .Where(s => s.UserId == u.Id && s.IsActive
+                                          && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
+                                          && s.Role.Scope == RoleScopes.Tenant)
+                                 .Select(s => new
+                                 {
+                                     assignmentId = s.Id,
+                                     roleId       = s.RoleId,
+                                     roleName     = s.Role.Name,
+                                     roleScope    = s.Role.Scope,
+                                     assignedAtUtc = s.AssignedAtUtc,
+                                 })
+                                 .ToList(),
+                createdAtUtc = u.CreatedAtUtc,
+                updatedAtUtc = u.UpdatedAtUtc,
+                lastLoginAtUtc = u.LastLoginAtUtc,
+            })
+            .ToListAsync();
+
+        return Results.Ok(new
+        {
+            items      = users,
+            totalCount = total,
+            page,
+            pageSize,
+        });
+    }
+
+    /// <summary>
+    /// PUM-B03-R03: POST /api/admin/tenants/{tenantId}/users
+    ///
+    /// Verifies a user belongs to the given tenant and optionally assigns a
+    /// Tenant-scoped role.
+    ///
+    /// Architecture note (PUM-B03-R09): The current schema anchors each user to
+    /// exactly one tenant via User.TenantId.  Moving a user from one tenant to
+    /// another is not supported without a breaking schema change.  If the supplied
+    /// userId belongs to a different tenant this endpoint returns 409.
+    ///
+    /// If the user is already in the tenant (user.TenantId == tenantId) and no
+    /// role is requested, returns 200 with the current user state (safe no-op).
+    /// </summary>
+    private static async Task<IResult> AssignUserToTenant(
+        Guid                      tenantId,
+        AssignUserToTenantRequest body,
+        IdentityDbContext         db,
+        ClaimsPrincipal           caller)
+    {
+        if (IsCrossTenantAccess(caller, tenantId)) return Results.Forbid();
+
+        var tenant = await db.Tenants.FindAsync(tenantId);
+        if (tenant is null) return Results.NotFound(new { error = $"Tenant '{tenantId}' not found." });
+
+        var user = await db.Users.FindAsync(body.UserId);
+        if (user is null) return Results.NotFound(new { error = $"User '{body.UserId}' not found." });
+
+        // PUM-B03-R09: single-tenant architecture guard
+        if (user.TenantId != tenantId)
+            return Results.Conflict(new
+            {
+                error   = "USER_IN_DIFFERENT_TENANT",
+                message = "This user belongs to a different tenant. " +
+                          "Cross-tenant user membership is not supported in the current schema. " +
+                          "Each user has exactly one home tenant (User.TenantId). " +
+                          "To move a user, provision a new account in the target tenant.",
+                userTenantId   = user.TenantId,
+                targetTenantId = tenantId,
+            });
+
+        // Optional: assign a Tenant-scoped role
+        if (body.RoleId.HasValue || !string.IsNullOrWhiteSpace(body.RoleKey))
+        {
+            Role? role = null;
+            if (body.RoleId.HasValue && body.RoleId != Guid.Empty)
+                role = await db.Roles.FindAsync(body.RoleId.Value);
+            else if (!string.IsNullOrWhiteSpace(body.RoleKey))
+                role = await db.Roles.FirstOrDefaultAsync(r => r.Name == body.RoleKey!.Trim());
+
+            if (role is null)
+            {
+                var identifier = body.RoleId.HasValue ? body.RoleId.ToString() : body.RoleKey;
+                return Results.NotFound(new { error = $"Role '{identifier}' not found." });
+            }
+
+            if (role.Scope != RoleScopes.Tenant)
+                return Results.BadRequest(new
+                {
+                    error   = "ROLE_SCOPE_INVALID",
+                    message = $"Role '{role.Name}' has scope '{role.Scope ?? "(none)"}'. " +
+                              "Only Tenant-scoped roles may be assigned through tenant user management.",
+                });
+
+            // Idempotent: skip if already active
+            var alreadyAssigned = await db.ScopedRoleAssignments
+                .AnyAsync(s => s.UserId == user.Id && s.RoleId == role.Id
+                            && s.IsActive
+                            && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global);
+
+            if (!alreadyAssigned)
+            {
+                var sra = ScopedRoleAssignment.Create(
+                    userId:   user.Id,
+                    roleId:   role.Id,
+                    scopeType: ScopedRoleAssignment.ScopeTypes.Global,
+                    tenantId: tenantId);
+                db.ScopedRoleAssignments.Add(sra);
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // Return current tenant role assignments for this user
+        var assignments = await db.ScopedRoleAssignments
+            .Where(s => s.UserId == user.Id && s.IsActive
+                     && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
+                     && s.Role.Scope == RoleScopes.Tenant)
+            .Select(s => new { assignmentId = s.Id, roleId = s.RoleId, roleName = s.Role.Name })
+            .ToListAsync();
+
+        return Results.Ok(new
+        {
+            userId    = user.Id,
+            tenantId  = user.TenantId,
+            email     = user.Email,
+            firstName = user.FirstName,
+            lastName  = user.LastName,
+            isActive  = user.IsActive,
+            roles     = assignments,
+        });
+    }
+
+    /// <summary>
+    /// PUM-B03-R04: DELETE /api/admin/tenants/{tenantId}/users/{userId}
+    ///
+    /// Soft-removes a user from a tenant by deactivating all their active
+    /// Tenant-scoped ScopedRoleAssignments.
+    ///
+    /// Architecture note: User.TenantId is not changed (immutable without risky
+    /// rewrite).  The user account itself is not deactivated globally — only their
+    /// tenant role memberships are revoked.  See report section 8 for details.
+    /// </summary>
+    private static async Task<IResult> RemoveUserFromTenant(
+        Guid              tenantId,
+        Guid              userId,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller)
+    {
+        if (IsCrossTenantAccess(caller, tenantId)) return Results.Forbid();
+
+        var tenant = await db.Tenants.FindAsync(tenantId);
+        if (tenant is null) return Results.NotFound(new { error = $"Tenant '{tenantId}' not found." });
+
+        var user = await db.Users.FindAsync(userId);
+        if (user is null) return Results.NotFound(new { error = $"User '{userId}' not found." });
+
+        if (user.TenantId != tenantId)
+            return Results.NotFound(new { error = $"User '{userId}' is not a member of tenant '{tenantId}'." });
+
+        // Deactivate all active Tenant-scoped role assignments for this user
+        var tenantRoles = await db.ScopedRoleAssignments
+            .Include(s => s.Role)
+            .Where(s => s.UserId == userId && s.IsActive
+                     && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
+                     && s.Role.Scope == RoleScopes.Tenant)
+            .ToListAsync();
+
+        if (tenantRoles.Count == 0)
+            return Results.Ok(new
+            {
+                message = "User has no active tenant-scoped role assignments. No changes made.",
+                userId,
+                tenantId,
+                revokedCount = 0,
+            });
+
+        foreach (var sra in tenantRoles)
+            sra.Deactivate();
+
+        await db.SaveChangesAsync();
+
+        return Results.Ok(new
+        {
+            message      = "Tenant-scoped role assignments revoked.",
+            userId,
+            tenantId,
+            revokedCount = tenantRoles.Count,
+        });
+    }
+
+    /// <summary>
+    /// PUM-B03-R05: POST /api/admin/tenants/{tenantId}/users/{userId}/roles
+    ///
+    /// Assigns a Tenant-scoped role to a user within a specific tenant context.
+    /// roleId takes precedence over roleKey if both are supplied.
+    /// Idempotent — returns 200 if the assignment already exists and is active.
+    ///
+    /// Enforces:
+    ///   - Tenant must exist
+    ///   - User must belong to this tenant
+    ///   - Role must exist and have Scope == "Tenant"
+    ///   - No duplicate active assignment
+    /// </summary>
+    private static async Task<IResult> AssignTenantRole(
+        Guid                      tenantId,
+        Guid                      userId,
+        AssignTenantRoleRequest   body,
+        IdentityDbContext         db,
+        ClaimsPrincipal           caller)
+    {
+        if (IsCrossTenantAccess(caller, tenantId)) return Results.Forbid();
+
+        var tenant = await db.Tenants.FindAsync(tenantId);
+        if (tenant is null) return Results.NotFound(new { error = $"Tenant '{tenantId}' not found." });
+
+        var user = await db.Users.FindAsync(userId);
+        if (user is null) return Results.NotFound(new { error = $"User '{userId}' not found." });
+
+        if (user.TenantId != tenantId)
+            return Results.Forbid();
+
+        // Resolve role by roleId or roleKey
+        Role? role = null;
+        if (body.RoleId.HasValue && body.RoleId != Guid.Empty)
+            role = await db.Roles.FindAsync(body.RoleId.Value);
+        else if (!string.IsNullOrWhiteSpace(body.RoleKey))
+            role = await db.Roles.FirstOrDefaultAsync(r => r.Name == body.RoleKey!.Trim());
+        else
+            return Results.BadRequest(new { error = "Either roleId or roleKey must be provided." });
+
+        if (role is null)
+        {
+            var identifier = body.RoleId.HasValue ? body.RoleId.ToString() : body.RoleKey;
+            return Results.NotFound(new { error = $"Role '{identifier}' not found." });
+        }
+
+        // PUM-B03-R05: Role must be Tenant-scoped
+        if (role.Scope != RoleScopes.Tenant)
+            return Results.BadRequest(new
+            {
+                error   = "ROLE_SCOPE_INVALID",
+                message = $"Role '{role.Name}' has scope '{role.Scope ?? "(none)"}'. " +
+                          "Only roles with Scope == Tenant may be assigned through tenant user management.",
+            });
+
+        // Idempotent: return existing if already active
+        var existing = await db.ScopedRoleAssignments
+            .FirstOrDefaultAsync(s => s.UserId == userId && s.RoleId == role.Id
+                                   && s.IsActive
+                                   && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global);
+
+        if (existing is not null)
+            return Results.Ok(new
+            {
+                assignmentId = existing.Id,
+                userId,
+                tenantId,
+                roleId       = role.Id,
+                roleName     = role.Name,
+                roleScope    = role.Scope,
+                assignedAtUtc = existing.AssignedAtUtc,
+                alreadyExisted = true,
+            });
+
+        var sra = ScopedRoleAssignment.Create(
+            userId:   userId,
+            roleId:   role.Id,
+            scopeType: ScopedRoleAssignment.ScopeTypes.Global,
+            tenantId: tenantId);
+        db.ScopedRoleAssignments.Add(sra);
+        await db.SaveChangesAsync();
+
+        return Results.Created(
+            $"/api/admin/tenants/{tenantId}/users/{userId}/roles/{sra.Id}",
+            new
+            {
+                assignmentId = sra.Id,
+                userId,
+                tenantId,
+                roleId       = role.Id,
+                roleName     = role.Name,
+                roleScope    = role.Scope,
+                assignedAtUtc = sra.AssignedAtUtc,
+                alreadyExisted = false,
+            });
+    }
+
+    /// <summary>
+    /// PUM-B03-R06: DELETE /api/admin/tenants/{tenantId}/users/{userId}/roles/{assignmentId}
+    ///
+    /// Soft-deactivates a specific Tenant-scoped ScopedRoleAssignment.
+    /// Only affects the specified assignment within the specified tenant context.
+    /// Platform roles and product roles are not affected.
+    /// </summary>
+    private static async Task<IResult> RevokeTenantRole(
+        Guid              tenantId,
+        Guid              userId,
+        Guid              assignmentId,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller)
+    {
+        if (IsCrossTenantAccess(caller, tenantId)) return Results.Forbid();
+
+        var tenant = await db.Tenants.FindAsync(tenantId);
+        if (tenant is null) return Results.NotFound(new { error = $"Tenant '{tenantId}' not found." });
+
+        var user = await db.Users.FindAsync(userId);
+        if (user is null) return Results.NotFound(new { error = $"User '{userId}' not found." });
+
+        if (user.TenantId != tenantId)
+            return Results.NotFound(new { error = $"User '{userId}' is not a member of tenant '{tenantId}'." });
+
+        var sra = await db.ScopedRoleAssignments
+            .Include(s => s.Role)
+            .FirstOrDefaultAsync(s => s.Id == assignmentId
+                                   && s.UserId == userId
+                                   && s.IsActive
+                                   && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global);
+
+        if (sra is null)
+            return Results.NotFound(new { error = $"Active role assignment '{assignmentId}' not found for user '{userId}'." });
+
+        // Guard: only allow revoking Tenant-scoped roles through this endpoint
+        if (sra.Role?.Scope != RoleScopes.Tenant)
+            return Results.BadRequest(new
+            {
+                error   = "ROLE_SCOPE_INVALID",
+                message = $"Assignment '{assignmentId}' is not a Tenant-scoped role. " +
+                          "Use the platform role endpoints to manage non-Tenant roles.",
+            });
+
+        sra.Deactivate();
+        await db.SaveChangesAsync();
+
+        return Results.NoContent();
+    }
+
+    // ── PUM-B03 DTOs ─────────────────────────────────────────────────────────
+
+    private record AssignUserToTenantRequest(
+        Guid    UserId,
+        Guid?   RoleId  = null,
+        string? RoleKey = null);
+
+    private record AssignTenantRoleRequest(
+        Guid?   RoleId  = null,
+        string? RoleKey = null);
 
 }
 
