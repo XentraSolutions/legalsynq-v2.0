@@ -177,6 +177,14 @@ public static class AdminEndpoints
         // Phase I: scoped role summary for a user (non-global scope visibility)
         routes.MapGet("/api/admin/users/{id:guid}/scoped-roles",            GetScopedRoles);
 
+        // ── PUM-B04: User product access management ────────────────────────────
+        routes.MapGet   ("/api/admin/users/{id:guid}/products",                                          ListUserProductAccess);
+        routes.MapPost  ("/api/admin/users/{id:guid}/products",                                          GrantUserProductAccess);
+        routes.MapDelete("/api/admin/users/{id:guid}/products/{productKey}",                             RevokeUserProductAccess);
+        routes.MapGet   ("/api/admin/users/{id:guid}/products/{productKey}/access",                      CheckUserProductAccess);
+        routes.MapPost  ("/api/admin/users/{id:guid}/products/{productKey}/roles",                       AssignUserProductRole);
+        routes.MapDelete("/api/admin/users/{id:guid}/products/{productKey}/roles/{assignmentId:guid}",   RevokeUserProductRole);
+
         // ── Memberships ───────────────────────────────────────────────────────
         // UIX-002: assign user to organization, set primary, remove (scaffold)
         // LS-ID-TNT-012: membership mutations gated on TENANT.users:manage.
@@ -6346,6 +6354,397 @@ public static class AdminEndpoints
     private record AssignTenantRoleRequest(
         Guid?   RoleId  = null,
         string? RoleKey = null);
+
+    // =========================================================================
+    // PUM-B04 — Product Access Control
+    // =========================================================================
+
+    /// <summary>
+    /// Resolves an inbound productKey string to the canonical uppercase DB code.
+    /// Accepts frontend aliases (e.g., "SynqFund"), raw uppercase codes, or
+    /// lowercase variants.  Returns null if the product does not exist in the DB.
+    /// </summary>
+    private static async Task<string?> ResolveProductCode(string productKey, IdentityDbContext db, CancellationToken ct = default)
+    {
+        // Try the frontend-to-DB alias map first
+        if (FrontendToDbProductCode.TryGetValue(productKey, out var mapped))
+        {
+            var exists = await db.Products.AnyAsync(p => p.Code == mapped && p.IsActive, ct);
+            return exists ? mapped : null;
+        }
+
+        // Otherwise uppercase + trim the raw key and look it up directly
+        var code = productKey.ToUpperInvariant().Trim();
+        var found = await db.Products.AnyAsync(p => p.Code == code && p.IsActive, ct);
+        return found ? code : null;
+    }
+
+    /// <summary>
+    /// PUM-B04-R05: GET /api/admin/users/{id}/products
+    ///
+    /// Lists all product access records for a user (all statuses: Granted and Revoked).
+    /// Tenant isolation: PlatformAdmin sees any user; TenantAdmin sees own-tenant users only.
+    /// </summary>
+    private static async Task<IResult> ListUserProductAccess(
+        Guid              id,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct)
+    {
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var records = await db.UserProductAccessRecords
+            .Where(a => a.UserId == id)
+            .OrderBy(a => a.ProductCode)
+            .ToListAsync(ct);
+
+        // Enrich with product display names
+        var codes    = records.Select(r => r.ProductCode).Distinct().ToList();
+        var products = await db.Products
+            .Where(p => codes.Contains(p.Code))
+            .ToDictionaryAsync(p => p.Code, p => p.Name, ct);
+
+        return Results.Ok(records.Select(a => new
+        {
+            id            = a.Id,
+            userId        = a.UserId,
+            tenantId      = a.TenantId,
+            productCode   = a.ProductCode,
+            displayName   = products.GetValueOrDefault(a.ProductCode, a.ProductCode),
+            accessStatus  = a.AccessStatus.ToString(),
+            isActive      = a.AccessStatus == AccessStatus.Granted,
+            grantedAtUtc  = a.GrantedAtUtc,
+            revokedAtUtc  = a.RevokedAtUtc,
+            sourceType    = a.SourceType,
+            createdAtUtc  = a.CreatedAtUtc,
+            updatedAtUtc  = a.UpdatedAtUtc,
+        }));
+    }
+
+    /// <summary>
+    /// PUM-B04-R06/R03: POST /api/admin/users/{id}/products
+    ///
+    /// Grants a user access to a product.  Idempotent — re-grants if previously revoked.
+    ///
+    /// Admin bypass: unlike IUserProductAccessService.GrantAsync, this endpoint does NOT
+    /// enforce TenantProductEntitlement — platform admins can grant access independently
+    /// of tenant subscription state.  This is intentional for administrative provisioning.
+    ///
+    /// tenantId in the request body must match user.TenantId (single-tenant architecture).
+    /// If omitted, user.TenantId is used.
+    /// </summary>
+    private static async Task<IResult> GrantUserProductAccess(
+        Guid                        id,
+        GrantUserProductAccessRequest body,
+        IdentityDbContext           db,
+        ClaimsPrincipal             caller,
+        CancellationToken           ct)
+    {
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        // tenantId, if supplied, must match the user's home tenant
+        if (body.TenantId.HasValue && body.TenantId.Value != user.TenantId)
+            return Results.Conflict(new
+            {
+                error   = "TENANT_MISMATCH",
+                message = "Supplied tenantId does not match the user's home tenant. " +
+                          "Cross-tenant product access is not supported in the current single-tenant schema.",
+                userTenantId     = user.TenantId,
+                suppliedTenantId = body.TenantId.Value,
+            });
+
+        var effectiveTenantId = body.TenantId ?? user.TenantId;
+
+        // Resolve + validate product code
+        var dbCode = await ResolveProductCode(body.ProductKey, db, ct);
+        if (dbCode is null)
+            return Results.NotFound(new { error = $"Product '{body.ProductKey}' not found or is inactive." });
+
+        // Idempotent: re-grant if previously revoked; return current state if already granted
+        var existing = await db.UserProductAccessRecords
+            .FirstOrDefaultAsync(a => a.TenantId == effectiveTenantId
+                                   && a.UserId == id
+                                   && a.ProductCode == dbCode, ct);
+
+        var alreadyActive = existing?.AccessStatus == AccessStatus.Granted;
+
+        if (existing is not null)
+        {
+            existing.Grant();  // idempotent if already granted
+            await db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            var access = UserProductAccess.Create(effectiveTenantId, id, dbCode);
+            db.UserProductAccessRecords.Add(access);
+            await db.SaveChangesAsync(ct);
+            existing = access;
+        }
+
+        return Results.Ok(new
+        {
+            id            = existing.Id,
+            userId        = existing.UserId,
+            tenantId      = existing.TenantId,
+            productCode   = existing.ProductCode,
+            accessStatus  = existing.AccessStatus.ToString(),
+            isActive      = existing.AccessStatus == AccessStatus.Granted,
+            grantedAtUtc  = existing.GrantedAtUtc,
+            revokedAtUtc  = existing.RevokedAtUtc,
+            alreadyActive,
+        });
+    }
+
+    /// <summary>
+    /// PUM-B04-R07/R04: DELETE /api/admin/users/{id}/products/{productKey}
+    ///
+    /// Soft-revokes a user's access to a specific product.
+    /// Optional query parameter: tenantId (defaults to user.TenantId).
+    /// Returns 404 if no active access record is found.
+    /// </summary>
+    private static async Task<IResult> RevokeUserProductAccess(
+        Guid              id,
+        string            productKey,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct,
+        Guid?             tenantId = null)
+    {
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var effectiveTenantId = tenantId ?? user.TenantId;
+
+        var dbCode = await ResolveProductCode(productKey, db, ct);
+        if (dbCode is null)
+            return Results.NotFound(new { error = $"Product '{productKey}' not found or is inactive." });
+
+        var existing = await db.UserProductAccessRecords
+            .FirstOrDefaultAsync(a => a.TenantId == effectiveTenantId
+                                   && a.UserId == id
+                                   && a.ProductCode == dbCode
+                                   && a.AccessStatus == AccessStatus.Granted, ct);
+
+        if (existing is null)
+            return Results.NotFound(new { error = $"No active product access found for user '{id}' and product '{productKey}'." });
+
+        existing.Revoke();
+        await db.SaveChangesAsync(ct);
+
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// PUM-B04-R08: GET /api/admin/users/{id}/products/{productKey}/access
+    ///
+    /// Checks whether a user currently has active access to a specific product.
+    /// Optional query parameter: tenantId.
+    /// Always returns 200 — the hasAccess field carries the result.
+    /// </summary>
+    private static async Task<IResult> CheckUserProductAccess(
+        Guid              id,
+        string            productKey,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct,
+        Guid?             tenantId = null)
+    {
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var effectiveTenantId = tenantId ?? user.TenantId;
+
+        var dbCode = await ResolveProductCode(productKey, db, ct);
+        if (dbCode is null)
+            return Results.NotFound(new { error = $"Product '{productKey}' not found or is inactive." });
+
+        var hasAccess = await db.UserProductAccessRecords
+            .AnyAsync(a => a.TenantId == effectiveTenantId
+                        && a.UserId == id
+                        && a.ProductCode == dbCode
+                        && a.AccessStatus == AccessStatus.Granted, ct);
+
+        return Results.Ok(new
+        {
+            hasAccess,
+            userId     = id,
+            productCode = dbCode,
+            tenantId   = effectiveTenantId,
+        });
+    }
+
+    /// <summary>
+    /// PUM-B04-R09: POST /api/admin/users/{id}/products/{productKey}/roles
+    ///
+    /// Assigns a product-scoped role to a user using UserRoleAssignment.
+    /// The role is looked up via ProductRole.Code within the specified product.
+    ///
+    /// Guards:
+    /// 1. User must exist and be in the caller's tenant.
+    /// 2. Product must exist and be active.
+    /// 3. User must have active (Granted) access to the product.
+    /// 4. ProductRole must exist within this product.
+    /// 5. No duplicate active assignment (same tenant + user + roleCode).
+    /// </summary>
+    private static async Task<IResult> AssignUserProductRole(
+        Guid                        id,
+        string                      productKey,
+        AssignUserProductRoleRequest body,
+        IdentityDbContext           db,
+        ClaimsPrincipal             caller,
+        CancellationToken           ct)
+    {
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var effectiveTenantId = body.TenantId ?? user.TenantId;
+
+        // Resolve product
+        var dbCode = await ResolveProductCode(productKey, db, ct);
+        if (dbCode is null)
+            return Results.NotFound(new { error = $"Product '{productKey}' not found or is inactive." });
+
+        var product = await db.Products.FirstOrDefaultAsync(p => p.Code == dbCode && p.IsActive, ct);
+        if (product is null)
+            return Results.NotFound(new { error = $"Product '{productKey}' not found." });
+
+        // Guard: user must have active product access (R09)
+        var hasAccess = await db.UserProductAccessRecords
+            .AnyAsync(a => a.TenantId == effectiveTenantId
+                        && a.UserId == id
+                        && a.ProductCode == dbCode
+                        && a.AccessStatus == AccessStatus.Granted, ct);
+        if (!hasAccess)
+            return Results.Conflict(new
+            {
+                error   = "PRODUCT_ACCESS_REQUIRED",
+                message = $"User '{id}' must have active access to product '{dbCode}' before a product role can be assigned. " +
+                          "Grant product access first via POST /api/admin/users/{id}/products.",
+            });
+
+        // Resolve ProductRole by code or name
+        if (string.IsNullOrWhiteSpace(body.RoleCode) && string.IsNullOrWhiteSpace(body.RoleName))
+            return Results.BadRequest(new { error = "Either roleCode or roleName must be provided." });
+
+        ProductRole? productRole;
+        if (!string.IsNullOrWhiteSpace(body.RoleCode))
+            productRole = await db.ProductRoles
+                .FirstOrDefaultAsync(pr => pr.ProductId == product.Id
+                                        && pr.Code == body.RoleCode.ToUpperInvariant().Trim()
+                                        && pr.IsActive, ct);
+        else
+            productRole = await db.ProductRoles
+                .FirstOrDefaultAsync(pr => pr.ProductId == product.Id
+                                        && pr.Name == body.RoleName!.Trim()
+                                        && pr.IsActive, ct);
+
+        if (productRole is null)
+            return Results.NotFound(new
+            {
+                error   = "PRODUCT_ROLE_NOT_FOUND",
+                message = $"ProductRole '{body.RoleCode ?? body.RoleName}' not found for product '{dbCode}'.",
+            });
+
+        // Idempotent: check for existing active assignment
+        var alreadyAssigned = await db.UserRoleAssignments
+            .AnyAsync(a => a.TenantId == effectiveTenantId
+                        && a.UserId == id
+                        && a.ProductCode == dbCode
+                        && a.RoleCode == productRole.Code
+                        && a.AssignmentStatus == AssignmentStatus.Active, ct);
+
+        if (alreadyAssigned)
+            return Results.Conflict(new
+            {
+                error   = "DUPLICATE_PRODUCT_ROLE_ASSIGNMENT",
+                message = $"Role '{productRole.Code}' is already actively assigned to user '{id}' for product '{dbCode}'.",
+            });
+
+        var assignment = UserRoleAssignment.Create(
+            tenantId:        effectiveTenantId,
+            userId:          id,
+            roleCode:        productRole.Code,
+            productCode:     dbCode);
+        db.UserRoleAssignments.Add(assignment);
+        await db.SaveChangesAsync(ct);
+
+        return Results.Created(
+            $"/api/admin/users/{id}/products/{productKey}/roles/{assignment.Id}",
+            new
+            {
+                assignmentId     = assignment.Id,
+                userId           = assignment.UserId,
+                tenantId         = assignment.TenantId,
+                productCode      = assignment.ProductCode,
+                roleCode         = assignment.RoleCode,
+                assignmentStatus = assignment.AssignmentStatus.ToString(),
+                assignedAtUtc    = assignment.AssignedAtUtc,
+            });
+    }
+
+    /// <summary>
+    /// PUM-B04-R10: DELETE /api/admin/users/{id}/products/{productKey}/roles/{assignmentId}
+    ///
+    /// Soft-removes a specific product-scoped role assignment (UserRoleAssignment).
+    /// Only affects the exact assignment specified — does not touch tenant or platform roles.
+    /// </summary>
+    private static async Task<IResult> RevokeUserProductRole(
+        Guid              id,
+        string            productKey,
+        Guid              assignmentId,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct)
+    {
+        var user = await db.Users.FindAsync([id], ct);
+        if (user is null) return Results.NotFound(new { error = $"User '{id}' not found." });
+
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var dbCode = await ResolveProductCode(productKey, db, ct);
+        if (dbCode is null)
+            return Results.NotFound(new { error = $"Product '{productKey}' not found or is inactive." });
+
+        var assignment = await db.UserRoleAssignments
+            .FirstOrDefaultAsync(a => a.Id == assignmentId
+                                   && a.UserId == id
+                                   && a.ProductCode == dbCode
+                                   && a.AssignmentStatus == AssignmentStatus.Active, ct);
+
+        if (assignment is null)
+            return Results.NotFound(new
+            {
+                error = $"Active product role assignment '{assignmentId}' not found for user '{id}' and product '{productKey}'.",
+            });
+
+        assignment.Remove();
+        await db.SaveChangesAsync(ct);
+
+        return Results.NoContent();
+    }
+
+    // ── PUM-B04 DTOs ─────────────────────────────────────────────────────────
+
+    private record GrantUserProductAccessRequest(
+        string  ProductKey,
+        Guid?   TenantId = null);
+
+    private record AssignUserProductRoleRequest(
+        string? RoleCode = null,
+        string? RoleName = null,
+        Guid?   TenantId = null);
 
 }
 
