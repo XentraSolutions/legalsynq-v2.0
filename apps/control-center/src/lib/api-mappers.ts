@@ -359,6 +359,7 @@ export function mapUserSummary(raw: unknown): UserSummary {
     groupCount: typeof (r['group_count'] ?? r['groupCount']) === 'number'
       ? (r['group_count'] ?? r['groupCount']) as number
       : undefined,
+    userType: (r['user_type'] ?? r['userType']) as string | undefined,
   };
 }
 

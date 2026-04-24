@@ -27,6 +27,13 @@ export const CC_NAV: NavSection[] = [
   },
 
   {
+    heading: 'PLATFORM USERS',
+    items: [
+      { href: '/platform-users', label: 'Platform Staff', icon: 'ri-shield-user-line', badge: 'LIVE' },
+    ],
+  },
+
+  {
     heading: 'IDENTITY',
     items: [
       { href: '/tenant-users', label: 'Users',            icon: 'ri-group-line'           },

@@ -589,6 +589,7 @@ export const controlCenterServerApi = {
       search?:   string;
       tenantId?: string;
       status?:   string;
+      userType?: string;
     } = {}): Promise<PagedResponse<UserSummary>> => {
       const qs = toQs({
         page:     params.page     ?? 1,
@@ -596,6 +597,7 @@ export const controlCenterServerApi = {
         search:   params.search,
         tenantId: params.tenantId,
         status:   params.status,
+        userType: params.userType,
       });
       const raw = await apiClient.get<unknown>(
         `/identity/api/admin/users${qs}`,
@@ -695,6 +697,28 @@ export const controlCenterServerApi = {
         {},
       );
       safeRevalidateTag(CACHE_TAGS.users);
+    },
+
+    /**
+     * PUM-B06: POST /identity/api/admin/platform-users/invite
+     *
+     * Invites a new PlatformInternal user (LegalSynq staff).
+     * Unlike the tenant invite flow, no tenantId is supplied — the backend
+     * resolves the platform system tenant automatically.
+     * Returns activationLink in non-production environments for hand-delivery fallback.
+     */
+    invitePlatformUser: async (payload: {
+      email:     string;
+      firstName: string;
+      lastName:  string;
+      roleId?:   string;
+    }): Promise<{ activationLink?: string }> => {
+      const result = await apiClient.post<{ activationLink?: string }>(
+        '/identity/api/admin/platform-users/invite',
+        payload,
+      );
+      safeRevalidateTag(CACHE_TAGS.users);
+      return { activationLink: result?.activationLink };
     },
 
     /**

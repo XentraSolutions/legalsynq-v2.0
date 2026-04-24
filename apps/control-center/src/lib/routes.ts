@@ -28,6 +28,9 @@ export const Routes = {
   /** /tenant-users — Users across all tenants */
   tenantUsers: '/tenant-users',
 
+  /** /platform-users — PlatformInternal staff user list */
+  platformUsers: '/platform-users',
+
   /** /roles — Roles & permissions list */
   roles: '/roles',
 
@@ -92,6 +95,9 @@ export const Routes = {
 
   /** /tenant-users/:id — User detail */
   userDetail: (id: string) => `/tenant-users/${id}`,
+
+  /** /platform-users/:id — Platform user detail */
+  platformUserDetail: (id: string) => `/platform-users/${id}`,
 
   /** /roles/:id — Role detail */
   roleDetail: (id: string) => `/roles/${id}`,

@@ -96,6 +96,7 @@ export interface UserSummary {
   lastLoginAtUtc?: string;
   primaryOrg?:     string;
   groupCount?:     number;
+  userType?:       string;
 }
 
 /**
