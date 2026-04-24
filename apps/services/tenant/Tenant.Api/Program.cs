@@ -1,4 +1,5 @@
 using System.Text;
+using BuildingBlocks;
 using BuildingBlocks.Authorization;
 using Contracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -57,18 +58,17 @@ builder.Services.Configure<TenantFeatures>(
 
 builder.Services.AddInfrastructure(builder.Configuration);
 
-// ── BLK-SEC-01: Production fail-fast ──────────────────────────────────────────
-// Provisioning secret must be set in non-Development environments.
-// An empty secret activates dev-mode bypass on all token guards, which would make
-// every internal provisioning endpoint publicly callable in production.
+// ── BLK-OPS-01: Production fail-fast (supersedes BLK-SEC-01 inline checks) ────
 if (!builder.Environment.IsDevelopment())
 {
-    var provisioningSecret = builder.Configuration["TenantService:ProvisioningSecret"];
-    if (string.IsNullOrWhiteSpace(provisioningSecret))
-        throw new InvalidOperationException(
-            "TenantService:ProvisioningSecret is not configured. " +
-            "Set this secret to secure the /provision endpoint against unauthenticated access. " +
-            "In Development, an empty secret activates dev-mode bypass intentionally.");
+    var v = new RuntimeConfigValidator(builder.Configuration, "tenant");
+    v
+        // JWT signing key must be real — not a placeholder
+        .RequireNotPlaceholder("Jwt:SigningKey")
+        // Provisioning secret gates all internal provisioning endpoints
+        .RequireNonEmpty("TenantService:ProvisioningSecret")
+        // Database connection string
+        .RequireConnectionString("ConnectionStrings:TenantDb");
 }
 
 var app = builder.Build();

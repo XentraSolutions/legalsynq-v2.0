@@ -1,4 +1,5 @@
 using System.Text;
+using BuildingBlocks;
 using Contracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -15,6 +16,17 @@ builder.Logging
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var signingKey = jwtSection["SigningKey"]
     ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
+
+// ── BLK-OPS-01: Production fail-fast ─────────────────────────────────────────
+// Validates that all required production secrets are present and not placeholder
+// values before any services are registered or requests are accepted.
+if (!builder.Environment.IsDevelopment())
+{
+    var v = new RuntimeConfigValidator(builder.Configuration, ServiceName);
+    v.RequireNotPlaceholder("Jwt:SigningKey")
+     .RequireNonEmpty("PublicTrustBoundary:InternalRequestSecret")
+     .RequireNotPlaceholder("PublicTrustBoundary:InternalRequestSecret");
+}
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

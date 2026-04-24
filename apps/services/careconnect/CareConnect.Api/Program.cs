@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+using BuildingBlocks;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Context;
@@ -118,25 +119,26 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
-// ── BLK-SEC-01: Production fail-fast ──────────────────────────────────────────
-// Both provisioning tokens must be set in non-Development environments.
-// An empty token means no X-Provisioning-Token header is sent to downstream services,
-// which will reject calls if they have a real ProvisioningSecret configured.
+// ── BLK-OPS-01: Production fail-fast (supersedes BLK-SEC-01 inline checks) ────
+// Validates all required secrets and service URLs before any requests are accepted.
+// Uses RuntimeConfigValidator for consistent error messages and placeholder detection.
 if (!builder.Environment.IsDevelopment())
 {
-    var tenantToken = builder.Configuration["TenantService:ProvisioningToken"];
-    if (string.IsNullOrWhiteSpace(tenantToken))
-        throw new InvalidOperationException(
-            "TenantService:ProvisioningToken is not configured. " +
-            "Set this value to authenticate CareConnect → Tenant service calls. " +
-            "In Development, an empty token is intentional (Tenant service dev-mode bypass).");
-
-    var identityToken = builder.Configuration["IdentityService:ProvisioningToken"];
-    if (string.IsNullOrWhiteSpace(identityToken))
-        throw new InvalidOperationException(
-            "IdentityService:ProvisioningToken is not configured. " +
-            "Set this value to authenticate CareConnect → Identity membership calls. " +
-            "In Development, an empty token is intentional (Identity service dev-mode bypass).");
+    var v = new RuntimeConfigValidator(builder.Configuration, "careconnect");
+    v
+        // JWT signing key must be real — not a placeholder
+        .RequireNotPlaceholder("Jwt:SigningKey")
+        // Trust boundary secret — must match Gateway and Web BFF
+        .RequireNonEmpty("PublicTrustBoundary:InternalRequestSecret")
+        .RequireNotPlaceholder("PublicTrustBoundary:InternalRequestSecret")
+        // Service URLs — must be absolute URLs in production
+        .RequireAbsoluteUrl("TenantService:BaseUrl")
+        .RequireAbsoluteUrl("IdentityService:BaseUrl")
+        // Provisioning tokens — required for CareConnect → Tenant and Identity calls
+        .RequireNonEmpty("TenantService:ProvisioningToken")
+        .RequireNonEmpty("IdentityService:ProvisioningToken")
+        // Database connection string — must not contain placeholder password
+        .RequireConnectionString("ConnectionStrings:CareConnectDb");
 }
 
 var app = builder.Build();

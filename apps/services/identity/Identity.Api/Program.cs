@@ -1,5 +1,6 @@
 using System.Text;
 using System.Threading.RateLimiting;
+using BuildingBlocks;
 using Contracts;
 using Identity.Api.Endpoints;
 using Identity.Infrastructure;
@@ -30,35 +31,22 @@ var signingKey   = jwtSection["SigningKey"]
 var issuer       = jwtSection["Issuer"]   ?? "legalsynq-identity";
 var audience     = jwtSection["Audience"] ?? "legalsynq-platform";
 
-// ── Email delivery pre-flight checks ─────────────────────────────────────────
-// Both values must be present for invitation and password-reset emails to work.
-// Failing at startup (in non-development environments) prevents silent runtime
-// drops where invites or admin-triggered password-reset emails are never sent.
-var notifSection   = builder.Configuration.GetSection("NotificationsService");
-var notifBaseUrl   = notifSection["BaseUrl"];
-var portalBaseUrl  = notifSection["PortalBaseUrl"];
-
+// ── BLK-OPS-01: Production fail-fast (supersedes BLK-SEC-01 inline checks) ────
+// Both email values must be present for invitation and password-reset emails to work.
+// Failing at startup prevents silent runtime drops where emails are never sent.
 if (!builder.Environment.IsDevelopment())
 {
-    if (string.IsNullOrWhiteSpace(notifBaseUrl))
-        throw new InvalidOperationException(
-            "NotificationsService:BaseUrl is not configured. " +
-            "Set this value so the Identity service can dispatch invitation and password-reset emails.");
-
-    if (string.IsNullOrWhiteSpace(portalBaseUrl))
-        throw new InvalidOperationException(
-            "NotificationsService:PortalBaseUrl is not configured. " +
-            "Set this value so invitation and password-reset links point to the correct tenant portal URL.");
-
-    // BLK-SEC-01: Provisioning secret must be set in non-Development environments.
-    // An empty secret activates dev-mode bypass on /assign-tenant, /assign-roles,
-    // and /api/internal/tenant-provisioning/provision — making them publicly callable.
-    var provisioningSecret = builder.Configuration["TenantService:ProvisioningSecret"];
-    if (string.IsNullOrWhiteSpace(provisioningSecret))
-        throw new InvalidOperationException(
-            "TenantService:ProvisioningSecret is not configured. " +
-            "Set this secret to secure all internal provisioning and membership endpoints. " +
-            "In Development, an empty secret activates dev-mode bypass intentionally.");
+    var v = new RuntimeConfigValidator(builder.Configuration, "identity");
+    v
+        // JWT signing key must be real — not a placeholder
+        .RequireNotPlaceholder("Jwt:SigningKey")
+        // Provisioning secret gates all internal provisioning and membership endpoints
+        .RequireNonEmpty("TenantService:ProvisioningSecret")
+        // Notifications service — required for invitation and password-reset emails
+        .RequireAbsoluteUrl("NotificationsService:BaseUrl")
+        .RequireNonEmpty("NotificationsService:PortalBaseUrl")
+        // Database connection string
+        .RequireConnectionString("ConnectionStrings:IdentityDb");
 }
 
 builder.Services
