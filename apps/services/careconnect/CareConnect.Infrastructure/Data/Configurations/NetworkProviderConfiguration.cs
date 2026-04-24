@@ -24,6 +24,12 @@ public class NetworkProviderConfiguration : IEntityTypeConfiguration<NetworkProv
 
         builder.HasIndex(np => new { np.ProviderNetworkId, np.ProviderId }).IsUnique();
 
+        // BLK-PERF-01: GetNetworkProvidersAsync filters on (TenantId, ProviderNetworkId).
+        // The existing unique index on (ProviderNetworkId, ProviderId) does not lead on TenantId,
+        // so tenant-scoped network provider list queries would scan all rows for that network.
+        builder.HasIndex(np => new { np.TenantId, np.ProviderNetworkId })
+               .HasDatabaseName("IX_NetworkProviders_TenantId_ProviderNetworkId");
+
         builder.HasOne(np => np.Provider)
                .WithMany()
                .HasForeignKey(np => np.ProviderId)

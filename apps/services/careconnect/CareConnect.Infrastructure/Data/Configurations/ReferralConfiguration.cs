@@ -55,6 +55,10 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
             .HasDatabaseName("IX_Referrals_TenantId_ProviderId");
         builder.HasIndex(r => new { r.TenantId, r.CreatedAtUtc })
             .HasDatabaseName("IX_Referrals_TenantId_CreatedAtUtc");
+        // BLK-PERF-01: Composite for admin dashboard / analytics queries that filter on
+        // TenantId + Status + CreatedAtUtc simultaneously (e.g. status counts within date window).
+        builder.HasIndex(r => new { r.TenantId, r.Status, r.CreatedAtUtc })
+            .HasDatabaseName("IX_Referrals_TenantId_Status_CreatedAtUtc");
         builder.HasIndex(r => new { r.ReferringOrganizationId, r.Status })
             .HasDatabaseName("IX_Referrals_ReferringOrgId_Status");
         builder.HasIndex(r => new { r.ReceivingOrganizationId, r.Status })

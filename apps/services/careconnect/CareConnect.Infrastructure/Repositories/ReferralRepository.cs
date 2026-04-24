@@ -1,3 +1,4 @@
+// BLK-PERF-01: All read-only queries use AsNoTracking() to avoid EF Core change-tracking overhead.
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
@@ -21,11 +22,15 @@ public class ReferralRepository : IReferralRepository
 
         if (query.CrossTenantReceiver && query.ReceivingOrgId.HasValue)
         {
-            q = _db.Referrals.Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
+            q = _db.Referrals
+                .AsNoTracking()
+                .Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
         }
         else
         {
-            q = _db.Referrals.Where(r => r.TenantId == tenantId);
+            q = _db.Referrals
+                .AsNoTracking()
+                .Where(r => r.TenantId == tenantId);
         }
 
         if (!string.IsNullOrWhiteSpace(query.Status))
@@ -80,6 +85,7 @@ public class ReferralRepository : IReferralRepository
     public async Task<Referral?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         return await _db.Referrals
+            .AsNoTracking()
             .Where(r => r.TenantId == tenantId && r.Id == id)
             .Include(r => r.Provider)
             .FirstOrDefaultAsync(ct);
@@ -88,6 +94,7 @@ public class ReferralRepository : IReferralRepository
     public async Task<Referral?> GetByIdGlobalAsync(Guid id, CancellationToken ct = default)
     {
         return await _db.Referrals
+            .AsNoTracking()
             .Where(r => r.Id == id)
             .Include(r => r.Provider)
             .FirstOrDefaultAsync(ct);
@@ -115,6 +122,7 @@ public class ReferralRepository : IReferralRepository
     public async Task<List<ReferralStatusHistory>> GetHistoryByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
     {
         return await _db.ReferralStatusHistories
+            .AsNoTracking()
             .Where(h => h.TenantId == tenantId && h.ReferralId == referralId)
             .OrderByDescending(h => h.ChangedAtUtc)
             .ToListAsync(ct);
@@ -129,6 +137,7 @@ public class ReferralRepository : IReferralRepository
     public async Task<List<ReferralProviderReassignment>> GetProviderReassignmentsByReferralAsync(Guid tenantId, Guid referralId, CancellationToken ct = default)
     {
         return await _db.ReferralProviderReassignments
+            .AsNoTracking()
             .Where(r => r.TenantId == tenantId && r.ReferralId == referralId)
             .OrderBy(r => r.ReassignedAtUtc)
             .ToListAsync(ct);

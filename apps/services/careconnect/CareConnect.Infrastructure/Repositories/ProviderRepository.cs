@@ -1,3 +1,4 @@
+// BLK-PERF-01: All read-only queries use AsNoTracking() to avoid EF Core change-tracking overhead.
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Helpers;
 using CareConnect.Application.Repositories;
@@ -29,7 +30,9 @@ public class ProviderRepository : IProviderRepository
             .Select(p => p.Id)
             .ToListAsync(ct);
 
+        // BLK-PERF-01: AsNoTracking — provider list is read-only; no change tracking needed.
         var items = await _db.Providers
+            .AsNoTracking()
             .Where(p => ids.Contains(p.Id))
             .Include(p => p.ProviderCategories)
                 .ThenInclude(pc => pc.Category)
@@ -50,7 +53,9 @@ public class ProviderRepository : IProviderRepository
             .Select(p => p.Id)
             .ToListAsync(ct);
 
+        // BLK-PERF-01: AsNoTracking — marker data is read-only.
         return await _db.Providers
+            .AsNoTracking()
             .Where(p => ids.Contains(p.Id))
             .Include(p => p.ProviderCategories)
                 .ThenInclude(pc => pc.Category)
@@ -60,7 +65,9 @@ public class ProviderRepository : IProviderRepository
 
     public async Task<Provider?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
+        // BLK-PERF-01: AsNoTracking — read-only detail fetch.
         return await _db.Providers
+            .AsNoTracking()
             .Where(p => p.TenantId == tenantId && p.Id == id)
             .Include(p => p.ProviderCategories)
                 .ThenInclude(pc => pc.Category)
@@ -102,7 +109,9 @@ public class ProviderRepository : IProviderRepository
 
     public async Task<Provider?> GetByIdCrossAsync(Guid id, CancellationToken ct = default)
     {
+        // BLK-PERF-01: AsNoTracking — cross-tenant read used for public referral validation; read-only.
         return await _db.Providers
+            .AsNoTracking()
             .Where(p => p.Id == id)
             .Include(p => p.ProviderCategories)
                 .ThenInclude(pc => pc.Category)
@@ -113,7 +122,8 @@ public class ProviderRepository : IProviderRepository
     {
         // Providers are a platform-wide marketplace; all active providers from all tenants
         // are discoverable. The tenantId parameter is retained for future analytics/audit use.
-        var q = _db.Providers.AsQueryable();
+        // BLK-PERF-01: AsNoTracking on base query — all search/marker flows are read-only.
+        var q = _db.Providers.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(query.Name))
             q = q.Where(p => p.Name.Contains(query.Name));
@@ -163,7 +173,9 @@ public class ProviderRepository : IProviderRepository
 
     public async Task<List<Provider>> GetUnlinkedAsync(Guid tenantId, CancellationToken ct = default)
     {
+        // BLK-PERF-01: AsNoTracking — admin read-only list.
         return await _db.Providers
+            .AsNoTracking()
             .Where(p => p.TenantId == tenantId && p.IsActive && p.OrganizationId == null)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
@@ -172,6 +184,7 @@ public class ProviderRepository : IProviderRepository
     public async Task<Provider?> GetByOrganizationIdAsync(Guid organizationId, CancellationToken ct = default)
     {
         return await _db.Providers
+            .AsNoTracking()
             .FirstOrDefaultAsync(p => p.OrganizationId == organizationId, ct);
     }
 
@@ -179,6 +192,7 @@ public class ProviderRepository : IProviderRepository
     public async Task<Provider?> GetByIdentityUserIdAsync(Guid identityUserId, CancellationToken ct = default)
     {
         return await _db.Providers
+            .AsNoTracking()
             .FirstOrDefaultAsync(p => p.IdentityUserId == identityUserId, ct);
     }
 }

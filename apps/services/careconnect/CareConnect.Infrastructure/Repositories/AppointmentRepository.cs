@@ -1,3 +1,4 @@
+// BLK-PERF-01: Read-only queries use AsNoTracking() to avoid EF Core change-tracking overhead.
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
 using CareConnect.Infrastructure.Data;
@@ -51,7 +52,9 @@ public class AppointmentRepository : IAppointmentRepository
 
     public async Task<Appointment?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
+        // BLK-PERF-01: AsNoTracking — read-only detail; mutations go through SaveStatusUpdateAsync etc.
         return await _db.Appointments
+            .AsNoTracking()
             .Where(a => a.TenantId == tenantId && a.Id == id)
             .Include(a => a.Provider)
             .Include(a => a.Facility)
@@ -59,7 +62,8 @@ public class AppointmentRepository : IAppointmentRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    // LSCC-002: referringOrgId/receivingOrgId added for org-participant scoping
+    // LSCC-002: referringOrgId/receivingOrgId added for org-participant scoping.
+    // BLK-PERF-01: AsNoTracking applied — list is read-only; filters applied before materialization.
     public async Task<(List<Appointment> Items, int TotalCount)> SearchAsync(
         Guid tenantId,
         Guid? referralId,
@@ -74,6 +78,7 @@ public class AppointmentRepository : IAppointmentRepository
         CancellationToken ct = default)
     {
         var query = _db.Appointments
+            .AsNoTracking()
             .Where(a => a.TenantId == tenantId)
             .Include(a => a.Provider)
             .Include(a => a.Facility)

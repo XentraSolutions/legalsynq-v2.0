@@ -1,4 +1,5 @@
 // LSCC-009: Activation request repository.
+// BLK-PERF-01: Read-only queries use AsNoTracking() to avoid EF Core change-tracking overhead.
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
 using CareConnect.Infrastructure.Data;
@@ -21,12 +22,15 @@ public class ActivationRequestRepository : IActivationRequestRepository
         CancellationToken ct = default)
     {
         return await _db.ActivationRequests
+            .AsNoTracking()
             .FirstOrDefaultAsync(a => a.ReferralId == referralId && a.ProviderId == providerId, ct);
     }
 
     public async Task<ActivationRequest?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
+        // BLK-PERF-01: AsNoTracking — admin read-only detail; approval goes through SaveChangesAsync.
         return await _db.ActivationRequests
+            .AsNoTracking()
             .Include(a => a.Provider)
             .Include(a => a.Referral)
             .FirstOrDefaultAsync(a => a.Id == id, ct);
@@ -34,7 +38,9 @@ public class ActivationRequestRepository : IActivationRequestRepository
 
     public async Task<List<ActivationRequest>> GetPendingAsync(CancellationToken ct = default)
     {
+        // BLK-PERF-01: AsNoTracking — admin queue read; sorted by IX_ActivationRequests_Status_CreatedAt.
         return await _db.ActivationRequests
+            .AsNoTracking()
             .Where(a => a.Status == ActivationRequestStatus.Pending)
             .Include(a => a.Provider)
             .Include(a => a.Referral)

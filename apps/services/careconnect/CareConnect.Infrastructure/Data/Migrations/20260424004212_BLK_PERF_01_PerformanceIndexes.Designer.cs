@@ -4,6 +4,7 @@ using CareConnect.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CareConnect.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(CareConnectDbContext))]
-    partial class CareConnectDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260424004212_BLK_PERF_01_PerformanceIndexes")]
+    partial class BLK_PERF_01_PerformanceIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

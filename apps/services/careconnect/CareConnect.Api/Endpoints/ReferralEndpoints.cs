@@ -28,6 +28,8 @@ public static class ReferralEndpoints
             var isProviderOrg = string.Equals(ctx.OrgType, "PROVIDER", StringComparison.OrdinalIgnoreCase);
             var isAdmin = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin);
 
+            // BLK-PERF-01: Clamp page size to protect against unbounded result-set queries.
+            // Default 20; maximum 100 — callers requesting more receive exactly 100.
             var query = new GetReferralsQuery
             {
                 Status             = p.Status,
@@ -37,8 +39,8 @@ public static class ReferralEndpoints
                 Urgency            = p.Urgency,
                 CreatedFrom        = p.CreatedFrom,
                 CreatedTo          = p.CreatedTo,
-                Page               = p.Page ?? 1,
-                PageSize           = p.PageSize ?? 20,
+                Page               = Math.Max(1, p.Page ?? 1),
+                PageSize           = Math.Clamp(p.PageSize ?? 20, 1, 100),
             };
 
             if (ctx.IsPlatformAdmin)

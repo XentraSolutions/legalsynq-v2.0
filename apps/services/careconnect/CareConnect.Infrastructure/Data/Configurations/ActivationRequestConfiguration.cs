@@ -42,6 +42,12 @@ public class ActivationRequestConfiguration : IEntityTypeConfiguration<Activatio
         builder.HasIndex(a => new { a.Status, a.CreatedAtUtc })
             .HasDatabaseName("IX_ActivationRequests_Status_CreatedAt");
 
+        // BLK-PERF-01: Tenant-scoped admin queue + analytics filter on TenantId + Status + date.
+        // The existing (Status, CreatedAtUtc) index does not include TenantId, causing tenant
+        // admin activation queue reads to scan across all tenants before applying the tenant filter.
+        builder.HasIndex(a => new { a.TenantId, a.Status, a.CreatedAtUtc })
+            .HasDatabaseName("IX_ActivationRequests_TenantId_Status_CreatedAt");
+
         // Deduplication key: one active request per referral+provider pair
         builder.HasIndex(a => new { a.ReferralId, a.ProviderId })
             .HasDatabaseName("IX_ActivationRequests_ReferralId_ProviderId");

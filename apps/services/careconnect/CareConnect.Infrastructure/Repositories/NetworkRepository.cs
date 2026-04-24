@@ -1,3 +1,5 @@
+// BLK-PERF-01: All read-only queries use AsNoTracking() to avoid EF Core change-tracking overhead.
+// GetAllWithProviderCountAsync added to eliminate N+1 in the public network list endpoint.
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
 using CareConnect.Infrastructure.Data;
@@ -18,20 +20,41 @@ public class NetworkRepository : INetworkRepository
     public async Task<List<ProviderNetwork>> GetAllByTenantAsync(Guid tenantId, CancellationToken ct = default)
     {
         return await _db.ProviderNetworks
+            .AsNoTracking()
             .Where(n => n.TenantId == tenantId && !n.IsDeleted)
             .OrderBy(n => n.Name)
+            .ToListAsync(ct);
+    }
+
+    // BLK-PERF-01: Replaces the N+1 pattern in PublicNetworkEndpoints GET / where each
+    // network in the list triggered a separate GetWithProvidersAsync round-trip.
+    // A single query projects network fields + sub-query COUNT() of NetworkProviders.
+    public async Task<List<(Guid Id, string Name, string? Description, int ProviderCount)>> GetAllWithProviderCountAsync(
+        Guid tenantId, CancellationToken ct = default)
+    {
+        return await _db.ProviderNetworks
+            .AsNoTracking()
+            .Where(n => n.TenantId == tenantId && !n.IsDeleted)
+            .OrderBy(n => n.Name)
+            .Select(n => ValueTuple.Create(
+                n.Id,
+                n.Name,
+                (string?)n.Description,
+                n.NetworkProviders.Count()))
             .ToListAsync(ct);
     }
 
     public async Task<ProviderNetwork?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         return await _db.ProviderNetworks
+            .AsNoTracking()
             .FirstOrDefaultAsync(n => n.TenantId == tenantId && n.Id == id && !n.IsDeleted, ct);
     }
 
     public async Task<ProviderNetwork?> GetWithProvidersAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         return await _db.ProviderNetworks
+            .AsNoTracking()
             .Include(n => n.NetworkProviders)
                 .ThenInclude(np => np.Provider)
             .FirstOrDefaultAsync(n => n.TenantId == tenantId && n.Id == id && !n.IsDeleted, ct);
@@ -57,6 +80,7 @@ public class NetworkRepository : INetworkRepository
     public async Task<NetworkProvider?> GetMembershipAsync(Guid networkId, Guid providerId, CancellationToken ct = default)
     {
         return await _db.NetworkProviders
+            .AsNoTracking()
             .FirstOrDefaultAsync(np => np.ProviderNetworkId == networkId && np.ProviderId == providerId, ct);
     }
 
@@ -69,6 +93,7 @@ public class NetworkRepository : INetworkRepository
     public async Task<List<Provider>> GetNetworkProvidersAsync(Guid tenantId, Guid networkId, CancellationToken ct = default)
     {
         return await _db.NetworkProviders
+            .AsNoTracking()
             .Where(np => np.ProviderNetworkId == networkId && np.TenantId == tenantId)
             .Include(np => np.Provider)
             .Select(np => np.Provider)
@@ -87,7 +112,7 @@ public class NetworkRepository : INetworkRepository
         string? name, string? phone, string? npi, string? city,
         int limit = 20, CancellationToken ct = default)
     {
-        var q = _db.Providers.AsQueryable();
+        var q = _db.Providers.AsNoTracking().AsQueryable();
 
         // NPI exact match — highest priority, most specific
         if (!string.IsNullOrWhiteSpace(npi))
@@ -128,13 +153,13 @@ public class NetworkRepository : INetworkRepository
 
     public async Task<Provider?> GetProviderByIdGlobalAsync(Guid id, CancellationToken ct = default)
     {
-        return await _db.Providers.FirstOrDefaultAsync(p => p.Id == id, ct);
+        return await _db.Providers.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
     }
 
     public async Task<Provider?> GetProviderByNpiAsync(string npi, CancellationToken ct = default)
     {
         var trimmed = npi.Trim();
-        return await _db.Providers.FirstOrDefaultAsync(p => p.Npi == trimmed, ct);
+        return await _db.Providers.AsNoTracking().FirstOrDefaultAsync(p => p.Npi == trimmed, ct);
     }
 
     public async Task AddProviderToRegistryAsync(Provider provider, CancellationToken ct = default)

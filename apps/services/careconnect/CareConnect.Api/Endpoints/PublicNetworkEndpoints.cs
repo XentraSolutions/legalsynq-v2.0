@@ -46,18 +46,13 @@ public static class PublicNetworkEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
 
-            var networks = await repo.GetAllByTenantAsync(tenantId.Value, ct);
+            // BLK-PERF-01: Single query — replaces the N+1 loop of
+            // GetAllByTenantAsync + N×GetWithProvidersAsync.
+            var rows = await repo.GetAllWithProviderCountAsync(tenantId.Value, ct);
 
-            var summaries = new List<PublicNetworkSummary>(networks.Count);
-            foreach (var n in networks)
-            {
-                var detail = await repo.GetWithProvidersAsync(tenantId.Value, n.Id, ct);
-                summaries.Add(new PublicNetworkSummary(
-                    n.Id,
-                    n.Name,
-                    n.Description,
-                    detail?.NetworkProviders.Count ?? 0));
-            }
+            var summaries = rows
+                .Select(r => new PublicNetworkSummary(r.Id, r.Name, r.Description ?? string.Empty, r.ProviderCount))
+                .ToList();
 
             return Results.Ok(summaries);
         }).AllowAnonymous();
@@ -151,7 +146,13 @@ public static class PublicNetworkEndpoints
             if (network == null)
                 return Results.NotFound();
 
-            var providers = await repo.GetNetworkProvidersAsync(tenantId.Value, id, ct);
+            // BLK-PERF-01: Providers already loaded by GetWithProvidersAsync via Include.
+            // Eliminated the redundant second GetNetworkProvidersAsync call (saved one round-trip).
+            var providers = network.NetworkProviders
+                .Where(np => np.Provider != null)
+                .Select(np => np.Provider!)
+                .OrderBy(p => p.Name)
+                .ToList();
 
             var items = providers
                 .Select(p => new PublicProviderItem(

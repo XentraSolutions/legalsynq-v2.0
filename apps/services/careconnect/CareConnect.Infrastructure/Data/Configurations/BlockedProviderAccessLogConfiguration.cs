@@ -54,5 +54,10 @@ public class BlockedProviderAccessLogConfiguration
 
         builder.HasIndex(x => x.AttemptedAtUtc)
                .HasDatabaseName("IX_BlockedProviderAccessLogs_AttemptedAtUtc");
+
+        // BLK-PERF-01: Tenant-scoped dashboard counts filter on (TenantId, AttemptedAtUtc).
+        // Without this, dashboard rolling-window queries scan all rows ordered by date.
+        builder.HasIndex(x => new { x.TenantId, x.AttemptedAtUtc })
+               .HasDatabaseName("IX_BlockedProviderAccessLogs_TenantId_AttemptedAtUtc");
     }
 }
