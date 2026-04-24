@@ -278,7 +278,7 @@ All read-only query methods across `ReferralRepository`, `ProviderRepository`, `
 
 ## 11. GitHub Commit
 
-*(to be filled after commit)*
+`fee961e5fef3c3e0b75a98adb15bd4c7416c22ae` — "Improve system performance and optimize database queries"
 
 ---
 
