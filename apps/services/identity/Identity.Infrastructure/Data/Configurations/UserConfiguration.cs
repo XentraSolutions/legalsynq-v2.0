@@ -73,6 +73,14 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .IsRequired()
             .HasDefaultValue(0);
 
+        // PUM-B01: user type classification stored as a string for readability and
+        // forward compatibility. Defaults to TenantUser for all existing rows.
+        builder.Property(u => u.UserType)
+            .IsRequired()
+            .HasMaxLength(30)
+            .HasConversion<string>()
+            .HasDefaultValue(UserType.TenantUser);
+
         builder.HasIndex(u => new { u.TenantId, u.Email })
             .IsUnique();
 

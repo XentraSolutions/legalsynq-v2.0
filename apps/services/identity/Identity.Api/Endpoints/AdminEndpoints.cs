@@ -1391,7 +1391,9 @@ public static class AdminEndpoints
         int    pageSize = 20,
         string search   = "",
         string tenantId = "",
-        string status   = "")
+        string status   = "",
+        string userType = "",
+        string isActive = "")
     {
         var q = db.Users
             .Include(u => u.Tenant)
@@ -1430,6 +1432,20 @@ public static class AdminEndpoints
             q = q.Where(u => !u.IsActive &&
                 db.UserInvitations.Any(i => i.UserId == u.Id && i.Status == UserInvitation.Statuses.Pending));
 
+        // ── PUM-B01: isActive filter (boolean — distinct from the status string filter) ──
+        var isActiveTrimmed = isActive.Trim().ToLowerInvariant();
+        if (isActiveTrimmed == "true")
+            q = q.Where(u => u.IsActive);
+        else if (isActiveTrimmed == "false")
+            q = q.Where(u => !u.IsActive);
+
+        // ── PUM-B01: userType filter ───────────────────────────────────────────
+        if (!string.IsNullOrWhiteSpace(userType) &&
+            Enum.TryParse<Identity.Domain.UserType>(userType, ignoreCase: true, out var parsedUserType))
+        {
+            q = q.Where(u => u.UserType == parsedUserType);
+        }
+
         var total = await q.CountAsync();
 
         // Step 6 Phase B: role resolved via ScopedRoleAssignments (GLOBAL-scoped, primary).
@@ -1444,6 +1460,7 @@ public static class AdminEndpoints
                 firstName  = u.FirstName,
                 lastName   = u.LastName,
                 email      = u.Email,
+                userType   = u.UserType.ToString(),
                 role       = db.ScopedRoleAssignments
                                .Where(s => s.UserId == u.Id && s.IsActive
                                         && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
@@ -1454,6 +1471,7 @@ public static class AdminEndpoints
                     : db.UserInvitations.Any(i => i.UserId == u.Id && i.Status == UserInvitation.Statuses.Pending)
                         ? "Invited"
                         : "Inactive",
+                isActive   = u.IsActive,
                 primaryOrg = db.UserOrganizationMemberships
                                .Where(m => m.UserId == u.Id && m.IsPrimary && m.IsActive)
                                .Select(m => m.Organization.DisplayName ?? m.Organization.Name)
@@ -1607,17 +1625,19 @@ public static class AdminEndpoints
             firstName         = u.FirstName,
             lastName          = u.LastName,
             email             = u.Email,
+            userType          = u.UserType.ToString(),
             role              = u.ScopedRoleAssignments.Select(s => s.Role.Name).FirstOrDefault() ?? "User",
             roles             = u.ScopedRoleAssignments.Select(s => new { roleId = s.RoleId, roleName = s.Role.Name, assignmentId = s.Id }),
             status,
+            isActive          = u.IsActive,
             tenantId          = u.TenantId,
             tenantCode        = u.Tenant.Code,
             tenantDisplayName = u.Tenant.Name,
             createdAtUtc      = u.CreatedAtUtc,
             updatedAtUtc      = u.UpdatedAtUtc,
+            lastLoginAtUtc    = u.LastLoginAtUtc,
             isLocked          = u.IsLocked,
             lockedAtUtc       = u.LockedAtUtc,
-            lastLoginAtUtc    = u.LastLoginAtUtc,
             sessionVersion    = u.SessionVersion,
             avatarDocumentId  = u.AvatarDocumentId,
             phone             = u.Phone,

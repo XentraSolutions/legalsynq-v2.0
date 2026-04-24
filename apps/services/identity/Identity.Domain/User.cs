@@ -66,6 +66,14 @@ public class User
     /// </summary>
     public string? Phone { get; private set; }
 
+    /// <summary>
+    /// PUM-B01: Unified user type classification.
+    /// Defaults to TenantUser for all users created via the tenant flow.
+    /// PlatformInternal is reserved for LegalSynq staff accounts.
+    /// ExternalCustomer is reserved for future Commerce/Support portals.
+    /// </summary>
+    public UserType UserType { get; private set; } = UserType.TenantUser;
+
     public Tenant Tenant { get; private set; } = null!;
     public ICollection<UserOrganizationMembership> OrganizationMemberships { get; private set; } = [];
 
@@ -206,12 +214,25 @@ public class User
         return true;
     }
 
+    /// <summary>
+    /// PUM-B01: Updates the user type classification.
+    /// Idempotent — safe to call when the value is unchanged.
+    /// </summary>
+    public bool SetUserType(UserType userType)
+    {
+        if (UserType == userType) return false;
+        UserType     = userType;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
+    }
+
     public static User Create(
         Guid tenantId,
         string email,
         string passwordHash,
         string firstName,
-        string lastName)
+        string lastName,
+        UserType userType = UserType.TenantUser)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
@@ -231,6 +252,7 @@ public class User
             IsLocked       = false,
             SessionVersion = 0,
             AccessVersion  = 0,
+            UserType       = userType,
             CreatedAtUtc   = now,
             UpdatedAtUtc   = now
         };
