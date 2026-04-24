@@ -71,10 +71,11 @@ public sealed class HttpAuditEventClient : IAuditEventClient
                 (int)res.StatusCode, request.EventType, errBody);
             return new IngestResult(false, null, $"HTTP{(int)res.StatusCode}", (int)res.StatusCode);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        catch (Exception ex)
         {
-            _logger.LogWarning(ex, "AuditEvent ingest transport error: EventType={EventType}", request.EventType);
-            return new IngestResult(false, null, "TransportError", 0);
+            _logger.LogWarning(ex, "AuditEvent ingest error: EventType={EventType} ExceptionType={ExType}",
+                request.EventType, ex.GetType().Name);
+            return new IngestResult(false, null, "ClientError", 0);
         }
     }
 
@@ -106,12 +107,12 @@ public sealed class HttpAuditEventClient : IAuditEventClient
 
             return new BatchIngestResult(data.Submitted, data.Accepted, data.Rejected, results);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        catch (Exception ex)
         {
-            _logger.LogWarning(ex, "AuditEvent batch transport error");
+            _logger.LogWarning(ex, "AuditEvent batch error: ExceptionType={ExType}", ex.GetType().Name);
             var empty = new IngestResult[request.Events.Count];
             for (int i = 0; i < empty.Length; i++)
-                empty[i] = new IngestResult(false, null, "TransportError", 0);
+                empty[i] = new IngestResult(false, null, "ClientError", 0);
             return new BatchIngestResult(request.Events.Count, 0, request.Events.Count, empty);
         }
     }

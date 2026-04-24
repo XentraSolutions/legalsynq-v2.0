@@ -8,6 +8,7 @@ using Identity.Domain;
 using LegalSynq.AuditClient;
 using LegalSynq.AuditClient.DTOs;
 using LegalSynq.AuditClient.Enums;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
 namespace Identity.Application.Services;
@@ -20,6 +21,7 @@ public class AuthService : IAuthService
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuditEventClient _auditClient;
     private readonly IEffectiveAccessService _effectiveAccessService;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -29,6 +31,7 @@ public class AuthService : IAuthService
         IJwtTokenService jwtTokenService,
         IAuditEventClient auditClient,
         IEffectiveAccessService effectiveAccessService,
+        IHttpContextAccessor httpContextAccessor,
         ILogger<AuthService> logger)
     {
         _userRepository = userRepository;
@@ -37,8 +40,12 @@ public class AuthService : IAuthService
         _jwtTokenService = jwtTokenService;
         _auditClient = auditClient;
         _effectiveAccessService = effectiveAccessService;
+        _httpContextAccessor = httpContextAccessor;
         _logger = logger;
     }
+
+    private string? CurrentCorrelationId =>
+        _httpContextAccessor.HttpContext?.Items["CorrelationId"]?.ToString();
 
     public async Task<LoginResponse> LoginAsync(LoginRequest request, string? ipAddress = null, CancellationToken ct = default)
     {
@@ -197,6 +204,7 @@ public class AuthService : IAuthService
             Action      = "LoginSucceeded",
             Description = $"User (id={userWithRoles.Id}) authenticated successfully in tenant {tenant.Code}.",
             Metadata    = JsonSerializer.Serialize(new { tenantCode = tenant.Code }),
+            CorrelationId  = CurrentCorrelationId,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.login.succeeded", userWithRoles.Id.ToString()),
             Tags = ["auth", "login"],
         });
@@ -415,6 +423,7 @@ public class AuthService : IAuthService
                 tenantCode,
                 failureReason = reason,
             }),
+            CorrelationId  = CurrentCorrelationId,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.login.failed", email),
             Tags = ["auth", "login", "failure", "security"],
         });
@@ -452,6 +461,7 @@ public class AuthService : IAuthService
             Action      = "SessionInvalidated",
             Description = $"Session invalidated for user '{email}' — JWT session_version is stale (force-logout or account lock).",
             Metadata    = JsonSerializer.Serialize(new { reason = "SessionVersionStale" }),
+            CorrelationId  = CurrentCorrelationId,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(
                 now, "identity-service", "identity.session.invalidated", userId),
             Tags = ["auth", "session", "invalidated", "security"],
@@ -498,6 +508,7 @@ public class AuthService : IAuthService
                 tokenAccessVersion,
                 currentAccessVersion,
             }),
+            CorrelationId  = CurrentCorrelationId,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(
                 now, "identity-service", "identity.access.version.stale", userId),
             Tags = ["auth", "access-version", "stale", "security", "re-auth"],
@@ -538,6 +549,7 @@ public class AuthService : IAuthService
             Action      = "LoginBlocked",
             Description = $"Login attempt blocked for locked account (userId={user.Id}) in tenant {tenant.Code}.",
             Metadata    = JsonSerializer.Serialize(new { tenantCode = tenant.Code, userId = user.Id.ToString(), reason = "AccountLocked" }),
+            CorrelationId  = CurrentCorrelationId,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", "identity.user.login.blocked", user.Id.ToString()),
             Tags = ["auth", "login", "blocked", "security", "locked"],
         });

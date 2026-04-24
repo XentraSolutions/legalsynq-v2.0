@@ -27,7 +27,8 @@ public class AuditPublisher : IAuditPublisher
         string? entityId = null,
         string? before = null,
         string? after = null,
-        string? metadata = null)
+        string? metadata = null,
+        string? correlationId = null)
     {
         var now = DateTimeOffset.UtcNow;
         var request = new IngestAuditEventRequest
@@ -55,6 +56,7 @@ public class AuditPublisher : IAuditPublisher
             Before = before,
             After = after,
             Metadata = metadata,
+            CorrelationId = correlationId,
             IdempotencyKey = IdempotencyKey.ForWithTimestamp(now, "identity-service", eventType, entityId ?? tenantId?.ToString() ?? ""),
             Tags = ["access-sot"],
         };

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using PlatformAuditEventService.Configuration;
 using PlatformAuditEventService.DTOs.Ingest;
 using PlatformAuditEventService.Entities;
+using PlatformAuditEventService.Enums;
 using PlatformAuditEventService.Mappers;
 using PlatformAuditEventService.Repositories;
 using PlatformAuditEventService.Services.Forwarding;
@@ -246,6 +247,41 @@ public sealed class AuditEventIngestionService : IAuditEventIngestionService
         string?                 batchCorrelationFallback,
         CancellationToken       ct)
     {
+        // ── Step 0.5: Gap detection — log warnings for suspicious fields ─────
+        //
+        // Warnings are informational only. Events are never rejected here.
+        // No PII is included in the log fields (EventType, SourceSystem, ScopeType, timestamps only).
+        var effectiveCorrelationId = string.IsNullOrWhiteSpace(req.CorrelationId)
+            ? batchCorrelationFallback
+            : req.CorrelationId;
+
+        if (string.IsNullOrWhiteSpace(effectiveCorrelationId))
+        {
+            _logger.LogWarning(
+                "AuditGap: CorrelationId is absent on EventType={EventType} SourceSystem={SourceSystem} Index={Index}",
+                req.EventType, req.SourceSystem, index);
+        }
+
+        if (req.Scope.ScopeType == ScopeType.Tenant && string.IsNullOrWhiteSpace(req.Scope.TenantId))
+        {
+            _logger.LogWarning(
+                "AuditGap: Tenant-scoped event missing TenantId EventType={EventType} SourceSystem={SourceSystem} Index={Index}",
+                req.EventType, req.SourceSystem, index);
+        }
+
+        if (req.OccurredAtUtc.HasValue)
+        {
+            var serverNow    = DateTimeOffset.UtcNow;
+            var deltaMinutes = (req.OccurredAtUtc.Value - serverNow).TotalMinutes;
+            if (deltaMinutes > 60 || deltaMinutes < -2880)
+            {
+                _logger.LogWarning(
+                    "AuditGap: OccurredAtUtc={OccurredAtUtc} is {DeltaMinutes:F0}m from server time " +
+                    "EventType={EventType} SourceSystem={SourceSystem} Index={Index}",
+                    req.OccurredAtUtc.Value, deltaMinutes, req.EventType, req.SourceSystem, index);
+            }
+        }
+
         // ── Step 1: Idempotency check ─────────────────────────────────────────
         //
         // Only check when an IdempotencyKey was supplied. Callers without a key get

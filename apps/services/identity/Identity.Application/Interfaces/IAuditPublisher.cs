@@ -12,5 +12,6 @@ public interface IAuditPublisher
         string? entityId = null,
         string? before = null,
         string? after = null,
-        string? metadata = null);
+        string? metadata = null,
+        string? correlationId = null);
 }
