@@ -372,7 +372,7 @@ No new endpoints. No existing endpoint signatures changed.
 
 ## 12. GitHub Commits
 
-*(to be filled after commit)*
+`87ea2f70384aa8f771b404f1bf73ea1ae0c3207f` — "Improve runtime configuration validation for production environments"
 
 ---
 
@@ -392,6 +392,6 @@ No new endpoints. No existing endpoint signatures changed.
 
 ## 14. GitHub Diff Reference
 
-- Commit ID: *(to be filled after commit)*
+- Commit ID: `87ea2f70384aa8f771b404f1bf73ea1ae0c3207f`
 - Diff file: `analysis/BLK-OPS-01-commit.diff.txt`
 - Summary: `analysis/BLK-OPS-01-commit-summary.md`
