@@ -490,7 +490,7 @@ Automated enforcement engine is identified as a future work item (see Section 13
 | Block | Commit |
 |---|---|
 | BLK-COMP-01 (preceding) | `73645694c6a3acb39f31426e337b6ec190ec1a04` |
-| BLK-COMP-02 | auto-committed by platform following `73645694` |
+| BLK-COMP-02 | `817f83fc41006cd71eeb421a07b341a2179d0579` |
 
 ---
 
@@ -508,6 +508,6 @@ Automated enforcement engine is identified as a future work item (see Section 13
 
 ## 14. GitHub Diff Reference
 
-- **Commit ID:** auto-committed by platform following `73645694c6a3acb39f31426e337b6ec190ec1a04`
+- **Commit ID:** `817f83fc41006cd71eeb421a07b341a2179d0579`
 - **Diff file:** `analysis/BLK-COMP-02-commit.diff.txt` *(generated post-commit)*
 - **Summary file:** `analysis/BLK-COMP-02-commit-summary.md`

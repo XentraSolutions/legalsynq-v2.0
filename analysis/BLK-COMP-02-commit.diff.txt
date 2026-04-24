@@ -1,8 +1,8 @@
 BLK-COMP-02 — Data Governance, Retention & PII Control
-Commit diff — generated automatically by platform at task completion.
+Commit: 817f83fc41006cd71eeb421a07b341a2179d0579
 
-To generate the full diff manually:
-    git show <auto-commit-hash> > analysis/BLK-COMP-02-commit.diff.txt
+To regenerate the full diff:
+    git show 817f83fc41006cd71eeb421a07b341a2179d0579 > analysis/BLK-COMP-02-commit.diff.txt
 
 Preceded by BLK-COMP-01 commit: 73645694c6a3acb39f31426e337b6ec190ec1a04
 
