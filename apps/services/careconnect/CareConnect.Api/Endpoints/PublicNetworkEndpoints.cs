@@ -4,10 +4,15 @@ using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
+using LegalSynq.AuditClient;
+using LegalSynq.AuditClient.DTOs;
+using LegalSynq.AuditClient.Enums;
 using Microsoft.Extensions.Caching.Memory;
 using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
 
 namespace CareConnect.Api.Endpoints;
 
@@ -363,6 +368,7 @@ public static class PublicNetworkEndpoints
                 "Public request rejected: X-Internal-Gateway-Secret mismatch (Layer 1). " +
                 "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
                 http.Connection.RemoteIpAddress, http.Request.Path, requestId);
+            EmitTrustBoundaryRejectedAudit(http, "layer1-gateway-secret-mismatch", requestId);
             return null;
         }
 
@@ -376,6 +382,7 @@ public static class PublicNetworkEndpoints
                 "Public request rejected: X-Tenant-Id header missing (Layer 2). " +
                 "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
                 http.Connection.RemoteIpAddress, http.Request.Path, requestId);
+            EmitTrustBoundaryRejectedAudit(http, "layer2-tenant-id-missing", requestId);
             return null;
         }
 
@@ -385,6 +392,7 @@ public static class PublicNetworkEndpoints
                 "Public request rejected: X-Tenant-Id-Sig header missing (Layer 2). " +
                 "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
                 http.Connection.RemoteIpAddress, http.Request.Path, requestId);
+            EmitTrustBoundaryRejectedAudit(http, "layer2-tenant-id-sig-missing", requestId);
             return null;
         }
 
@@ -394,6 +402,7 @@ public static class PublicNetworkEndpoints
                 "Public request rejected: X-Tenant-Id-Sig HMAC validation failed (Layer 2). " +
                 "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
                 http.Connection.RemoteIpAddress, http.Request.Path, requestId);
+            EmitTrustBoundaryRejectedAudit(http, "layer2-hmac-validation-failed", requestId);
             return null;
         }
 
@@ -403,6 +412,7 @@ public static class PublicNetworkEndpoints
                 "Public request rejected: X-Tenant-Id is not a valid GUID. " +
                 "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
                 http.Connection.RemoteIpAddress, http.Request.Path, requestId);
+            EmitTrustBoundaryRejectedAudit(http, "layer2-tenant-id-invalid-guid", requestId);
             return null;
         }
 
@@ -498,5 +508,52 @@ public static class PublicNetworkEndpoints
     {
         try { _ = new MailAddress(email.Trim()); return true; }
         catch { return false; }
+    }
+
+    // ── BLK-COMP-01: Trust boundary rejection audit ───────────────────────────
+    // Emits security.trust_boundary.rejected to the Audit Service for every failed
+    // validation so that direct-service probes and header spoofing attempts are
+    // permanently reconstructable under SOC 2 / HIPAA audit.
+    //
+    // Fire-and-observe: caller does NOT await — this never gates the 403 response
+    // on audit delivery success ("persist-first, audit-second" rule).
+    //
+    // Resolution is optional via GetService<IAuditEventClient>() so the helper is
+    // safe to call even in environments that have not registered the audit client
+    // (e.g. unit-test hosts).
+    private static void EmitTrustBoundaryRejectedAudit(
+        HttpContext http,
+        string      reason,
+        string      requestId)
+    {
+        var auditClient = http.RequestServices.GetService<IAuditEventClient>();
+        if (auditClient is null) return;
+
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "security.trust_boundary.rejected",
+            EventCategory = EventCategory.Security,
+            SourceSystem  = "care-connect",
+            SourceService = "public-network",
+            Visibility    = AuditVisibility.Platform,
+            Severity      = SeverityLevel.Warn,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+            Action        = "TrustBoundaryRejected",
+            Description   = $"Public request rejected at trust boundary: {reason}.",
+            Outcome       = "denied",
+            Actor = new AuditEventActorDto
+            {
+                Type      = ActorType.Anonymous,
+                IpAddress = http.Connection.RemoteIpAddress?.ToString(),
+            },
+            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Service },
+            CorrelationId = requestId,
+            Metadata      = JsonSerializer.Serialize(new
+            {
+                reason = reason,
+                path   = http.Request.Path.Value,
+            }),
+            Tags = ["security", "trust-boundary", "rejection"],
+        });
     }
 }

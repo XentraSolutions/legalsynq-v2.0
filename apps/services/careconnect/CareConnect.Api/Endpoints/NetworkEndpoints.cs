@@ -4,8 +4,13 @@ using BuildingBlocks.Context;
 using CareConnect.Application.Cache;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
+using LegalSynq.AuditClient;
+using LegalSynq.AuditClient.DTOs;
+using LegalSynq.AuditClient.Enums;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
+using System.Text.Json;
+using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
 
 namespace CareConnect.Api.Endpoints;
 
@@ -35,10 +40,22 @@ public static class NetworkEndpoints
             [FromBody] CreateNetworkRequest request,
             INetworkService service,
             ICurrentRequestContext ctx,
+            IAuditEventClient auditClient,
+            HttpContext http,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var network = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
+            // BLK-COMP-01: Audit network creation — every network lifecycle event is traceable.
+            var correlationId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
+            _ = EmitNetworkAuditAsync(auditClient,
+                eventType:     "careconnect.network.created",
+                action:        "NetworkCreated",
+                description:   $"Network '{network.Name}' created by user.",
+                tenantId:      tenantId,
+                actorUserId:   ctx.UserId,
+                networkId:     network.Id,
+                correlationId: correlationId);
             return Results.Created($"/api/networks/{network.Id}", network);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
@@ -62,7 +79,9 @@ public static class NetworkEndpoints
             [FromBody] UpdateNetworkRequest request,
             INetworkService service,
             ICurrentRequestContext ctx,
+            IAuditEventClient auditClient,
             IMemoryCache cache,
+            HttpContext http,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
@@ -71,6 +90,16 @@ public static class NetworkEndpoints
             // for this tenant+network so the next public read reflects the update.
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
                 cache.Remove(key);
+            // BLK-COMP-01: Audit network update.
+            var correlationId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
+            _ = EmitNetworkAuditAsync(auditClient,
+                eventType:     "careconnect.network.updated",
+                action:        "NetworkUpdated",
+                description:   $"Network '{id}' updated by user.",
+                tenantId:      tenantId,
+                actorUserId:   ctx.UserId,
+                networkId:     id,
+                correlationId: correlationId);
             return Results.Ok(network);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
@@ -80,7 +109,9 @@ public static class NetworkEndpoints
             Guid id,
             INetworkService service,
             ICurrentRequestContext ctx,
+            IAuditEventClient auditClient,
             IMemoryCache cache,
+            HttpContext http,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
@@ -89,6 +120,16 @@ public static class NetworkEndpoints
             // for this tenant+network (list + detail + providers + markers).
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
                 cache.Remove(key);
+            // BLK-COMP-01: Audit network deletion.
+            var correlationId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
+            _ = EmitNetworkAuditAsync(auditClient,
+                eventType:     "careconnect.network.deleted",
+                action:        "NetworkDeleted",
+                description:   $"Network '{id}' deleted by user.",
+                tenantId:      tenantId,
+                actorUserId:   ctx.UserId,
+                networkId:     id,
+                correlationId: correlationId);
             return Results.NoContent();
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
@@ -122,7 +163,9 @@ public static class NetworkEndpoints
             [FromBody] AddProviderToNetworkRequest request,
             INetworkService service,
             ICurrentRequestContext ctx,
+            IAuditEventClient auditClient,
             IMemoryCache cache,
+            HttpContext http,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
@@ -131,6 +174,17 @@ public static class NetworkEndpoints
             // cache entries for this tenant+network so the directory reflects the addition.
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
                 cache.Remove(key);
+            // BLK-COMP-01: Audit provider association — every network membership change is traceable.
+            var correlationId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
+            _ = EmitNetworkAuditAsync(auditClient,
+                eventType:     "careconnect.network.provider_added",
+                action:        "ProviderAdded",
+                description:   $"Provider '{provider.Id}' added to network '{id}' by user.",
+                tenantId:      tenantId,
+                actorUserId:   ctx.UserId,
+                networkId:     id,
+                correlationId: correlationId,
+                metadata:      JsonSerializer.Serialize(new { providerId = provider.Id }));
             return Results.Ok(provider);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
@@ -141,7 +195,9 @@ public static class NetworkEndpoints
             Guid providerId,
             INetworkService service,
             ICurrentRequestContext ctx,
+            IAuditEventClient auditClient,
             IMemoryCache cache,
+            HttpContext http,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
@@ -150,6 +206,17 @@ public static class NetworkEndpoints
             // cache entries for this tenant+network so the directory reflects the removal.
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
                 cache.Remove(key);
+            // BLK-COMP-01: Audit provider disassociation.
+            var correlationId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
+            _ = EmitNetworkAuditAsync(auditClient,
+                eventType:     "careconnect.network.provider_removed",
+                action:        "ProviderRemoved",
+                description:   $"Provider '{providerId}' removed from network '{id}' by user.",
+                tenantId:      tenantId,
+                actorUserId:   ctx.UserId,
+                networkId:     id,
+                correlationId: correlationId,
+                metadata:      JsonSerializer.Serialize(new { providerId = providerId }));
             return Results.NoContent();
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
@@ -179,5 +246,63 @@ public static class NetworkEndpoints
             return Results.Ok(detail.Providers);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+    }
+
+    // ── BLK-COMP-01: Shared audit helper ─────────────────────────────────────────
+    // Mirrors the EmitAuditAsync pattern in ProviderAdminEndpoints.
+    // Fire-and-observe: caller uses `_ = EmitNetworkAuditAsync(...)` — never awaited,
+    // never gates the primary business operation on audit delivery success.
+    private static Task EmitNetworkAuditAsync(
+        IAuditEventClient auditClient,
+        string            eventType,
+        string            action,
+        string            description,
+        Guid              tenantId,
+        Guid?             actorUserId,
+        Guid              networkId,
+        string            correlationId,
+        string?           metadata = null)
+    {
+        try
+        {
+            return auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = eventType,
+                EventCategory = EventCategory.Business,
+                SourceSystem  = "care-connect",
+                SourceService = "network-management",
+                Visibility    = AuditVisibility.Tenant,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+                Scope = new AuditEventScopeDto
+                {
+                    ScopeType = ScopeType.Tenant,
+                    TenantId  = tenantId.ToString(),
+                    UserId    = actorUserId?.ToString(),
+                },
+                Actor = new AuditEventActorDto
+                {
+                    Type = actorUserId.HasValue ? ActorType.User : ActorType.System,
+                    Id   = actorUserId?.ToString() ?? "system",
+                },
+                Entity = new AuditEventEntityDto
+                {
+                    Type = "Network",
+                    Id   = networkId.ToString(),
+                },
+                Action        = action,
+                Description   = description,
+                Outcome       = "success",
+                CorrelationId = correlationId,
+                Metadata      = metadata,
+                IdempotencyKey = IdempotencyKey.ForWithTimestamp(
+                    DateTimeOffset.UtcNow, "care-connect", eventType, networkId.ToString()),
+                Tags = ["network", "careconnect"],
+            });
+        }
+        catch
+        {
+            return Task.CompletedTask;
+        }
     }
 }

@@ -22,9 +22,17 @@
 //   using the service-locator pattern from HttpContext.RequestServices (same pattern as
 //   RequireProductRoleFilter).  Passing httpContext is optional but strongly recommended for
 //   production observability.
+//
+// BLK-COMP-01: Cross-tenant ownership denials (CheckOwnership) also emit a canonical
+//   security.governance.denial audit event via IAuditEventClient (GetService — optional,
+//   never throws). This makes every cross-tenant access attempt reconstructable under audit.
 using BuildingBlocks.Context;
+using LegalSynq.AuditClient;
+using LegalSynq.AuditClient.DTOs;
+using LegalSynq.AuditClient.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace BuildingBlocks.Authorization;
 
@@ -142,6 +150,44 @@ public static class AdminTenantScope
                 ctx.TenantId.Value,
                 resourceTenantId,
                 httpContext?.Request.Path.Value);
+
+            // BLK-COMP-01: Emit canonical security.governance.denial audit event so that
+            // every cross-tenant access attempt is reconstructable under SOC 2 / HIPAA audit.
+            // Fire-and-observe (discard) — never gates the deny response on audit success.
+            _ = GetAuditClient(httpContext)?.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "security.governance.denial",
+                EventCategory = EventCategory.Security,
+                SourceSystem  = "platform",
+                SourceService = "admin-tenant-scope",
+                Visibility    = VisibilityScope.Platform,
+                Severity      = SeverityLevel.Warn,
+                OccurredAtUtc = DateTimeOffset.UtcNow,
+                Action        = "CrossTenantAccessDenied",
+                Description   = "TenantAdmin attempted cross-tenant access to a resource " +
+                                 "owned by a different tenant.",
+                Outcome       = "denied",
+                Actor = new AuditEventActorDto
+                {
+                    Type = ActorType.User,
+                    Id   = ctx.UserId?.ToString(),
+                },
+                Scope = new AuditEventScopeDto
+                {
+                    ScopeType = ScopeType.Tenant,
+                    TenantId  = ctx.TenantId.Value.ToString(),
+                    UserId    = ctx.UserId?.ToString(),
+                },
+                CorrelationId = httpContext?.Items["CorrelationId"]?.ToString(),
+                Metadata      = JsonSerializer.Serialize(new
+                {
+                    callerTenantId   = ctx.TenantId.Value,
+                    resourceTenantId = resourceTenantId,
+                    path             = httpContext?.Request.Path.Value,
+                }),
+                Tags = ["security", "governance", "cross-tenant", "denial"],
+            });
+
             return Results.Forbid();
         }
 
@@ -158,6 +204,17 @@ public static class AdminTenantScope
         var factory = httpContext.RequestServices
             .GetService(typeof(ILoggerFactory)) as ILoggerFactory;
         return factory?.CreateLogger(LogCategory);
+    }
+
+    /// <summary>
+    /// BLK-COMP-01: Optional audit client resolution via service locator.
+    /// Returns null when the host service has not registered IAuditEventClient —
+    /// callers must use null-conditional operators (?.IngestAsync(...)).
+    /// </summary>
+    private static IAuditEventClient? GetAuditClient(HttpContext? httpContext)
+    {
+        if (httpContext is null) return null;
+        return httpContext.RequestServices.GetService(typeof(IAuditEventClient)) as IAuditEventClient;
     }
 }
 
