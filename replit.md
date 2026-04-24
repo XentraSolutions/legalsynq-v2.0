@@ -5903,3 +5903,32 @@ Changed all 8 self-service user events (logout, password_changed, avatar_set/rem
 - `TenantAdmin` users → `CallerScope.TenantAdmin`, `MaxVisibility = Tenant(2)` → see Tenant+Org+User events ✓
 - `StandardUser` users → `CallerScope.TenantUser`, `MaxVisibility = User(4)` → see self-service User-scoped events ✓
 - Admin-only security events (`login.failed`, session invalidation) remain `Tenant`-scoped — not visible to regular users ✓
+
+## PUM-B06 — Platform Admin User Management UI ✅
+
+Platform-internal user management added to Control Center. Only shows `PlatformInternal` users (filtered via `userType=PlatformInternal` query param to Identity `/api/admin/users`).
+
+### Routes
+- **`/platform-users`** — paginated table of PlatformInternal users with invite button
+- **`/platform-users/[userId]`** — full user detail (reuses `UserDetailCard`, `UserActions`, `UserSecurityPanel`, `UserActivityPanel`, `EffectivePermissionsPanel`, `AccessExplanationPanel`, `RoleAssignmentPanel`)
+
+### Frontend files (apps/control-center/src/)
+- `app/platform-users/page.tsx` — list page (Server Component, `requirePlatformAdmin`)
+- `app/platform-users/[userId]/page.tsx` — detail page (Server Component, `requirePlatformAdmin`)
+- `app/platform-users/actions.ts` — `invitePlatformUserAction` Server Action
+- `components/platform-users/platform-user-table.tsx` — sortable table with status badges
+- `components/platform-users/invite-platform-user-modal.tsx` — invite modal (email, first/last name, optional role)
+- `components/platform-users/invite-platform-user-button.tsx` — client button that opens the modal
+- `lib/control-center-api.ts` — added `users.list({ userType })` filter param + `users.invitePlatformUser`
+- `lib/api-mappers.ts` — `mapUserSummary` reads `user_type`/`userType` → `UserSummary.userType`
+- `lib/routes.ts` — added `platformUsers` + `platformUserDetail` route helpers
+- `lib/nav.ts` — added "PLATFORM USERS" nav section
+
+### Backend (apps/services/identity/Identity.Api/Endpoints/AdminEndpoints.cs)
+- `POST /api/admin/platform-users/invite` — `InvitePlatformUserRequest { Email, FirstName, LastName, RoleId? }`
+- Creates `User` with `userType: PlatformInternal`, immediately deactivates (pending activation)
+- Resolves platform tenant as earliest `CreatedAtUtc` active tenant
+- Issues `UserInvitation`, optionally assigns platform role via `ScopedRoleAssignment.Create` (GLOBAL scope)
+- Sends invite email via `emailClient.SendInviteEmailAsync` (best-effort)
+- Emits `identity.platform_user.invited` audit event
+- Returns 201 with `{ activationLink }` (non-production only)

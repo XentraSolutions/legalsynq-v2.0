@@ -135,6 +135,10 @@ public static class AdminEndpoints
         routes.MapPost("/api/admin/users/invite",                           InviteUser)
             .RequirePermission(PermCodes.TenantInvitationsManage);
 
+        // PUM-B06: invite platform internal user (LegalSynq staff)
+        routes.MapPost("/api/admin/platform-users/invite",                  InvitePlatformUser)
+            .RequirePermission(PermCodes.TenantUsersManage);
+
         // UIX-002: resend invite
         routes.MapPost("/api/admin/users/{id:guid}/resend-invite",          ResendInvite)
             .RequirePermission(PermCodes.TenantInvitationsManage);
@@ -4155,6 +4159,142 @@ public static class AdminEndpoints
     }
 
     /// <summary>
+    /// PUM-B06: POST /api/admin/platform-users/invite
+    /// Invites a new PlatformInternal (LegalSynq staff) user.
+    /// Unlike InviteUser, no tenantId is required from the caller — the backend resolves
+    /// the platform system tenant (first active tenant by CreatedAtUtc).
+    /// </summary>
+    private static async Task<IResult> InvitePlatformUser(
+        InvitePlatformUserRequest             body,
+        ClaimsPrincipal                       caller,
+        IdentityDbContext                     db,
+        IPasswordHasher                       passwordHasher,
+        IAuditEventClient                     auditClient,
+        IOptions<NotificationsServiceOptions> notifOptions,
+        INotificationsEmailClient             emailClient,
+        IWebHostEnvironment                   env,
+        ILoggerFactory                        loggerFactory,
+        CancellationToken                     ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.Email))
+            return Results.BadRequest(new { error = "email is required." });
+        if (string.IsNullOrWhiteSpace(body.FirstName))
+            return Results.BadRequest(new { error = "firstName is required." });
+        if (string.IsNullOrWhiteSpace(body.LastName))
+            return Results.BadRequest(new { error = "lastName is required." });
+
+        // Resolve the platform system tenant (first active tenant by age).
+        var platformTenantId = await db.Tenants
+            .Where(t => t.IsActive)
+            .OrderBy(t => t.CreatedAtUtc)
+            .Select(t => t.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (platformTenantId == Guid.Empty)
+            return Results.Problem(
+                detail:     "No active tenant found — cannot create platform user.",
+                statusCode: 500,
+                title:      "Platform Tenant Missing");
+
+        var emailLower = body.Email.ToLowerInvariant().Trim();
+
+        // Reject if this email already exists anywhere in the system.
+        var existing = await db.Users.AnyAsync(u => u.Email == emailLower, ct);
+        if (existing)
+            return Results.Conflict(new { error = $"A user with email '{emailLower}' already exists." });
+
+        // Create user as PlatformInternal + inactive (pending invite acceptance).
+        var tempPasswordHash = passwordHasher.Hash(Guid.NewGuid().ToString());
+        var user = User.Create(
+            platformTenantId,
+            emailLower,
+            tempPasswordHash,
+            body.FirstName.Trim(),
+            body.LastName.Trim(),
+            userType: Identity.Domain.UserType.PlatformInternal);
+        user.Deactivate();
+        db.Users.Add(user);
+
+        // Assign initial Platform role if provided.
+        if (body.RoleId.HasValue && body.RoleId.Value != Guid.Empty)
+        {
+            var role = await db.Roles.FindAsync([body.RoleId.Value], ct);
+            if (role is not null)
+            {
+                var sra = ScopedRoleAssignment.Create(
+                    user.Id, role.Id,
+                    ScopedRoleAssignment.ScopeTypes.Global,
+                    tenantId: platformTenantId,
+                    assignedByUserId: null);
+                db.ScopedRoleAssignments.Add(sra);
+            }
+        }
+
+        // Create invitation token.
+        var rawToken   = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var tokenHash  = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(rawToken)));
+        var invitation = UserInvitation.Create(
+            user.Id, platformTenantId, tokenHash,
+            UserInvitation.PortalOrigins.TenantPortal,
+            invitedByUserId: null);
+        db.UserInvitations.Add(invitation);
+
+        await db.SaveChangesAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType     = "identity.platform_user.invited",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem  = "identity-service",
+            SourceService = "admin-api",
+            Visibility    = VisibilityScope.Platform,
+            Severity      = SeverityLevel.Info,
+            OccurredAtUtc = now,
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Platform },
+            Actor = new AuditEventActorDto { Type = ActorType.System, Name = "admin-api" },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action      = "PlatformUserInvited",
+            Description = $"Platform user '{emailLower}' invited.",
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.platform_user.invited", invitation.Id.ToString()),
+            Tags = ["user-management", "platform-user", "invite"],
+        });
+
+        // Build activation link via tenant portal helper.
+        var logger         = loggerFactory.CreateLogger("AdminEndpoints.InvitePlatformUser");
+        var platformTenant = await db.Tenants.FindAsync([platformTenantId], ct);
+        string? activationLink = null;
+        if (platformTenant is not null)
+        {
+            activationLink = TenantPortalUrlHelper.Build(
+                platformTenant, "accept-invite", rawToken, notifOptions.Value);
+
+            // Send invite email (best-effort).
+            if (!string.IsNullOrWhiteSpace(activationLink))
+            {
+                var displayName = $"{body.FirstName.Trim()} {body.LastName.Trim()}".Trim();
+                var (_, _, emailError) = await emailClient.SendInviteEmailAsync(
+                    emailLower, displayName, activationLink, platformTenantId, ct);
+                if (emailError is not null)
+                    logger.LogWarning(
+                        "PUM-B06: Invite email to platform user {Email} failed: {Error}",
+                        emailLower, emailError);
+            }
+        }
+
+        if (!env.IsProduction() && activationLink is not null)
+            return Results.Created(
+                $"/api/admin/users/{user.Id}",
+                new { userId = user.Id, invitationId = invitation.Id, email = emailLower, activationLink });
+
+        return Results.Created(
+            $"/api/admin/users/{user.Id}",
+            new { userId = user.Id, invitationId = invitation.Id, email = emailLower });
+    }
+
+    /// <summary>
     /// POST /api/admin/users/{id}/resend-invite
     /// Revokes all pending invitations for the user, creates a new one.
     /// </summary>
@@ -5377,6 +5517,13 @@ public static class AdminEndpoints
         string  LastName,
         Guid?   RoleId          = null,
         Guid?   InvitedByUserId = null);
+
+    /// <summary>PUM-B06: Payload for inviting a PlatformInternal (staff) user.</summary>
+    private record InvitePlatformUserRequest(
+        string  Email,
+        string  FirstName,
+        string  LastName,
+        Guid?   RoleId = null);
 
     private record AssignMembershipRequest(
         Guid    OrganizationId,
