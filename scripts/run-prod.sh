@@ -194,7 +194,11 @@ if command -v dotnet &>/dev/null; then
             "NotificationsService__PortalBaseUrl=${_portal_url}"
           PID_IDENTITY=$! ;;
         Fund.Api)      launch_svc "$_svc_label" "$csproj"; PID_FUND=$! ;;
-        CareConnect.Api) launch_svc "$_svc_label" "$csproj"; PID_CARECONNECT=$! ;;
+        CareConnect.Api)
+          launch_svc "$_svc_label" "$csproj" env \
+            "IdentityService__BaseUrl=http://localhost:5001" \
+            "TenantService__BaseUrl=http://localhost:5005"
+          PID_CARECONNECT=$! ;;
         Documents.Api) launch_svc "$_svc_label" "$csproj"; PID_DOCUMENTS=$! ;;
         Liens.Api)     launch_svc "$_svc_label" "$csproj"; PID_LIENS=$! ;;
         *)             launch_svc "$_svc_label" "$csproj" ;;
