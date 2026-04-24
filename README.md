@@ -11,6 +11,11 @@ LegalSynq provides an integrated suite of products for legal firms, healthcare p
 - **SynqFund** — Funding application workflow (submission, review, approval)
 - **SynqAudit** — Platform-wide audit trail, user activity monitoring, and compliance investigation
 - **Notifications** — Multi-channel notification delivery (email via SendGrid, SMS via Twilio, SMTP)
+- **Comms** — Internal communications and document-linked messaging between platform participants
+- **Flow** — Workflow and task orchestration with SLA tracking, work distribution, and assignment recommendations
+- **Monitoring** — Platform health monitoring, uptime aggregation, alerting, and service status tracking
+- **Task** — Standalone task management service for tracking and assigning work items across the platform
+- **Reports** — Scheduled and on-demand reporting with delivery via email, SFTP, and cloud storage
 
 ## Architecture
 
@@ -29,12 +34,12 @@ LegalSynq provides an integrated suite of products for legal firms, healthcare p
               │  Port 5010  │
               └──────┬──────┘
                      │
-    ┌────────────────┼────────────────┐
-    │                │                │
-┌───┴───┐  ┌────────┴────┐  ┌───────┴───────┐
-│Identity│  │  CareConnect │  │     Liens     │
-│ :5001  │  │    :5003     │  │     :5009     │
-└────────┘  └──────────────┘  └───────────────┘
+    ┌────────────────┼────────────────────────────┐
+    │                │                            │
+┌───┴───┐  ┌────────┴────┐  ┌───────┴───────┐  ┌─┴──────┐
+│Identity│  │  CareConnect │  │     Liens     │  │ Tenant │
+│ :5001  │  │    :5003     │  │     :5009     │  │ :5005  │
+└────────┘  └──────────────┘  └───────────────┘  └────────┘
     │                │                │
 ┌───┴───┐  ┌────────┴────┐  ┌───────┴───────┐
 │ Fund  │  │ Notifications│  │   Documents   │
@@ -44,7 +49,19 @@ LegalSynq provides an integrated suite of products for legal firms, healthcare p
               ┌──────┴──────┐
               │    Audit    │
               │    :5007    │
-              └─────────────┘
+              └──────┬──────┘
+                     │
+    ┌────────────────┼────────────────────────────┐
+    │                │                            │
+┌───┴───┐  ┌────────┴────┐  ┌───────┴───────┐  ┌─┴──────┐
+│ Comms │  │    Flow     │  │  Monitoring   │  │ Task   │
+│ :5011 │  │   :5012     │  │    :5015      │  │ :5016  │
+└───────┘  └─────────────┘  └───────────────┘  └────────┘
+    │
+┌───┴──────┐  ┌────────────────┐
+│ Reports  │  │ Artifacts API  │
+│  :5029   │  │    :5020       │
+└──────────┘  └────────────────┘
 ```
 
 ### Service Layering
@@ -69,6 +86,7 @@ Service.Infrastructure/   → DbContext, repositories, external integrations
 | Layer | Technology |
 |---|---|
 | Frontend | Next.js 15.2.9, React 18, TypeScript, Tailwind CSS |
+| Flow Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS (standalone app) |
 | Gateway | ASP.NET Core + YARP reverse proxy |
 | Services | ASP.NET Core 8.0 Minimal APIs |
 | ORM | Entity Framework Core 8.0 (Pomelo MySQL) |
@@ -76,6 +94,7 @@ Service.Infrastructure/   → DbContext, repositories, external integrations
 | Auth | JWT Bearer tokens, BFF session cookies |
 | Email | SendGrid, SMTP (MailKit) |
 | SMS | Twilio |
+| Artifacts API | Node.js + TypeScript (ts-node-dev) |
 
 ## Multi-Tenancy
 
@@ -112,11 +131,28 @@ This starts:
 | Fund Service | 5002 |
 | CareConnect Service | 5003 |
 | Control Center (Next.js) | 5004 |
+| Tenant Service | 5005 |
 | Documents Service | 5006 |
 | Audit Service | 5007 |
 | Notifications Service | 5008 |
 | Liens Service | 5009 |
 | Gateway (YARP) | 5010 |
+| Comms Service | 5011 |
+| Flow Service (backend) | 5012 |
+| Monitoring Service | 5015 |
+| Task Service | 5016 |
+| Artifacts API | 5020 |
+| Reports Service | 5029 |
+
+The Flow frontend (`apps/services/flow/frontend`) is a standalone Next.js app that is **not** started by `run-dev.sh`. Start it separately:
+
+| Component | Port |
+|---|---|
+| Flow Frontend (Next.js) | 3000 |
+
+```bash
+cd apps/services/flow/frontend && npm run dev
+```
 
 ### Environment Variables
 
@@ -127,7 +163,7 @@ Each service reads its configuration from `appsettings.json` and `appsettings.De
 | Variable | Default | Description |
 |---|---|---|
 | `PROBE_TIMEOUT_NODEJS` | `60` | Seconds to wait for Node.js services (Web, Proxy, Control Center, Artifacts) to respond to their health endpoint before logging a warning. |
-| `PROBE_TIMEOUT_DOTNET` | `90` | Seconds to wait for .NET services (Identity, Fund, CareConnect, Documents, Audit, Notifications, Liens, Gateway, Flow) to respond to their health endpoint before logging a warning. |
+| `PROBE_TIMEOUT_DOTNET` | `90` | Seconds to wait for .NET services (Identity, Fund, CareConnect, Documents, Audit, Notifications, Liens, Gateway, Flow, Comms, Monitoring, Task, Reports, Tenant) to respond to their health endpoint before logging a warning. |
 
 Set these in the deployment environment to tune probe deadlines without editing the script.
 
@@ -145,7 +181,17 @@ Set these in the deployment environment to tune probe deadlines without editing 
 │       ├── liens/              # Lien lifecycle, offers, bills of sale
 │       ├── documents/          # Document storage
 │       ├── notifications/      # Email, SMS delivery
-│       └── audit/              # Audit event logging and querying
+│       ├── audit/              # Audit event logging and querying
+│       ├── tenant/             # Tenant configuration and branding
+│       ├── comms/              # Internal communications and messaging
+│       ├── flow/               # Workflow orchestration (backend + standalone frontend)
+│       │   ├── backend/        # .NET Flow API (port 5012)
+│       │   └── frontend/       # Standalone Next.js Flow UI
+│       ├── monitoring/         # Health monitoring, uptime, and alerting
+│       ├── task/               # Task management and assignment
+│       └── reports/            # Scheduled and on-demand reporting
+├── artifacts/
+│   └── api-server/             # Node.js artifacts API server (port 5020)
 ├── shared/
 │   ├── building-blocks/        # Base types and utilities
 │   ├── contracts/              # Shared API contracts
@@ -163,6 +209,10 @@ The main application for end users. Uses a BFF (Backend for Frontend) pattern wh
 ### Control Center (`apps/control-center`)
 
 Internal administration portal for platform operators. Provides tenant management, cross-tenant user administration, audit investigation, and system monitoring. Requires `PlatformAdmin` role.
+
+### Flow Frontend (`apps/services/flow/frontend`)
+
+Standalone Next.js 16 application for the Flow workflow product. Runs independently from the main tenant app and connects to the Flow backend service via the gateway.
 
 ## License
 
