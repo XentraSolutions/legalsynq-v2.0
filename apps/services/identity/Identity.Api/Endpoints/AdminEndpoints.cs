@@ -185,6 +185,12 @@ public static class AdminEndpoints
         routes.MapPost  ("/api/admin/users/{id:guid}/products/{productKey}/roles",                       AssignUserProductRole);
         routes.MapDelete("/api/admin/users/{id:guid}/products/{productKey}/roles/{assignmentId:guid}",   RevokeUserProductRole);
 
+        // ── PUM-B05: External customer user management ─────────────────────────
+        routes.MapPost("/api/admin/external-users",                                                      CreateExternalUser);
+        routes.MapGet ("/api/admin/external-users",                                                      ListExternalUsers);
+        routes.MapGet ("/api/admin/external-users/{userId:guid}",                                        GetExternalUser);
+        routes.MapGet ("/api/admin/external-users/{userId:guid}/products/{productKey}/access",           CheckExternalUserProductAccess);
+
         // ── Memberships ───────────────────────────────────────────────────────
         // UIX-002: assign user to organization, set primary, remove (scaffold)
         // LS-ID-TNT-012: membership mutations gated on TENANT.users:manage.
@@ -3378,6 +3384,19 @@ public static class AdminEndpoints
             return Results.NotFound(new { error = $"Role '{identifier}' not found." });
         }
 
+        // ── PUM-B05-R07/R08: ExternalCustomer role guard ────────────────────
+        // ExternalCustomer users may not receive Platform or Tenant roles.
+        // Only Product-scoped roles are permitted (via the product-role endpoints).
+        if (user.UserType == UserType.ExternalCustomer &&
+            role.Scope is RoleScopes.Platform or RoleScopes.Tenant)
+            return Results.BadRequest(new
+            {
+                error   = "EXTERNAL_USER_ROLE_FORBIDDEN",
+                message = $"ExternalCustomer users cannot be assigned Platform or Tenant roles. " +
+                          $"Role '{role.Name}' has scope '{role.Scope ?? "(none)"}'. " +
+                          "Assign product-scoped roles via POST /api/admin/users/{id}/products/{productKey}/roles.",
+            });
+
         // ── LS-ID-TNT-009: Platform-role guard (PUM-B03-R07) ────────────────
         // TenantAdmins may only assign roles with Scope == "Tenant".
         // Platform-scoped roles can only be assigned by a PlatformAdmin.
@@ -6228,6 +6247,15 @@ public static class AdminEndpoints
         if (user.TenantId != tenantId)
             return Results.Forbid();
 
+        // PUM-B05-R08: ExternalCustomer users must not receive tenant roles
+        if (user.UserType == UserType.ExternalCustomer)
+            return Results.BadRequest(new
+            {
+                error   = "EXTERNAL_USER_ROLE_FORBIDDEN",
+                message = "ExternalCustomer users cannot be assigned tenant roles. " +
+                          "Use product-scoped roles via POST /api/admin/users/{id}/products/{productKey}/roles.",
+            });
+
         // Resolve role by roleId or roleKey
         Role? role = null;
         if (body.RoleId.HasValue && body.RoleId != Guid.Empty)
@@ -6745,6 +6773,348 @@ public static class AdminEndpoints
         string? RoleCode = null,
         string? RoleName = null,
         Guid?   TenantId = null);
+
+    // =========================================================================
+    // PUM-B05: EXTERNAL CUSTOMER USERS
+    // =========================================================================
+
+    /// <summary>
+    /// PUM-B05-R03: POST /api/admin/external-users
+    ///
+    /// Creates an ExternalCustomer user linked to a tenant.
+    /// Idempotent — if an ExternalCustomer with the same email+tenantId already
+    /// exists, returns the existing record (200 with alreadyExisted: true).
+    /// If the email exists but belongs to a non-ExternalCustomer user → 409.
+    ///
+    /// productKeys are optional. All supplied keys are validated BEFORE the user
+    /// is saved — the operation is atomic (no partial product grants).
+    ///
+    /// External users receive a cryptographically random unusable password hash;
+    /// they cannot authenticate via the internal login flow.
+    /// </summary>
+    private static async Task<IResult> CreateExternalUser(
+        CreateExternalUserRequest body,
+        IdentityDbContext         db,
+        ClaimsPrincipal           caller,
+        IPasswordHasher           passwordHasher,
+        CancellationToken         ct)
+    {
+        if (body.TenantId == Guid.Empty)
+            return Results.BadRequest(new { error = "tenantId is required." });
+        if (string.IsNullOrWhiteSpace(body.Email))
+            return Results.BadRequest(new { error = "email is required." });
+        if (string.IsNullOrWhiteSpace(body.FirstName))
+            return Results.BadRequest(new { error = "firstName is required." });
+        if (string.IsNullOrWhiteSpace(body.LastName))
+            return Results.BadRequest(new { error = "lastName is required." });
+
+        if (IsCrossTenantAccess(caller, body.TenantId)) return Results.Forbid();
+
+        var tenantExists = await db.Tenants.AnyAsync(t => t.Id == body.TenantId, ct);
+        if (!tenantExists)
+            return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
+
+        var emailNorm = body.Email.ToLowerInvariant().Trim();
+
+        // Idempotent: check for existing user with same email + tenant
+        var existingUser = await db.Users
+            .Where(u => u.TenantId == body.TenantId && u.Email == emailNorm)
+            .Select(u => new { u.Id, u.UserType })
+            .FirstOrDefaultAsync(ct);
+
+        if (existingUser is not null)
+        {
+            if (existingUser.UserType != UserType.ExternalCustomer)
+                return Results.Conflict(new
+                {
+                    error   = "CONFLICTING_USER_TYPE",
+                    message = $"A non-ExternalCustomer user with email '{emailNorm}' already exists in this tenant. " +
+                              $"Existing user type: {existingUser.UserType}.",
+                    existingUserId = existingUser.Id,
+                });
+
+            // Return existing external user — idempotent
+            return Results.Ok(new
+            {
+                userId        = existingUser.Id,
+                tenantId      = body.TenantId,
+                email         = emailNorm,
+                alreadyExisted = true,
+            });
+        }
+
+        // Validate ALL productKeys before saving (fail fast — no partial grants)
+        var dbCodes = new List<string>();
+        if (body.ProductKeys is { Count: > 0 })
+        {
+            foreach (var key in body.ProductKeys)
+            {
+                var dbCode = await ResolveProductCode(key, db, ct);
+                if (dbCode is null)
+                    return Results.BadRequest(new
+                    {
+                        error   = $"Product '{key}' not found or is inactive.",
+                        message = "All productKeys must be valid and active. No user or product access was created.",
+                    });
+                dbCodes.Add(dbCode);
+            }
+        }
+
+        // Create external user with an unusable password hash
+        // (ExternalCustomers do not authenticate via the internal login flow)
+        var unusableHash = passwordHasher.Hash(Guid.NewGuid().ToString());
+        var user = User.Create(
+            tenantId:     body.TenantId,
+            email:        emailNorm,
+            passwordHash: unusableHash,
+            firstName:    body.FirstName.Trim(),
+            lastName:     body.LastName.Trim(),
+            userType:     UserType.ExternalCustomer);
+
+        // Respect explicit isActive = false; default is active (true)
+        if (body.IsActive == false)
+            user.Deactivate();
+
+        db.Users.Add(user);
+
+        // Grant product access for each validated product code
+        foreach (var dbCode in dbCodes)
+        {
+            var access = UserProductAccess.Create(body.TenantId, user.Id, dbCode);
+            db.UserProductAccessRecords.Add(access);
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        return Results.Created(
+            $"/api/admin/external-users/{user.Id}",
+            new
+            {
+                userId         = user.Id,
+                tenantId       = user.TenantId,
+                email          = user.Email,
+                firstName      = user.FirstName,
+                lastName       = user.LastName,
+                userType       = user.UserType.ToString(),
+                isActive       = user.IsActive,
+                createdAtUtc   = user.CreatedAtUtc,
+                productAccess  = dbCodes,
+                alreadyExisted = false,
+            });
+    }
+
+    /// <summary>
+    /// PUM-B05-R04: GET /api/admin/external-users
+    ///
+    /// Lists ExternalCustomer users with optional filtering.
+    /// PlatformAdmin can list across all tenants; TenantAdmin sees own-tenant only.
+    ///
+    /// Query: tenantId, productKey, search, isActive, page, pageSize
+    /// </summary>
+    private static async Task<IResult> ListExternalUsers(
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct,
+        string  tenantId  = "",
+        string  productKey = "",
+        string  search    = "",
+        string  isActive  = "",
+        int     page      = 1,
+        int     pageSize  = 20)
+    {
+        var isPlatformAdmin = caller.IsInRole("PlatformAdmin");
+        var callerTenantId  = caller.FindFirstValue("tenant_id");
+
+        var q = db.Users.Where(u => u.UserType == UserType.ExternalCustomer);
+
+        // Tenant isolation
+        if (!isPlatformAdmin)
+        {
+            if (!Guid.TryParse(callerTenantId, out var callerTid)) return Results.Forbid();
+            q = q.Where(u => u.TenantId == callerTid);
+        }
+        else if (!string.IsNullOrWhiteSpace(tenantId) && Guid.TryParse(tenantId, out var tid))
+        {
+            q = q.Where(u => u.TenantId == tid);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+            q = q.Where(u =>
+                u.Email.Contains(search) ||
+                u.FirstName.Contains(search) ||
+                u.LastName.Contains(search));
+
+        var isActiveTrimmed = isActive.Trim().ToLowerInvariant();
+        if (isActiveTrimmed == "true")  q = q.Where(u => u.IsActive);
+        else if (isActiveTrimmed == "false") q = q.Where(u => !u.IsActive);
+
+        // productKey filter — join via UserProductAccessRecords
+        if (!string.IsNullOrWhiteSpace(productKey))
+        {
+            var filterCode = FrontendToDbProductCode.TryGetValue(productKey, out var mapped)
+                ? mapped
+                : productKey.ToUpperInvariant().Trim();
+            q = q.Where(u => db.UserProductAccessRecords.Any(a =>
+                a.UserId == u.Id && a.ProductCode == filterCode &&
+                a.AccessStatus == AccessStatus.Granted));
+        }
+
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        page     = Math.Max(1, page);
+
+        var total = await q.CountAsync(ct);
+
+        var items = await q
+            .OrderBy(u => u.Email)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(u => new
+            {
+                id           = u.Id,
+                email        = u.Email,
+                firstName    = u.FirstName,
+                lastName     = u.LastName,
+                displayName  = u.FirstName + " " + u.LastName,
+                userType     = u.UserType.ToString(),
+                isActive     = u.IsActive,
+                tenantId     = u.TenantId,
+                tenantCode   = u.Tenant.Code,
+                createdAtUtc = u.CreatedAtUtc,
+                updatedAtUtc = u.UpdatedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        return Results.Ok(new { items, totalCount = total, page, pageSize });
+    }
+
+    /// <summary>
+    /// PUM-B05-R05: GET /api/admin/external-users/{userId}
+    ///
+    /// Returns full profile for a single ExternalCustomer user, including product access.
+    /// Returns 400 if the user exists but is not an ExternalCustomer.
+    /// Returns 404 if the user does not exist.
+    /// Enforces tenant isolation.
+    /// </summary>
+    private static async Task<IResult> GetExternalUser(
+        Guid              userId,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct)
+    {
+        var user = await db.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+
+        if (user is null)
+            return Results.NotFound(new { error = $"User '{userId}' not found." });
+
+        if (user.UserType != UserType.ExternalCustomer)
+            return Results.BadRequest(new
+            {
+                error   = "USER_TYPE_MISMATCH",
+                message = $"User '{userId}' is not an ExternalCustomer (actual type: {user.UserType}). " +
+                          $"Use GET /api/admin/users/{userId} for non-external users.",
+            });
+
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var productAccess = await db.UserProductAccessRecords
+            .Where(a => a.UserId == userId)
+            .OrderBy(a => a.ProductCode)
+            .ToListAsync(ct);
+
+        var codes    = productAccess.Select(r => r.ProductCode).Distinct().ToList();
+        var products = await db.Products
+            .Where(p => codes.Contains(p.Code))
+            .ToDictionaryAsync(p => p.Code, p => p.Name, ct);
+
+        return Results.Ok(new
+        {
+            userId        = user.Id,
+            tenantId      = user.TenantId,
+            tenantCode    = user.Tenant.Code,
+            email         = user.Email,
+            firstName     = user.FirstName,
+            lastName      = user.LastName,
+            displayName   = $"{user.FirstName} {user.LastName}",
+            userType      = user.UserType.ToString(),
+            isActive      = user.IsActive,
+            createdAtUtc  = user.CreatedAtUtc,
+            updatedAtUtc  = user.UpdatedAtUtc,
+            lastLoginAtUtc = user.LastLoginAtUtc,
+            productAccess = productAccess.Select(a => new
+            {
+                id           = a.Id,
+                productCode  = a.ProductCode,
+                displayName  = products.GetValueOrDefault(a.ProductCode, a.ProductCode),
+                accessStatus = a.AccessStatus.ToString(),
+                isActive     = a.AccessStatus == AccessStatus.Granted,
+                grantedAtUtc = a.GrantedAtUtc,
+                revokedAtUtc = a.RevokedAtUtc,
+            }),
+        });
+    }
+
+    /// <summary>
+    /// PUM-B05-R10: GET /api/admin/external-users/{userId}/products/{productKey}/access
+    ///
+    /// Checks whether an ExternalCustomer user has active access to a specific product.
+    /// Reuses the same AccessStatus.Granted lookup as PUM-B04 CheckUserProductAccess
+    /// but additionally guards that the user is of type ExternalCustomer.
+    /// Always returns 200 — the hasAccess field carries the boolean result.
+    /// </summary>
+    private static async Task<IResult> CheckExternalUserProductAccess(
+        Guid              userId,
+        string            productKey,
+        IdentityDbContext db,
+        ClaimsPrincipal   caller,
+        CancellationToken ct,
+        Guid?             tenantId = null)
+    {
+        var user = await db.Users.FindAsync([userId], ct);
+        if (user is null)
+            return Results.NotFound(new { error = $"User '{userId}' not found." });
+
+        if (user.UserType != UserType.ExternalCustomer)
+            return Results.BadRequest(new
+            {
+                error   = "USER_TYPE_MISMATCH",
+                message = $"User '{userId}' is not an ExternalCustomer (actual type: {user.UserType}). " +
+                          $"Use GET /api/admin/users/{userId}/products/{productKey}/access for non-external users.",
+            });
+
+        if (IsCrossTenantAccess(caller, user.TenantId)) return Results.Forbid();
+
+        var effectiveTenantId = tenantId ?? user.TenantId;
+
+        var dbCode = await ResolveProductCode(productKey, db, ct);
+        if (dbCode is null)
+            return Results.NotFound(new { error = $"Product '{productKey}' not found or is inactive." });
+
+        var hasAccess = await db.UserProductAccessRecords
+            .AnyAsync(a => a.TenantId == effectiveTenantId
+                        && a.UserId == userId
+                        && a.ProductCode == dbCode
+                        && a.AccessStatus == AccessStatus.Granted, ct);
+
+        return Results.Ok(new
+        {
+            hasAccess,
+            userId,
+            productCode = dbCode,
+            tenantId    = effectiveTenantId,
+        });
+    }
+
+    // ── PUM-B05 DTO ───────────────────────────────────────────────────────────
+
+    private record CreateExternalUserRequest(
+        Guid          TenantId,
+        string        Email,
+        string        FirstName,
+        string        LastName,
+        bool?         IsActive    = null,
+        List<string>? ProductKeys = null);
 
 }
 
