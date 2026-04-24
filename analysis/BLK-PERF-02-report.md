@@ -221,7 +221,7 @@ platform-wide aggregates never leak into tenant-scoped views and vice versa.
 
 ## 12. GitHub Commits
 
-*(to be filled after commit)*
+- `54713029cb24a2bec6eeab3d7f0acbdb8ca7770a` — BLK-PERF-02: Add IMemoryCache caching layer to CareConnect (public network, categories, admin dashboard); write-path invalidation on network/provider mutations
 
 ---
 
