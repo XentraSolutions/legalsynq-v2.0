@@ -14,9 +14,18 @@ internal static class SeedIds
     // ── Tenant ────────────────────────────────────────────────────────────────
     public static readonly Guid TenantLegalSynq = new("20000000-0000-0000-0000-000000000001");
 
-    // ── System Roles ────────────────────────────────────────────────────────
-    public static readonly Guid RolePlatformAdmin = new("30000000-0000-0000-0000-000000000001");
+    // ── System Roles — Platform ──────────────────────────────────────────────
+    public static readonly Guid RolePlatformAdmin   = new("30000000-0000-0000-0000-000000000001");
+    public static readonly Guid RolePlatformOps     = new("30000000-0000-0000-0000-000000000004");
+    public static readonly Guid RolePlatformSupport = new("30000000-0000-0000-0000-000000000005");
+    public static readonly Guid RolePlatformBilling = new("30000000-0000-0000-0000-000000000006");
+    public static readonly Guid RolePlatformAuditor = new("30000000-0000-0000-0000-000000000007");
+
+    // ── System Roles — Tenant ────────────────────────────────────────────────
     public static readonly Guid RoleTenantAdmin   = new("30000000-0000-0000-0000-000000000002");
+    public static readonly Guid RoleTenantManager = new("30000000-0000-0000-0000-000000000008");
+    public static readonly Guid RoleTenantStaff   = new("30000000-0000-0000-0000-000000000009");
+    public static readonly Guid RoleTenantViewer  = new("30000000-0000-0000-0000-000000000010");
     public static readonly Guid RoleStandardUser  = new("30000000-0000-0000-0000-000000000003");
 
     // ── Organizations ─────────────────────────────────────────────────────────
@@ -135,4 +144,18 @@ internal static class SeedIds
     public static readonly Guid PermTaskAssign   = new("60000000-0000-0000-0000-000000000049");
     public static readonly Guid PermTaskComplete = new("60000000-0000-0000-0000-000000000050");
     public static readonly Guid PermTaskCancel   = new("60000000-0000-0000-0000-000000000051");
+
+    // ── PUM-B02: Permissions — Platform-level operations (SYNQ_PLATFORM) ─────────
+    // IDs 0052-0062
+    public static readonly Guid PermPlatformUsersRead     = new("60000000-0000-0000-0000-000000000052");
+    public static readonly Guid PermPlatformUsersManage   = new("60000000-0000-0000-0000-000000000053");
+    public static readonly Guid PermPlatformRolesRead     = new("60000000-0000-0000-0000-000000000054");
+    public static readonly Guid PermPlatformRolesManage   = new("60000000-0000-0000-0000-000000000055");
+    public static readonly Guid PermPlatformTenantsRead   = new("60000000-0000-0000-0000-000000000056");
+    public static readonly Guid PermPlatformTenantsManage = new("60000000-0000-0000-0000-000000000057");
+    public static readonly Guid PermPlatformProductsRead  = new("60000000-0000-0000-0000-000000000058");
+    public static readonly Guid PermPlatformProductsManage= new("60000000-0000-0000-0000-000000000059");
+    public static readonly Guid PermPlatformMonitoringRead= new("60000000-0000-0000-0000-000000000060");
+    public static readonly Guid PermPlatformAuditRead     = new("60000000-0000-0000-0000-000000000061");
+    public static readonly Guid PermTenantSettingsRead    = new("60000000-0000-0000-0000-000000000062");
 }

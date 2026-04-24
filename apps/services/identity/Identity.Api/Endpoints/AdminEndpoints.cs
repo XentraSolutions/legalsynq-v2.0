@@ -2580,14 +2580,19 @@ public static class AdminEndpoints
 
     private static async Task<IResult> ListRoles(
         IdentityDbContext db,
-        int page     = 1,
-        int pageSize = 20)
+        int    page     = 1,
+        int    pageSize = 20,
+        string scope    = "")
     {
-        var total = await db.Roles.CountAsync();
+        var q = db.Roles.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(scope))
+            q = q.Where(r => r.Scope == scope);
+
+        var total = await q.CountAsync();
 
         // UIX-005: materialize roles first, then join capability counts
         // (EF Core LINQ restriction: cannot call Count inside Select on nav collections)
-        var roleList = await db.Roles
+        var roleList = await q
             .OrderBy(r => r.IsSystemRole ? 0 : 1)
             .ThenBy(r => r.Name)
             .Skip((page - 1) * pageSize)
@@ -2631,6 +2636,7 @@ public static class AdminEndpoints
                 name            = r.Name,
                 description     = r.Description ?? "",
                 isSystemRole    = r.IsSystemRole,
+                scope           = r.Scope,
                 isProductRole,
                 productCode     = isProductRole ? pr!.Product.Code : (string?)null,
                 productName     = isProductRole ? pr!.Product.Name : (string?)null,
@@ -2687,6 +2693,7 @@ public static class AdminEndpoints
             name                = r.Name,
             description         = r.Description ?? "",
             isSystemRole        = r.IsSystemRole,
+            scope               = r.Scope,
             userCount,
             permissionCount     = permAssignments.Count,
             permissions         = resolvedPermissions.Select(p => p.key).ToArray(),
@@ -3341,8 +3348,20 @@ public static class AdminEndpoints
         // UIX-003-01: TenantAdmin may only assign roles within their own tenant.
         if (IsCrossTenantAccess(ctx.User, user.TenantId)) return Results.Forbid();
 
-        var role = await db.Roles.FindAsync(body.RoleId);
-        if (role is null) return Results.NotFound(new { error = $"Role '{body.RoleId}' not found." });
+        // PUM-B02-R10: resolve role by roleId or roleKey (name).
+        Role? role = null;
+        if (body.RoleId.HasValue && body.RoleId != Guid.Empty)
+            role = await db.Roles.FindAsync(body.RoleId.Value);
+        else if (!string.IsNullOrWhiteSpace(body.RoleKey))
+            role = await db.Roles.FirstOrDefaultAsync(r => r.Name == body.RoleKey.Trim());
+        else
+            return Results.BadRequest(new { error = "Either roleId or roleKey must be provided." });
+
+        if (role is null)
+        {
+            var identifier = body.RoleId.HasValue ? body.RoleId.ToString() : body.RoleKey;
+            return Results.NotFound(new { error = $"Role '{identifier}' not found." });
+        }
 
         // ── LS-ID-TNT-009: Platform-role guard ──────────────────────────────
         // TenantAdmins may only assign system roles that are valid at tenant level.
@@ -3449,7 +3468,7 @@ public static class AdminEndpoints
         var alreadyAssigned = await db.ScopedRoleAssignments
             .AnyAsync(s =>
                 s.UserId     == id &&
-                s.RoleId     == body.RoleId &&
+                s.RoleId     == role.Id &&
                 s.IsActive   &&
                 s.ScopeType  == ScopedRoleAssignment.ScopeTypes.Global);
         if (alreadyAssigned)
@@ -3460,7 +3479,7 @@ public static class AdminEndpoints
         // LS-COR-AUT-007: GLOBAL scope only — no org/product/relationship context.
         var sra = ScopedRoleAssignment.Create(
             userId:           id,
-            roleId:           body.RoleId,
+            roleId:           role.Id,
             scopeType:        ScopedRoleAssignment.ScopeTypes.Global,
             tenantId:         user.TenantId,
             assignedByUserId: body.AssignedByUserId);
@@ -3484,7 +3503,7 @@ public static class AdminEndpoints
             Entity = new AuditEventEntityDto { Type = "User", Id = id.ToString() },
             Action      = "RoleAssigned",
             Description = $"Role '{role.Name}' ({scopeType}) assigned to user {id}.",
-            After       = JsonSerializer.Serialize(new { roleId = body.RoleId, roleName = role.Name, scopeType, organizationId = body.OrganizationId }),
+            After       = JsonSerializer.Serialize(new { roleId = role.Id, roleName = role.Name, scopeType, organizationId = body.OrganizationId }),
             IdempotencyKey = IdempotencyKey.For("identity-service", "identity.role.assigned", sra.Id.ToString()),
             Tags = ["role-management", "access-control"],
         });
@@ -3494,15 +3513,15 @@ public static class AdminEndpoints
         notificationsCache.InvalidateTenant(
             user.TenantId,
             eventType: "identity.role.assigned",
-            reason:    $"role {body.RoleId} assigned to user {id}");
+            reason:    $"role {role.Id} assigned to user {id}");
 
         return Results.Created(
-            $"/api/admin/users/{id}/roles/{body.RoleId}",
+            $"/api/admin/users/{id}/roles/{role.Id}",
             new
             {
                 assignmentId              = sra.Id,
                 userId                    = id,
-                roleId                    = body.RoleId,
+                roleId                    = role.Id,
                 roleName                  = role.Name,
                 scopeType                 = scopeType,
                 organizationId            = body.OrganizationId,
@@ -5262,10 +5281,15 @@ public static class AdminEndpoints
 
     private record UpdateProviderModeRequest(string ProviderMode);
 
+    /// <summary>
+    /// PUM-B02-R10: roleId or roleKey must be provided (not both required).
+    /// If both are supplied, roleId takes precedence.
+    /// </summary>
     private record AssignRoleRequest(
-        Guid    RoleId,
+        Guid?   RoleId                       = null,
+        string? RoleKey                      = null,
         Guid?   AssignedByUserId             = null,
-        /// <summary>Defaults to GLOBAL when omitted. Valid: GLOBAL, ORGANIZATION, PRODUCT, RELATIONSHIP, TENANT.</summary>
+        /// <summary>Defaults to GLOBAL when omitted. Valid: GLOBAL.</summary>
         string? ScopeType                    = null,
         Guid?   OrganizationId               = null,
         Guid?   ProductId                    = null,
