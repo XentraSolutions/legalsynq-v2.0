@@ -2,22 +2,23 @@
 
 import { useState }              from 'react';
 import { useRouter }             from 'next/navigation';
-import type { UserSummary }      from '@/types/control-center';
-import { UserListTable }         from './user-list-table';
-import { InviteUserModal }       from './invite-user-modal';
+import type { TenantUserSummary, RoleSummary } from '@/types/control-center';
+import { TenantUserTable }       from '@/components/tenant-users/tenant-user-table';
+import { AddUserToTenantModal }  from '@/components/tenant-users/add-user-to-tenant-modal';
 import { TenantGroupsPanel }     from './tenant-groups-panel';
 import { TenantPermissionsPanel} from './tenant-permissions-panel';
 
 type SubTab = 'users' | 'groups' | 'permissions';
 
 interface Props {
-  tenantId:   string;
-  users:      UserSummary[];
-  totalCount: number;
-  page:       number;
-  pageSize:   number;
-  search:     string;
-  hasError:   boolean;
+  tenantId:    string;
+  tenantUsers: TenantUserSummary[];
+  totalCount:  number;
+  page:        number;
+  pageSize:    number;
+  search:      string;
+  hasError:    boolean;
+  tenantRoles: RoleSummary[];
 }
 
 function SubTabButton({
@@ -45,16 +46,17 @@ function SubTabButton({
 
 export function UserManagementTabs({
   tenantId,
-  users,
+  tenantUsers,
   totalCount,
   page,
   pageSize,
   search,
   hasError,
+  tenantRoles,
 }: Props) {
-  const router                  = useRouter();
-  const [tab, setTab]           = useState<SubTab>('users');
-  const [showInvite, setShowInvite] = useState(false);
+  const router                        = useRouter();
+  const [tab, setTab]                 = useState<SubTab>('users');
+  const [showAddUser, setShowAddUser] = useState(false);
 
   const baseHref = search ? `?search=${encodeURIComponent(search)}&` : '?';
 
@@ -81,7 +83,7 @@ export function UserManagementTabs({
                   type="text"
                   name="search"
                   defaultValue={search}
-                  placeholder="Search by name, email or role…"
+                  placeholder="Search by name or email…"
                   className="pl-8 pr-3 py-1.5 w-52 max-w-full text-sm border border-gray-200 rounded-md text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-indigo-400"
                 />
               </div>
@@ -98,10 +100,10 @@ export function UserManagementTabs({
 
             <button
               type="button"
-              onClick={() => setShowInvite(true)}
-              className="text-sm px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors"
+              onClick={() => setShowAddUser(true)}
+              className="text-sm px-4 py-2 rounded-md bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 font-medium transition-colors"
             >
-              + Invite User
+              + Add Existing User
             </button>
           </div>
 
@@ -110,6 +112,7 @@ export function UserManagementTabs({
             <p className="text-xs text-gray-400">
               {totalCount} user{totalCount !== 1 ? 's' : ''}
               {search ? ` matching "${search}"` : ''}
+              {' '}— PlatformInternal users excluded
             </p>
           )}
 
@@ -122,14 +125,14 @@ export function UserManagementTabs({
 
           {/* Table */}
           {!hasError && (
-            <UserListTable
-              users={users}
+            <TenantUserTable
+              tenantId={tenantId}
+              users={tenantUsers}
               totalCount={totalCount}
               page={page}
               pageSize={pageSize}
-              showTenantColumn={false}
               hasFilters={!!search}
-              baseHref={baseHref}
+              tenantRoles={tenantRoles}
             />
           )}
         </div>
@@ -145,12 +148,13 @@ export function UserManagementTabs({
         <TenantPermissionsPanel tenantId={tenantId} />
       )}
 
-      {/* ── Invite modal ──────────────────────────────────────────────────── */}
-      <InviteUserModal
-        open={showInvite}
+      {/* ── Add existing user modal ────────────────────────────────────────── */}
+      <AddUserToTenantModal
+        open={showAddUser}
         tenantId={tenantId}
-        onClose={() => setShowInvite(false)}
-        onSuccess={() => { setShowInvite(false); router.refresh(); }}
+        tenantRoles={tenantRoles}
+        onClose={() => setShowAddUser(false)}
+        onSuccess={() => { setShowAddUser(false); router.refresh(); }}
       />
     </div>
   );

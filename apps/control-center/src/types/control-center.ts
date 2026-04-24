@@ -76,6 +76,40 @@ export interface ProductEntitlementSummary {
   enabledAtUtc?: string;
 }
 
+// ── Tenant Users (PUM-B07) ────────────────────────────────────────────────────
+
+/**
+ * A single tenant-scoped role assignment returned inline by
+ * GET /identity/api/admin/tenants/{tenantId}/users.
+ */
+export interface TenantUserRoleAssignment {
+  assignmentId:  string;
+  roleId:        string;
+  roleName:      string;
+  roleScope:     string;
+  assignedAtUtc: string;
+}
+
+/**
+ * User record returned by GET /identity/api/admin/tenants/{tenantId}/users.
+ * Richer than UserSummary — includes inline tenant-scoped role assignments.
+ * PlatformInternal users are excluded client-side.
+ */
+export interface TenantUserSummary {
+  userId:         string;
+  email:          string;
+  firstName:      string;
+  lastName:       string;
+  displayName:    string;
+  userType:       string;
+  isActive:       boolean;
+  tenantId:       string;
+  roles:          TenantUserRoleAssignment[];
+  createdAtUtc:   string;
+  updatedAtUtc:   string;
+  lastLoginAtUtc?: string;
+}
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 export type UserStatus = 'Active' | 'Inactive' | 'Invited';
@@ -263,6 +297,7 @@ export interface RoleSummary {
   id:              string;
   name:            string;
   description:     string;
+  scope?:          string;
   isSystemRole:    boolean;
   isProductRole?:  boolean;
   productCode?:    string;

@@ -5904,6 +5904,29 @@ Changed all 8 self-service user events (logout, password_changed, avatar_set/rem
 - `StandardUser` users → `CallerScope.TenantUser`, `MaxVisibility = User(4)` → see self-service User-scoped events ✓
 - Admin-only security events (`login.failed`, session invalidation) remain `Tenant`-scoped — not visible to regular users ✓
 
+## PUM-B07 — Tenant User Management UI Under Tenant Detail ✅
+
+Tenant user management added under the existing Tenant Detail → User Management tab at `/tenants/[id]/users`.
+
+### What changed
+- **`/tenants/[id]/users/page.tsx`**: Now uses `tenantAdminUsers.list` (PUM-B03 endpoint) instead of the generic `users.list`. Fetches `TenantUserSummary[]` with inline role assignments + tenant-scoped roles in parallel.
+- **`UserManagementTabs`**: Updated to accept `TenantUserSummary[]` + `tenantRoles`. Users sub-tab now shows `TenantUserTable` with inline role chips and actions. Invite User replaced with "Add Existing User" button.
+- **New `tenantAdminUsers` namespace in `control-center-api.ts`**: 5 methods covering `list`, `addToTenant`, `removeFromTenant`, `assignRole`, `removeRole` using PUM-B03 endpoints.
+- **New types**: `TenantUserSummary`, `TenantUserRoleAssignment` in `control-center.ts`.
+- **`RoleSummary.scope`**: Added to type + mapper; `roles.list` now accepts `scope?` param.
+- **Server Actions** (`app/tenants/[id]/users/actions.ts`): `assignTenantRoleAction`, `removeTenantUserRoleAction`, `removeUserFromTenantAction`, `addUserToTenantAction`.
+- **New components** (`components/tenant-users/`): `TenantUserTable`, `AssignTenantRoleModal`, `RemoveUserFromTenantButton`, `AddUserToTenantModal`.
+
+### Rules enforced
+- PlatformInternal users filtered out client-side in `tenantAdminUsers.list`
+- Role dropdown shows only Tenant-scoped roles (`scope === 'Tenant'`)
+- Remove user language: "Remove tenant access" — no global account deletion implied
+- `USER_IN_DIFFERENT_TENANT` conflict surfaced clearly in AddUserToTenantModal
+- `/platform-users` and all platform user logic untouched
+
+### No backend changes required
+All five PUM-B03 endpoints were already implemented.
+
 ## PUM-B06 — Platform Admin User Management UI ✅
 
 Platform-internal user management added to Control Center. Only shows `PlatformInternal` users (filtered via `userType=PlatformInternal` query param to Identity `/api/admin/users`).

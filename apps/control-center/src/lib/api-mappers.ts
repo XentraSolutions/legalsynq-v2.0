@@ -542,10 +542,14 @@ export function mapRoleSummary(raw: unknown): RoleSummary {
     ? (rawAllowedOrgTypes as unknown[]).map(v => String(v))
     : undefined;
 
+  const scopeRaw = r['scope'] ?? r['roleScope'];
+  const scope = typeof scopeRaw === 'string' && scopeRaw.length > 0 ? scopeRaw : undefined;
+
   return {
     id:              str(r, 'id',               'id',              '',    'mapRoleSummary.id'),
     name:            str(r, 'name',             'name',            '',    'mapRoleSummary.name'),
     description:     str(r, 'description',      'description',     ''),
+    scope,
     isSystemRole:    bool(r, 'is_system_role',  'isSystemRole',    false),
     isProductRole:   bool(r, 'is_product_role', 'isProductRole',   false),
     productCode:     r['productCode'] as string | undefined ?? r['product_code'] as string | undefined,

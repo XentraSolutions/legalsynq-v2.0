@@ -110,6 +110,8 @@ import {
 import type {
   TenantSummary,
   TenantDetail,
+  TenantUserSummary,
+  TenantUserRoleAssignment,
   UserSummary,
   UserDetail,
   RoleSummary,
@@ -1193,9 +1195,10 @@ export const controlCenterServerApi = {
      *
      * Cache: 300 s  Tag: cc:roles
      */
-    list: async (): Promise<RoleSummary[]> => {
+    list: async (params: { scope?: string } = {}): Promise<RoleSummary[]> => {
+      const qs = params.scope ? `?scope=${encodeURIComponent(params.scope)}` : '';
       const raw = await apiClient.get<unknown>(
-        '/identity/api/admin/roles',
+        `/identity/api/admin/roles${qs}`,
         300,
         [CACHE_TAGS.roles],
       );
@@ -2382,6 +2385,143 @@ export const controlCenterServerApi = {
       );
       const arr = Array.isArray(raw) ? raw : [];
       return arr.map(mapAccessGroupMember);
+    },
+  },
+
+  // ── Tenant Admin Users (PUM-B07) ─────────────────────────────────────────
+  //
+  // Purpose-built tenant-user management using the PUM-B03 endpoints.
+  // These are separate from `users.*` which call /identity/api/admin/users.
+  // All PUM-B03 endpoints live under /identity/api/admin/tenants/{tenantId}/users.
+  //
+  // No cache — mutations must always see fresh data.
+
+  tenantAdminUsers: {
+
+    /**
+     * GET /identity/api/admin/tenants/{tenantId}/users
+     *
+     * Returns users whose primary tenant is tenantId, including their active
+     * tenant-scoped role assignments inline.  PlatformInternal users are
+     * excluded client-side after mapping.
+     */
+    list: async (
+      tenantId: string,
+      params: { page?: number; pageSize?: number; search?: string } = {},
+    ): Promise<{ items: TenantUserSummary[]; totalCount: number; page: number; pageSize: number }> => {
+      const qs = toQs({
+        page:     params.page     ?? 1,
+        pageSize: params.pageSize ?? 20,
+        search:   params.search,
+      });
+      const raw = await apiClient.get<unknown>(
+        `/identity/api/admin/tenants/${encodeURIComponent(tenantId)}/users${qs}`,
+        0,
+        [],
+      );
+      const r   = raw as Record<string, unknown>;
+      const arr = Array.isArray(r['items']) ? (r['items'] as unknown[]) : [];
+
+      function mapRole(rx: unknown): TenantUserRoleAssignment {
+        const rv = rx as Record<string, unknown>;
+        return {
+          assignmentId:  String(rv['assignmentId']  ?? ''),
+          roleId:        String(rv['roleId']         ?? ''),
+          roleName:      String(rv['roleName']       ?? ''),
+          roleScope:     String(rv['roleScope']      ?? ''),
+          assignedAtUtc: String(rv['assignedAtUtc']  ?? ''),
+        };
+      }
+
+      function mapUser(u: unknown): TenantUserSummary {
+        const uv = u as Record<string, unknown>;
+        const roles = Array.isArray(uv['roles'])
+          ? (uv['roles'] as unknown[]).map(mapRole)
+          : [];
+        return {
+          userId:        String(uv['userId']       ?? ''),
+          email:         String(uv['email']        ?? ''),
+          firstName:     String(uv['firstName']    ?? ''),
+          lastName:      String(uv['lastName']     ?? ''),
+          displayName:   String(uv['displayName']  ?? ''),
+          userType:      String(uv['userType']     ?? ''),
+          isActive:      uv['isActive'] === true,
+          tenantId:      String(uv['tenantId']     ?? ''),
+          roles,
+          createdAtUtc:  String(uv['createdAtUtc']  ?? ''),
+          updatedAtUtc:  String(uv['updatedAtUtc']  ?? ''),
+          lastLoginAtUtc: uv['lastLoginAtUtc'] != null
+            ? String(uv['lastLoginAtUtc'])
+            : undefined,
+        };
+      }
+
+      const items = arr.map(mapUser).filter(u => u.userType !== 'PlatformInternal');
+      return {
+        items,
+        totalCount: typeof r['totalCount'] === 'number' ? r['totalCount'] : items.length,
+        page:       typeof r['page']       === 'number' ? r['page']       : (params.page ?? 1),
+        pageSize:   typeof r['pageSize']   === 'number' ? r['pageSize']   : (params.pageSize ?? 20),
+      };
+    },
+
+    /**
+     * POST /identity/api/admin/tenants/{tenantId}/users
+     *
+     * Verifies a user belongs to the given tenant and optionally assigns a
+     * Tenant-scoped role. Returns 409 if the user is in a different tenant.
+     */
+    addToTenant: async (
+      tenantId: string,
+      body: { userId: string; roleKey?: string },
+    ): Promise<unknown> => {
+      return apiClient.post(
+        `/identity/api/admin/tenants/${encodeURIComponent(tenantId)}/users`,
+        body,
+      );
+    },
+
+    /**
+     * DELETE /identity/api/admin/tenants/{tenantId}/users/{userId}
+     *
+     * Soft-removes user from tenant by deactivating all active tenant-scoped
+     * role assignments.  Does NOT delete the global user account.
+     */
+    removeFromTenant: async (tenantId: string, userId: string): Promise<void> => {
+      await apiClient.del(
+        `/identity/api/admin/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(userId)}`,
+      );
+    },
+
+    /**
+     * POST /identity/api/admin/tenants/{tenantId}/users/{userId}/roles
+     *
+     * Assigns a Tenant-scoped role to a user.  Idempotent.
+     */
+    assignRole: async (
+      tenantId: string,
+      userId:   string,
+      body:     { roleId?: string; roleKey?: string },
+    ): Promise<unknown> => {
+      return apiClient.post(
+        `/identity/api/admin/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(userId)}/roles`,
+        body,
+      );
+    },
+
+    /**
+     * DELETE /identity/api/admin/tenants/{tenantId}/users/{userId}/roles/{assignmentId}
+     *
+     * Soft-deactivates a specific tenant-scoped ScopedRoleAssignment.
+     */
+    removeRole: async (
+      tenantId:     string,
+      userId:       string,
+      assignmentId: string,
+    ): Promise<void> => {
+      await apiClient.del(
+        `/identity/api/admin/tenants/${encodeURIComponent(tenantId)}/users/${encodeURIComponent(userId)}/roles/${encodeURIComponent(assignmentId)}`,
+      );
     },
   },
 

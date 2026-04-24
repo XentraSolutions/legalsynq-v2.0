@@ -10,15 +10,14 @@ interface Props {
 }
 
 /**
- * /tenants/[id]/users — Full User Management hub for a specific tenant.
+ * /tenants/[id]/users — Tenant User Management hub (PUM-B07).
  *
- * Renders three sub-tabs:
- *   • Users       — list, search, invite, activate/deactivate, row actions
- *   • Groups      — access groups (create, archive)
- *   • Permissions — role permission matrix + permission catalog
+ * Uses the PUM-B03 tenant-specific endpoint which:
+ *   - Returns only users in this tenant
+ *   - Includes inline tenant-scoped role assignments per user
+ *   - Excludes PlatformInternal users (client-side filter in tenantAdminUsers.list)
  *
- * The shared header, breadcrumb, and top-level nav tabs are in layout.tsx.
- * Access: PlatformAdmin only.
+ * Fetches tenant roles (Tenant-scoped only) in parallel for the role assignment modal.
  */
 export default async function TenantUsersPage({ params, searchParams }: Props) {
   await requirePlatformAdmin();
@@ -28,29 +27,25 @@ export default async function TenantUsersPage({ params, searchParams }: Props) {
   const page   = Math.max(1, parseInt(sp.page ?? '1') || 1);
   const search = sp.search ?? '';
 
-  let usersData = null;
-  let hasError  = false;
+  const [usersResult, rolesResult] = await Promise.allSettled([
+    controlCenterServerApi.tenantAdminUsers.list(id, { page, pageSize: 20, search }),
+    controlCenterServerApi.roles.list({ scope: 'Tenant' }),
+  ]);
 
-  try {
-    usersData = await controlCenterServerApi.users.list({
-      tenantId: id,
-      page,
-      pageSize: 20,
-      search,
-    });
-  } catch {
-    hasError = true;
-  }
+  const usersData  = usersResult.status  === 'fulfilled' ? usersResult.value  : null;
+  const tenantRoles = rolesResult.status === 'fulfilled' ? rolesResult.value  : [];
+  const hasError   = usersResult.status  === 'rejected';
 
   return (
     <UserManagementTabs
       tenantId={id}
-      users={usersData?.items ?? []}
+      tenantUsers={usersData?.items ?? []}
       totalCount={usersData?.totalCount ?? 0}
       page={usersData?.page ?? page}
       pageSize={usersData?.pageSize ?? 20}
       search={search}
       hasError={hasError}
+      tenantRoles={tenantRoles}
     />
   );
 }
