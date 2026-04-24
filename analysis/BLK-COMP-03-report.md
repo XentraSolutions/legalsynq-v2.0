@@ -294,7 +294,7 @@ Full cryptographic signing (e.g., external HSM, Merkle tree with external verifi
 |---|---|
 | BLK-COMP-01 | `73645694c6a3acb39f31426e337b6ec190ec1a04` |
 | BLK-COMP-02 | `325f580d719bdfe2a4151456dd5e478fb842eeae` |
-| BLK-COMP-03 | *(auto-committed by platform)* |
+| BLK-COMP-03 | `42a78225acf8d7ccb7b41dd0fec1ffa08785aab2` |
 
 ---
 
@@ -312,6 +312,6 @@ Full cryptographic signing (e.g., external HSM, Merkle tree with external verifi
 
 ## 12. GitHub Diff Reference
 
-- **Commit ID:** *(auto-committed by platform following `325f580d719bdfe2a4151456dd5e478fb842eeae`)*
+- **Commit ID:** `42a78225acf8d7ccb7b41dd0fec1ffa08785aab2`
 - **Diff file:** `analysis/BLK-COMP-03-commit.diff.txt`
 - **Summary file:** `analysis/BLK-COMP-03-commit-summary.md`
