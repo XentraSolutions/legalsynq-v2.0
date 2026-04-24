@@ -283,8 +283,17 @@ export async function apiFetch<T>(
     let message = `HTTP ${res.status} ${res.statusText}`;
     try {
       const errBody = await res.json() as Record<string, unknown>;
+      // Top-level message (Identity/ProblemDetails format)
       if (typeof errBody.message === 'string') message = errBody.message;
       else if (typeof errBody.title === 'string') message = errBody.title;
+      // Nested { error: { code, message } } format (Tenant/BuildingBlocks ExceptionHandlingMiddleware)
+      else if (
+        errBody.error !== null &&
+        typeof errBody.error === 'object' &&
+        typeof (errBody.error as Record<string, unknown>).message === 'string'
+      ) {
+        message = (errBody.error as Record<string, unknown>).message as string;
+      }
     } catch { /* non-JSON error body — use status text */ }
 
     const apiErr = new ApiError(res.status, message);
