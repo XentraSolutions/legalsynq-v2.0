@@ -65,6 +65,9 @@ PID_CC=$!
   dotnet build   "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" --no-restore --configuration Debug --verbosity quiet
   # Audit service has its own project boundary (not in LegalSynq.sln).
   dotnet build   "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" --configuration Debug --verbosity quiet
+  # Support service has its own solution boundary (not in LegalSynq.sln).
+  dotnet restore "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" --verbosity quiet
+  dotnet build   "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" --no-restore --configuration Debug --verbosity quiet
   NotificationsService__BaseUrl=http://localhost:5008 \
     NotificationsService__PortalBaseUrl=http://localhost:3050 \
     dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
@@ -95,6 +98,8 @@ PID_CC=$!
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/task/Task.Api/Task.Api.csproj" &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" &
+  # Support service — port 5017, standalone MySQL, JWT via Authentication:Jwt:SymmetricKey
+  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
   wait
 ) &
