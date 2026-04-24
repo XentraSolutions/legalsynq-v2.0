@@ -422,7 +422,7 @@ public static class SchemaRenamer
                 {
                     var defaultClause = string.IsNullOrEmpty(defaultValue) ? "" : $" DEFAULT {defaultValue}";
                     await db.Database.ExecuteSqlRawAsync(
-                        $"ALTER TABLE `{tableName}` ADD COLUMN `{colName}` {sqlType}{defaultClause}");
+                        $"ALTER TABLE `{tableName}` ADD COLUMN IF NOT EXISTS `{colName}` {sqlType}{defaultClause}");
                     logger.LogInformation("Added missing column {Table}.{Column}", tableName, colName);
                 }
                 catch (Exception ex)

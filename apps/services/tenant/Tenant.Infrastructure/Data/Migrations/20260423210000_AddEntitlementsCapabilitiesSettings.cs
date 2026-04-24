@@ -17,8 +17,8 @@ namespace Tenant.Infrastructure.Data.Migrations
                 name: "tenant_ProductEntitlements",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "char(36)", nullable: false),
-                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false),
+                    Id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
                     ProductKey = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: false),
                     ProductDisplayName = table.Column<string>(type: "varchar(300)", maxLength: 300, nullable: true),
                     IsEnabled = table.Column<bool>(type: "tinyint(1)", nullable: false),
@@ -61,9 +61,9 @@ namespace Tenant.Infrastructure.Data.Migrations
                 name: "tenant_Capabilities",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "char(36)", nullable: false),
-                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false),
-                    ProductEntitlementId = table.Column<Guid>(type: "char(36)", nullable: true),
+                    Id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    ProductEntitlementId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci"),
                     CapabilityKey = table.Column<string>(type: "varchar(200)", maxLength: 200, nullable: false),
                     IsEnabled = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
@@ -107,8 +107,8 @@ namespace Tenant.Infrastructure.Data.Migrations
                 name: "tenant_Settings",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "char(36)", nullable: false),
-                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false),
+                    Id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
                     SettingKey = table.Column<string>(type: "varchar(200)", maxLength: 200, nullable: false),
                     SettingValue = table.Column<string>(type: "varchar(4000)", maxLength: 4000, nullable: false),
                     ValueType = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false),
