@@ -8,18 +8,26 @@ namespace Tenant.Infrastructure.Repositories;
 public class SettingRepository : ISettingRepository
 {
     private readonly TenantDbContext _db;
+    private readonly IDbContextFactory<TenantDbContext> _dbFactory;
 
-    public SettingRepository(TenantDbContext db) => _db = db;
+    public SettingRepository(TenantDbContext db, IDbContextFactory<TenantDbContext> dbFactory)
+    {
+        _db        = db;
+        _dbFactory = dbFactory;
+    }
 
     public Task<TenantSetting?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         _db.Settings.FirstOrDefaultAsync(s => s.Id == id, ct);
 
-    public Task<List<TenantSetting>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-        _db.Settings
+    public async Task<List<TenantSetting>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.Settings
             .Where(s => s.TenantId == tenantId)
             .OrderBy(s => s.SettingKey)
             .ThenBy(s => s.ProductKey)
             .ToListAsync(ct);
+    }
 
     public Task<TenantSetting?> GetByKeyAsync(
         Guid tenantId, string settingKey, string? productKey, CancellationToken ct = default) =>

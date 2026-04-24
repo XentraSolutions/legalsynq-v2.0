@@ -25,6 +25,12 @@ public static class DependencyInjection
                 connectionString,
                 new MySqlServerVersion(new Version(8, 0, 0))));
 
+        services.AddDbContextFactory<TenantDbContext>(options =>
+            options.UseMySql(
+                connectionString,
+                new MySqlServerVersion(new Version(8, 0, 0))),
+            lifetime: ServiceLifetime.Scoped);
+
         // ── TENANT-B08: In-process memory cache (BCL; no new package dependency) ──
         services.AddMemoryCache();
 

@@ -8,19 +8,27 @@ namespace Tenant.Infrastructure.Repositories;
 public class EntitlementRepository : IEntitlementRepository
 {
     private readonly TenantDbContext _db;
+    private readonly IDbContextFactory<TenantDbContext> _dbFactory;
 
-    public EntitlementRepository(TenantDbContext db) => _db = db;
+    public EntitlementRepository(TenantDbContext db, IDbContextFactory<TenantDbContext> dbFactory)
+    {
+        _db        = db;
+        _dbFactory = dbFactory;
+    }
 
     public Task<TenantProductEntitlement?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         _db.ProductEntitlements.FirstOrDefaultAsync(e => e.Id == id, ct);
 
-    public Task<List<TenantProductEntitlement>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-        _db.ProductEntitlements
+    public async Task<List<TenantProductEntitlement>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.ProductEntitlements
             .Where(e => e.TenantId == tenantId)
             .OrderByDescending(e => e.IsDefault)
             .ThenByDescending(e => e.IsEnabled)
             .ThenBy(e => e.ProductKey)
             .ToListAsync(ct);
+    }
 
     public Task<TenantProductEntitlement?> GetByTenantAndProductKeyAsync(
         Guid tenantId, string productKey, CancellationToken ct = default) =>

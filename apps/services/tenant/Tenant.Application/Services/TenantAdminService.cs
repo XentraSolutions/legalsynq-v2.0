@@ -71,12 +71,21 @@ public class TenantAdminService : ITenantAdminService
         var tenant = await _tenantRepo.GetByIdAsync(id, ct);
         if (tenant is null) return null;
 
-        var branding       = await _brandingRepo.GetByTenantIdAsync(id, ct);
-        var entitlements   = await _entitlementRepo.ListByTenantAsync(id, ct);
-        var domains        = await _domainRepo.ListByTenantAsync(id, ct);
-        var capabilities   = await _capabilityRepo.ListByTenantAsync(id, ct);
-        var settings       = await _settingRepo.ListByTenantAsync(id, ct);
-        var sessionTimeout = await _identityCompat.GetSessionTimeoutMinutesAsync(id, ct);
+        var brandingTask       = _brandingRepo.GetByTenantIdAsync(id, ct);
+        var entitlementsTask   = _entitlementRepo.ListByTenantAsync(id, ct);
+        var domainsTask        = _domainRepo.ListByTenantAsync(id, ct);
+        var capabilitiesTask   = _capabilityRepo.ListByTenantAsync(id, ct);
+        var settingsTask       = _settingRepo.ListByTenantAsync(id, ct);
+        var sessionTimeoutTask = _identityCompat.GetSessionTimeoutMinutesAsync(id, ct);
+
+        await Task.WhenAll(brandingTask, entitlementsTask, domainsTask, capabilitiesTask, settingsTask, sessionTimeoutTask);
+
+        var branding       = await brandingTask;
+        var entitlements   = await entitlementsTask;
+        var domains        = await domainsTask;
+        var capabilities   = await capabilitiesTask;
+        var settings       = await settingsTask;
+        var sessionTimeout = await sessionTimeoutTask;
 
         var logoDocumentId      = branding?.LogoDocumentId      ?? tenant.LogoDocumentId;
         var logoWhiteDocumentId = branding?.LogoWhiteDocumentId ?? tenant.LogoWhiteDocumentId;

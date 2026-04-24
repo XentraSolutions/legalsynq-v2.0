@@ -8,18 +8,26 @@ namespace Tenant.Infrastructure.Repositories;
 public class DomainRepository : IDomainRepository
 {
     private readonly TenantDbContext _db;
+    private readonly IDbContextFactory<TenantDbContext> _dbFactory;
 
-    public DomainRepository(TenantDbContext db) => _db = db;
+    public DomainRepository(TenantDbContext db, IDbContextFactory<TenantDbContext> dbFactory)
+    {
+        _db        = db;
+        _dbFactory = dbFactory;
+    }
 
     public Task<TenantDomain?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         _db.Domains.FirstOrDefaultAsync(d => d.Id == id, ct);
 
-    public Task<List<TenantDomain>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-        _db.Domains
+    public async Task<List<TenantDomain>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+        return await db.Domains
             .Where(d => d.TenantId == tenantId)
             .OrderByDescending(d => d.IsPrimary)
             .ThenBy(d => d.Host)
             .ToListAsync(ct);
+    }
 
     public Task<TenantDomain?> GetActiveByHostAsync(string normalizedHost, CancellationToken ct = default) =>
         _db.Domains
