@@ -118,7 +118,12 @@ export default async function PlatformUserDetailPage({ params }: PlatformUserDet
               <div className="flex items-center gap-2 flex-wrap">
                 {/* Impersonation */}
                 {(() => {
-                  const action = startImpersonationAction.bind(null, user.id);
+                  const action = startImpersonationAction.bind(null, {
+                    id:         user.id,
+                    email:      user.email,
+                    tenantId:   user.tenantId,
+                    tenantName: user.tenantDisplayName,
+                  });
                   return (
                     <form action={action}>
                       <button
