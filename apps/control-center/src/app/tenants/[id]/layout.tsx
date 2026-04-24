@@ -2,7 +2,7 @@ import Link                          from 'next/link';
 import type { ReactNode }            from 'react';
 import { requirePlatformAdmin }      from '@/lib/auth-guards';
 import { getTenantContext }          from '@/lib/auth';
-import { controlCenterServerApi }    from '@/lib/control-center-api';
+import { getCachedTenantById }       from '@/lib/tenant-fetch';
 import { Routes }                    from '@/lib/routes';
 import { CCShell }                   from '@/components/shell/cc-shell';
 import { TenantActions }             from '@/components/tenants/tenant-actions';
@@ -36,7 +36,7 @@ export default async function TenantDetailLayout({
   let fetchError: string | null = null;
 
   try {
-    tenant = await controlCenterServerApi.tenants.getById(id);
+    tenant = await getCachedTenantById(id);
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load tenant.';
   }

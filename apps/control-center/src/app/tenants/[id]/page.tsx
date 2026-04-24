@@ -1,5 +1,6 @@
 import { requirePlatformAdmin }           from '@/lib/auth-guards';
 import { controlCenterServerApi }         from '@/lib/control-center-api';
+import { getCachedTenantById }            from '@/lib/tenant-fetch';
 import { TenantDetailCard }               from '@/components/tenants/tenant-detail-card';
 import { ProductEntitlementsPanel }       from '@/components/tenants/product-entitlements-panel';
 import { TenantSessionSettingsPanel }     from '@/components/tenants/tenant-session-settings-panel';
@@ -24,21 +25,14 @@ export default async function TenantDetailPage({ params }: TenantDetailPageProps
   await requirePlatformAdmin();
   const { id } = await params;
 
-  let tenant     = null;
-  let fetchError: string | null = null;
+  let tenant = null;
 
   try {
-    tenant = await controlCenterServerApi.tenants.getById(id);
-  } catch (err) {
-    fetchError = err instanceof Error ? err.message : 'Failed to load tenant.';
-  }
-
-  if (fetchError) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
-        {fetchError}
-      </div>
-    );
+    tenant = await getCachedTenantById(id);
+  } catch {
+    // The layout already renders the error banner for this tenant fetch.
+    // Returning null here prevents a duplicate error box from appearing.
+    return null;
   }
 
   if (!tenant) return null;

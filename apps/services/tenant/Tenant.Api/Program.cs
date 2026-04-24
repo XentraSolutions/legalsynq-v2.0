@@ -77,6 +77,8 @@ var env = app.Environment.EnvironmentName;
 app.Logger.LogInformation("Starting {Service} {Version} in {Environment}", ServiceName, Version, env);
 
 // Auto-migrate — apply pending EF Core migrations on startup (idempotent).
+// A failure here is fatal: starting with an out-of-sync schema causes every
+// EF query to throw, so we prefer a clean crash over a silently broken service.
 try
 {
     using var scope = app.Services.CreateScope();
@@ -86,7 +88,8 @@ try
 }
 catch (Exception ex)
 {
-    app.Logger.LogWarning(ex, "Could not apply Tenant database migrations on startup — schema may be out of sync.");
+    app.Logger.LogCritical(ex, "Tenant database migration failed — service cannot start with an out-of-sync schema.");
+    throw;
 }
 
 // Migration coverage self-test — detects EF model / live schema drift at startup.
