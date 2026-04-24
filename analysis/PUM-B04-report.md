@@ -261,6 +261,27 @@ Note: `GET /api/admin/users/{fakeGuid}/products` with a non-existent user GUID c
 
 ## 9. Final Assessment
 
-PUM-B04 is **complete and fully operational**.
+### Requirement-by-requirement
 
-All six admin endpoints for user product access control are registered, handle the full guard chain (user-not-found → cross-tenant → product-active → business rules), and return semantically correct HTTP status codes. The implementation is additive-only (no schema migrations, no domain-model changes, no regressions to existing endpoints). The `ResolveProductCode` helper normalises both frontend alias keys and raw DB codes for a smooth caller experience.
+| Req | Description | Status | Notes |
+|-----|-------------|--------|-------|
+| **R01** | Product catalog with key, displayName, isActive, timestamps | **Met** | Existing `Products` table reused. Codes: `SYNQ_FUND`, `SYNQ_LIENS`, `SYNQ_CARECONNECT`, `SYNQ_PAY`, `SYNQ_AI`. No new table created. `GET /api/admin/products` was pre-existing. |
+| **R02** | `UserProductAccess` model with Id, UserId, TenantId, ProductKey, IsActive, GrantedAtUtc, GrantedByUserId, RevokedAtUtc, RevokedByUserId | **Met** | Existing `UserProductAccess` entity / `UserProductAccessRecords` table reused. Fields match exactly (stored as `AccessStatus` enum: Granted/Revoked, plus timestamps). No new table created. |
+| **R03** | Idempotent access grant — no duplicate active rows; re-grant reactivates | **Met** | `GrantUserProductAccess` looks up existing record first. If found, calls `existing.Grant()` (idempotent). Response includes `alreadyActive` flag. |
+| **R04** | Soft-revoke product access; don't delete user or touch unrelated roles | **Met** | `RevokeUserProductAccess` calls `existing.Revoke()` which sets `AccessStatus = Revoked` and populates `RevokedAtUtc`. No cascade. |
+| **R05** | `GET /api/admin/users/{userId}/products` — list with productKey, displayName, tenantId, isActive, timestamps | **Met** | Returns all records (all statuses) enriched with `displayName` from `db.Products`. Fields: `productCode`, `displayName`, `tenantId`, `isActive` (computed from `AccessStatus`), `grantedAtUtc`, `revokedAtUtc`. |
+| **R06** | `POST /api/admin/users/{userId}/products` — grant access | **Met** | Body: `{ productKey, tenantId? }`. Guards: user exists, product active, tenantId matches user.TenantId if supplied. |
+| **R07** | `DELETE /api/admin/users/{userId}/products/{productKey}` — revoke | **Met** | Optional `tenantId` query param. Returns 204 on success, 404 if no active access found. |
+| **R08** | `GET /api/admin/users/{userId}/products/{productKey}/access` — boolean check | **Met** | Always 200. Response: `{ hasAccess, userId, productCode, tenantId }`. |
+| **R09** | `POST /api/admin/users/{userId}/products/{productKey}/roles` — product-scoped role assignment | **Met** | Guards: user exists → cross-tenant → product active → user has active product access (409 if not) → ProductRole exists → no duplicate. Creates `UserRoleAssignment` with `ProductCode` set. Body accepts `roleCode` or `roleName`. |
+| **R10** | `DELETE /api/admin/users/{userId}/products/{productKey}/roles/{assignmentId}` — revoke product role | **Met** | Calls `assignment.Remove()`. Scoped to exact assignmentId + userId + productCode. Tenant/platform roles unaffected. |
+| **R11** | Tenant isolation — PlatformAdmin cross-tenant, TenantAdmin own-tenant only | **Met** | `IsCrossTenantAccess(caller, user.TenantId)` guard on all 6 routes. PlatformAdmin JWT bypasses; TenantAdmin without matching `tenant_id` claim gets 403. Full permission-level gating deferred (see Known Gaps). |
+| **R12** | Additive-only schema changes | **Met** | No migrations created. All required tables pre-existed. |
+| **R13** | Existing auth/login behavior unchanged | **Met** | No changes to auth middleware, JWT config, or login endpoints. |
+| **R14** | Build completes with 0 errors | **Met** | `dotnet build LegalSynq.sln` → 0 errors. Pre-existing suppressed warnings unchanged. |
+
+### Summary
+
+PUM-B04 is **complete and fully operational**. All 14 requirements are met.
+
+The implementation is additive-only: 6 route registrations and 6 handler methods added to `AdminEndpoints.cs`, with one private helper (`ResolveProductCode`) and two DTOs. No schema migrations, no domain-model changes, no regressions to existing endpoints. Product access (where a user can go) is kept strictly separate from role assignment (what they can do there) — product access records live in `UserProductAccessRecords` while product-scoped roles live in `UserRoleAssignments.ProductCode`, and R09 explicitly requires active product access before a product role can be attached.
