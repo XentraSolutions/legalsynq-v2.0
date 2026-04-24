@@ -11,9 +11,11 @@
 // BLK-GOV-02: Uses AdminTenantScope helpers — replaces fragile inline ternaries.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using CareConnect.Application.Cache;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace CareConnect.Api.Endpoints;
 
@@ -45,51 +47,69 @@ public static class AdminDashboardEndpoints
     // ──────────────────────────────────────────────────────────────────────────
     // Returns aggregate counts over rolling 24-hour and 7-day windows.
     // BLK-GOV-02: PlatformAdmin sees platform-wide (null scope); TenantAdmin scoped.
+    // BLK-PERF-02: Results cached for 15 s per scope key so repeated page refreshes
+    //              do not hammer the DB — short enough to remain operationally useful.
     private static async Task<IResult> GetDashboardAsync(
         CareConnectDbContext    db,
         ICurrentRequestContext  ctx,
         HttpContext             http,
+        IMemoryCache            cache,
         CancellationToken       ct)
     {
         var scope = AdminTenantScope.PlatformWide(ctx, http);
         if (scope.IsError) return scope.Error!;
 
-        var now    = DateTime.UtcNow;
-        var today  = now.AddHours(-24);
-        var week   = now.AddDays(-7);
+        // Scope key: tenantId GUID for TenantAdmin, "platform" for PlatformAdmin.
+        var scopeKey = scope.TenantId.HasValue
+            ? scope.TenantId.Value.ToString()
+            : "platform";
 
-        var referralQuery = db.Referrals.AsQueryable();
-        var blockedQuery  = db.BlockedProviderAccessLogs.AsQueryable();
+        var result = await cache.GetOrCreateAsync(
+            CareConnectCacheKeys.AdminDashboard(scopeKey),
+            async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = CareConnectCacheTtl.AdminDashboard;
+                entry.Size = 1;
 
-        if (scope.TenantId.HasValue)
-        {
-            referralQuery = referralQuery.Where(r => r.TenantId == scope.TenantId.Value);
-            blockedQuery  = blockedQuery.Where(l => l.TenantId == scope.TenantId.Value);
-        }
+                var now   = DateTime.UtcNow;
+                var today = now.AddHours(-24);
+                var week  = now.AddDays(-7);
 
-        var referralToday   = await referralQuery.CountAsync(r => r.CreatedAtUtc >= today, ct);
-        var referralWeek    = await referralQuery.CountAsync(r => r.CreatedAtUtc >= week,  ct);
-        var openReferrals   = await referralQuery.CountAsync(
-            r => r.Status == "New" || r.Status == "NewOpened" || r.Status == "Accepted" || r.Status == "InProgress", ct);
+                var referralQuery = db.Referrals.AsQueryable();
+                var blockedQuery  = db.BlockedProviderAccessLogs.AsQueryable();
 
-        var blockedToday    = await blockedQuery.CountAsync(l => l.AttemptedAtUtc >= today, ct);
-        var blockedWeek     = await blockedQuery.CountAsync(l => l.AttemptedAtUtc >= week,  ct);
-        var blockedUsersToday = await blockedQuery
-            .Where(l => l.AttemptedAtUtc >= today && l.UserId != null)
-            .Select(l => l.UserId)
-            .Distinct()
-            .CountAsync(ct);
+                if (scope.TenantId.HasValue)
+                {
+                    referralQuery = referralQuery.Where(r => r.TenantId == scope.TenantId.Value);
+                    blockedQuery  = blockedQuery.Where(l => l.TenantId == scope.TenantId.Value);
+                }
 
-        return Results.Ok(new
-        {
-            referralCountToday      = referralToday,
-            referralCountLast7Days  = referralWeek,
-            openReferrals           = openReferrals,
-            blockedAccessToday      = blockedToday,
-            blockedAccessLast7Days  = blockedWeek,
-            distinctBlockedUsersToday = blockedUsersToday,
-            generatedAtUtc          = now,
-        });
+                var referralToday = await referralQuery.CountAsync(r => r.CreatedAtUtc >= today, ct);
+                var referralWeek  = await referralQuery.CountAsync(r => r.CreatedAtUtc >= week,  ct);
+                var openReferrals = await referralQuery.CountAsync(
+                    r => r.Status == "New" || r.Status == "NewOpened" || r.Status == "Accepted" || r.Status == "InProgress", ct);
+
+                var blockedToday  = await blockedQuery.CountAsync(l => l.AttemptedAtUtc >= today, ct);
+                var blockedWeek   = await blockedQuery.CountAsync(l => l.AttemptedAtUtc >= week,  ct);
+                var blockedUsersToday = await blockedQuery
+                    .Where(l => l.AttemptedAtUtc >= today && l.UserId != null)
+                    .Select(l => l.UserId)
+                    .Distinct()
+                    .CountAsync(ct);
+
+                return new
+                {
+                    referralCountToday        = referralToday,
+                    referralCountLast7Days    = referralWeek,
+                    openReferrals             = openReferrals,
+                    blockedAccessToday        = blockedToday,
+                    blockedAccessLast7Days    = blockedWeek,
+                    distinctBlockedUsersToday = blockedUsersToday,
+                    generatedAtUtc            = now,
+                };
+            });
+
+        return Results.Ok(result);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

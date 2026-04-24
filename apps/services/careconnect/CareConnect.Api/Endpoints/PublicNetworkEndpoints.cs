@@ -1,8 +1,10 @@
 using BuildingBlocks.Exceptions;
+using CareConnect.Application.Cache;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
+using Microsoft.Extensions.Caching.Memory;
 using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
@@ -36,9 +38,10 @@ public static class PublicNetworkEndpoints
         // Lists all networks for the resolved tenant.
         // Header: X-Tenant-Id (GUID, resolved from subdomain by Next.js BFF)
         group.MapGet("/", async (
-            HttpContext    http,
-            IConfiguration config,
+            HttpContext        http,
+            IConfiguration     config,
             INetworkRepository repo,
+            IMemoryCache       cache,
             CancellationToken  ct) =>
         {
             var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
@@ -46,150 +49,156 @@ public static class PublicNetworkEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
 
-            // BLK-PERF-01: Single query — replaces the N+1 loop of
-            // GetAllByTenantAsync + N×GetWithProvidersAsync.
-            var rows = await repo.GetAllWithProviderCountAsync(tenantId.Value, ct);
-
-            var summaries = rows
-                .Select(r => new PublicNetworkSummary(r.Id, r.Name, r.Description ?? string.Empty, r.ProviderCount))
-                .ToList();
+            // BLK-PERF-02: Cache the network list per tenant. Trust boundary
+            // validation (above) has already verified tenantId is trustworthy.
+            // Cache key is tenant-scoped — different tenants never share an entry.
+            var summaries = await cache.GetOrCreateAsync(
+                CareConnectCacheKeys.PublicNetworkList(tenantId.Value),
+                async entry =>
+                {
+                    entry.AbsoluteExpirationRelativeToNow = CareConnectCacheTtl.PublicNetwork;
+                    entry.Size = 1;
+                    // BLK-PERF-01: Single query — replaces the N+1 loop of
+                    // GetAllByTenantAsync + N×GetWithProvidersAsync.
+                    var rows = await repo.GetAllWithProviderCountAsync(tenantId.Value, ct);
+                    return rows
+                        .Select(r => new PublicNetworkSummary(r.Id, r.Name, r.Description ?? string.Empty, r.ProviderCount))
+                        .ToList();
+                });
 
             return Results.Ok(summaries);
         }).AllowAnonymous();
 
         // ── GET /api/public/network/{id}/providers ──────────────────────────
         group.MapGet("/{id:guid}/providers", async (
-            Guid           id,
-            HttpContext    http,
-            IConfiguration config,
-            INetworkRepository repo,
-            CancellationToken  ct) =>
+            Guid               id,
+            HttpContext         http,
+            IConfiguration      config,
+            INetworkRepository  repo,
+            IMemoryCache        cache,
+            CancellationToken   ct) =>
         {
             var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
 
-            var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
-            if (network == null)
-                return Results.NotFound();
+            // BLK-PERF-02: Cache provider list per tenant+network for 60 s.
+            // Invalidated on network write (PUT/DELETE network, POST/DELETE provider).
+            var items = await cache.GetOrCreateAsync(
+                CareConnectCacheKeys.PublicNetworkProviders(tenantId.Value, id),
+                async entry =>
+                {
+                    entry.AbsoluteExpirationRelativeToNow = CareConnectCacheTtl.PublicNetwork;
+                    entry.Size = 1;
 
-            var providers = await repo.GetNetworkProvidersAsync(tenantId.Value, id, ct);
+                    var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
+                    if (network == null) return null;
 
-            var items = providers
-                .Select(p => new PublicProviderItem(
-                    p.Id,
-                    p.Name,
-                    p.OrganizationName,
-                    p.Phone,
-                    p.City,
-                    p.State,
-                    p.PostalCode,
-                    p.IsActive,
-                    p.AcceptingReferrals,
-                    p.AccessStage,
-                    null))
-                .ToList();
+                    var providers = await repo.GetNetworkProvidersAsync(tenantId.Value, id, ct);
+                    return providers
+                        .Select(p => new PublicProviderItem(
+                            p.Id, p.Name, p.OrganizationName,
+                            p.Phone, p.City, p.State, p.PostalCode,
+                            p.IsActive, p.AcceptingReferrals, p.AccessStage, null))
+                        .ToList();
+                });
 
-            return Results.Ok(items);
+            return items == null ? Results.NotFound() : Results.Ok(items);
         }).AllowAnonymous();
 
         // ── GET /api/public/network/{id}/providers/markers ──────────────────
         group.MapGet("/{id:guid}/providers/markers", async (
-            Guid           id,
-            HttpContext    http,
-            IConfiguration config,
-            INetworkRepository repo,
-            CancellationToken  ct) =>
+            Guid               id,
+            HttpContext         http,
+            IConfiguration      config,
+            INetworkRepository  repo,
+            IMemoryCache        cache,
+            CancellationToken   ct) =>
         {
             var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
 
-            var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
-            if (network == null)
-                return Results.NotFound();
+            // BLK-PERF-02: Cache map markers per tenant+network for 60 s.
+            // Invalidated on network write (PUT/DELETE network, POST/DELETE provider).
+            var markers = await cache.GetOrCreateAsync(
+                CareConnectCacheKeys.PublicNetworkMarkers(tenantId.Value, id),
+                async entry =>
+                {
+                    entry.AbsoluteExpirationRelativeToNow = CareConnectCacheTtl.PublicNetwork;
+                    entry.Size = 1;
 
-            var providers = await repo.GetNetworkProvidersAsync(tenantId.Value, id, ct);
+                    var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
+                    if (network == null) return null;
 
-            var markers = providers
-                .Where(p => p.Latitude.HasValue && p.Longitude.HasValue)
-                .Select(p => new PublicProviderMarker(
-                    p.Id,
-                    p.Name,
-                    p.OrganizationName,
-                    p.City,
-                    p.State,
-                    p.AcceptingReferrals,
-                    p.Latitude!.Value,
-                    p.Longitude!.Value))
-                .ToList();
+                    var providers = await repo.GetNetworkProvidersAsync(tenantId.Value, id, ct);
+                    return providers
+                        .Where(p => p.Latitude.HasValue && p.Longitude.HasValue)
+                        .Select(p => new PublicProviderMarker(
+                            p.Id, p.Name, p.OrganizationName,
+                            p.City, p.State, p.AcceptingReferrals,
+                            p.Latitude!.Value, p.Longitude!.Value))
+                        .ToList();
+                });
 
-            return Results.Ok(markers);
+            return markers == null ? Results.NotFound() : Results.Ok(markers);
         }).AllowAnonymous();
 
         // ── GET /api/public/network/{id}/detail ────────────────────────────
         group.MapGet("/{id:guid}/detail", async (
-            Guid           id,
-            HttpContext    http,
-            IConfiguration config,
-            INetworkRepository repo,
-            CancellationToken  ct) =>
+            Guid               id,
+            HttpContext         http,
+            IConfiguration      config,
+            INetworkRepository  repo,
+            IMemoryCache        cache,
+            CancellationToken   ct) =>
         {
             var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
 
-            var network = await repo.GetWithProvidersAsync(tenantId.Value, id, ct);
-            if (network == null)
-                return Results.NotFound();
+            // BLK-PERF-02: Cache the full detail payload (providers + markers) per
+            // tenant+network for 60 s. Single factory covers both data sets to avoid
+            // a split-brain cache state between the /providers and /detail endpoints.
+            var detail = await cache.GetOrCreateAsync(
+                CareConnectCacheKeys.PublicNetworkDetail(tenantId.Value, id),
+                async entry =>
+                {
+                    entry.AbsoluteExpirationRelativeToNow = CareConnectCacheTtl.PublicNetwork;
+                    entry.Size = 1;
 
-            // BLK-PERF-01: Providers already loaded by GetWithProvidersAsync via Include.
-            // Eliminated the redundant second GetNetworkProvidersAsync call (saved one round-trip).
-            var providers = network.NetworkProviders
-                .Where(np => np.Provider != null)
-                .Select(np => np.Provider!)
-                .OrderBy(p => p.Name)
-                .ToList();
+                    var network = await repo.GetWithProvidersAsync(tenantId.Value, id, ct);
+                    if (network == null) return null;
 
-            var items = providers
-                .Select(p => new PublicProviderItem(
-                    p.Id,
-                    p.Name,
-                    p.OrganizationName,
-                    p.Phone,
-                    p.City,
-                    p.State,
-                    p.PostalCode,
-                    p.IsActive,
-                    p.AcceptingReferrals,
-                    p.AccessStage,
-                    null))
-                .ToList();
+                    // BLK-PERF-01: Providers already loaded via Include — no extra round-trip.
+                    var providers = network.NetworkProviders
+                        .Where(np => np.Provider != null)
+                        .Select(np => np.Provider!)
+                        .OrderBy(p => p.Name)
+                        .ToList();
 
-            var markers = providers
-                .Where(p => p.Latitude.HasValue && p.Longitude.HasValue)
-                .Select(p => new PublicProviderMarker(
-                    p.Id,
-                    p.Name,
-                    p.OrganizationName,
-                    p.City,
-                    p.State,
-                    p.AcceptingReferrals,
-                    p.Latitude!.Value,
-                    p.Longitude!.Value))
-                .ToList();
+                    var items = providers
+                        .Select(p => new PublicProviderItem(
+                            p.Id, p.Name, p.OrganizationName,
+                            p.Phone, p.City, p.State, p.PostalCode,
+                            p.IsActive, p.AcceptingReferrals, p.AccessStage, null))
+                        .ToList();
 
-            var detail = new PublicNetworkDetail(
-                network.Id,
-                network.Name,
-                network.Description,
-                items,
-                markers);
+                    var markers = providers
+                        .Where(p => p.Latitude.HasValue && p.Longitude.HasValue)
+                        .Select(p => new PublicProviderMarker(
+                            p.Id, p.Name, p.OrganizationName,
+                            p.City, p.State, p.AcceptingReferrals,
+                            p.Latitude!.Value, p.Longitude!.Value))
+                        .ToList();
 
-            return Results.Ok(detail);
+                    return new PublicNetworkDetail(network.Id, network.Name, network.Description, items, markers);
+                });
+
+            return detail == null ? Results.NotFound() : Results.Ok(detail);
         }).AllowAnonymous();
 
         // ── POST /api/public/referrals ──────────────────────────────────────

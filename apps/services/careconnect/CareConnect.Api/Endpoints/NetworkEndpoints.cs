@@ -1,9 +1,11 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
+using CareConnect.Application.Cache;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace CareConnect.Api.Endpoints;
 
@@ -60,10 +62,15 @@ public static class NetworkEndpoints
             [FromBody] UpdateNetworkRequest request,
             INetworkService service,
             ICurrentRequestContext ctx,
+            IMemoryCache cache,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var network = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct);
+            // BLK-PERF-02: Network metadata changed — evict all public surface cache entries
+            // for this tenant+network so the next public read reflects the update.
+            foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
+                cache.Remove(key);
             return Results.Ok(network);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
@@ -73,10 +80,15 @@ public static class NetworkEndpoints
             Guid id,
             INetworkService service,
             ICurrentRequestContext ctx,
+            IMemoryCache cache,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await service.DeleteAsync(tenantId, id, ct);
+            // BLK-PERF-02: Network deleted — evict all public surface cache entries
+            // for this tenant+network (list + detail + providers + markers).
+            foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
+                cache.Remove(key);
             return Results.NoContent();
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
@@ -110,10 +122,15 @@ public static class NetworkEndpoints
             [FromBody] AddProviderToNetworkRequest request,
             INetworkService service,
             ICurrentRequestContext ctx,
+            IMemoryCache cache,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var provider = await service.AddProviderAsync(tenantId, id, request, ctx.UserId, ct);
+            // BLK-PERF-02: Provider membership changed — evict public provider/marker/detail/list
+            // cache entries for this tenant+network so the directory reflects the addition.
+            foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
+                cache.Remove(key);
             return Results.Ok(provider);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
@@ -124,10 +141,15 @@ public static class NetworkEndpoints
             Guid providerId,
             INetworkService service,
             ICurrentRequestContext ctx,
+            IMemoryCache cache,
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await service.RemoveProviderAsync(tenantId, id, providerId, ct);
+            // BLK-PERF-02: Provider removed from network — evict public provider/marker/detail/list
+            // cache entries for this tenant+network so the directory reflects the removal.
+            foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
+                cache.Remove(key);
             return Results.NoContent();
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);

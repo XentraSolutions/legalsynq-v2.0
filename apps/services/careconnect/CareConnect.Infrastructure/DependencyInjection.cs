@@ -66,6 +66,14 @@ public static class DependencyInjection
 
         services.AddAuditEventClient(configuration);
 
+        // BLK-PERF-02: In-memory cache for public network surfaces, reference data,
+        // and short-lived admin dashboard metrics. Tenant isolation is enforced via
+        // cache key construction (CareConnectCacheKeys). Size limit prevents unbounded growth.
+        services.AddMemoryCache(options =>
+        {
+            options.SizeLimit = 4096; // max cache entries before LRU eviction
+        });
+
         services.AddDbContext<CareConnectDbContext>(options =>
             options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0))));
 
