@@ -8,26 +8,27 @@ public partial class AddNotificationDedupeKey : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.AddColumn<string>(
-            name:      "DedupeKey",
-            table:     "CareConnectNotifications",
-            type:      "varchar(500)",
-            maxLength: 500,
-            nullable:  true);
+        migrationBuilder.Sql(@"
+            ALTER TABLE `cc_CareConnectNotifications`
+            ADD COLUMN IF NOT EXISTS `DedupeKey` varchar(500) CHARACTER SET utf8mb4 NULL;
+        ");
 
-        migrationBuilder.CreateIndex(
-            name:    "IX_CareConnectNotifications_DedupeKey",
-            table:   "CareConnectNotifications",
-            column:  "DedupeKey",
-            unique:  true);
+        migrationBuilder.Sql(@"
+            CREATE UNIQUE INDEX IF NOT EXISTS `IX_CareConnectNotifications_DedupeKey`
+            ON `cc_CareConnectNotifications` (`DedupeKey`);
+        ");
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.DropIndex(
-            name:  "IX_CareConnectNotifications_DedupeKey",
-            table: "CareConnectNotifications");
+        migrationBuilder.Sql(@"
+            DROP INDEX IF EXISTS `IX_CareConnectNotifications_DedupeKey`
+            ON `cc_CareConnectNotifications`;
+        ");
 
-        migrationBuilder.DropColumn(name: "DedupeKey", table: "CareConnectNotifications");
+        migrationBuilder.Sql(@"
+            ALTER TABLE `cc_CareConnectNotifications`
+            DROP COLUMN IF EXISTS `DedupeKey`;
+        ");
     }
 }

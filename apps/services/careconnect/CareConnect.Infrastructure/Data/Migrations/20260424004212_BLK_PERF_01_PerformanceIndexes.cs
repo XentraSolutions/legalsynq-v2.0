@@ -11,13 +11,8 @@ namespace CareConnect.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "DedupeKey",
-                table: "cc_CareConnectNotifications",
-                type: "varchar(500)",
-                maxLength: 500,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
+            // NOTE: DedupeKey column already exists on cc_CareConnectNotifications from
+            // 20260404000000_AddNotificationDedupeKey — do not re-add it here.
 
             migrationBuilder.CreateTable(
                 name: "cc_ProviderNetworks",
@@ -82,11 +77,8 @@ namespace CareConnect.Infrastructure.Data.Migrations
                 table: "cc_ReferralProviderReassignments",
                 column: "ReferralId");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_CareConnectNotifications_DedupeKey",
-                table: "cc_CareConnectNotifications",
-                column: "DedupeKey",
-                unique: true);
+            // NOTE: IX_CareConnectNotifications_DedupeKey index already exists from
+            // 20260404000000_AddNotificationDedupeKey — do not re-create it here.
 
             migrationBuilder.CreateIndex(
                 name: "IX_BlockedProviderAccessLogs_TenantId_AttemptedAtUtc",
@@ -137,9 +129,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                 name: "IX_cc_ReferralProviderReassignments_ReferralId",
                 table: "cc_ReferralProviderReassignments");
 
-            migrationBuilder.DropIndex(
-                name: "IX_CareConnectNotifications_DedupeKey",
-                table: "cc_CareConnectNotifications");
+            // NOTE: IX_CareConnectNotifications_DedupeKey not dropped here — owned by AddNotificationDedupeKey.
 
             migrationBuilder.DropIndex(
                 name: "IX_BlockedProviderAccessLogs_TenantId_AttemptedAtUtc",
@@ -149,9 +139,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                 name: "IX_ActivationRequests_TenantId_Status_CreatedAt",
                 table: "cc_ActivationRequests");
 
-            migrationBuilder.DropColumn(
-                name: "DedupeKey",
-                table: "cc_CareConnectNotifications");
+            // NOTE: DedupeKey column not dropped here — owned by AddNotificationDedupeKey migration.
         }
     }
 }
