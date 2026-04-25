@@ -10,7 +10,31 @@ echo "====== LegalSynq dev startup ======"
 # until the cold-compile race condition is resolved (HTTP 200 on /login).
 NEXT_INTERNAL_PORT=3050
 echo "[web] Starting Next.js on :$NEXT_INTERNAL_PORT (internal)"
-(cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$ROOT/node_modules/next/dist/bin/next" dev -p "$NEXT_INTERNAL_PORT") &
+# Both apps/web and apps/control-center specify Next.js 15.5.15.
+# Use the pnpm store binary directly — the root node_modules/next is a stub.
+WEB_NEXT_BIN="$ROOT/node_modules/.pnpm/next@15.5.15_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next/dist/bin/next"
+if [ ! -f "$WEB_NEXT_BIN" ]; then
+  WEB_NEXT_BIN="$(find "$ROOT/node_modules/.pnpm" -path "*/next@15.5*/node_modules/next/dist/bin/next" 2>/dev/null | head -1)"
+fi
+if [ -z "$WEB_NEXT_BIN" ] || [ ! -f "$WEB_NEXT_BIN" ]; then
+  echo "[web] WARNING: Could not find Next.js 15.5.x binary in pnpm store"
+  WEB_NEXT_BIN="$ROOT/node_modules/next/dist/bin/next"
+fi
+echo "[web] Using next binary: $WEB_NEXT_BIN"
+# Pin apps/web/node_modules/next → pnpm store 15.5.15 so webpack does not fall
+# back to the root node_modules/next (a different version that lacks shared/lib/utils).
+PNPM_NEXT15="$ROOT/node_modules/.pnpm/next@15.5.15_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next"
+WEB_NM="$ROOT/apps/web/node_modules"
+if [ -d "$PNPM_NEXT15" ]; then
+  mkdir -p "$WEB_NM"
+  rm -rf "$WEB_NM/next"
+  ln -s "$PNPM_NEXT15" "$WEB_NM/next"
+  mkdir -p "$WEB_NM/.bin"
+  rm -f "$WEB_NM/.bin/next"
+  ln -s "../next/dist/bin/next" "$WEB_NM/.bin/next"
+  echo "[web] Pinned node_modules/next → 15.5.15"
+fi
+(cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$WEB_NEXT_BIN" dev -p "$NEXT_INTERNAL_PORT") &
 PID_WEB=$!
 
 echo "[proxy] Starting dev proxy on :5000 → :$NEXT_INTERNAL_PORT"
@@ -18,17 +42,9 @@ NEXT_INTERNAL_PORT=$NEXT_INTERNAL_PORT PROXY_PORT=5000 "$NODE" "$ROOT/scripts/de
 PID_PROXY=$!
 
 # Start Control Center — port 5004
-# The CC ships Next.js 15.5.15.  We must NOT use the root node_modules binary
-# (which is the web app's 15.2.9) because the version mismatch causes
-# "routeModule.prepare is not a function" errors at runtime.
-# Resolution order:
-#   1. pnpm store copy (15.5.15) — preferred
-#   2. CC-local node_modules/next — only if it matches the expected major/minor
-#   3. Root binary — last resort (may not work)
+# Both apps/web and apps/control-center use Next.js 15.5.15.
+# Pin the CC's node_modules/next to 15.5.15 so webpack uses the correct version.
 echo "[control-center] Starting Next.js on :5004"
-# Ensure the CC's node_modules/next resolves to 15.5.15 (not the root's 15.2.9).
-# Without this the runtime module path mismatch causes routeModule.prepare errors.
-PNPM_NEXT15="$ROOT/node_modules/.pnpm/next@15.5.15_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/next"
 CC_NM="$ROOT/apps/control-center/node_modules"
 if [ -d "$PNPM_NEXT15" ]; then
   rm -rf "$CC_NM/next"

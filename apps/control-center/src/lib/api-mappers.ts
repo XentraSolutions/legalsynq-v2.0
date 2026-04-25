@@ -932,32 +932,90 @@ const SUPPORT_STATUSES:   readonly SupportCaseStatus[]   = ['Open', 'Investigati
 const SUPPORT_PRIORITIES: readonly SupportCasePriority[] = ['Low', 'Medium', 'High'];
 
 /**
- * mapSupportCase — normalises a raw backend support case (list item).
+ * Maps a raw TicketStatus value from the Support service to the CC's SupportCaseStatus.
  *
- * Handles:
+ * Support service statuses: Open, Pending, InProgress, Resolved, Closed, Cancelled
+ * CC SupportCaseStatus:     Open, Investigating, Resolved, Closed
+ */
+function mapTicketStatus(raw: unknown): SupportCaseStatus {
+  switch (raw) {
+    case 'Open':        return 'Open';
+    case 'Pending':     return 'Open';
+    case 'InProgress':  return 'Investigating';
+    case 'Resolved':    return 'Resolved';
+    case 'Closed':      return 'Closed';
+    case 'Cancelled':   return 'Closed';
+    default:
+      if (SUPPORT_STATUSES.includes(raw as SupportCaseStatus)) return raw as SupportCaseStatus;
+      return 'Open';
+  }
+}
+
+/**
+ * Maps a raw TicketPriority value from the Support service to the CC's SupportCasePriority.
+ *
+ * Support service priorities: Low, Normal, High, Urgent
+ * CC SupportCasePriority:     Low, Medium, High
+ */
+function mapTicketPriority(raw: unknown): SupportCasePriority {
+  switch (raw) {
+    case 'Low':    return 'Low';
+    case 'Normal': return 'Medium';
+    case 'High':   return 'High';
+    case 'Urgent': return 'High';
+    default:
+      if (SUPPORT_PRIORITIES.includes(raw as SupportCasePriority)) return raw as SupportCasePriority;
+      return 'Medium';
+  }
+}
+
+/**
+ * mapSupportCase — normalises a raw backend support ticket (list item).
+ *
+ * Handles both the legacy identity-service shape and the real Support service shape:
+ *   id → id
+ *   title → title
  *   tenant_id / tenantId → tenantId
- *   tenant_name / tenantName → tenantName
- *   user_id / userId → userId
- *   user_name / userName → userName
- *   created_at / createdAtUtc → createdAtUtc
- *   updated_at / updatedAtUtc → updatedAtUtc
+ *   tenant_name / tenantName → tenantName   (Support service has no tenantName — defaults to '')
+ *   requester_user_id / requesterUserId / user_id / userId → userId
+ *   requester_name / requesterName / user_name / userName → userName
+ *   status (mapped via mapTicketStatus)
+ *   category → category
+ *   priority (mapped via mapTicketPriority)
+ *   created_at / createdAt / createdAtUtc → createdAtUtc
+ *   updated_at / updatedAt / updatedAtUtc → updatedAtUtc
  *
  * TODO: replace manual mappers with generated types from OpenAPI spec
  */
 export function mapSupportCase(raw: unknown): SupportCase {
-  const r = asObj(raw);
+  const r   = asObj(raw);
+  const now = new Date().toISOString();
+
+  const userId = (
+    r['requesterUserId'] ?? r['requester_user_id'] ?? r['userId'] ?? r['user_id']
+  );
+  const userName = (
+    r['requesterName'] ?? r['requester_name'] ?? r['userName'] ?? r['user_name']
+  );
+  const createdRaw = (
+    r['createdAt'] ?? r['created_at'] ?? r['createdAtUtc']
+  );
+  const updatedRaw = (
+    r['updatedAt'] ?? r['updated_at'] ?? r['updatedAtUtc']
+  );
+
   return {
-    id:           str(r, 'id',          'id',          '',      'mapSupportCase.id'),
-    title:        str(r, 'title',       'title',       ''),
-    tenantId:     str(r, 'tenant_id',   'tenantId',    ''),
-    tenantName:   str(r, 'tenant_name', 'tenantName',  ''),
-    userId:       optStr(r, 'user_id',  'userId'),
-    userName:     optStr(r, 'user_name','userName'),
-    status:       oneOf(r, 'status',    'status',      SUPPORT_STATUSES,   'Open',   'mapSupportCase.status'),
-    category:     str(r, 'category',    'category',    ''),
-    priority:     oneOf(r, 'priority',  'priority',    SUPPORT_PRIORITIES, 'Medium', 'mapSupportCase.priority'),
-    createdAtUtc: str(r, 'created_at',  'createdAtUtc', new Date().toISOString()),
-    updatedAtUtc: str(r, 'updated_at',  'updatedAtUtc', new Date().toISOString()),
+    id:           str(r, 'id',          'id',         '',  'mapSupportCase.id'),
+    title:        str(r, 'title',       'title',      ''),
+    tenantId:     str(r, 'tenant_id',   'tenantId',   ''),
+    tenantName:   str(r, 'tenant_name', 'tenantName', ''),
+    userId:       typeof userId   === 'string' && userId.length   > 0 ? userId   : undefined,
+    userName:     typeof userName === 'string' && userName.length > 0 ? userName : undefined,
+    status:       mapTicketStatus(r['status']),
+    category:     str(r, 'category', 'category', ''),
+    priority:     mapTicketPriority(r['priority']),
+    createdAtUtc: typeof createdRaw === 'string' && createdRaw.length > 0 ? createdRaw : now,
+    updatedAtUtc: typeof updatedRaw === 'string' && updatedRaw.length > 0 ? updatedRaw : now,
   };
 }
 
@@ -1287,11 +1345,14 @@ export function mapPagedResponse<T>(
   const payload = (typeof r['success'] === 'boolean' && r['data'] !== undefined)
     ? asObj(r['data'])
     : r;
+  // Support service returns `total`; Identity service returns `total_count`/`totalCount`
+  const rawTotal = payload['total'] ?? payload['total_count'] ?? payload['totalCount'];
+  const totalCount = typeof rawTotal === 'number' && isFinite(rawTotal) ? rawTotal : 0;
   return {
     items:      asArr(payload['items']).map(mapItem),
-    totalCount: num(payload, 'total_count', 'totalCount', 0),
-    page:       num(payload, 'page',        'page',        1),
-    pageSize:   num(payload, 'page_size',   'pageSize',    20),
+    totalCount,
+    page:       num(payload, 'page',      'page',     1),
+    pageSize:   num(payload, 'page_size', 'pageSize', 20),
   };
 }
 

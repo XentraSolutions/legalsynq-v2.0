@@ -183,11 +183,12 @@ export function orgTypeLabel(orgType: string | undefined): string {
 export const GLOBAL_BOTTOM_NAV: NavSection = {
   heading: 'ACCOUNT',
   items: [
-    { href: '/my-work',                         label: 'My Work',         icon: 'ri-task-line'           },
-    { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line'      },
-    { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line'        },
-    { href: '/tenant/analytics',                label: 'Operations',      icon: 'ri-line-chart-line',    adminOnly: true },
-    { href: '/tenant/authorization/users',      label: 'User Management', icon: 'ri-shield-user-line',   adminOnly: true },
+    { href: '/my-work',                         label: 'My Work',         icon: 'ri-task-line'                       },
+    { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line'                  },
+    { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line'                    },
+    { href: '/support',                         label: 'Support',         icon: 'ri-customer-service-2-line', adminOnly: true },
+    { href: '/tenant/analytics',                label: 'Operations',      icon: 'ri-line-chart-line',         adminOnly: true },
+    { href: '/tenant/authorization/users',      label: 'User Management', icon: 'ri-shield-user-line',        adminOnly: true },
   ],
 };
 

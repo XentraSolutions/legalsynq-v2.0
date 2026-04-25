@@ -1840,20 +1840,12 @@ export const controlCenterServerApi = {
 
   support: {
     /**
-     * GET /identity/api/admin/support
+     * GET /support/api/tickets
      *
-     * Returns a paged list of support cases, optionally filtered and scoped.
+     * Returns a paged list of support tickets via the Support service gateway route.
      * Response is normalised via mapSupportCase + mapPagedResponse.
      *
      * Cache: 10 s  Tag: cc:support
-     *   Support case status can change while an admin is viewing the list.
-     *   10 s balances freshness vs load; on-demand invalidated by all
-     *   support mutations.
-     *
-     * TODO: integrate with support case endpoint
-     * TODO: enforce tenant scoping server-side
-     * TODO: validate tenant context against session
-     * TODO: add Redis or edge caching
      */
     list: async (params: {
       page?:     number;
@@ -1872,7 +1864,7 @@ export const controlCenterServerApi = {
         tenantId: params.tenantId,
       });
       const raw = await apiClient.get<unknown>(
-        `/identity/api/admin/support${qs}`,
+        `/support/api/tickets${qs}`,
         10,
         [CACHE_TAGS.support],
       );
@@ -1881,20 +1873,17 @@ export const controlCenterServerApi = {
     },
 
     /**
-     * GET /identity/api/admin/support/{id}
+     * GET /support/api/tickets/{id}
      *
      * Returns full SupportCaseDetail including notes, or null if not found.
      * Response is normalised via mapSupportCaseDetail.
      *
      * Cache: 10 s  Tag: cc:support
-     *   Same lifecycle as support.list.
-     *
-     * TODO: integrate with support case endpoint
      */
     getById: async (id: string): Promise<SupportCaseDetail | null> => {
       try {
         const raw = await apiClient.get<unknown>(
-          `/identity/api/admin/support/${encodeURIComponent(id)}`,
+          `/support/api/tickets/${encodeURIComponent(id)}`,
           10,
           [CACHE_TAGS.support],
         );
@@ -1906,15 +1895,12 @@ export const controlCenterServerApi = {
     },
 
     /**
-     * POST /identity/api/admin/support
+     * POST /support/api/tickets
      *
-     * Creates a new support case.
+     * Creates a new support ticket.
      * Response is normalised via mapSupportCaseDetail.
      *
-     * Revalidates: cc:support — the new case appears in support.list immediately.
-     *
-     * TODO: integrate with support case endpoint
-     * TODO: add Redis or edge caching
+     * Revalidates: cc:support — the new ticket appears in support.list immediately.
      */
     create: async (data: {
       title:      string;
@@ -1925,53 +1911,44 @@ export const controlCenterServerApi = {
       category:   string;
       priority:   SupportCase['priority'];
     }): Promise<SupportCaseDetail> => {
-      const raw = await apiClient.post<unknown>('/identity/api/admin/support', data);
+      const raw = await apiClient.post<unknown>('/support/api/tickets', data);
       const result = mapSupportCaseDetail(raw);
-      // Purge support cache so the new case is visible immediately
       safeRevalidateTag(CACHE_TAGS.support);
       return result;
     },
 
     /**
-     * POST /identity/api/admin/support/{caseId}/notes
+     * POST /support/api/tickets/{ticketId}/comments
      *
-     * Adds a note to an existing support case.
+     * Adds a comment to an existing support ticket.
      * Response is normalised via mapSupportNote.
      *
-     * Revalidates: cc:support — note count and last-updated reflect immediately.
-     *
-     * TODO: integrate with support case endpoint
-     * TODO: add Redis or edge caching
+     * Revalidates: cc:support — comment count and last-updated reflect immediately.
      */
     addNote: async (caseId: string, message: string): Promise<SupportNote> => {
       const raw = await apiClient.post<unknown>(
-        `/identity/api/admin/support/${encodeURIComponent(caseId)}/notes`,
+        `/support/api/tickets/${encodeURIComponent(caseId)}/comments`,
         { message },
       );
       const result = mapSupportNote(raw);
-      // Purge so case detail reflects the new note immediately
       safeRevalidateTag(CACHE_TAGS.support);
       return result;
     },
 
     /**
-     * PATCH /identity/api/admin/support/{caseId}/status
+     * PUT /support/api/tickets/{ticketId}
      *
-     * Updates the status of a support case.
+     * Updates the status of a support ticket via a full PUT with the new status.
      * Response is normalised via mapSupportCase.
      *
      * Revalidates: cc:support — new status visible in list and detail immediately.
-     *
-     * TODO: integrate with support case endpoint
-     * TODO: add Redis or edge caching
      */
     updateStatus: async (caseId: string, status: SupportCaseStatus): Promise<SupportCase> => {
-      const raw = await apiClient.patch<unknown>(
-        `/identity/api/admin/support/${encodeURIComponent(caseId)}/status`,
+      const raw = await apiClient.put<unknown>(
+        `/support/api/tickets/${encodeURIComponent(caseId)}`,
         { status },
       );
       const result = mapSupportCase(raw);
-      // Purge so updated status is visible in list and detail immediately
       safeRevalidateTag(CACHE_TAGS.support);
       return result;
     },
