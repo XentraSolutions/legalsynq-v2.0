@@ -261,7 +261,7 @@ Handlers where tenant was already available:
 
 ## 10. Final Status
 
-**Complete.**
+**Complete (updated Task #176 — post-accept login redirect).**
 
 ### Emails now using tenant-subdomain URLs (when `PortalBaseDomain` is configured)
 
@@ -273,12 +273,45 @@ Handlers where tenant was already available:
 | Self-service forgot password | `AuthEndpoints.ForgotPassword` | `https://{slug}.{PortalBaseDomain}/reset-password?token=...` |
 | Provider auto-provision invite | `AdminEndpointsLscc010.ProvisionProviderUser` | `https://{slug}.{PortalBaseDomain}/accept-invite?token=...` |
 
+### Post-accept login redirect (Task #176 addition)
+
+After a user accepts an invitation, the frontend now redirects to the correct tenant login page:
+
+| Step | Where | Detail |
+|------|-------|--------|
+| Identity endpoint | `POST /api/auth/accept-invite` | Looks up tenant by `user.TenantId`; calls `TenantPortalUrlHelper.BuildBaseUrl` to get the base URL; returns `tenantPortalUrl` in the 200 response alongside `message`. |
+| BFF route | `apps/web/src/app/api/auth/accept-invite/route.ts` | Extracts `tenantPortalUrl` from the identity response and includes it in the JSON returned to the browser (null if absent). |
+| Accept-invite form | `apps/web/src/app/accept-invite/accept-invite-form.tsx` | On mount, derives `loginUrl` from `window.location.origin + /login` (tenant-aware via the invite link hostname). On successful accept, refines `loginUrl` with `tenantPortalUrl` from the API response. Both the "Sign in" button (success state) and "Back to sign in" link use `loginUrl`. Fallback: `/login` if no origin/URL is available. |
+
+### `TenantPortalUrlHelper` API (updated)
+
+| Method | Returns | Use |
+|--------|---------|-----|
+| `Build(tenant, path, rawToken, opts)` | Full URL with path + token | Email links |
+| `BuildBaseUrl(tenant, opts)` | Base URL only (no path/token) | Login redirect target |
+
+Both delegate to a shared private `ResolveBaseUrl()` method to keep logic in one place.
+
+### Configuration reference
+
+| Key | Env var | Required | Description |
+|-----|---------|----------|-------------|
+| `NotificationsService:PortalBaseDomain` | `NotificationsService__PortalBaseDomain` | Yes (production) | Base domain for tenant-subdomain URLs. Set to your deployment domain (e.g. `example.com`). Must not include scheme or trailing slash. |
+| `NotificationsService:PortalBaseUrl` | `NotificationsService__PortalBaseUrl` | Yes (fallback) | Generic portal URL used when `PortalBaseDomain` is not set. Required in production by the startup guard. |
+| `NotificationsService:BaseUrl` | `NotificationsService__BaseUrl` | Yes | Internal URL of the Notifications service. Required by startup guard. |
+
+### Startup logging (Program.cs)
+At startup the identity service now logs the active URL-building mode:
+- `PortalBaseDomain` set → **INFO** "Portal URL mode: SUBDOMAIN"
+- `PortalBaseDomain` absent, `PortalBaseUrl` set → **WARN** "Portal URL mode: FALLBACK" (prompts operators to configure subdomain mode)
+- Both absent → **ERROR** "Portal URL mode: UNCONFIGURED"
+
 ### Tenant subdomain resolution
 - Source: `tenant.Subdomain ?? tenant.Code` from the `idt_Tenants` table
 - Authority: server-side DB lookup; never client-controlled
 
 ### Base URL configuration
-- `NotificationsService:PortalBaseDomain` — primary (tenant-subdomain mode)
+- `NotificationsService:PortalBaseDomain` — primary (tenant-subdomain mode); **dynamic — read from env var at runtime, never hardcoded**
 - `NotificationsService:PortalBaseUrl` — fallback (legacy single-host mode)
 
 ### Fallback behavior
@@ -290,4 +323,4 @@ Handlers where tenant was already available:
 Unchanged — same `INotificationsEmailClient` interface, same payload keys, same delivery flow.
 
 ### What remains deferred
-Nothing in scope was deferred. The two token validation paths (`/accept-invite`, `/reset-password`) continue to work correctly — they validate the token hash and TenantId stored in the DB, independent of the URL hostname used to reach them.
+Automated tests for the new `tenantPortalUrl` return value and the login-redirect flow (tracked as follow-up task #177).

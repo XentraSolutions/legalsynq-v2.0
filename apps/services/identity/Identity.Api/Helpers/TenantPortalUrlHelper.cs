@@ -39,30 +39,47 @@ public static class TenantPortalUrlHelper
     ///   nor <c>PortalBaseUrl</c> is configured.
     /// </returns>
     public static string? Build(
-        Tenant?                    tenant,
-        string                     path,
-        string                     rawToken,
+        Tenant?                     tenant,
+        string                      path,
+        string                      rawToken,
+        NotificationsServiceOptions opts)
+    {
+        var baseUrl = ResolveBaseUrl(tenant, opts);
+        if (baseUrl is null) return null;
+
+        var cleanPath = path.TrimStart('/');
+        return $"{baseUrl}/{cleanPath}?token={Uri.EscapeDataString(rawToken)}";
+    }
+
+    /// <summary>
+    /// Returns just the tenant portal base URL (no path, no token) for use as a
+    /// login-redirect target after invite acceptance.
+    /// </summary>
+    /// <returns>
+    ///   A fully-qualified base URL string (e.g. <c>https://acme.example.com</c>),
+    ///   or <c>null</c> if neither <c>PortalBaseDomain</c> nor <c>PortalBaseUrl</c>
+    ///   is configured.
+    /// </returns>
+    public static string? BuildBaseUrl(
+        Tenant?                     tenant,
+        NotificationsServiceOptions opts)
+        => ResolveBaseUrl(tenant, opts);
+
+    private static string? ResolveBaseUrl(
+        Tenant?                     tenant,
         NotificationsServiceOptions opts)
     {
         var baseDomain = opts.PortalBaseDomain?.Trim().TrimEnd('/');
 
-        string baseUrl;
-
         if (!string.IsNullOrWhiteSpace(baseDomain) && tenant is not null)
         {
             var slug = (tenant.Subdomain ?? tenant.Code).ToLowerInvariant().Trim();
-            baseUrl  = $"https://{slug}.{baseDomain}";
-        }
-        else if (!string.IsNullOrWhiteSpace(opts.PortalBaseUrl))
-        {
-            baseUrl = opts.PortalBaseUrl.TrimEnd('/');
-        }
-        else
-        {
-            return null;
+            return $"https://{slug}.{baseDomain}";
         }
 
-        var cleanPath = path.TrimStart('/');
-        return $"{baseUrl}/{cleanPath}?token={Uri.EscapeDataString(rawToken)}";
+        if (!string.IsNullOrWhiteSpace(opts.PortalBaseUrl))
+            return opts.PortalBaseUrl.TrimEnd('/');
+
+        return null;
     }
 }

@@ -49,6 +49,40 @@ if (!builder.Environment.IsDevelopment())
         .RequireConnectionString("ConnectionStrings:IdentityDb");
 }
 
+// ── LS-ID-TNT-016-01: Log portal URL-building mode at startup ─────────────
+// NotificationsService:PortalBaseDomain (env: NotificationsService__PortalBaseDomain)
+// enables tenant-subdomain-aware email links: https://{slug}.{baseDomain}/{path}?token=...
+// When absent, PortalBaseUrl is used as a fallback (generic, non-subdomain URL).
+// Set NotificationsService__PortalBaseDomain to your deployment base domain (e.g. example.com).
+{
+    var startupLogger     = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("Identity.Startup");
+    var portalBaseDomain  = builder.Configuration["NotificationsService:PortalBaseDomain"];
+    var portalBaseUrl     = builder.Configuration["NotificationsService:PortalBaseUrl"];
+
+    if (!string.IsNullOrWhiteSpace(portalBaseDomain))
+    {
+        startupLogger.LogInformation(
+            "[LS-ID-TNT-016-01] Portal URL mode: SUBDOMAIN — invite/reset links will use " +
+            "https://{{slug}}.{BaseDomain}/{{path}}?token=... Set via NotificationsService__PortalBaseDomain.",
+            portalBaseDomain);
+    }
+    else if (!string.IsNullOrWhiteSpace(portalBaseUrl))
+    {
+        startupLogger.LogWarning(
+            "[LS-ID-TNT-016-01] Portal URL mode: FALLBACK — NotificationsService:PortalBaseDomain is not set; " +
+            "invite/reset links will use the generic PortalBaseUrl ({PortalBaseUrl}). " +
+            "Set NotificationsService__PortalBaseDomain to enable tenant-subdomain-aware links.",
+            portalBaseUrl);
+    }
+    else
+    {
+        startupLogger.LogError(
+            "[LS-ID-TNT-016-01] Portal URL mode: UNCONFIGURED — neither PortalBaseDomain nor PortalBaseUrl is set. " +
+            "Invite and password-reset emails cannot be sent. " +
+            "Set NotificationsService__PortalBaseDomain (required) and NotificationsService__PortalBaseUrl (fallback).");
+    }
+}
+
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

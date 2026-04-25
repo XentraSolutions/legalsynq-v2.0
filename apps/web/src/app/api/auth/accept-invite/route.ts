@@ -54,5 +54,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ message: data.message ?? 'Invitation accepted. Your account is now active.' });
+  return NextResponse.json({
+    message: data.message ?? 'Invitation accepted. Your account is now active.',
+    tenantPortalUrl: data.tenantPortalUrl ?? null,
+  });
 }

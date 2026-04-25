@@ -185,11 +185,12 @@ public static class AuthEndpoints
         //   5. Mark the invitation accepted.
         //   6. Emit identity.user.invite_accepted audit event.
         app.MapPost("/api/auth/accept-invite", async (
-            AcceptInviteRequest   body,
-            IdentityDbContext     db,
-            IPasswordHasher       passwordHasher,
-            IAuditEventClient     auditClient,
-            CancellationToken     ct) =>
+            AcceptInviteRequest                    body,
+            IdentityDbContext                      db,
+            IPasswordHasher                        passwordHasher,
+            IAuditEventClient                      auditClient,
+            IOptions<NotificationsServiceOptions>  notifOptions,
+            CancellationToken                      ct) =>
         {
             if (string.IsNullOrWhiteSpace(body.Token))
                 return Results.BadRequest(new { error = "token is required." });
@@ -258,7 +259,16 @@ public static class AuthEndpoints
                 Tags = ["user-management", "invite", "activation"],
             });
 
-            return Results.Ok(new { message = "Invitation accepted. Your account is now active." });
+            // LS-ID-TNT-016-01: Build tenant portal base URL so the frontend can redirect
+            // the user to the correct subdomain login page after accepting the invite.
+            var inviteTenant      = await db.Tenants.FindAsync([user.TenantId], ct);
+            var tenantPortalUrl   = TenantPortalUrlHelper.BuildBaseUrl(inviteTenant, notifOptions.Value);
+
+            return Results.Ok(new
+            {
+                message         = "Invitation accepted. Your account is now active.",
+                tenantPortalUrl,
+            });
         })
         .AllowAnonymous()
         .RequireRateLimiting("auth-token-exchange");

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 export function AcceptInviteForm() {
@@ -13,6 +13,15 @@ export function AcceptInviteForm() {
   const [loading,         setLoading]         = useState(false);
   const [success,         setSuccess]         = useState(false);
   const [showPw,          setShowPw]          = useState(false);
+  // loginUrl is derived from the current page origin on mount (the invite link already
+  // points to the correct tenant subdomain). The API response may refine this value.
+  const [loginUrl,        setLoginUrl]        = useState('/login');
+
+  useEffect(() => {
+    // The invite email links to https://{slug}.{domain}/accept-invite?token=…
+    // so window.location.origin already contains the correct subdomain base URL.
+    setLoginUrl(`${window.location.origin}/login`);
+  }, []);
 
   if (!token) {
     return (
@@ -37,7 +46,7 @@ export function AcceptInviteForm() {
           </p>
         </div>
         <a
-          href="/login"
+          href={loginUrl}
           className="w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-opacity"
           style={{ backgroundColor: '#f97316' }}
         >
@@ -75,6 +84,12 @@ export function AcceptInviteForm() {
         return;
       }
 
+      // The identity service returns the tenant portal base URL so we can redirect
+      // to the correct subdomain login page. If absent, the origin-derived URL
+      // set on mount already points to the right place (same subdomain).
+      if (data.tenantPortalUrl) {
+        setLoginUrl(`${data.tenantPortalUrl}/login`);
+      }
       setSuccess(true);
     } catch {
       setError('Network error. Please check your connection and try again.');
@@ -148,7 +163,7 @@ export function AcceptInviteForm() {
 
       <p className="text-center text-xs text-gray-400">
         <a
-          href="/login"
+          href={loginUrl}
           className="text-gray-600 hover:text-gray-900 underline underline-offset-2 transition-colors"
         >
           Back to sign in
