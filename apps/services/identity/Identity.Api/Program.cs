@@ -255,6 +255,174 @@ catch (Exception ex)
     app.Logger.LogWarning(ex, "LS-ID-TNT-011 pre-migration guard failed — proceeding with normal migration");
 }
 
+// ── LS-ID-SUP-002 pre-migration guard ────────────────────────────────────────
+// The three 20260426 migrations seed support roles and back-fill ScopedRole-
+// Assignments. Their SQL is idempotent (INSERT IGNORE / UPDATE … WHERE), so
+// re-running it is safe; however EF will attempt to apply them on EVERY startup
+// until they appear in __EFMigrationsHistory. If a prior startup ran their SQL
+// via the LS-ID-SUP-001 guard but the EF Migrate() call subsequently failed,
+// the history never advanced and the cycle repeats.
+//
+// This guard runs each migration's SQL idempotently, then inserts any missing
+// history rows so that EF's Migrate() finds nothing to do for these three entries.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db   = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    var conn = db.Database.GetDbConnection();
+    if (conn.State != System.Data.ConnectionState.Open) conn.Open();
+    using var cmd = conn.CreateCommand();
+
+    const string PlatformTenantId  = "20000000-0000-0000-0000-000000000001";
+    const string RolePlatformAdmin = "30000000-0000-0000-0000-000000000001";
+    const string RoleTenantAdmin   = "30000000-0000-0000-0000-000000000002";
+    const string RoleSupportAdmin     = "30000000-0000-0000-0000-000000000011";
+    const string RoleSupportManager   = "30000000-0000-0000-0000-000000000012";
+    const string RoleSupportAgent     = "30000000-0000-0000-0000-000000000013";
+    const string RoleTenantUser       = "30000000-0000-0000-0000-000000000014";
+    const string RoleExternalCustomer = "30000000-0000-0000-0000-000000000015";
+    const string EfVersion = "8.0.7";
+
+    // ── Migration 20260426000001_SeedSupportRoles ──────────────────────────
+    cmd.CommandText = @"
+        SELECT COUNT(*) FROM `__EFMigrationsHistory`
+        WHERE `MigrationId` = '20260426000001_SeedSupportRoles';";
+    var mig1Exists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+
+    if (!mig1Exists)
+    {
+        app.Logger.LogWarning(
+            "LS-ID-SUP-002: 20260426000001_SeedSupportRoles not in EF history — " +
+            "applying idempotently and recording.");
+
+        cmd.CommandText = $@"
+INSERT IGNORE INTO `idt_Roles`
+    (`Id`, `TenantId`, `Name`, `Description`, `IsSystemRole`, `Scope`, `CreatedAtUtc`, `UpdatedAtUtc`)
+VALUES
+    ('{RoleSupportAdmin}',    '{PlatformTenantId}', 'SupportAdmin',     'Full support administration — manages queues, SLAs and settings',         1, 'Support',  '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+    ('{RoleSupportManager}',  '{PlatformTenantId}', 'SupportManager',   'Support team manager — escalations, reporting and agent oversight',        1, 'Support',  '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+    ('{RoleSupportAgent}',    '{PlatformTenantId}', 'SupportAgent',     'Frontline support agent — handles and responds to tickets',                1, 'Support',  '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+    ('{RoleTenantUser}',      '{PlatformTenantId}', 'TenantUser',       'Regular authenticated tenant user — read-only support access',            1, 'Tenant',   '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+    ('{RoleExternalCustomer}','{PlatformTenantId}', 'ExternalCustomer', 'External customer — may view and comment on their own support tickets',   0, 'External', '2024-01-01 00:00:00', '2024-01-01 00:00:00');";
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = $@"
+INSERT IGNORE INTO `idt_ScopedRoleAssignments`
+    (`Id`, `UserId`, `RoleId`, `ScopeType`, `TenantId`,
+     `OrganizationId`, `OrganizationRelationshipId`, `ProductId`,
+     `IsActive`, `AssignedAtUtc`, `UpdatedAtUtc`, `AssignedByUserId`)
+SELECT UUID(), u.`Id`,
+    CASE WHEN u.`TenantId` = '{PlatformTenantId}' THEN '{RolePlatformAdmin}' ELSE '{RoleTenantAdmin}' END,
+    'GLOBAL', u.`TenantId`, NULL, NULL, NULL,
+    1, u.`CreatedAtUtc`, u.`CreatedAtUtc`, NULL
+FROM `idt_Users` u
+WHERE u.`IsActive` = 1
+  AND NOT EXISTS (
+    SELECT 1 FROM `idt_ScopedRoleAssignments` sra
+    WHERE sra.`UserId` = u.`Id` AND sra.`ScopeType` = 'GLOBAL' AND sra.`IsActive` = 1
+  );";
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = $@"
+INSERT IGNORE INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`)
+VALUES ('20260426000001_SeedSupportRoles', '{EfVersion}');";
+        cmd.ExecuteNonQuery();
+    }
+
+    // ── Migration 20260426000002_FixSupportRolesBackfill ──────────────────
+    cmd.CommandText = @"
+        SELECT COUNT(*) FROM `__EFMigrationsHistory`
+        WHERE `MigrationId` = '20260426000002_FixSupportRolesBackfill';";
+    var mig2Exists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+
+    if (!mig2Exists)
+    {
+        app.Logger.LogWarning(
+            "LS-ID-SUP-002: 20260426000002_FixSupportRolesBackfill not in EF history — " +
+            "applying idempotently and recording.");
+
+        cmd.CommandText = $@"
+INSERT IGNORE INTO `idt_ScopedRoleAssignments`
+    (`Id`, `UserId`, `RoleId`, `ScopeType`, `TenantId`,
+     `OrganizationId`, `OrganizationRelationshipId`, `ProductId`,
+     `IsActive`, `AssignedAtUtc`, `UpdatedAtUtc`, `AssignedByUserId`)
+SELECT UUID(), u.`Id`,
+    CASE WHEN u.`TenantId` = '{PlatformTenantId}' THEN '{RolePlatformAdmin}' ELSE '{RoleTenantAdmin}' END,
+    'GLOBAL', u.`TenantId`, NULL, NULL, NULL,
+    1, u.`CreatedAtUtc`, u.`CreatedAtUtc`, NULL
+FROM `idt_Users` u
+WHERE u.`IsActive` = 1
+  AND NOT EXISTS (
+    SELECT 1 FROM `idt_ScopedRoleAssignments` sra
+    WHERE sra.`UserId` = u.`Id` AND sra.`ScopeType` = 'GLOBAL' AND sra.`IsActive` = 1
+  );";
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = $@"
+INSERT IGNORE INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`)
+VALUES ('20260426000002_FixSupportRolesBackfill', '{EfVersion}');";
+        cmd.ExecuteNonQuery();
+    }
+
+    // ── Migration 20260426000003_CorrectPlatformAdminRole ─────────────────
+    cmd.CommandText = @"
+        SELECT COUNT(*) FROM `__EFMigrationsHistory`
+        WHERE `MigrationId` = '20260426000003_CorrectPlatformAdminRole';";
+    var mig3Exists = Convert.ToInt64(cmd.ExecuteScalar()) > 0;
+
+    if (!mig3Exists)
+    {
+        app.Logger.LogWarning(
+            "LS-ID-SUP-002: 20260426000003_CorrectPlatformAdminRole not in EF history — " +
+            "applying idempotently and recording.");
+
+        cmd.CommandText = $@"
+UPDATE `idt_ScopedRoleAssignments` sra
+INNER JOIN `idt_Users` u ON u.`Id` = sra.`UserId`
+SET   sra.`RoleId`       = '{RolePlatformAdmin}',
+      sra.`UpdatedAtUtc` = UTC_TIMESTAMP()
+WHERE u.`TenantId`           = '{PlatformTenantId}'
+  AND sra.`ScopeType`        = 'GLOBAL'
+  AND sra.`IsActive`         = 1
+  AND sra.`RoleId`           = '{RoleTenantAdmin}'
+  AND sra.`AssignedByUserId` IS NULL;";
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = $@"
+INSERT IGNORE INTO `idt_ScopedRoleAssignments`
+    (`Id`, `UserId`, `RoleId`, `ScopeType`, `TenantId`,
+     `OrganizationId`, `OrganizationRelationshipId`, `ProductId`,
+     `IsActive`, `AssignedAtUtc`, `UpdatedAtUtc`, `AssignedByUserId`)
+SELECT UUID(), u.`Id`, '{RolePlatformAdmin}', 'GLOBAL', u.`TenantId`,
+       NULL, NULL, NULL, 1, u.`CreatedAtUtc`, u.`CreatedAtUtc`, NULL
+FROM `idt_Users` u
+WHERE u.`TenantId` = '{PlatformTenantId}'
+  AND u.`IsActive` = 1
+  AND NOT EXISTS (
+    SELECT 1 FROM `idt_ScopedRoleAssignments` sra2
+    WHERE sra2.`UserId` = u.`Id` AND sra2.`ScopeType` = 'GLOBAL' AND sra2.`IsActive` = 1
+  );";
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = $@"
+INSERT IGNORE INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`)
+VALUES ('20260426000003_CorrectPlatformAdminRole', '{EfVersion}');";
+        cmd.ExecuteNonQuery();
+    }
+
+    conn.Close();
+
+    if (mig1Exists && mig2Exists && mig3Exists)
+    {
+        app.Logger.LogInformation(
+            "LS-ID-SUP-002: all three 20260426 migrations already recorded in EF history — no action needed.");
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "LS-ID-SUP-002 pre-migration guard failed — proceeding with normal migration");
+}
+
 try
 {
     using var scope = app.Services.CreateScope();
