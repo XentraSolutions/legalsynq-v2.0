@@ -77,6 +77,11 @@ public class TicketListQuery
     public bool? Unassigned { get; set; }
     public Guid? ExternalCustomerId { get; set; }
     public TicketVisibilityScope? VisibilityScope { get; set; }
+    /// <summary>
+    /// Optional tenant filter for PlatformAdmin cross-tenant queries.
+    /// Ignored when the request is scoped by a tenant JWT claim.
+    /// </summary>
+    public string? TenantId { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 25;
 }
@@ -341,11 +346,25 @@ public class TicketService : ITicketService
 
     public async Task<PagedResponse<TicketResponse>> ListAsync(TicketListQuery query, CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 200);
 
-        var q = _db.Tickets.AsNoTracking().Where(t => t.TenantId == tenantId);
+        IQueryable<SupportTicket> q;
+        if (_tenant.IsResolved)
+        {
+            q = _db.Tickets.AsNoTracking().Where(t => t.TenantId == _tenant.TenantId);
+        }
+        else if (_actor.Actor.Roles.Contains(SupportRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase))
+        {
+            q = _db.Tickets.AsNoTracking();
+            if (!string.IsNullOrWhiteSpace(query.TenantId))
+                q = q.Where(t => t.TenantId == query.TenantId);
+        }
+        else
+        {
+            _log.LogWarning("Tenant resolution failure on support ticket list request");
+            throw new TenantMissingException();
+        }
         if (query.Status.HasValue) q = q.Where(t => t.Status == query.Status.Value);
         if (query.Priority.HasValue) q = q.Where(t => t.Priority == query.Priority.Value);
         if (query.Severity.HasValue) q = q.Where(t => t.Severity == query.Severity.Value);
@@ -388,8 +407,22 @@ public class TicketService : ITicketService
 
     public async Task<TicketResponse?> GetAsync(Guid id, CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
-        var t = await _db.Tickets.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.TenantId == tenantId, ct);
+        SupportTicket? t;
+        if (_tenant.IsResolved)
+        {
+            t = await _db.Tickets.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id && x.TenantId == _tenant.TenantId, ct);
+        }
+        else if (_actor.Actor.Roles.Contains(SupportRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase))
+        {
+            t = await _db.Tickets.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id, ct);
+        }
+        else
+        {
+            _log.LogWarning("Tenant resolution failure on support ticket get request");
+            throw new TenantMissingException();
+        }
         return t is null ? null : TicketResponse.From(t);
     }
 

@@ -66,6 +66,36 @@ public class CommentService : ICommentService
         return _tenant.TenantId!;
     }
 
+    private bool IsPlatformAdmin =>
+        _actor.Actor.Roles.Contains(SupportRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Resolves the ticket and returns its entity.
+    /// - Tenant-scoped users: enforces tenant ownership (ticketId + tenantId).
+    /// - PlatformAdmin: finds by ticketId alone (cross-tenant access).
+    /// - Anyone else without a tenant claim: throws TenantMissingException.
+    /// </summary>
+    private async Task<SupportTicket> ResolveTicketAsync(Guid ticketId, CancellationToken ct)
+    {
+        SupportTicket? t;
+        if (_tenant.IsResolved)
+        {
+            t = await _db.Tickets.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == ticketId && x.TenantId == _tenant.TenantId, ct);
+        }
+        else if (IsPlatformAdmin)
+        {
+            t = await _db.Tickets.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == ticketId, ct);
+        }
+        else
+        {
+            throw new TenantMissingException();
+        }
+        if (t is null) throw new TicketNotFoundException();
+        return t;
+    }
+
     private async Task<SupportTicket> RequireOwnedTicketAsync(Guid ticketId, string tenantId, CancellationToken ct)
     {
         var t = await _db.Tickets.AsNoTracking()
@@ -76,8 +106,8 @@ public class CommentService : ICommentService
 
     public async Task<CommentResponse> AddAsync(Guid ticketId, CreateCommentRequest req, CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
-        var ticket = await RequireOwnedTicketAsync(ticketId, tenantId, ct);
+        var ticket = await ResolveTicketAsync(ticketId, ct);
+        var tenantId = ticket.TenantId;
 
         var comment = new SupportTicketComment
         {
@@ -226,8 +256,8 @@ public class CommentService : ICommentService
 
     public async Task<List<CommentResponse>> ListAsync(Guid ticketId, CommentVisibility? visibility, CommentType? commentType, CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
-        await RequireOwnedTicketAsync(ticketId, tenantId, ct);
+        var ticket = await ResolveTicketAsync(ticketId, ct);
+        var tenantId = ticket.TenantId;
 
         var q = _db.TicketComments.AsNoTracking()
             .Where(c => c.TicketId == ticketId && c.TenantId == tenantId);
@@ -240,8 +270,8 @@ public class CommentService : ICommentService
 
     public async Task<List<TimelineItem>> TimelineAsync(Guid ticketId, CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
-        await RequireOwnedTicketAsync(ticketId, tenantId, ct);
+        var ticket = await ResolveTicketAsync(ticketId, ct);
+        var tenantId = ticket.TenantId;
 
         var comments = await _db.TicketComments.AsNoTracking()
             .Where(c => c.TicketId == ticketId && c.TenantId == tenantId)

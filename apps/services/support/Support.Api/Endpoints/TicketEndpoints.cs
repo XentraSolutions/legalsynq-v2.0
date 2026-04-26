@@ -135,6 +135,11 @@ public class TicketListQueryBinder
     public bool? Unassigned { get; set; }
     public int? Page { get; set; }
     public int? PageSize { get; set; }
+    /// <summary>
+    /// Optional tenant filter honoured only for PlatformAdmin callers.
+    /// Tenant-scoped users are always filtered to their own tenant via JWT claim.
+    /// </summary>
+    public string? TenantId { get; set; }
 
     public TicketListQuery ToQuery() => new()
     {
@@ -148,6 +153,7 @@ public class TicketListQueryBinder
         AssignedUserId = AssignedUserId,
         AssignedQueueId = AssignedQueueId,
         Unassigned = Unassigned,
+        TenantId = TenantId,
         Page = Page ?? 1,
         PageSize = PageSize ?? 25,
     };
