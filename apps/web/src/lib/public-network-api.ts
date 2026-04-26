@@ -1,6 +1,7 @@
 /**
  * CC2-INT-B07 — Server-side public network API helpers.
  * TENANT-STABILIZATION — Tenant resolution switched from Identity to Tenant service.
+ * BLK-SEC-02-02 — Trust boundary hardening: server-side calls now sign X-Tenant-Id.
  *
  * Used exclusively by Server Components (e.g., /network/page.tsx).
  * These functions call the CareConnect backend directly via the gateway,
@@ -12,7 +13,36 @@
  *   Switched to Tenant service as the canonical resolution source.
  */
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
+import { createHmac } from 'crypto';
+
+const GATEWAY_URL             = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
+const INTERNAL_REQUEST_SECRET = process.env.INTERNAL_REQUEST_SECRET ?? '';
+
+/**
+ * BLK-SEC-02-02: Computes HMAC-SHA256(tenantId, secret) as a base64 string.
+ * Sent as X-Tenant-Id-Sig so CareConnect can verify the tenant ID was resolved
+ * server-side and not injected by an untrusted caller (Layer 2 of the trust boundary).
+ * Returns empty string when the secret is not configured (dev fallback — validation
+ * is disabled on the CareConnect side when the secret is absent).
+ */
+function signTenantId(tenantId: string): string {
+  if (!INTERNAL_REQUEST_SECRET) return '';
+  return createHmac('sha256', INTERNAL_REQUEST_SECRET).update(tenantId).digest('base64');
+}
+
+/**
+ * Builds the headers required by the public CareConnect trust boundary.
+ * X-Tenant-Id       — the resolved tenant GUID
+ * X-Tenant-Id-Sig   — HMAC-SHA256 signature (Layer 2 of BLK-SEC-02-02)
+ * The gateway injects X-Internal-Gateway-Secret automatically (Layer 1).
+ */
+function publicHeaders(tenantId: string): Record<string, string> {
+  const sig = signTenantId(tenantId);
+  return {
+    'X-Tenant-Id': tenantId,
+    ...(sig ? { 'X-Tenant-Id-Sig': sig } : {}),
+  };
+}
 
 export interface PublicNetworkSummary {
   id:            string;
@@ -154,7 +184,7 @@ export async function fetchPublicNetworks(
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { 'X-Tenant-Id': tenantId },
+      headers: publicHeaders(tenantId),
       cache:   'no-store',
     });
   } catch {
@@ -177,7 +207,7 @@ export async function fetchPublicNetworkDetail(
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { 'X-Tenant-Id': tenantId },
+      headers: publicHeaders(tenantId),
       cache:   'no-store',
     });
   } catch {

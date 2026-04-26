@@ -57,6 +57,16 @@ export function Sidebar() {
     : rawSections;
   const meta     = selectedProductId ? PRODUCT_META[selectedProductId] : null;
 
+  const currentPathname = pathname ?? '';
+  const allNavItems = [
+    ...sections.flatMap(s => s.items),
+    ...adminSections.flatMap(s => s.items),
+    ...GLOBAL_BOTTOM_NAV.items,
+  ];
+  const activeNavItem = allNavItems.find(
+    item => currentPathname === item.href || currentPathname.startsWith(item.href + '/'),
+  ) ?? null;
+
   return (
     <aside
       className="shrink-0 flex flex-col bg-white border-r border-gray-200 overflow-hidden"
@@ -113,13 +123,14 @@ export function Sidebar() {
             <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
               {section.items.map(item => (
                 <SidebarItem
-                  key={item.href}
+                  key={item.href + item.label}
                   item={item}
-                  pathname={pathname ?? ''}
+                  pathname={currentPathname}
                   collapsed={collapsed}
                   activeColor={nav.activeColor}
                   activeBg={nav.activeBg}
                   badgeCount={item.badgeKey ? badges[item.badgeKey] : undefined}
+                  isActive={item === activeNavItem}
                 />
               ))}
             </nav>
@@ -140,12 +151,13 @@ export function Sidebar() {
             <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
               {section.items.map(item => (
                 <SidebarItem
-                  key={item.href}
+                  key={item.href + item.label}
                   item={item}
-                  pathname={pathname ?? ''}
+                  pathname={currentPathname}
                   collapsed={collapsed}
                   activeColor={nav.activeColor}
                   activeBg={nav.activeBg}
+                  isActive={item === activeNavItem}
                 />
               ))}
             </nav>
@@ -166,12 +178,13 @@ export function Sidebar() {
             .filter(item => !item.adminOnly || (session?.isPlatformAdmin || session?.isTenantAdmin))
             .map(item => (
             <SidebarItem
-              key={item.href}
+              key={item.href + item.label}
               item={item}
-              pathname={pathname ?? ''}
+              pathname={currentPathname}
               collapsed={collapsed}
               activeColor={nav.activeColor}
               activeBg={nav.activeBg}
+              isActive={item === activeNavItem}
             />
           ))}
         </nav>
@@ -181,7 +194,7 @@ export function Sidebar() {
 }
 
 function SidebarItem({
-  item, pathname, collapsed, activeColor, activeBg, badgeCount,
+  item, pathname, collapsed, activeColor, activeBg, badgeCount, isActive: isActiveProp,
 }: {
   item:        NavItem;
   pathname:    string;
@@ -189,8 +202,9 @@ function SidebarItem({
   activeColor: string;
   activeBg:    string;
   badgeCount?: number;
+  isActive?:   boolean;
 }) {
-  const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+  const isActive = isActiveProp ?? (pathname === item.href || pathname.startsWith(item.href + '/'));
   const showBadge = typeof badgeCount === 'number' && badgeCount > 0;
 
   return (

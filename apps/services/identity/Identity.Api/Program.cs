@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using BuildingBlocks;
 using Contracts;
+using Identity.Api;
 using Identity.Api.Endpoints;
 using Identity.Infrastructure;
 using Identity.Infrastructure.Data;
@@ -384,12 +385,67 @@ WHERE u.`TenantId` = '{PlatformTenantId}'
             c.ExecuteNonQuery();
         });
 
+    // ── Migration 20260426100001_SeedPlatformAdminUser ───────────────────
+    // Inserts the platform admin user (admin@legalsynq.com / Admin123!) if not
+    // already present.  The SeedAdminOrgMembership EF migration ran a SELECT-
+    // based INSERT that silently inserted 0 rows when no user existed yet.
+    var mig4Recorded = Identity.Infrastructure.StartupMigrationGuard.ApplyIfMissing(
+        cmd,
+        migrationId: "20260426100001_SeedPlatformAdminUser",
+        efVersion:   EfVersion,
+        logger:      app.Logger,
+        guardLabel:  "LS-ID-ADM-001",
+        apply: c =>
+        {
+            const string AdminUserId   = "50000000-0000-0000-0000-000000000001";
+            const string AdminPwHash   = "$2a$12$/wvZFZf.T4qlqcaD9gn5GOKmjvXHCbr3/wUXu4wtRwLzj4W4XXA2a";
+            const string OrgId         = "40000000-0000-0000-0000-000000000001";
+            const string OrgMemId      = "40000000-0000-0000-0000-000000000003";
+            const string SraId         = "90000000-0000-0000-0000-000000000001";
+
+            c.CommandText = $@"
+INSERT IGNORE INTO `idt_Users`
+    (`Id`, `TenantId`, `Email`, `PasswordHash`,
+     `FirstName`, `LastName`, `IsActive`,
+     `IsLocked`, `FailedLoginCount`, `UserType`,
+     `CreatedAtUtc`, `UpdatedAtUtc`)
+VALUES (
+    '{AdminUserId}', '{PlatformTenantId}',
+    'admin@legalsynq.com', '{AdminPwHash}',
+    'Platform', 'Admin', 1, 0, 0, 'PlatformInternal',
+    '2024-01-01 00:00:00', '2024-01-01 00:00:00'
+);";
+            c.ExecuteNonQuery();
+
+            c.CommandText = $@"
+INSERT IGNORE INTO `idt_UserOrganizationMemberships`
+    (`Id`, `UserId`, `OrganizationId`, `MemberRole`,
+     `IsActive`, `JoinedAtUtc`, `GrantedByUserId`)
+VALUES (
+    '{OrgMemId}', '{AdminUserId}', '{OrgId}',
+    'OWNER', 1, '2024-01-01 00:00:00', NULL
+);";
+            c.ExecuteNonQuery();
+
+            c.CommandText = $@"
+INSERT IGNORE INTO `idt_ScopedRoleAssignments`
+    (`Id`, `UserId`, `RoleId`, `ScopeType`, `TenantId`,
+     `OrganizationId`, `OrganizationRelationshipId`, `ProductId`,
+     `IsActive`, `AssignedAtUtc`, `UpdatedAtUtc`, `AssignedByUserId`)
+VALUES (
+    '{SraId}', '{AdminUserId}', '{RolePlatformAdmin}', 'GLOBAL', '{PlatformTenantId}',
+    NULL, NULL, NULL, 1,
+    '2024-01-01 00:00:00', '2024-01-01 00:00:00', NULL
+);";
+            c.ExecuteNonQuery();
+        });
+
     conn.Close();
 
-    if (mig1Recorded && mig2Recorded && mig3Recorded)
+    if (mig1Recorded && mig2Recorded && mig3Recorded && mig4Recorded)
     {
         app.Logger.LogInformation(
-            "LS-ID-SUP-002: all three 20260426 migrations already recorded in EF history — no action needed.");
+            "LS-ID-SUP-002: all four 20260426 migrations already recorded in EF history — no action needed.");
     }
 }
 catch (Exception ex)

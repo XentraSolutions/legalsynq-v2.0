@@ -45,6 +45,11 @@ public static class StartupMigrationGuard
     ///   "<c>{guardLabel}: {migrationId} not in EF history — applying idempotently and recording.</c>"
     ///   is used. Supply a custom string to preserve existing guard-specific wording verbatim.
     /// </param>
+    /// <param name="historyInsertPrefix">
+    ///   The INSERT keyword prefix for recording the history row.
+    ///   Defaults to <c>INSERT IGNORE</c> (MySQL). Pass <c>INSERT OR IGNORE</c> when
+    ///   targeting SQLite (e.g. in tests).
+    /// </param>
     /// <returns>
     ///   <c>true</c>  — migration was already in history; no action was taken.<br/>
     ///   <c>false</c> — migration was absent; either the prerequisite blocked the apply
@@ -58,7 +63,8 @@ public static class StartupMigrationGuard
         string guardLabel,
         Action<IDbCommand> apply,
         Func<IDbCommand, bool>? prerequisite = null,
-        string? warningMessage = null)
+        string? warningMessage = null,
+        string historyInsertPrefix = "INSERT IGNORE")
     {
         cmd.CommandText = $@"
             SELECT COUNT(*) FROM `__EFMigrationsHistory`
@@ -78,7 +84,7 @@ public static class StartupMigrationGuard
         apply(cmd);
 
         cmd.CommandText = $@"
-            INSERT IGNORE INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`)
+            {historyInsertPrefix} INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`)
             VALUES ('{migrationId}', '{efVersion}');";
         cmd.ExecuteNonQuery();
 

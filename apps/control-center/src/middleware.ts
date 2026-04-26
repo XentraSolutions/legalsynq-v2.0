@@ -18,7 +18,6 @@ import { SESSION_COOKIE_NAME, BASE_PATH } from '@/lib/app-config';
 
 const PUBLIC_PATHS = [
   `${BASE_PATH}/login`,
-  `${BASE_PATH}/systemstatus`,
   `${BASE_PATH}/status`,
   '/_next',
   '/favicon.ico',
@@ -33,6 +32,12 @@ const PUBLIC_FILE_EXT = /\.(png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|eot|css|js|
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  const systemStatusBase = `${BASE_PATH}/systemstatus`;
+  if (pathname === systemStatusBase || pathname.startsWith(`${systemStatusBase}/`)) {
+    const statusUrl = new URL(`${BASE_PATH}/status`, request.url);
+    return NextResponse.redirect(statusUrl, 308);
+  }
 
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p)) || PUBLIC_FILE_EXT.test(pathname)) {
     return NextResponse.next();

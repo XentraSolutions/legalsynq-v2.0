@@ -7,11 +7,6 @@
  * All routes are host-root paths (no path prefix — this is a standalone app).
  */
 export const Routes = {
-  // ── Overview ──────────────────────────────────────────────────────────────
-
-  /** /systemstatus — System status and navigation index */
-  systemStatus: '/systemstatus',
-
   // ── Platform diagnostics ──────────────────────────────────────────────────
 
   /** /platform-readiness — Platform readiness summary */

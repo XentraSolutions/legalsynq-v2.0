@@ -886,8 +886,6 @@ namespace Flow.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("AutomationHooks");
 
-                    b.Navigation("Stages");
-
                     b.Navigation("Transitions");
                 });
 

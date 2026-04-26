@@ -32,6 +32,11 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
 
   lien: [
     {
+      items: [
+        { href: '/lien/home',          label: 'Home',          icon: 'ri-home-line' },
+      ],
+    },
+    {
       heading: 'MY TASKS',
       items: [
         { href: '/lien/dashboard',     label: 'Dashboard',     icon: 'ri-dashboard-line' },

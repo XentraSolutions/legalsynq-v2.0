@@ -50,8 +50,11 @@ public class JwtTokenService : IJwtTokenService
             new("access_version", user.AccessVersion.ToString()),
         };
 
+        // Use the short JWT claim name "role" (not ClaimTypes.Role which serializes
+        // to the long Microsoft URI). The identity service sets MapInboundClaims=false,
+        // so auth/me reads principal.FindAll("role") — the short name must match.
         foreach (var role in roles)
-            claims.Add(new Claim(ClaimTypes.Role, role));
+            claims.Add(new Claim("role", role));
 
         if (organization is not null)
         {
