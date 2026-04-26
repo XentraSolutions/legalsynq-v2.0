@@ -261,6 +261,8 @@ catch (Exception ex)
 //
 // This guard runs each migration's SQL idempotently, then inserts any missing
 // history rows so that EF's Migrate() finds nothing to do for these three entries.
+// (LS-ID-SUP-001, the earlier belt-and-suspenders guard, has been removed now that
+// these migrations are correctly recorded in __EFMigrationsHistory on every startup.)
 try
 {
     using var scope = app.Services.CreateScope();
@@ -405,68 +407,6 @@ try
 catch (Exception ex)
 {
     app.Logger.LogWarning(ex, "Could not apply migrations — ensure MySQL is running and connection string is correct");
-}
-
-// ── LS-ID-SUP-001 platform-admin role guard ───────────────────────────────
-// Root cause: migration 20260426000001 assigned TenantAdmin to ALL users,
-// including those in the platform (system) tenant. Migration 20260426000002
-// skipped platform-tenant users because they already had ANY global SRA.
-// Migration 20260426000003 added the UPDATE, but EF migration tracking can
-// cause any of these to be silently skipped if they were marked applied.
-//
-// This guard runs on EVERY startup and directly executes the two SQL
-// statements needed to ensure all platform-tenant users have PlatformAdmin.
-// It never touches manually-assigned SRAs (AssignedByUserId IS NOT NULL).
-// Fully idempotent: safe to run repeatedly with no side-effects.
-try
-{
-    using var scope = app.Services.CreateScope();
-    var db   = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-    var conn = db.Database.GetDbConnection();
-    if (conn.State != System.Data.ConnectionState.Open) conn.Open();
-    using var cmd = conn.CreateCommand();
-
-    // Step 1: fix wrongly-assigned TenantAdmin → PlatformAdmin
-    cmd.CommandText = @"
-        UPDATE `idt_ScopedRoleAssignments` sra
-        INNER JOIN `idt_Users` u ON u.`Id` = sra.`UserId`
-        SET   sra.`RoleId`       = '30000000-0000-0000-0000-000000000001',
-              sra.`UpdatedAtUtc` = UTC_TIMESTAMP()
-        WHERE u.`TenantId`           = '20000000-0000-0000-0000-000000000001'
-          AND sra.`ScopeType`        = 'GLOBAL'
-          AND sra.`IsActive`         = 1
-          AND sra.`RoleId`           = '30000000-0000-0000-0000-000000000002'
-          AND sra.`AssignedByUserId` IS NULL;";
-    var updated = cmd.ExecuteNonQuery();
-
-    // Step 2: insert PlatformAdmin for any platform-tenant user still missing a GLOBAL SRA
-    cmd.CommandText = @"
-        INSERT IGNORE INTO `idt_ScopedRoleAssignments`
-            (`Id`, `UserId`, `RoleId`, `ScopeType`, `TenantId`,
-             `OrganizationId`, `OrganizationRelationshipId`, `ProductId`,
-             `IsActive`, `AssignedAtUtc`, `UpdatedAtUtc`, `AssignedByUserId`)
-        SELECT UUID(), u.`Id`, '30000000-0000-0000-0000-000000000001',
-               'GLOBAL', u.`TenantId`, NULL, NULL, NULL,
-               1, u.`CreatedAtUtc`, u.`CreatedAtUtc`, NULL
-        FROM `idt_Users` u
-        WHERE u.`TenantId` = '20000000-0000-0000-0000-000000000001'
-          AND u.`IsActive`  = 1
-          AND NOT EXISTS (
-            SELECT 1 FROM `idt_ScopedRoleAssignments` sra2
-            WHERE sra2.`UserId`    = u.`Id`
-              AND sra2.`ScopeType` = 'GLOBAL'
-              AND sra2.`IsActive`  = 1
-          );";
-    var inserted = cmd.ExecuteNonQuery();
-
-    conn.Close();
-    app.Logger.LogInformation(
-        "LS-ID-SUP-001: platform-admin guard complete — {Updated} SRA(s) corrected to PlatformAdmin, {Inserted} SRA(s) inserted",
-        updated, inserted);
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "LS-ID-SUP-001 platform-admin guard failed — proceeding with startup");
 }
 
 // ── Migration coverage self-test ─────────────────────────────────────────
