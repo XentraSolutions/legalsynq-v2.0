@@ -350,15 +350,18 @@ public class TicketService : ITicketService
         var pageSize = Math.Clamp(query.PageSize, 1, 200);
 
         IQueryable<SupportTicket> q;
-        if (_tenant.IsResolved)
-        {
-            q = _db.Tickets.AsNoTracking().Where(t => t.TenantId == _tenant.TenantId);
-        }
-        else if (_actor.Actor.Roles.Contains(SupportRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase))
+        // PlatformAdmin check must come FIRST — the platform admin JWT carries a
+        // synthetic tenant_id claim (system placeholder) that makes _tenant.IsResolved=true,
+        // so we must not let the tenant-scoped branch run for platform admins.
+        if (_actor.Actor.Roles.Contains(SupportRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase))
         {
             q = _db.Tickets.AsNoTracking();
             if (!string.IsNullOrWhiteSpace(query.TenantId))
                 q = q.Where(t => t.TenantId == query.TenantId);
+        }
+        else if (_tenant.IsResolved)
+        {
+            q = _db.Tickets.AsNoTracking().Where(t => t.TenantId == _tenant.TenantId);
         }
         else
         {
@@ -408,15 +411,16 @@ public class TicketService : ITicketService
     public async Task<TicketResponse?> GetAsync(Guid id, CancellationToken ct = default)
     {
         SupportTicket? t;
-        if (_tenant.IsResolved)
-        {
-            t = await _db.Tickets.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Id == id && x.TenantId == _tenant.TenantId, ct);
-        }
-        else if (_actor.Actor.Roles.Contains(SupportRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase))
+        // PlatformAdmin check must come FIRST — see ListAsync for the full rationale.
+        if (_actor.Actor.Roles.Contains(SupportRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase))
         {
             t = await _db.Tickets.AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == id, ct);
+        }
+        else if (_tenant.IsResolved)
+        {
+            t = await _db.Tickets.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id && x.TenantId == _tenant.TenantId, ct);
         }
         else
         {

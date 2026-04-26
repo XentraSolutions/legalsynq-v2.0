@@ -78,15 +78,18 @@ public class CommentService : ICommentService
     private async Task<SupportTicket> ResolveTicketAsync(Guid ticketId, CancellationToken ct)
     {
         SupportTicket? t;
-        if (_tenant.IsResolved)
-        {
-            t = await _db.Tickets.AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Id == ticketId && x.TenantId == _tenant.TenantId, ct);
-        }
-        else if (IsPlatformAdmin)
+        // PlatformAdmin check must come FIRST — the platform admin JWT carries a
+        // synthetic tenant_id claim that makes _tenant.IsResolved=true. Without this
+        // ordering, platform admins would be scoped to the system placeholder tenant.
+        if (IsPlatformAdmin)
         {
             t = await _db.Tickets.AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == ticketId, ct);
+        }
+        else if (_tenant.IsResolved)
+        {
+            t = await _db.Tickets.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == ticketId && x.TenantId == _tenant.TenantId, ct);
         }
         else
         {
