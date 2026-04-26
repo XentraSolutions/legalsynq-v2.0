@@ -824,6 +824,8 @@ export interface SupportNote {
   message:      string;
   createdBy:    string;
   createdAtUtc: string;
+  visibility:   string;
+  commentType:  string;
 }
 
 export interface SupportProductRef {

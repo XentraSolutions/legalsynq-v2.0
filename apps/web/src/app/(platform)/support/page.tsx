@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getServerSession } from '@/lib/session';
 import { supportServerApi, type TicketSummary, type TicketStatus, type TicketPriority } from '@/lib/support-server-api';
+import { NewTicketModal } from '@/components/support/NewTicketModal';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,16 +111,13 @@ export default async function SupportPage({ searchParams }: SupportPageProps) {
             <div className="flex items-center gap-3">
               <i className="ri-customer-service-2-line text-xl text-indigo-600" />
               <h1 className="text-xl font-semibold text-gray-900">Support</h1>
-              <span className="inline-flex items-center text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
-                IN PROGRESS
-              </span>
             </div>
             <p className="text-sm text-gray-500 mt-1">
               Manage and track support tickets for your organization.
             </p>
           </div>
 
-          {/* Quick-glance counts */}
+          {/* Quick-glance counts + new ticket */}
           <div className="flex items-center gap-3 shrink-0">
             {openCount > 0 && (
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 border border-blue-300">
@@ -131,6 +129,7 @@ export default async function SupportPage({ searchParams }: SupportPageProps) {
                 {urgentCount} Urgent
               </span>
             )}
+            <NewTicketModal />
           </div>
         </div>
 

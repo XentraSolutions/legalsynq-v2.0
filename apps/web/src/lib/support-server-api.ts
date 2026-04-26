@@ -107,6 +107,18 @@ export interface CustomerCommentResponse {
 // Reads the platform_session cookie and calls the gateway directly.
 // DO NOT import this in Client Components — use the BFF proxy at /api/support/* instead.
 
+export interface CreateTicketRequest {
+  title:           string;
+  description?:    string;
+  priority?:       TicketPriority;
+  category?:       string;
+  tenantId?:       string;
+  requesterUserId?: string;
+  requesterName?:  string;
+  requesterEmail?: string;
+  source?:         TicketSource;
+}
+
 export const supportServerApi = {
   tickets: {
     list: (params: {
@@ -122,6 +134,20 @@ export const supportServerApi = {
 
     getById: (id: string) =>
       serverApi.get<TicketSummary>(`/support/api/tickets/${encodeURIComponent(id)}`),
+
+    create: (data: CreateTicketRequest) =>
+      serverApi.post<TicketSummary>('/support/api/tickets', data),
+
+    getComments: (ticketId: string) =>
+      serverApi.get<CustomerCommentResponse[]>(
+        `/support/api/tickets/${encodeURIComponent(ticketId)}/comments`,
+      ),
+
+    addComment: (ticketId: string, body: string, options?: { visibility?: string }) =>
+      serverApi.post<CustomerCommentResponse>(
+        `/support/api/tickets/${encodeURIComponent(ticketId)}/comments`,
+        { body, visibility: options?.visibility ?? 'CustomerVisible' },
+      ),
   },
 
   productRefs: {

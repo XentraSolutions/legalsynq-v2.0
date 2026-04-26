@@ -67,10 +67,34 @@ export async function addCaseNote(
   await requirePlatformAdmin();
   if (!message.trim()) return { success: false, error: 'Note cannot be empty.' };
   try {
-    const note = await controlCenterServerApi.support.addNote(caseId, message.trim());
+    const note = await controlCenterServerApi.support.addNote(caseId, message.trim(), {
+      commentType: 'Internal',
+      visibility:  'Internal',
+    });
     return { success: true, note };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Failed to add note.' };
+  }
+}
+
+/**
+ * Add a customer-visible reply to a support case.
+ * Requires an active PlatformAdmin session.
+ */
+export async function addPublicReply(
+  caseId:  string,
+  message: string,
+): Promise<AddNoteResult> {
+  await requirePlatformAdmin();
+  if (!message.trim()) return { success: false, error: 'Reply cannot be empty.' };
+  try {
+    const note = await controlCenterServerApi.support.addNote(caseId, message.trim(), {
+      commentType: 'Normal',
+      visibility:  'CustomerVisible',
+    });
+    return { success: true, note };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to send reply.' };
   }
 }
 

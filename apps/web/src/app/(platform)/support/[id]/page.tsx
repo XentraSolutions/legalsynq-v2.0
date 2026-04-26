@@ -7,8 +7,10 @@ import {
   type TicketStatus,
   type TicketPriority,
   type ProductRefResponse,
+  type CustomerCommentResponse,
 } from '@/lib/support-server-api';
 import { resolveDeepLink, getProductDisplayName } from '@/lib/product-deep-links';
+import { TicketReplyForm } from '@/components/support/TicketReplyForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,12 +62,14 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
 
   let ticket:   TicketSummary | null = null;
   let refs:     ProductRefResponse[] = [];
+  let comments: CustomerCommentResponse[] = [];
   let fetchErr: string | null = null;
 
   try {
-    const [ticketResult, refsResult] = await Promise.allSettled([
+    const [ticketResult, refsResult, commentsResult] = await Promise.allSettled([
       supportServerApi.tickets.getById(id),
       supportServerApi.productRefs.list(id),
+      supportServerApi.tickets.getComments(id),
     ]);
 
     if (ticketResult.status === 'fulfilled') {
@@ -81,9 +85,17 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     if (refsResult.status === 'fulfilled') {
       refs = Array.isArray(refsResult.value) ? refsResult.value : [];
     }
+
+    if (commentsResult.status === 'fulfilled') {
+      comments = Array.isArray(commentsResult.value) ? commentsResult.value : [];
+    }
   } catch {
     fetchErr = 'Failed to load ticket.';
   }
+
+  const visibleComments = comments
+    .filter(c => c.visibility === 'CustomerVisible')
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   if (!ticket && !fetchErr) notFound();
 
@@ -165,6 +177,62 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                   </div>
                 </div>
               )}
+
+              {/* Conversation thread */}
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Conversation
+                  </h2>
+                  <span className="text-xs text-gray-400 tabular-nums">
+                    {visibleComments.length} message{visibleComments.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {visibleComments.length === 0 ? (
+                  <p className="px-5 py-4 text-sm text-gray-400">
+                    No messages yet. Use the form below to send a message to support.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-gray-50">
+                    {visibleComments.map(comment => {
+                      const isSupport = comment.commentType !== 'Normal' || comment.authorEmail?.endsWith('@legalsynq.com');
+                      const fromPortal = !isSupport;
+                      return (
+                        <div
+                          key={comment.id}
+                          className={`px-5 py-4 flex flex-col ${fromPortal ? 'items-end' : 'items-start'} gap-1`}
+                        >
+                          <div className={`flex items-center gap-2 text-xs text-gray-400 ${fromPortal ? 'justify-end' : 'justify-start'}`}>
+                            <span className="font-semibold text-gray-600">
+                              {comment.authorName ?? comment.authorEmail ?? 'Support'}
+                            </span>
+                            <span className="text-gray-300">·</span>
+                            <span>{formatDate(comment.createdAt)}</span>
+                          </div>
+                          <div className={`max-w-prose px-3.5 py-2.5 rounded-xl text-sm leading-relaxed ${
+                            fromPortal
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {comment.body}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Reply form — hidden if ticket is closed or cancelled */}
+                {ticket.status !== 'Closed' && ticket.status !== 'Cancelled' && (
+                  <div className="border-t border-gray-100 px-5 py-4">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      Send a Reply
+                    </label>
+                    <TicketReplyForm ticketId={ticket.id} />
+                  </div>
+                )}
+              </div>
 
               {/* Product References */}
               <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">

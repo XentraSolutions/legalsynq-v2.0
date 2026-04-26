@@ -33,7 +33,10 @@ export default async function SupportCaseDetailPage(props: SupportCaseDetailPage
   const session   = await requirePlatformAdmin();
   const tenantCtx = await getTenantContext();
 
-  const kase = await controlCenterServerApi.support.getById(params.id);
+  const [kase, initialComments] = await Promise.all([
+    controlCenterServerApi.support.getById(params.id),
+    controlCenterServerApi.support.getComments(params.id),
+  ]);
   if (!kase) notFound();
 
   // Context mismatch — case belongs to a different tenant than the active context.
@@ -96,7 +99,7 @@ export default async function SupportCaseDetailPage(props: SupportCaseDetailPage
           </div>
 
           {/* Interactive detail panel */}
-          <SupportDetailPanel initialCase={kase} />
+          <SupportDetailPanel initialCase={kase} initialComments={initialComments} />
 
         </div>
       </div>

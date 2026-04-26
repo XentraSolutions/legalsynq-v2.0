@@ -1929,17 +1929,45 @@ export const controlCenterServerApi = {
     },
 
     /**
+     * GET /support/api/tickets/{ticketId}/comments
+     *
+     * Returns all comments on a support ticket. Uses no-cache since comments
+     * are frequently updated.
+     */
+    getComments: async (ticketId: string): Promise<SupportNote[]> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/support/api/tickets/${encodeURIComponent(ticketId)}/comments`,
+          0,
+          [CACHE_TAGS.support],
+        );
+        return Array.isArray(raw) ? raw.map(mapSupportNote) : [];
+      } catch {
+        return [];
+      }
+    },
+
+    /**
      * POST /support/api/tickets/{ticketId}/comments
      *
      * Adds a comment to an existing support ticket.
+     * Sends `body` (not `message`) to match CreateCommentRequest.
      * Response is normalised via mapSupportNote.
      *
      * Revalidates: cc:support — comment count and last-updated reflect immediately.
      */
-    addNote: async (caseId: string, message: string): Promise<SupportNote> => {
+    addNote: async (
+      caseId: string,
+      message: string,
+      options?: { commentType?: string; visibility?: string },
+    ): Promise<SupportNote> => {
       const raw = await apiClient.post<unknown>(
         `/support/api/tickets/${encodeURIComponent(caseId)}/comments`,
-        { message },
+        {
+          body:        message,
+          commentType: options?.commentType ?? 'Internal',
+          visibility:  options?.visibility  ?? 'Internal',
+        },
       );
       const result = mapSupportNote(raw);
       safeRevalidateTag(CACHE_TAGS.support);
@@ -1949,15 +1977,25 @@ export const controlCenterServerApi = {
     /**
      * PUT /support/api/tickets/{ticketId}
      *
-     * Updates the status of a support ticket via a full PUT with the new status.
-     * Response is normalised via mapSupportCase.
+     * Updates the status of a support ticket.
+     * Maps the CC SupportCaseStatus back to the backend TicketStatus enum:
+     *   Open          → Open
+     *   Investigating → InProgress
+     *   Resolved      → Resolved
+     *   Closed        → Closed
      *
      * Revalidates: cc:support — new status visible in list and detail immediately.
      */
     updateStatus: async (caseId: string, status: SupportCaseStatus): Promise<SupportCase> => {
+      const backendStatusMap: Record<SupportCaseStatus, string> = {
+        Open:          'Open',
+        Investigating: 'InProgress',
+        Resolved:      'Resolved',
+        Closed:        'Closed',
+      };
       const raw = await apiClient.put<unknown>(
         `/support/api/tickets/${encodeURIComponent(caseId)}`,
-        { status },
+        { status: backendStatusMap[status] ?? status },
       );
       const result = mapSupportCase(raw);
       safeRevalidateTag(CACHE_TAGS.support);

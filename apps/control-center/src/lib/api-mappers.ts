@@ -1021,23 +1021,44 @@ export function mapSupportCase(raw: unknown): SupportCase {
 }
 
 /**
- * mapSupportNote — normalises a single support case note.
+ * mapSupportNote — normalises a single support case note / comment.
  *
- * Handles:
- *   case_id / caseId → caseId
- *   created_by / createdBy → createdBy
- *   created_at / createdAtUtc → createdAtUtc
+ * Handles both the legacy note shape and the real CommentResponse shape:
+ *   id → id
+ *   ticketId / ticket_id / caseId / case_id → caseId
+ *   body / message → message   (backend CommentResponse uses `body`)
+ *   authorName / author_name / createdBy / created_by → createdBy
+ *   createdAt / created_at / createdAtUtc → createdAtUtc
  *
  * TODO: replace manual mappers with generated types from OpenAPI spec
  */
 export function mapSupportNote(raw: unknown): SupportNote {
   const r = asObj(raw);
+
+  const caseId =
+    (typeof r['ticketId']  === 'string' && r['ticketId'].length  > 0) ? (r['ticketId']  as string) :
+    (typeof r['ticket_id'] === 'string' && r['ticket_id'].length > 0) ? (r['ticket_id'] as string) :
+    str(r, 'case_id', 'caseId', '');
+
+  const message =
+    (typeof r['body']    === 'string' && r['body'].length    > 0) ? (r['body']    as string) :
+    (typeof r['message'] === 'string' && r['message'].length > 0) ? (r['message'] as string) :
+    '';
+
+  const createdBy =
+    (typeof r['authorName']  === 'string' && r['authorName'].length  > 0) ? (r['authorName']  as string) :
+    (typeof r['author_name'] === 'string' && r['author_name'].length > 0) ? (r['author_name'] as string) :
+    (typeof r['authorEmail'] === 'string' && r['authorEmail'].length > 0) ? (r['authorEmail'] as string) :
+    str(r, 'created_by', 'createdBy', 'Platform Admin');
+
   return {
     id:           str(r, 'id',         'id',          ''),
-    caseId:       str(r, 'case_id',    'caseId',      ''),
-    message:      str(r, 'message',    'message',     ''),
-    createdBy:    str(r, 'created_by', 'createdBy',   ''),
-    createdAtUtc: str(r, 'created_at', 'createdAtUtc', new Date().toISOString()),
+    caseId,
+    message,
+    createdBy,
+    createdAtUtc: str(r, 'created_at', 'createdAt', new Date().toISOString()),
+    visibility:   str(r, 'visibility',   'visibility',   'Internal'),
+    commentType:  str(r, 'commentType',  'comment_type', 'Internal'),
   };
 }
 
