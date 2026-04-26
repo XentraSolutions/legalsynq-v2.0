@@ -38,7 +38,7 @@ builder.Services
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
             IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
-            RoleClaimType            = System.Security.Claims.ClaimTypes.Role,
+            RoleClaimType            = "role",
             ClockSkew                = TimeSpan.Zero
         };
     });

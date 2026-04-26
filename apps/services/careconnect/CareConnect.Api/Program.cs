@@ -37,7 +37,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
             IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
-            RoleClaimType            = ClaimTypes.Role
+            RoleClaimType            = "role"
         };
     })
     // M2M service-token bearer — validates HS256 tokens minted by platform services.

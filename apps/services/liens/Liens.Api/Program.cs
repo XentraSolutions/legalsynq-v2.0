@@ -40,7 +40,7 @@ builder.Services
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
             IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
-            RoleClaimType            = ClaimTypes.Role,
+            RoleClaimType            = "role",
             ClockSkew                = TimeSpan.Zero
         };
     });

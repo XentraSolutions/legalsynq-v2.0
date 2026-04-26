@@ -130,6 +130,12 @@ PID_CC=$!
   ) &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/task/Task.Api/Task.Api.csproj" &
+  # Tenant.Api also needs a separate low-memory build to pick up the "role" RoleClaimType fix.
+  echo "[tenant] Building Tenant.Api with conservative memory settings..."
+  DOTNET_GCConserveMemory=9 \
+    dotnet build "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" \
+    --no-restore --configuration Debug --verbosity quiet -maxcpucount:1 \
+    || echo "[tenant] Build error — will run from cached binary"
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" &
   # Support service — port 5017, standalone MySQL, JWT via Authentication:Jwt:SymmetricKey.
   # Authentication__Jwt__SymmetricKey is sourced from Jwt__SigningKey (the same secret used

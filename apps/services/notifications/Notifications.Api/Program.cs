@@ -43,7 +43,7 @@ builder.Services
             ValidIssuer              = jwtSection["Issuer"],
             ValidAudience            = jwtSection["Audience"],
             IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
-            RoleClaimType            = ClaimTypes.Role,
+            RoleClaimType            = "role",
             ClockSkew                = TimeSpan.Zero,
         };
     })
@@ -71,7 +71,7 @@ builder.Services
                 ? null
                 : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(serviceTokenKey)),
             NameClaimType            = "sub",
-            RoleClaimType            = ClaimTypes.Role,
+            RoleClaimType            = "role",
             ClockSkew                = TimeSpan.FromSeconds(30),
         };
         options.Events = new JwtBearerEvents

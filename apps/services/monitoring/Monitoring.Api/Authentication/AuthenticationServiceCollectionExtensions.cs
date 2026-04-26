@@ -63,7 +63,7 @@ public static class AuthenticationServiceCollectionExtensions
                     ValidAudience            = jwtSection["Audience"],
                     IssuerSigningKey         = new SymmetricSecurityKey(
                                                   Encoding.UTF8.GetBytes(userSigningKey)),
-                    RoleClaimType            = ClaimTypes.Role,
+                    RoleClaimType            = "role",
                     NameClaimType            = "sub",
                     ClockSkew                = TimeSpan.Zero,
                 };

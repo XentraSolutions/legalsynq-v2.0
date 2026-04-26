@@ -104,7 +104,7 @@ builder.Services
             IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
             ValidateLifetime         = true,
             ClockSkew                = TimeSpan.Zero,
-            RoleClaimType            = System.Security.Claims.ClaimTypes.Role,
+            RoleClaimType            = "role",
             NameClaimType            = System.Security.Claims.ClaimTypes.NameIdentifier,
         };
     });
