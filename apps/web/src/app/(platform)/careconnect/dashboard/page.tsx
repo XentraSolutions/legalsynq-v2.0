@@ -17,6 +17,9 @@ import {
 import { formatShortTimestamp } from '@/lib/format-date';
 import type { ReferralSummary, AppointmentSummary } from '@/types/careconnect';
 
+export const dynamic = 'force-dynamic';
+
+
 interface DashboardPageProps {
   searchParams: Promise<{
     analyticsFrom?: string;

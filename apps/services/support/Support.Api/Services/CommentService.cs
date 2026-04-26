@@ -20,6 +20,21 @@ public interface ICommentService
     Task<CommentResponse> AddAsync(Guid ticketId, CreateCommentRequest req, CancellationToken ct = default);
     Task<List<CommentResponse>> ListAsync(Guid ticketId, CommentVisibility? visibility, CommentType? commentType, CancellationToken ct = default);
     Task<List<TimelineItem>> TimelineAsync(Guid ticketId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Customer-safe comment — verifies tenantId + externalCustomerId + VisibilityScope=CustomerVisible
+    /// before creating the comment. Always creates as CommentType=CustomerReply, Visibility=CustomerVisible.
+    /// Throws TicketNotFoundException if any ownership constraint fails.
+    /// Used exclusively by the CustomerAccess-protected endpoints.
+    /// </summary>
+    Task<CommentResponse> AddCustomerCommentAsync(
+        string tenantId,
+        Guid externalCustomerId,
+        Guid ticketId,
+        string body,
+        string? authorEmail = null,
+        string? authorName = null,
+        CancellationToken ct = default);
 }
 
 public class CommentService : ICommentService
@@ -259,5 +274,89 @@ public class CommentService : ICommentService
         }));
 
         return items.OrderBy(i => i.CreatedAt).ToList();
+    }
+
+    public async Task<CommentResponse> AddCustomerCommentAsync(
+        string tenantId,
+        Guid externalCustomerId,
+        Guid ticketId,
+        string body,
+        string? authorEmail = null,
+        string? authorName = null,
+        CancellationToken ct = default)
+    {
+        // Enforce: tenant + externalCustomerId + CustomerVisible
+        var ticket = await _db.Tickets
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x =>
+                x.TenantId == tenantId
+                && x.Id == ticketId
+                && x.ExternalCustomerId == externalCustomerId
+                && x.VisibilityScope == TicketVisibilityScope.CustomerVisible, ct);
+
+        if (ticket is null) throw new TicketNotFoundException();
+
+        var comment = new SupportTicketComment
+        {
+            Id          = Guid.NewGuid(),
+            TicketId    = ticketId,
+            TenantId    = tenantId,
+            CommentType = CommentType.CustomerReply,
+            Visibility  = CommentVisibility.CustomerVisible,
+            Body        = body,
+            AuthorUserId = null,
+            AuthorEmail  = authorEmail,
+            AuthorName   = authorName,
+            CreatedAt    = DateTime.UtcNow,
+        };
+        _db.TicketComments.Add(comment);
+
+        _events.Log(ticketId, tenantId, "customer_comment_added", "Customer comment added",
+            metadata: new { comment_id = comment.Id, external_customer_id = externalCustomerId },
+            actorUserId: null);
+
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Customer comment {CommentId} added to ticket {TicketId} tenant={TenantId} externalCustomerId={CustomerId}",
+            comment.Id, ticketId, tenantId, externalCustomerId);
+
+        try
+        {
+            var actor = _actor.Actor;
+            var req = _actor.Request;
+            var evt = new SupportAuditEvent(
+                EventType: SupportAuditEventTypes.TicketCommentAdded,
+                TenantId: ticket.TenantId,
+                ActorUserId: actor.UserId,
+                ActorEmail: actor.Email ?? authorEmail,
+                ActorRoles: actor.Roles,
+                ResourceType: SupportAuditResourceTypes.SupportTicket,
+                ResourceId: ticket.Id.ToString(),
+                ResourceNumber: ticket.TicketNumber,
+                Action: SupportAuditActions.CommentAdd,
+                Outcome: SupportAuditOutcomes.Success,
+                OccurredAt: DateTime.UtcNow,
+                CorrelationId: req.CorrelationId,
+                IpAddress: req.IpAddress,
+                UserAgent: req.UserAgent,
+                Metadata: new Dictionary<string, object?>
+                {
+                    ["comment_id"]          = comment.Id,
+                    ["comment_type"]        = comment.CommentType.ToString(),
+                    ["visibility"]          = comment.Visibility.ToString(),
+                    ["author_email"]        = authorEmail,
+                    ["requester_type"]      = ticket.RequesterType.ToString(),
+                    ["external_customer_id"] = externalCustomerId,
+                    ["body_length"]         = body?.Length ?? 0,
+                });
+            await _audit.PublishAsync(evt, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "Audit dispatch threw event=support.ticket.comment_added ticket={TicketNumber}",
+                ticket.TicketNumber);
+        }
+
+        return CommentResponse.From(comment);
     }
 }

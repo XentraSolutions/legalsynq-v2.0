@@ -18,6 +18,7 @@ public static class SupportAuditEventTypes
     public const string QueueUpdated = "support.queue.updated";
     public const string QueueMemberAdded = "support.queue.member_added";
     public const string QueueMemberRemoved = "support.queue.member_removed";
+    public const string TenantSettingsChanged = "support.tenant_settings.changed";
 }
 
 public static class SupportAuditResourceTypes
@@ -25,6 +26,7 @@ public static class SupportAuditResourceTypes
     public const string SupportTicket = "support_ticket";
     public const string SupportQueue = "support_queue";
     public const string SupportQueueMember = "support_queue_member";
+    public const string SupportTenantSettings = "support_tenant_settings";
 }
 
 public static class SupportAuditActions
@@ -39,6 +41,7 @@ public static class SupportAuditActions
     public const string ProductRefRemove = "product_ref_remove";
     public const string MemberAdd = "member_add";
     public const string MemberRemove = "member_remove";
+    public const string SettingsUpdate = "settings_update";
 }
 
 public static class SupportAuditOutcomes

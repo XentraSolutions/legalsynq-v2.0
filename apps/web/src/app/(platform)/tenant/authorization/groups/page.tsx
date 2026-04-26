@@ -3,6 +3,9 @@ import { tenantServerApi } from '@/lib/tenant-api';
 import { GroupTable } from './GroupTable';
 import type { TenantGroup, TenantUser } from '@/types/tenant';
 
+export const dynamic = 'force-dynamic';
+
+
 export default async function GroupsPage() {
   const session = await requireTenantAdmin();
 

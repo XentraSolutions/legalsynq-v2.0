@@ -18,7 +18,7 @@ export function DateFilter({ activeDays }: DateFilterProps) {
   const searchParams = useSearchParams();
 
   function select(days: string) {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString());
     params.set('days', days);
     params.delete('startDate');
     params.delete('endDate');

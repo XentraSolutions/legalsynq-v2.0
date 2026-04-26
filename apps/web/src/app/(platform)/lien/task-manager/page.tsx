@@ -19,6 +19,9 @@ import { TaskManagerHeader } from '@/components/lien/task-manager-header';
 import { TaskManagerToolbar } from '@/components/lien/task-manager-toolbar';
 import { TaskBoard } from '@/components/lien/task-board';
 
+export const dynamic = 'force-dynamic';
+
+
 type ViewMode = 'board' | 'list';
 type AssignmentScope = 'all' | 'me' | 'others' | 'unassigned';
 

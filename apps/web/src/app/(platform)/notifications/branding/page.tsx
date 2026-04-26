@@ -8,6 +8,9 @@ import {
 } from '@/lib/notifications-server-api';
 import { BrandingListClient } from './branding-list-client';
 
+export const dynamic = 'force-dynamic';
+
+
 export default async function TenantBrandingPage({
   searchParams,
 }: {

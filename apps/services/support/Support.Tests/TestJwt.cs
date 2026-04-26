@@ -34,4 +34,45 @@ internal static class TestJwt
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
+    /// <summary>
+    /// Issues a JWT for an external customer.
+    /// Claim contract:
+    ///   role: ExternalCustomer
+    ///   tenant_id: tenantId
+    ///   external_customer_id: externalCustomerId (as UUID string)
+    ///   email: email (optional)
+    ///   name: name (optional)
+    /// </summary>
+    public static string IssueCustomer(
+        string tenantId,
+        Guid externalCustomerId,
+        string sub = "customer-user",
+        string? email = null,
+        string? name = null)
+    {
+        var claims = new List<Claim>
+        {
+            new("sub", sub),
+            new("tenant_id", tenantId),
+            new("role", "ExternalCustomer"),
+            new("external_customer_id", externalCustomerId.ToString()),
+        };
+        if (!string.IsNullOrEmpty(email)) claims.Add(new Claim("email", email));
+        if (!string.IsNullOrEmpty(name))  claims.Add(new Claim("name", name));
+
+        var creds = new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Key)),
+            SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: Issuer,
+            audience: Audience,
+            claims: claims,
+            notBefore: DateTime.UtcNow.AddMinutes(-1),
+            expires: DateTime.UtcNow.AddMinutes(10),
+            signingCredentials: creds);
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
 }

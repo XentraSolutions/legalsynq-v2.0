@@ -1,3 +1,5 @@
+using Support.Api.Auth;
+
 namespace Support.Api.Tenancy;
 
 public interface ITenantContext
@@ -90,12 +92,24 @@ public class TenantResolutionMiddleware
         }
 
         // In production, an authenticated user accessing a protected support
-        // endpoint without a tenant claim is a forbidden request.
+        // endpoint without a tenant claim is a forbidden request —
+        // UNLESS the user is a PlatformAdmin, who is platform-wide and does
+        // not need to be scoped to a specific tenant.
+        var isPlatformAdmin = context.User?.FindAll("role")
+            .Any(c => c.Value == SupportRoles.PlatformAdmin) == true;
+
         if (!devOrTest
             && context.User?.Identity?.IsAuthenticated == true
             && string.IsNullOrWhiteSpace(claim)
+            && !isPlatformAdmin
             && IsProtectedSupportPath(context.Request.Path))
         {
+            _logger.LogWarning(
+                "SUPPORT-TENANT: 403 — authenticated user has no tenant_id claim. " +
+                "path={Path} sub={Sub} roles=[{Roles}]",
+                context.Request.Path,
+                context.User?.FindFirst("sub")?.Value ?? "(none)",
+                string.Join(",", context.User?.FindAll("role").Select(c => c.Value) ?? []));
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new
             {
@@ -104,6 +118,13 @@ public class TenantResolutionMiddleware
                 status = 403
             });
             return;
+        }
+
+        if (!devOrTest && context.User?.Identity?.IsAuthenticated == true)
+        {
+            _logger.LogDebug(
+                "SUPPORT-TENANT: resolved tenant={Tenant} isPlatformAdmin={IsAdmin} path={Path}",
+                resolved ?? "(none)", isPlatformAdmin, context.Request.Path);
         }
 
         await _next(context);

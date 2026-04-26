@@ -12,6 +12,9 @@ import type { WorkflowStageDto } from '@/lib/liens/lien-workflow.types';
 import { PageHeader } from '@/components/lien/page-header';
 import { useLienStore } from '@/stores/lien-store';
 
+export const dynamic = 'force-dynamic';
+
+
 function ToggleCard({
   label,
   description,

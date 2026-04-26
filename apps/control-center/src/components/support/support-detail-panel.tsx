@@ -3,6 +3,7 @@
 import { useState, useTransition, useRef } from 'react';
 import { updateCaseStatus, addCaseNote } from '@/app/support/actions';
 import type { SupportCaseDetail, SupportCaseStatus, SupportNote } from '@/types/control-center';
+import { ProductRefList } from '@/components/support/product-ref-list';
 
 interface SupportDetailPanelProps {
   initialCase: SupportCaseDetail;
@@ -119,6 +120,19 @@ export function SupportDetailPanel({ initialCase }: SupportDetailPanelProps) {
           <MetaRow label="Opened"  value={formatDate(kase.createdAtUtc)} />
           <MetaRow label="Updated" value={formatDate(kase.updatedAtUtc)} />
         </dl>
+      </div>
+
+      {/* ── Product References ── */}
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Product References
+          </h2>
+          <span className="text-xs text-gray-400 tabular-nums">
+            {kase.productRefs.length} linked
+          </span>
+        </div>
+        <ProductRefList refs={kase.productRefs} />
       </div>
 
       {/* ── Status controls ── */}

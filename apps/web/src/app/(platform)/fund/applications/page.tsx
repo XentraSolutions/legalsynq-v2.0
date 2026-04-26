@@ -5,6 +5,9 @@ import { fundServerApi } from '@/lib/fund-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { FundingApplicationListTable } from '@/components/fund/funding-application-list-table';
 
+export const dynamic = 'force-dynamic';
+
+
 interface ApplicationsPageProps {
   searchParams: Promise<{ status?: string }>;
 }

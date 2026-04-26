@@ -2,6 +2,9 @@ import { Suspense } from 'react';
 import { tenantServerApi } from '@/lib/tenant-api';
 import SimulatorClient from './SimulatorClient';
 
+export const dynamic = 'force-dynamic';
+
+
 async function getTenantId(): Promise<string> {
   try {
     const users = await tenantServerApi.getUsers();

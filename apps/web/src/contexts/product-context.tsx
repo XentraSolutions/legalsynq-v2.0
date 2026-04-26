@@ -18,11 +18,11 @@ export function ProductProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
-    () => inferProductFromPath(pathname),
+    () => inferProductFromPath(pathname ?? ''),
   );
 
   useEffect(() => {
-    const inferred = inferProductFromPath(pathname);
+    const inferred = inferProductFromPath(pathname ?? '');
     if (inferred) setSelectedProductId(inferred);
   }, [pathname]);
 

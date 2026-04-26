@@ -13,6 +13,9 @@ import Link from 'next/link';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 
+export const dynamic = 'force-dynamic';
+
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type FormState = 'idle' | 'checking' | 'submitting' | 'success' | 'error';

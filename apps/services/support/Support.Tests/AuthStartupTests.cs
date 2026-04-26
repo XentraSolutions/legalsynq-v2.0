@@ -3,7 +3,6 @@ using Support.Api.Auth;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace Support.Tests;
 
@@ -29,85 +28,44 @@ public class AuthStartupTests
         new ConfigurationBuilder().AddInMemoryCollection(kv).Build();
 
     [Fact]
-    public void Production_With_No_Jwt_Config_Throws()
+    public void Production_With_No_SigningKey_Throws()
     {
         var act = () => new ServiceCollection().AddSupportAuth(
             Cfg(new Dictionary<string, string?>()), new FakeEnv("Production"));
         act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*Authentication:Jwt is not configured*");
+           .WithMessage("*Jwt:SigningKey*");
     }
 
     [Fact]
-    public void Production_With_Both_Authority_And_SymmetricKey_Throws()
+    public void Production_With_Short_SigningKey_Throws()
     {
         var act = () => new ServiceCollection().AddSupportAuth(Cfg(new Dictionary<string, string?>
         {
-            ["Authentication:Jwt:Authority"] = "https://idp.example.com",
-            ["Authentication:Jwt:SymmetricKey"] = new string('k', 64),
-            ["Authentication:Jwt:Issuer"] = "iss",
-            ["Authentication:Jwt:Audience"] = "aud"
+            ["Jwt:SigningKey"] = "tooshort"
         }), new FakeEnv("Production"));
         act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*both Authority and SymmetricKey*");
+           .WithMessage("*at least 32*");
     }
 
     [Fact]
-    public void Production_With_Symmetric_Missing_Audience_Throws()
+    public void Production_With_Valid_Config_Succeeds()
     {
         var act = () => new ServiceCollection().AddSupportAuth(Cfg(new Dictionary<string, string?>
         {
-            ["Authentication:Jwt:SymmetricKey"] = new string('k', 64),
-            ["Authentication:Jwt:Issuer"] = "iss"
-        }), new FakeEnv("Production"));
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*Audience*required*");
-    }
-
-    [Fact]
-    public void Production_With_Symmetric_Missing_Issuer_Throws()
-    {
-        var act = () => new ServiceCollection().AddSupportAuth(Cfg(new Dictionary<string, string?>
-        {
-            ["Authentication:Jwt:SymmetricKey"] = new string('k', 64),
-            ["Authentication:Jwt:Audience"] = "aud"
-        }), new FakeEnv("Production"));
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*Issuer*required*");
-    }
-
-    [Fact]
-    public void Production_With_Short_SymmetricKey_Throws()
-    {
-        var act = () => new ServiceCollection().AddSupportAuth(Cfg(new Dictionary<string, string?>
-        {
-            ["Authentication:Jwt:SymmetricKey"] = "tooshort",
-            ["Authentication:Jwt:Issuer"] = "iss",
-            ["Authentication:Jwt:Audience"] = "aud"
-        }), new FakeEnv("Production"));
-        act.Should().Throw<InvalidOperationException>()
-           .WithMessage("*at least 32 bytes*");
-    }
-
-    [Fact]
-    public void Production_With_Valid_Symmetric_Config_Succeeds()
-    {
-        var act = () => new ServiceCollection().AddSupportAuth(Cfg(new Dictionary<string, string?>
-        {
-            ["Authentication:Jwt:SymmetricKey"] = new string('k', 64),
-            ["Authentication:Jwt:Issuer"] = "iss",
-            ["Authentication:Jwt:Audience"] = "aud"
+            ["Jwt:SigningKey"]  = new string('k', 64),
+            ["Jwt:Issuer"]     = "iss",
+            ["Jwt:Audience"]   = "aud"
         }), new FakeEnv("Production"));
         act.Should().NotThrow();
     }
 
     [Fact]
-    public void Production_With_Valid_Authority_Config_Succeeds()
+    public void Production_With_Valid_Config_And_No_Issuer_Audience_Uses_Defaults()
     {
+        // Issuer and Audience have safe defaults so omitting them should not throw.
         var act = () => new ServiceCollection().AddSupportAuth(Cfg(new Dictionary<string, string?>
         {
-            ["Authentication:Jwt:Authority"] = "https://idp.example.com",
-            ["Authentication:Jwt:Issuer"] = "https://idp.example.com",
-            ["Authentication:Jwt:Audience"] = "aud"
+            ["Jwt:SigningKey"] = new string('k', 64)
         }), new FakeEnv("Production"));
         act.Should().NotThrow();
     }

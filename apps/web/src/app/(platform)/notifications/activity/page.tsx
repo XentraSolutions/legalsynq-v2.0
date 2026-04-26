@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireOrg } from '@/lib/auth-guards';
 import {
+
   notificationsServerApi,
   parseRecipient,
   NOTIF_STATUS_OPTIONS,
@@ -9,6 +10,9 @@ import {
   type NotifSummary,
   type NotifFanOutSummary,
 } from '@/lib/notifications-server-api';
+
+export const dynamic = 'force-dynamic';
+
 
 const PAGE_SIZE = 25;
 

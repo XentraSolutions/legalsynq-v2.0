@@ -17,6 +17,9 @@ import {
 import { useProviderMode } from '@/hooks/use-provider-mode';
 import { useRoleAccess } from '@/hooks/use-role-access';
 
+export const dynamic = 'force-dynamic';
+
+
 const SOURCE_LABELS: Record<string, string> = {
   audit: 'Audit',
   notification: 'Notification',

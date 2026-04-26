@@ -13,6 +13,9 @@ import { ServerApiError } from '@/lib/server-api-client';
 import type { ProviderReadinessDiagnostics } from '@/types/careconnect';
 import { ProviderProvisioningPanel } from '@/components/careconnect/admin/provider-provisioning-panel';
 
+export const dynamic = 'force-dynamic';
+
+
 interface PageProps {
   searchParams: Promise<{ userId?: string }>;
 }

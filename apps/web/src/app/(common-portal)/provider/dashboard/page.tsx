@@ -12,6 +12,9 @@ import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import type { ReferralSummary } from '@/types/careconnect';
 
+export const dynamic = 'force-dynamic';
+
+
 // ── Onboarding CTA banner (COMMON_PORTAL stage) ───────────────────────────────
 
 function OnboardingCtaBanner() {

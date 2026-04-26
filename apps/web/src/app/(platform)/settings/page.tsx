@@ -1,6 +1,9 @@
 import { requireOrg } from '@/lib/auth-guards';
 import { ChangePasswordForm } from './change-password-form';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * /settings — Account Settings.
  *

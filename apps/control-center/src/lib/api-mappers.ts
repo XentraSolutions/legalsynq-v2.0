@@ -46,6 +46,7 @@ import type {
   SupportCaseDetail,
   SupportCaseStatus,
   SupportCasePriority,
+  SupportProductRef,
   PagedResponse,
   OrganizationTypeItem,
   RelationshipTypeItem,
@@ -1041,17 +1042,50 @@ export function mapSupportNote(raw: unknown): SupportNote {
 }
 
 /**
- * mapSupportCaseDetail — normalises a full support case detail response.
- * Extends mapSupportCase with the notes array.
+ * mapSupportProductRef — normalises a raw product reference entry.
+ *
+ * Handles:
+ *   ticket_id / ticketId → ticketId
+ *   product_code / productCode → productCode
+ *   entity_type / entityType → entityType
+ *   entity_id / entityId → entityId
+ *   display_label / displayLabel → displayLabel
+ *   metadata_json / metadataJson → metadataJson
+ *   created_by_user_id / createdByUserId → createdByUserId
+ *   created_at / createdAt → createdAt
  *
  * TODO: replace manual mappers with generated types from OpenAPI spec
  */
-export function mapSupportCaseDetail(raw: unknown): SupportCaseDetail {
+export function mapSupportProductRef(raw: unknown): SupportProductRef {
+  const r = asObj(raw);
+  return {
+    id:              str(r, 'id',                   'id',                '',  'mapSupportProductRef.id'),
+    ticketId:        str(r, 'ticket_id',             'ticketId',          ''),
+    productCode:     str(r, 'product_code',          'productCode',       ''),
+    entityType:      str(r, 'entity_type',           'entityType',        ''),
+    entityId:        str(r, 'entity_id',             'entityId',          ''),
+    displayLabel:    optStr(r, 'display_label',      'displayLabel'),
+    metadataJson:    optStr(r, 'metadata_json',      'metadataJson'),
+    createdByUserId: optStr(r, 'created_by_user_id', 'createdByUserId'),
+    createdAt:       str(r, 'created_at',            'createdAt',         new Date().toISOString()),
+  };
+}
+
+/**
+ * mapSupportCaseDetail — normalises a full support case detail response.
+ * Extends mapSupportCase with the notes and productRefs arrays.
+ *
+ * productRefs are optionally provided (pre-fetched in parallel by the API client).
+ *
+ * TODO: replace manual mappers with generated types from OpenAPI spec
+ */
+export function mapSupportCaseDetail(raw: unknown, rawProductRefs?: unknown[]): SupportCaseDetail {
   const r    = asObj(raw);
   const base = mapSupportCase(raw);
   return {
     ...base,
-    notes: asArr(r['notes']).map(mapSupportNote),
+    notes:       asArr(r['notes']).map(mapSupportNote),
+    productRefs: (rawProductRefs ?? []).map(mapSupportProductRef),
   };
 }
 

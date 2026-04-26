@@ -28,7 +28,7 @@ export function ReferralQueueToolbar({ currentSearch = '', currentStatus = '' }:
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function buildUrl(overrides: Record<string, string>): string {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
     for (const [k, v] of Object.entries(overrides)) {
       if (v) {
         params.set(k, v);
@@ -38,7 +38,7 @@ export function ReferralQueueToolbar({ currentSearch = '', currentStatus = '' }:
     }
     params.delete('page');
     const qs = params.toString();
-    return qs ? `${pathname}?${qs}` : pathname;
+    return qs ? `${pathname}?${qs}` : pathname ?? '/';
   }
 
   const pushSearch = useCallback(

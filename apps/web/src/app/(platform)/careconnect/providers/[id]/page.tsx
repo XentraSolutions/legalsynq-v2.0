@@ -54,7 +54,7 @@ export default function ProviderDetailPage() {
     async function loadProvider() {
       setLoading(true);
       try {
-        const { data } = await careConnectApi.providers.getById(params.id);
+        const { data } = await careConnectApi.providers.getById(params?.id ?? '');
         setProvider(data);
       } catch (err) {
         if (err instanceof ApiError) {
@@ -71,7 +71,7 @@ export default function ProviderDetailPage() {
     }
 
     loadProvider();
-  }, [params.id, session, sessionLoading, router]);
+  }, [params?.id ?? '', session, sessionLoading, router]);
 
   if (sessionLoading || loading) {
     return (

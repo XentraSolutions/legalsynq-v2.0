@@ -32,4 +32,11 @@
     <PackageReference Include="System.Text.RegularExpressions" Version="4.3.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- LS-SUP-INT-05: BuildingBlocks provides IServiceTokenIssuer and NotificationsAuthDelegatingHandler -->
+    <ProjectReference Include="../../../../shared/building-blocks/BuildingBlocks/BuildingBlocks.csproj" />
+    <!-- LS-SUP-INT-05: Shared audit client for IAuditEventClient / AddAuditEventClient -->
+    <ProjectReference Include="../../../../shared/audit-client/LegalSynq.AuditClient/LegalSynq.AuditClient.csproj" />
+  </ItemGroup>
+
 </Project>

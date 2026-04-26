@@ -3,6 +3,9 @@ import { requireCCPlatformAdmin } from '@/lib/auth-guards';
 import { CCRoutes }               from '@/lib/control-center-routes';
 import { notifWebApi }            from '@/lib/notif-web-api';
 
+export const dynamic = 'force-dynamic';
+
+
 interface ContactPolicy {
   id:          string;
   policyType:  string;

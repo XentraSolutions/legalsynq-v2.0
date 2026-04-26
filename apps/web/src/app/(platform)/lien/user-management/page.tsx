@@ -12,6 +12,9 @@ import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { formatDate } from '@/lib/lien-utils';
 
+export const dynamic = 'force-dynamic';
+
+
 export default function UserManagementPage() {
   const users = useLienStore((s) => s.users);
   const updateUser = useLienStore((s) => s.updateUser);

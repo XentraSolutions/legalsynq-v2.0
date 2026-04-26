@@ -3,6 +3,9 @@ import { requireOrg } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
 import { CreateFundingApplicationForm } from '@/components/fund/create-funding-application-form';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * /fund/applications/new — Create a new funding application.
  *

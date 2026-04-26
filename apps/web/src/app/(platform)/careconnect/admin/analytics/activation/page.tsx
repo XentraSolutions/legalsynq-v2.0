@@ -15,6 +15,9 @@ import { ServerApiError } from '@/lib/server-api-client';
 import type { ActivationFunnelMetrics } from '@/types/careconnect';
 import { DateFilter } from './date-filter';
 
+export const dynamic = 'force-dynamic';
+
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function pct(rate: number | null): string {

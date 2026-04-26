@@ -25,6 +25,7 @@ _svc_label_for() {
     Monitoring.Api)            echo "Monitoring" ;;
     Task.Api)                  echo "Task" ;;
     Tenant.Api)                echo "Tenant" ;;
+    Support.Api)               echo "Support" ;;
     *)                         echo "$svc_name" ;;
   esac
 }

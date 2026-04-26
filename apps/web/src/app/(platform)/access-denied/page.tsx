@@ -1,5 +1,8 @@
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * LS-ID-TNT-010 — Platform-level product access denied page.
  *

@@ -1,6 +1,9 @@
 import { requireOrg }    from '@/lib/auth-guards';
 import { serverApi }     from '@/lib/server-api-client';
 
+export const dynamic = 'force-dynamic';
+
+
 const PAGE_SIZE = 20;
 
 interface SearchParams {

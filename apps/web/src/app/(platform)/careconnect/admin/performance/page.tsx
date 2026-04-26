@@ -16,9 +16,13 @@ import { requireAdmin } from '@/lib/auth-guards';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import type {
+
   ReferralPerformanceResult,
   ProviderPerformanceRow,
 } from '@/types/careconnect';
+
+export const dynamic = 'force-dynamic';
+
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

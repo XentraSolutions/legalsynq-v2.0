@@ -114,8 +114,13 @@ PID_CC=$!
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/task/Task.Api/Task.Api.csproj" &
   ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" &
-  # Support service — port 5017, standalone MySQL, JWT via Authentication:Jwt:SymmetricKey
-  ASPNETCORE_ENVIRONMENT=Development dotnet run --no-build --project "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" &
+  # Support service — port 5017, standalone MySQL, JWT via Authentication:Jwt:SymmetricKey.
+  # Authentication__Jwt__SymmetricKey is sourced from Jwt__SigningKey (the same secret used
+  # by the gateway) so tokens minted by the platform validate correctly in Support.
+  # Falls back to the matching dev key when no secret is set in the environment.
+  ASPNETCORE_ENVIRONMENT=Development \
+    Authentication__Jwt__SymmetricKey="${Jwt__SigningKey:-dev-only-signing-key-minimum-32-chars-long!}" \
+    dotnet run --no-build --project "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj" &
   wait
 ) &

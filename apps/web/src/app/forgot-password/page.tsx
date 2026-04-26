@@ -4,6 +4,9 @@ import { Suspense } from 'react';
 import Image from 'next/image';
 import { ForgotPasswordForm } from './forgot-password-form';
 
+export const dynamic = 'force-dynamic';
+
+
 export default function ForgotPasswordPage() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">

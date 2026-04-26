@@ -48,7 +48,7 @@ export function LoginForm() {
 
   // LS-ID-TNT-010: read reason param to show appropriate context banner.
   const reasonBanner = useMemo(() => {
-    const r = searchParams.get('reason') ?? '';
+    const r = searchParams?.get('reason') ?? '';
     return REASON_MESSAGES[r] ?? null;
   }, [searchParams]);
 
@@ -93,7 +93,7 @@ export function LoginForm() {
 
       await refresh();
 
-      const rawReturnTo = searchParams.get('returnTo') ?? '';
+      const rawReturnTo = searchParams?.get('returnTo') ?? '';
       const safeDest    = rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//')
         ? rawReturnTo
         : '/dashboard';

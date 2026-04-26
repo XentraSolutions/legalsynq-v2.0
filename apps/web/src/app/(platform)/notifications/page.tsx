@@ -1,11 +1,15 @@
 import Link from 'next/link';
 import { requireOrg } from '@/lib/auth-guards';
 import {
+
   notificationsServerApi,
   parseRecipient,
   type NotifStats,
   type NotifSummary,
 } from '@/lib/notifications-server-api';
+
+export const dynamic = 'force-dynamic';
+
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 

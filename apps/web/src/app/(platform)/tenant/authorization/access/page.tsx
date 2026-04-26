@@ -2,6 +2,7 @@ import { requireTenantAdmin } from '@/lib/tenant-auth-guard';
 import { tenantServerApi } from '@/lib/tenant-api';
 import { AccessExplainabilityClient } from './AccessExplainabilityClient';
 import type {
+
   TenantGroup,
   AdminUserItem,
   PermissionItem,
@@ -9,6 +10,9 @@ import type {
   GroupProductAccess,
   GroupRoleAssignment,
 } from '@/types/tenant';
+
+export const dynamic = 'force-dynamic';
+
 
 export default async function AccessPage() {
   const session = await requireTenantAdmin();

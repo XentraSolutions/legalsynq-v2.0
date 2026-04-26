@@ -20,6 +20,9 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ActivationForm } from './activation-form';
 
+export const dynamic = 'force-dynamic';
+
+
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 interface PageProps {

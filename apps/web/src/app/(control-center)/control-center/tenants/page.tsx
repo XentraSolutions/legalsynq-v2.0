@@ -2,6 +2,9 @@ import { requireCCPlatformAdmin } from '@/lib/auth-guards';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import { TenantListTable }        from '@/components/control-center/tenant-list-table';
 
+export const dynamic = 'force-dynamic';
+
+
 interface TenantsPageProps {
   searchParams: Promise<{
     page?:   string;

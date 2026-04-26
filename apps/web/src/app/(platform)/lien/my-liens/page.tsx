@@ -5,6 +5,9 @@ import { lienServerApi } from '@/lib/lien-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { LienListTable } from '@/components/lien/lien-list-table';
 
+export const dynamic = 'force-dynamic';
+
+
 interface MyLiensPageProps {
   searchParams: Promise<{ status?: string }>;
 }

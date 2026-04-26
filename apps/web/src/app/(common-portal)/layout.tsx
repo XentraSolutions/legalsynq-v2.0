@@ -12,6 +12,9 @@ import Link from 'next/link';
 import { requireExternalPortal } from '@/lib/auth-guards';
 import { OrgType } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
+
 export const metadata = { title: 'CareConnect Portal' };
 
 export default async function CommonPortalLayout({

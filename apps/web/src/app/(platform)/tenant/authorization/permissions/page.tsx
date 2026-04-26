@@ -3,6 +3,9 @@ import { tenantServerApi } from '@/lib/tenant-api';
 import { PermissionsClient } from './PermissionsClient';
 import type { TenantPermissionCatalogItem, TenantRoleItem } from '@/types/tenant';
 
+export const dynamic = 'force-dynamic';
+
+
 export default async function PermissionsPage() {
   const session = await requireTenantAdmin();
   const tid = session.tenantId;

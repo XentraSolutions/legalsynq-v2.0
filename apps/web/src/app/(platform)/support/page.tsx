@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { getServerSession } from '@/lib/session';
 import { supportServerApi, type TicketSummary, type TicketStatus, type TicketPriority } from '@/lib/support-server-api';
 
@@ -203,7 +204,12 @@ export default async function SupportPage({ searchParams }: SupportPageProps) {
                     {tickets.map(t => (
                       <tr key={t.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3">
-                          <span className="font-medium text-gray-900 leading-snug">{t.title}</span>
+                          <Link
+                            href={`/support/${t.id}`}
+                            className="font-medium text-indigo-700 hover:text-indigo-900 hover:underline leading-snug"
+                          >
+                            {t.title}
+                          </Link>
                           {t.requesterName && (
                             <p className="text-xs text-gray-400 mt-0.5">{t.requesterName}</p>
                           )}

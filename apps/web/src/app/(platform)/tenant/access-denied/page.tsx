@@ -1,5 +1,8 @@
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+
+
 export default function AccessDeniedPage() {
   return (
     <div className="flex items-center justify-center min-h-[60vh]">

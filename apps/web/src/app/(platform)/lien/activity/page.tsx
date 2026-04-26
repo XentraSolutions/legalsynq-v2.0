@@ -12,6 +12,9 @@ import {
 } from '@/lib/unified-activity';
 import { useProviderMode } from '@/hooks/use-provider-mode';
 
+export const dynamic = 'force-dynamic';
+
+
 const SOURCE_LABELS: Record<string, string> = {
   audit: 'Audit',
   notification: 'Notification',

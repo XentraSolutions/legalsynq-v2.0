@@ -27,6 +27,13 @@ internal static class SeedIds
     public static readonly Guid RoleTenantStaff   = new("30000000-0000-0000-0000-000000000009");
     public static readonly Guid RoleTenantViewer  = new("30000000-0000-0000-0000-000000000010");
     public static readonly Guid RoleStandardUser  = new("30000000-0000-0000-0000-000000000003");
+    public static readonly Guid RoleTenantUser    = new("30000000-0000-0000-0000-000000000014");
+
+    // ── System Roles — Support module ────────────────────────────────────────
+    public static readonly Guid RoleSupportAdmin    = new("30000000-0000-0000-0000-000000000011");
+    public static readonly Guid RoleSupportManager  = new("30000000-0000-0000-0000-000000000012");
+    public static readonly Guid RoleSupportAgent    = new("30000000-0000-0000-0000-000000000013");
+    public static readonly Guid RoleExternalCustomer = new("30000000-0000-0000-0000-000000000015");
 
     // ── Organizations ─────────────────────────────────────────────────────────
     public static readonly Guid OrgLegalSynq = new("40000000-0000-0000-0000-000000000001");

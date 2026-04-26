@@ -1,10 +1,16 @@
+using System.Threading.RateLimiting;
+using BuildingBlocks.Authentication.ServiceTokens;
+using BuildingBlocks.Notifications;
 using FluentValidation;
+using LegalSynq.AuditClient;
 using Support.Api.Audit;
 using Support.Api.Auth;
 using Support.Api.Configuration;
 using Support.Api.Data;
+using Support.Api.Data.Repositories;
 using Support.Api.Endpoints;
 using Support.Api.Files;
+using Support.Api.Middleware;
 using Support.Api.Notifications;
 using Support.Api.Services;
 using Support.Api.Tenancy;
@@ -49,8 +55,12 @@ builder.Services.AddScoped<ICommentService, CommentService>();
 builder.Services.AddScoped<ITicketAttachmentService, TicketAttachmentService>();
 builder.Services.AddScoped<ITicketProductReferenceService, TicketProductReferenceService>();
 builder.Services.AddScoped<IQueueService, QueueService>();
+builder.Services.AddScoped<IExternalCustomerRepository, ExternalCustomerRepository>();
+builder.Services.AddScoped<IExternalCustomerService, ExternalCustomerService>();
+builder.Services.AddScoped<ISupportTenantSettingsService, SupportTenantSettingsService>();
 
 // --- Notifications dispatch ---
+// LS-SUP-INT-05: Http mode wires to the real Notifications Service via NotificationsProducerRequest.
 builder.Services.Configure<NotificationOptions>(
     builder.Configuration.GetSection(NotificationOptions.SectionName));
 {
@@ -65,8 +75,14 @@ builder.Services.Configure<NotificationOptions>(
 
     if (mode == NotificationDispatchMode.Http)
     {
+        // Mint short-lived service JWTs carrying a tenant claim for Notifications Service auth.
+        // Falls back to no-op when FLOW_SERVICE_TOKEN_SECRET / ServiceTokens:SigningKey is absent.
+        builder.Services.AddServiceTokenIssuer(builder.Configuration, "support-service");
+        builder.Services.AddTransient<NotificationsAuthDelegatingHandler>();
+
         builder.Services.AddHttpClient<INotificationPublisher, HttpNotificationPublisher>(
-            HttpNotificationPublisher.HttpClientName);
+            HttpNotificationPublisher.HttpClientName)
+            .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
     }
     else
     {
@@ -75,6 +91,7 @@ builder.Services.Configure<NotificationOptions>(
 }
 
 // --- Audit dispatch ---
+// LS-SUP-INT-05: Http mode delegates to IAuditEventClient (LegalSynq.AuditClient shared library).
 builder.Services.Configure<AuditOptions>(
     builder.Configuration.GetSection(AuditOptions.SectionName));
 {
@@ -89,8 +106,9 @@ builder.Services.Configure<AuditOptions>(
 
     if (mode == AuditDispatchMode.Http)
     {
-        builder.Services.AddHttpClient<IAuditPublisher, HttpAuditPublisher>(
-            HttpAuditPublisher.HttpClientName);
+        // AuditClient section configures BaseUrl, ServiceToken, SourceSystem, TimeoutSeconds.
+        builder.Services.AddAuditEventClient(builder.Configuration);
+        builder.Services.AddScoped<IAuditPublisher, AuditEventClientPublisher>();
     }
     else
     {
@@ -135,6 +153,66 @@ builder.Services.Configure<FileStorageOptions>(
 // --- FluentValidation ---
 builder.Services.AddValidatorsFromAssemblyContaining<CreateTicketRequestValidator>();
 
+// --- Rate limiting (SUP-TNT-05) ---
+// Applied ONLY to customer-facing endpoints (/support/api/customer/*).
+// Keyed by external_customer_id JWT claim; falls back to remote IP.
+// Limits are configurable so integration tests can lower the window for verification.
+// NOTE: config is read from IConfiguration inside the policy callback (not at startup)
+// so that WebApplicationFactory config overrides take effect in tests.
+
+builder.Services.AddRateLimiter(opts =>
+{
+    opts.AddPolicy(RateLimitPolicies.CustomerEndpoints, httpContext =>
+    {
+        // Read config at partition-creation time (once per unique key) so test
+        // factories can override Support:RateLimit values via ConfigureAppConfiguration.
+        var cfg         = httpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var permitLimit = cfg.GetValue<int>("Support:RateLimit:CustomerPermitLimit",  60);
+        var windowSecs  = cfg.GetValue<int>("Support:RateLimit:CustomerWindowSeconds", 60);
+
+        var key = httpContext.User?.FindFirst("external_customer_id")?.Value
+            ?? httpContext.Connection.RemoteIpAddress?.ToString()
+            ?? "unknown";
+
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit          = permitLimit,
+            Window               = TimeSpan.FromSeconds(windowSecs),
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit           = 0,
+        });
+    });
+
+    opts.OnRejected = async (ctx, token) =>
+    {
+        var logger = ctx.HttpContext.RequestServices
+            .GetRequiredService<ILogger<Program>>();
+
+        var customerId = ctx.HttpContext.User?.FindFirst("external_customer_id")?.Value;
+        var tenantId   = ctx.HttpContext.RequestServices
+            .GetService<ITenantContext>()?.TenantId;
+        var cfg        = ctx.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var windowSecs = cfg.GetValue<int>("Support:RateLimit:CustomerWindowSeconds", 60);
+
+        logger.LogWarning(
+            "Rate limit exceeded. TenantId={TenantId} CustomerId={CustomerId} Path={Path} IP={IP}",
+            tenantId,
+            customerId,
+            ctx.HttpContext.Request.Path,
+            ctx.HttpContext.Connection.RemoteIpAddress);
+
+        ctx.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        ctx.HttpContext.Response.Headers["Retry-After"] = windowSecs.ToString();
+        await ctx.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            title         = "Too Many Requests",
+            status        = 429,
+            detail        = $"Rate limit exceeded. Please retry in {windowSecs} seconds.",
+            correlationId = ctx.HttpContext.TraceIdentifier,
+        }, cancellationToken: token);
+    };
+});
+
 // --- Swagger / OpenAPI ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -155,6 +233,32 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAn
 
 var app = builder.Build();
 
+// --- Database migration (run on startup so all EF migrations are always applied) ---
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<SupportDbContext>();
+    db.Database.Migrate();
+}
+
+// --- Global exception handler (SUP-TNT-05) ---
+// Must be first in the pipeline so it wraps all subsequent middleware.
+// Ensures uncaught exceptions return a safe 500 body with no stack traces.
+app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
+{
+    ctx.Response.StatusCode  = StatusCodes.Status500InternalServerError;
+    ctx.Response.ContentType = "application/problem+json";
+    await ctx.Response.WriteAsJsonAsync(new
+    {
+        title         = "An unexpected error occurred.",
+        status        = 500,
+        correlationId = ctx.TraceIdentifier,
+    });
+}));
+
+// --- Security headers (SUP-TNT-05) ---
+app.UseMiddleware<SecurityHeadersMiddleware>();
+
 app.UseSerilogRequestLogging();
 app.UseCors();
 
@@ -172,6 +276,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseAuthentication();
 app.UseMiddleware<TenantResolutionMiddleware>();
+
+// Rate limiter after authentication so external_customer_id claim is available
+// for per-customer keying, but before authorization to reject abusive traffic cheaply.
+app.UseRateLimiter();
+
 app.UseAuthorization();
 
 app.MapHealthChecks("/support/api/health").AllowAnonymous();
@@ -181,7 +290,15 @@ app.MapCommentEndpoints();
 app.MapAttachmentEndpoints();
 app.MapProductRefEndpoints();
 app.MapQueueEndpoints();
+app.MapCustomerTicketEndpoints();
+app.MapTenantSettingsEndpoints();
 
 app.Run();
 
 public partial class Program { }
+
+/// <summary>Rate limiting policy name constants.</summary>
+public static class RateLimitPolicies
+{
+    public const string CustomerEndpoints = "CustomerEndpoints";
+}

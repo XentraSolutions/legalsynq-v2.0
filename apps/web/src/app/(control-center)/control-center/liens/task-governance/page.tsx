@@ -11,6 +11,9 @@ import type {
 } from '@/lib/liens/lien-tasks.types';
 import type { WorkflowStageDto } from '@/lib/liens/lien-workflow.types';
 
+export const dynamic = 'force-dynamic';
+
+
 function ToggleCard({
   label,
   description,
@@ -49,7 +52,7 @@ function ToggleCard({
 
 export default function CCTaskGovernancePage() {
   const searchParams = useSearchParams();
-  const tenantId = searchParams.get('tenantId') ?? '';
+  const tenantId = searchParams?.get('tenantId') ?? '';
 
   const [settings, setSettings]   = useState<TaskGovernanceSettings | null>(null);
   const [stages, setStages]       = useState<WorkflowStageDto[]>([]);

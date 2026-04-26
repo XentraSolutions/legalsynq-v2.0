@@ -5,6 +5,8 @@ import { SessionProvider, type SerializableSession } from '@/providers/session-p
 import { ProviderModeProvider } from '@/providers/provider-mode-provider';
 import { getServerSession } from '@/lib/session';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'LegalSynq',
   description: 'LegalSynq Platform',

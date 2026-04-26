@@ -104,7 +104,7 @@ function ControlCenterSidebar() {
     <aside className="w-56 shrink-0 border-r border-gray-200 bg-white flex flex-col h-full overflow-y-auto">
       <nav className="flex-1 py-4 space-y-6 px-2">
         {groups.map(group => (
-          <SidebarGroup key={group.id} group={group} pathname={pathname} />
+          <SidebarGroup key={group.id} group={group} pathname={pathname ?? ''} />
         ))}
       </nav>
     </aside>
@@ -119,7 +119,7 @@ function SidebarGroup({ group, pathname }: { group: NavGroup; pathname: string }
       </p>
       <ul className="space-y-0.5">
         {group.items.map(item => (
-          <SidebarItem key={item.href} item={item} pathname={pathname} />
+          <SidebarItem key={item.href} item={item} pathname={pathname ?? ''} />
         ))}
       </ul>
     </div>

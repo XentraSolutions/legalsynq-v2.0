@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { PageHeader } from '@/components/lien/page-header';
 
+export const dynamic = 'force-dynamic';
+
+
 const STEPS = ['Upload File', 'Map Fields', 'Validate', 'Import'];
 
 export default function BatchEntryPage() {

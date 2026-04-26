@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { requireCCPlatformAdmin } from '@/lib/auth-guards';
 import { CCRoutes } from '@/lib/control-center-routes';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * Control Center Dashboard
  *

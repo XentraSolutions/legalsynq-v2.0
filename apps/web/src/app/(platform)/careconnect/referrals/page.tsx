@@ -10,6 +10,9 @@ import { ReferralListTable } from '@/components/careconnect/referral-list-table'
 import { ReferralQueueToolbar } from '@/components/careconnect/referral-queue-toolbar';
 import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
 
+export const dynamic = 'force-dynamic';
+
+
 interface ReferralsPageProps {
   searchParams: Promise<{
     status?:      string;

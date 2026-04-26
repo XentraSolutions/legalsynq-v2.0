@@ -3,6 +3,9 @@ import { serverApi, ServerApiError } from '@/lib/server-api-client';
 import { UserTable } from './UserTable';
 import type { UserResponse } from '@/types/admin';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * Admin — User management.
  *

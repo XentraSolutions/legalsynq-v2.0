@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { requireOrg } from '@/lib/auth-guards';
 import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@/lib/notifications-server-api';
 
+export const dynamic = 'force-dynamic';
+
+
 const PRODUCT_ICONS: Record<string, string> = {
   careconnect: 'ri-shield-cross-line',
   synqlien:    'ri-stack-line',

@@ -2,6 +2,9 @@ import { requireOrg } from '@/lib/auth-guards';
 import { getServerSession } from '@/lib/session';
 import { WorkAreaClient } from '@/components/my-work/work-area-client';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * LS-FLOW-E11.6 / LS-FLOW-E15 — tenant-portal "Work" area.
  *

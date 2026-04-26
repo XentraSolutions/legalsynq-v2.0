@@ -3,6 +3,9 @@ import { AppShell } from '@/components/shell/app-shell';
 import { ToastProvider } from '@/lib/toast-context';
 import { ToastContainer } from '@/components/toast-container';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * Platform layout — wraps all product routes (careconnect, fund, lien).
  * Guards: requires authentication + org membership.

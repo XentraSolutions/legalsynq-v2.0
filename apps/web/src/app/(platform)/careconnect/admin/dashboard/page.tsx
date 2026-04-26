@@ -13,6 +13,9 @@ import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import type { DashboardMetrics } from '@/types/careconnect';
 
+export const dynamic = 'force-dynamic';
+
+
 function formatTs(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',

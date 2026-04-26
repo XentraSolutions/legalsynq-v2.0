@@ -1,3 +1,6 @@
+
+export const dynamic = 'force-dynamic';
+
 /**
  * Injured Party Portal — Login page.
  *

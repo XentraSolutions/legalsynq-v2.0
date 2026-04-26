@@ -38,7 +38,7 @@ export default function PortfolioLienDetailPage() {
     async function load() {
       setLoading(true);
       try {
-        const { data } = await lienApi.liens.getById(params.id);
+        const { data } = await lienApi.liens.getById(params?.id ?? '');
         setLien(data);
       } catch (err) {
         if (err instanceof ApiError) {
@@ -55,7 +55,7 @@ export default function PortfolioLienDetailPage() {
     }
 
     load();
-  }, [params.id, session, sessionLoading, isBuyer, isHolder, router]);
+  }, [params?.id ?? '', session, sessionLoading, isBuyer, isHolder, router]);
 
   if (sessionLoading || loading) {
     return (

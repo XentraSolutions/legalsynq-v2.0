@@ -1,6 +1,9 @@
 import { requireTenantAdmin } from '@/lib/tenant-auth-guard';
 import { AuthorizationNav } from '@/components/tenant/authorization-nav';
 
+export const dynamic = 'force-dynamic';
+
+
 export default async function TenantAuthorizationLayout({
   children,
 }: {

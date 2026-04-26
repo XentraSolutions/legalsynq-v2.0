@@ -19,7 +19,9 @@ public class DefaultAttributeProvider : IAttributeProvider
         var orgId = user.FindFirst("org_id")?.Value;
         if (orgId != null) attrs["organizationId"] = orgId;
 
-        var roles = user.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList();
+        // MapInboundClaims=false keeps JWT "role" claims as type "role" (short name),
+        // not ClaimTypes.Role (long URI). Use the short name to find them.
+        var roles = user.FindAll("role").Select(c => c.Value).ToList();
         if (roles.Count == 1) attrs["role"] = roles[0];
         else if (roles.Count > 1) attrs["role"] = roles;
 

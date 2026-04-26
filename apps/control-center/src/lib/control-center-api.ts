@@ -78,6 +78,7 @@ import {
   mapSupportCase,
   mapSupportCaseDetail,
   mapSupportNote,
+  mapSupportProductRef,
   mapPagedResponse,
   mapOrganizationTypeItem,
   mapRelationshipTypeItem,
@@ -1875,19 +1876,29 @@ export const controlCenterServerApi = {
     /**
      * GET /support/api/tickets/{id}
      *
-     * Returns full SupportCaseDetail including notes, or null if not found.
-     * Response is normalised via mapSupportCaseDetail.
+     * Returns full SupportCaseDetail including notes and product references,
+     * or null if not found. Product refs are fetched in parallel and merged.
+     * If the product-refs call fails it degrades gracefully to an empty array.
      *
      * Cache: 10 s  Tag: cc:support
      */
     getById: async (id: string): Promise<SupportCaseDetail | null> => {
       try {
-        const raw = await apiClient.get<unknown>(
-          `/support/api/tickets/${encodeURIComponent(id)}`,
-          10,
-          [CACHE_TAGS.support],
-        );
-        return mapSupportCaseDetail(raw);
+        const encodedId = encodeURIComponent(id);
+        const [raw, rawRefs] = await Promise.all([
+          apiClient.get<unknown>(
+            `/support/api/tickets/${encodedId}`,
+            10,
+            [CACHE_TAGS.support],
+          ),
+          apiClient.get<unknown>(
+            `/support/api/tickets/${encodedId}/product-refs`,
+            10,
+            [CACHE_TAGS.support],
+          ).catch(() => [] as unknown[]),
+        ]);
+        const refsArr = Array.isArray(rawRefs) ? rawRefs : [];
+        return mapSupportCaseDetail(raw, refsArr);
       } catch (err: unknown) {
         if (isNotFound(err)) return null;
         throw err;

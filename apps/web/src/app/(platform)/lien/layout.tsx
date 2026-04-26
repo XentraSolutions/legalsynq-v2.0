@@ -1,6 +1,9 @@
 import { requireProductAccess, FrontendProductCode } from '@/lib/auth-guards';
 import { LienProviders } from '@/components/lien/lien-providers';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * LS-ID-TNT-010 — SynqLien product layout guard.
  *

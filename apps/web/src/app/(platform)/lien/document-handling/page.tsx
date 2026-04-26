@@ -17,6 +17,9 @@ import { useSelectionState } from '@/hooks/use-selection-state';
 import { documentsService, type DocumentListItem } from '@/lib/documents';
 import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
 
+export const dynamic = 'force-dynamic';
+
+
 const STATUS_OPTIONS = [
   { value: 'DRAFT', label: 'Draft' },
   { value: 'ACTIVE', label: 'Active' },

@@ -2,6 +2,9 @@ import { requireProductRole } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
 import { CreateLienForm } from '@/components/lien/create-lien-form';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * /lien/my-liens/new — Create a new lien.
  *

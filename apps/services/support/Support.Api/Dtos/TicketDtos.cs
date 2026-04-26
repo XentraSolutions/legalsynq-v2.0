@@ -15,6 +15,19 @@ public class CreateTicketRequest
     public string? RequesterUserId { get; set; }
     public string? RequesterName { get; set; }
     public string? RequesterEmail { get; set; }
+
+    /// <summary>
+    /// Optional — when provided, the ticket is linked to an ExternalCustomer
+    /// resolved or created by this email within the tenant.
+    /// Sets RequesterType=ExternalCustomer and VisibilityScope=CustomerVisible.
+    /// </summary>
+    public string? ExternalCustomerEmail { get; set; }
+
+    /// <summary>
+    /// Optional display name for the external customer. Ignored if ExternalCustomerEmail is null.
+    /// Only used during ExternalCustomer creation; ignored if the customer already exists.
+    /// </summary>
+    public string? ExternalCustomerName { get; set; }
 }
 
 public class UpdateTicketRequest
@@ -48,6 +61,9 @@ public class TicketResponse
     public string? RequesterUserId { get; set; }
     public string? RequesterName { get; set; }
     public string? RequesterEmail { get; set; }
+    public TicketRequesterType RequesterType { get; set; }
+    public Guid? ExternalCustomerId { get; set; }
+    public TicketVisibilityScope VisibilityScope { get; set; }
     public string? AssignedUserId { get; set; }
     public string? AssignedQueueId { get; set; }
     public DateTime? DueAt { get; set; }
@@ -74,6 +90,9 @@ public class TicketResponse
         RequesterUserId = t.RequesterUserId,
         RequesterName = t.RequesterName,
         RequesterEmail = t.RequesterEmail,
+        RequesterType = t.RequesterType,
+        ExternalCustomerId = t.ExternalCustomerId,
+        VisibilityScope = t.VisibilityScope,
         AssignedUserId = t.AssignedUserId,
         AssignedQueueId = t.AssignedQueueId,
         DueAt = t.DueAt,

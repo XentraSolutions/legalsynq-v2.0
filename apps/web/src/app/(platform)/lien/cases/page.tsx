@@ -19,6 +19,9 @@ import { casesService, type CaseListItem, type PaginationMeta } from '@/lib/case
 import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
 import { ApiError } from '@/lib/api-client';
 
+export const dynamic = 'force-dynamic';
+
+
 const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
 const STATUS_LABELS: Record<string, string> = {
   PreDemand: 'Pre-Demand',

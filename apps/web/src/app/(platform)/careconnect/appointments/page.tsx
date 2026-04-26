@@ -6,6 +6,9 @@ import { ServerApiError } from '@/lib/server-api-client';
 import { AppointmentListTable } from '@/components/careconnect/appointment-list-table';
 import { isValidIsoDate, formatDisplayDate } from '@/lib/daterange';
 
+export const dynamic = 'force-dynamic';
+
+
 interface AppointmentsPageProps {
   searchParams: Promise<{
     status?:     string;

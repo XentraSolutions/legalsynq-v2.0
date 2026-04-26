@@ -3,6 +3,9 @@ import { tenantServerApi, ServerApiError } from '@/lib/tenant-api';
 import { AuthUserTable } from './AuthUserTable';
 import type { TenantUser } from '@/types/tenant';
 
+export const dynamic = 'force-dynamic';
+
+
 export default async function AuthorizationUsersPage() {
   const session = await requireTenantAdmin();
 

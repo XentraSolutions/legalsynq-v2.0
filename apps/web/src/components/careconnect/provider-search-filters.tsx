@@ -21,22 +21,22 @@ export function ProviderSearchFilters() {
   const pathname     = usePathname();
   const searchParams = useSearchParams();
 
-  const [name,               setName]               = useState(searchParams.get('name')               ?? '');
-  const [city,               setCity]               = useState(searchParams.get('city')               ?? '');
-  const [state,              setState]              = useState(searchParams.get('state')              ?? '');
-  const [categoryCode,       setCategoryCode]       = useState(searchParams.get('categoryCode')       ?? '');
-  const [acceptingReferrals, setAcceptingReferrals] = useState(searchParams.get('acceptingReferrals') === 'true');
+  const [name,               setName]               = useState(searchParams?.get('name')               ?? '');
+  const [city,               setCity]               = useState(searchParams?.get('city')               ?? '');
+  const [state,              setState]              = useState(searchParams?.get('state')              ?? '');
+  const [categoryCode,       setCategoryCode]       = useState(searchParams?.get('categoryCode')       ?? '');
+  const [acceptingReferrals, setAcceptingReferrals] = useState(searchParams?.get('acceptingReferrals') === 'true');
 
   const [radiusMiles, setRadiusMiles] = useState(
-    searchParams.get('radius') ? Math.min(100, Math.max(5, parseInt(searchParams.get('radius')!))) : 25,
+    searchParams?.get('radius') ? Math.min(100, Math.max(5, parseInt(searchParams?.get('radius')!))) : 25,
   );
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError,   setGeoError]   = useState<string | null>(null);
 
-  const hasGeo = !!(searchParams.get('lat') && searchParams.get('lng'));
+  const hasGeo = !!(searchParams?.get('lat') && searchParams?.get('lng'));
 
   const applyFilters = useCallback(() => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
     if (name)               params.set('name',               name);         else params.delete('name');
     if (city)               params.set('city',               city);         else params.delete('city');
     if (state)              params.set('state',              state);        else params.delete('state');
@@ -54,7 +54,7 @@ export function ProviderSearchFilters() {
     setState('');
     setCategoryCode('');
     setAcceptingReferrals(false);
-    router.push(pathname);
+    router.push(pathname ?? '/');
   }, [router, pathname]);
 
   const handleGeolocation = useCallback(() => {
@@ -67,7 +67,7 @@ export function ProviderSearchFilters() {
 
     navigator.geolocation.getCurrentPosition(
       pos => {
-        const params = new URLSearchParams(searchParams.toString());
+        const params = new URLSearchParams(searchParams?.toString() ?? '');
         params.set('lat',    pos.coords.latitude.toFixed(6));
         params.set('lng',    pos.coords.longitude.toFixed(6));
         params.set('radius', String(radiusMiles));
@@ -86,7 +86,7 @@ export function ProviderSearchFilters() {
   }, [radiusMiles, searchParams, pathname, router]);
 
   const clearGeo = useCallback(() => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.delete('lat');
     params.delete('lng');
     params.delete('radius');
@@ -97,7 +97,7 @@ export function ProviderSearchFilters() {
     const clamped = Math.min(100, Math.max(5, val));
     setRadiusMiles(clamped);
     if (hasGeo) {
-      const params = new URLSearchParams(searchParams.toString());
+      const params = new URLSearchParams(searchParams?.toString() ?? '');
       params.set('radius', String(clamped));
       router.replace(`${pathname}?${params.toString()}`);
     }

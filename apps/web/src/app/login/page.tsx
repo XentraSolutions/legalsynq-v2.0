@@ -5,6 +5,9 @@ import Image from 'next/image';
 import { LoginForm } from './login-form';
 import { useTenantBranding } from '@/providers/tenant-branding-provider';
 
+export const dynamic = 'force-dynamic';
+
+
 const HIGHLIGHTS = [
   {
     icon: 'ri-scales-3-line',

@@ -9,6 +9,9 @@ import type {
   TemplateContextType,
 } from '@/lib/liens/lien-task-templates.types';
 
+export const dynamic = 'force-dynamic';
+
+
 const CONTEXT_OPTIONS: { value: TemplateContextType; label: string }[] = [
   { value: 'GENERAL', label: 'General' },
   { value: 'CASE',    label: 'Case' },

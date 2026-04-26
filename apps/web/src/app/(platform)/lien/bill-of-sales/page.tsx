@@ -24,6 +24,9 @@ import {
 } from '@/lib/billofsale';
 import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
 
+export const dynamic = 'force-dynamic';
+
+
 const BULK_ACTIONS: BulkActionConfig[] = [
   {
     key: 'execute',

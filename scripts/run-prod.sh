@@ -7,10 +7,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/_startup-helpers.sh"
 
 NEXT_BIN=""
+# NOTE: node_modules/.bin/next is a pnpm shell shim (#!/bin/sh), NOT a JS file.
+# Running it with `node shell-shim` causes an immediate SyntaxError.
+# Always resolve to the real JS entrypoint at next/dist/bin/next.
 for candidate in \
-  "$ROOT/node_modules/.bin/next" \
   "$ROOT/node_modules/next/dist/bin/next" \
+  "$ROOT/node_modules/.pnpm/next@15.5.15"*/node_modules/next/dist/bin/next \
   "$(npm root 2>/dev/null)/next/dist/bin/next"; do
+  # Expand glob — skip if candidate still contains a wildcard
+  case "$candidate" in *\**) continue ;; esac
   if [ -f "$candidate" ]; then
     NEXT_BIN="$candidate"
     break
@@ -100,6 +105,7 @@ if command -v dotnet &>/dev/null; then
       "$ROOT/apps/services/monitoring/Monitoring.Api/Monitoring.Api.csproj"
       "$ROOT/apps/services/task/Task.Api/Task.Api.csproj"
       "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj"
+      "$ROOT/apps/services/support/Support.Api/Support.Api.csproj"
       "$ROOT/apps/gateway/Gateway.Api/Gateway.Api.csproj"
     )
 
@@ -158,6 +164,7 @@ if command -v dotnet &>/dev/null; then
     SVC_NAMES=()
     PID_IDENTITY="" PID_FUND="" PID_CARECONNECT="" PID_DOCUMENTS=""
     PID_AUDIT="" PID_NOTIFICATIONS="" PID_LIENS="" PID_GATEWAY="" PID_FLOW="" PID_MONITORING="" PID_TASK=""
+    PID_SUPPORT=""
 
     for csproj in "${BUILD_PROJECTS[@]}"; do
       svc_name="$(basename "$csproj" .csproj)"
@@ -181,17 +188,26 @@ if command -v dotnet &>/dev/null; then
         Monitoring.Api) launch_svc "$_svc_label" "$csproj"; PID_MONITORING=$! ;;
         Task.Api)      launch_svc "$_svc_label" "$csproj"; PID_TASK=$! ;;
         Tenant.Api)    launch_svc "$_svc_label" "$csproj"; PID_TENANT=$! ;;
+        Support.Api)
+          # Jwt:SigningKey is read from the Jwt__SigningKey Replit secret (env var),
+          # same as every other platform service. No additional injection needed.
+          launch_svc "$_svc_label" "$csproj"
+          PID_SUPPORT=$! ;;
         Gateway.Api)   launch_svc "$_svc_label" "$csproj"; PID_GATEWAY=$! ;;
         Identity.Api)
-          # NotificationsService:BaseUrl and :PortalBaseUrl must be non-empty in
-          # Production (Program.cs startup guard, lines 39-50).
+          # NotificationsService:BaseUrl, :PortalBaseUrl, and :PortalBaseDomain must
+          # all be non-empty in Production (Program.cs startup guard).
           # BaseUrl → internal Notifications service (always port 5008).
           # PortalBaseUrl → PORTAL_BASE_URL secret/env if set; otherwise derived from
           #   the first value in REPLIT_DOMAINS (the Replit-assigned deployment domain).
-          _portal_url="${PORTAL_BASE_URL:-https://$(echo "${REPLIT_DOMAINS:-localhost:3050}" | cut -d',' -f1)}"
+          # PortalBaseDomain → plain domain name (no scheme) derived from REPLIT_DOMAINS;
+          #   used to build tenant-subdomain-aware portal links in invite/reset emails.
+          _portal_domain="$(echo "${REPLIT_DOMAINS:-localhost:3050}" | cut -d',' -f1)"
+          _portal_url="${PORTAL_BASE_URL:-https://${_portal_domain}}"
           launch_svc "$_svc_label" "$csproj" env \
             "NotificationsService__BaseUrl=http://localhost:5008" \
-            "NotificationsService__PortalBaseUrl=${_portal_url}"
+            "NotificationsService__PortalBaseUrl=${_portal_url}" \
+            "NotificationsService__PortalBaseDomain=${_portal_domain}"
           PID_IDENTITY=$! ;;
         Fund.Api)      launch_svc "$_svc_label" "$csproj"; PID_FUND=$! ;;
         CareConnect.Api)
@@ -239,8 +255,9 @@ if command -v dotnet &>/dev/null; then
     _probe_svc "Gateway"       5010 /health   "${PID_GATEWAY:-}"       "$PROBE_TIMEOUT_DOTNET"
     _probe_svc "Flow"          5012 /healthz  "${PID_FLOW:-}"          "$PROBE_TIMEOUT_DOTNET"
     _probe_svc "Monitoring"    5015 /health   "${PID_MONITORING:-}"    "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Task"          5016 /health   "${PID_TASK:-}"          "$PROBE_TIMEOUT_DOTNET"
-    _probe_svc "Tenant"        5005 /health   "${PID_TENANT:-}"        "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Task"          5016 /health        "${PID_TASK:-}"          "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Tenant"        5005 /health        "${PID_TENANT:-}"        "$PROBE_TIMEOUT_DOTNET"
+    _probe_svc "Support"       5017 /support/api/health "${PID_SUPPORT:-}"  "$PROBE_TIMEOUT_DOTNET"
 
     wait
   ) &

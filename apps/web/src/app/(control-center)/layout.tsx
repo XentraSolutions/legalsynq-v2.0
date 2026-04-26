@@ -1,6 +1,9 @@
 import { requireCCPlatformAdmin } from '@/lib/auth-guards';
 import { ControlCenterShell } from '@/components/shell/control-center-shell';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * Control Center layout — wraps all /control-center/* routes (embedded mode)
  * or all /* routes (standalone mode on a dedicated host).

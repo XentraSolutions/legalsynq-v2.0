@@ -6,6 +6,9 @@ import { ServerApiError } from '@/lib/server-api-client';
 import { MarketplaceFilters } from '@/components/lien/marketplace-filters';
 import { MarketplaceCard } from '@/components/lien/marketplace-card';
 
+export const dynamic = 'force-dynamic';
+
+
 interface MarketplacePageProps {
   searchParams: Promise<{
     lienType?:     string;

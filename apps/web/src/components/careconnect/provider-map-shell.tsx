@@ -37,7 +37,7 @@ export function ProviderMapShell({
   const pathname     = usePathname();
   const searchParams = useSearchParams();
 
-  const view = searchParams.get('view') === 'map' ? 'map' : 'list';
+  const view = searchParams?.get('view') === 'map' ? 'map' : 'list';
 
   const [markers,          setMarkers]          = useState<ProviderMarker[]>([]);
   const [markersLoading,   setMarkersLoading]   = useState(false);
@@ -47,18 +47,18 @@ export function ProviderMapShell({
   const buildFilterParams = useCallback((): ProviderSearchParams => {
     const p: ProviderSearchParams = { isActive: true };
 
-    const name             = searchParams.get('name');
-    const city             = searchParams.get('city');
-    const state            = searchParams.get('state');
-    const categoryCode     = searchParams.get('categoryCode');
-    const accepting        = searchParams.get('acceptingReferrals');
-    const lat              = searchParams.get('lat');
-    const lng              = searchParams.get('lng');
-    const radius           = searchParams.get('radius');
-    const nLat             = searchParams.get('nLat');
-    const sLat             = searchParams.get('sLat');
-    const eLng             = searchParams.get('eLng');
-    const wLng             = searchParams.get('wLng');
+    const name             = searchParams?.get('name');
+    const city             = searchParams?.get('city');
+    const state            = searchParams?.get('state');
+    const categoryCode     = searchParams?.get('categoryCode');
+    const accepting        = searchParams?.get('acceptingReferrals');
+    const lat              = searchParams?.get('lat');
+    const lng              = searchParams?.get('lng');
+    const radius           = searchParams?.get('radius');
+    const nLat             = searchParams?.get('nLat');
+    const sLat             = searchParams?.get('sLat');
+    const eLng             = searchParams?.get('eLng');
+    const wLng             = searchParams?.get('wLng');
 
     if (name)         p.name               = name;
     if (city)         p.city               = city;
@@ -106,7 +106,7 @@ export function ProviderMapShell({
   }, [view, searchParams, buildFilterParams]);
 
   const handleViewportChange = useCallback((bounds: ViewportBounds) => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.delete('lat');
     params.delete('lng');
     params.delete('radius');
@@ -118,7 +118,7 @@ export function ProviderMapShell({
   }, [searchParams, pathname, router]);
 
   const handleViewToggle = useCallback((newView: 'list' | 'map') => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.set('view', newView);
     if (newView === 'list') {
       params.delete('nLat');
@@ -129,13 +129,13 @@ export function ProviderMapShell({
     router.push(`${pathname}?${params.toString()}`);
   }, [searchParams, pathname, router]);
 
-  const centerLat = searchParams.get('lat') ? parseFloat(searchParams.get('lat')!) : undefined;
-  const centerLng = searchParams.get('lng') ? parseFloat(searchParams.get('lng')!) : undefined;
+  const centerLat = searchParams?.get('lat') ? parseFloat(searchParams?.get('lat')!) : undefined;
+  const centerLng = searchParams?.get('lng') ? parseFloat(searchParams?.get('lng')!) : undefined;
 
   const hasFilters = !!(
-    searchParams.get('name')     || searchParams.get('city')         ||
-    searchParams.get('state')    || searchParams.get('categoryCode') ||
-    searchParams.get('acceptingReferrals')
+    searchParams?.get('name')     || searchParams?.get('city')         ||
+    searchParams?.get('state')    || searchParams?.get('categoryCode') ||
+    searchParams?.get('acceptingReferrals')
   );
 
   const result = initialProviders;
@@ -208,7 +208,7 @@ export function ProviderMapShell({
                   <div className="flex items-center gap-3">
                     {page > 1 && (
                       <a
-                        href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), page: String(page - 1) })}`}
+                        href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams ?? []), page: String(page - 1) })}`}
                         className="text-sm text-primary hover:underline"
                       >
                         ← Previous
@@ -216,7 +216,7 @@ export function ProviderMapShell({
                     )}
                     {page * 20 < result.totalCount && (
                       <a
-                        href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), page: String(page + 1) })}`}
+                        href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams ?? []), page: String(page + 1) })}`}
                         className="text-sm text-primary hover:underline"
                       >
                         Next →

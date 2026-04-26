@@ -115,7 +115,7 @@ export function Sidebar() {
                 <SidebarItem
                   key={item.href}
                   item={item}
-                  pathname={pathname}
+                  pathname={pathname ?? ''}
                   collapsed={collapsed}
                   activeColor={nav.activeColor}
                   activeBg={nav.activeBg}
@@ -142,7 +142,7 @@ export function Sidebar() {
                 <SidebarItem
                   key={item.href}
                   item={item}
-                  pathname={pathname}
+                  pathname={pathname ?? ''}
                   collapsed={collapsed}
                   activeColor={nav.activeColor}
                   activeBg={nav.activeBg}
@@ -168,7 +168,7 @@ export function Sidebar() {
             <SidebarItem
               key={item.href}
               item={item}
-              pathname={pathname}
+              pathname={pathname ?? ''}
               collapsed={collapsed}
               activeColor={nav.activeColor}
               activeBg={nav.activeBg}

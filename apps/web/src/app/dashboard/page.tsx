@@ -3,6 +3,9 @@ import { PRODUCT_META, PRODUCT_NAV, orgTypeLabel, resolveEnabledNavKeys } from '
 import { AppShell } from '@/components/shell/app-shell';
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * Dashboard — default landing page after login.
  * Shows a welcome card and quick-access tiles for each product.

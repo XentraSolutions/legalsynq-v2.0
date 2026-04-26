@@ -37,7 +37,7 @@ export default function MyLienDetailPage() {
     async function load() {
       setLoading(true);
       try {
-        const { data } = await lienApi.liens.getById(params.id);
+        const { data } = await lienApi.liens.getById(params?.id ?? '');
         setLien(data);
       } catch (err) {
         if (err instanceof ApiError) {
@@ -54,7 +54,7 @@ export default function MyLienDetailPage() {
     }
 
     load();
-  }, [params.id, session, sessionLoading, router]);
+  }, [params?.id ?? '', session, sessionLoading, router]);
 
   if (sessionLoading || loading) {
     return (

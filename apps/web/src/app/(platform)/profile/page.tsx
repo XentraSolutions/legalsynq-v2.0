@@ -2,6 +2,9 @@ import { requireOrg } from '@/lib/auth-guards';
 import { AvatarUpload } from '@/components/avatar/AvatarUpload';
 import { PhoneEditor } from '@/components/profile/PhoneEditor';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * /profile — Authenticated user's profile overview.
  *

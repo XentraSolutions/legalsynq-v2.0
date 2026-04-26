@@ -1,16 +1,41 @@
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using BuildingBlocks.Notifications;
 using Microsoft.Extensions.Options;
 
 namespace Support.Api.Notifications;
 
 /// <summary>
-/// HTTP adapter that forwards notification requests to the Notifications
-/// Service. Failures are logged but never propagated — Support Service
-/// writes must not be rolled back due to notification transport issues.
+/// LS-SUP-INT-05 — HTTP adapter that forwards notification requests to the
+/// platform Notifications Service at <c>POST /v1/notifications</c>.
+///
+/// <para>
+/// One <see cref="NotificationsProducerRequest"/> is sent per recipient so
+/// the Notifications Service can apply per-user template substitution.
+/// </para>
+///
+/// <para>
+/// The <c>X-Tenant-Id</c> header is added to every outbound request so that
+/// the <see cref="NotificationsAuthDelegatingHandler"/> registered in the
+/// HttpClient pipeline can mint a short-lived service JWT carrying the
+/// tenant claim.  If the signing secret is not configured the handler is a
+/// no-op and requests are forwarded without a Bearer token (Notifications
+/// Service will log a warning on its side; Support writes are unaffected).
+/// </para>
+///
+/// Failures are logged but never propagated — Support Service writes must
+/// not be rolled back due to notification transport issues.
 /// </summary>
 public sealed class HttpNotificationPublisher : INotificationPublisher
 {
     public const string HttpClientName = "support-notifications";
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy   = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
 
     private readonly HttpClient _http;
     private readonly IOptionsMonitor<NotificationOptions> _options;
@@ -21,9 +46,9 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
         IOptionsMonitor<NotificationOptions> options,
         ILogger<HttpNotificationPublisher> log)
     {
-        _http = http;
+        _http    = http;
         _options = options;
-        _log = log;
+        _log     = log;
     }
 
     public async Task PublishAsync(SupportNotification notification, CancellationToken ct = default)
@@ -45,27 +70,96 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
             return;
         }
 
+        var url = CombineUrl(opts.BaseUrl!, "v1/notifications");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, opts.TimeoutSeconds)));
+
+        foreach (var recipient in notification.Recipients)
+        {
+            var recipientObj = MapRecipient(recipient, notification.TenantId);
+            if (recipientObj is null)
+            {
+                _log.LogDebug(
+                    "Skipping unresolvable recipient kind={Kind} event={EventType} ticket={TicketNumber}",
+                    recipient.Kind, notification.EventType, notification.TicketNumber);
+                continue;
+            }
+
+            var request = BuildProducerRequest(notification, recipientObj);
+            await SendOneAsync(url, notification.TenantId, request, notification.EventType, notification.TicketNumber, cts.Token);
+        }
+    }
+
+    private async Task SendOneAsync(
+        string url,
+        string tenantId,
+        NotificationsProducerRequest request,
+        string eventType,
+        string ticketNumber,
+        CancellationToken ct)
+    {
         try
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, opts.TimeoutSeconds)));
+            using var httpReq = new HttpRequestMessage(HttpMethod.Post, url);
+            httpReq.Headers.TryAddWithoutValidation("X-Tenant-Id", tenantId);
+            httpReq.Content = JsonContent.Create(request, options: JsonOpts);
 
-            var url = CombineUrl(opts.BaseUrl!, "notifications");
-            using var resp = await _http.PostAsJsonAsync(url, notification, cts.Token);
+            using var resp = await _http.SendAsync(httpReq, ct);
             if (!resp.IsSuccessStatusCode)
             {
                 _log.LogWarning(
                     "Notifications dispatch returned {Status} event={EventType} ticket={TicketNumber}",
-                    (int)resp.StatusCode, notification.EventType, notification.TicketNumber);
+                    (int)resp.StatusCode, eventType, ticketNumber);
             }
         }
         catch (Exception ex)
         {
             _log.LogWarning(ex,
                 "Notifications dispatch failed event={EventType} ticket={TicketNumber}",
-                notification.EventType, notification.TicketNumber);
+                eventType, ticketNumber);
         }
     }
+
+    private static NotificationsProducerRequest BuildProducerRequest(
+        SupportNotification notification,
+        NotificationsRecipient recipient)
+    {
+        var templateData = notification.Payload
+            .Where(kv => kv.Value is not null)
+            .ToDictionary(kv => kv.Key, kv => kv.Value!.ToString() ?? string.Empty);
+
+        return new NotificationsProducerRequest
+        {
+            Channel      = "event",
+            ProductKey   = "support",
+            EventKey     = notification.EventType,
+            TemplateKey  = notification.EventType,
+            SourceSystem = "support-service",
+            Recipient    = recipient,
+            TemplateData = templateData.Count > 0 ? templateData : null,
+            Metadata     = new
+            {
+                ticketId     = notification.TicketId,
+                ticketNumber = notification.TicketNumber,
+            },
+        };
+    }
+
+    private static NotificationsRecipient? MapRecipient(NotificationRecipient r, string tenantId)
+        => r.Kind switch
+        {
+            NotificationRecipientKind.User when !string.IsNullOrWhiteSpace(r.UserId)
+                => new NotificationsRecipient { UserId = r.UserId },
+
+            NotificationRecipientKind.Email when !string.IsNullOrWhiteSpace(r.Email)
+                => new NotificationsRecipient { Email = r.Email },
+
+            NotificationRecipientKind.QueueMember
+                => new NotificationsRecipient { TenantId = tenantId },
+
+            _ => null,
+        };
 
     private static string CombineUrl(string baseUrl, string path)
     {

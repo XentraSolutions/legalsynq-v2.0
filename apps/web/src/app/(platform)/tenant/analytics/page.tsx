@@ -1,10 +1,14 @@
 import { requireTenantAdmin }  from '@/lib/tenant-auth-guard';
 import { tenantServerApi, ServerApiError } from '@/lib/tenant-api';
 import type {
+
   TenantSlaSummary,
   TenantQueueSummary,
   TenantWorkflowThroughput,
 } from '@/types/tenant';
+
+export const dynamic = 'force-dynamic';
+
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

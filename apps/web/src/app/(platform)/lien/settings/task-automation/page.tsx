@@ -23,6 +23,9 @@ import type { TaskTemplateDto } from '@/lib/liens/lien-task-templates.types';
 import { PageHeader } from '@/components/lien/page-header';
 import { useLienStore } from '@/stores/lien-store';
 
+export const dynamic = 'force-dynamic';
+
+
 const EVENT_OPTIONS: { value: TaskGenerationEventType; label: string }[] = [
   { value: 'CASE_CREATED',                label: 'Case Created' },
   { value: 'LIEN_CREATED',                label: 'Lien Created' },

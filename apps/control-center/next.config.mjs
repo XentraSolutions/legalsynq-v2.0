@@ -125,6 +125,19 @@ const nextConfig = {
     },
   },
 
+  webpack(config) {
+    // Disable webpack's persistent filesystem cache for production builds.
+    // On a clean build the cache has nothing to reuse, but webpack still
+    // writes every compiled module into .next/cache/webpack/ — several
+    // hundred MB on a large app. In the GCE deploy container the overlay
+    // filesystem has limited headroom; when the cache writes fill it up,
+    // mmap-backed writes get SIGBUS. Memory cache keeps all data in RAM
+    // and is discarded when the process exits.
+    if (process.env.NODE_ENV === 'production') {
+      config.cache = { type: 'memory' };
+    }
+    return config;
+  },
   async headers() {
     return [
       {

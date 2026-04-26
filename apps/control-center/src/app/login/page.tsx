@@ -104,8 +104,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
           {reason === 'unauthorized' && (
             <div role="alert" className="mb-5 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-              <strong>Access denied.</strong> This portal is restricted to LegalSynq platform administrators.
-              Tenant users should sign in through their organisation&apos;s portal instead.
+              <strong>Session expired or insufficient access.</strong>{' '}
+              Please sign in below with your platform administrator credentials to continue.
             </div>
           )}
 

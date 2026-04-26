@@ -826,8 +826,21 @@ export interface SupportNote {
   createdAtUtc: string;
 }
 
+export interface SupportProductRef {
+  id:            string;
+  ticketId:      string;
+  productCode:   string;
+  entityType:    string;
+  entityId:      string;
+  displayLabel?: string;
+  metadataJson?: string;
+  createdByUserId?: string;
+  createdAt:     string;
+}
+
 export interface SupportCaseDetail extends SupportCase {
-  notes: SupportNote[];
+  notes:       SupportNote[];
+  productRefs: SupportProductRef[];
 }
 
 // ── Tenant Context / Impersonation ────────────────────────────────────────────

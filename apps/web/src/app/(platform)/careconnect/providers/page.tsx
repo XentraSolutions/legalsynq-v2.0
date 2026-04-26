@@ -5,6 +5,9 @@ import { ServerApiError } from '@/lib/server-api-client';
 import { ProviderSearchFilters } from '@/components/careconnect/provider-search-filters';
 import { ProviderMapShell } from '@/components/careconnect/provider-map-shell';
 
+export const dynamic = 'force-dynamic';
+
+
 interface ProvidersPageProps {
   searchParams: Promise<{
     name?:               string;

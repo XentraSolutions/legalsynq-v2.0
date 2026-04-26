@@ -14,6 +14,9 @@ import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import type { ActivationRequestSummary } from '@/types/careconnect';
 
+export const dynamic = 'force-dynamic';
+
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
     year: 'numeric', month: 'short', day: 'numeric',

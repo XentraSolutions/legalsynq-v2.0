@@ -1,5 +1,8 @@
 import { redirect } from 'next/navigation';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * LSCC-005 / LSCC-01-002-01: Public referral view router.
  *

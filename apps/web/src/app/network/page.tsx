@@ -33,6 +33,9 @@ import {
 } from '@/lib/public-network-api';
 import { PublicNetworkView } from '@/components/careconnect/public-network-view';
 
+export const dynamic = 'force-dynamic';
+
+
 interface PageProps {
   searchParams: Promise<{ tenant?: string; network?: string }>;
 }

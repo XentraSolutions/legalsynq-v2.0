@@ -5,6 +5,9 @@ import { lienServerApi } from '@/lib/lien-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { PortfolioTable } from '@/components/lien/portfolio-table';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * /lien/portfolio — Purchased / held lien portfolio.
  *

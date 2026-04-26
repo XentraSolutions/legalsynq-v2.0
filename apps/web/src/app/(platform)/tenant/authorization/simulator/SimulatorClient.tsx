@@ -29,7 +29,7 @@ const COMMON_RESOURCE_FIELDS = [
 
 export default function SimulatorClient({ tenantId, users, permissions }: Props) {
   const searchParams = useSearchParams();
-  const prefillUserId = searchParams.get('userId');
+  const prefillUserId = searchParams?.get('userId');
 
   const [selectedUserId, setSelectedUserId] = useState(prefillUserId || '');
   const [userSearch, setUserSearch] = useState('');

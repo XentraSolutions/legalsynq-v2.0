@@ -24,7 +24,8 @@ function formatDate(val: string): string {
 }
 
 export default function ServicingDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const _params = useParams<{ id: string }>();
+  const id = _params?.id ?? '';
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();

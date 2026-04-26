@@ -1,3 +1,6 @@
+
+export const dynamic = 'force-dynamic';
+
 /**
  * Shown when a user is authenticated but has no org membership.
  * They cannot access any product routes until an admin assigns them to an org.

@@ -254,7 +254,11 @@ public class AuthService : IAuthService
             .Select(c => c.Value)
             .ToList();
 
-        var systemRoles = principal.FindAll(ClaimTypes.Role)
+        // Identity.Api uses MapInboundClaims=false, so JWT "role" claims are stored
+        // in the ClaimsPrincipal with type "role" (the short JWT name), NOT with
+        // ClaimTypes.Role (the long Microsoft URI).  Use the short name here so
+        // that auth/me correctly reflects whatever roles are in the JWT.
+        var systemRoles = principal.FindAll("role")
             .Select(c => c.Value)
             .ToList();
 

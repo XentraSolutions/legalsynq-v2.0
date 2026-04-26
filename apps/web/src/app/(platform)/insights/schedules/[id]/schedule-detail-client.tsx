@@ -71,7 +71,7 @@ export function ScheduleDetailClient({ scheduleId }: Props) {
   const tenantId = session?.tenantId ?? '';
   const userId = session?.userId ?? '';
   const isNew = scheduleId === 'new';
-  const templateIdParam = searchParams.get('templateId');
+  const templateIdParam = searchParams?.get('templateId');
 
   const [schedule, setSchedule] = useState<ScheduleDto | null>(null);
   const [runs, setRuns] = useState<ScheduleRunDto[]>([]);

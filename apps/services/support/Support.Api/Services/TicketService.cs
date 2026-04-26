@@ -25,6 +25,42 @@ public interface ITicketService
     Task<TicketResponse?> GetAsync(Guid id, CancellationToken ct = default);
     Task<TicketResponse> UpdateAsync(Guid id, UpdateTicketRequest req, CancellationToken ct = default);
     Task<TicketResponse> AssignAsync(Guid id, AssignTicketRequest req, CancellationToken ct = default);
+
+    /// <summary>
+    /// Internal service method — returns all tickets associated with a specific external customer
+    /// within the tenant. Scoped by both tenantId and externalCustomerId to preserve tenant isolation.
+    /// Does NOT restrict by VisibilityScope — use ListCustomerTicketsAsync for customer-facing access.
+    /// </summary>
+    Task<PagedResponse<TicketResponse>> ListByExternalCustomerAsync(
+        string tenantId,
+        Guid externalCustomerId,
+        int page = 1,
+        int pageSize = 25,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Customer-safe list — returns only CustomerVisible tickets owned by this customer within the tenant.
+    /// Enforces: tenantId + externalCustomerId + VisibilityScope=CustomerVisible.
+    /// Used exclusively by the CustomerAccess-protected endpoints.
+    /// </summary>
+    Task<PagedResponse<TicketResponse>> ListCustomerTicketsAsync(
+        string tenantId,
+        Guid externalCustomerId,
+        int page = 1,
+        int pageSize = 25,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Customer-safe get — returns a single CustomerVisible ticket owned by this customer.
+    /// Enforces: tenantId + ticketId + externalCustomerId + VisibilityScope=CustomerVisible.
+    /// Returns null if any constraint fails (caller should return 404).
+    /// Used exclusively by the CustomerAccess-protected endpoints.
+    /// </summary>
+    Task<TicketResponse?> GetCustomerTicketAsync(
+        string tenantId,
+        Guid externalCustomerId,
+        Guid ticketId,
+        CancellationToken ct = default);
 }
 
 public class TicketListQuery
@@ -39,6 +75,8 @@ public class TicketListQuery
     public string? AssignedUserId { get; set; }
     public Guid? AssignedQueueId { get; set; }
     public bool? Unassigned { get; set; }
+    public Guid? ExternalCustomerId { get; set; }
+    public TicketVisibilityScope? VisibilityScope { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 25;
 }
@@ -64,10 +102,12 @@ public class TicketService : ITicketService
     private readonly INotificationPublisher _notifications;
     private readonly IAuditPublisher _audit;
     private readonly IActorAccessor _actor;
+    private readonly IExternalCustomerService _externalCustomers;
 
     public TicketService(SupportDbContext db, ITenantContext tenant, ITicketNumberGenerator numbers,
         IEventLogger events, ILogger<TicketService> log, IWebHostEnvironment env,
-        INotificationPublisher notifications, IAuditPublisher audit, IActorAccessor actor)
+        INotificationPublisher notifications, IAuditPublisher audit, IActorAccessor actor,
+        IExternalCustomerService externalCustomers)
     {
         _db = db;
         _tenant = tenant;
@@ -78,6 +118,7 @@ public class TicketService : ITicketService
         _notifications = notifications;
         _audit = audit;
         _actor = actor;
+        _externalCustomers = externalCustomers;
     }
 
     private async Task TryAuditAsync(SupportAuditEvent evt, CancellationToken ct)
@@ -199,6 +240,33 @@ public class TicketService : ITicketService
         var now = DateTime.UtcNow;
         var ticketNumber = await _numbers.NextAsync(tenantId, ct);
 
+        // Ownership fields — defaults to InternalUser/Internal path.
+        var requesterType = TicketRequesterType.InternalUser;
+        var visibilityScope = TicketVisibilityScope.Internal;
+        Guid? externalCustomerId = null;
+        var requesterEmail = req.RequesterEmail;
+        var requesterName = req.RequesterName;
+
+        // Optional external customer path.
+        // Triggered only when ExternalCustomerEmail is supplied.
+        if (!string.IsNullOrWhiteSpace(req.ExternalCustomerEmail))
+        {
+            var customer = await _externalCustomers.ResolveOrCreateAsync(
+                tenantId,
+                req.ExternalCustomerEmail,
+                req.ExternalCustomerName,
+                ct);
+
+            requesterType      = TicketRequesterType.ExternalCustomer;
+            visibilityScope    = TicketVisibilityScope.CustomerVisible;
+            externalCustomerId = customer.Id;
+            requesterEmail     = customer.Email;
+            requesterName      = !string.IsNullOrWhiteSpace(requesterName) ? requesterName : customer.Name;
+
+            _log.LogDebug("Ticket {TicketNumber} linked to ExternalCustomer {CustomerId} tenant={TenantId}",
+                ticketNumber, customer.Id, tenantId);
+        }
+
         var ticket = new SupportTicket
         {
             Id = Guid.NewGuid(),
@@ -213,8 +281,11 @@ public class TicketService : ITicketService
             Category = req.Category,
             Source = req.Source,
             RequesterUserId = req.RequesterUserId,
-            RequesterName = req.RequesterName,
-            RequesterEmail = req.RequesterEmail,
+            RequesterName = requesterName,
+            RequesterEmail = requesterEmail,
+            RequesterType = requesterType,
+            ExternalCustomerId = externalCustomerId,
+            VisibilityScope = visibilityScope,
             CreatedAt = now,
             UpdatedAt = now,
             CreatedByUserId = _tenant.UserId,
@@ -225,7 +296,8 @@ public class TicketService : ITicketService
         _events.Log(ticket.Id, tenantId, "created", "Ticket created",
             metadata: new { ticket_number = ticket.TicketNumber }, actorUserId: _tenant.UserId);
         await _db.SaveChangesAsync(ct);
-        _log.LogInformation("Ticket created {TicketNumber} tenant={TenantId}", ticket.TicketNumber, tenantId);
+        _log.LogInformation("Ticket created {TicketNumber} tenant={TenantId} requesterType={RequesterType}",
+            ticket.TicketNumber, tenantId, ticket.RequesterType);
 
         var recipients = RequesterRecipients(ticket);
         var payload = new Dictionary<string, object?>
@@ -239,6 +311,8 @@ public class TicketService : ITicketService
             ["requester_user_id"] = ticket.RequesterUserId,
             ["requester_email"] = ticket.RequesterEmail,
             ["product_code"] = ticket.ProductCode,
+            ["requester_type"] = ticket.RequesterType.ToString(),
+            ["external_customer_id"] = ticket.ExternalCustomerId,
         };
         await TryPublishAsync(new SupportNotification(
             SupportNotificationEventTypes.TicketCreated,
@@ -257,6 +331,9 @@ public class TicketService : ITicketService
                 ["product_code"] = ticket.ProductCode,
                 ["requester_user_id"] = ticket.RequesterUserId,
                 ["requester_email"] = ticket.RequesterEmail,
+                ["requester_type"] = ticket.RequesterType.ToString(),
+                ["external_customer_id"] = ticket.ExternalCustomerId,
+                ["visibility_scope"] = ticket.VisibilityScope.ToString(),
             }), ct);
 
         return TicketResponse.From(ticket);
@@ -284,6 +361,10 @@ public class TicketService : ITicketService
         }
         if (query.Unassigned == true)
             q = q.Where(t => t.AssignedUserId == null && t.AssignedQueueId == null);
+        if (query.ExternalCustomerId.HasValue)
+            q = q.Where(t => t.ExternalCustomerId == query.ExternalCustomerId.Value);
+        if (query.VisibilityScope.HasValue)
+            q = q.Where(t => t.VisibilityScope == query.VisibilityScope.Value);
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var s = query.Search.Trim();
@@ -523,5 +604,84 @@ public class TicketService : ITicketService
             }), ct);
 
         return TicketResponse.From(t);
+    }
+
+    public async Task<PagedResponse<TicketResponse>> ListByExternalCustomerAsync(
+        string tenantId,
+        Guid externalCustomerId,
+        int page = 1,
+        int pageSize = 25,
+        CancellationToken ct = default)
+    {
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
+        var q = _db.Tickets
+            .AsNoTracking()
+            .Where(t => t.TenantId == tenantId && t.ExternalCustomerId == externalCustomerId);
+
+        var total = await q.LongCountAsync(ct);
+        var items = await q
+            .OrderByDescending(t => t.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return new PagedResponse<TicketResponse>
+        {
+            Items    = items.Select(TicketResponse.From).ToList(),
+            Page     = page,
+            PageSize = pageSize,
+            Total    = total,
+        };
+    }
+
+    public async Task<PagedResponse<TicketResponse>> ListCustomerTicketsAsync(
+        string tenantId,
+        Guid externalCustomerId,
+        int page = 1,
+        int pageSize = 25,
+        CancellationToken ct = default)
+    {
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
+        var q = _db.Tickets
+            .AsNoTracking()
+            .Where(t => t.TenantId == tenantId
+                     && t.ExternalCustomerId == externalCustomerId
+                     && t.VisibilityScope == TicketVisibilityScope.CustomerVisible);
+
+        var total = await q.LongCountAsync(ct);
+        var items = await q
+            .OrderByDescending(t => t.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return new PagedResponse<TicketResponse>
+        {
+            Items    = items.Select(TicketResponse.From).ToList(),
+            Page     = page,
+            PageSize = pageSize,
+            Total    = total,
+        };
+    }
+
+    public async Task<TicketResponse?> GetCustomerTicketAsync(
+        string tenantId,
+        Guid externalCustomerId,
+        Guid ticketId,
+        CancellationToken ct = default)
+    {
+        var t = await _db.Tickets
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x =>
+                x.TenantId == tenantId
+                && x.Id == ticketId
+                && x.ExternalCustomerId == externalCustomerId
+                && x.VisibilityScope == TicketVisibilityScope.CustomerVisible, ct);
+
+        return t is null ? null : TicketResponse.From(t);
     }
 }

@@ -19,6 +19,9 @@ import { servicingService } from '@/lib/servicing';
 import type { ServicingListItem, PaginationMeta } from '@/lib/servicing';
 import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
 
+export const dynamic = 'force-dynamic';
+
+
 function formatDate(val: string): string {
   if (!val) return '\u2014';
   try {

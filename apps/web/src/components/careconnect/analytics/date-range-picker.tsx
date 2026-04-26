@@ -36,7 +36,7 @@ export function DateRangePicker({ activePreset, currentFrom, currentTo }: DateRa
   const todayStr = isoDate(new Date());
 
   const navigate = useCallback((from: string, to: string) => {
-    const params = new URLSearchParams(searchParams.toString());
+    const params = new URLSearchParams(searchParams?.toString());
     params.set('analyticsFrom', from);
     params.set('analyticsTo',   to);
     router.push(`${pathname}?${params.toString()}`);

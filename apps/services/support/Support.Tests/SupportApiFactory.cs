@@ -36,13 +36,12 @@ public class SupportApiProdFactory : WebApplicationFactory<Program>
         // Program.cs queries `builder.Configuration`, so this is the
         // only reliable way to inject JWT settings into a
         // WebApplication.CreateBuilder host under WebApplicationFactory.
-        Environment.SetEnvironmentVariable("Authentication__Jwt__Issuer",
+        // Maps to Jwt:Issuer / Jwt:Audience / Jwt:SigningKey (platform-standard section).
+        Environment.SetEnvironmentVariable("Jwt__Issuer",
             "https://test-issuer.local");
-        Environment.SetEnvironmentVariable("Authentication__Jwt__Audience",
+        Environment.SetEnvironmentVariable("Jwt__Audience",
             "support-api-tests");
-        Environment.SetEnvironmentVariable("Authentication__Jwt__RequireHttpsMetadata",
-            "false");
-        Environment.SetEnvironmentVariable("Authentication__Jwt__SymmetricKey",
+        Environment.SetEnvironmentVariable("Jwt__SigningKey",
             "test-only-symmetric-signing-key-for-prod-like-tests-32+chars!!");
     }
 

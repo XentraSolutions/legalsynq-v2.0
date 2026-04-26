@@ -13,6 +13,9 @@ import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import type { AdminReferralItem, AdminReferralPage } from '@/types/careconnect';
 
+export const dynamic = 'force-dynamic';
+
+
 // Referral.ValidStatuses
 const ALL_STATUSES = ['New', 'Accepted', 'InProgress', 'Completed', 'Declined', 'Cancelled'];
 

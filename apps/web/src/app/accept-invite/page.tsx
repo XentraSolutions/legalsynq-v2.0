@@ -4,6 +4,9 @@ import { Suspense } from 'react';
 import Image from 'next/image';
 import { AcceptInviteForm } from './accept-invite-form';
 
+export const dynamic = 'force-dynamic';
+
+
 export default function AcceptInvitePage() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">

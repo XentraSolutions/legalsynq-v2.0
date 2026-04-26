@@ -47,7 +47,7 @@ export default function ApplicationDetailPage() {
     async function load() {
       setLoading(true);
       try {
-        const { data } = await fundApi.applications.getById(params.id);
+        const { data } = await fundApi.applications.getById(params?.id ?? '');
         setApplication(data);
       } catch (err) {
         if (err instanceof ApiError) {
@@ -64,7 +64,7 @@ export default function ApplicationDetailPage() {
     }
 
     load();
-  }, [params.id, session, sessionLoading, router]);
+  }, [params?.id ?? '', session, sessionLoading, router]);
 
   if (sessionLoading || loading) {
     return (

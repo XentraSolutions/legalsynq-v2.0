@@ -10,17 +10,17 @@ export function MarketplaceFilters() {
   const sp         = useSearchParams();
 
   function update(key: string, value: string) {
-    const params = new URLSearchParams(sp.toString());
+    const params = new URLSearchParams(sp?.toString() ?? '');
     if (value) params.set(key, value);
     else        params.delete(key);
     params.delete('page');  // reset page on filter change
     router.push(`/lien/marketplace?${params.toString()}`);
   }
 
-  const lienType   = sp.get('lienType')    ?? '';
-  const jurisdiction = sp.get('jurisdiction') ?? '';
-  const minAmount  = sp.get('minAmount')   ?? '';
-  const maxAmount  = sp.get('maxAmount')   ?? '';
+  const lienType   = sp?.get('lienType')    ?? '';
+  const jurisdiction = sp?.get('jurisdiction') ?? '';
+  const minAmount  = sp?.get('minAmount')   ?? '';
+  const maxAmount  = sp?.get('maxAmount')   ?? '';
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-5 py-4">

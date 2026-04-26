@@ -47,11 +47,11 @@ export default function AvailabilityPage() {
 
   // Date range state (defaults: today → today+6 days)
   const today    = new Date();
-  const [from,   setFrom] = useState(searchParams.get('from') ?? isoDate(today));
-  const [to,     setTo]   = useState(searchParams.get('to')   ?? isoDate(addDays(today, 6)));
+  const [from,   setFrom] = useState(searchParams?.get('from') ?? isoDate(today));
+  const [to,     setTo]   = useState(searchParams?.get('to')   ?? isoDate(addDays(today, 6)));
 
   // Optional referral context
-  const referralId = searchParams.get('referralId') ?? undefined;
+  const referralId = searchParams?.get('referralId') ?? undefined;
   const [referral, setReferral] = useState<ReferralDetail | null>(null);
 
   // Availability data
@@ -69,7 +69,7 @@ export default function AvailabilityPage() {
     setLoading(true);
     setError(null);
     try {
-      const { data } = await careConnectApi.providers.getAvailability(params.id, { from, to });
+      const { data } = await careConnectApi.providers.getAvailability(params?.id ?? '', { from, to });
       setAvailability(data);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -83,7 +83,7 @@ export default function AvailabilityPage() {
     } finally {
       setLoading(false);
     }
-  }, [params.id, from, to, session, router]);
+  }, [params?.id ?? '', from, to, session, router]);
 
   // Load optional referral context
   useEffect(() => {
@@ -128,7 +128,7 @@ export default function AvailabilityPage() {
       {/* Back link */}
       <nav>
         <Link
-          href={`/careconnect/providers/${params.id}`}
+          href={`/careconnect/providers/${params?.id ?? ''}`}
           className="text-sm text-gray-500 hover:text-gray-800 transition-colors"
         >
           ← Back to {providerName}
@@ -237,7 +237,7 @@ export default function AvailabilityPage() {
       {/* Booking modal */}
       {showBooking && selectedSlot && (
         <BookingPanel
-          providerId={params.id}
+          providerId={params?.id ?? ''}
           providerName={providerName}
           slot={selectedSlot}
           referral={referral ?? undefined}

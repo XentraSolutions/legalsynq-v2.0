@@ -10,6 +10,9 @@ import type {
   WorkflowTransitionDto,
 } from '@/lib/liens/lien-workflow.types';
 
+export const dynamic = 'force-dynamic';
+
+
 interface TenantWorkflowState {
   tenantId: string;
   tenantName: string;

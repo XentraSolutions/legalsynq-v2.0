@@ -18,7 +18,7 @@ export function AuthorizationNav() {
   return (
     <nav className="flex items-center gap-1 mt-4" aria-label="Authorization sections">
       {TABS.map((tab) => {
-        const isActive = pathname === tab.href || pathname.startsWith(tab.href + '/');
+        const isActive = pathname === tab.href || pathname?.startsWith(tab.href + '/');
         return (
           <Link
             key={tab.href}

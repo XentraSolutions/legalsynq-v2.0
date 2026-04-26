@@ -2,6 +2,9 @@ import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { NetworkListClient } from '@/components/careconnect/network-list-client';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * /careconnect/networks — Provider Network Management
  *

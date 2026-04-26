@@ -15,6 +15,8 @@ public class SupportDbContext : DbContext
     public DbSet<SupportTicketProductRef> TicketProductRefs => Set<SupportTicketProductRef>();
     public DbSet<SupportQueue> Queues => Set<SupportQueue>();
     public DbSet<SupportQueueMember> QueueMembers => Set<SupportQueueMember>();
+    public DbSet<ExternalCustomer> ExternalCustomers => Set<ExternalCustomer>();
+    public DbSet<SupportTenantSettings> TenantSettings => Set<SupportTenantSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,6 +38,9 @@ public class SupportDbContext : DbContext
         ticket.Property(t => t.RequesterUserId).HasColumnName("requester_user_id").HasMaxLength(64);
         ticket.Property(t => t.RequesterName).HasColumnName("requester_name").HasMaxLength(200);
         ticket.Property(t => t.RequesterEmail).HasColumnName("requester_email").HasMaxLength(320);
+        ticket.Property(t => t.RequesterType).HasColumnName("requester_type").HasConversion<string>().HasMaxLength(20).IsRequired().HasDefaultValue(TicketRequesterType.InternalUser);
+        ticket.Property(t => t.ExternalCustomerId).HasColumnName("external_customer_id").HasMaxLength(36);
+        ticket.Property(t => t.VisibilityScope).HasColumnName("visibility_scope").HasConversion<string>().HasMaxLength(20).IsRequired().HasDefaultValue(TicketVisibilityScope.Internal);
         ticket.Property(t => t.AssignedUserId).HasColumnName("assigned_user_id").HasMaxLength(64);
         ticket.Property(t => t.AssignedQueueId).HasColumnName("assigned_queue_id").HasMaxLength(64);
         ticket.Property(t => t.DueAt).HasColumnName("due_at");
@@ -52,6 +57,9 @@ public class SupportDbContext : DbContext
         ticket.HasIndex(t => new { t.TenantId, t.Priority }).HasDatabaseName("ix_support_tickets_tenant_priority");
         ticket.HasIndex(t => new { t.TenantId, t.ProductCode }).HasDatabaseName("ix_support_tickets_tenant_product");
         ticket.HasIndex(t => t.CreatedAt).HasDatabaseName("ix_support_tickets_created_at");
+        ticket.HasIndex(t => new { t.TenantId, t.ExternalCustomerId }).HasDatabaseName("ix_support_tickets_tenant_ext_customer");
+        ticket.HasIndex(t => new { t.TenantId, t.RequesterType }).HasDatabaseName("ix_support_tickets_tenant_requester_type");
+        ticket.HasIndex(t => new { t.TenantId, t.VisibilityScope }).HasDatabaseName("ix_support_tickets_tenant_visibility");
 
         var seq = modelBuilder.Entity<TicketNumberSequence>();
         seq.ToTable("support_ticket_number_sequences");
@@ -195,5 +203,38 @@ public class SupportDbContext : DbContext
             .HasForeignKey(x => x.QueueId)
             .OnDelete(DeleteBehavior.Cascade)
             .HasConstraintName("fk_support_queue_members_queue");
+
+        var ec = modelBuilder.Entity<ExternalCustomer>();
+        ec.ToTable("support_external_customers");
+        ec.HasKey(x => x.Id);
+        ec.Property(x => x.Id).HasColumnName("id").HasMaxLength(36);
+        ec.Property(x => x.TenantId).HasColumnName("tenant_id").HasMaxLength(64).IsRequired();
+        ec.Property(x => x.Email).HasColumnName("email").HasMaxLength(320).IsRequired();
+        ec.Property(x => x.Name).HasColumnName("name").HasMaxLength(200);
+        ec.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(20).IsRequired();
+        ec.Property(x => x.CreatedAt).HasColumnName("created_at").IsRequired();
+        ec.HasIndex(x => x.TenantId).HasDatabaseName("ix_support_external_customers_tenant");
+        ec.HasIndex(x => x.Email).HasDatabaseName("ix_support_external_customers_email");
+        ec.HasIndex(x => x.Status).HasDatabaseName("ix_support_external_customers_status");
+        ec.HasIndex(x => new { x.TenantId, x.Email })
+            .IsUnique()
+            .HasDatabaseName("ux_support_external_customers_tenant_email");
+
+        var ts = modelBuilder.Entity<SupportTenantSettings>();
+        ts.ToTable("support_tenant_settings");
+        ts.HasKey(x => x.TenantId);
+        ts.Property(x => x.TenantId).HasColumnName("tenant_id").HasMaxLength(64).IsRequired();
+        ts.Property(x => x.SupportMode)
+            .HasColumnName("support_mode")
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired()
+            .HasDefaultValue(SupportTenantMode.InternalOnly);
+        ts.Property(x => x.CustomerPortalEnabled)
+            .HasColumnName("customer_portal_enabled")
+            .IsRequired()
+            .HasDefaultValue(false);
+        ts.Property(x => x.CreatedAt).HasColumnName("created_at").IsRequired();
+        ts.Property(x => x.UpdatedAt).HasColumnName("updated_at");
     }
 }

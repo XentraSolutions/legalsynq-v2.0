@@ -1,6 +1,9 @@
 import { requireProductRole } from '@/lib/auth-guards';
 import { ProductRole } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * CC2-INT-B06 — Network Management route guard.
  *

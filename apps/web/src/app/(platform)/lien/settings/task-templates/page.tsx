@@ -11,6 +11,9 @@ import type {
 import { PageHeader } from '@/components/lien/page-header';
 import { useLienStore } from '@/stores/lien-store';
 
+export const dynamic = 'force-dynamic';
+
+
 const CONTEXT_OPTIONS: { value: TemplateContextType; label: string; description: string }[] = [
   { value: 'GENERAL', label: 'General',    description: 'Available in all contexts' },
   { value: 'CASE',    label: 'Case',       description: 'Suggested on case pages' },

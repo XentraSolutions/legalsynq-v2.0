@@ -1,5 +1,8 @@
 import { requireProductAccess, FrontendProductCode } from '@/lib/auth-guards';
 
+export const dynamic = 'force-dynamic';
+
+
 /**
  * LS-ID-TNT-010 — SynqInsights product layout guard.
  *

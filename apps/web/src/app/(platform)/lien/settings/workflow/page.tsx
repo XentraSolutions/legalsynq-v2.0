@@ -12,6 +12,9 @@ import type {
 import { PageHeader } from '@/components/lien/page-header';
 import { useLienStore } from '@/stores/lien-store';
 
+export const dynamic = 'force-dynamic';
+
+
 type StageFormData = {
   stageName: string;
   stageOrder: number;

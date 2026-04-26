@@ -16,6 +16,10 @@ public class CreateTicketRequestValidator : AbstractValidator<CreateTicketReques
         RuleFor(x => x.ProductCode).MaximumLength(50);
         RuleFor(x => x.Category).MaximumLength(100);
         RuleFor(x => x.RequesterName).MaximumLength(200);
+        RuleFor(x => x.ExternalCustomerEmail)
+            .EmailAddress().When(x => !string.IsNullOrWhiteSpace(x.ExternalCustomerEmail))
+            .MaximumLength(320);
+        RuleFor(x => x.ExternalCustomerName).MaximumLength(200);
     }
 }
 
