@@ -69,21 +69,38 @@ PID_CC=$!
 # Restore, build, and start .NET services all in background
 (
   dotnet restore "$ROOT/LegalSynq.sln" --verbosity quiet
-  dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Debug --verbosity quiet
-  dotnet build "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" --configuration Debug --verbosity quiet
+  # The full solution build can OOM on constrained hosts. Add || true so the
+  # subshell continues and services launch from their cached (pre-built) binaries.
+  dotnet build  "$ROOT/LegalSynq.sln" --no-restore --configuration Debug --verbosity quiet \
+    || echo "[build] LegalSynq.sln build error (possibly OOM) — continuing with cached binaries"
+  dotnet build "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" --configuration Debug --verbosity quiet \
+    || echo "[build] Documents.Api build error — continuing with cached binary"
   # Flow service has its own solution (separate boundary, separate DB).
   # Build only the API project — not the full Flow.sln — so test-project
   # NuGet packages (never restored by LegalSynq.sln) don't block the build.
   dotnet restore "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --verbosity quiet
-  dotnet build   "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --no-restore --configuration Debug --verbosity quiet
+  dotnet build   "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
+    || echo "[build] Flow.Api build error — continuing with cached binary"
   # Reports service has its own project boundary (not in LegalSynq.sln).
   dotnet restore "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" --verbosity quiet
-  dotnet build   "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" --no-restore --configuration Debug --verbosity quiet
+  dotnet build   "$ROOT/apps/services/reports/src/Reports.Api/Reports.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
+    || echo "[build] Reports.Api build error — continuing with cached binary"
   # Audit service has its own project boundary (not in LegalSynq.sln).
-  dotnet build   "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" --configuration Debug --verbosity quiet
+  dotnet build   "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" --configuration Debug --verbosity quiet \
+    || echo "[build] Audit build error — continuing with cached binary"
   # Support service has its own solution boundary (not in LegalSynq.sln).
   dotnet restore "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" --verbosity quiet
-  dotnet build   "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" --no-restore --configuration Debug --verbosity quiet
+  dotnet build   "$ROOT/apps/services/support/Support.Api/Support.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
+    || echo "[build] Support.Api build error — continuing with cached binary"
+  # Identity.Api can OOM inside the full solution build on constrained hosts.
+  # Build it separately here with conservative GC settings so the binary always
+  # reflects the latest source (including the "role" claim fix in JwtTokenService).
+  # Falls back to the cached binary if this also fails.
+  echo "[identity] Building Identity.Api with conservative memory settings..."
+  DOTNET_GCConserveMemory=9 \
+    dotnet build "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" \
+    --no-restore --configuration Debug --verbosity quiet -maxcpucount:1 \
+    || echo "[identity] Build error — will run from cached binary"
   NotificationsService__BaseUrl=http://localhost:5008 \
     NotificationsService__PortalBaseUrl=http://localhost:3050 \
     dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
