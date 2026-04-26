@@ -10,11 +10,11 @@ public static class TaskGovernanceEndpoints
     public static void MapTaskGovernanceEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/tasks/governance")
-            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireAuthorization("AuthenticatedUserOrService")
             .WithTags("TaskGovernance");
 
         group.MapGet("/",  GetGovernance);
-        group.MapPost("/", UpsertGovernance).RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        group.MapPost("/", UpsertGovernance).RequireAuthorization("InternalService");
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>

@@ -10,7 +10,7 @@ public static class TaskTemplateEndpoints
     public static void MapTaskTemplateEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/tasks/templates")
-            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireAuthorization("AuthenticatedUserOrService")
             .WithTags("TaskTemplates");
 
         group.MapGet("/",          ListTemplates);
@@ -21,9 +21,9 @@ public static class TaskTemplateEndpoints
         group.MapPost("/{id:guid}/deactivate", DeactivateTemplate).RequireAuthorization(Policies.PlatformOrTenantAdmin);
         group.MapPost("/{id:guid}/create-task", CreateTaskFromTemplate);
 
-        // TASK-MIG-02 — source-product sync endpoint (platform admin only)
+        // TASK-MIG-02 — source-product sync endpoint (internal service only)
         group.MapPost("/from-source", UpsertFromSource)
-            .RequireAuthorization(Policies.PlatformOrTenantAdmin);
+            .RequireAuthorization("InternalService");
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>

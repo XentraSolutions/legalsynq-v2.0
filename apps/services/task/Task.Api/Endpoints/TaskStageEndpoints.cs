@@ -10,14 +10,14 @@ public static class TaskStageEndpoints
     public static void MapTaskStageEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/tasks/stages")
-            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireAuthorization("AuthenticatedUserOrService")
             .WithTags("TaskStages");
 
         group.MapGet("/",               ListStages);
         group.MapGet("/{id:guid}",      GetStageById);
         group.MapPost("/",              CreateStage).RequireAuthorization(Policies.PlatformOrTenantAdmin);
         group.MapPut("/{id:guid}",      UpdateStage).RequireAuthorization(Policies.PlatformOrTenantAdmin);
-        group.MapPost("/from-source",   UpsertFromSource).RequireAuthorization(Policies.PlatformOrTenantAdmin);
+        group.MapPost("/from-source",   UpsertFromSource).RequireAuthorization("InternalService");
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>

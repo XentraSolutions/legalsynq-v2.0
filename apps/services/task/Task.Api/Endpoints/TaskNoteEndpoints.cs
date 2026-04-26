@@ -10,7 +10,7 @@ public static class TaskNoteEndpoints
     public static void MapTaskNoteEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/tasks/{taskId:guid}")
-            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireAuthorization("AuthenticatedUserOrService")
             .WithTags("Task Notes");
 
         group.MapPost("/notes",               AddNote);

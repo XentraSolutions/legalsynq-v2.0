@@ -17,14 +17,14 @@ public static class TaskStageTransitionEndpoints
     public static IEndpointRouteBuilder MapTaskStageTransitionEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/tasks/stage-transitions")
-            .RequireAuthorization(Policies.AuthenticatedUser);
+            .RequireAuthorization("AuthenticatedUserOrService");
 
         group.MapGet("", GetActiveTransitions)
             .WithName("GetActiveStageTransitions")
             .WithTags("StageTransitions");
 
         group.MapPost("/from-source", UpsertFromSource)
-            .RequireAuthorization(Policies.PlatformOrTenantAdmin)
+            .RequireAuthorization("InternalService")
             .WithName("UpsertStageTransitionsFromSource")
             .WithTags("StageTransitions");
 
