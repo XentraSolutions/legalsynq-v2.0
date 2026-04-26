@@ -47,6 +47,15 @@ builder.Services.AddScoped<IActorAccessor, HttpContextActorAccessor>();
 // --- Authentication & Authorization ---
 builder.Services.AddSupportAuth(builder.Configuration, builder.Environment);
 
+// --- JSON serialization ---
+// Register JsonStringEnumConverter globally so all enum fields are
+// serialized as strings in responses and accepted as strings in request
+// bodies.  Without this the default System.Text.Json behaviour requires
+// integer values, which breaks the frontend ↔ backend contract.
+builder.Services.ConfigureHttpJsonOptions(opts =>
+    opts.SerializerOptions.Converters.Add(
+        new System.Text.Json.Serialization.JsonStringEnumConverter()));
+
 // --- Domain services ---
 builder.Services.AddScoped<ITicketNumberGenerator, TicketNumberGenerator>();
 builder.Services.AddScoped<IEventLogger, EventLogger>();
