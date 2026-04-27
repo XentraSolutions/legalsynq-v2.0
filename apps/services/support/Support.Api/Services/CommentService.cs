@@ -46,10 +46,11 @@ public class CommentService : ICommentService
     private readonly INotificationPublisher _notifications;
     private readonly IAuditPublisher _audit;
     private readonly IActorAccessor _actor;
+    private readonly IUserEmailResolver _emailResolver;
 
     public CommentService(SupportDbContext db, ITenantContext tenant, IEventLogger events,
         ILogger<CommentService> log, INotificationPublisher notifications,
-        IAuditPublisher audit, IActorAccessor actor)
+        IAuditPublisher audit, IActorAccessor actor, IUserEmailResolver emailResolver)
     {
         _db = db;
         _tenant = tenant;
@@ -58,6 +59,7 @@ public class CommentService : ICommentService
         _notifications = notifications;
         _audit = audit;
         _actor = actor;
+        _emailResolver = emailResolver;
     }
 
     private string RequireTenant()
@@ -185,7 +187,7 @@ public class CommentService : ICommentService
     {
         try
         {
-            var recipients = ResolveCommentRecipients(ticket, comment);
+            var recipients = await ResolveCommentRecipientsAsync(ticket, comment, ct);
             if (recipients.Count == 0)
             {
                 // Spec: "If no recipient can be resolved: log and skip dispatch."
@@ -220,7 +222,8 @@ public class CommentService : ICommentService
         }
     }
 
-    private static List<NotificationRecipient> ResolveCommentRecipients(SupportTicket ticket, SupportTicketComment comment)
+    private async Task<List<NotificationRecipient>> ResolveCommentRecipientsAsync(
+        SupportTicket ticket, SupportTicketComment comment, CancellationToken ct)
     {
         var list = new List<NotificationRecipient>();
         var isInternal = comment.Visibility == CommentVisibility.Internal
@@ -232,9 +235,7 @@ public class CommentService : ICommentService
             // Internal comments may notify internal support staff (assigned user)
             // only — never the requester/customer.
             if (!string.IsNullOrWhiteSpace(ticket.AssignedUserId))
-            {
-                list.Add(new NotificationRecipient(NotificationRecipientKind.User, ticket.AssignedUserId, null));
-            }
+                list.Add(await MakeAssignedUserRecipientAsync(ticket, ct));
             return list;
         }
 
@@ -242,9 +243,7 @@ public class CommentService : ICommentService
         {
             // Customer replies notify support participants (assigned user).
             if (!string.IsNullOrWhiteSpace(ticket.AssignedUserId))
-            {
-                list.Add(new NotificationRecipient(NotificationRecipientKind.User, ticket.AssignedUserId, null));
-            }
+                list.Add(await MakeAssignedUserRecipientAsync(ticket, ct));
         }
         else
         {
@@ -256,6 +255,14 @@ public class CommentService : ICommentService
         }
 
         return list;
+    }
+
+    private async Task<NotificationRecipient> MakeAssignedUserRecipientAsync(SupportTicket ticket, CancellationToken ct)
+    {
+        var email = await _emailResolver.ResolveAsync(ticket.AssignedUserId!, ticket.TenantId, ct);
+        return string.IsNullOrWhiteSpace(email)
+            ? new NotificationRecipient(NotificationRecipientKind.User, ticket.AssignedUserId, null)
+            : new NotificationRecipient(NotificationRecipientKind.Email, null, email);
     }
 
     public async Task<List<CommentResponse>> ListAsync(Guid ticketId, CommentVisibility? visibility, CommentType? commentType, CancellationToken ct = default)

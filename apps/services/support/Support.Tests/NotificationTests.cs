@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using FluentAssertions;
 using Support.Api.Domain;
 using Support.Api.Dtos;
@@ -12,6 +14,12 @@ namespace Support.Tests;
 public class NotificationTests : IClassFixture<NotificationsApiFactory>
 {
     private readonly NotificationsApiFactory _factory;
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
 
     public NotificationTests(NotificationsApiFactory factory) => _factory = factory;
 
@@ -38,14 +46,14 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
             RequesterEmail = requesterEmail,
         });
         resp.EnsureSuccessStatusCode();
-        return (await resp.Content.ReadFromJsonAsync<TicketResponse>())!;
+        return (await resp.Content.ReadFromJsonAsync<TicketResponse>(JsonOpts))!;
     }
 
     private static async Task<QueueResponse> CreateQueue(HttpClient c, string name)
     {
         var r = await c.PostAsJsonAsync("/support/api/queues", new CreateQueueRequest { Name = name });
         r.StatusCode.Should().Be(HttpStatusCode.Created);
-        return (await r.Content.ReadFromJsonAsync<QueueResponse>())!;
+        return (await r.Content.ReadFromJsonAsync<QueueResponse>(JsonOpts))!;
     }
 
     // 1
@@ -200,7 +208,7 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
             new AddQueueMemberRequest { UserId = "agent-b", Role = QueueMemberRole.Lead });
         var add3 = await c.PostAsJsonAsync($"/support/api/queues/{q.Id}/members",
             new AddQueueMemberRequest { UserId = "agent-x", Role = QueueMemberRole.Agent });
-        var m3 = (await add3.Content.ReadFromJsonAsync<QueueMemberResponse>())!;
+        var m3 = (await add3.Content.ReadFromJsonAsync<QueueMemberResponse>(JsonOpts))!;
         await c.DeleteAsync($"/support/api/queues/{q.Id}/members/{m3.Id}"); // soft-delete
 
         _factory.Recorder.Clear();
@@ -211,8 +219,8 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
 
         var a = _factory.Recorder.ForTicket(t.Id)
             .Single(n => n.EventType == SupportNotificationEventTypes.TicketAssigned);
-        a.Recipients.Should().Contain(r => r.Kind == NotificationRecipientKind.QueueMember && r.UserId == "agent-a");
-        a.Recipients.Should().Contain(r => r.Kind == NotificationRecipientKind.QueueMember && r.UserId == "agent-b");
+        a.Recipients.Should().Contain(r => r.UserId == "agent-a");
+        a.Recipients.Should().Contain(r => r.UserId == "agent-b");
         a.Recipients.Should().NotContain(r => r.UserId == "agent-x"); // inactive
     }
 
@@ -230,7 +238,7 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
             Source = TicketSource.Portal,
         });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var t = (await resp.Content.ReadFromJsonAsync<TicketResponse>())!;
+        var t = (await resp.Content.ReadFromJsonAsync<TicketResponse>(JsonOpts))!;
 
         // Per spec, a notification with no resolvable recipients is logged and
         // skipped — the operation must succeed regardless.
@@ -254,7 +262,7 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
                 new UpdateTicketRequest { Title = "updated despite failure" });
             resp.EnsureSuccessStatusCode();
 
-            var get = await c.GetFromJsonAsync<TicketResponse>($"/support/api/tickets/{t.Id}");
+            var get = await c.GetFromJsonAsync<TicketResponse>($"/support/api/tickets/{t.Id}", JsonOpts);
             get!.Title.Should().Be("updated despite failure");
         }
         finally

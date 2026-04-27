@@ -77,7 +77,7 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
 
         foreach (var recipient in notification.Recipients)
         {
-            var recipientObj = MapRecipient(recipient, notification.TenantId);
+            var recipientObj = MapRecipient(recipient);
             if (recipientObj is null)
             {
                 _log.LogDebug(
@@ -172,7 +172,7 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
         _                                                  => null,
     };
 
-    private static NotificationsRecipient? MapRecipient(NotificationRecipient r, string tenantId)
+    private static NotificationsRecipient? MapRecipient(NotificationRecipient r)
         => r.Kind switch
         {
             NotificationRecipientKind.User when !string.IsNullOrWhiteSpace(r.UserId)
@@ -180,9 +180,6 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
 
             NotificationRecipientKind.Email when !string.IsNullOrWhiteSpace(r.Email)
                 => new NotificationsRecipient { Email = r.Email },
-
-            NotificationRecipientKind.QueueMember
-                => new NotificationsRecipient { TenantId = tenantId },
 
             _ => null,
         };

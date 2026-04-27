@@ -56,6 +56,9 @@ builder.Services.ConfigureHttpJsonOptions(opts =>
     opts.SerializerOptions.Converters.Add(
         new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
+// --- User email resolver (reads identity DB to look up admin/assigned user emails) ---
+builder.Services.AddSingleton<IUserEmailResolver, IdentityUserEmailResolver>();
+
 // --- Domain services ---
 builder.Services.AddScoped<ITicketNumberGenerator, TicketNumberGenerator>();
 builder.Services.AddScoped<IEventLogger, EventLogger>();

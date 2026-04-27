@@ -108,11 +108,12 @@ public class TicketService : ITicketService
     private readonly IAuditPublisher _audit;
     private readonly IActorAccessor _actor;
     private readonly IExternalCustomerService _externalCustomers;
+    private readonly IUserEmailResolver _emailResolver;
 
     public TicketService(SupportDbContext db, ITenantContext tenant, ITicketNumberGenerator numbers,
         IEventLogger events, ILogger<TicketService> log, IWebHostEnvironment env,
         INotificationPublisher notifications, IAuditPublisher audit, IActorAccessor actor,
-        IExternalCustomerService externalCustomers)
+        IExternalCustomerService externalCustomers, IUserEmailResolver emailResolver)
     {
         _db = db;
         _tenant = tenant;
@@ -124,6 +125,7 @@ public class TicketService : ITicketService
         _audit = audit;
         _actor = actor;
         _externalCustomers = externalCustomers;
+        _emailResolver = emailResolver;
     }
 
     private async Task TryAuditAsync(SupportAuditEvent evt, CancellationToken ct)
@@ -199,10 +201,14 @@ public class TicketService : ITicketService
         return list;
     }
 
-    private static void AddAssignedUser(List<NotificationRecipient> list, SupportTicket t)
+    private async Task AddAssignedUserAsync(List<NotificationRecipient> list, SupportTicket t, CancellationToken ct)
     {
-        if (!string.IsNullOrWhiteSpace(t.AssignedUserId))
-            list.Add(new NotificationRecipient(NotificationRecipientKind.User, t.AssignedUserId, null));
+        if (string.IsNullOrWhiteSpace(t.AssignedUserId)) return;
+
+        var email = await _emailResolver.ResolveAsync(t.AssignedUserId, t.TenantId, ct);
+        list.Add(string.IsNullOrWhiteSpace(email)
+            ? new NotificationRecipient(NotificationRecipientKind.User, t.AssignedUserId, null)
+            : new NotificationRecipient(NotificationRecipientKind.Email, null, email));
     }
 
     private async Task AddActiveQueueMembersAsync(List<NotificationRecipient> list, Guid? queueId, string tenantId, CancellationToken ct)
@@ -215,7 +221,10 @@ public class TicketService : ITicketService
         foreach (var uid in members)
         {
             if (string.IsNullOrWhiteSpace(uid)) continue;
-            list.Add(new NotificationRecipient(NotificationRecipientKind.QueueMember, uid, null, queueId));
+            var email = await _emailResolver.ResolveAsync(uid, tenantId, ct);
+            list.Add(string.IsNullOrWhiteSpace(email)
+                ? new NotificationRecipient(NotificationRecipientKind.User, uid, null)
+                : new NotificationRecipient(NotificationRecipientKind.Email, null, email));
         }
     }
 
@@ -499,7 +508,7 @@ public class TicketService : ITicketService
         _log.LogInformation("Ticket updated {TicketNumber} tenant={TenantId}", t.TicketNumber, tenantId);
 
         var recipients = RequesterRecipients(t);
-        AddAssignedUser(recipients, t);
+        await AddAssignedUserAsync(recipients, t, ct);
 
         if (statusChangedFrom.HasValue)
         {
@@ -627,7 +636,7 @@ public class TicketService : ITicketService
             t.TicketNumber, tenantId, cleared);
 
         var recipients = new List<NotificationRecipient>();
-        AddAssignedUser(recipients, t);
+        await AddAssignedUserAsync(recipients, t, ct);
 
         Guid? newQueueGuid = null;
         if (!string.IsNullOrWhiteSpace(t.AssignedQueueId) && Guid.TryParse(t.AssignedQueueId, out var qg))
