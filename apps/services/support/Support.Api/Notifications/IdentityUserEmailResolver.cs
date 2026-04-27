@@ -98,4 +98,38 @@ public sealed class IdentityUserEmailResolver : IUserEmailResolver
 
         return result;
     }
+
+    /// <inheritdoc/>
+    public async Task<List<string>> ResolvePlatformAdminEmailsAsync(CancellationToken ct = default)
+    {
+        var result = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(_connectionString))
+            return result;
+
+        try
+        {
+            await using var conn = new MySqlConnection(_connectionString);
+            await conn.OpenAsync(ct);
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT `Email` FROM `idt_Users` " +
+                "WHERE `UserType` = 'PlatformInternal' AND `IsActive` = 1 AND `IsLocked` = 0";
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var email = reader.IsDBNull(0) ? null : reader.GetString(0);
+                if (!string.IsNullOrWhiteSpace(email))
+                    result.Add(email);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Failed to resolve platform admin emails");
+        }
+
+        return result;
+    }
 }

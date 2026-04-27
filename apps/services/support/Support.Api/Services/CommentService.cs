@@ -188,6 +188,8 @@ public class CommentService : ICommentService
         try
         {
             var recipients = await ResolveCommentRecipientsAsync(ticket, comment, ct);
+            await AddPlatformAdminRecipientsAsync(recipients, ct);
+            recipients = DeduplicateRecipients(recipients);
             if (recipients.Count == 0)
             {
                 // Spec: "If no recipient can be resolved: log and skip dispatch."
@@ -248,10 +250,19 @@ public class CommentService : ICommentService
         else
         {
             // Customer-visible support reply: notify the requester.
-            if (!string.IsNullOrWhiteSpace(ticket.RequesterUserId))
-                list.Add(new NotificationRecipient(NotificationRecipientKind.User, ticket.RequesterUserId, null));
+            // Prefer a stored email; fall back to identity-DB lookup when only
+            // a RequesterUserId is present.
             if (!string.IsNullOrWhiteSpace(ticket.RequesterEmail))
+            {
                 list.Add(new NotificationRecipient(NotificationRecipientKind.Email, null, ticket.RequesterEmail));
+            }
+            else if (!string.IsNullOrWhiteSpace(ticket.RequesterUserId))
+            {
+                var email = await _emailResolver.ResolveAsync(ticket.RequesterUserId, ticket.TenantId, ct);
+                list.Add(string.IsNullOrWhiteSpace(email)
+                    ? new NotificationRecipient(NotificationRecipientKind.User, ticket.RequesterUserId, null)
+                    : new NotificationRecipient(NotificationRecipientKind.Email, null, email));
+            }
         }
 
         return list;
@@ -263,6 +274,41 @@ public class CommentService : ICommentService
         return string.IsNullOrWhiteSpace(email)
             ? new NotificationRecipient(NotificationRecipientKind.User, ticket.AssignedUserId, null)
             : new NotificationRecipient(NotificationRecipientKind.Email, null, email);
+    }
+
+    private async Task AddPlatformAdminRecipientsAsync(List<NotificationRecipient> list, CancellationToken ct)
+    {
+        var existing = new HashSet<string>(
+            list.Where(r => !string.IsNullOrWhiteSpace(r.Email)).Select(r => r.Email!),
+            StringComparer.OrdinalIgnoreCase);
+
+        var adminEmails = await _emailResolver.ResolvePlatformAdminEmailsAsync(ct);
+        foreach (var email in adminEmails)
+        {
+            if (existing.Add(email))
+                list.Add(new NotificationRecipient(NotificationRecipientKind.Email, null, email));
+        }
+    }
+
+    private static List<NotificationRecipient> DeduplicateRecipients(List<NotificationRecipient> list)
+    {
+        var seenEmails  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenUserIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result      = new List<NotificationRecipient>(list.Count);
+
+        foreach (var r in list)
+        {
+            if (r.Kind == NotificationRecipientKind.Email && !string.IsNullOrWhiteSpace(r.Email))
+            {
+                if (seenEmails.Add(r.Email)) result.Add(r);
+            }
+            else if (r.Kind == NotificationRecipientKind.User && !string.IsNullOrWhiteSpace(r.UserId))
+            {
+                if (seenUserIds.Add(r.UserId)) result.Add(r);
+            }
+        }
+
+        return result;
     }
 
     public async Task<List<CommentResponse>> ListAsync(Guid ticketId, CommentVisibility? visibility, CommentType? commentType, CancellationToken ct = default)

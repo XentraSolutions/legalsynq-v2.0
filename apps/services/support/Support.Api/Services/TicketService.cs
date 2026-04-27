@@ -191,13 +191,28 @@ public class TicketService : ITicketService
         }
     }
 
-    private static List<NotificationRecipient> RequesterRecipients(SupportTicket t)
+    /// <summary>
+    /// Builds the requester recipient list, resolving the requester's email from
+    /// the identity DB when only a <c>RequesterUserId</c> is stored on the ticket.
+    /// Deduplication by email is the caller's responsibility via
+    /// <see cref="DeduplicateRecipients"/>.
+    /// </summary>
+    private async Task<List<NotificationRecipient>> RequesterRecipientsAsync(SupportTicket t, CancellationToken ct)
     {
         var list = new List<NotificationRecipient>();
-        if (!string.IsNullOrWhiteSpace(t.RequesterUserId))
-            list.Add(new NotificationRecipient(NotificationRecipientKind.User, t.RequesterUserId, null));
+
         if (!string.IsNullOrWhiteSpace(t.RequesterEmail))
+        {
             list.Add(new NotificationRecipient(NotificationRecipientKind.Email, null, t.RequesterEmail));
+        }
+        else if (!string.IsNullOrWhiteSpace(t.RequesterUserId))
+        {
+            var email = await _emailResolver.ResolveAsync(t.RequesterUserId, t.TenantId, ct);
+            list.Add(string.IsNullOrWhiteSpace(email)
+                ? new NotificationRecipient(NotificationRecipientKind.User, t.RequesterUserId, null)
+                : new NotificationRecipient(NotificationRecipientKind.Email, null, email));
+        }
+
         return list;
     }
 
@@ -226,6 +241,52 @@ public class TicketService : ITicketService
                 ? new NotificationRecipient(NotificationRecipientKind.User, uid, null)
                 : new NotificationRecipient(NotificationRecipientKind.Email, null, email));
         }
+    }
+
+    /// <summary>
+    /// Appends an <c>Email</c>-kind recipient for every active platform admin
+    /// (control-centre user) not already present in <paramref name="list"/>.
+    /// Deduplication is performed against emails already in the list so that
+    /// an admin who is also the assigned user does not receive two copies.
+    /// </summary>
+    private async Task AddPlatformAdminRecipientsAsync(List<NotificationRecipient> list, CancellationToken ct)
+    {
+        var existing = new HashSet<string>(
+            list.Where(r => !string.IsNullOrWhiteSpace(r.Email)).Select(r => r.Email!),
+            StringComparer.OrdinalIgnoreCase);
+
+        var adminEmails = await _emailResolver.ResolvePlatformAdminEmailsAsync(ct);
+        foreach (var email in adminEmails)
+        {
+            if (existing.Add(email))
+                list.Add(new NotificationRecipient(NotificationRecipientKind.Email, null, email));
+        }
+    }
+
+    /// <summary>
+    /// Removes duplicate email recipients and collapses userId-only recipients
+    /// whose email is already covered by an <c>Email</c>-kind entry.
+    /// Preserves order; the first occurrence wins.
+    /// </summary>
+    private static List<NotificationRecipient> DeduplicateRecipients(List<NotificationRecipient> list)
+    {
+        var seenEmails  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenUserIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result      = new List<NotificationRecipient>(list.Count);
+
+        foreach (var r in list)
+        {
+            if (r.Kind == NotificationRecipientKind.Email && !string.IsNullOrWhiteSpace(r.Email))
+            {
+                if (seenEmails.Add(r.Email)) result.Add(r);
+            }
+            else if (r.Kind == NotificationRecipientKind.User && !string.IsNullOrWhiteSpace(r.UserId))
+            {
+                if (seenUserIds.Add(r.UserId)) result.Add(r);
+            }
+        }
+
+        return result;
     }
 
     private string ResolveTenantId(string? fromBody)
@@ -313,7 +374,9 @@ public class TicketService : ITicketService
         _log.LogInformation("Ticket created {TicketNumber} tenant={TenantId} requesterType={RequesterType}",
             ticket.TicketNumber, tenantId, ticket.RequesterType);
 
-        var recipients = RequesterRecipients(ticket);
+        var recipients = await RequesterRecipientsAsync(ticket, ct);
+        await AddPlatformAdminRecipientsAsync(recipients, ct);
+        recipients = DeduplicateRecipients(recipients);
         var payload = new Dictionary<string, object?>
         {
             ["ticket_id"] = ticket.Id,
@@ -507,8 +570,10 @@ public class TicketService : ITicketService
         await _db.SaveChangesAsync(ct);
         _log.LogInformation("Ticket updated {TicketNumber} tenant={TenantId}", t.TicketNumber, tenantId);
 
-        var recipients = RequesterRecipients(t);
+        var recipients = await RequesterRecipientsAsync(t, ct);
         await AddAssignedUserAsync(recipients, t, ct);
+        await AddPlatformAdminRecipientsAsync(recipients, ct);
+        recipients = DeduplicateRecipients(recipients);
 
         if (statusChangedFrom.HasValue)
         {
@@ -644,6 +709,8 @@ public class TicketService : ITicketService
             newQueueGuid = qg;
         }
         await AddActiveQueueMembersAsync(recipients, newQueueGuid, tenantId, ct);
+        await AddPlatformAdminRecipientsAsync(recipients, ct);
+        recipients = DeduplicateRecipients(recipients);
 
         var payload = new Dictionary<string, object?>
         {

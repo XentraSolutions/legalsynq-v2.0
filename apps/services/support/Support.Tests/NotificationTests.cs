@@ -73,8 +73,7 @@ public class NotificationTests : IClassFixture<NotificationsApiFactory>
         n.Payload["title"].Should().Be("hello");
         n.Payload["requester_user_id"].Should().Be("user-1");
         n.Payload["requester_email"].Should().Be("a@b.com");
-        // Recipients include both requester user and email
-        n.Recipients.Should().Contain(r => r.Kind == NotificationRecipientKind.User && r.UserId == "user-1");
+        // When RequesterEmail is stored, it is used directly (email kind preferred over userId kind).
         n.Recipients.Should().Contain(r => r.Kind == NotificationRecipientKind.Email && r.Email == "a@b.com");
     }
 
