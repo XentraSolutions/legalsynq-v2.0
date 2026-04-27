@@ -99,7 +99,12 @@ export default async function SupportCaseDetailPage(props: SupportCaseDetailPage
           </div>
 
           {/* Interactive detail panel */}
-          <SupportDetailPanel initialCase={kase} initialComments={initialComments} />
+          <SupportDetailPanel
+            initialCase={kase}
+            initialComments={initialComments}
+            adminUserId={session.userId}
+            adminEmail={session.email}
+          />
 
         </div>
       </div>

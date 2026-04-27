@@ -1005,18 +1005,31 @@ export function mapSupportCase(raw: unknown): SupportCase {
     r['updatedAt'] ?? r['updated_at'] ?? r['updatedAtUtc']
   );
 
+  const requesterEmail = (
+    r['requesterEmail'] ?? r['requester_email']
+  );
+  const assignedUserId = (
+    r['assignedUserId'] ?? r['assigned_user_id']
+  );
+  const updatedByUserId = (
+    r['updatedByUserId'] ?? r['updated_by_user_id']
+  );
+
   return {
-    id:           str(r, 'id',          'id',         '',  'mapSupportCase.id'),
-    title:        str(r, 'title',       'title',      ''),
-    tenantId:     str(r, 'tenant_id',   'tenantId',   ''),
-    tenantName:   str(r, 'tenant_name', 'tenantName', ''),
-    userId:       typeof userId   === 'string' && userId.length   > 0 ? userId   : undefined,
-    userName:     typeof userName === 'string' && userName.length > 0 ? userName : undefined,
-    status:       mapTicketStatus(r['status']),
-    category:     str(r, 'category', 'category', ''),
-    priority:     mapTicketPriority(r['priority']),
-    createdAtUtc: typeof createdRaw === 'string' && createdRaw.length > 0 ? createdRaw : now,
-    updatedAtUtc: typeof updatedRaw === 'string' && updatedRaw.length > 0 ? updatedRaw : now,
+    id:               str(r, 'id',          'id',         '',  'mapSupportCase.id'),
+    title:            str(r, 'title',       'title',      ''),
+    tenantId:         str(r, 'tenant_id',   'tenantId',   ''),
+    tenantName:       str(r, 'tenant_name', 'tenantName', ''),
+    userId:           typeof userId   === 'string' && userId.length   > 0 ? userId   : undefined,
+    userName:         typeof userName === 'string' && userName.length > 0 ? userName : undefined,
+    requesterEmail:   typeof requesterEmail   === 'string' && requesterEmail.length   > 0 ? requesterEmail   : undefined,
+    status:           mapTicketStatus(r['status']),
+    category:         str(r, 'category', 'category', ''),
+    priority:         mapTicketPriority(r['priority']),
+    assignedUserId:   typeof assignedUserId   === 'string' && assignedUserId.length   > 0 ? assignedUserId   : undefined,
+    createdAtUtc:     typeof createdRaw === 'string' && createdRaw.length > 0 ? createdRaw : now,
+    updatedAtUtc:     typeof updatedRaw === 'string' && updatedRaw.length > 0 ? updatedRaw : now,
+    updatedByUserId:  typeof updatedByUserId === 'string' && updatedByUserId.length > 0 ? updatedByUserId : undefined,
   };
 }
 
@@ -1051,11 +1064,23 @@ export function mapSupportNote(raw: unknown): SupportNote {
     (typeof r['authorEmail'] === 'string' && r['authorEmail'].length > 0) ? (r['authorEmail'] as string) :
     str(r, 'created_by', 'createdBy', 'Platform Admin');
 
+  const authorUserId =
+    (typeof r['authorUserId']  === 'string' && r['authorUserId'].length  > 0) ? (r['authorUserId']  as string) :
+    (typeof r['author_user_id'] === 'string' && r['author_user_id'].length > 0) ? (r['author_user_id'] as string) :
+    undefined;
+
+  const authorEmail =
+    (typeof r['authorEmail']  === 'string' && r['authorEmail'].length  > 0) ? (r['authorEmail']  as string) :
+    (typeof r['author_email'] === 'string' && r['author_email'].length > 0) ? (r['author_email'] as string) :
+    undefined;
+
   return {
     id:           str(r, 'id',         'id',          ''),
     caseId,
     message,
     createdBy,
+    authorUserId,
+    authorEmail,
     createdAtUtc: str(r, 'created_at', 'createdAt', new Date().toISOString()),
     visibility:   str(r, 'visibility',   'visibility',   'Internal'),
     commentType:  str(r, 'commentType',  'comment_type', 'Internal'),

@@ -805,27 +805,32 @@ export type SupportCaseStatus   = 'Open' | 'Investigating' | 'Resolved' | 'Close
 export type SupportCasePriority = 'Low' | 'Medium' | 'High';
 
 export interface SupportCase {
-  id:           string;
-  title:        string;
-  tenantId:     string;
-  tenantName:   string;
-  userId?:      string;
-  userName?:    string;
-  status:       SupportCaseStatus;
-  category:     string;
-  priority:     SupportCasePriority;
-  createdAtUtc: string;
-  updatedAtUtc: string;
+  id:               string;
+  title:            string;
+  tenantId:         string;
+  tenantName:       string;
+  userId?:          string;
+  userName?:        string;
+  requesterEmail?:  string;
+  status:           SupportCaseStatus;
+  category:         string;
+  priority:         SupportCasePriority;
+  assignedUserId?:  string;
+  createdAtUtc:     string;
+  updatedAtUtc:     string;
+  updatedByUserId?: string;
 }
 
 export interface SupportNote {
-  id:           string;
-  caseId:       string;
-  message:      string;
-  createdBy:    string;
-  createdAtUtc: string;
-  visibility:   string;
-  commentType:  string;
+  id:            string;
+  caseId:        string;
+  message:       string;
+  createdBy:     string;
+  authorUserId?: string;
+  authorEmail?:  string;
+  createdAtUtc:  string;
+  visibility:    string;
+  commentType:   string;
 }
 
 export interface SupportProductRef {

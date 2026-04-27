@@ -1959,17 +1959,54 @@ export const controlCenterServerApi = {
     addNote: async (
       caseId: string,
       message: string,
-      options?: { commentType?: string; visibility?: string },
+      options?: {
+        commentType?:  string;
+        visibility?:   string;
+        authorUserId?: string;
+        authorEmail?:  string;
+      },
     ): Promise<SupportNote> => {
+      const body: Record<string, unknown> = {
+        body:        message,
+        commentType: options?.commentType ?? 'InternalNote',
+        visibility:  options?.visibility  ?? 'Internal',
+      };
+      if (options?.authorUserId) body.authorUserId = options.authorUserId;
+      if (options?.authorEmail)  body.authorEmail  = options.authorEmail;
       const raw = await apiClient.post<unknown>(
         `/support/api/tickets/${encodeURIComponent(caseId)}/comments`,
-        {
-          body:        message,
-          commentType: options?.commentType ?? 'Internal',
-          visibility:  options?.visibility  ?? 'Internal',
-        },
+        body,
       );
       const result = mapSupportNote(raw);
+      safeRevalidateTag(CACHE_TAGS.support);
+      return result;
+    },
+
+    /**
+     * PUT /support/api/tickets/{ticketId}/assignment
+     *
+     * Assigns the ticket to a specific user and/or queue, or clears the assignment.
+     * Returns the updated SupportCase.
+     *
+     * Revalidates: cc:support — assignee reflects immediately in list and detail.
+     */
+    assignTicket: async (
+      ticketId: string,
+      opts: {
+        assignedUserId?:  string;
+        assignedQueueId?: string;
+        clearAssignment?: boolean;
+      },
+    ): Promise<SupportCase> => {
+      const raw = await apiClient.put<unknown>(
+        `/support/api/tickets/${encodeURIComponent(ticketId)}/assignment`,
+        {
+          assignedUserId:  opts.assignedUserId  ?? null,
+          assignedQueueId: opts.assignedQueueId ?? null,
+          clearAssignment: opts.clearAssignment ?? false,
+        },
+      );
+      const result = mapSupportCase(raw);
       safeRevalidateTag(CACHE_TAGS.support);
       return result;
     },

@@ -1,20 +1,5 @@
 'use server';
 
-/**
- * support/actions.ts — Server Actions for Support Case management.
- *
- * ── Security guards ──────────────────────────────────────────────────────────
- *
- *   Every action calls requirePlatformAdmin() before any mutation.
- *   This performs a full server-side session + role check:
- *     - No session cookie  → redirect /login?reason=unauthenticated
- *     - Session invalid    → redirect /login?reason=unauthenticated
- *     - Not PlatformAdmin  → redirect /login?reason=unauthorized
- *
- * TODO: add RBAC enforcement middleware
- * TODO: add rate limiting
- */
-
 import { requirePlatformAdmin } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
 import type { SupportCaseDetail, SupportCaseStatus, SupportNote, SupportCase } from '@/types/control-center';
@@ -37,11 +22,12 @@ export interface CreateCaseResult {
   error?:  string;
 }
 
-/**
- * Update the status of a support case.
- * Requires an active PlatformAdmin session.
- * TODO: replace with POST /identity/api/admin/support/{id}/status
- */
+export interface AssignResult {
+  success: boolean;
+  case?:   SupportCase;
+  error?:  string;
+}
+
 export async function updateCaseStatus(
   caseId: string,
   status: SupportCaseStatus,
@@ -55,21 +41,18 @@ export async function updateCaseStatus(
   }
 }
 
-/**
- * Add an internal note to a support case.
- * Requires an active PlatformAdmin session.
- * TODO: replace with POST /identity/api/admin/support/{id}/notes
- */
 export async function addCaseNote(
   caseId:  string,
   message: string,
 ): Promise<AddNoteResult> {
-  await requirePlatformAdmin();
+  const session = await requirePlatformAdmin();
   if (!message.trim()) return { success: false, error: 'Note cannot be empty.' };
   try {
     const note = await controlCenterServerApi.support.addNote(caseId, message.trim(), {
-      commentType: 'InternalNote',
-      visibility:  'Internal',
+      commentType:  'InternalNote',
+      visibility:   'Internal',
+      authorUserId: session.userId,
+      authorEmail:  session.email,
     });
     return { success: true, note };
   } catch (err) {
@@ -77,20 +60,18 @@ export async function addCaseNote(
   }
 }
 
-/**
- * Add a customer-visible reply to a support case.
- * Requires an active PlatformAdmin session.
- */
 export async function addPublicReply(
   caseId:  string,
   message: string,
 ): Promise<AddNoteResult> {
-  await requirePlatformAdmin();
+  const session = await requirePlatformAdmin();
   if (!message.trim()) return { success: false, error: 'Reply cannot be empty.' };
   try {
     const note = await controlCenterServerApi.support.addNote(caseId, message.trim(), {
-      commentType: 'CustomerReply',
-      visibility:  'CustomerVisible',
+      commentType:  'CustomerReply',
+      visibility:   'CustomerVisible',
+      authorUserId: session.userId,
+      authorEmail:  session.email,
     });
     return { success: true, note };
   } catch (err) {
@@ -98,11 +79,30 @@ export async function addPublicReply(
   }
 }
 
-/**
- * Create a new support case.
- * Requires an active PlatformAdmin session.
- * TODO: replace with POST /identity/api/admin/support
- */
+export async function assignCaseToMe(caseId: string): Promise<AssignResult> {
+  const session = await requirePlatformAdmin();
+  try {
+    const updated = await controlCenterServerApi.support.assignTicket(caseId, {
+      assignedUserId: session.userId,
+    });
+    return { success: true, case: updated };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to assign ticket.' };
+  }
+}
+
+export async function unassignCase(caseId: string): Promise<AssignResult> {
+  await requirePlatformAdmin();
+  try {
+    const updated = await controlCenterServerApi.support.assignTicket(caseId, {
+      clearAssignment: true,
+    });
+    return { success: true, case: updated };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to unassign ticket.' };
+  }
+}
+
 export async function createSupportCase(data: {
   title:      string;
   tenantId:   string;

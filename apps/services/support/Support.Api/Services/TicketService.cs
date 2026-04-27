@@ -566,9 +566,20 @@ public class TicketService : ITicketService
 
     public async Task<TicketResponse> AssignAsync(Guid id, AssignTicketRequest req, CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
-        var t = await _db.Tickets.FirstOrDefaultAsync(x => x.Id == id && x.TenantId == tenantId, ct)
-            ?? throw new TicketNotFoundException();
+        SupportTicket? t;
+        // PlatformAdmin check must come FIRST — same rationale as UpdateAsync and GetAsync.
+        if (_actor.Actor.Roles.Contains(SupportRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase))
+        {
+            t = await _db.Tickets.FirstOrDefaultAsync(x => x.Id == id, ct)
+                ?? throw new TicketNotFoundException();
+        }
+        else
+        {
+            var scopedTenantId = RequireTenant();
+            t = await _db.Tickets.FirstOrDefaultAsync(x => x.Id == id && x.TenantId == scopedTenantId, ct)
+                ?? throw new TicketNotFoundException();
+        }
+        var tenantId = t.TenantId;
 
         var prevUser = t.AssignedUserId;
         var prevQueue = t.AssignedQueueId;

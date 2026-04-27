@@ -1,13 +1,21 @@
 'use client';
 
 import { useState, useTransition, useRef } from 'react';
-import { updateCaseStatus, addCaseNote, addPublicReply } from '@/app/support/actions';
+import {
+  updateCaseStatus,
+  addCaseNote,
+  addPublicReply,
+  assignCaseToMe,
+  unassignCase,
+} from '@/app/support/actions';
 import type { SupportCaseDetail, SupportCaseStatus, SupportNote } from '@/types/control-center';
 import { ProductRefList } from '@/components/support/product-ref-list';
 
 interface SupportDetailPanelProps {
   initialCase:     SupportCaseDetail;
   initialComments: SupportNote[];
+  adminUserId:     string;
+  adminEmail:      string;
 }
 
 const ALL_STATUSES: SupportCaseStatus[] = ['Open', 'Investigating', 'Resolved', 'Closed'];
@@ -19,29 +27,32 @@ const STATUS_STYLES: Record<SupportCaseStatus, string> = {
   Closed:        'bg-gray-100   text-gray-500   border-gray-300',
 };
 
-/**
- * SupportDetailPanel — interactive case detail view.
- *
- * Client component — handles status changes, internal note submission, and
- * customer-visible reply submission with optimistic updates.
- *
- * Access: rendered only inside PlatformAdmin-gated SupportCaseDetailPage.
- */
-export function SupportDetailPanel({ initialCase, initialComments }: SupportDetailPanelProps) {
-  const [kase, setKase]               = useState<SupportCaseDetail>(initialCase);
-  const [comments, setComments]       = useState<SupportNote[]>(initialComments);
-  const [isPending, startTransition]  = useTransition();
+export function SupportDetailPanel({
+  initialCase,
+  initialComments,
+  adminUserId,
+  adminEmail,
+}: SupportDetailPanelProps) {
+  const [kase, setKase]              = useState<SupportCaseDetail>(initialCase);
+  const [comments, setComments]      = useState<SupportNote[]>(initialComments);
+  const [isPending, startTransition] = useTransition();
+
+  const isAssignedToMe = kase.assignedUserId === adminUserId;
 
   // ── Status ────────────────────────────────────────────────────────────────
   const [statusError, setStatusError]   = useState<string | null>(null);
   const [savingStatus, setSavingStatus] = useState(false);
 
+  // ── Assignment ────────────────────────────────────────────────────────────
+  const [assignError, setAssignError]   = useState<string | null>(null);
+  const [savingAssign, setSavingAssign] = useState(false);
+
   // ── Internal note ─────────────────────────────────────────────────────────
-  const [noteText, setNoteText]         = useState('');
-  const [noteError, setNoteError]       = useState<string | null>(null);
-  const [noteSuccess, setNoteSuccess]   = useState(false);
-  const [savingNote, setSavingNote]     = useState(false);
-  const noteTextareaRef                 = useRef<HTMLTextAreaElement>(null);
+  const [noteText, setNoteText]       = useState('');
+  const [noteError, setNoteError]     = useState<string | null>(null);
+  const [noteSuccess, setNoteSuccess] = useState(false);
+  const [savingNote, setSavingNote]   = useState(false);
+  const noteTextareaRef               = useRef<HTMLTextAreaElement>(null);
 
   // ── Public reply ──────────────────────────────────────────────────────────
   const [replyText, setReplyText]       = useState('');
@@ -50,45 +61,80 @@ export function SupportDetailPanel({ initialCase, initialComments }: SupportDeta
   const [savingReply, setSavingReply]   = useState(false);
   const replyTextareaRef                = useRef<HTMLTextAreaElement>(null);
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   function handleStatusChange(newStatus: SupportCaseStatus) {
     if (newStatus === kase.status || isPending || savingStatus) return;
-
     const prev = kase.status;
     setStatusError(null);
     setSavingStatus(true);
     setKase(k => ({ ...k, status: newStatus }));
-
     startTransition(async () => {
       const result = await updateCaseStatus(kase.id, newStatus);
       if (!result.success) {
         setKase(k => ({ ...k, status: prev }));
         setStatusError(result.error ?? 'Failed to update status.');
+      } else if (result.case) {
+        setKase(k => ({ ...k, status: result.case!.status, updatedAtUtc: result.case!.updatedAtUtc, updatedByUserId: adminUserId }));
       }
       setSavingStatus(false);
     });
   }
 
+  function handleAssignToMe() {
+    if (savingAssign) return;
+    setAssignError(null);
+    setSavingAssign(true);
+    const prevAssigned = kase.assignedUserId;
+    setKase(k => ({ ...k, assignedUserId: adminUserId }));
+    startTransition(async () => {
+      const result = await assignCaseToMe(kase.id);
+      if (!result.success) {
+        setKase(k => ({ ...k, assignedUserId: prevAssigned }));
+        setAssignError(result.error ?? 'Failed to assign ticket.');
+      } else if (result.case) {
+        setKase(k => ({ ...k, assignedUserId: result.case!.assignedUserId, updatedAtUtc: result.case!.updatedAtUtc }));
+      }
+      setSavingAssign(false);
+    });
+  }
+
+  function handleUnassign() {
+    if (savingAssign) return;
+    setAssignError(null);
+    setSavingAssign(true);
+    const prevAssigned = kase.assignedUserId;
+    setKase(k => ({ ...k, assignedUserId: undefined }));
+    startTransition(async () => {
+      const result = await unassignCase(kase.id);
+      if (!result.success) {
+        setKase(k => ({ ...k, assignedUserId: prevAssigned }));
+        setAssignError(result.error ?? 'Failed to unassign ticket.');
+      } else if (result.case) {
+        setKase(k => ({ ...k, assignedUserId: result.case!.assignedUserId, updatedAtUtc: result.case!.updatedAtUtc }));
+      }
+      setSavingAssign(false);
+    });
+  }
+
   function handleAddNote() {
     if (!noteText.trim() || savingNote) return;
-
     const optimisticNote: SupportNote = {
       id:           `optimistic-${Date.now()}`,
       caseId:       kase.id,
       message:      noteText.trim(),
-      createdBy:    'Platform Admin',
+      createdBy:    adminEmail,
+      authorUserId: adminUserId,
+      authorEmail:  adminEmail,
       createdAtUtc: new Date().toISOString(),
       visibility:   'Internal',
-      commentType:  'Internal',
+      commentType:  'InternalNote',
     };
-
     setNoteError(null);
     setNoteSuccess(false);
     setSavingNote(true);
     setComments(cs => [...cs, optimisticNote]);
     setNoteText('');
-
     startTransition(async () => {
       const result = await addCaseNote(kase.id, optimisticNote.message);
       if (result.success && result.note) {
@@ -106,23 +152,22 @@ export function SupportDetailPanel({ initialCase, initialComments }: SupportDeta
 
   function handleAddReply() {
     if (!replyText.trim() || savingReply) return;
-
     const optimisticReply: SupportNote = {
       id:           `optimistic-reply-${Date.now()}`,
       caseId:       kase.id,
       message:      replyText.trim(),
-      createdBy:    'Platform Admin',
+      createdBy:    adminEmail,
+      authorUserId: adminUserId,
+      authorEmail:  adminEmail,
       createdAtUtc: new Date().toISOString(),
       visibility:   'CustomerVisible',
-      commentType:  'Normal',
+      commentType:  'CustomerReply',
     };
-
     setReplyError(null);
     setReplySuccess(false);
     setSavingReply(true);
     setComments(cs => [...cs, optimisticReply]);
     setReplyText('');
-
     startTransition(async () => {
       const result = await addPublicReply(kase.id, optimisticReply.message);
       if (result.success && result.note) {
@@ -159,9 +204,51 @@ export function SupportDetailPanel({ initialCase, initialComments }: SupportDeta
           <MetaRow label="Tenant"   value={kase.tenantName} />
           <MetaRow label="Category" value={kase.category} />
           <MetaRow label="Priority" value={kase.priority} />
-          {kase.userName && <MetaRow label="User" value={kase.userName} />}
+          {kase.userName      && <MetaRow label="User"      value={kase.userName} />}
+          {kase.requesterEmail && <MetaRow label="Email"    value={kase.requesterEmail} />}
+          <div className="flex items-start gap-4 px-5 py-2.5">
+            <dt className="text-xs text-gray-400 font-medium w-20 shrink-0 pt-0.5">Assigned</dt>
+            <dd className="flex-1 flex items-center gap-3 flex-wrap">
+              {kase.assignedUserId ? (
+                <span className="text-sm text-gray-700 font-medium">
+                  {isAssignedToMe ? (
+                    <span className="text-indigo-700">You ({adminEmail})</span>
+                  ) : (
+                    <span>{kase.assignedUserId}</span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-sm text-gray-400">Unassigned</span>
+              )}
+              {isAssignedToMe ? (
+                <button
+                  onClick={handleUnassign}
+                  disabled={savingAssign}
+                  className="text-xs text-gray-500 underline hover:text-red-600 transition-colors disabled:opacity-40"
+                >
+                  {savingAssign ? 'Saving…' : 'Unassign'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleAssignToMe}
+                  disabled={savingAssign}
+                  className="text-xs text-indigo-600 underline hover:text-indigo-800 transition-colors disabled:opacity-40"
+                >
+                  {savingAssign ? 'Saving…' : 'Assign to me'}
+                </button>
+              )}
+            </dd>
+          </div>
+          {assignError && (
+            <div className="px-5 py-2">
+              <p className="text-xs text-red-600 font-medium">{assignError}</p>
+            </div>
+          )}
           <MetaRow label="Opened"  value={formatDate(kase.createdAtUtc)} />
           <MetaRow label="Updated" value={formatDate(kase.updatedAtUtc)} />
+          {kase.updatedByUserId && (
+            <MetaRow label="Updated by" value={kase.updatedByUserId === adminUserId ? `You (${adminEmail})` : kase.updatedByUserId} />
+          )}
         </dl>
       </div>
 
@@ -233,7 +320,17 @@ export function SupportDetailPanel({ initialCase, initialComments }: SupportDeta
         ) : (
           <div className="divide-y divide-gray-100">
             {publicComments.map(comment => (
-              <ConversationRow key={comment.id} note={comment} isAdmin />
+              <ConversationRow
+                key={comment.id}
+                note={comment}
+                isAdmin={
+                  comment.commentType === 'CustomerReply' ||
+                  comment.authorUserId === adminUserId ||
+                  !!comment.authorEmail
+                }
+                currentAdminUserId={adminUserId}
+                currentAdminEmail={adminEmail}
+              />
             ))}
           </div>
         )}
@@ -259,12 +356,8 @@ export function SupportDetailPanel({ initialCase, initialComments }: SupportDeta
           />
           <div className="flex items-center justify-between mt-2">
             <div>
-              {replyError && (
-                <p className="text-xs text-red-600 font-medium">{replyError}</p>
-              )}
-              {replySuccess && (
-                <p className="text-xs text-green-600 font-medium">Reply sent.</p>
-              )}
+              {replyError   && <p className="text-xs text-red-600 font-medium">{replyError}</p>}
+              {replySuccess && <p className="text-xs text-green-600 font-medium">Reply sent.</p>}
             </div>
             <button
               onClick={handleAddReply}
@@ -303,7 +396,12 @@ export function SupportDetailPanel({ initialCase, initialComments }: SupportDeta
         {internalComments.length > 0 ? (
           <div className="divide-y divide-gray-100">
             {internalComments.map(note => (
-              <NoteRow key={note.id} note={note} />
+              <NoteRow
+                key={note.id}
+                note={note}
+                currentAdminUserId={adminUserId}
+                currentAdminEmail={adminEmail}
+              />
             ))}
           </div>
         ) : (
@@ -331,12 +429,8 @@ export function SupportDetailPanel({ initialCase, initialComments }: SupportDeta
           />
           <div className="flex items-center justify-between mt-2">
             <div>
-              {noteError && (
-                <p className="text-xs text-red-600 font-medium">{noteError}</p>
-              )}
-              {noteSuccess && (
-                <p className="text-xs text-green-600 font-medium">Note added.</p>
-              )}
+              {noteError   && <p className="text-xs text-red-600 font-medium">{noteError}</p>}
+              {noteSuccess && <p className="text-xs text-green-600 font-medium">Note added.</p>}
             </div>
             <button
               onClick={handleAddNote}
@@ -371,23 +465,45 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-4 px-5 py-2.5">
       <dt className="text-xs text-gray-400 font-medium w-20 shrink-0">{label}</dt>
-      <dd className="text-sm text-gray-700">{value}</dd>
+      <dd className="text-sm text-gray-700 break-all">{value}</dd>
     </div>
   );
 }
 
-function ConversationRow({ note, isAdmin }: { note: SupportNote; isAdmin?: boolean }) {
+function resolveAuthor(
+  note: SupportNote,
+  currentAdminUserId: string,
+  currentAdminEmail: string,
+): string {
+  if (note.authorUserId === currentAdminUserId) {
+    return `You (${currentAdminEmail})`;
+  }
+  if (note.authorEmail) return note.authorEmail;
+  if (note.createdBy && note.createdBy !== 'Platform Admin') return note.createdBy;
+  return 'Platform Admin';
+}
+
+function ConversationRow({
+  note,
+  isAdmin,
+  currentAdminUserId,
+  currentAdminEmail,
+}: {
+  note:               SupportNote;
+  isAdmin:            boolean;
+  currentAdminUserId: string;
+  currentAdminEmail:  string;
+}) {
   const isOptimistic = note.id.startsWith('optimistic-');
-  const align = isAdmin ? 'items-end' : 'items-start';
-  const bubbleBg = isAdmin
-    ? 'bg-indigo-600 text-white'
-    : 'bg-gray-100 text-gray-800';
-  const metaAlign = isAdmin ? 'justify-end' : 'justify-start';
+  const align        = isAdmin ? 'items-end' : 'items-start';
+  const bubbleBg     = isAdmin ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-800';
+  const metaAlign    = isAdmin ? 'justify-end' : 'justify-start';
+  const author       = resolveAuthor(note, currentAdminUserId, currentAdminEmail);
 
   return (
     <div className={`px-5 py-4 flex flex-col ${align} gap-1 ${isOptimistic ? 'opacity-60' : ''}`}>
       <div className={`flex items-center gap-2 text-xs text-gray-400 ${metaAlign}`}>
-        <span className="font-semibold text-gray-600">{note.createdBy}</span>
+        <span className="font-semibold text-gray-600">{author}</span>
         <span className="text-gray-300">·</span>
         <span>{formatDate(note.createdAtUtc)}</span>
         {isOptimistic && <span className="italic text-[10px]">sending…</span>}
@@ -399,12 +515,22 @@ function ConversationRow({ note, isAdmin }: { note: SupportNote; isAdmin?: boole
   );
 }
 
-function NoteRow({ note }: { note: SupportNote }) {
+function NoteRow({
+  note,
+  currentAdminUserId,
+  currentAdminEmail,
+}: {
+  note:               SupportNote;
+  currentAdminUserId: string;
+  currentAdminEmail:  string;
+}) {
   const isOptimistic = note.id.startsWith('optimistic-');
+  const author       = resolveAuthor(note, currentAdminUserId, currentAdminEmail);
+
   return (
     <div className={`px-5 py-4 ${isOptimistic ? 'opacity-60' : ''}`}>
       <div className="flex items-center gap-2 mb-1.5">
-        <span className="text-xs font-semibold text-gray-700">{note.createdBy}</span>
+        <span className="text-xs font-semibold text-gray-700">{author}</span>
         <span className="text-gray-300">·</span>
         <span className="text-xs text-gray-400">{formatDate(note.createdAtUtc)}</span>
         {isOptimistic && (
@@ -421,12 +547,12 @@ function NoteRow({ note }: { note: SupportNote }) {
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleString('en-US', {
-      month:   'short',
-      day:     'numeric',
-      year:    'numeric',
-      hour:    '2-digit',
-      minute:  '2-digit',
-      hour12:  false,
+      month:    'short',
+      day:      'numeric',
+      year:     'numeric',
+      hour:     '2-digit',
+      minute:   '2-digit',
+      hour12:   false,
       timeZone: 'UTC',
     }) + ' UTC';
   } catch {
