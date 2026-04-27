@@ -68,7 +68,7 @@ export async function addCaseNote(
   if (!message.trim()) return { success: false, error: 'Note cannot be empty.' };
   try {
     const note = await controlCenterServerApi.support.addNote(caseId, message.trim(), {
-      commentType: 'Internal',
+      commentType: 'InternalNote',
       visibility:  'Internal',
     });
     return { success: true, note };
@@ -89,7 +89,7 @@ export async function addPublicReply(
   if (!message.trim()) return { success: false, error: 'Reply cannot be empty.' };
   try {
     const note = await controlCenterServerApi.support.addNote(caseId, message.trim(), {
-      commentType: 'Normal',
+      commentType: 'CustomerReply',
       visibility:  'CustomerVisible',
     });
     return { success: true, note };
