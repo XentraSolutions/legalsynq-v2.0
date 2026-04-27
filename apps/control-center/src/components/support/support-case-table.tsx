@@ -164,7 +164,7 @@ export function SupportCaseTable({
                   return (
                     <tr key={c.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-1.5">
                           <Link
                             href={`${Routes.support}/${c.id}`}
                             className="font-medium text-indigo-700 hover:text-indigo-900 hover:underline leading-snug"
@@ -172,6 +172,7 @@ export function SupportCaseTable({
                             {c.title}
                           </Link>
                           <div className="flex items-center gap-2 flex-wrap">
+                            {/* Tenant tag */}
                             {resolvedTenantName && tagId && (
                               <span
                                 className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${tenantTagColor(tagId)}`}
@@ -182,8 +183,19 @@ export function SupportCaseTable({
                                 {resolvedTenantName}
                               </span>
                             )}
-                            {c.userName && (
-                              <span className="text-[11px] text-gray-400">{c.userName}</span>
+                            {/* Requester identity */}
+                            {(c.userName || c.requesterEmail) && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                                <svg className="w-3 h-3 shrink-0 text-gray-400" viewBox="0 0 16 16" fill="currentColor">
+                                  <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-5 6a5 5 0 0 1 10 0H3Z"/>
+                                </svg>
+                                {c.userName && c.requesterEmail
+                                  ? <><span className="font-medium text-gray-700">{c.userName}</span><span className="text-gray-400">·</span><span className="text-gray-400">{c.requesterEmail}</span></>
+                                  : c.userName
+                                    ? <span className="font-medium text-gray-700">{c.userName}</span>
+                                    : <span className="text-gray-400">{c.requesterEmail}</span>
+                                }
+                              </span>
                             )}
                           </div>
                         </div>
