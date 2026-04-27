@@ -203,15 +203,32 @@ export default async function SupportPage({ searchParams }: SupportPageProps) {
                     {tickets.map(t => (
                       <tr key={t.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3">
-                          <Link
-                            href={`/support/${t.id}`}
-                            className="font-medium text-indigo-700 hover:text-indigo-900 hover:underline leading-snug"
-                          >
-                            {t.title}
-                          </Link>
-                          {t.requesterName && (
-                            <p className="text-xs text-gray-400 mt-0.5">{t.requesterName}</p>
-                          )}
+                          <div className="flex flex-col gap-1">
+                            <Link
+                              href={`/support/${t.id}`}
+                              className="font-medium text-indigo-700 hover:text-indigo-900 hover:underline leading-snug"
+                            >
+                              {t.title}
+                            </Link>
+                            {(t.requesterName || t.requesterEmail) && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                                <svg className="w-3 h-3 shrink-0 text-gray-400" viewBox="0 0 16 16" fill="currentColor">
+                                  <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-5 6a5 5 0 0 1 10 0H3Z"/>
+                                </svg>
+                                {t.requesterName && t.requesterEmail ? (
+                                  <>
+                                    <span className="font-medium text-gray-700">{t.requesterName}</span>
+                                    <span className="text-gray-400">·</span>
+                                    <span className="text-gray-400">{t.requesterEmail}</span>
+                                  </>
+                                ) : t.requesterName ? (
+                                  <span className="font-medium text-gray-700">{t.requesterName}</span>
+                                ) : (
+                                  <span className="text-gray-400">{t.requesterEmail}</span>
+                                )}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-xs font-mono text-gray-500 hidden md:table-cell">
                           {t.ticketNumber}
