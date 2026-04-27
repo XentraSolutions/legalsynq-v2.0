@@ -13,6 +13,7 @@ interface SupportPageProps {
     search?:   string;
     status?:   string;
     priority?: string;
+    tenantId?: string;
   }>;
 }
 
@@ -22,34 +23,43 @@ const PAGE_SIZE = 10;
  * /support — Support Tools list page.
  *
  * Access: PlatformAdmin only.
- * Data: served from mock stub in controlCenterServerApi.support.list().
- * TODO: When /identity/api/admin/support endpoints are live, the stub auto-wires —
- *       no page change needed, only the API methods in control-center-api.ts.
- *
- * Filtering: search (title/tenant/user), status, priority — all via URL params.
+ * Filtering: search, status, priority, tenantId — all via URL params.
+ * Tenant names are resolved server-side by joining with the tenant roster
+ * so each ticket row can display a coloured tenant tag.
  */
 export default async function SupportPage({ searchParams }: SupportPageProps) {
   const searchParamsData = await searchParams;
   const session   = await requirePlatformAdmin();
   const tenantCtx = await getTenantContext();
 
-  const page     = Math.max(1, parseInt(searchParamsData.page ?? '1', 10) || 1);
-  const search   = searchParamsData.search   ?? '';
-  const status   = searchParamsData.status   ?? '';
-  const priority = searchParamsData.priority ?? '';
+  const page      = Math.max(1, parseInt(searchParamsData.page ?? '1', 10) || 1);
+  const search    = searchParamsData.search   ?? '';
+  const status    = searchParamsData.status   ?? '';
+  const priority  = searchParamsData.priority ?? '';
+  const tenantId  = searchParamsData.tenantId ?? tenantCtx?.tenantId ?? '';
 
   let result: { items: SupportCase[]; totalCount: number } | null = null;
   let fetchError: string | null = null;
+  let tenantMap:  Record<string, string> = {};
+  let tenantOptions: { id: string; name: string }[] = [];
 
   try {
-    result = await controlCenterServerApi.support.list({
-      page,
-      pageSize: PAGE_SIZE,
-      search,
-      status,
-      priority,
-      tenantId: tenantCtx?.tenantId,
-    });
+    const [ticketsResult, tenantsResult] = await Promise.all([
+      controlCenterServerApi.support.list({
+        page,
+        pageSize: PAGE_SIZE,
+        search,
+        status,
+        priority,
+        tenantId: tenantId || undefined,
+      }),
+      controlCenterServerApi.tenants.list({ pageSize: 200 }).catch(() => ({ items: [], totalCount: 0 })),
+    ]);
+    result = ticketsResult;
+    tenantOptions = tenantsResult.items
+      .map(t => ({ id: t.id, name: t.displayName || t.id }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    tenantMap = Object.fromEntries(tenantOptions.map(t => [t.id, t.name]));
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load support cases.';
   }
@@ -113,6 +123,9 @@ export default async function SupportPage({ searchParams }: SupportPageProps) {
               search={search}
               status={status}
               priority={priority}
+              tenantId={tenantId}
+              tenantMap={tenantMap}
+              tenantOptions={tenantOptions}
             />
           )}
 

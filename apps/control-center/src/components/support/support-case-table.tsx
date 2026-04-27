@@ -3,13 +3,16 @@ import type { SupportCase, SupportCaseStatus, SupportCasePriority } from '@/type
 import { Routes } from '@/lib/routes';
 
 interface SupportCaseTableProps {
-  cases:      SupportCase[];
-  totalCount: number;
-  page:       number;
-  pageSize:   number;
-  search:     string;
-  status:     string;
-  priority:   string;
+  cases:         SupportCase[];
+  totalCount:    number;
+  page:          number;
+  pageSize:      number;
+  search:        string;
+  status:        string;
+  priority:      string;
+  tenantId:      string;
+  tenantMap:     Record<string, string>;
+  tenantOptions: { id: string; name: string }[];
 }
 
 const STATUS_STYLES: Record<SupportCaseStatus, string> = {
@@ -25,15 +28,38 @@ const PRIORITY_STYLES: Record<SupportCasePriority, string> = {
   Low:    'bg-gray-100 text-gray-500 border-gray-200',
 };
 
+const TENANT_TAG_COLORS = [
+  'bg-violet-100 text-violet-700 border-violet-300',
+  'bg-sky-100    text-sky-700    border-sky-300',
+  'bg-teal-100   text-teal-700   border-teal-300',
+  'bg-orange-100 text-orange-700 border-orange-300',
+  'bg-pink-100   text-pink-700   border-pink-300',
+  'bg-indigo-100 text-indigo-700 border-indigo-300',
+  'bg-lime-100   text-lime-700   border-lime-300',
+  'bg-cyan-100   text-cyan-700   border-cyan-300',
+];
+
+function tenantTagColor(tenantId: string): string {
+  let hash = 0;
+  for (let i = 0; i < tenantId.length; i++) {
+    hash = (hash * 31 + tenantId.charCodeAt(i)) % TENANT_TAG_COLORS.length;
+  }
+  return TENANT_TAG_COLORS[Math.abs(hash)];
+}
+
 const ALL_STATUSES:   SupportCaseStatus[]   = ['Open', 'Investigating', 'Resolved', 'Closed'];
 const ALL_PRIORITIES: SupportCasePriority[] = ['High', 'Medium', 'Low'];
 
 /**
  * SupportCaseTable — filterable, paginated list of support cases.
+ * Each row displays a coloured tenant tag so platform admins can
+ * quickly identify which tenant a ticket belongs to.
  * Pure server component — filters via plain GET form.
  */
 export function SupportCaseTable({
-  cases, totalCount, page, pageSize, search, status, priority,
+  cases, totalCount, page, pageSize,
+  search, status, priority, tenantId,
+  tenantMap, tenantOptions,
 }: SupportCaseTableProps) {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const start      = (page - 1) * pageSize + 1;
@@ -41,12 +67,15 @@ export function SupportCaseTable({
 
   function pageHref(p: number) {
     const params = new URLSearchParams();
-    if (search)   params.set('search', search);
-    if (status)   params.set('status', status);
+    if (search)   params.set('search',   search);
+    if (status)   params.set('status',   status);
     if (priority) params.set('priority', priority);
+    if (tenantId) params.set('tenantId', tenantId);
     params.set('page', String(p));
     return `${Routes.support}?${params.toString()}`;
   }
+
+  const hasFilters = !!(search || status || priority || tenantId);
 
   return (
     <div className="space-y-3">
@@ -59,6 +88,21 @@ export function SupportCaseTable({
           placeholder="Search cases…"
           className="flex-1 min-w-40 text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
+
+        {/* Tenant filter — only shown when viewing all tenants */}
+        {tenantOptions.length > 0 && (
+          <select
+            name="tenantId"
+            defaultValue={tenantId}
+            className="text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">All Tenants</option>
+            {tenantOptions.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        )}
+
         <select
           name="status"
           defaultValue={status}
@@ -81,7 +125,7 @@ export function SupportCaseTable({
         >
           Filter
         </button>
-        {(search || status || priority) && (
+        {hasFilters && (
           <Link
             href={Routes.support}
             className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 rounded-md border border-gray-200 hover:border-gray-300 transition-colors"
@@ -104,7 +148,6 @@ export function SupportCaseTable({
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   <th className="text-left px-4 py-3">Case</th>
-                  <th className="text-left px-4 py-3 hidden md:table-cell">Tenant</th>
                   <th className="text-left px-4 py-3 hidden lg:table-cell">Category</th>
                   <th className="text-left px-4 py-3">Priority</th>
                   <th className="text-left px-4 py-3">Status</th>
@@ -112,40 +155,58 @@ export function SupportCaseTable({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {cases.map(c => (
-                  <tr key={c.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`${Routes.support}/${c.id}`}
-                        className="font-medium text-indigo-700 hover:text-indigo-900 hover:underline leading-snug"
-                      >
-                        {c.title}
-                      </Link>
-                      {c.userName && (
-                        <p className="text-xs text-gray-400 mt-0.5">{c.userName}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
-                      {c.tenantName}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">
-                      {c.category}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${PRIORITY_STYLES[c.priority]}`}>
-                        {c.priority}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${STATUS_STYLES[c.status]}`}>
-                        {c.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400 hidden sm:table-cell tabular-nums">
-                      {formatRelative(c.updatedAtUtc)}
-                    </td>
-                  </tr>
-                ))}
+                {cases.map(c => {
+                  const resolvedTenantName = (c.tenantId && tenantMap[c.tenantId])
+                    ? tenantMap[c.tenantId]
+                    : (c.tenantName || null);
+                  const tagId = c.tenantId || c.tenantName;
+
+                  return (
+                    <tr key={c.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1">
+                          <Link
+                            href={`${Routes.support}/${c.id}`}
+                            className="font-medium text-indigo-700 hover:text-indigo-900 hover:underline leading-snug"
+                          >
+                            {c.title}
+                          </Link>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {resolvedTenantName && tagId && (
+                              <span
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${tenantTagColor(tagId)}`}
+                              >
+                                <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                                  <path d="M2 3a1 1 0 0 1 1-1h4.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 0 1.414l-4.586 4.586a1 1 0 0 1-1.414 0L2.293 8.707A1 1 0 0 1 2 8V3Zm2 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/>
+                                </svg>
+                                {resolvedTenantName}
+                              </span>
+                            )}
+                            {c.userName && (
+                              <span className="text-[11px] text-gray-400">{c.userName}</span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">
+                        {c.category}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${PRIORITY_STYLES[c.priority]}`}>
+                          {c.priority}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${STATUS_STYLES[c.status]}`}>
+                          {c.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-400 hidden sm:table-cell tabular-nums">
+                        {formatRelative(c.updatedAtUtc)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
 
