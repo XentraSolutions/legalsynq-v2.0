@@ -24,4 +24,11 @@ public sealed class NotificationOptions
 
     /// <summary>Dispatch transport. Defaults to NoOp for safe local/test runs.</summary>
     public NotificationDispatchMode Mode { get; set; } = NotificationDispatchMode.NoOp;
+
+    /// <summary>
+    /// Base URL of the tenant portal, used to build deeplinks in notification emails.
+    /// Example: https://portal.legalsynq.com
+    /// When unset, deeplink_url is omitted from template data.
+    /// </summary>
+    public string? PortalBaseUrl { get; set; }
 }

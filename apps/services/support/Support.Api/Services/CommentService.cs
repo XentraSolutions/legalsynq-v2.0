@@ -198,6 +198,7 @@ public class CommentService : ICommentService
             {
                 ["ticket_id"] = ticket.Id,
                 ["ticket_number"] = ticket.TicketNumber,
+                ["title"] = ticket.Title,
                 ["comment_id"] = comment.Id,
                 ["comment_type"] = comment.CommentType.ToString(),
                 ["visibility"] = comment.Visibility.ToString(),

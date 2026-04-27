@@ -205,6 +205,19 @@ catch (Exception ex)
     app.Logger.LogWarning(ex, "Platform SendGrid provider seeding failed — providers page may show empty");
 }
 
+// ── Support email template seeding ────────────────────────────────────────────
+// On every startup, ensure the four global support email templates exist so the
+// support service can deliver email notifications without manual DB setup.
+try
+{
+    using var seedScope = app.Services.CreateScope();
+    await SeedSupportEmailTemplatesAsync(seedScope.ServiceProvider, app.Logger);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Support email template seeding failed — support notifications may not render");
+}
+
 // ── Middleware pipeline ───────────────────────────────────────────────────────
 // Order matters: Authentication → Authorization → custom middleware → endpoints.
 // TenantMiddleware is placed AFTER UseAuthentication so it can read context.User
@@ -295,6 +308,39 @@ static async Task EnsureNotificationsSchemaColumnsAsync(NotificationsDbContext d
                 "CREATE INDEX `IX_Notifications_Status_NextRetryAt` ON `ntf_Notifications` (`Status`, `NextRetryAt`)";
             await idxCmd.ExecuteNonQueryAsync();
             logger.LogInformation("Created missing index IX_Notifications_Status_NextRetryAt");
+        }
+
+        // Ensure columns exist on ntf_Templates and ntf_TemplateVersions — may be absent on DBs
+        // whose InitialCreate migration was pre-seeded without actually running DDL.
+        // TEXT / LONGTEXT columns cannot have a DEFAULT on all MySQL versions, so use NULL for those.
+        var templateColumnsToAdd = new[]
+        {
+            ("ntf_Templates",        "Scope",           "varchar(20) CHARACTER SET utf8mb4 NOT NULL DEFAULT 'tenant'"),
+            ("ntf_Templates",        "ProductType",     "varchar(50) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_Templates",        "Description",     "text CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TemplateVersions", "SubjectTemplate", "text CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TemplateVersions", "TextTemplate",    "text CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TemplateVersions", "EditorType",      "varchar(20) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TemplateVersions", "IsPublished",     "tinyint(1) NOT NULL DEFAULT 0"),
+            ("ntf_TemplateVersions", "PublishedBy",     "varchar(255) CHARACTER SET utf8mb4 NULL"),
+            ("ntf_TemplateVersions", "PublishedAt",     "datetime(6) NULL"),
+        };
+
+        foreach (var (table, col, colDef) in templateColumnsToAdd)
+        {
+            using var checkCmdT = conn.CreateCommand();
+            checkCmdT.CommandText =
+                $"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS " +
+                $"WHERE TABLE_SCHEMA = '{dbName}' AND TABLE_NAME = '{table}' AND COLUMN_NAME = '{col}'";
+            var countT = Convert.ToInt32(await checkCmdT.ExecuteScalarAsync());
+
+            if (countT == 0)
+            {
+                using var alterCmdT = conn.CreateCommand();
+                alterCmdT.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{col}` {colDef}";
+                await alterCmdT.ExecuteNonQueryAsync();
+                logger.LogInformation("Added missing column {Table}.{Column}", table, col);
+            }
         }
 
         // Ensure all columns exist on ntf_TenantProviderConfigs — some may be missing on DBs
@@ -423,3 +469,163 @@ static async Task SeedPlatformSendGridProviderAsync(
     await repo.CreateAsync(config);
     logger.LogInformation("Platform SendGrid provider config seeded with id={Id}", config.Id);
 }
+
+// ─── Support email template seeder ────────────────────────────────────────────
+
+static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILogger logger)
+{
+    var templateRepo = services.GetRequiredService<Notifications.Application.Interfaces.ITemplateRepository>();
+    var versionRepo  = services.GetRequiredService<Notifications.Application.Interfaces.ITemplateVersionRepository>();
+
+    var templates = new[]
+    {
+        new SupportEmailTemplateSeed(
+            Key:         "support-ticket-created-email",
+            Name:        "Support: Ticket Created",
+            Subject:     "Support Ticket {{ticket_number}} Submitted: {{title}}",
+            HtmlBody:    """
+                         <p>Hi,</p>
+                         <p>Your support ticket has been received and is being reviewed by our team.</p>
+                         <table cellpadding="0" cellspacing="0" style="margin:0">
+                           <tr><td><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
+                           <tr><td><strong>Subject</strong></td><td>{{title}}</td></tr>
+                           <tr><td><strong>Priority</strong></td><td>{{priority}}</td></tr>
+                           <tr><td><strong>Status</strong></td><td>{{status}}</td></tr>
+                         </table>
+                         <p style="margin-top:24px">
+                           <a href="{{deeplink_url}}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View Ticket</a>
+                         </p>
+                         """,
+            TextBody:    "Your support ticket {{ticket_number}} has been submitted.\nSubject: {{title}}\nPriority: {{priority}}\n\nView it here: {{deeplink_url}}"),
+
+        new SupportEmailTemplateSeed(
+            Key:         "support-ticket-status-changed-email",
+            Name:        "Support: Ticket Status Changed",
+            Subject:     "Ticket {{ticket_number}} Status Updated: {{new_status}}",
+            HtmlBody:    """
+                         <p>Hi,</p>
+                         <p>The status of your support ticket has been updated.</p>
+                         <table cellpadding="0" cellspacing="0" style="margin:0">
+                           <tr><td><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
+                           <tr><td><strong>Subject</strong></td><td>{{title}}</td></tr>
+                           <tr><td><strong>Previous Status</strong></td><td>{{previous_status}}</td></tr>
+                           <tr><td><strong>New Status</strong></td><td>{{new_status}}</td></tr>
+                         </table>
+                         <p style="margin-top:24px">
+                           <a href="{{deeplink_url}}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View Ticket</a>
+                         </p>
+                         """,
+            TextBody:    "Ticket {{ticket_number}} status changed from {{previous_status}} to {{new_status}}.\n\nView it here: {{deeplink_url}}"),
+
+        new SupportEmailTemplateSeed(
+            Key:         "support-ticket-comment-added-email",
+            Name:        "Support: Comment Added",
+            Subject:     "New Comment on Ticket {{ticket_number}}",
+            HtmlBody:    """
+                         <p>Hi,</p>
+                         <p>A new comment has been added to your support ticket.</p>
+                         <table cellpadding="0" cellspacing="0" style="margin:0">
+                           <tr><td><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
+                           <tr><td><strong>Subject</strong></td><td>{{title}}</td></tr>
+                         </table>
+                         <p style="margin-top:24px">
+                           <a href="{{deeplink_url}}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View Ticket</a>
+                         </p>
+                         """,
+            TextBody:    "A new comment has been posted on ticket {{ticket_number}}: {{title}}.\n\nView it here: {{deeplink_url}}"),
+
+        new SupportEmailTemplateSeed(
+            Key:         "support-ticket-assigned-email",
+            Name:        "Support: Ticket Assigned",
+            Subject:     "Support Ticket {{ticket_number}} Has Been Assigned to You",
+            HtmlBody:    """
+                         <p>Hi,</p>
+                         <p>A support ticket has been assigned to you.</p>
+                         <table cellpadding="0" cellspacing="0" style="margin:0">
+                           <tr><td><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
+                           <tr><td><strong>Subject</strong></td><td>{{title}}</td></tr>
+                           <tr><td><strong>Priority</strong></td><td>{{priority}}</td></tr>
+                         </table>
+                         <p style="margin-top:24px">
+                           <a href="{{deeplink_url}}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View Ticket</a>
+                         </p>
+                         """,
+            TextBody:    "Support ticket {{ticket_number}} ({{title}}) has been assigned to you.\n\nView it here: {{deeplink_url}}"),
+
+        new SupportEmailTemplateSeed(
+            Key:         "support-ticket-updated-email",
+            Name:        "Support: Ticket Updated",
+            Subject:     "Support Ticket {{ticket_number}} Updated",
+            HtmlBody:    """
+                         <p>Hi,</p>
+                         <p>Your support ticket has been updated.</p>
+                         <table cellpadding="0" cellspacing="0" style="margin:0">
+                           <tr><td><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
+                           <tr><td><strong>Subject</strong></td><td>{{title}}</td></tr>
+                           <tr><td><strong>Status</strong></td><td>{{status}}</td></tr>
+                         </table>
+                         <p style="margin-top:24px">
+                           <a href="{{deeplink_url}}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View Ticket</a>
+                         </p>
+                         """,
+            TextBody:    "Ticket {{ticket_number}} ({{title}}) has been updated. Status: {{status}}.\n\nView it here: {{deeplink_url}}"),
+    };
+
+    foreach (var seed in templates)
+    {
+        var existing = await templateRepo.FindByKeyAsync(seed.Key, "email", null);
+        Guid templateId;
+
+        if (existing != null)
+        {
+            templateId = existing.Id;
+            // Template record exists — check whether a published version was also created.
+            var existingVersion = await versionRepo.FindPublishedByTemplateIdAsync(templateId);
+            if (existingVersion != null)
+            {
+                logger.LogDebug("Support email template already fully seeded, skipping: {Key}", seed.Key);
+                continue;
+            }
+            logger.LogDebug("Support email template exists but has no published version, creating version: {Key}", seed.Key);
+        }
+        else
+        {
+            var template = await templateRepo.CreateAsync(new Notifications.Domain.Template
+            {
+                Id          = Guid.NewGuid(),
+                TenantId    = null,
+                TemplateKey = seed.Key,
+                Channel     = "email",
+                Name        = seed.Name,
+                Description = $"Auto-seeded global template for support event {seed.Key}",
+                Status      = "active",
+                Scope       = "global",
+                ProductType = "support",
+            });
+            templateId = template.Id;
+        }
+
+        await versionRepo.CreateAsync(new Notifications.Domain.TemplateVersion
+        {
+            Id              = Guid.NewGuid(),
+            TemplateId      = templateId,
+            VersionNumber   = 1,
+            SubjectTemplate = seed.Subject,
+            BodyTemplate    = seed.HtmlBody,
+            TextTemplate    = seed.TextBody,
+            EditorType      = "html",
+            IsPublished     = true,
+            PublishedBy     = "system-seed",
+            PublishedAt     = DateTime.UtcNow,
+        });
+
+        logger.LogInformation("Seeded support email template: {Key}", seed.Key);
+    }
+}
+
+file sealed record SupportEmailTemplateSeed(
+    string Key,
+    string Name,
+    string Subject,
+    string HtmlBody,
+    string TextBody);

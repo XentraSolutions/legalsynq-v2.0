@@ -86,7 +86,7 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
                 continue;
             }
 
-            var request = BuildProducerRequest(notification, recipientObj);
+            var request = BuildProducerRequest(notification, recipientObj, opts);
             await SendOneAsync(url, notification.TenantId, request, notification.EventType, notification.TicketNumber, cts.Token);
         }
     }
@@ -123,28 +123,54 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
 
     private static NotificationsProducerRequest BuildProducerRequest(
         SupportNotification notification,
-        NotificationsRecipient recipient)
+        NotificationsRecipient recipient,
+        NotificationOptions opts)
     {
         var templateData = notification.Payload
             .Where(kv => kv.Value is not null)
             .ToDictionary(kv => kv.Key, kv => kv.Value!.ToString() ?? string.Empty);
 
+        if (!string.IsNullOrWhiteSpace(opts.PortalBaseUrl)
+            && templateData.TryGetValue("ticket_id", out var ticketId)
+            && !string.IsNullOrEmpty(ticketId))
+        {
+            templateData["deeplink_url"] = $"{opts.PortalBaseUrl.TrimEnd('/')}/support/{ticketId}";
+        }
+
+        var templateKey = MapTemplateKey(notification.EventType);
+
         return new NotificationsProducerRequest
         {
-            Channel      = "event",
-            ProductKey   = "support",
-            EventKey     = notification.EventType,
-            TemplateKey  = notification.EventType,
-            SourceSystem = "support-service",
-            Recipient    = recipient,
-            TemplateData = templateData.Count > 0 ? templateData : null,
-            Metadata     = new
+            Channel          = NotificationTaxonomy.Channels.Email,
+            ProductKey       = NotificationTaxonomy.Support.ProductKey,
+            EventKey         = notification.EventType,
+            TemplateKey      = templateKey,
+            SourceSystem     = NotificationTaxonomy.Support.SourceSystem,
+            Recipient        = recipient,
+            TemplateData     = templateData.Count > 0 ? templateData : null,
+            BrandedRendering = true,
+            Metadata         = new
             {
                 ticketId     = notification.TicketId,
                 ticketNumber = notification.TicketNumber,
             },
         };
     }
+
+    /// <summary>
+    /// Maps a support event type to its canonical email template key.
+    /// New event types must be registered in
+    /// <see cref="NotificationTaxonomy.Support.Templates"/> before use.
+    /// </summary>
+    private static string? MapTemplateKey(string eventType) => eventType switch
+    {
+        SupportNotificationEventTypes.TicketCreated       => NotificationTaxonomy.Support.Templates.TicketCreatedEmail,
+        SupportNotificationEventTypes.TicketAssigned      => NotificationTaxonomy.Support.Templates.TicketAssignedEmail,
+        SupportNotificationEventTypes.TicketUpdated       => NotificationTaxonomy.Support.Templates.TicketUpdatedEmail,
+        SupportNotificationEventTypes.TicketStatusChanged => NotificationTaxonomy.Support.Templates.TicketStatusChangedEmail,
+        SupportNotificationEventTypes.TicketCommentAdded  => NotificationTaxonomy.Support.Templates.TicketCommentAddedEmail,
+        _                                                  => null,
+    };
 
     private static NotificationsRecipient? MapRecipient(NotificationRecipient r, string tenantId)
         => r.Kind switch

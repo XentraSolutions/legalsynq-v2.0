@@ -195,6 +195,33 @@ public static class NotificationTaxonomy
         }
     }
 
+    // ── Support domain ───────────────────────────────────────────────────────
+
+    /// <summary>All canonical event keys produced by the Support service.</summary>
+    public static class Support
+    {
+        public const string ProductKey   = "support";
+        public const string SourceSystem = "support-service";
+
+        public static class Events
+        {
+            public const string TicketCreated       = "support.ticket.created";
+            public const string TicketAssigned      = "support.ticket.assigned";
+            public const string TicketUpdated       = "support.ticket.updated";
+            public const string TicketStatusChanged = "support.ticket.status_changed";
+            public const string TicketCommentAdded  = "support.ticket.comment_added";
+        }
+
+        public static class Templates
+        {
+            public const string TicketCreatedEmail       = "support-ticket-created-email";
+            public const string TicketAssignedEmail      = "support-ticket-assigned-email";
+            public const string TicketUpdatedEmail       = "support-ticket-updated-email";
+            public const string TicketStatusChangedEmail = "support-ticket-status-changed-email";
+            public const string TicketCommentAddedEmail  = "support-ticket-comment-added-email";
+        }
+    }
+
     // ── Channel constants ─────────────────────────────────────────────────────
 
     /// <summary>Valid delivery channel values for <see cref="NotificationsProducerRequest.Channel"/>.</summary>
