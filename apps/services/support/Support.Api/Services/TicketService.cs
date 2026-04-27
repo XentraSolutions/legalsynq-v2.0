@@ -432,9 +432,23 @@ public class TicketService : ITicketService
 
     public async Task<TicketResponse> UpdateAsync(Guid id, UpdateTicketRequest req, CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
-        var t = await _db.Tickets.FirstOrDefaultAsync(x => x.Id == id && x.TenantId == tenantId, ct)
-            ?? throw new TicketNotFoundException();
+        SupportTicket? t;
+        // PlatformAdmin check must come FIRST — the platform admin JWT carries a
+        // synthetic tenant_id claim (system placeholder) that makes _tenant.IsResolved=true.
+        // Without this ordering, the tenant-scoped query uses the fake tenant ID and the
+        // ticket is never found, resulting in a spurious 404.
+        if (_actor.Actor.Roles.Contains(SupportRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase))
+        {
+            t = await _db.Tickets.FirstOrDefaultAsync(x => x.Id == id, ct)
+                ?? throw new TicketNotFoundException();
+        }
+        else
+        {
+            var scopedTenantId = RequireTenant();
+            t = await _db.Tickets.FirstOrDefaultAsync(x => x.Id == id && x.TenantId == scopedTenantId, ct)
+                ?? throw new TicketNotFoundException();
+        }
+        var tenantId = t.TenantId;
 
         if (t.Status is TicketStatus.Closed or TicketStatus.Cancelled)
         {
