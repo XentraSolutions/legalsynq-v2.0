@@ -207,10 +207,19 @@ if command -v dotnet &>/dev/null; then
           # BaseUrl → internal Notifications service (always port 5008).
           # PortalBaseUrl → PORTAL_BASE_URL secret/env if set; otherwise derived from
           #   the first value in REPLIT_DOMAINS (the Replit-assigned deployment domain).
-          # PortalBaseDomain → plain domain name (no scheme) derived from REPLIT_DOMAINS;
-          #   used to build tenant-subdomain-aware portal links in invite/reset emails.
-          _portal_domain="$(echo "${REPLIT_DOMAINS:-localhost:3050}" | cut -d',' -f1)"
-          _portal_url="${PORTAL_BASE_URL:-https://${_portal_domain}}"
+          # PortalBaseDomain → when PORTAL_BASE_URL is set its hostname is used so that
+          #   tenant-subdomain links (invite, reset, deeplinks) use the custom domain.
+          #   Falls back to the Replit-assigned domain when PORTAL_BASE_URL is not set.
+          if [ -n "${PORTAL_BASE_URL:-}" ]; then
+            case "${PORTAL_BASE_URL}" in
+              http://*|https://*) _portal_url="${PORTAL_BASE_URL}" ;;
+              *) _portal_url="https://${PORTAL_BASE_URL}" ;;
+            esac
+            _portal_domain="$(echo "${_portal_url}" | sed 's|^https\?://||' | cut -d'/' -f1)"
+          else
+            _portal_domain="$(echo "${REPLIT_DOMAINS:-localhost:3050}" | cut -d',' -f1)"
+            _portal_url="https://${_portal_domain}"
+          fi
           launch_svc "$_svc_label" "$csproj" env \
             "NotificationsService__BaseUrl=http://localhost:5008" \
             "NotificationsService__PortalBaseUrl=${_portal_url}" \
