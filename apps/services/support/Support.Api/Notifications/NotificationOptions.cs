@@ -39,4 +39,13 @@ public sealed class NotificationOptions
     /// Takes precedence over <see cref="PortalBaseUrl"/> for deeplink construction.
     /// </summary>
     public string? PortalBaseDomain { get; set; }
+
+    /// <summary>
+    /// Base URL of the Control Center, used to build admin deeplinks in notification emails.
+    /// Example: https://cc.legalsynq.com
+    /// The live value from <c>platform.controlCenterBaseUrl</c> (persisted in the Tenant DB via
+    /// the Control Center Settings page) always takes precedence over this fallback.
+    /// When neither is set, admin recipients receive the same tenant-portal deeplink.
+    /// </summary>
+    public string? ControlCenterBaseUrl { get; set; }
 }

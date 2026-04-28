@@ -90,7 +90,10 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
             ?? opts.PortalBaseDomain;
 
         // Resolve the Control Center base URL for admin deeplinks.
-        var ccBaseUrl = await _platformSettings.GetAsync("platform.controlCenterBaseUrl", cts.Token);
+        // Precedence: live DB value (set via CC Settings page) → NotificationOptions fallback (env var).
+        var ccBaseUrl =
+            await _platformSettings.GetAsync("platform.controlCenterBaseUrl", cts.Token)
+            ?? opts.ControlCenterBaseUrl;
 
         // Precompute both deeplink variants so we don't re-derive them per recipient.
         var ticketId       = notification.Payload.TryGetValue("ticket_id", out var tid) ? tid?.ToString() : null;
