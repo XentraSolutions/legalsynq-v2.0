@@ -4,6 +4,7 @@ import { NotificationStatusBadge }          from '@/components/notifications/sta
 import { ChannelBadge }                      from '@/components/notifications/channel-badge';
 import { notifClient, NOTIF_CACHE_TAGS, formatFailureCategory } from '@/lib/notifications-api';
 import type { AdminNotifListResponse }     from '@/lib/notifications-api';
+import { getCachedTenantById }             from '@/lib/tenant-fetch';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,6 +68,21 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
   const items      = data?.items      ?? [];
   const totalCount = data?.totalCount ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  // Resolve tenant codes for every unique tenantId on this page in parallel.
+  // getCachedTenantById is memoised per render so duplicates cost nothing.
+  const uniqueTenantIds = [...new Set(items.map(n => n.tenantId).filter(Boolean))];
+  const tenantCodeMap = new Map<string, string>();
+  await Promise.all(
+    uniqueTenantIds.map(async (id) => {
+      try {
+        const t = await getCachedTenantById(id);
+        tenantCodeMap.set(id, t?.code ?? id.slice(0, 8));
+      } catch {
+        tenantCodeMap.set(id, id.slice(0, 8));
+      }
+    }),
+  );
 
   const statusOptions  = ['', 'accepted', 'processing', 'sent', 'failed', 'blocked'];
   const channelOptions = ['', 'email', 'sms', 'push', 'in-app'];
@@ -184,7 +200,7 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
                         </td>
                         <td className="px-4 py-2.5 font-mono text-[11px] whitespace-nowrap">
                           <a href={`/tenants/${n.tenantId}`} className="text-indigo-600 hover:underline" title={n.tenantId}>
-                            {n.tenantId.slice(0, 8)}…
+                            {tenantCodeMap.get(n.tenantId) ?? n.tenantId.slice(0, 8)}
                           </a>
                         </td>
                         <td className="px-4 py-2.5"><ChannelBadge channel={n.channel} /></td>
