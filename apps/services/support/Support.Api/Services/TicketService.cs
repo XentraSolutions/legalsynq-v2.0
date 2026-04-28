@@ -109,11 +109,13 @@ public class TicketService : ITicketService
     private readonly IActorAccessor _actor;
     private readonly IExternalCustomerService _externalCustomers;
     private readonly IUserEmailResolver _emailResolver;
+    private readonly IPlatformSettingStore _platformSettings;
 
     public TicketService(SupportDbContext db, ITenantContext tenant, ITicketNumberGenerator numbers,
         IEventLogger events, ILogger<TicketService> log, IWebHostEnvironment env,
         INotificationPublisher notifications, IAuditPublisher audit, IActorAccessor actor,
-        IExternalCustomerService externalCustomers, IUserEmailResolver emailResolver)
+        IExternalCustomerService externalCustomers, IUserEmailResolver emailResolver,
+        IPlatformSettingStore platformSettings)
     {
         _db = db;
         _tenant = tenant;
@@ -126,6 +128,7 @@ public class TicketService : ITicketService
         _actor = actor;
         _externalCustomers = externalCustomers;
         _emailResolver = emailResolver;
+        _platformSettings = platformSettings;
     }
 
     private async Task TryAuditAsync(SupportAuditEvent evt, CancellationToken ct)
@@ -244,10 +247,18 @@ public class TicketService : ITicketService
     }
 
     /// <summary>
-    /// Appends an <c>Email</c>-kind recipient for every active platform admin
-    /// (control-centre user) not already present in <paramref name="list"/>.
-    /// Deduplication is performed against emails already in the list so that
-    /// an admin who is also the assigned user does not receive two copies.
+    /// Appends admin recipients to <paramref name="list"/>.
+    ///
+    /// Two sources are tried, and both are deduped against each other and the
+    /// existing recipient list so nobody receives two copies:
+    ///
+    /// 1. <c>platform.adminNotifyEmail</c> — a single email address configured in
+    ///    the Control Center and persisted to the Tenant DB.  This is the primary,
+    ///    reliable path and takes effect within five minutes of a change.
+    ///
+    /// 2. Active <c>PlatformInternal</c> users from the Identity DB — looked up via
+    ///    <see cref="IUserEmailResolver.ResolvePlatformAdminEmailsAsync"/> when
+    ///    <c>ConnectionStrings:IdentityDb</c> is configured.
     /// </summary>
     private async Task AddPlatformAdminRecipientsAsync(List<NotificationRecipient> list, CancellationToken ct)
     {
@@ -255,6 +266,13 @@ public class TicketService : ITicketService
             list.Where(r => !string.IsNullOrWhiteSpace(r.Email)).Select(r => r.Email!),
             StringComparer.OrdinalIgnoreCase);
 
+        // Source 1: configured admin notify email (Tenant DB — always available).
+        var adminNotifyEmail = await _platformSettings.GetAsync("platform.adminNotifyEmail", ct);
+        if (!string.IsNullOrWhiteSpace(adminNotifyEmail) && existing.Add(adminNotifyEmail))
+            list.Add(new NotificationRecipient(NotificationRecipientKind.Email, null, adminNotifyEmail));
+
+        // Source 2: PlatformInternal users from the Identity DB (bonus — may be empty
+        // when ConnectionStrings:IdentityDb is not configured for this service).
         var adminEmails = await _emailResolver.ResolvePlatformAdminEmailsAsync(ct);
         foreach (var email in adminEmails)
         {

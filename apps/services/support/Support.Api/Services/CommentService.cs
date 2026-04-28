@@ -47,10 +47,12 @@ public class CommentService : ICommentService
     private readonly IAuditPublisher _audit;
     private readonly IActorAccessor _actor;
     private readonly IUserEmailResolver _emailResolver;
+    private readonly IPlatformSettingStore _platformSettings;
 
     public CommentService(SupportDbContext db, ITenantContext tenant, IEventLogger events,
         ILogger<CommentService> log, INotificationPublisher notifications,
-        IAuditPublisher audit, IActorAccessor actor, IUserEmailResolver emailResolver)
+        IAuditPublisher audit, IActorAccessor actor, IUserEmailResolver emailResolver,
+        IPlatformSettingStore platformSettings)
     {
         _db = db;
         _tenant = tenant;
@@ -60,6 +62,7 @@ public class CommentService : ICommentService
         _audit = audit;
         _actor = actor;
         _emailResolver = emailResolver;
+        _platformSettings = platformSettings;
     }
 
     private string RequireTenant()
@@ -282,6 +285,12 @@ public class CommentService : ICommentService
             list.Where(r => !string.IsNullOrWhiteSpace(r.Email)).Select(r => r.Email!),
             StringComparer.OrdinalIgnoreCase);
 
+        // Source 1: configured admin notify email (Tenant DB — always available).
+        var adminNotifyEmail = await _platformSettings.GetAsync("platform.adminNotifyEmail", ct);
+        if (!string.IsNullOrWhiteSpace(adminNotifyEmail) && existing.Add(adminNotifyEmail))
+            list.Add(new NotificationRecipient(NotificationRecipientKind.Email, null, adminNotifyEmail));
+
+        // Source 2: PlatformInternal users from the Identity DB (bonus).
         var adminEmails = await _emailResolver.ResolvePlatformAdminEmailsAsync(ct);
         foreach (var email in adminEmails)
         {
