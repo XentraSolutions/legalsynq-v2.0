@@ -33,9 +33,10 @@ export default async function SupportCaseDetailPage(props: SupportCaseDetailPage
   const session   = await requirePlatformAdmin();
   const tenantCtx = await getTenantContext();
 
-  const [kase, initialComments] = await Promise.all([
+  const [kase, initialComments, initialAttachments] = await Promise.all([
     controlCenterServerApi.support.getById(params.id),
     controlCenterServerApi.support.getComments(params.id),
+    controlCenterServerApi.support.listAttachments(params.id),
   ]);
   if (!kase) notFound();
 
@@ -102,6 +103,7 @@ export default async function SupportCaseDetailPage(props: SupportCaseDetailPage
           <SupportDetailPanel
             initialCase={kase}
             initialComments={initialComments}
+            initialAttachments={initialAttachments}
             adminUserId={session.userId}
             adminEmail={session.email}
           />

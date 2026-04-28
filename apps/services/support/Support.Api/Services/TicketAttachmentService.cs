@@ -48,6 +48,9 @@ public interface ITicketAttachmentService
         CancellationToken ct = default);
 
     Task<List<TicketAttachmentResponse>> ListAsync(Guid ticketId, CancellationToken ct = default);
+
+    /// <summary>Returns a single attachment record, or null if not found / not owned by the current tenant.</summary>
+    Task<SupportTicketAttachment?> GetByIdAsync(Guid ticketId, Guid attachmentId, CancellationToken ct = default);
 }
 
 public class TicketAttachmentService : ITicketAttachmentService
@@ -316,5 +319,14 @@ public class TicketAttachmentService : ITicketAttachmentService
             .OrderBy(a => a.CreatedAt)
             .ToListAsync(ct);
         return items.Select(TicketAttachmentResponse.From).ToList();
+    }
+
+    public async Task<SupportTicketAttachment?> GetByIdAsync(Guid ticketId, Guid attachmentId, CancellationToken ct = default)
+    {
+        var tenantId = RequireTenant();
+        return await _db.TicketAttachments.AsNoTracking()
+            .FirstOrDefaultAsync(
+                a => a.Id == attachmentId && a.TicketId == ticketId && a.TenantId == tenantId,
+                ct);
     }
 }

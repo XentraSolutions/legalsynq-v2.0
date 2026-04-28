@@ -1,5 +1,7 @@
 using FluentValidation;
+using Microsoft.Extensions.Options;
 using Support.Api.Auth;
+using Support.Api.Configuration;
 using Support.Api.Dtos;
 using Support.Api.Files;
 using Support.Api.Services;
@@ -144,5 +146,75 @@ public static class AttachmentEndpoints
         .RequireAuthorization(SupportPolicies.SupportRead)
         .Produces<List<TicketAttachmentResponse>>()
         .Produces(StatusCodes.Status404NotFound);
+
+        grp.MapGet("/attachments/{attachmentId:guid}/download", async (
+            Guid id,
+            Guid attachmentId,
+            ITicketAttachmentService svc,
+            IOptionsMonitor<FileStorageOptions> fileOpts,
+            IHttpClientFactory httpClientFactory,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                var attachment = await svc.GetByIdAsync(id, attachmentId, ct);
+                if (attachment is null) return Results.NotFound();
+
+                var opts = fileOpts.CurrentValue;
+
+                if (opts.Mode == FileStorageMode.Local)
+                {
+                    var rootFull = Path.GetFullPath(opts.LocalRootPath);
+                    var dirs     = Directory.GetDirectories(rootFull, attachment.DocumentId, SearchOption.AllDirectories);
+                    var docDir   = dirs.FirstOrDefault();
+                    if (docDir is null) return Results.NotFound();
+                    var candidates = Directory.GetFiles(docDir);
+                    if (candidates.Length == 0) return Results.NotFound();
+                    var filePath = candidates[0];
+                    var stream   = System.IO.File.OpenRead(filePath);
+                    return Results.File(stream,
+                        attachment.ContentType ?? "application/octet-stream",
+                        attachment.FileName);
+                }
+
+                if (opts.Mode == FileStorageMode.DocumentsService)
+                {
+                    var baseUrl      = opts.DocumentsService.BaseUrl;
+                    if (string.IsNullOrWhiteSpace(baseUrl))
+                        return Results.Problem(statusCode: 503, title: "File storage not configured");
+
+                    var downloadUrl  = new Uri(new Uri(baseUrl), $"/documents/api/documents/{attachment.DocumentId}/download").ToString();
+                    var client       = httpClientFactory.CreateClient(DocumentsServiceFileStorageProvider.HttpClientName);
+                    HttpResponseMessage upstream;
+                    try
+                    {
+                        upstream = await client.GetAsync(downloadUrl, ct);
+                    }
+                    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+                    {
+                        return Results.Problem(statusCode: 502, title: "Documents Service unavailable");
+                    }
+
+                    if (!upstream.IsSuccessStatusCode)
+                        return Results.Problem(statusCode: 502, title: "Document download failed",
+                            detail: $"Documents Service returned {(int)upstream.StatusCode}.");
+
+                    var contentType = upstream.Content.Headers.ContentType?.ToString()
+                                      ?? attachment.ContentType
+                                      ?? "application/octet-stream";
+                    var stream = await upstream.Content.ReadAsStreamAsync(ct);
+                    return Results.File(stream, contentType, attachment.FileName);
+                }
+
+                return Results.Problem(statusCode: 503, title: "File storage not configured",
+                    detail: "Configure Support:FileStorage:Mode to enable downloads.");
+            }
+            catch (TenantMissingException) { return Results.Problem(statusCode: 400, title: "Tenant context required"); }
+        })
+        .RequireAuthorization(SupportPolicies.SupportRead)
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status502BadGateway)
+        .Produces(StatusCodes.Status503ServiceUnavailable);
     }
 }

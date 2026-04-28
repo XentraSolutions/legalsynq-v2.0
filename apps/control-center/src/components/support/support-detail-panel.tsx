@@ -8,14 +8,20 @@ import {
   assignCaseToMe,
   unassignCase,
 } from '@/app/support/actions';
-import type { SupportCaseDetail, SupportCaseStatus, SupportNote } from '@/types/control-center';
+import type { SupportCaseDetail, SupportCaseStatus, SupportNote, TicketAttachmentItem } from '@/types/control-center';
 import { ProductRefList } from '@/components/support/product-ref-list';
+import {
+  FileAttachmentPicker,
+  uploadAttachmentsViaProxy,
+  type SelectedFile,
+} from '@/components/support/file-attachment-picker';
 
 interface SupportDetailPanelProps {
-  initialCase:     SupportCaseDetail;
-  initialComments: SupportNote[];
-  adminUserId:     string;
-  adminEmail:      string;
+  initialCase:        SupportCaseDetail;
+  initialComments:    SupportNote[];
+  initialAttachments: TicketAttachmentItem[];
+  adminUserId:        string;
+  adminEmail:         string;
 }
 
 const ALL_STATUSES: SupportCaseStatus[] = ['Open', 'Investigating', 'Resolved', 'Closed'];
@@ -30,11 +36,13 @@ const STATUS_STYLES: Record<SupportCaseStatus, string> = {
 export function SupportDetailPanel({
   initialCase,
   initialComments,
+  initialAttachments,
   adminUserId,
   adminEmail,
 }: SupportDetailPanelProps) {
   const [kase, setKase]              = useState<SupportCaseDetail>(initialCase);
   const [comments, setComments]      = useState<SupportNote[]>(initialComments);
+  const [attachments, setAttachments] = useState<TicketAttachmentItem[]>(initialAttachments);
   const [isPending, startTransition] = useTransition();
 
   const isAssignedToMe = kase.assignedUserId === adminUserId;
@@ -49,17 +57,21 @@ export function SupportDetailPanel({
 
   // ── Internal note ─────────────────────────────────────────────────────────
   const [noteText, setNoteText]       = useState('');
+  const [noteFiles, setNoteFiles]     = useState<SelectedFile[]>([]);
   const [noteError, setNoteError]     = useState<string | null>(null);
   const [noteSuccess, setNoteSuccess] = useState(false);
   const [savingNote, setSavingNote]   = useState(false);
+  const [noteUploadMsg, setNoteUploadMsg] = useState<string | null>(null);
   const noteTextareaRef               = useRef<HTMLTextAreaElement>(null);
 
   // ── Public reply ──────────────────────────────────────────────────────────
-  const [replyText, setReplyText]       = useState('');
-  const [replyError, setReplyError]     = useState<string | null>(null);
-  const [replySuccess, setReplySuccess] = useState(false);
-  const [savingReply, setSavingReply]   = useState(false);
-  const replyTextareaRef                = useRef<HTMLTextAreaElement>(null);
+  const [replyText, setReplyText]         = useState('');
+  const [replyFiles, setReplyFiles]       = useState<SelectedFile[]>([]);
+  const [replyError, setReplyError]       = useState<string | null>(null);
+  const [replySuccess, setReplySuccess]   = useState(false);
+  const [savingReply, setSavingReply]     = useState(false);
+  const [replyUploadMsg, setReplyUploadMsg] = useState<string | null>(null);
+  const replyTextareaRef                  = useRef<HTMLTextAreaElement>(null);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -134,16 +146,40 @@ export function SupportDetailPanel({
     setNoteSuccess(false);
     setSavingNote(true);
     setComments(cs => [...cs, optimisticNote]);
+    const pendingFiles = noteFiles;
     setNoteText('');
+    setNoteFiles([]);
     startTransition(async () => {
       const result = await addCaseNote(kase.id, optimisticNote.message);
       if (result.success && result.note) {
         setComments(cs => cs.map(c => c.id === optimisticNote.id ? result.note! : c));
+
+        if (pendingFiles.length > 0) {
+          setNoteUploadMsg(`Uploading ${pendingFiles.length} file${pendingFiles.length !== 1 ? 's' : ''}…`);
+          const { failed } = await uploadAttachmentsViaProxy(kase.id, pendingFiles);
+          setNoteUploadMsg(null);
+          if (failed.length > 0) {
+            setNoteError(`Note added, but ${failed.length} file(s) failed to upload: ${failed.join(', ')}`);
+          } else {
+            const optimisticAttachments: TicketAttachmentItem[] = pendingFiles.map(sf => ({
+              id:          `opt-att-${sf.id}`,
+              ticketId:    kase.id,
+              documentId:  '',
+              fileName:    sf.file.name,
+              contentType: sf.file.type || undefined,
+              fileSizeBytes: sf.file.size,
+              createdAt:   new Date().toISOString(),
+            }));
+            setAttachments(prev => [...prev, ...optimisticAttachments]);
+          }
+        }
+
         setNoteSuccess(true);
         setTimeout(() => setNoteSuccess(false), 3000);
       } else {
         setComments(cs => cs.filter(c => c.id !== optimisticNote.id));
         setNoteText(optimisticNote.message);
+        setNoteFiles(pendingFiles);
         setNoteError(result.error ?? 'Failed to add note.');
       }
       setSavingNote(false);
@@ -167,16 +203,40 @@ export function SupportDetailPanel({
     setReplySuccess(false);
     setSavingReply(true);
     setComments(cs => [...cs, optimisticReply]);
+    const pendingFiles = replyFiles;
     setReplyText('');
+    setReplyFiles([]);
     startTransition(async () => {
       const result = await addPublicReply(kase.id, optimisticReply.message);
       if (result.success && result.note) {
         setComments(cs => cs.map(c => c.id === optimisticReply.id ? result.note! : c));
+
+        if (pendingFiles.length > 0) {
+          setReplyUploadMsg(`Uploading ${pendingFiles.length} file${pendingFiles.length !== 1 ? 's' : ''}…`);
+          const { failed } = await uploadAttachmentsViaProxy(kase.id, pendingFiles);
+          setReplyUploadMsg(null);
+          if (failed.length > 0) {
+            setReplyError(`Reply sent, but ${failed.length} file(s) failed to upload: ${failed.join(', ')}`);
+          } else {
+            const optimisticAttachments: TicketAttachmentItem[] = pendingFiles.map(sf => ({
+              id:          `opt-att-${sf.id}`,
+              ticketId:    kase.id,
+              documentId:  '',
+              fileName:    sf.file.name,
+              contentType: sf.file.type || undefined,
+              fileSizeBytes: sf.file.size,
+              createdAt:   new Date().toISOString(),
+            }));
+            setAttachments(prev => [...prev, ...optimisticAttachments]);
+          }
+        }
+
         setReplySuccess(true);
         setTimeout(() => setReplySuccess(false), 3000);
       } else {
         setComments(cs => cs.filter(c => c.id !== optimisticReply.id));
         setReplyText(optimisticReply.message);
+        setReplyFiles(pendingFiles);
         setReplyError(result.error ?? 'Failed to send reply.');
       }
       setSavingReply(false);
@@ -263,6 +323,27 @@ export function SupportDetailPanel({
           </span>
         </div>
         <ProductRefList refs={kase.productRefs} />
+      </div>
+
+      {/* ── Attachments ── */}
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Attachments
+          </h2>
+          <span className="text-xs text-gray-400 tabular-nums">
+            {attachments.length} file{attachments.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        {attachments.length === 0 ? (
+          <p className="px-5 py-4 text-sm text-gray-400">No attachments yet.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {attachments.map(att => (
+              <AttachmentRow key={att.id} attachment={att} ticketId={kase.id} />
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* ── Status controls ── */}
@@ -354,6 +435,20 @@ export function SupportDetailPanel({
               replyError ? 'border-red-300' : 'border-gray-300',
             ].join(' ')}
           />
+
+          <FileAttachmentPicker
+            files={replyFiles}
+            onChange={setReplyFiles}
+            disabled={savingReply}
+          />
+
+          {replyUploadMsg && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-blue-700">
+              <span className="h-3 w-3 rounded-full border-2 border-blue-400/30 border-t-blue-600 animate-spin" />
+              {replyUploadMsg}
+            </p>
+          )}
+
           <div className="flex items-center justify-between mt-2">
             <div>
               {replyError   && <p className="text-xs text-red-600 font-medium">{replyError}</p>}
@@ -374,7 +469,7 @@ export function SupportDetailPanel({
               {savingReply ? (
                 <>
                   <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  Sending…
+                  {replyUploadMsg ? 'Uploading…' : 'Sending…'}
                 </>
               ) : 'Send Reply'}
             </button>
@@ -427,6 +522,20 @@ export function SupportDetailPanel({
               noteError ? 'border-red-300' : 'border-gray-300',
             ].join(' ')}
           />
+
+          <FileAttachmentPicker
+            files={noteFiles}
+            onChange={setNoteFiles}
+            disabled={savingNote}
+          />
+
+          {noteUploadMsg && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-blue-700">
+              <span className="h-3 w-3 rounded-full border-2 border-blue-400/30 border-t-blue-600 animate-spin" />
+              {noteUploadMsg}
+            </p>
+          )}
+
           <div className="flex items-center justify-between mt-2">
             <div>
               {noteError   && <p className="text-xs text-red-600 font-medium">{noteError}</p>}
@@ -447,7 +556,7 @@ export function SupportDetailPanel({
               {savingNote ? (
                 <span className="flex items-center gap-1.5">
                   <span className="h-3.5 w-3.5 rounded-full border-2 border-gray-400 border-t-transparent animate-spin" />
-                  Adding…
+                  {noteUploadMsg ? 'Uploading…' : 'Adding…'}
                 </span>
               ) : 'Add Note'}
             </button>
@@ -467,6 +576,45 @@ function MetaRow({ label, value }: { label: string; value: string }) {
       <dt className="text-xs text-gray-400 font-medium w-20 shrink-0">{label}</dt>
       <dd className="text-sm text-gray-700 break-all">{value}</dd>
     </div>
+  );
+}
+
+function AttachmentRow({
+  attachment,
+  ticketId,
+}: {
+  attachment: TicketAttachmentItem;
+  ticketId:   string;
+}) {
+  const isOptimistic = attachment.id.startsWith('opt-att-');
+  const sizeLabel = attachment.fileSizeBytes != null
+    ? attachment.fileSizeBytes < 1024 * 1024
+      ? `${(attachment.fileSizeBytes / 1024).toFixed(0)} KB`
+      : `${(attachment.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB`
+    : null;
+
+  return (
+    <li className={`flex items-center gap-3 px-5 py-3 ${isOptimistic ? 'opacity-60' : ''}`}>
+      <i className="ri-file-line text-gray-400 shrink-0" aria-hidden="true" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-gray-800 truncate">{attachment.fileName}</p>
+        {sizeLabel && <p className="text-xs text-gray-400">{sizeLabel}</p>}
+      </div>
+      {!isOptimistic && (
+        <a
+          href={`/api/support/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(attachment.id)}/download`}
+          target="_blank"
+          rel="noreferrer"
+          className="shrink-0 text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+        >
+          <i className="ri-download-line text-xs" aria-hidden="true" />
+          Download
+        </a>
+      )}
+      {isOptimistic && (
+        <span className="text-xs text-gray-400 italic shrink-0">processing…</span>
+      )}
+    </li>
   );
 }
 

@@ -1118,6 +1118,25 @@ export function mapSupportProductRef(raw: unknown): SupportProductRef {
 }
 
 /**
+ * mapTicketAttachment — normalises a raw ticket attachment entry.
+ */
+export function mapTicketAttachment(raw: unknown): import('@/types/control-center').TicketAttachmentItem {
+  const r = asObj(raw);
+  return {
+    id:                str(r, 'id',                   'id',                '',  'mapTicketAttachment.id'),
+    ticketId:          str(r, 'ticket_id',             'ticketId',          ''),
+    documentId:        str(r, 'document_id',           'documentId',        ''),
+    fileName:          str(r, 'file_name',             'fileName',          ''),
+    contentType:       optStr(r, 'content_type',       'contentType'),
+    fileSizeBytes:     typeof r['file_size_bytes'] === 'number' ? r['file_size_bytes'] as number
+                       : typeof r['fileSizeBytes'] === 'number' ? r['fileSizeBytes'] as number
+                       : undefined,
+    uploadedByUserId:  optStr(r, 'uploaded_by_user_id', 'uploadedByUserId'),
+    createdAt:         str(r, 'created_at',            'createdAt',         new Date().toISOString()),
+  };
+}
+
+/**
  * mapSupportCaseDetail — normalises a full support case detail response.
  * Extends mapSupportCase with the notes and productRefs arrays.
  *

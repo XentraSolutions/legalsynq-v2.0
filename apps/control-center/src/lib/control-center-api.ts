@@ -79,6 +79,7 @@ import {
   mapSupportCaseDetail,
   mapSupportNote,
   mapSupportProductRef,
+  mapTicketAttachment,
   mapPagedResponse,
   mapOrganizationTypeItem,
   mapRelationshipTypeItem,
@@ -127,6 +128,7 @@ import type {
   SupportCaseDetail,
   SupportCaseStatus,
   SupportNote,
+  TicketAttachmentItem,
   PagedResponse,
   OrganizationTypeItem,
   RelationshipTypeItem,
@@ -2037,6 +2039,25 @@ export const controlCenterServerApi = {
       const result = mapSupportCase(raw);
       safeRevalidateTag(CACHE_TAGS.support);
       return result;
+    },
+
+    /**
+     * GET /support/api/tickets/{ticketId}/attachments
+     *
+     * Returns all attachments for the given ticket, ordered by upload time.
+     * Cache: 0 s (real-time, attachments change immediately after upload).
+     */
+    listAttachments: async (ticketId: string): Promise<TicketAttachmentItem[]> => {
+      try {
+        const raw = await apiClient.get<unknown>(
+          `/support/api/tickets/${encodeURIComponent(ticketId)}/attachments`,
+          0,
+          [CACHE_TAGS.support],
+        );
+        return Array.isArray(raw) ? raw.map(mapTicketAttachment) : [];
+      } catch {
+        return [];
+      }
     },
   },
 

@@ -16,6 +16,10 @@ const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
  * The platform_session token lives in an HttpOnly cookie — JS cannot read it.
  * This handler bridges the gap: reads the cookie, adds Authorization: Bearer.
  *
+ * Multipart uploads (file attachments) are passed through transparently:
+ * the Content-Type header (including the multipart boundary) is forwarded
+ * as-is so the upstream ASP.NET Core endpoint can parse the form.
+ *
  * Server Components: use lib/support-server-api.ts directly (no extra hop).
  * Client Components: use this proxy.
  */
@@ -33,10 +37,18 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
   const reqHeaders: Record<string, string> = {};
   if (token) reqHeaders['Authorization'] = `Bearer ${token}`;
 
-  let body: string | undefined;
+  let body: BodyInit | undefined;
   if (!['GET', 'HEAD'].includes(request.method)) {
-    reqHeaders['Content-Type'] = 'application/json';
-    try { body = await request.text(); } catch { /* empty body */ }
+    const ct = request.headers.get('Content-Type') ?? '';
+    if (ct.includes('multipart/form-data')) {
+      // Pass Content-Type through verbatim so the multipart boundary is preserved.
+      // Using blob() reads the raw bytes without any text re-encoding.
+      reqHeaders['Content-Type'] = ct;
+      try { body = await request.blob(); } catch { /* empty body */ }
+    } else {
+      reqHeaders['Content-Type'] = 'application/json';
+      try { body = await request.text(); } catch { /* empty body */ }
+    }
   }
 
   let gatewayRes: Response;
@@ -50,15 +62,27 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
     return NextResponse.json({ message: 'Gateway unavailable' }, { status: 503 });
   }
 
-  const responseBody = await gatewayRes.text();
+  const contentType   = gatewayRes.headers.get('Content-Type') ?? 'application/json';
+  const isTextOrJson  = contentType.startsWith('application/json') ||
+                        contentType.startsWith('text/') ||
+                        contentType.startsWith('application/problem');
 
-  const resHeaders: Record<string, string> = {
-    'Content-Type': gatewayRes.headers.get('Content-Type') ?? 'application/json',
-  };
+  const resHeaders: Record<string, string> = { 'Content-Type': contentType };
   const correlationId = gatewayRes.headers.get('X-Correlation-Id');
   if (correlationId) resHeaders['X-Correlation-Id'] = correlationId;
+  const contentDisposition = gatewayRes.headers.get('Content-Disposition');
+  if (contentDisposition) resHeaders['Content-Disposition'] = contentDisposition;
 
-  return new NextResponse(responseBody, {
+  if (isTextOrJson) {
+    const responseBody = await gatewayRes.text();
+    return new NextResponse(responseBody, {
+      status:  gatewayRes.status,
+      headers: resHeaders,
+    });
+  }
+
+  // Binary/stream response (e.g. file download) — pipe without buffering as text.
+  return new NextResponse(gatewayRes.body, {
     status:  gatewayRes.status,
     headers: resHeaders,
   });

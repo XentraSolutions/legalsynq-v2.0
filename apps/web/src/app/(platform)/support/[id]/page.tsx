@@ -8,6 +8,7 @@ import {
   type TicketPriority,
   type ProductRefResponse,
   type CustomerCommentResponse,
+  type TicketAttachmentResponse,
 } from '@/lib/support-server-api';
 import { resolveDeepLink, getProductDisplayName } from '@/lib/product-deep-links';
 import { TicketReplyForm } from '@/components/support/TicketReplyForm';
@@ -60,16 +61,18 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
     redirect('/access-denied');
   }
 
-  let ticket:   TicketSummary | null = null;
-  let refs:     ProductRefResponse[] = [];
-  let comments: CustomerCommentResponse[] = [];
-  let fetchErr: string | null = null;
+  let ticket:      TicketSummary | null = null;
+  let refs:        ProductRefResponse[] = [];
+  let comments:    CustomerCommentResponse[] = [];
+  let attachments: TicketAttachmentResponse[] = [];
+  let fetchErr:    string | null = null;
 
   try {
-    const [ticketResult, refsResult, commentsResult] = await Promise.allSettled([
+    const [ticketResult, refsResult, commentsResult, attachmentsResult] = await Promise.allSettled([
       supportServerApi.tickets.getById(id),
       supportServerApi.productRefs.list(id),
       supportServerApi.tickets.getComments(id),
+      supportServerApi.attachments.list(id),
     ]);
 
     if (ticketResult.status === 'fulfilled') {
@@ -88,6 +91,10 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
 
     if (commentsResult.status === 'fulfilled') {
       comments = Array.isArray(commentsResult.value) ? commentsResult.value : [];
+    }
+
+    if (attachmentsResult.status === 'fulfilled') {
+      attachments = Array.isArray(attachmentsResult.value) ? attachmentsResult.value : [];
     }
   } catch {
     fetchErr = 'Failed to load ticket.';
@@ -231,6 +238,48 @@ export default async function TicketDetailPage({ params }: TicketDetailPageProps
                     </label>
                     <TicketReplyForm ticketId={ticket.id} />
                   </div>
+                )}
+              </div>
+
+              {/* Attachments */}
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Attachments
+                  </h2>
+                  <span className="text-xs text-gray-400 tabular-nums">
+                    {attachments.length} file{attachments.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                {attachments.length === 0 ? (
+                  <p className="px-5 py-4 text-sm text-gray-400">No attachments yet.</p>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {attachments.map(att => (
+                      <li key={att.id} className="flex items-center gap-3 px-5 py-3">
+                        <i className="ri-file-line text-gray-400 shrink-0" aria-hidden="true" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800 truncate">{att.fileName}</p>
+                          {att.fileSizeBytes != null && (
+                            <p className="text-xs text-gray-400">
+                              {att.fileSizeBytes < 1024 * 1024
+                                ? `${(att.fileSizeBytes / 1024).toFixed(0)} KB`
+                                : `${(att.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB`}
+                            </p>
+                          )}
+                        </div>
+                        <a
+                          href={`/api/support/api/tickets/${encodeURIComponent(ticket.id)}/attachments/${encodeURIComponent(att.id)}/download`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0 text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+                        >
+                          <i className="ri-download-line text-xs" aria-hidden="true" />
+                          Download
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
 

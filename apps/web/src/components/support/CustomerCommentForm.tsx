@@ -1,6 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import {
+  FileAttachmentPicker,
+  uploadAttachmentsViaProxy,
+  type SelectedFile,
+} from '@/components/support/FileAttachmentPicker';
 
 const MAX_BODY_LENGTH = 4000;
 
@@ -9,7 +14,7 @@ interface Props {
 }
 
 interface SubmitState {
-  status: 'idle' | 'submitting' | 'success' | 'forbidden' | 'error';
+  status: 'idle' | 'submitting' | 'uploading' | 'success' | 'forbidden' | 'error';
   errorMessage?: string;
 }
 
@@ -19,6 +24,9 @@ interface SubmitState {
  * Posts to: POST /api/support/api/customer/tickets/{id}/comments
  * Routed through the BFF proxy at /api/support/[...path]/route.ts
  * which forwards the platform_session cookie as Authorization: Bearer.
+ *
+ * After the comment is accepted, any selected files are uploaded to the
+ * ticket's attachment endpoint (same BFF proxy, multipart).
  *
  * The backend enforces:
  *   tenantId + externalCustomerId + VisibilityScope=CustomerVisible
@@ -31,6 +39,7 @@ interface SubmitState {
  */
 export function CustomerCommentForm({ ticketId }: Props) {
   const [body,  setBody]  = useState('');
+  const [files, setFiles] = useState<SelectedFile[]>([]);
   const [state, setState] = useState<SubmitState>({ status: 'idle' });
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -52,7 +61,21 @@ export function CustomerCommentForm({ ticketId }: Props) {
       );
 
       if (res.status === 201) {
+        if (files.length > 0) {
+          setState({ status: 'uploading' });
+          const { failed } = await uploadAttachmentsViaProxy(ticketId, files);
+          if (failed.length > 0) {
+            setBody('');
+            setFiles([]);
+            setState({
+              status: 'error',
+              errorMessage: `Comment submitted, but ${failed.length} file(s) failed to upload: ${failed.join(', ')}`,
+            });
+            return;
+          }
+        }
         setBody('');
+        setFiles([]);
         setState({ status: 'success' });
         return;
       }
@@ -88,9 +111,11 @@ export function CustomerCommentForm({ ticketId }: Props) {
   function handleReset() {
     setState({ status: 'idle' });
     setBody('');
+    setFiles([]);
   }
 
-  const remaining = MAX_BODY_LENGTH - body.length;
+  const remaining   = MAX_BODY_LENGTH - body.length;
+  const isSubmitting = state.status === 'submitting' || state.status === 'uploading';
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -156,8 +181,8 @@ export function CustomerCommentForm({ ticketId }: Props) {
           </div>
         )}
 
-        {/* Comment form — shown in idle/error/submitting states */}
-        {(state.status === 'idle' || state.status === 'error' || state.status === 'submitting') && (
+        {/* Comment form — shown in idle/error/submitting/uploading states */}
+        {(state.status === 'idle' || state.status === 'error' || isSubmitting) && (
           <form onSubmit={handleSubmit} noValidate>
             <div className="mb-3">
               <label
@@ -173,7 +198,7 @@ export function CustomerCommentForm({ ticketId }: Props) {
                 rows={5}
                 maxLength={MAX_BODY_LENGTH}
                 required
-                disabled={state.status === 'submitting'}
+                disabled={isSubmitting}
                 placeholder="Describe your question or update…"
                 className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 resize-y
                            focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
@@ -184,18 +209,33 @@ export function CustomerCommentForm({ ticketId }: Props) {
               </p>
             </div>
 
+            <div className="mb-3">
+              <FileAttachmentPicker
+                files={files}
+                onChange={setFiles}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {state.status === 'uploading' && (
+              <div className="mb-3 flex items-center gap-2 text-sm text-blue-700">
+                <span className="inline-block h-3.5 w-3.5 border-2 border-blue-400/30 border-t-blue-600 rounded-full animate-spin" />
+                Uploading files…
+              </div>
+            )}
+
             <div className="flex items-center gap-3">
               <button
                 type="submit"
-                disabled={state.status === 'submitting' || !body.trim()}
+                disabled={isSubmitting || !body.trim()}
                 className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-md
                            hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed
                            transition-colors flex items-center gap-2"
               >
-                {state.status === 'submitting' ? (
+                {isSubmitting ? (
                   <>
                     <i className="ri-loader-4-line animate-spin" />
-                    Submitting…
+                    {state.status === 'uploading' ? 'Uploading…' : 'Submitting…'}
                   </>
                 ) : (
                   <>

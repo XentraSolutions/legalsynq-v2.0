@@ -4,6 +4,11 @@ import { useState, useTransition, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createTicketAction } from '@/app/(platform)/support/actions';
 import type { TicketPriority } from '@/lib/support-server-api';
+import {
+  FileAttachmentPicker,
+  uploadAttachmentsViaProxy,
+  type SelectedFile,
+} from '@/components/support/FileAttachmentPicker';
 
 const PRIORITIES: { value: TicketPriority; label: string }[] = [
   { value: 'Low',    label: 'Low' },
@@ -26,6 +31,7 @@ const CATEGORIES = [
  * NewTicketModal — floating modal for creating a new support ticket.
  *
  * Client component. Calls createTicketAction server action on submit,
+ * then uploads any selected files to the new ticket via the BFF proxy,
  * then redirects to the new ticket detail page.
  */
 export function NewTicketModal() {
@@ -37,6 +43,8 @@ export function NewTicketModal() {
   const [description, setDesc]  = useState('');
   const [priority, setPriority] = useState<TicketPriority>('Normal');
   const [category, setCategory] = useState('');
+  const [files, setFiles]       = useState<SelectedFile[]>([]);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const backdropRef             = useRef<HTMLDivElement>(null);
 
   function handleOpen() {
@@ -46,6 +54,8 @@ export function NewTicketModal() {
     setDesc('');
     setPriority('Normal');
     setCategory('');
+    setFiles([]);
+    setUploadStatus(null);
   }
 
   function handleClose() {
@@ -62,17 +72,34 @@ export function NewTicketModal() {
     if (!title.trim() || isPending) return;
 
     setError(null);
+    setUploadStatus(null);
     startTx(async () => {
       const result = await createTicketAction({ title, description, priority, category });
-      if (result.success) {
-        setOpen(false);
-        if (result.ticketId) {
-          router.push(`/support/${result.ticketId}`);
-        } else {
-          router.refresh();
-        }
-      } else {
+      if (!result.success) {
         setError(result.error ?? 'Failed to create ticket.');
+        return;
+      }
+
+      const ticketId = result.ticketId;
+      if (ticketId && files.length > 0) {
+        setUploadStatus(`Uploading ${files.length} file${files.length !== 1 ? 's' : ''}…`);
+        const { failed } = await uploadAttachmentsViaProxy(ticketId, files);
+        if (failed.length > 0) {
+          setUploadStatus(null);
+          setError(`Ticket created, but ${failed.length} file(s) failed to upload: ${failed.join(', ')}`);
+          setTimeout(() => {
+            setOpen(false);
+            router.push(`/support/${ticketId}`);
+          }, 2500);
+          return;
+        }
+      }
+
+      setOpen(false);
+      if (ticketId) {
+        router.push(`/support/${ticketId}`);
+      } else {
+        router.refresh();
       }
     });
   }
@@ -117,6 +144,13 @@ export function NewTicketModal() {
               {error && (
                 <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-sm text-red-700">{error}</p>
+                </div>
+              )}
+
+              {uploadStatus && (
+                <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+                  <span className="inline-block h-3.5 w-3.5 border-2 border-blue-400/30 border-t-blue-600 rounded-full animate-spin" />
+                  <p className="text-sm text-blue-700">{uploadStatus}</p>
                 </div>
               )}
 
@@ -192,6 +226,18 @@ export function NewTicketModal() {
                 </div>
               </div>
 
+              {/* Attachments */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                  Attachments
+                </label>
+                <FileAttachmentPicker
+                  files={files}
+                  onChange={setFiles}
+                  disabled={isPending}
+                />
+              </div>
+
               {/* Footer buttons */}
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
@@ -210,7 +256,7 @@ export function NewTicketModal() {
                   {isPending ? (
                     <>
                       <span className="inline-block h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Creating…
+                      {uploadStatus ? 'Uploading…' : 'Creating…'}
                     </>
                   ) : (
                     'Submit Ticket'

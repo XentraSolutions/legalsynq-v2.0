@@ -845,6 +845,17 @@ export interface SupportProductRef {
   createdAt:     string;
 }
 
+export interface TicketAttachmentItem {
+  id:                string;
+  ticketId:          string;
+  documentId:        string;
+  fileName:          string;
+  contentType?:      string;
+  fileSizeBytes?:    number;
+  uploadedByUserId?: string;
+  createdAt:         string;
+}
+
 export interface SupportCaseDetail extends SupportCase {
   notes:       SupportNote[];
   productRefs: SupportProductRef[];

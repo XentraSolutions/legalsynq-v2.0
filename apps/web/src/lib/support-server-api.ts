@@ -107,6 +107,17 @@ export interface CustomerCommentResponse {
 // Reads the platform_session cookie and calls the gateway directly.
 // DO NOT import this in Client Components — use the BFF proxy at /api/support/* instead.
 
+export interface TicketAttachmentResponse {
+  id:                string;
+  ticketId:          string;
+  documentId:        string;
+  fileName:          string;
+  contentType?:      string;
+  fileSizeBytes?:    number;
+  uploadedByUserId?: string;
+  createdAt:         string;
+}
+
 export interface CreateTicketRequest {
   title:           string;
   description?:    string;
@@ -160,6 +171,19 @@ export const supportServerApi = {
     list: (ticketId: string) =>
       serverApi.get<ProductRefResponse[]>(
         `/support/api/tickets/${encodeURIComponent(ticketId)}/product-refs`,
+      ),
+  },
+
+  attachments: {
+    /**
+     * GET /support/api/tickets/{id}/attachments
+     *
+     * Returns all attachments for the given ticket, ordered by upload time.
+     * Use in Server Components and Server Actions only.
+     */
+    list: (ticketId: string) =>
+      serverApi.get<TicketAttachmentResponse[]>(
+        `/support/api/tickets/${encodeURIComponent(ticketId)}/attachments`,
       ),
   },
 };
