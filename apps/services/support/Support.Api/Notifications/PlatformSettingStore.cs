@@ -12,16 +12,24 @@ public interface IPlatformSettingStore
 /// Tenant DB.  The table is created lazily (CREATE TABLE IF NOT EXISTS) on first
 /// use so no migration is needed.
 ///
-/// Values are cached in-process for <see cref="CacheTtl"/> to avoid a DB round-
-/// trip on every notification.  The cache is invalidated automatically at TTL
-/// expiry, so changes made via the Control Center take effect within minutes.
+/// Non-empty values are cached for <see cref="CacheTtl"/> (5 min) to avoid a
+/// DB round-trip on every notification.  Empty / null values are only cached for
+/// <see cref="EmptyCacheTtl"/> (15 s) so that a newly saved setting is picked up
+/// within seconds instead of waiting the full TTL.
 ///
 /// Failures are swallowed so a misconfigured or temporarily unavailable DB never
 /// blocks notification dispatch.
 /// </summary>
 public sealed class TenantDbPlatformSettingStore : IPlatformSettingStore
 {
+    /// <summary>TTL for a key that has a non-empty value in the DB.</summary>
     public static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// TTL for a key whose DB value is null or empty.  Short so that saving a
+    /// setting for the first time takes effect within seconds.
+    /// </summary>
+    public static readonly TimeSpan EmptyCacheTtl = TimeSpan.FromSeconds(15);
 
     private readonly string? _cs;
     private readonly ILogger<TenantDbPlatformSettingStore> _log;
@@ -64,7 +72,10 @@ public sealed class TenantDbPlatformSettingStore : IPlatformSettingStore
             var raw   = await cmd.ExecuteScalarAsync(ct);
             var value = raw as string;
 
-            _cache[key] = (value, DateTime.UtcNow.Add(CacheTtl));
+            // Use a short TTL when the value is absent so that saving a setting for
+            // the first time is reflected within seconds, not after the full 5 min TTL.
+            var ttl = string.IsNullOrEmpty(value) ? EmptyCacheTtl : CacheTtl;
+            _cache[key] = (value, DateTime.UtcNow.Add(ttl));
             return value;
         }
         catch (Exception ex)
