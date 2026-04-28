@@ -79,23 +79,46 @@ function fmtDate(iso: string): string {
   }
 }
 
-// ── Metadata preview ──────────────────────────────────────────────────────────
+// ── Subject / Template label ──────────────────────────────────────────────────
 
-function MetaPreview({ json }: { json: string | null }) {
-  if (!json) return <span className="text-gray-300">—</span>;
-  try {
-    const parsed = JSON.parse(json) as Record<string, unknown>;
-    const subject = parsed['subject'] as string | undefined;
-    const template = parsed['template'] as string | undefined;
-    const label = subject ?? template ?? null;
-    if (label) {
-      return (
-        <span className="text-xs text-gray-500 max-w-[200px] truncate block" title={label}>
-          {label}
-        </span>
-      );
-    }
-  } catch { /* ignore */ }
+function SubjectLabel({ subject, templateKey }: { subject: string | null; templateKey: string | null }) {
+  const label = subject ?? templateKey ?? null;
+  if (!label) return <span className="text-gray-300 text-xs">—</span>;
+  return (
+    <span
+      className={`text-xs max-w-[220px] truncate block ${subject ? 'text-gray-700' : 'font-mono text-gray-400'}`}
+      title={label}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ── Failure label ─────────────────────────────────────────────────────────────
+
+const FAILURE_LABELS: Record<string, string> = {
+  retryable_provider_failure: 'Provider error',
+  non_retryable_failure:      'Non-retryable',
+  provider_unavailable:       'Provider down',
+  invalid_recipient:          'Bad recipient',
+  auth_config_failure:        'Auth error',
+};
+
+function FailureCell({ category, message }: { category: string | null; message: string | null }) {
+  if (category) {
+    return (
+      <span className="text-xs text-red-600 whitespace-nowrap">
+        {FAILURE_LABELS[category] ?? category}
+      </span>
+    );
+  }
+  if (message) {
+    return (
+      <span className="text-[11px] text-red-500 max-w-[160px] truncate block" title={message}>
+        {message}
+      </span>
+    );
+  }
   return <span className="text-gray-300 text-xs">—</span>;
 }
 
@@ -307,6 +330,8 @@ export default async function NotificationLogPage({ searchParams }: PageProps) {
                   <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Channel</th>
                   <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Status</th>
                   <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden lg:table-cell">Subject / Template</th>
+                  <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden xl:table-cell">Provider</th>
+                  <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 hidden xl:table-cell">Failure</th>
                   <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400">Sent at</th>
                 </tr>
               </thead>
@@ -321,17 +346,15 @@ export default async function NotificationLogPage({ searchParams }: PageProps) {
                     </td>
                     <td className="px-5 py-3">
                       <StatusBadge status={n.status} />
-                      {n.lastErrorMessage && (
-                        <p
-                          className="mt-0.5 text-[11px] text-red-500 max-w-[200px] truncate"
-                          title={n.lastErrorMessage}
-                        >
-                          {n.lastErrorMessage}
-                        </p>
-                      )}
                     </td>
                     <td className="px-5 py-3 hidden lg:table-cell">
-                      <MetaPreview json={n.metadataJson} />
+                      <SubjectLabel subject={n.renderedSubject ?? null} templateKey={n.templateKey ?? null} />
+                    </td>
+                    <td className="px-5 py-3 text-xs text-gray-600 whitespace-nowrap hidden xl:table-cell">
+                      {n.providerUsed ?? <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-5 py-3 hidden xl:table-cell">
+                      <FailureCell category={n.failureCategory ?? null} message={n.lastErrorMessage ?? null} />
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
                       {fmtDate(n.createdAt)}

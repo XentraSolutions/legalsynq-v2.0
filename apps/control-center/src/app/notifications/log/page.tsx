@@ -157,6 +157,7 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
                 <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
                   <tr>
                     <th className="px-4 py-2.5 text-left font-medium">ID</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Tenant</th>
                     <th className="px-4 py-2.5 text-left font-medium">Channel</th>
                     <th className="px-4 py-2.5 text-left font-medium">Recipient</th>
                     <th className="px-4 py-2.5 text-left font-medium">Subject / Template</th>
@@ -179,6 +180,11 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
                         <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 whitespace-nowrap">
                           <a href={`/notifications/log/${n.id}`} className="hover:text-indigo-600 hover:underline">
                             {n.id.slice(0, 8)}…
+                          </a>
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-[11px] whitespace-nowrap">
+                          <a href={`/tenants/${n.tenantId}`} className="text-indigo-600 hover:underline" title={n.tenantId}>
+                            {n.tenantId.slice(0, 8)}…
                           </a>
                         </td>
                         <td className="px-4 py-2.5"><ChannelBadge channel={n.channel} /></td>
@@ -226,7 +232,7 @@ export default async function NotificationsLogPage({ searchParams }: Props) {
                   })}
                   {items.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-400">
+                      <td colSpan={9} className="px-4 py-10 text-center text-sm text-gray-400">
                         No notifications match the current filters.
                       </td>
                     </tr>

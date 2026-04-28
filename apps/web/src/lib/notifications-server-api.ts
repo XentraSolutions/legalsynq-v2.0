@@ -16,6 +16,8 @@ export interface NotifSummary {
   channel:           string;
   status:            string;
   recipientJson:     string;
+  templateKey:       string | null;
+  renderedSubject:   string | null;
   providerUsed:      string | null;
   lastErrorMessage:  string | null;
   failureCategory:   string | null;
