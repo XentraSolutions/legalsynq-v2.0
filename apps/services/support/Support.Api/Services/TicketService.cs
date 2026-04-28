@@ -342,6 +342,12 @@ public class TicketService : ITicketService
                 ticketNumber, customer.Id, tenantId);
         }
 
+        // For internal-user tickets without an explicit requester email, capture the
+        // authenticated actor's email from the JWT so the requester always receives
+        // ticket notification emails without requiring an identity-DB lookup later.
+        if (string.IsNullOrWhiteSpace(requesterEmail))
+            requesterEmail = _actor.Actor.Email;
+
         var ticket = new SupportTicket
         {
             Id = Guid.NewGuid(),

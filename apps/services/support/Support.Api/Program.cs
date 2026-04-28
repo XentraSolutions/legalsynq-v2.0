@@ -59,6 +59,9 @@ builder.Services.ConfigureHttpJsonOptions(opts =>
 // --- User email resolver (reads identity DB to look up admin/assigned user emails) ---
 builder.Services.AddSingleton<IUserEmailResolver, IdentityUserEmailResolver>();
 
+// --- Tenant slug resolver (reads tenant_Tenants for Subdomain/Code → deeplink URL) ---
+builder.Services.AddSingleton<ITenantSlugResolver, TenantDbSlugResolver>();
+
 // --- Domain services ---
 builder.Services.AddScoped<ITicketNumberGenerator, TicketNumberGenerator>();
 builder.Services.AddScoped<IEventLogger, EventLogger>();
