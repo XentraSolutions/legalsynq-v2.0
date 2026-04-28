@@ -1,5 +1,6 @@
 import { requirePlatformAdmin } from '@/lib/auth-guards';
 import { controlCenterServerApi } from '@/lib/control-center-api';
+import { CONTROL_CENTER_ORIGIN } from '@/lib/env';
 import { CCShell } from '@/components/shell/cc-shell';
 import { PlatformSettingsPanel } from '@/components/settings/platform-settings-panel';
 import type { PlatformSetting } from '@/types/control-center';
@@ -10,9 +11,11 @@ export const dynamic = 'force-dynamic';
  * /settings — Platform Settings & Feature Flags.
  *
  * Access: PlatformAdmin only.
- * Data: served from mock stub in controlCenterServerApi.settings.list().
- * TODO: When GET/POST /identity/api/admin/settings is live, the stub auto-wires —
- *       no page change needed, only the API method in control-center-api.ts.
+ * Data: served from controlCenterServerApi.settings.list() → Identity API.
+ *
+ * Bootstrap: if platform.controlCenterBaseUrl has never been saved, this page
+ * auto-seeds it from CONTROL_CENTER_ORIGIN so Support.Api can build admin
+ * deeplinks without requiring any manual configuration step.
  *
  * Layout:
  *  - Feature Flags section (boolean toggles)
@@ -26,6 +29,25 @@ export default async function SettingsPage() {
 
   try {
     settings = await controlCenterServerApi.settings.list();
+
+    // Auto-seed platform.controlCenterBaseUrl from the CC's own known origin
+    // the first time this page is visited (i.e. when the DB value is still empty).
+    // Support.Api reads this value to build admin deeplinks; without it the links
+    // fall back to the tenant-portal URL. The admin can still override it below.
+    const ccUrlSetting = settings.find(s => s.key === 'platform.controlCenterBaseUrl');
+    if (ccUrlSetting && !ccUrlSetting.value && CONTROL_CENTER_ORIGIN) {
+      try {
+        const updated = await controlCenterServerApi.settings.update(
+          'platform.controlCenterBaseUrl',
+          CONTROL_CENTER_ORIGIN,
+        );
+        settings = settings.map(s =>
+          s.key === 'platform.controlCenterBaseUrl' ? updated : s,
+        );
+      } catch {
+        // Non-fatal: the admin can still set it manually from the UI below.
+      }
+    }
   } catch (err) {
     fetchError = err instanceof Error ? err.message : 'Failed to load settings.';
   }
