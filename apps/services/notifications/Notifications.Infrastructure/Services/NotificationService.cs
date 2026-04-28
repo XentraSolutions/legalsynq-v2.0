@@ -934,7 +934,31 @@ public class NotificationServiceImpl : INotificationService
                     Provider = route.ProviderType,
                     ProviderOwnershipMode = route.OwnershipMode
                 });
-                try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.sent", Action = "notification.sent", SourceSystem = "notifications", Description = "Notification sent successfully", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+                try
+                {
+                    await _auditClient.IngestAsync(new IngestAuditEventRequest
+                    {
+                        EventType    = "notification.sent",
+                        Action       = "notification.sent",
+                        SourceSystem = "notifications",
+                        Outcome      = "success",
+                        Description  = $"{notification.Channel} notification sent via {route.ProviderType} to {MaskRecipient(contactValue)}",
+                        Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() },
+                        Entity       = new AuditEventEntityDto { Type = "NOTIFICATION", Id = notification.Id.ToString() },
+                        Metadata     = JsonSerializer.Serialize(new
+                        {
+                            notification_id     = notification.Id,
+                            channel             = notification.Channel,
+                            template_key        = notification.TemplateKey,
+                            subject             = subject,
+                            recipient           = MaskRecipient(contactValue),
+                            provider            = route.ProviderType,
+                            provider_message_id = providerMessageId,
+                            attempt_number      = attemptNumber,
+                        }),
+                    });
+                }
+                catch { /* audit best-effort */ }
                 return;
             }
 
@@ -959,7 +983,30 @@ public class NotificationServiceImpl : INotificationService
             notification.FailureCategory = "auth_config_failure";
             notification.LastErrorMessage = "No provider routes configured";
             await _notificationRepo.UpdateAsync(notification);
-            try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.failed", Action = "notification.failed", SourceSystem = "notifications", Description = "Notification failed - no provider routes", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+            try
+            {
+                await _auditClient.IngestAsync(new IngestAuditEventRequest
+                {
+                    EventType    = "notification.failed",
+                    Action       = "notification.failed",
+                    SourceSystem = "notifications",
+                    Outcome      = "failure",
+                    Description  = $"{notification.Channel} notification failed — no provider routes configured",
+                    Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() },
+                    Entity       = new AuditEventEntityDto { Type = "NOTIFICATION", Id = notification.Id.ToString() },
+                    Metadata     = JsonSerializer.Serialize(new
+                    {
+                        notification_id  = notification.Id,
+                        channel          = notification.Channel,
+                        template_key     = notification.TemplateKey,
+                        subject          = subject,
+                        recipient        = MaskRecipient(contactValue),
+                        failure_category = "auth_config_failure",
+                        failure_reason   = "No provider routes configured",
+                    }),
+                });
+            }
+            catch { /* audit best-effort */ }
         }
         else if (notification.RetryCount >= notification.MaxRetries)
         {
@@ -968,7 +1015,30 @@ public class NotificationServiceImpl : INotificationService
             notification.LastErrorMessage = $"Delivery failed after {notification.RetryCount} retries - all routes exhausted";
             await _notificationRepo.UpdateAsync(notification);
             await CreateDeadLetterIssueAsync(notification);
-            try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.dead_letter", Action = "notification.dead_letter", SourceSystem = "notifications", Description = $"Notification moved to dead-letter after {notification.RetryCount} retries", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+            try
+            {
+                await _auditClient.IngestAsync(new IngestAuditEventRequest
+                {
+                    EventType    = "notification.dead_letter",
+                    Action       = "notification.dead_letter",
+                    SourceSystem = "notifications",
+                    Outcome      = "failure",
+                    Description  = $"{notification.Channel} notification moved to dead-letter after {notification.RetryCount} retries",
+                    Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() },
+                    Entity       = new AuditEventEntityDto { Type = "NOTIFICATION", Id = notification.Id.ToString() },
+                    Metadata     = JsonSerializer.Serialize(new
+                    {
+                        notification_id  = notification.Id,
+                        channel          = notification.Channel,
+                        template_key     = notification.TemplateKey,
+                        subject          = subject,
+                        recipient        = MaskRecipient(contactValue),
+                        failure_category = "max_retries_exhausted",
+                        retry_count      = notification.RetryCount,
+                    }),
+                });
+            }
+            catch { /* audit best-effort */ }
         }
         else if (lastFailure?.Retryable == false)
         {
@@ -979,7 +1049,30 @@ public class NotificationServiceImpl : INotificationService
             notification.FailureCategory = lastFailure.Category;
             notification.LastErrorMessage = lastFailure.Message ?? $"Non-retryable provider failure: {lastFailure.Category}";
             await _notificationRepo.UpdateAsync(notification);
-            try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.failed", Action = "notification.failed", SourceSystem = "notifications", Description = $"Notification failed with non-retryable error: {lastFailure.Category}", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+            try
+            {
+                await _auditClient.IngestAsync(new IngestAuditEventRequest
+                {
+                    EventType    = "notification.failed",
+                    Action       = "notification.failed",
+                    SourceSystem = "notifications",
+                    Outcome      = "failure",
+                    Description  = $"{notification.Channel} notification failed: {lastFailure.Category}",
+                    Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() },
+                    Entity       = new AuditEventEntityDto { Type = "NOTIFICATION", Id = notification.Id.ToString() },
+                    Metadata     = JsonSerializer.Serialize(new
+                    {
+                        notification_id  = notification.Id,
+                        channel          = notification.Channel,
+                        template_key     = notification.TemplateKey,
+                        subject          = subject,
+                        recipient        = MaskRecipient(contactValue),
+                        failure_category = lastFailure.Category,
+                        failure_message  = lastFailure.Message,
+                    }),
+                });
+            }
+            catch { /* audit best-effort */ }
         }
         else
         {
@@ -989,8 +1082,53 @@ public class NotificationServiceImpl : INotificationService
             notification.FailureCategory = "retryable_provider_failure";
             notification.LastErrorMessage = $"All routes exhausted - retry #{notification.RetryCount} scheduled at {notification.NextRetryAt:u}";
             await _notificationRepo.UpdateAsync(notification);
-            try { await _auditClient.IngestAsync(new IngestAuditEventRequest { EventType = "notification.retrying", Action = "notification.retrying", SourceSystem = "notifications", Description = $"Notification scheduled for retry #{notification.RetryCount}", Scope = new AuditEventScopeDto { TenantId = tenantId.ToString() } }); } catch { }
+            try
+            {
+                await _auditClient.IngestAsync(new IngestAuditEventRequest
+                {
+                    EventType    = "notification.retrying",
+                    Action       = "notification.retrying",
+                    SourceSystem = "notifications",
+                    Description  = $"{notification.Channel} notification scheduled for retry #{notification.RetryCount}",
+                    Scope        = new AuditEventScopeDto { TenantId = tenantId.ToString() },
+                    Entity       = new AuditEventEntityDto { Type = "NOTIFICATION", Id = notification.Id.ToString() },
+                    Metadata     = JsonSerializer.Serialize(new
+                    {
+                        notification_id  = notification.Id,
+                        channel          = notification.Channel,
+                        template_key     = notification.TemplateKey,
+                        subject          = subject,
+                        recipient        = MaskRecipient(contactValue),
+                        failure_category = lastFailure?.Category,
+                        retry_count      = notification.RetryCount,
+                        next_retry_at    = notification.NextRetryAt,
+                    }),
+                });
+            }
+            catch { /* audit best-effort */ }
         }
+    }
+
+    /// <summary>
+    /// Masks a recipient address (email or phone) for audit log storage.
+    /// Shows enough to identify the domain/country code without exposing the full address.
+    /// e.g. "john.doe@example.com" → "jo***@example.com", "+15551234567" → "+1***"
+    /// </summary>
+    private static string MaskRecipient(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "***";
+
+        var at = value.IndexOf('@');
+        if (at > 0)
+        {
+            var local   = value[..at];
+            var domain  = value[at..];
+            var visible = local.Length > 2 ? local[..2] : local[..1];
+            return visible + "***" + domain;
+        }
+
+        // Phone number: keep country code prefix only.
+        return value.Length > 3 ? value[..3] + "***" : "***";
     }
 
     private static DateTime ComputeNextRetryAt(int retryCount) => retryCount switch
