@@ -24,7 +24,8 @@ public sealed record NotificationRecipient(
     NotificationRecipientKind Kind,
     string? UserId,
     string? Email,
-    Guid? QueueId = null);
+    Guid? QueueId = null,
+    bool IsAdminRecipient = false);
 
 /// <summary>
 /// A neutral, transport-agnostic notification request emitted by Support

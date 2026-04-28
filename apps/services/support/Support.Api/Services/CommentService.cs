@@ -288,14 +288,16 @@ public class CommentService : ICommentService
         // Source 1: configured admin notify email (Tenant DB — always available).
         var adminNotifyEmail = await _platformSettings.GetAsync("platform.adminNotifyEmail", ct);
         if (!string.IsNullOrWhiteSpace(adminNotifyEmail) && existing.Add(adminNotifyEmail))
-            list.Add(new NotificationRecipient(NotificationRecipientKind.Email, null, adminNotifyEmail));
+            list.Add(new NotificationRecipient(NotificationRecipientKind.Email, null, adminNotifyEmail,
+                null, IsAdminRecipient: true));
 
         // Source 2: PlatformInternal users from the Identity DB (bonus).
         var adminEmails = await _emailResolver.ResolvePlatformAdminEmailsAsync(ct);
         foreach (var email in adminEmails)
         {
             if (existing.Add(email))
-                list.Add(new NotificationRecipient(NotificationRecipientKind.Email, null, email));
+                list.Add(new NotificationRecipient(NotificationRecipientKind.Email, null, email,
+                    null, IsAdminRecipient: true));
         }
     }
 

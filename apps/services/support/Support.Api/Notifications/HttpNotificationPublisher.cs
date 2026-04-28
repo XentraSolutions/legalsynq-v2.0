@@ -84,12 +84,19 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
         // Resolve the tenant slug once per notification (cached after first call).
         var tenantSlug = await _slugResolver.ResolveAsync(notification.TenantId, cts.Token);
 
-        // Resolve portal base domain: prefer the live value from the platform settings
-        // store (set via Control Center and persisted to the Tenant DB), then fall back
-        // to the value configured in NotificationOptions (env var / appsettings).
+        // Resolve portal base domain (Control Center DB → env-var fallback).
         var portalBaseDomain =
             await _platformSettings.GetAsync("platform.portalBaseDomain", cts.Token)
             ?? opts.PortalBaseDomain;
+
+        // Resolve the Control Center base URL for admin deeplinks.
+        var ccBaseUrl = await _platformSettings.GetAsync("platform.controlCenterBaseUrl", cts.Token);
+
+        // Precompute both deeplink variants so we don't re-derive them per recipient.
+        var ticketId       = notification.Payload.TryGetValue("ticket_id", out var tid) ? tid?.ToString() : null;
+        var tenantDeeplink = BuildTenantDeeplink(ticketId, tenantSlug, portalBaseDomain, opts);
+        var adminDeeplink  = BuildAdminDeeplink (ticketId, ccBaseUrl)
+                             ?? tenantDeeplink;   // fall back to tenant URL if CC URL not configured
 
         foreach (var recipient in notification.Recipients)
         {
@@ -102,9 +109,34 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
                 continue;
             }
 
-            var request = BuildProducerRequest(notification, recipientObj, opts, tenantSlug, portalBaseDomain);
+            // Admin recipients (control-centre users) get a direct link to the ticket
+            // in the Control Center rather than the tenant-facing portal URL.
+            var deeplink = recipient.IsAdminRecipient ? adminDeeplink : tenantDeeplink;
+
+            var request = BuildProducerRequest(notification, recipientObj, deeplink);
             await SendOneAsync(url, notification.TenantId, request, notification.EventType, notification.TicketNumber, cts.Token);
         }
+    }
+
+    /// <summary>Returns the tenant-portal deeplink for a ticket, or null when prerequisites are missing.</summary>
+    private static string? BuildTenantDeeplink(string? ticketId, string? tenantSlug, string? portalBaseDomain, NotificationOptions opts)
+    {
+        if (string.IsNullOrEmpty(ticketId)) return null;
+
+        if (!string.IsNullOrWhiteSpace(tenantSlug) && !string.IsNullOrWhiteSpace(portalBaseDomain))
+            return $"https://{tenantSlug}.{portalBaseDomain.TrimEnd('/')}/support/{ticketId}";
+
+        if (!string.IsNullOrWhiteSpace(opts.PortalBaseUrl))
+            return $"{opts.PortalBaseUrl.TrimEnd('/')}/support/{ticketId}";
+
+        return null;
+    }
+
+    /// <summary>Returns the Control Center deeplink for a ticket, or null when <paramref name="ccBaseUrl"/> is blank.</summary>
+    private static string? BuildAdminDeeplink(string? ticketId, string? ccBaseUrl)
+    {
+        if (string.IsNullOrEmpty(ticketId) || string.IsNullOrWhiteSpace(ccBaseUrl)) return null;
+        return $"{ccBaseUrl.TrimEnd('/')}/support/{ticketId}";
     }
 
     private async Task SendOneAsync(
@@ -140,29 +172,14 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
     private static NotificationsProducerRequest BuildProducerRequest(
         SupportNotification notification,
         NotificationsRecipient recipient,
-        NotificationOptions opts,
-        string? tenantSlug,
-        string? portalBaseDomain)
+        string? deeplink)
     {
         var templateData = notification.Payload
             .Where(kv => kv.Value is not null)
             .ToDictionary(kv => kv.Key, kv => kv.Value!.ToString() ?? string.Empty);
 
-        if (templateData.TryGetValue("ticket_id", out var ticketId) && !string.IsNullOrEmpty(ticketId))
-        {
-            // Build deeplink: prefer tenant-subdomain URL when both slug and base domain are available
-            // (portalBaseDomain is resolved from the Control Center DB setting at call time),
-            // otherwise fall back to the configured portal base URL.
-            if (!string.IsNullOrWhiteSpace(tenantSlug) && !string.IsNullOrWhiteSpace(portalBaseDomain))
-            {
-                templateData["deeplink_url"] =
-                    $"https://{tenantSlug}.{portalBaseDomain.TrimEnd('/')}/support/{ticketId}";
-            }
-            else if (!string.IsNullOrWhiteSpace(opts.PortalBaseUrl))
-            {
-                templateData["deeplink_url"] = $"{opts.PortalBaseUrl.TrimEnd('/')}/support/{ticketId}";
-            }
-        }
+        if (!string.IsNullOrWhiteSpace(deeplink))
+            templateData["deeplink_url"] = deeplink;
 
         var templateKey = MapTemplateKey(notification.EventType);
 

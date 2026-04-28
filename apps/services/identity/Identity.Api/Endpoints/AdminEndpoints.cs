@@ -2819,7 +2819,9 @@ public static class AdminEndpoints
         new("platform.portalBaseDomain", "Portal Base Domain",    "", "string", "Base domain for tenant-subdomain portal URLs (e.g. demo.legalsynq.com). Each tenant's slug is prepended automatically.", true),
         new("platform.portalBaseUrl",    "Portal Base URL",       "", "string", "Fallback portal URL used when Portal Base Domain is not set (e.g. https://portal.legalsynq.com).",                       true),
         // LS-ID-TNT-016-02: Admin notification recipient for support ticket emails.
-        new("platform.adminNotifyEmail", "Admin Notification Email", "", "string", "Email address that receives a copy of every support ticket notification (created, updated, commented). Leave blank to disable.", true),
+        new("platform.adminNotifyEmail",      "Admin Notification Email",      "", "string", "Email address that receives a copy of every support ticket notification (created, updated, commented). Leave blank to disable.",                               true),
+        // LS-ID-TNT-016-03: Control Center base URL for admin deeplinks in support emails.
+        new("platform.controlCenterBaseUrl",  "Control Center Base URL",       "", "string", "Base URL of the Control Center (e.g. https://cc.legalsynq.com). Admin support ticket emails will link here instead of the tenant portal.",                    true),
     ];
 
     // Synchronise one entry in the mutable display list without touching others.
@@ -2901,16 +2903,18 @@ public static class AdminEndpoints
         // Seed in-process NotificationsServiceOptions from the persistent DB values so
         // that the Control Center always shows the last saved value — even after a restart
         // that would otherwise reset the in-memory state to the env-var default.
-        var dbDomain      = await ReadPlatformSettingAsync("platform.portalBaseDomain", config);
-        var dbUrl         = await ReadPlatformSettingAsync("platform.portalBaseUrl",    config);
-        var dbAdminEmail  = await ReadPlatformSettingAsync("platform.adminNotifyEmail", config);
+        var dbDomain      = await ReadPlatformSettingAsync("platform.portalBaseDomain",    config);
+        var dbUrl         = await ReadPlatformSettingAsync("platform.portalBaseUrl",       config);
+        var dbAdminEmail  = await ReadPlatformSettingAsync("platform.adminNotifyEmail",    config);
+        var dbCcUrl       = await ReadPlatformSettingAsync("platform.controlCenterBaseUrl",config);
 
         if (dbDomain is not null) notifOptions.Value.PortalBaseDomain = dbDomain;
         if (dbUrl    is not null) notifOptions.Value.PortalBaseUrl    = dbUrl;
 
-        SyncSettingDisplay("platform.portalBaseDomain", notifOptions.Value.PortalBaseDomain ?? "");
-        SyncSettingDisplay("platform.portalBaseUrl",    notifOptions.Value.PortalBaseUrl    ?? "");
-        SyncSettingDisplay("platform.adminNotifyEmail", dbAdminEmail ?? "");
+        SyncSettingDisplay("platform.portalBaseDomain",    notifOptions.Value.PortalBaseDomain ?? "");
+        SyncSettingDisplay("platform.portalBaseUrl",       notifOptions.Value.PortalBaseUrl    ?? "");
+        SyncSettingDisplay("platform.adminNotifyEmail",    dbAdminEmail ?? "");
+        SyncSettingDisplay("platform.controlCenterBaseUrl",dbCcUrl      ?? "");
 
         return Results.Ok(new
         {
@@ -2943,7 +2947,8 @@ public static class AdminEndpoints
 
         // Persist platform settings to the Tenant DB so the value survives restarts
         // and is visible to Support.Api (which reads from the same table).
-        if (key is "platform.portalBaseDomain" or "platform.portalBaseUrl" or "platform.adminNotifyEmail")
+        if (key is "platform.portalBaseDomain" or "platform.portalBaseUrl"
+                or "platform.adminNotifyEmail"  or "platform.controlCenterBaseUrl")
             await PersistPlatformSettingAsync(key, body.Value?.ToString() ?? "", config);
 
         return Results.Ok(_settings[idx]);
