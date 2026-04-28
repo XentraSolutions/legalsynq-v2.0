@@ -193,12 +193,16 @@ if command -v dotnet &>/dev/null; then
           # Notifications are forwarded to the Notifications service on :5008.
           # ServiceTokens signing uses FLOW_SERVICE_TOKEN_SECRET, which AddServiceTokenIssuer
           # reads directly from the environment — no explicit config override needed here.
+          # FileStorage: Local mode writes uploads to ./data/support-uploads
+          # relative to the Support.Api working directory.
           launch_svc "$_svc_label" "$csproj" env \
             "Support__Notifications__Enabled=true" \
             "Support__Notifications__Mode=Http" \
             "Support__Notifications__BaseUrl=http://localhost:5008" \
             "Support__Notifications__PortalBaseUrl=${_portal_url}" \
-            "Support__Notifications__PortalBaseDomain=${_portal_domain}"
+            "Support__Notifications__PortalBaseDomain=${_portal_domain}" \
+            "Support__FileStorage__Mode=Local" \
+            "Support__FileStorage__LocalRootPath=./data/support-uploads"
           PID_SUPPORT=$! ;;
         Gateway.Api)   launch_svc "$_svc_label" "$csproj"; PID_GATEWAY=$! ;;
         Identity.Api)
