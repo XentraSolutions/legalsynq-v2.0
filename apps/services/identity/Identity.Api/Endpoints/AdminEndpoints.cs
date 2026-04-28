@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MySqlConnector;
 
 namespace Identity.Api.Endpoints;
 
@@ -2797,7 +2798,12 @@ public static class AdminEndpoints
     }
 
     // =========================================================================
-    // PLATFORM SETTINGS  (static seed — no DB table yet)
+    // PLATFORM SETTINGS — persisted to the Tenant DB `platform_settings` table.
+    //
+    // The table is created lazily on first write (CREATE TABLE IF NOT EXISTS).
+    // Both Identity.Api and Support.Api connect to the same Tenant DB, so a
+    // change saved here is immediately visible to notification dispatch without
+    // a service restart or re-deployment.
     // =========================================================================
 
     private static readonly List<PlatformSettingDto> _settings =
@@ -2821,11 +2827,84 @@ public static class AdminEndpoints
         if (idx >= 0) _settings[idx] = _settings[idx] with { value = value };
     }
 
-    private static IResult ListSettings(IOptions<NotificationsServiceOptions> notifOptions)
+    /// <summary>
+    /// Reads a value from the Tenant DB <c>platform_settings</c> table.
+    /// Returns null when the table/row doesn't exist yet, or on any error.
+    /// </summary>
+    private static async Task<string?> ReadPlatformSettingAsync(string key, IConfiguration config)
     {
-        // Mirror the live (possibly env-var-seeded) NotificationsServiceOptions values into
-        // the display list so the Control Center always shows the real in-process values,
-        // even when they were not set via PATCH /settings (e.g. set by environment variable).
+        var cs = config.GetConnectionString("TenantDb");
+        if (string.IsNullOrWhiteSpace(cs)) return null;
+        try
+        {
+            await using var conn = new MySqlConnection(cs);
+            await conn.OpenAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT `setting_value` FROM `platform_settings` WHERE `setting_key` = @k LIMIT 1";
+            cmd.Parameters.AddWithValue("@k", key);
+            return await cmd.ExecuteScalarAsync() as string;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Upserts a value into the Tenant DB <c>platform_settings</c> table,
+    /// creating the table first if it doesn't exist yet.
+    /// Failures are swallowed so a DB issue never blocks a settings PATCH.
+    /// </summary>
+    private static async Task PersistPlatformSettingAsync(string key, string value, IConfiguration config)
+    {
+        var cs = config.GetConnectionString("TenantDb");
+        if (string.IsNullOrWhiteSpace(cs)) return;
+        try
+        {
+            await using var conn = new MySqlConnection(cs);
+            await conn.OpenAsync();
+
+            await using (var createCmd = conn.CreateCommand())
+            {
+                createCmd.CommandText = @"
+                    CREATE TABLE IF NOT EXISTS `platform_settings` (
+                        `setting_key`   VARCHAR(200) NOT NULL,
+                        `setting_value` TEXT         NOT NULL DEFAULT '',
+                        `updated_at`    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+                        PRIMARY KEY (`setting_key`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+                await createCmd.ExecuteNonQueryAsync();
+            }
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO `platform_settings` (`setting_key`, `setting_value`, `updated_at`)
+                VALUES (@k, @v, UTC_TIMESTAMP(3))
+                ON DUPLICATE KEY UPDATE `setting_value` = @v, `updated_at` = UTC_TIMESTAMP(3)";
+            cmd.Parameters.AddWithValue("@k", key);
+            cmd.Parameters.AddWithValue("@v", value);
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch
+        {
+            // Swallowed — a DB write failure must not break the settings endpoint.
+        }
+    }
+
+    private static async Task<IResult> ListSettings(
+        IOptions<NotificationsServiceOptions> notifOptions,
+        IConfiguration config)
+    {
+        // Seed in-process NotificationsServiceOptions from the persistent DB values so
+        // that the Control Center always shows the last saved value — even after a restart
+        // that would otherwise reset the in-memory state to the env-var default.
+        var dbDomain = await ReadPlatformSettingAsync("platform.portalBaseDomain", config);
+        var dbUrl    = await ReadPlatformSettingAsync("platform.portalBaseUrl",    config);
+
+        if (dbDomain is not null) notifOptions.Value.PortalBaseDomain = dbDomain;
+        if (dbUrl    is not null) notifOptions.Value.PortalBaseUrl    = dbUrl;
+
         SyncSettingDisplay("platform.portalBaseDomain", notifOptions.Value.PortalBaseDomain ?? "");
         SyncSettingDisplay("platform.portalBaseUrl",    notifOptions.Value.PortalBaseUrl    ?? "");
 
@@ -2838,10 +2917,11 @@ public static class AdminEndpoints
         });
     }
 
-    private static IResult UpdateSetting(
+    private static async Task<IResult> UpdateSetting(
         string               key,
         SettingUpdateRequest body,
-        IOptions<NotificationsServiceOptions> notifOptions)
+        IOptions<NotificationsServiceOptions> notifOptions,
+        IConfiguration config)
     {
         var idx = _settings.FindIndex(s => s.key == key);
         if (idx < 0) return Results.NotFound();
@@ -2850,14 +2930,17 @@ public static class AdminEndpoints
 
         _settings[idx] = _settings[idx] with { value = body.Value };
 
-        // Mirror portal-URL settings to the live NotificationsServiceOptions singleton.
-        // IOptions<T>.Value is cached once per process — mutating it here means every
-        // subsequent email handler call (forgot-password, invite, etc.) sees the new value
-        // immediately, without a service restart.
+        // Mirror portal-URL settings to the live NotificationsServiceOptions singleton
+        // (for invite/reset links sent by Identity.Api in the same process).
         if (key == "platform.portalBaseDomain")
             notifOptions.Value.PortalBaseDomain = body.Value?.ToString();
         else if (key == "platform.portalBaseUrl")
             notifOptions.Value.PortalBaseUrl = body.Value?.ToString();
+
+        // Persist portal-URL settings to the Tenant DB so the value survives restarts
+        // and is visible to Support.Api (which reads from the same table).
+        if (key is "platform.portalBaseDomain" or "platform.portalBaseUrl")
+            await PersistPlatformSettingAsync(key, body.Value?.ToString() ?? "", config);
 
         return Results.Ok(_settings[idx]);
     }

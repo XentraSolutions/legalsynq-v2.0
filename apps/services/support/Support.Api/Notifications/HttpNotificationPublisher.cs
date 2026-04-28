@@ -40,18 +40,21 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
     private readonly HttpClient _http;
     private readonly IOptionsMonitor<NotificationOptions> _options;
     private readonly ITenantSlugResolver _slugResolver;
+    private readonly IPlatformSettingStore _platformSettings;
     private readonly ILogger<HttpNotificationPublisher> _log;
 
     public HttpNotificationPublisher(
         HttpClient http,
         IOptionsMonitor<NotificationOptions> options,
         ITenantSlugResolver slugResolver,
+        IPlatformSettingStore platformSettings,
         ILogger<HttpNotificationPublisher> log)
     {
-        _http         = http;
-        _options      = options;
-        _slugResolver = slugResolver;
-        _log          = log;
+        _http             = http;
+        _options          = options;
+        _slugResolver     = slugResolver;
+        _platformSettings = platformSettings;
+        _log              = log;
     }
 
     public async Task PublishAsync(SupportNotification notification, CancellationToken ct = default)
@@ -81,6 +84,13 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
         // Resolve the tenant slug once per notification (cached after first call).
         var tenantSlug = await _slugResolver.ResolveAsync(notification.TenantId, cts.Token);
 
+        // Resolve portal base domain: prefer the live value from the platform settings
+        // store (set via Control Center and persisted to the Tenant DB), then fall back
+        // to the value configured in NotificationOptions (env var / appsettings).
+        var portalBaseDomain =
+            await _platformSettings.GetAsync("platform.portalBaseDomain", cts.Token)
+            ?? opts.PortalBaseDomain;
+
         foreach (var recipient in notification.Recipients)
         {
             var recipientObj = MapRecipient(recipient);
@@ -92,7 +102,7 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
                 continue;
             }
 
-            var request = BuildProducerRequest(notification, recipientObj, opts, tenantSlug);
+            var request = BuildProducerRequest(notification, recipientObj, opts, tenantSlug, portalBaseDomain);
             await SendOneAsync(url, notification.TenantId, request, notification.EventType, notification.TicketNumber, cts.Token);
         }
     }
@@ -131,7 +141,8 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
         SupportNotification notification,
         NotificationsRecipient recipient,
         NotificationOptions opts,
-        string? tenantSlug)
+        string? tenantSlug,
+        string? portalBaseDomain)
     {
         var templateData = notification.Payload
             .Where(kv => kv.Value is not null)
@@ -139,12 +150,13 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
 
         if (templateData.TryGetValue("ticket_id", out var ticketId) && !string.IsNullOrEmpty(ticketId))
         {
-            // Build deeplink: prefer tenant-subdomain URL when both slug and base domain are available,
+            // Build deeplink: prefer tenant-subdomain URL when both slug and base domain are available
+            // (portalBaseDomain is resolved from the Control Center DB setting at call time),
             // otherwise fall back to the configured portal base URL.
-            if (!string.IsNullOrWhiteSpace(tenantSlug) && !string.IsNullOrWhiteSpace(opts.PortalBaseDomain))
+            if (!string.IsNullOrWhiteSpace(tenantSlug) && !string.IsNullOrWhiteSpace(portalBaseDomain))
             {
                 templateData["deeplink_url"] =
-                    $"https://{tenantSlug}.{opts.PortalBaseDomain.TrimEnd('/')}/support/{ticketId}";
+                    $"https://{tenantSlug}.{portalBaseDomain.TrimEnd('/')}/support/{ticketId}";
             }
             else if (!string.IsNullOrWhiteSpace(opts.PortalBaseUrl))
             {

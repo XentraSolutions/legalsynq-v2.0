@@ -62,6 +62,9 @@ builder.Services.AddSingleton<IUserEmailResolver, IdentityUserEmailResolver>();
 // --- Tenant slug resolver (reads tenant_Tenants for Subdomain/Code → deeplink URL) ---
 builder.Services.AddSingleton<ITenantSlugResolver, TenantDbSlugResolver>();
 
+// --- Platform setting store (reads platform_settings table in Tenant DB → portal domain) ---
+builder.Services.AddSingleton<IPlatformSettingStore, TenantDbPlatformSettingStore>();
+
 // --- Domain services ---
 builder.Services.AddScoped<ITicketNumberGenerator, TicketNumberGenerator>();
 builder.Services.AddScoped<IEventLogger, EventLogger>();
