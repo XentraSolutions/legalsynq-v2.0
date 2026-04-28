@@ -201,16 +201,36 @@ public class CommentService : ICommentService
                     ticket.TicketNumber);
                 return;
             }
+
+            var authorDisplay = !string.IsNullOrWhiteSpace(comment.AuthorName)
+                ? comment.AuthorName
+                : (!string.IsNullOrWhiteSpace(comment.AuthorEmail)
+                    ? comment.AuthorEmail
+                    : "Support Team");
+
+            var commentTypeLabel = comment.CommentType switch
+            {
+                CommentType.InternalNote  => "Internal Note",
+                CommentType.CustomerReply => "Reply",
+                CommentType.SystemNote    => "System Note",
+                _                         => comment.CommentType.ToString(),
+            };
+
             var payload = new Dictionary<string, object?>
             {
-                ["ticket_id"] = ticket.Id,
-                ["ticket_number"] = ticket.TicketNumber,
-                ["title"] = ticket.Title,
-                ["comment_id"] = comment.Id,
-                ["comment_type"] = comment.CommentType.ToString(),
-                ["visibility"] = comment.Visibility.ToString(),
-                ["author_user_id"] = comment.AuthorUserId,
-                ["tenant_id"] = ticket.TenantId,
+                ["ticket_id"]          = ticket.Id,
+                ["ticket_number"]      = ticket.TicketNumber,
+                ["title"]              = ticket.Title,
+                ["comment_id"]         = comment.Id,
+                ["comment_type"]       = comment.CommentType.ToString(),
+                ["comment_type_label"] = commentTypeLabel,
+                ["visibility"]         = comment.Visibility.ToString(),
+                ["author_user_id"]     = comment.AuthorUserId,
+                ["author_name"]        = comment.AuthorName,
+                ["author_email"]       = comment.AuthorEmail,
+                ["author_display"]     = authorDisplay,
+                ["comment_body"]       = TruncateForEmail(comment.Body, 1500),
+                ["tenant_id"]          = ticket.TenantId,
             };
             var notification = new SupportNotification(
                 SupportNotificationEventTypes.TicketCommentAdded,
@@ -225,6 +245,12 @@ public class CommentService : ICommentService
                 "Notification dispatch threw event=support.ticket.comment_added ticket={TicketNumber}",
                 ticket.TicketNumber);
         }
+    }
+
+    private static string? TruncateForEmail(string? body, int maxLen)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        return body.Length <= maxLen ? body : body[..maxLen] + "…";
     }
 
     private async Task<List<NotificationRecipient>> ResolveCommentRecipientsAsync(
@@ -416,6 +442,8 @@ public class CommentService : ICommentService
         await _db.SaveChangesAsync(ct);
         _log.LogInformation("Customer comment {CommentId} added to ticket {TicketId} tenant={TenantId} externalCustomerId={CustomerId}",
             comment.Id, ticketId, tenantId, externalCustomerId);
+
+        await TryPublishCommentNotificationAsync(ticket, comment, ct);
 
         try
         {

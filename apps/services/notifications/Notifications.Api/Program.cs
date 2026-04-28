@@ -519,20 +519,22 @@ static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILog
 
         new SupportEmailTemplateSeed(
             Key:         "support-ticket-comment-added-email",
-            Name:        "Support: Comment Added",
-            Subject:     "New Comment on Ticket {{ticket_number}}",
+            Name:        "Support: New Reply",
+            Subject:     "New Reply on Ticket {{ticket_number}}: {{title}}",
             HtmlBody:    """
                          <p>Hi,</p>
-                         <p>A new comment has been added to your support ticket.</p>
-                         <table cellpadding="0" cellspacing="0" style="margin:0">
-                           <tr><td><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
-                           <tr><td><strong>Subject</strong></td><td>{{title}}</td></tr>
+                         <p>A new reply has been posted on your support ticket.</p>
+                         <table cellpadding="4" cellspacing="0" style="margin:0 0 16px">
+                           <tr><td style="padding-right:16px"><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>Subject</strong></td><td>{{title}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>From</strong></td><td>{{author_display}}</td></tr>
                          </table>
+                         <div style="margin:16px 0;padding:16px 20px;background:#f8fafc;border-left:4px solid #2563eb;border-radius:4px;color:#374151;white-space:pre-wrap;word-break:break-word">{{comment_body}}</div>
                          <p style="margin-top:24px">
                            <a href="{{deeplink_url}}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View Ticket</a>
                          </p>
                          """,
-            TextBody:    "A new comment has been posted on ticket {{ticket_number}}: {{title}}.\n\nView it here: {{deeplink_url}}"),
+            TextBody:    "New reply on ticket {{ticket_number}}: {{title}}\nFrom: {{author_display}}\n\n{{comment_body}}\n\nView it here: {{deeplink_url}}"),
 
         new SupportEmailTemplateSeed(
             Key:         "support-ticket-assigned-email",
@@ -583,7 +585,21 @@ static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILog
             var existingVersion = await versionRepo.FindPublishedByTemplateIdAsync(templateId);
             if (existingVersion != null)
             {
-                logger.LogDebug("Support email template already fully seeded, skipping: {Key}", seed.Key);
+                // Update in-place when the seed content has changed (e.g. new tokens added).
+                if (existingVersion.SubjectTemplate != seed.Subject
+                    || existingVersion.BodyTemplate  != seed.HtmlBody
+                    || existingVersion.TextTemplate  != seed.TextBody)
+                {
+                    existingVersion.SubjectTemplate = seed.Subject;
+                    existingVersion.BodyTemplate    = seed.HtmlBody;
+                    existingVersion.TextTemplate    = seed.TextBody;
+                    await versionRepo.UpdateAsync(existingVersion);
+                    logger.LogInformation("Updated support email template: {Key}", seed.Key);
+                }
+                else
+                {
+                    logger.LogDebug("Support email template already fully seeded, skipping: {Key}", seed.Key);
+                }
                 continue;
             }
             logger.LogDebug("Support email template exists but has no published version, creating version: {Key}", seed.Key);
