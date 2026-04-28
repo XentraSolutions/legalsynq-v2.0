@@ -292,7 +292,7 @@ export default async function ActivityPage({
   }
 
   if (statsResult.status === 'fulfilled') {
-    stats = statsResult.value.data;
+    stats = statsResult.value ?? null;
   } else {
     statsError = statsResult.reason instanceof Error ? statsResult.reason.message : 'Unable to load stats.';
   }
@@ -303,6 +303,12 @@ export default async function ActivityPage({
   const startItem  = total === 0 ? 0 : offset + 1;
   const endItem    = Math.min(offset + PAGE_SIZE, total);
   const hasFilters = !!(status || channel);
+
+  // Compute last-24h from the most-recent trend point.
+  const trend = stats?.recentTrend ?? [];
+  const last24h = trend.length > 0
+    ? trend[trend.length - 1]
+    : { total: 0, sent: 0, failed: 0, blocked: 0 };
 
   const prevParams = new URLSearchParams({ ...filterParams });
   if (page > 2) prevParams.set('page', String(page - 1));
@@ -335,33 +341,33 @@ export default async function ActivityPage({
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <StatCard
             label="Total"
-            value={stats.total}
+            value={stats.totalCount}
             note="All time"
           />
           <StatCard
             label="Sent"
-            value={stats.byStatus['sent'] ?? 0}
+            value={stats.statusDistribution['sent'] ?? 0}
             accent="text-emerald-600"
           />
           <StatCard
             label="Failed"
-            value={stats.byStatus['failed'] ?? 0}
-            accent={(stats.byStatus['failed'] ?? 0) > 0 ? 'text-red-600' : undefined}
+            value={stats.statusDistribution['failed'] ?? 0}
+            accent={(stats.statusDistribution['failed'] ?? 0) > 0 ? 'text-red-600' : undefined}
           />
           <StatCard
             label="Blocked"
-            value={stats.byStatus['blocked'] ?? 0}
-            accent={(stats.byStatus['blocked'] ?? 0) > 0 ? 'text-amber-600' : undefined}
+            value={stats.statusDistribution['blocked'] ?? 0}
+            accent={(stats.statusDistribution['blocked'] ?? 0) > 0 ? 'text-amber-600' : undefined}
           />
           <StatCard
             label="Last 24h"
-            value={stats.last24h.total}
-            note={`${stats.last24h.sent} sent · ${stats.last24h.failed} failed`}
+            value={last24h.total}
+            note={`${last24h.sent} sent · ${last24h.failed} failed`}
           />
         </div>
       ) : null}
 
-      {stats && stats.total > 0 && (
+      {stats && stats.totalCount > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-5">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Delivery Breakdown</h2>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
@@ -369,11 +375,11 @@ export default async function ActivityPage({
               <div key={s} className="flex flex-col items-center gap-1">
                 <StatusBadge status={s} />
                 <span className="text-xl font-bold text-gray-900 mt-1">
-                  {stats!.byStatus[s] ?? 0}
+                  {stats!.statusDistribution[s] ?? 0}
                 </span>
                 <span className="text-[10px] text-gray-400">
-                  {stats!.total > 0
-                    ? `${Math.round(((stats!.byStatus[s] ?? 0) / stats!.total) * 100)}%`
+                  {stats!.totalCount > 0
+                    ? `${Math.round(((stats!.statusDistribution[s] ?? 0) / stats!.totalCount) * 100)}%`
                     : '0%'}
                 </span>
               </div>
@@ -382,11 +388,11 @@ export default async function ActivityPage({
         </div>
       )}
 
-      {stats && Object.keys(stats.byChannel).length > 0 && (
+      {stats && Object.keys(stats.channelBreakdown).length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-5">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">By Channel</h2>
           <div className="flex items-center gap-6">
-            {Object.entries(stats.byChannel).map(([ch, count]) => (
+            {Object.entries(stats.channelBreakdown).map(([ch, count]) => (
               <div key={ch} className="flex items-center gap-2">
                 <ChannelBadge channel={ch} />
                 <span className="text-sm font-semibold text-gray-700">{count}</span>

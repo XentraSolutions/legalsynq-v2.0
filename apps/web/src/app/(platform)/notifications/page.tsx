@@ -104,7 +104,7 @@ export default async function NotificationsPage() {
   ]);
 
   if (statsResult.status === 'fulfilled') {
-    stats = statsResult.value?.data ?? null;
+    stats = statsResult.value ?? null;
   } else {
     statsError = statsResult.reason instanceof Error
       ? statsResult.reason.message
@@ -119,9 +119,20 @@ export default async function NotificationsPage() {
       : 'Unable to load recent notifications.';
   }
 
+  // Compute period stats from the daily trend array (chronological order).
+  const trend = stats?.recentTrend ?? [];
+  const last24h = trend.length > 0
+    ? trend[trend.length - 1]
+    : { total: 0, sent: 0, failed: 0, blocked: 0 };
+  const last7dSlice = trend.slice(-7);
+  const last7d = last7dSlice.reduce(
+    (acc, d) => ({ total: acc.total + d.total, sent: acc.sent + d.sent, failed: acc.failed + d.failed, blocked: acc.blocked + d.blocked }),
+    { total: 0, sent: 0, failed: 0, blocked: 0 },
+  );
+
   const deliveryRate =
-    stats && stats.total > 0
-      ? Math.round(((stats.byStatus['sent'] ?? 0) / stats.total) * 100)
+    stats && stats.totalCount > 0
+      ? Math.round((stats.sentCount / stats.totalCount) * 100)
       : null;
 
   return (
@@ -177,30 +188,30 @@ export default async function NotificationsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <StatCard
             label="Total sent"
-            value={stats?.total ?? '—'}
+            value={stats?.totalCount ?? '—'}
             note="All time"
           />
           <StatCard
             label="Delivery rate"
             value={deliveryRate !== null ? `${deliveryRate}%` : '—'}
-            note={stats ? `${stats.byStatus['sent'] ?? 0} of ${stats.total} delivered` : undefined}
+            note={stats ? `${stats.sentCount} of ${stats.totalCount} delivered` : undefined}
             accent={deliveryRate !== null ? (deliveryRate >= 90 ? 'text-emerald-600' : deliveryRate >= 70 ? 'text-amber-600' : 'text-red-600') : undefined}
           />
           <StatCard
             label="Last 24 h"
-            value={stats?.last24h.total ?? '—'}
-            note={stats ? `${stats.last24h.sent} sent · ${stats.last24h.failed} failed` : undefined}
+            value={stats ? last24h.total : '—'}
+            note={stats ? `${last24h.sent} sent · ${last24h.failed} failed` : undefined}
           />
           <StatCard
             label="Last 7 days"
-            value={stats?.last7d.total ?? '—'}
-            note={stats ? `${stats.last7d.sent} sent · ${stats.last7d.failed} failed` : undefined}
+            value={stats ? last7d.total : '—'}
+            note={stats ? `${last7d.sent} sent · ${last7d.failed} failed` : undefined}
           />
         </div>
       )}
 
       {/* ── By-status breakdown ──────────────────────────────────────────────── */}
-      {stats && stats.total > 0 && (
+      {stats && stats.totalCount > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-5">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Delivery Status Breakdown</h2>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
@@ -208,11 +219,11 @@ export default async function NotificationsPage() {
               <div key={s} className="flex flex-col items-center gap-1">
                 <StatusBadge status={s} />
                 <span className="text-xl font-bold text-gray-900 mt-1">
-                  {stats!.byStatus[s] ?? 0}
+                  {stats!.statusDistribution[s] ?? 0}
                 </span>
                 <span className="text-[10px] text-gray-400">
-                  {stats!.total > 0
-                    ? `${Math.round(((stats!.byStatus[s] ?? 0) / stats!.total) * 100)}%`
+                  {stats!.totalCount > 0
+                    ? `${Math.round(((stats!.statusDistribution[s] ?? 0) / stats!.totalCount) * 100)}%`
                     : '0%'}
                 </span>
               </div>

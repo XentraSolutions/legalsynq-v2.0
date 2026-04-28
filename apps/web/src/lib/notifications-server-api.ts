@@ -34,12 +34,25 @@ export interface NotifListResponse {
   totalPages: number;
 }
 
+export interface NotifTrendPoint {
+  date:    string;
+  total:   number;
+  sent:    number;
+  failed:  number;
+  blocked: number;
+}
+
 export interface NotifStats {
-  total:    number;
-  byStatus: Record<string, number>;
-  byChannel: Record<string, number>;
-  last24h:  { total: number; sent: number; failed: number; blocked: number };
-  last7d:   { total: number; sent: number; failed: number; blocked: number };
+  totalCount:         number;
+  sentCount:          number;
+  deliveredCount:     number;
+  failedCount:        number;
+  queuedCount:        number;
+  suppressedCount:    number;
+  partialCount:       number;
+  channelBreakdown:   Record<string, number>;
+  statusDistribution: Record<string, number>;
+  recentTrend:        NotifTrendPoint[];
 }
 
 // ── Re-export client-safe branding types from shared module ──────────────────
@@ -129,8 +142,8 @@ export const notificationsServerApi = {
   /**
    * GET /v1/notifications/stats — delivery statistics for this tenant.
    */
-  stats(tenantId: string): Promise<{ data: NotifStats }> {
-    return notifRequest<{ data: NotifStats }>('/v1/notifications/stats', tenantId);
+  stats(tenantId: string): Promise<NotifStats> {
+    return notifRequest<NotifStats>('/v1/notifications/stats', tenantId);
   },
 
   brandingList(tenantId: string, params: { productType?: string; limit?: number; offset?: number } = {}): Promise<BrandingListResponse> {
