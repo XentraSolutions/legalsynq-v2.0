@@ -191,14 +191,13 @@ if command -v dotnet &>/dev/null; then
         Support.Api)
           # Jwt:SigningKey is read from the Jwt__SigningKey Replit secret (env var).
           # Notifications are forwarded to the Notifications service on :5008.
-          # ServiceTokens:SigningKey is populated from FLOW_SERVICE_TOKEN_SECRET so
-          # the service can mint a short-lived JWT accepted by the Notifications service.
+          # ServiceTokens signing uses FLOW_SERVICE_TOKEN_SECRET, which AddServiceTokenIssuer
+          # reads directly from the environment — no explicit config override needed here.
           launch_svc "$_svc_label" "$csproj" env \
             "Support__Notifications__Enabled=true" \
             "Support__Notifications__Mode=Http" \
             "Support__Notifications__BaseUrl=http://localhost:5008" \
-            "Support__Notifications__PortalBaseUrl=${_portal_url}" \
-            "ServiceTokens__SigningKey=${FLOW_SERVICE_TOKEN_SECRET:-}"
+            "Support__Notifications__PortalBaseUrl=${_portal_url}"
           PID_SUPPORT=$! ;;
         Gateway.Api)   launch_svc "$_svc_label" "$csproj"; PID_GATEWAY=$! ;;
         Identity.Api)
