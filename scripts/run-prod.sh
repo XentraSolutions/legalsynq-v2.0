@@ -197,7 +197,8 @@ if command -v dotnet &>/dev/null; then
             "Support__Notifications__Enabled=true" \
             "Support__Notifications__Mode=Http" \
             "Support__Notifications__BaseUrl=http://localhost:5008" \
-            "Support__Notifications__PortalBaseUrl=${_portal_url}"
+            "Support__Notifications__PortalBaseUrl=${_portal_url}" \
+            "Support__Notifications__PortalBaseDomain=${_portal_domain}"
           PID_SUPPORT=$! ;;
         Gateway.Api)   launch_svc "$_svc_label" "$csproj"; PID_GATEWAY=$! ;;
         Identity.Api)

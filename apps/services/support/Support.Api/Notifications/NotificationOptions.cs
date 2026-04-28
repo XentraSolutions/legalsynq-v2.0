@@ -31,4 +31,12 @@ public sealed class NotificationOptions
     /// When unset, deeplink_url is omitted from template data.
     /// </summary>
     public string? PortalBaseUrl { get; set; }
+
+    /// <summary>
+    /// Plain domain name (no scheme) used to build tenant-subdomain deeplinks.
+    /// Example: legalsynqplatform.replit.app
+    /// When set, deeplinks are constructed as https://{tenantId}.{PortalBaseDomain}/support/{ticketId}.
+    /// Takes precedence over <see cref="PortalBaseUrl"/> for deeplink construction.
+    /// </summary>
+    public string? PortalBaseDomain { get; set; }
 }

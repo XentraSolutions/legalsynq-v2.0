@@ -130,11 +130,19 @@ public sealed class HttpNotificationPublisher : INotificationPublisher
             .Where(kv => kv.Value is not null)
             .ToDictionary(kv => kv.Key, kv => kv.Value!.ToString() ?? string.Empty);
 
-        if (!string.IsNullOrWhiteSpace(opts.PortalBaseUrl)
-            && templateData.TryGetValue("ticket_id", out var ticketId)
-            && !string.IsNullOrEmpty(ticketId))
+        if (templateData.TryGetValue("ticket_id", out var ticketId) && !string.IsNullOrEmpty(ticketId))
         {
-            templateData["deeplink_url"] = $"{opts.PortalBaseUrl.TrimEnd('/')}/support/{ticketId}";
+            if (!string.IsNullOrWhiteSpace(opts.PortalBaseDomain))
+            {
+                // Build tenant-subdomain deeplink:
+                // https://{tenantId}.{PortalBaseDomain}/support/{ticketId}
+                templateData["deeplink_url"] =
+                    $"https://{notification.TenantId}.{opts.PortalBaseDomain.TrimEnd('/')}/support/{ticketId}";
+            }
+            else if (!string.IsNullOrWhiteSpace(opts.PortalBaseUrl))
+            {
+                templateData["deeplink_url"] = $"{opts.PortalBaseUrl.TrimEnd('/')}/support/{ticketId}";
+            }
         }
 
         var templateKey = MapTemplateKey(notification.EventType);

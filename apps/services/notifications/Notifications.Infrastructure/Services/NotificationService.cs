@@ -830,20 +830,30 @@ public class NotificationServiceImpl : INotificationService
         var routes = await _routingService.ResolveRoutesAsync(tenantId, notification.Channel);
 
         string? subject = notification.RenderedSubject;
-        string? body    = notification.RenderedBody;
-        string? html    = null;
+        // RenderedBody holds the HTML template output; RenderedText is the plain-text
+        // alternative.  Swap from the old assignment so SendGrid receives the content
+        // in the correct slots: Html → text/html, Body → text/plain.
+        string? html    = notification.RenderedBody;
+        string? body    = notification.RenderedText;
 
-        if (string.IsNullOrEmpty(subject) || string.IsNullOrEmpty(body))
+        if (string.IsNullOrEmpty(subject) || (string.IsNullOrEmpty(html) && string.IsNullOrEmpty(body)))
         {
             try
             {
                 var msg = JsonSerializer.Deserialize<JsonElement>(notification.MessageJson);
                 subject ??= msg.TryGetProperty("subject", out var s) ? s.GetString() : "";
-                body    ??= msg.TryGetProperty("body",    out var b) ? b.GetString() : "";
-                html      = msg.TryGetProperty("html",    out var h) ? h.GetString() : null;
+                if (string.IsNullOrEmpty(html))
+                    html = msg.TryGetProperty("html", out var h) ? h.GetString() : null;
+                if (string.IsNullOrEmpty(body))
+                    body = msg.TryGetProperty("body", out var b) ? b.GetString() : "";
             }
             catch { /* use whatever we have */ }
         }
+
+        // Ensure a text/plain part is always present — required by strict mail clients.
+        // When the template only defines an HTML body, fall back to a minimal stub.
+        if (string.IsNullOrWhiteSpace(body) && !string.IsNullOrWhiteSpace(html))
+            body = "Please view this email in an HTML-capable mail client.";
 
         ProviderFailure? lastFailure = null;
 
