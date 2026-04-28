@@ -27,8 +27,11 @@ export interface NotifSummary {
 }
 
 export interface NotifListResponse {
-  data: NotifSummary[];
-  meta: { total: number; limit: number; offset: number };
+  items:      NotifSummary[];
+  totalCount: number;
+  page:       number;
+  pageSize:   number;
+  totalPages: number;
 }
 
 export interface NotifStats {
@@ -110,18 +113,17 @@ export const notificationsServerApi = {
    * Accepts status, channel filters and limit/offset pagination.
    */
   list(tenantId: string, params: {
-    status?:  string;
-    channel?: string;
-    limit?:   number;
-    offset?:  number;
+    status?:   string;
+    channel?:  string;
+    page?:     number;
+    pageSize?: number;
   } = {}): Promise<NotifListResponse> {
     const qs = new URLSearchParams();
-    if (params.status)             qs.set('status',  params.status);
-    if (params.channel)            qs.set('channel', params.channel);
-    if (params.limit  !== undefined) qs.set('limit',  String(params.limit));
-    if (params.offset !== undefined) qs.set('offset', String(params.offset));
-    const q = qs.toString();
-    return notifRequest<NotifListResponse>(`/v1/notifications${q ? `?${q}` : ''}`, tenantId);
+    if (params.status)  qs.set('status',   params.status);
+    if (params.channel) qs.set('channel',  params.channel);
+    qs.set('page',     String(params.page     ?? 1));
+    qs.set('pageSize', String(params.pageSize ?? 25));
+    return notifRequest<NotifListResponse>(`/v1/notifications?${qs}`, tenantId);
   },
 
   /**

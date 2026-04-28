@@ -276,17 +276,17 @@ export default async function ActivityPage({
 
   const [listResult, statsResult] = await Promise.allSettled([
     notificationsServerApi.list(tenantId, {
-      status:  status  || undefined,
-      channel: channel || undefined,
-      limit:   PAGE_SIZE,
-      offset,
+      status:   status   || undefined,
+      channel:  channel  || undefined,
+      page,
+      pageSize: PAGE_SIZE,
     }),
     notificationsServerApi.stats(tenantId),
   ]);
 
   if (listResult.status === 'fulfilled') {
-    notifications = listResult.value.data;
-    total = listResult.value.meta.total;
+    notifications = listResult.value.items;
+    total = listResult.value.totalCount;
   } else {
     fetchErr = listResult.reason instanceof Error ? listResult.reason.message : 'Unable to load notifications.';
   }

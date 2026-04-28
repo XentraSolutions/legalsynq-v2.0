@@ -207,7 +207,6 @@ export default async function NotificationLogPage({ searchParams }: PageProps) {
   const status  = searchParamsData.status  || '';
   const channel = searchParamsData.channel || '';
   const page    = Math.max(1, parseInt(searchParamsData.page ?? '1', 10));
-  const offset  = (page - 1) * PAGE_SIZE;
 
   const baseHref = '/notifications/log';
   const filterParams: Record<string, string> = {};
@@ -220,18 +219,19 @@ export default async function NotificationLogPage({ searchParams }: PageProps) {
 
   try {
     const res = await notificationsServerApi.list(tenantId, {
-      status:  status  || undefined,
-      channel: channel || undefined,
-      limit:   PAGE_SIZE,
-      offset,
+      status:   status   || undefined,
+      channel:  channel  || undefined,
+      page,
+      pageSize: PAGE_SIZE,
     });
-    notifications = res.data;
-    total         = res.meta.total;
+    notifications = res.items;
+    total         = res.totalCount;
   } catch (err: unknown) {
     fetchErr = err instanceof Error ? err.message : 'Unable to load notifications.';
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const offset     = (page - 1) * PAGE_SIZE;
   const startItem  = total === 0 ? 0 : offset + 1;
   const endItem    = Math.min(offset + PAGE_SIZE, total);
   const hasFilters = !!(status || channel);

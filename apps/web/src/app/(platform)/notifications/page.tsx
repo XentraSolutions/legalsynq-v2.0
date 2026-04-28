@@ -100,7 +100,7 @@ export default async function NotificationsPage() {
 
   const [statsResult, listResult] = await Promise.allSettled([
     notificationsServerApi.stats(tenantId),
-    notificationsServerApi.list(tenantId, { limit: 10, offset: 0 }),
+    notificationsServerApi.list(tenantId, { pageSize: 10 }),
   ]);
 
   if (statsResult.status === 'fulfilled') {
@@ -112,7 +112,7 @@ export default async function NotificationsPage() {
   }
 
   if (listResult.status === 'fulfilled') {
-    recent = listResult.value?.data ?? [];
+    recent = listResult.value?.items ?? [];
   } else {
     listError = listResult.reason instanceof Error
       ? listResult.reason.message
