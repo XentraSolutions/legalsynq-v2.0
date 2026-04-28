@@ -51,6 +51,12 @@ public interface ITicketAttachmentService
 
     /// <summary>Returns a single attachment record, or null if not found / not owned by the current tenant.</summary>
     Task<SupportTicketAttachment?> GetByIdAsync(Guid ticketId, Guid attachmentId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Emits a compliance-grade audit event recording that <paramref name="attachment"/>
+    /// was downloaded by the current actor. Fire-and-observe: never throws.
+    /// </summary>
+    Task AuditDownloadAsync(SupportTicketAttachment attachment, CancellationToken ct = default);
 }
 
 public class TicketAttachmentService : ITicketAttachmentService
@@ -350,5 +356,54 @@ public class TicketAttachmentService : ITicketAttachmentService
             .FirstOrDefaultAsync(
                 a => a.Id == attachmentId && a.TicketId == ticketId && a.TenantId == tenantId,
                 ct);
+    }
+
+    /// <summary>
+    /// Emits a compliance-grade audit event for an attachment download.
+    /// Fire-and-observe: exceptions are swallowed and logged at Warning level
+    /// so that a transient audit failure never interrupts the file stream.
+    /// </summary>
+    public async Task AuditDownloadAsync(SupportTicketAttachment attachment, CancellationToken ct = default)
+    {
+        try
+        {
+            var ticketNumber = await _db.Tickets.AsNoTracking()
+                .Where(t => t.Id == attachment.TicketId && t.TenantId == attachment.TenantId)
+                .Select(t => t.TicketNumber)
+                .FirstOrDefaultAsync(ct);
+
+            var actor = _actor.Actor;
+            var req   = _actor.Request;
+            var evt = new SupportAuditEvent(
+                EventType:      SupportAuditEventTypes.TicketAttachmentDownloaded,
+                TenantId:       attachment.TenantId,
+                ActorUserId:    actor.UserId,
+                ActorEmail:     actor.Email,
+                ActorRoles:     actor.Roles,
+                ResourceType:   SupportAuditResourceTypes.SupportTicket,
+                ResourceId:     attachment.TicketId.ToString(),
+                ResourceNumber: ticketNumber,
+                Action:         SupportAuditActions.AttachmentDownload,
+                Outcome:        SupportAuditOutcomes.Success,
+                OccurredAt:     DateTime.UtcNow,
+                CorrelationId:  req.CorrelationId,
+                IpAddress:      req.IpAddress,
+                UserAgent:      req.UserAgent,
+                Metadata: new Dictionary<string, object?>
+                {
+                    ["attachment_id"]    = attachment.Id,
+                    ["document_id"]      = attachment.DocumentId,
+                    ["file_name"]        = attachment.FileName,
+                    ["content_type"]     = attachment.ContentType,
+                    ["file_size_bytes"]  = attachment.FileSizeBytes,
+                });
+            await _audit.PublishAsync(evt, ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex,
+                "Audit dispatch threw for event=support.ticket.attachment_downloaded attachment={AttachmentId}",
+                attachment.Id);
+        }
     }
 }

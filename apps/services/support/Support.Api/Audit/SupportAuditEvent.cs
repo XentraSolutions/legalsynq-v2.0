@@ -12,6 +12,7 @@ public static class SupportAuditEventTypes
     public const string TicketAssignmentChanged = "support.ticket.assignment_changed";
     public const string TicketCommentAdded = "support.ticket.comment_added";
     public const string TicketAttachmentAdded = "support.ticket.attachment_added";
+    public const string TicketAttachmentDownloaded = "support.ticket.attachment_downloaded";
     public const string TicketProductRefLinked = "support.ticket.product_ref_linked";
     public const string TicketProductRefRemoved = "support.ticket.product_ref_removed";
     public const string QueueCreated = "support.queue.created";
@@ -37,6 +38,7 @@ public static class SupportAuditActions
     public const string Assign = "assign";
     public const string CommentAdd = "comment_add";
     public const string AttachmentLink = "attachment_link";
+    public const string AttachmentDownload = "attachment_download";
     public const string ProductRefLink = "product_ref_link";
     public const string ProductRefRemove = "product_ref_remove";
     public const string MemberAdd = "member_add";

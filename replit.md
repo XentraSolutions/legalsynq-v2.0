@@ -5955,3 +5955,44 @@ Platform-internal user management added to Control Center. Only shows `PlatformI
 - Sends invite email via `emailClient.SendInviteEmailAsync` (best-effort)
 - Emits `identity.platform_user.invited` audit event
 - Returns 201 with `{ activationLink }` (non-production only)
+
+## Support Service — Audit Completeness ✅
+
+Full audit pipeline is now active for all support operations on both tenant portal and admin (control center) sides.
+
+### Audit Mode Configuration
+- **Development**: `Support.Audit.Mode=Http` + `Support.Audit.Enabled=true` in `appsettings.Development.json` — live events forwarded to Audit Service on `:5007`.
+- **Production**: `Support__Audit__Mode=Http` + `Support__Audit__Enabled=true` injected by `scripts/run-prod.sh` at launch.
+- **`AuditClient.BaseUrl`**: `http://localhost:5007` (set in `appsettings.json`).
+- Startup log confirms mode: `Support.Api ready | Env=… | Audit=Http AuditEnabled=True | Storage=Local`.
+
+### Audited Events (`SupportAuditEventTypes`)
+| Event type (wire) | Trigger |
+|---|---|
+| `support.ticket.created` | Ticket created (tenant or admin) |
+| `support.ticket.updated` | Ticket fields updated |
+| `support.ticket.status_changed` | Status transition |
+| `support.ticket.assignment_changed` | Agent/queue assignment or clear |
+| `support.ticket.comment_added` | Comment or internal note added (admin or customer) |
+| `support.ticket.attachment_added` | File attachment linked or uploaded |
+| `support.ticket.attachment_downloaded` | *(new)* File downloaded via the download endpoint |
+| `support.ticket.product_ref_linked` | Product reference linked to ticket |
+| `support.ticket.product_ref_removed` | Product reference removed |
+| `support.queue.created` | Queue created |
+| `support.queue.updated` | Queue updated |
+| `support.queue.member_added` | Member added to queue |
+| `support.queue.member_removed` | Member removed from queue |
+| `support.tenant_settings.changed` | Tenant support settings updated |
+
+### Attachment Download Audit (new)
+- `ITicketAttachmentService.AuditDownloadAsync(attachment, ct)` added — fire-and-observe, never throws.
+- Called from `AttachmentEndpoints.MapGet("/attachments/{attachmentId}/download")` on both `Local` and `DocumentsService` storage paths immediately before `Results.File(...)`.
+- Records actor, ticket number, attachment metadata (`attachment_id`, `document_id`, `file_name`, `content_type`, `file_size_bytes`), IP address, and user-agent.
+
+### Files Changed
+- `Support.Api/Audit/SupportAuditEvent.cs` — added `TicketAttachmentDownloaded` event type + `AttachmentDownload` action constant.
+- `Support.Api/Services/TicketAttachmentService.cs` — added `AuditDownloadAsync` to interface and implementation.
+- `Support.Api/Endpoints/AttachmentEndpoints.cs` — calls `AuditDownloadAsync` on each successful download path.
+- `Support.Api/appsettings.Development.json` — added `Support.Audit` section with `Mode=Http`, `Enabled=true`.
+- `Support.Api/Program.cs` — startup log emits audit mode, added `using Microsoft.Extensions.Options`.
+- `scripts/run-prod.sh` — `Support__Audit__Mode=Http` + `Support__Audit__Enabled=true` added to Support.Api launch.

@@ -195,6 +195,7 @@ if command -v dotnet &>/dev/null; then
           # reads directly from the environment — no explicit config override needed here.
           # FileStorage: Local mode writes uploads to ./data/support-uploads
           # relative to the Support.Api working directory.
+          # Audit: Http mode forwards compliance events to the Audit service (port 5007).
           launch_svc "$_svc_label" "$csproj" env \
             "Support__Notifications__Enabled=true" \
             "Support__Notifications__Mode=Http" \
@@ -202,7 +203,9 @@ if command -v dotnet &>/dev/null; then
             "Support__Notifications__PortalBaseUrl=${_portal_url}" \
             "Support__Notifications__PortalBaseDomain=${_portal_domain}" \
             "Support__FileStorage__Mode=Local" \
-            "Support__FileStorage__LocalRootPath=./data/support-uploads"
+            "Support__FileStorage__LocalRootPath=./data/support-uploads" \
+            "Support__Audit__Enabled=true" \
+            "Support__Audit__Mode=Http"
           PID_SUPPORT=$! ;;
         Gateway.Api)   launch_svc "$_svc_label" "$csproj"; PID_GATEWAY=$! ;;
         Identity.Api)

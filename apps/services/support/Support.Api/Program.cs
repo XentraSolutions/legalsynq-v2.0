@@ -3,6 +3,7 @@ using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Notifications;
 using FluentValidation;
 using LegalSynq.AuditClient;
+using Microsoft.Extensions.Options;
 using Support.Api.Audit;
 using Support.Api.Auth;
 using Support.Api.Configuration;
@@ -310,6 +311,18 @@ app.MapProductRefEndpoints();
 app.MapQueueEndpoints();
 app.MapCustomerTicketEndpoints();
 app.MapTenantSettingsEndpoints();
+
+{
+    var startupLog = app.Services.GetRequiredService<ILogger<Program>>();
+    var auditCfg   = app.Services.GetRequiredService<IOptions<AuditOptions>>().Value;
+    var storageCfg = app.Services.GetRequiredService<IOptionsMonitor<FileStorageOptions>>().CurrentValue;
+    startupLog.LogInformation(
+        "Support.Api ready | Env={Env} | Audit={AuditMode} AuditEnabled={AuditEnabled} | Storage={StorageMode}",
+        app.Environment.EnvironmentName,
+        auditCfg.Mode,
+        auditCfg.Enabled,
+        storageCfg.Mode);
+}
 
 app.Run();
 

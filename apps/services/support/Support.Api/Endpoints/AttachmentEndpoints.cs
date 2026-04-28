@@ -172,6 +172,7 @@ public static class AttachmentEndpoints
                     if (candidates.Length == 0) return Results.NotFound();
                     var filePath = candidates[0];
                     var stream   = System.IO.File.OpenRead(filePath);
+                    await svc.AuditDownloadAsync(attachment, ct);
                     return Results.File(stream,
                         attachment.ContentType ?? "application/octet-stream",
                         attachment.FileName);
@@ -203,6 +204,7 @@ public static class AttachmentEndpoints
                                       ?? attachment.ContentType
                                       ?? "application/octet-stream";
                     var stream = await upstream.Content.ReadAsStreamAsync(ct);
+                    await svc.AuditDownloadAsync(attachment, ct);
                     return Results.File(stream, contentType, attachment.FileName);
                 }
 
