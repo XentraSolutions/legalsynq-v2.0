@@ -78,23 +78,47 @@ public class TicketAttachmentService : ITicketAttachmentService
         _storageOptions = storageOptions;
     }
 
+    private bool IsPlatformAdmin =>
+        _actor.Actor.Roles.Contains(SupportRoles.PlatformAdmin, StringComparer.OrdinalIgnoreCase);
+
     private string RequireTenant()
     {
         if (!_tenant.IsResolved) throw new TenantMissingException();
         return _tenant.TenantId!;
     }
 
-    private async Task RequireOwnedTicketAsync(Guid ticketId, string tenantId, CancellationToken ct)
+    /// <summary>
+    /// Resolves the real tenant ID for an attachment operation.
+    ///
+    /// - PlatformAdmin: looks up the ticket by ID only (cross-tenant access) and
+    ///   returns the ticket's own TenantId so attachments are stored under the
+    ///   correct tenant — not the admin's synthetic placeholder claim.
+    /// - Tenant-scoped users: enforces ownership (ticketId + tenantId from claim).
+    /// - Unauthenticated / no tenant claim: throws TenantMissingException.
+    ///
+    /// Throws TicketNotFoundException if the ticket does not exist or is not
+    /// accessible to the caller.
+    /// </summary>
+    private async Task<string> ResolveTicketTenantAsync(Guid ticketId, CancellationToken ct)
     {
+        if (IsPlatformAdmin)
+        {
+            var ticket = await _db.Tickets.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == ticketId, ct)
+                ?? throw new TicketNotFoundException();
+            return ticket.TenantId;
+        }
+
+        var tenantId = RequireTenant();
         var exists = await _db.Tickets.AsNoTracking()
             .AnyAsync(x => x.Id == ticketId && x.TenantId == tenantId, ct);
         if (!exists) throw new TicketNotFoundException();
+        return tenantId;
     }
 
     public async Task<TicketAttachmentResponse> AddAsync(Guid ticketId, CreateTicketAttachmentRequest req, CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
-        await RequireOwnedTicketAsync(ticketId, tenantId, ct);
+        var tenantId = await ResolveTicketTenantAsync(ticketId, ct);
 
         var attachment = new SupportTicketAttachment
         {
@@ -118,8 +142,7 @@ public class TicketAttachmentService : ITicketAttachmentService
         string? displayName,
         CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
-        await RequireOwnedTicketAsync(ticketId, tenantId, ct);
+        var tenantId = await ResolveTicketTenantAsync(ticketId, ct);
 
         var opts = _storageOptions.CurrentValue;
         ValidateFile(file, displayName, opts);
@@ -311,8 +334,7 @@ public class TicketAttachmentService : ITicketAttachmentService
 
     public async Task<List<TicketAttachmentResponse>> ListAsync(Guid ticketId, CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
-        await RequireOwnedTicketAsync(ticketId, tenantId, ct);
+        var tenantId = await ResolveTicketTenantAsync(ticketId, ct);
 
         var items = await _db.TicketAttachments.AsNoTracking()
             .Where(a => a.TicketId == ticketId && a.TenantId == tenantId)
@@ -323,7 +345,7 @@ public class TicketAttachmentService : ITicketAttachmentService
 
     public async Task<SupportTicketAttachment?> GetByIdAsync(Guid ticketId, Guid attachmentId, CancellationToken ct = default)
     {
-        var tenantId = RequireTenant();
+        var tenantId = await ResolveTicketTenantAsync(ticketId, ct);
         return await _db.TicketAttachments.AsNoTracking()
             .FirstOrDefaultAsync(
                 a => a.Id == attachmentId && a.TicketId == ticketId && a.TenantId == tenantId,
