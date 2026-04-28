@@ -486,11 +486,11 @@ static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILog
             HtmlBody:    """
                          <p>Hi,</p>
                          <p>Your support ticket has been received and is being reviewed by our team.</p>
-                         <table cellpadding="0" cellspacing="0" style="margin:0">
-                           <tr><td><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
-                           <tr><td><strong>Subject</strong></td><td>{{title}}</td></tr>
-                           <tr><td><strong>Priority</strong></td><td>{{priority}}</td></tr>
-                           <tr><td><strong>Status</strong></td><td>{{status}}</td></tr>
+                         <table cellpadding="4" cellspacing="0" style="margin:0">
+                           <tr><td style="padding-right:16px"><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>Subject</strong></td><td>{{title}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>Priority</strong></td><td>{{priority}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>Status</strong></td><td>{{status}}</td></tr>
                          </table>
                          <p style="margin-top:24px">
                            <a href="{{deeplink_url}}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View Ticket</a>
@@ -505,11 +505,11 @@ static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILog
             HtmlBody:    """
                          <p>Hi,</p>
                          <p>The status of your support ticket has been updated.</p>
-                         <table cellpadding="0" cellspacing="0" style="margin:0">
-                           <tr><td><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
-                           <tr><td><strong>Subject</strong></td><td>{{title}}</td></tr>
-                           <tr><td><strong>Previous Status</strong></td><td>{{previous_status}}</td></tr>
-                           <tr><td><strong>New Status</strong></td><td>{{new_status}}</td></tr>
+                         <table cellpadding="4" cellspacing="0" style="margin:0">
+                           <tr><td style="padding-right:16px"><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>Subject</strong></td><td>{{title}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>Previous Status</strong></td><td>{{previous_status}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>New Status</strong></td><td>{{new_status}}</td></tr>
                          </table>
                          <p style="margin-top:24px">
                            <a href="{{deeplink_url}}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View Ticket</a>
@@ -543,10 +543,10 @@ static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILog
             HtmlBody:    """
                          <p>Hi,</p>
                          <p>A support ticket has been assigned to you.</p>
-                         <table cellpadding="0" cellspacing="0" style="margin:0">
-                           <tr><td><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
-                           <tr><td><strong>Subject</strong></td><td>{{title}}</td></tr>
-                           <tr><td><strong>Priority</strong></td><td>{{priority}}</td></tr>
+                         <table cellpadding="4" cellspacing="0" style="margin:0">
+                           <tr><td style="padding-right:16px"><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>Subject</strong></td><td>{{title}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>Priority</strong></td><td>{{priority}}</td></tr>
                          </table>
                          <p style="margin-top:24px">
                            <a href="{{deeplink_url}}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View Ticket</a>
@@ -561,10 +561,10 @@ static async Task SeedSupportEmailTemplatesAsync(IServiceProvider services, ILog
             HtmlBody:    """
                          <p>Hi,</p>
                          <p>Your support ticket has been updated.</p>
-                         <table cellpadding="0" cellspacing="0" style="margin:0">
-                           <tr><td><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
-                           <tr><td><strong>Subject</strong></td><td>{{title}}</td></tr>
-                           <tr><td><strong>Status</strong></td><td>{{status}}</td></tr>
+                         <table cellpadding="4" cellspacing="0" style="margin:0">
+                           <tr><td style="padding-right:16px"><strong>Ticket</strong></td><td>{{ticket_number}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>Subject</strong></td><td>{{title}}</td></tr>
+                           <tr><td style="padding-right:16px"><strong>Status</strong></td><td>{{status}}</td></tr>
                          </table>
                          <p style="margin-top:24px">
                            <a href="{{deeplink_url}}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600">View Ticket</a>
