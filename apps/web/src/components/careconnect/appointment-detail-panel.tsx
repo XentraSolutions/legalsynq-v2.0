@@ -1,6 +1,7 @@
 import type { AppointmentDetail } from '@/types/careconnect';
 import { StatusBadge } from './status-badge';
 import { AppointmentTimeline } from './appointment-timeline';
+import { formatPhoneDisplay } from '@/lib/phone';
 
 interface AppointmentDetailPanelProps {
   appointment: AppointmentDetail;
@@ -84,7 +85,7 @@ export function AppointmentDetailPanel({ appointment: a }: AppointmentDetailPane
           <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
             <Field label="Name"    value={`${a.clientFirstName} ${a.clientLastName}`} />
             <Field label="DOB"     value={a.clientDob   ? formatDate(a.clientDob) : undefined} />
-            <Field label="Phone"   value={a.clientPhone} />
+            <Field label="Phone"   value={formatPhoneDisplay(a.clientPhone)} />
             <Field label="Email"   value={a.clientEmail} />
           </dl>
         </Section>

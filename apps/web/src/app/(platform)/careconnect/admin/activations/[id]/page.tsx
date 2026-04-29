@@ -13,6 +13,7 @@ import { requireAdmin } from '@/lib/auth-guards';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { ApproveAction } from './approve-action';
+import { formatPhoneDisplay } from '@/lib/phone';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -109,7 +110,7 @@ export default async function ActivationDetailPage({ params }: PageProps) {
             <div>
               <Field label="Name"     value={detail.providerName} />
               <Field label="Email"    value={detail.providerEmail} />
-              <Field label="Phone"    value={detail.providerPhone} />
+              <Field label="Phone"    value={formatPhoneDisplay(detail.providerPhone)} />
               <Field label="Address"  value={detail.providerAddress} />
               <div className="flex justify-between gap-4 py-2.5 border-b border-gray-100">
                 <span className="text-xs font-medium text-gray-500 uppercase tracking-wide shrink-0">Org link</span>

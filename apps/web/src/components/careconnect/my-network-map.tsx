@@ -3,6 +3,7 @@
 import 'leaflet/dist/leaflet.css';
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import type { NetworkProviderMarker } from '@/types/careconnect';
+import { formatPhoneDisplay } from '@/lib/phone';
 
 const US_CENTER: [number, number] = [39.5, -98.35];
 
@@ -59,7 +60,7 @@ export function MyNetworkMap({ markers, selectedId, onSelect }: MyNetworkMapProp
                   {m.addressLine1 && <>{m.addressLine1}<br /></>}
                   {m.city}, {m.state} {m.postalCode}
                 </p>
-                {m.phone && <p className="text-gray-500 text-xs">{m.phone}</p>}
+                {m.phone && <p className="text-gray-500 text-xs">{formatPhoneDisplay(m.phone)}</p>}
                 <div className="mt-2 flex gap-1.5 flex-wrap">
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border ${
                     m.isActive

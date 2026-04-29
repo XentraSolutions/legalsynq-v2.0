@@ -1,5 +1,6 @@
 import type { ReferralDetail } from '@/types/careconnect';
 import { StatusBadge, UrgencyBadge } from './status-badge';
+import { formatPhoneDisplay } from '@/lib/phone';
 
 interface ReferralDetailPanelProps {
   referral:    ReferralDetail;
@@ -72,7 +73,7 @@ export function ReferralDetailPanel({ referral, hideHeader = false }: ReferralDe
         <Section title="Client">
           <Field label="Name"  value={`${referral.clientFirstName} ${referral.clientLastName}`} />
           <Field label="DOB"   value={referral.clientDob ? formatDate(referral.clientDob) : undefined} />
-          <Field label="Phone" value={referral.clientPhone} />
+          <Field label="Phone" value={formatPhoneDisplay(referral.clientPhone)} />
           <Field label="Email" value={referral.clientEmail} />
         </Section>
 

@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { useState, useRef } from 'react';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { AccessStageBadge } from '@/components/careconnect/status-badge';
+import { formatPhoneInput, stripPhone } from '@/lib/phone';
 import type {
   NetworkDetail,
   NetworkProviderItem,
@@ -80,7 +81,7 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
     try {
       const { data } = await careConnectApi.networks.searchProviders(network.id, {
         name:  searchQuery.name  || undefined,
-        phone: searchQuery.phone || undefined,
+        phone: stripPhone(searchQuery.phone) || undefined,
         npi:   searchQuery.npi   || undefined,
         city:  searchQuery.city  || undefined,
       });
@@ -124,7 +125,7 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
           name:               newForm.name.trim(),
           organizationName:   newForm.organizationName.trim() || undefined,
           email:              newForm.email.trim(),
-          phone:              newForm.phone.trim(),
+          phone:              stripPhone(newForm.phone),
           addressLine1:       newForm.addressLine1.trim(),
           city:               newForm.city.trim(),
           state:              newForm.state.trim(),
@@ -221,8 +222,8 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
                 <input
                   type="text"
                   value={searchQuery.phone}
-                  onChange={e => setSearchQuery(q => ({ ...q, phone: e.target.value }))}
-                  placeholder="Phone"
+                  onChange={e => setSearchQuery(q => ({ ...q, phone: formatPhoneInput(e.target.value) }))}
+                  placeholder="(555) 555-5555"
                   className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                 />
                 <input
@@ -344,9 +345,9 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
                   required
                   type="tel"
                   value={newForm.phone}
-                  onChange={e => setNewForm(f => ({ ...f, phone: e.target.value }))}
+                  onChange={e => setNewForm(f => ({ ...f, phone: formatPhoneInput(e.target.value) }))}
                   className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                  placeholder="(555) 000-0000"
+                  placeholder="(555) 555-5555"
                 />
               </div>
               <div>

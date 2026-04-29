@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 
 import { careConnectApi }    from '@/lib/careconnect-api';
 import { AccessStageBadge }  from '@/components/careconnect/status-badge';
+import { formatPhoneDisplay, formatPhoneInput, stripPhone } from '@/lib/phone';
 import type {
   NetworkDetail,
   NetworkProviderItem,
@@ -246,7 +247,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     try {
       const { data } = await careConnectApi.networks.searchProviders(network!.id, {
         name:  searchQuery.name  || undefined,
-        phone: searchQuery.phone || undefined,
+        phone: stripPhone(searchQuery.phone) || undefined,
         npi:   searchQuery.npi   || undefined,
         city:  searchQuery.city  || undefined,
       });
@@ -299,7 +300,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
           name:               newForm.name.trim(),
           organizationName:   newForm.organizationName.trim() || undefined,
           email:              newForm.email.trim(),
-          phone:              newForm.phone.trim(),
+          phone:              stripPhone(newForm.phone),
           addressLine1:       newForm.addressLine1.trim(),
           city:               newForm.city.trim(),
           state:              newForm.state.trim().toUpperCase(),
@@ -517,7 +518,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                     <input
                       type="text"
                       value={searchQuery.phone}
-                      onChange={e => setSearchQuery(q => ({ ...q, phone: e.target.value }))}
+                      onChange={e => setSearchQuery(q => ({ ...q, phone: formatPhoneInput(e.target.value) }))}
                       placeholder="(555) 000-0000"
                       className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                     />
@@ -602,7 +603,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                                 <p className="text-xs text-gray-400 mt-0.5">
                                   {p.city}, {p.state}
                                   {p.npi && <span className="ml-2 font-mono">NPI: {p.npi}</span>}
-                                  <span className="ml-2">{p.phone}</span>
+                                  <span className="ml-2">{formatPhoneDisplay(p.phone)}</span>
                                 </p>
                               </div>
                               <div className="ml-3 shrink-0">
@@ -657,7 +658,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 pl-12">
                   <div><span className="font-medium text-gray-500">Location:</span> {confirmTarget.city}, {confirmTarget.state} {confirmTarget.postalCode}</div>
-                  <div><span className="font-medium text-gray-500">Phone:</span> {confirmTarget.phone}</div>
+                  <div><span className="font-medium text-gray-500">Phone:</span> {formatPhoneDisplay(confirmTarget.phone)}</div>
                   <div><span className="font-medium text-gray-500">Email:</span> {confirmTarget.email}</div>
                   {confirmTarget.npi && (
                     <div><span className="font-medium text-gray-500">NPI:</span> <span className="font-mono">{confirmTarget.npi}</span></div>
@@ -748,8 +749,8 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                       required
                       type="tel"
                       value={newForm.phone}
-                      onChange={e => setNewForm(f => ({ ...f, phone: e.target.value }))}
-                      placeholder="(555) 000-0000"
+                      onChange={e => setNewForm(f => ({ ...f, phone: formatPhoneInput(e.target.value) }))}
+                      placeholder="(555) 555-5555"
                       className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                     />
                   </div>
@@ -1024,7 +1025,7 @@ function ProviderCard({
           <div className="flex items-start gap-2">
             <i className="ri-phone-line text-gray-400 mt-0.5 shrink-0" />
             <div className="space-y-0.5">
-              {provider.phone && <p>{provider.phone}</p>}
+              {provider.phone && <p>{formatPhoneDisplay(provider.phone)}</p>}
               {provider.email && <p className="truncate">{provider.email}</p>}
             </div>
           </div>
@@ -1080,7 +1081,7 @@ function ProviderRow({
       </td>
       <td className="px-4 py-3 text-gray-600 text-xs space-y-0.5">
         <p>{provider.email}</p>
-        <p>{provider.phone}</p>
+        <p>{formatPhoneDisplay(provider.phone)}</p>
       </td>
       <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
         {provider.city}, {provider.state}

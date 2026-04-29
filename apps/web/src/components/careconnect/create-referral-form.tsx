@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 import type { CreateReferralRequest, ReferralUrgencyValue } from '@/types/careconnect';
+import { formatPhoneInput, stripPhone, isValidPhone } from '@/lib/phone';
 
 interface CreateReferralFormProps {
   /** Pre-selected provider — set when form opens from the provider detail page */
@@ -60,7 +61,8 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
     const errs: Record<string, string> = {};
     if (!clientFirstName.trim()) errs.clientFirstName = 'First name is required';
     if (!clientLastName.trim())  errs.clientLastName  = 'Last name is required';
-    if (!clientPhone.trim())     errs.clientPhone     = 'Phone is required';
+    if (!clientPhone.trim())      errs.clientPhone = 'Phone is required';
+    else if (!isValidPhone(clientPhone)) errs.clientPhone = 'Enter a valid 10-digit phone number';
     if (!clientEmail.trim())     errs.clientEmail     = 'Email is required';
     if (!requestedService)       errs.requestedService = 'Requested service is required';
     setFieldErrors(errs);
@@ -79,7 +81,7 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
       clientFirstName:  clientFirstName.trim(),
       clientLastName:   clientLastName.trim(),
       clientDob:        clientDob || undefined,
-      clientPhone:      clientPhone.trim(),
+      clientPhone:      stripPhone(clientPhone),
       clientEmail:      clientEmail.trim(),
       caseNumber:       caseNumber.trim() || undefined,
       requestedService,
@@ -199,7 +201,8 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                   <input
                     type="tel"
                     value={clientPhone}
-                    onChange={e => { setClientPhone(e.target.value); setFieldErrors(fe => ({ ...fe, clientPhone: '' })); }}
+                    placeholder="(555) 555-5555"
+                    onChange={e => { setClientPhone(formatPhoneInput(e.target.value)); setFieldErrors(fe => ({ ...fe, clientPhone: '' })); }}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                   <InputError field="clientPhone" />

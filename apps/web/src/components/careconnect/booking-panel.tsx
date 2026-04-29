@@ -9,6 +9,7 @@ import { PermissionCodes } from '@/lib/permission-codes';
 import { PermissionTooltip } from '@/components/ui/permission-tooltip';
 import { DisabledReasons } from '@/lib/disabled-reasons';
 import type { AvailabilitySlot, CreateAppointmentRequest, ReferralDetail } from '@/types/careconnect';
+import { formatPhoneDisplay, formatPhoneInput, stripPhone } from '@/lib/phone';
 
 interface BookingPanelProps {
   providerId:   string;
@@ -54,7 +55,7 @@ export function BookingPanel({
   const [clientFirstName, setClientFirstName] = useState(referral?.clientFirstName ?? '');
   const [clientLastName,  setClientLastName]  = useState(referral?.clientLastName  ?? '');
   const [clientDob,       setClientDob]       = useState(referral?.clientDob       ?? '');
-  const [clientPhone,     setClientPhone]     = useState(referral?.clientPhone     ?? '');
+  const [clientPhone,     setClientPhone]     = useState(formatPhoneDisplay(referral?.clientPhone) ?? '');
   const [clientEmail,     setClientEmail]     = useState(referral?.clientEmail     ?? '');
   const [caseNumber,      setCaseNumber]      = useState(referral?.caseNumber      ?? '');
   const [notes,           setNotes]           = useState('');
@@ -89,7 +90,7 @@ export function BookingPanel({
       clientFirstName: clientFirstName.trim(),
       clientLastName:  clientLastName.trim(),
       clientDob:       clientDob || undefined,
-      clientPhone:     clientPhone.trim() || undefined,
+      clientPhone:     stripPhone(clientPhone) || undefined,
       clientEmail:     clientEmail.trim() || undefined,
       caseNumber:      caseNumber.trim()  || undefined,
     };
@@ -213,7 +214,8 @@ export function BookingPanel({
                   <input
                     type="tel"
                     value={clientPhone}
-                    onChange={e => setClientPhone(e.target.value)}
+                    placeholder="(555) 555-5555"
+                    onChange={e => setClientPhone(formatPhoneInput(e.target.value))}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>

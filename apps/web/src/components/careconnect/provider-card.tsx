@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import type { ProviderSummary } from '@/types/careconnect';
 import { CreateReferralForm } from '@/components/careconnect/create-referral-form';
+import { formatPhoneDisplay } from '@/lib/phone';
 
 interface ProviderCardProps {
   provider:    ProviderSummary;
@@ -77,7 +78,7 @@ export function ProviderCard({
 
           {/* Contact */}
           <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
-            {provider.phone && <span>{provider.phone}</span>}
+            {provider.phone && <span>{formatPhoneDisplay(provider.phone)}</span>}
             {provider.email && <span className="truncate">{provider.email}</span>}
           </div>
         </Link>

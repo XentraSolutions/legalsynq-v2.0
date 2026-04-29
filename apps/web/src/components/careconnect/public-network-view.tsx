@@ -11,6 +11,7 @@
 
 import { useState, useMemo, useCallback, useRef, forwardRef, useEffect, type FormEvent, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
+import { formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
 import type {
   PublicNetworkDetail,
   PublicProviderItem,
@@ -400,7 +401,7 @@ function ReferralPanel({
     const name = form.patientName.trim();
     if (!name) errs['patientName'] = 'Patient name is required.';
     if (!form.patientPhone.trim()) errs['patientPhone'] = 'Patient phone is required.';
-    else if (form.patientPhone.trim().length < 7) errs['patientPhone'] = 'Enter a valid phone number.';
+    else if (!isValidPhone(form.patientPhone)) errs['patientPhone'] = 'Enter a valid 10-digit phone number.';
     if (!form.firmName.trim()) errs['firmName'] = 'Firm name is required.';
     if (!form.email.trim()) errs['email'] = 'Email is required.';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs['email'] = 'Enter a valid email address.';
@@ -431,7 +432,7 @@ function ReferralPanel({
       senderEmail:      form.email.trim(),
       patientFirstName: firstName,
       patientLastName:  lastName,
-      patientPhone:     form.patientPhone.trim(),
+      patientPhone:     stripPhone(form.patientPhone),
       serviceType:      form.serviceType.trim() || undefined,
       notes:            [
         form.notes,
@@ -584,7 +585,7 @@ function ReferralPanel({
                   <input
                     type="tel" value={form.phone}
                     placeholder="(555) 555-5555"
-                    onChange={e => update('phone', e.target.value)}
+                    onChange={e => update('phone', formatPhoneInput(e.target.value))}
                     disabled={state === 'submitting'}
                     className={panelInputCls(false)}
                   />
@@ -613,9 +614,9 @@ function ReferralPanel({
                 </PanelField>
                 <PanelField label="Patient contact" required error={fieldErrors['patientPhone']}>
                   <input
-                    type="text" required value={form.patientPhone}
-                    placeholder="555-123-4567 or email"
-                    onChange={e => update('patientPhone', e.target.value)}
+                    type="tel" required value={form.patientPhone}
+                    placeholder="(555) 555-5555"
+                    onChange={e => update('patientPhone', formatPhoneInput(e.target.value))}
                     disabled={state === 'submitting'}
                     className={panelInputCls(!!fieldErrors['patientPhone'])}
                   />
