@@ -34,7 +34,9 @@ if [ -d "$PNPM_NEXT15" ]; then
   ln -s "../next/dist/bin/next" "$WEB_NM/.bin/next"
   echo "[web] Pinned node_modules/next → 15.5.15"
 fi
-(cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 exec "$NODE" "$WEB_NEXT_BIN" dev -p "$NEXT_INTERNAL_PORT") &
+(cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 \
+  CC_COMMON_PORTAL_HOSTNAME="${CC_COMMON_PORTAL_HOSTNAME:-careconnect-demo.legalsynq.com}" \
+  exec "$NODE" "$WEB_NEXT_BIN" dev -p "$NEXT_INTERNAL_PORT") &
 PID_WEB=$!
 
 echo "[proxy] Starting dev proxy on :5000 → :$NEXT_INTERNAL_PORT"
