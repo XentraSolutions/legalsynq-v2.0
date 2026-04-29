@@ -16,11 +16,13 @@
 import { createHmac } from 'crypto';
 
 const GATEWAY_URL             = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
-// Dev uses INTERNAL_REQUEST_SECRET (.env.local).
-// Deployed environment exposes the secret under the .NET config key convention.
+// Canonical secret — matches PublicTrustBoundary:InternalRequestSecret in .NET config.
+// Prefer this over the legacy INTERNAL_REQUEST_SECRET alias so that deployed
+// environments always use the value configured in the Replit secrets / env,
+// rather than a dev-only value that may be present in .env.local.
 const INTERNAL_REQUEST_SECRET =
-  process.env.INTERNAL_REQUEST_SECRET ??
   process.env['PublicTrustBoundary__InternalRequestSecret'] ??
+  process.env.INTERNAL_REQUEST_SECRET ??
   '';
 
 /**

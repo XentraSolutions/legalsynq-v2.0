@@ -6,8 +6,13 @@ const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 // BLK-SEC-02-02: Shared secret for public CareConnect trust boundary.
 // Used to HMAC-sign the resolved X-Tenant-Id before forwarding.
 // Must match PublicTrustBoundary:InternalRequestSecret in Gateway and CareConnect configs.
+// Prefer PublicTrustBoundary__InternalRequestSecret (canonical .NET env key) so the
+// deployed app always uses the value from Replit secrets, not a dev alias from .env.local.
 // Empty string in unconfigured environments — validation disabled fallback in CareConnect.
-const INTERNAL_REQUEST_SECRET = process.env.INTERNAL_REQUEST_SECRET ?? '';
+const INTERNAL_REQUEST_SECRET =
+  process.env['PublicTrustBoundary__InternalRequestSecret'] ??
+  process.env.INTERNAL_REQUEST_SECRET ??
+  '';
 
 /**
  * CC2-INT-B07 — Public CareConnect BFF proxy.

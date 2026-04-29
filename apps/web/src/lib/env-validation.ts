@@ -84,10 +84,15 @@ export function validateServerEnv(): void {
   // GATEWAY_URL — server-side fetch to the .NET API gateway
   requireAbsoluteUrl('GATEWAY_URL', process.env.GATEWAY_URL);
 
-  // INTERNAL_REQUEST_SECRET — trust boundary shared secret
-  // Must match PublicTrustBoundary:InternalRequestSecret in Gateway and CareConnect
-  requireNonEmpty('INTERNAL_REQUEST_SECRET', process.env.INTERNAL_REQUEST_SECRET);
-  requireNotPlaceholder('INTERNAL_REQUEST_SECRET', process.env.INTERNAL_REQUEST_SECRET);
+  // Trust boundary shared secret — must match PublicTrustBoundary:InternalRequestSecret
+  // in Gateway and CareConnect.  Accept either the canonical .NET-style env key
+  // (PublicTrustBoundary__InternalRequestSecret, preferred in deployed environments)
+  // or the legacy alias (INTERNAL_REQUEST_SECRET, used in .env.local for local dev).
+  const trustSecret =
+    process.env['PublicTrustBoundary__InternalRequestSecret'] ??
+    process.env.INTERNAL_REQUEST_SECRET;
+  requireNonEmpty('PublicTrustBoundary__InternalRequestSecret (or INTERNAL_REQUEST_SECRET)', trustSecret);
+  requireNotPlaceholder('PublicTrustBoundary__InternalRequestSecret', trustSecret);
 }
 
 // Run validation immediately on module load (server-side only).
