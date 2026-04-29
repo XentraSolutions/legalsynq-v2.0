@@ -16,7 +16,12 @@
 import { createHmac } from 'crypto';
 
 const GATEWAY_URL             = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
-const INTERNAL_REQUEST_SECRET = process.env.INTERNAL_REQUEST_SECRET ?? '';
+// Dev uses INTERNAL_REQUEST_SECRET (.env.local).
+// Deployed environment exposes the secret under the .NET config key convention.
+const INTERNAL_REQUEST_SECRET =
+  process.env.INTERNAL_REQUEST_SECRET ??
+  process.env['PublicTrustBoundary__InternalRequestSecret'] ??
+  '';
 
 /**
  * BLK-SEC-02-02: Computes HMAC-SHA256(tenantId, secret) as a base64 string.
