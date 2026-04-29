@@ -166,6 +166,21 @@ if command -v dotnet &>/dev/null; then
     PID_AUDIT="" PID_NOTIFICATIONS="" PID_LIENS="" PID_GATEWAY="" PID_FLOW="" PID_MONITORING="" PID_TASK=""
     PID_SUPPORT=""
 
+    # ── Resolve portal URL / domain once — used by Identity, CareConnect, Support ──
+    # PortalBaseUrl → PORTAL_BASE_URL secret/env if set; otherwise derived from
+    #   the first value in REPLIT_DOMAINS (the Replit-assigned deployment domain).
+    # PortalBaseDomain → hostname only (no scheme), used for subdomain link building.
+    if [ -n "${PORTAL_BASE_URL:-}" ]; then
+      case "${PORTAL_BASE_URL}" in
+        http://*|https://*) _portal_url="${PORTAL_BASE_URL}" ;;
+        *) _portal_url="https://${PORTAL_BASE_URL}" ;;
+      esac
+      _portal_domain="$(echo "${_portal_url}" | sed 's|^https\?://||' | cut -d'/' -f1)"
+    else
+      _portal_domain="$(echo "${REPLIT_DOMAINS:-localhost:3050}" | cut -d',' -f1)"
+      _portal_url="https://${_portal_domain}"
+    fi
+
     for csproj in "${BUILD_PROJECTS[@]}"; do
       svc_name="$(basename "$csproj" .csproj)"
       # _svc_label_for is defined in scripts/_startup-helpers.sh and maps the
@@ -212,21 +227,7 @@ if command -v dotnet &>/dev/null; then
           # NotificationsService:BaseUrl, :PortalBaseUrl, and :PortalBaseDomain must
           # all be non-empty in Production (Program.cs startup guard).
           # BaseUrl → internal Notifications service (always port 5008).
-          # PortalBaseUrl → PORTAL_BASE_URL secret/env if set; otherwise derived from
-          #   the first value in REPLIT_DOMAINS (the Replit-assigned deployment domain).
-          # PortalBaseDomain → when PORTAL_BASE_URL is set its hostname is used so that
-          #   tenant-subdomain links (invite, reset, deeplinks) use the custom domain.
-          #   Falls back to the Replit-assigned domain when PORTAL_BASE_URL is not set.
-          if [ -n "${PORTAL_BASE_URL:-}" ]; then
-            case "${PORTAL_BASE_URL}" in
-              http://*|https://*) _portal_url="${PORTAL_BASE_URL}" ;;
-              *) _portal_url="https://${PORTAL_BASE_URL}" ;;
-            esac
-            _portal_domain="$(echo "${_portal_url}" | sed 's|^https\?://||' | cut -d'/' -f1)"
-          else
-            _portal_domain="$(echo "${REPLIT_DOMAINS:-localhost:3050}" | cut -d',' -f1)"
-            _portal_url="https://${_portal_domain}"
-          fi
+          # _portal_url / _portal_domain resolved before the loop (see above).
           launch_svc "$_svc_label" "$csproj" env \
             "NotificationsService__BaseUrl=http://localhost:5008" \
             "NotificationsService__PortalBaseUrl=${_portal_url}" \
@@ -236,7 +237,9 @@ if command -v dotnet &>/dev/null; then
         CareConnect.Api)
           launch_svc "$_svc_label" "$csproj" env \
             "IdentityService__BaseUrl=http://localhost:5001" \
-            "TenantService__BaseUrl=http://localhost:5005"
+            "TenantService__BaseUrl=http://localhost:5005" \
+            "AppBaseUrl=${_portal_url}" \
+            "AppBaseDomain=${_portal_domain}"
           PID_CARECONNECT=$! ;;
         Documents.Api) launch_svc "$_svc_label" "$csproj"; PID_DOCUMENTS=$! ;;
         Liens.Api)     launch_svc "$_svc_label" "$csproj"; PID_LIENS=$! ;;
