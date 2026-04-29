@@ -192,7 +192,6 @@ export const GLOBAL_BOTTOM_NAV: NavSection = {
     { href: '/notifications',                   label: 'Notifications',   icon: 'ri-mail-send-line'                  },
     { href: '/activity',                        label: 'Activity Log',    icon: 'ri-history-line'                    },
     { href: '/support',                         label: 'Support',         icon: 'ri-customer-service-2-line', adminOnly: true },
-    { href: '/tenant/analytics',                label: 'Operations',      icon: 'ri-line-chart-line',         adminOnly: true },
     { href: '/tenant/authorization/users',      label: 'User Management', icon: 'ri-shield-user-line',        adminOnly: true },
   ],
 };
