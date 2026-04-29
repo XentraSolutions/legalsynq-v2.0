@@ -198,6 +198,31 @@ public class ReferralEmailService : IReferralEmailService
         // LSCC-005-02: schedule retry on failure (attempt 1 → retry after 5 min)
         await TrySendAndUpdateAsync(notification, provider.Email, subject, body, ct,
             nextRetryAfterUtcOnFailure: ReferralRetryPolicy.GetNextRetryAfter(1));
+
+        // LSCC-005-03: Send submission confirmation to the law firm (referrer).
+        if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
+        {
+            var refDedupeKey = $"referral:{referral.Id}:created:referrer";
+            var refSubject   = $"Referral submitted — {referral.ClientFirstName} {referral.ClientLastName}";
+            var refBody      = BuildReferrerSubmissionHtml(referral, provider);
+
+            var refNotif = CareConnectNotification.Create(
+                tenantId:          referral.TenantId,
+                notificationType:  NotificationType.ReferralCreated,
+                relatedEntityType: NotificationRelatedEntityType.Referral,
+                relatedEntityId:   referral.Id,
+                recipientType:     NotificationRecipientType.InternalUser,
+                recipientAddress:  referral.ReferrerEmail,
+                subject:           refSubject,
+                message:           refSubject,
+                scheduledForUtc:   null,
+                createdByUserId:   referral.CreatedByUserId,
+                triggerSource:     NotificationSource.Initial,
+                dedupeKey:         refDedupeKey);
+
+            if (await _notifications.TryAddWithDedupeAsync(refNotif, ct))
+                await TrySendAndUpdateAsync(refNotif, referral.ReferrerEmail, refSubject, refBody, ct);
+        }
     }
 
     /// <summary>
@@ -831,6 +856,32 @@ public class ReferralEmailService : IReferralEmailService
               <p style="margin-top:32px;font-size:12px;color:#888">
                 This link expires in 30 days. If it has expired, please contact the referring party.
               </p>
+            </body>
+            </html>
+            """;
+    }
+
+    private static string BuildReferrerSubmissionHtml(Referral r, Provider p)
+    {
+        var provName          = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        var recipientGreeting = r.ReferrerName is { Length: > 0 } n ? $" {n}" : "";
+        return $"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
+              <h2 style="color:#1a56db">Referral Submitted</h2>
+              <p>Hello{recipientGreeting},</p>
+              <p>
+                Your referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
+                requesting <strong>{r.RequestedService}</strong> has been sent to
+                <strong>{provName}</strong>.
+              </p>
+              <p>The provider has been notified and will reach out to coordinate care.</p>
+              <table style="border-collapse:collapse;width:100%;margin:16px 0">
+                <tr><td style="padding:6px 0;color:#555;width:140px">Patient</td><td><strong>{r.ClientFirstName} {r.ClientLastName}</strong></td></tr>
+                <tr><td style="padding:6px 0;color:#555">Service</td><td>{r.RequestedService}</td></tr>
+                {(r.Notes is not null ? $"<tr><td style='padding:6px 0;color:#555'>Notes</td><td>{r.Notes}</td></tr>" : "")}
+              </table>
             </body>
             </html>
             """;

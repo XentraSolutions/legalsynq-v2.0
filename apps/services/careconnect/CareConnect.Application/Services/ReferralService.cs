@@ -880,9 +880,8 @@ public class ReferralService : IReferralService
         if (string.IsNullOrWhiteSpace(r.ClientPhone))
             errors["clientPhone"] = new[] { "ClientPhone is required." };
 
-        if (string.IsNullOrWhiteSpace(r.ClientEmail))
-            errors["clientEmail"] = new[] { "ClientEmail is required." };
-        else if (!Regex.IsMatch(r.ClientEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+        if (!string.IsNullOrWhiteSpace(r.ClientEmail) &&
+            !Regex.IsMatch(r.ClientEmail.Trim(), @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
             errors["clientEmail"] = new[] { "ClientEmail format is invalid." };
 
         if (string.IsNullOrWhiteSpace(r.RequestedService))

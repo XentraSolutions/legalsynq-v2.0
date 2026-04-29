@@ -360,6 +360,7 @@ const ProviderRow = forwardRef<
 interface ReferralForm {
   patientName:  string;
   patientPhone: string;
+  serviceType:  string;
   notes:        string;
   firmName:     string;
   contactName:  string;
@@ -368,7 +369,7 @@ interface ReferralForm {
 }
 
 const EMPTY_FORM: ReferralForm = {
-  patientName: '', patientPhone: '', notes: '',
+  patientName: '', patientPhone: '', serviceType: '', notes: '',
   firmName: '', contactName: '', email: '', phone: '',
 };
 
@@ -387,6 +388,7 @@ function ReferralPanel({
   const [errorMsg,    setErrMsg]  = useState('');
   const [fieldErrors, setErrors]  = useState<Record<string, string>>({});
   const [openSection, setSection] = useState<'patient' | 'firm' | 'providers'>('firm');
+  const [docFile,     setDocFile] = useState<File | null>(null);
 
   const update = useCallback((field: keyof ReferralForm, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -430,6 +432,7 @@ function ReferralPanel({
       patientFirstName: firstName,
       patientLastName:  lastName,
       patientPhone:     form.patientPhone.trim(),
+      serviceType:      form.serviceType.trim() || undefined,
       notes:            [
         form.notes,
         form.phone ? `Firm phone: ${form.phone}` : '',
@@ -438,7 +441,7 @@ function ReferralPanel({
     }));
 
     try {
-      await Promise.all(payloads.map(payload =>
+      const responses = await Promise.all(payloads.map(payload =>
         fetch('/api/public/careconnect/api/public/referrals', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantId },
@@ -446,9 +449,22 @@ function ReferralPanel({
         }).then(res => {
           if (res.status === 422) return res.json().then(b => { throw b; });
           if (!res.ok)           return res.json().then(b => { throw b; }).catch(() => { throw new Error('Server error'); });
-          return res.json();
+          return res.json() as Promise<{ referralId: string }>;
         }),
       ));
+
+      if (docFile) {
+        await Promise.allSettled(responses.map(r => {
+          const fd = new FormData();
+          fd.append('file', docFile);
+          return fetch(`/api/public/careconnect/api/public/referrals/${r.referralId}/attachments/upload`, {
+            method:  'POST',
+            headers: { 'X-Tenant-Id': tenantId },
+            body:    fd,
+          });
+        }));
+      }
+
       setState('success');
     } catch (err: unknown) {
       const apiErrors = err && typeof err === 'object' && 'errors' in err
@@ -604,6 +620,15 @@ function ReferralPanel({
                     className={panelInputCls(!!fieldErrors['patientPhone'])}
                   />
                 </PanelField>
+                <PanelField label="Referral is for" hint="optional">
+                  <input
+                    type="text" value={form.serviceType}
+                    placeholder="e.g. Physical therapy, Chiropractic, MRI"
+                    onChange={e => update('serviceType', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
+                  />
+                </PanelField>
                 <PanelField label="Notes" hint="optional">
                   <textarea
                     rows={3} value={form.notes}
@@ -612,6 +637,34 @@ function ReferralPanel({
                     disabled={state === 'submitting'}
                     className={panelInputCls(false) + ' resize-none'}
                   />
+                </PanelField>
+                <PanelField label="Document" hint="optional · PDF, image, Word">
+                  {docFile ? (
+                    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-50 border border-blue-200">
+                      <i className="ri-file-line text-blue-600 text-sm flex-shrink-0" />
+                      <span className="text-xs text-blue-700 truncate flex-1">{docFile.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setDocFile(null)}
+                        disabled={state === 'submitting'}
+                        className="text-blue-400 hover:text-blue-600 flex-shrink-0"
+                      >
+                        <i className="ri-close-line text-sm" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-dashed cursor-pointer transition-colors ${state === 'submitting' ? 'opacity-50 pointer-events-none' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'}`}>
+                      <i className="ri-upload-2-line text-gray-400 text-sm" />
+                      <span className="text-xs text-gray-500">Attach a file</span>
+                      <input
+                        type="file"
+                        className="sr-only"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.xls,.xlsx"
+                        disabled={state === 'submitting'}
+                        onChange={e => setDocFile(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                  )}
                 </PanelField>
               </div>
             </SectionRow>

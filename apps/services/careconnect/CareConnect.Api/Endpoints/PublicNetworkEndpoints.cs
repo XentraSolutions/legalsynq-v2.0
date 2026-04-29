@@ -231,6 +231,79 @@ public static class PublicNetworkEndpoints
         })
         .AllowAnonymous()
         .RequireRateLimiting("public-referral-limit");
+
+        // ── POST /api/public/referrals/{referralId}/attachments/upload ──────────
+        // CC2-INT-B08 — Public document upload for referrals submitted from the public network form.
+        // Secured by the same two-layer trust boundary as the referral creation endpoint.
+        // Accepts a single file (multipart/form-data) and proxies it to the Documents service.
+        app.MapPost("/api/public/referrals/{referralId:guid}/attachments/upload", async (
+            Guid                                   referralId,
+            HttpRequest                            httpRequest,
+            HttpContext                            http,
+            IConfiguration                         config,
+            IReferralAttachmentService             attachmentSvc,
+            Microsoft.Extensions.Options.IOptions<CareConnect.Api.Options.AttachmentUploadOptions> uploadOptions,
+            ILoggerFactory                         loggerFactory,
+            CancellationToken                      ct) =>
+        {
+            var logger = loggerFactory.CreateLogger("CareConnect.PublicReferrals");
+
+            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
+            if (tenantId == null)
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
+
+            if (!httpRequest.HasFormContentType)
+                return Results.BadRequest(new { error = "Request must be multipart/form-data." });
+
+            var form = await httpRequest.ReadFormAsync(ct);
+            if (form.Files.Count == 0)
+                return Results.BadRequest(new { error = "No file was provided." });
+
+            var file    = form.Files[0];
+            var options = uploadOptions.Value;
+
+            if (file.Length > options.MaxFileSizeBytes)
+                return Results.BadRequest(new { error = $"File size exceeds the maximum allowed size of {options.MaxFileSizeBytes / (1024 * 1024)} MB." });
+
+            var normalizedType = file.ContentType?.Split(';')[0].Trim().ToLowerInvariant() ?? string.Empty;
+            if (!options.AllowedContentTypes.Contains(normalizedType, StringComparer.OrdinalIgnoreCase))
+                return Results.BadRequest(new { error = $"File type '{file.ContentType}' is not permitted.", allowed = options.AllowedContentTypes });
+
+            try
+            {
+                await using var stream       = file.OpenReadStream();
+                var             uploadReq    = new UploadAttachmentRequest { Scope = AttachmentScope.Shared };
+                var             result       = await attachmentSvc.UploadAsync(
+                    tenantId.Value,
+                    referralId,
+                    userId: null,
+                    stream,
+                    file.FileName,
+                    file.ContentType,
+                    file.Length,
+                    uploadReq,
+                    ct);
+
+                logger.LogInformation(
+                    "Public referral document uploaded: ReferralId={ReferralId} AttachmentId={AttachmentId} File={FileName}",
+                    referralId, result.Id, file.FileName);
+
+                return Results.Created($"/api/public/referrals/{referralId}/attachments/{result.Id}", result);
+            }
+            catch (NotFoundException ex)
+            {
+                return Results.NotFound(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Public referral document upload failed for referral {ReferralId}.", referralId);
+                return Results.Problem("An unexpected error occurred while uploading the document.");
+            }
+        })
+        .AllowAnonymous()
+        .RequireRateLimiting("public-referral-limit")
+        .DisableAntiforgery();
     }
 
     private static async Task<IResult> HandlePublicReferral(
