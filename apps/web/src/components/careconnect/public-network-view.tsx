@@ -386,7 +386,7 @@ function ReferralPanel({
   const [state,       setState]   = useState<PanelState>('form');
   const [errorMsg,    setErrMsg]  = useState('');
   const [fieldErrors, setErrors]  = useState<Record<string, string>>({});
-  const [openSection, setSection] = useState<'patient' | 'firm' | 'providers'>('patient');
+  const [openSection, setSection] = useState<'patient' | 'firm' | 'providers'>('firm');
 
   const update = useCallback((field: keyof ReferralForm, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -412,8 +412,8 @@ function ReferralPanel({
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      if (errs['patientName'] || errs['patientPhone']) setSection('patient');
-      else if (errs['firmName'] || errs['email'])      setSection('firm');
+      if (errs['firmName'] || errs['email'])           setSection('firm');
+      else if (errs['patientName'] || errs['patientPhone']) setSection('patient');
       return;
     }
 
@@ -527,46 +527,6 @@ function ReferralPanel({
         ) : (
           <form onSubmit={handleSubmit}>
 
-            {/* ── Patient section ── */}
-            <SectionRow
-              avatar="P" avatarBg="bg-teal-500"
-              title="Patient"
-              subtitle="Who is being referred"
-              open={openSection === 'patient'}
-              hasError={!!(fieldErrors['patientName'] || fieldErrors['patientPhone'])}
-              onToggle={() => setSection(s => s === 'patient' ? 'firm' : 'patient')}
-            >
-              <div className="px-4 pb-3 space-y-2">
-                <PanelField label="Patient name" required error={fieldErrors['patientName']}>
-                  <input
-                    type="text" required value={form.patientName}
-                    placeholder="Jane Doe"
-                    onChange={e => update('patientName', e.target.value)}
-                    disabled={state === 'submitting'}
-                    className={panelInputCls(!!fieldErrors['patientName'])}
-                  />
-                </PanelField>
-                <PanelField label="Patient contact" required error={fieldErrors['patientPhone']}>
-                  <input
-                    type="text" required value={form.patientPhone}
-                    placeholder="555-123-4567 or email"
-                    onChange={e => update('patientPhone', e.target.value)}
-                    disabled={state === 'submitting'}
-                    className={panelInputCls(!!fieldErrors['patientPhone'])}
-                  />
-                </PanelField>
-                <PanelField label="Notes" hint="optional">
-                  <textarea
-                    rows={3} value={form.notes}
-                    placeholder="Background, urgency, prior treatment..."
-                    onChange={e => update('notes', e.target.value)}
-                    disabled={state === 'submitting'}
-                    className={panelInputCls(false) + ' resize-none'}
-                  />
-                </PanelField>
-              </div>
-            </SectionRow>
-
             {/* ── Law firm section ── */}
             <SectionRow
               avatar="L" avatarBg="bg-indigo-500"
@@ -611,6 +571,46 @@ function ReferralPanel({
                     onChange={e => update('phone', e.target.value)}
                     disabled={state === 'submitting'}
                     className={panelInputCls(false)}
+                  />
+                </PanelField>
+              </div>
+            </SectionRow>
+
+            {/* ── Patient section ── */}
+            <SectionRow
+              avatar="P" avatarBg="bg-teal-500"
+              title="Patient"
+              subtitle="Who is being referred"
+              open={openSection === 'patient'}
+              hasError={!!(fieldErrors['patientName'] || fieldErrors['patientPhone'])}
+              onToggle={() => setSection(s => s === 'patient' ? 'firm' : 'patient')}
+            >
+              <div className="px-4 pb-3 space-y-2">
+                <PanelField label="Patient name" required error={fieldErrors['patientName']}>
+                  <input
+                    type="text" required value={form.patientName}
+                    placeholder="Jane Doe"
+                    onChange={e => update('patientName', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(!!fieldErrors['patientName'])}
+                  />
+                </PanelField>
+                <PanelField label="Patient contact" required error={fieldErrors['patientPhone']}>
+                  <input
+                    type="text" required value={form.patientPhone}
+                    placeholder="555-123-4567 or email"
+                    onChange={e => update('patientPhone', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(!!fieldErrors['patientPhone'])}
+                  />
+                </PanelField>
+                <PanelField label="Notes" hint="optional">
+                  <textarea
+                    rows={3} value={form.notes}
+                    placeholder="Background, urgency, prior treatment..."
+                    onChange={e => update('notes', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false) + ' resize-none'}
                   />
                 </PanelField>
               </div>
