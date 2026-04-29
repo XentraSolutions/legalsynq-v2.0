@@ -67,7 +67,7 @@ public sealed class NotificationsProducerClient : INotificationsProducer
             {
                 type    = eventKey,
                 subject,
-                body    = htmlBody,
+                html    = htmlBody,
             },
             productKey     = "careconnect",
             eventKey,
