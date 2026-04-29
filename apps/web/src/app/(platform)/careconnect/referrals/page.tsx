@@ -69,37 +69,13 @@ function formatDate(iso: string) {
   });
 }
 
-// ── Network grouped view helpers ───────────────────────────────────────────────
-
-interface LawFirmGroup {
-  key:          string;          // referringOrganizationId or referrerEmail
-  displayName:  string;         // best available label
-  referrals:    NetworkReferralItem[];
-}
-
-function groupByLawFirm(items: NetworkReferralItem[]): LawFirmGroup[] {
-  const map = new Map<string, LawFirmGroup>();
-
-  for (const item of items) {
-    const key = item.referringOrganizationId ?? item.referrerEmail ?? 'unknown';
-    if (!map.has(key)) {
-      const displayName =
-        item.referrerName ??
-        item.referrerEmail ??
-        (item.referringOrganizationId ? `Firm ${item.referringOrganizationId.slice(0, 8)}` : 'Unknown Firm');
-      map.set(key, { key, displayName, referrals: [] });
-    }
-    map.get(key)!.referrals.push(item);
-  }
-
-  return Array.from(map.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
-}
-
-// ── Network referral row ───────────────────────────────────────────────────────
+// ── Network referral row (flat table) ─────────────────────────────────────────
 
 function NetworkReferralRow({ item }: { item: NetworkReferralItem }) {
-  const clientName = [item.clientFirstName, item.clientLastName].filter(Boolean).join(' ') || '—';
+  const clientName     = [item.clientFirstName, item.clientLastName].filter(Boolean).join(' ') || '—';
   const providerDisplay = item.providerOrganizationName ?? item.providerName ?? '—';
+  const lawFirm        = item.referrerName  ?? '—';
+  const email          = item.referrerEmail ?? '—';
 
   return (
     <tr className="hover:bg-gray-50 transition-colors">
@@ -108,6 +84,16 @@ function NetworkReferralRow({ item }: { item: NetworkReferralItem }) {
         {item.caseNumber && (
           <div className="text-xs text-gray-400 mt-0.5">Case #{item.caseNumber}</div>
         )}
+      </td>
+      <td className="px-4 py-3">
+        <div className="text-sm text-gray-800 max-w-[160px] truncate" title={lawFirm}>
+          {lawFirm}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="text-sm text-gray-500 max-w-[180px] truncate" title={email}>
+          {email}
+        </div>
       </td>
       <td className="px-4 py-3">
         <div className="text-sm text-gray-800 max-w-[160px] truncate" title={providerDisplay}>
@@ -140,73 +126,6 @@ function NetworkReferralRow({ item }: { item: NetworkReferralItem }) {
   );
 }
 
-// ── Law firm group block ───────────────────────────────────────────────────────
-
-function LawFirmGroupBlock({ group }: { group: LawFirmGroup }) {
-  const statusCounts = group.referrals.reduce<Record<string, number>>((acc, r) => {
-    acc[r.status] = (acc[r.status] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  const activeStatuses = Object.entries(statusCounts)
-    .filter(([, count]) => count > 0)
-    .sort(([a], [b]) => a.localeCompare(b));
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      {/* Group header */}
-      <div className="px-5 py-4 bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-          </div>
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900 truncate">{group.displayName}</div>
-            <div className="text-xs text-gray-500 mt-0.5">
-              {group.referrals.length} referral{group.referrals.length !== 1 ? 's' : ''}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {activeStatuses.map(([status, count]) => (
-            <span
-              key={status}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-600'}`}
-            >
-              {count} {status === 'NewOpened' ? 'Opened' : status}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Referrals table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Client</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Provider</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Service</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Urgency</th>
-              <th className="px-4 py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">Date</th>
-              <th className="px-4 py-2.5" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-50">
-            {group.referrals.map((item) => (
-              <NetworkReferralRow key={item.id} item={item} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 // ── Network referrals view ─────────────────────────────────────────────────────
 
 const ALL_STATUSES = ['New', 'Accepted', 'InProgress', 'Completed', 'Declined', 'Cancelled'];
@@ -232,7 +151,6 @@ async function NetworkReferralsView({
     fetchError = err instanceof ServerApiError ? err.message : 'Failed to load network referrals.';
   }
 
-  const groups = data ? groupByLawFirm(data.items) : [];
   const hasMore = data ? data.total > data.items.length : false;
 
   return (
@@ -276,21 +194,40 @@ async function NetworkReferralsView({
         <p className="text-xs text-gray-400">
           {data.total === 0
             ? (status || search ? 'No referrals match your filters.' : 'No referrals have been sent through your network yet.')
-            : `${data.total} referral${data.total !== 1 ? 's' : ''} across ${groups.length} law firm${groups.length !== 1 ? 's' : ''}${status ? ` · Status: ${status}` : ''}`}
+            : `${data.total} referral${data.total !== 1 ? 's' : ''}${status ? ` · Status: ${status}` : ''}`}
         </p>
       )}
 
-      {/* Grouped blocks */}
-      {groups.length > 0 && (
-        <div className="space-y-4">
-          {groups.map((group) => (
-            <LawFirmGroupBlock key={group.key} group={group} />
-          ))}
+      {/* Flat table */}
+      {data && data.items.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50">
+                  <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Client</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Law Firm</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Email</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Provider</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Service</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Urgency</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wide">Date</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {data.items.map((item) => (
+                  <NetworkReferralRow key={item.id} item={item} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* Empty state */}
-      {groups.length === 0 && !fetchError && (
+      {data && data.items.length === 0 && !fetchError && (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <div className="w-14 h-14 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-7 h-7 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
