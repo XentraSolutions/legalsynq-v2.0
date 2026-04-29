@@ -828,255 +828,382 @@ public class ReferralEmailService : IReferralEmailService
 
     // ── HTML email templates ──────────────────────────────────────────────────
 
-    private static string BuildNewReferralEmailHtml(Referral r, Provider p, string viewLink)
+    // ── Layout helpers ────────────────────────────────────────────────────────
+
+    /// <summary>Extracts "Firm: {name}" from the notes field, returns null if absent.</summary>
+    private static string? ExtractFirmName(string? notes)
     {
-        var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        if (string.IsNullOrWhiteSpace(notes)) return null;
+        foreach (var line in notes.Split('\n'))
+        {
+            var t = line.Trim();
+            if (t.StartsWith("Firm:", StringComparison.OrdinalIgnoreCase) &&
+                !t.StartsWith("Firm phone:", StringComparison.OrdinalIgnoreCase))
+                return t["Firm:".Length..].Trim();
+        }
+        return null;
+    }
+
+    /// <summary>Strips "Firm: ..." / "Firm phone: ..." meta-lines from notes for clean display.</summary>
+    private static string? CleanNotes(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes)) return null;
+        var cleaned = string.Join('\n', notes.Split('\n')
+            .Where(l => !l.TrimStart().StartsWith("Firm:", StringComparison.OrdinalIgnoreCase) &&
+                        !l.TrimStart().StartsWith("Firm phone:", StringComparison.OrdinalIgnoreCase)))
+            .Trim();
+        return string.IsNullOrEmpty(cleaned) ? null : cleaned;
+    }
+
+    /// <summary>Single table row; skipped when value is null/empty.</summary>
+    private static string Row(string label, string? value, bool bold = false)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        var v = bold ? $"<strong>{value}</strong>" : value;
+        return $"""<tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#6b7280;width:160px;vertical-align:top;font-size:14px">{label}</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px;color:#111">{v}</td></tr>""";
+    }
+
+    /// <summary>Titled section with orange-gradient rule and a data table.</summary>
+    private static string Section(string title, string rows)
+        => string.IsNullOrEmpty(rows) ? "" : $"""
+            <div style="margin-top:28px">
+              <h3 style="margin:0 0 6px;color:#1a56db;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">{title}</h3>
+              <div style="height:2px;background:linear-gradient(to right,#e05e26,#f9a825);margin-bottom:4px"></div>
+              <table style="border-collapse:collapse;width:100%">{rows}</table>
+            </div>
+            """;
+
+    /// <summary>Shared email chrome: outer wrapper, dark-navy header, white card, optional footer callout.</summary>
+    private static string Wrap(string headerTitle, string bodyHtml, string? footerHtml = null)
+    {
+        var footer = footerHtml is not null
+            ? $"""<tr><td style="padding:0 32px 32px"><div style="background:#f8f9fa;border-left:4px solid #e05e26;border-radius:4px;padding:14px 16px;font-size:13px;color:#4b5563;font-style:italic">{footerHtml}</div></td></tr>"""
+            : "";
         return $"""
             <!DOCTYPE html>
             <html>
-            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
-              <h2 style="color:#1a56db">New Referral Received</h2>
-              <p>Hello{(!string.IsNullOrWhiteSpace(provName) ? $" {provName}" : "")},</p>
-              <p>
-                A new referral has been sent to you for
-                <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
-                requesting <strong>{r.RequestedService}</strong>.
-              </p>
-              <table style="border-collapse:collapse;width:100%;margin:16px 0">
-                <tr><td style="padding:6px 0;color:#555;width:140px">Urgency</td><td><strong>{r.Urgency}</strong></td></tr>
-                {(r.CaseNumber is not null ? $"<tr><td style='padding:6px 0;color:#555'>Case #</td><td>{r.CaseNumber}</td></tr>" : "")}
-                {(r.Notes is not null ? $"<tr><td style='padding:6px 0;color:#555'>Notes</td><td>{r.Notes}</td></tr>" : "")}
+            <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+            <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9">
+                <tr><td align="center" style="padding:24px 12px">
+                  <table width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.10)">
+                    <tr><td style="background:#1e3160;padding:28px 32px">
+                      <span style="color:#fff;font-size:20px;font-weight:700;letter-spacing:-.01em">{headerTitle}</span>
+                    </td></tr>
+                    <tr><td style="padding:28px 32px 24px">
+                      {bodyHtml}
+                    </td></tr>
+                    {footer}
+                  </table>
+                </td></tr>
               </table>
-              <p style="margin-top:24px">
-                <a href="{viewLink}"
-                   style="background:#1a56db;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold">
-                  View Referral
-                </a>
-              </p>
-              <p style="margin-top:32px;font-size:12px;color:#888">
-                This link expires in 30 days. If it has expired, please contact the referring party.
-              </p>
             </body>
             </html>
             """;
+    }
+
+    // ── Template builders ─────────────────────────────────────────────────────
+
+    private static string BuildNewReferralEmailHtml(Referral r, Provider p, string viewLink)
+    {
+        var provName       = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        var firmName       = ExtractFirmName(r.Notes);
+        var cleanNotes     = CleanNotes(r.Notes);
+        var referrerLabel  = firmName ?? r.ReferrerName ?? "the referring party";
+        var clientDob      = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null;
+
+        var clientRows =
+            Row("Full Name",     $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Phone",         string.IsNullOrWhiteSpace(r.ClientPhone) ? null : r.ClientPhone) +
+            Row("Date of Birth", clientDob) +
+            Row("Service",       r.RequestedService) +
+            Row("Case #",        r.CaseNumber) +
+            Row("Urgency",       r.Urgency);
+
+        var referrerRows =
+            Row("Name",     r.ReferrerName) +
+            Row("Law Firm", firmName) +
+            Row("Email",    r.ReferrerEmail is not null
+                ? $"<a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a>"
+                : null);
+
+        var notesBlock = cleanNotes is not null
+            ? $"""
+              <div style="margin-top:28px">
+                <h3 style="margin:0 0 6px;color:#1a56db;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">Notes</h3>
+                <div style="height:2px;background:linear-gradient(to right,#e05e26,#f9a825);margin-bottom:4px"></div>
+                <p style="font-size:14px;color:#374151;margin:12px 0 0;white-space:pre-wrap">{cleanNotes}</p>
+              </div>
+              """
+            : "";
+
+        var footer = $"This referral was sent on behalf of <strong>{referrerLabel}</strong>."
+            + (r.ReferrerEmail is not null
+                ? $" Please reply directly to <a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a> with any questions."
+                : "");
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">Dear <strong>{provName}</strong>,</p>
+            <p style="margin:0 0 4px;font-size:15px;color:#374151">
+              Please find below a referral request from <strong>{referrerLabel}</strong>.
+              Kindly schedule an appointment at your earliest convenience.
+            </p>
+            {Section("Client Information", clientRows)}
+            {Section("Referring Case Manager", referrerRows)}
+            {notesBlock}
+            <p style="margin-top:28px">
+              <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral</a>
+            </p>
+            <p style="margin-top:12px;font-size:11px;color:#9ca3af">This link expires in 30 days.</p>
+            """;
+
+        return Wrap($"{provName} \u2013 Referral Request", body, footer);
     }
 
     private static string BuildReferrerSubmissionHtml(Referral r, Provider p)
     {
-        var provName          = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        var recipientGreeting = r.ReferrerName is { Length: > 0 } n ? $" {n}" : "";
-        return $"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
-              <h2 style="color:#1a56db">Referral Submitted</h2>
-              <p>Hello{recipientGreeting},</p>
-              <p>
-                Your referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
-                requesting <strong>{r.RequestedService}</strong> has been sent to
-                <strong>{provName}</strong>.
-              </p>
-              <p>The provider has been notified and will reach out to coordinate care.</p>
-              <table style="border-collapse:collapse;width:100%;margin:16px 0">
-                <tr><td style="padding:6px 0;color:#555;width:140px">Patient</td><td><strong>{r.ClientFirstName} {r.ClientLastName}</strong></td></tr>
-                <tr><td style="padding:6px 0;color:#555">Service</td><td>{r.RequestedService}</td></tr>
-                {(r.Notes is not null ? $"<tr><td style='padding:6px 0;color:#555'>Notes</td><td>{r.Notes}</td></tr>" : "")}
-              </table>
-            </body>
-            </html>
+        var provName   = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        var greeting   = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
+        var firmName   = ExtractFirmName(r.Notes);
+        var cleanNotes = CleanNotes(r.Notes);
+
+        var patientRows =
+            Row("Full Name", $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Service",   r.RequestedService) +
+            Row("Notes",     cleanNotes);
+
+        var providerRows =
+            Row("Provider", provName, bold: true) +
+            Row("Contact",  string.IsNullOrWhiteSpace(p.Phone) ? null : p.Phone);
+
+        var footer = firmName is not null
+            ? $"This referral was submitted on behalf of <strong>{firmName}</strong>."
+            : "Your referral has been submitted successfully.";
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">{greeting}</p>
+            <p style="margin:0 0 4px;font-size:15px;color:#374151">
+              Your referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
+              has been sent to <strong>{provName}</strong>.
+              The provider has been notified and will reach out to coordinate care.
+            </p>
+            {Section("Patient Details", patientRows)}
+            {Section("Provider", providerRows)}
             """;
+
+        return Wrap("Referral Submitted", body, footer);
     }
 
     private static string BuildProviderAssignedEmailHtml(Referral r, Provider p, string viewLink)
     {
-        var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        return $"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
-              <h2 style="color:#1a56db">Referral Assigned to You</h2>
-              <p>Hello{(!string.IsNullOrWhiteSpace(provName) ? $" {provName}" : "")},</p>
-              <p>
-                A referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
-                requesting <strong>{r.RequestedService}</strong> has been assigned to you.
-              </p>
-              <table style="border-collapse:collapse;width:100%;margin:16px 0">
-                <tr><td style="padding:6px 0;color:#555;width:140px">Urgency</td><td><strong>{r.Urgency}</strong></td></tr>
-                {(r.CaseNumber is not null ? $"<tr><td style='padding:6px 0;color:#555'>Case #</td><td>{r.CaseNumber}</td></tr>" : "")}
-                {(r.Notes is not null ? $"<tr><td style='padding:6px 0;color:#555'>Notes</td><td>{r.Notes}</td></tr>" : "")}
-              </table>
-              <p style="margin-top:24px">
-                <a href="{viewLink}"
-                   style="background:#1a56db;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold">
-                  View Referral
-                </a>
-              </p>
-              <p style="margin-top:32px;font-size:12px;color:#888">
-                This link expires in 30 days. If it has expired, please contact the referring party.
-              </p>
-            </body>
-            </html>
+        var provName      = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        var firmName      = ExtractFirmName(r.Notes);
+        var cleanNotes    = CleanNotes(r.Notes);
+        var referrerLabel = firmName ?? r.ReferrerName ?? "the referring party";
+        var clientDob     = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null;
+
+        var clientRows =
+            Row("Full Name",     $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Phone",         string.IsNullOrWhiteSpace(r.ClientPhone) ? null : r.ClientPhone) +
+            Row("Date of Birth", clientDob) +
+            Row("Service",       r.RequestedService) +
+            Row("Case #",        r.CaseNumber) +
+            Row("Urgency",       r.Urgency);
+
+        var referrerRows =
+            Row("Name",     r.ReferrerName) +
+            Row("Law Firm", firmName) +
+            Row("Email",    r.ReferrerEmail is not null
+                ? $"<a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a>"
+                : null);
+
+        var notesBlock = cleanNotes is not null
+            ? $"""
+              <div style="margin-top:28px">
+                <h3 style="margin:0 0 6px;color:#1a56db;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">Notes</h3>
+                <div style="height:2px;background:linear-gradient(to right,#e05e26,#f9a825);margin-bottom:4px"></div>
+                <p style="font-size:14px;color:#374151;margin:12px 0 0;white-space:pre-wrap">{cleanNotes}</p>
+              </div>
+              """
+            : "";
+
+        var footer = $"This referral was sent on behalf of <strong>{referrerLabel}</strong>."
+            + (r.ReferrerEmail is not null
+                ? $" Please reply to <a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a> with any questions."
+                : "");
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">Dear <strong>{provName}</strong>,</p>
+            <p style="margin:0 0 4px;font-size:15px;color:#374151">
+              A referral from <strong>{referrerLabel}</strong> has been assigned to you.
+              Please review the details below and schedule an appointment at your earliest convenience.
+            </p>
+            {Section("Client Information", clientRows)}
+            {Section("Referring Case Manager", referrerRows)}
+            {notesBlock}
+            <p style="margin-top:28px">
+              <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Referral</a>
+            </p>
+            <p style="margin-top:12px;font-size:11px;color:#9ca3af">This link expires in 30 days.</p>
             """;
+
+        return Wrap($"{provName} \u2013 Referral Assigned", body, footer);
     }
 
     private static string BuildProviderAcceptanceHtml(Referral r, Provider p)
     {
         var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        return $"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
-              <h2 style="color:#057a55">Referral Accepted</h2>
-              <p>Hello{(!string.IsNullOrWhiteSpace(provName) ? $" {provName}" : "")},</p>
-              <p>
-                You have successfully accepted the referral for
-                <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
-                requesting <strong>{r.RequestedService}</strong>.
-              </p>
-              <p>
-                The referring party has been notified. You can now begin coordinating care
-                for this client directly.
-              </p>
-            </body>
-            </html>
+
+        var summaryRows =
+            Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Service",  r.RequestedService) +
+            Row("Referrer", r.ReferrerName) +
+            Row("Case #",   r.CaseNumber);
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">Dear <strong>{provName}</strong>,</p>
+            <p style="margin:0 0 4px;font-size:15px;color:#374151">
+              You have successfully accepted the referral below.
+              The referring party has been notified and you may begin coordinating care directly.
+            </p>
+            {Section("Referral Summary", summaryRows)}
             """;
+
+        return Wrap("Referral Accepted", body);
     }
 
     private static string BuildReferrerAcceptanceHtml(Referral r, Provider p)
     {
-        var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        var recipientGreeting = r.ReferrerName is { Length: > 0 } n ? $" {n}" : "";
-        return $"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
-              <h2 style="color:#057a55">Your Referral Was Accepted</h2>
-              <p>Hello{recipientGreeting},</p>
-              <p>
-                Your referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
-                requesting <strong>{r.RequestedService}</strong> has been accepted by
-                <strong>{provName}</strong>.
-              </p>
-              <p>
-                <strong>{provName}</strong> will be in touch with your client to
-                continue coordinating care.
-              </p>
-            </body>
-            </html>
+        var provName  = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
+        var greeting  = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
+
+        var summaryRows =
+            Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Service",  r.RequestedService) +
+            Row("Provider", provName, bold: true) +
+            Row("Case #",   r.CaseNumber);
+
+        var footer = $"<strong>{provName}</strong> will be in touch with your client to continue coordinating care.";
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">{greeting}</p>
+            <p style="margin:0 0 4px;font-size:15px;color:#374151">
+              Great news — <strong>{provName}</strong> has accepted your referral for
+              <strong>{r.ClientFirstName} {r.ClientLastName}</strong>.
+            </p>
+            {Section("Referral Summary", summaryRows)}
             """;
+
+        return Wrap("Your Referral Was Accepted", body, footer);
     }
 
     private static string BuildClientAcceptanceHtml(Referral r, Provider p)
     {
         var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        return $"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
-              <h2 style="color:#057a55">Your Case Has Been Accepted</h2>
-              <p>Hello {r.ClientFirstName},</p>
-              <p>
-                We wanted to let you know that your case for
-                <strong>{r.RequestedService}</strong> has been accepted by
-                <strong>{provName}</strong>.
-              </p>
-              <p>
-                <strong>{provName}</strong> will be reaching out to you directly to
-                discuss next steps for your care.
-              </p>
-              <p style="margin-top:32px;font-size:12px;color:#888">
-                If you have any questions in the meantime, please contact the party
-                who referred you.
-              </p>
-            </body>
-            </html>
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">Dear <strong>{r.ClientFirstName}</strong>,</p>
+            <p style="margin:0 0 4px;font-size:15px;color:#374151">
+              We are pleased to let you know that your case for
+              <strong>{r.RequestedService}</strong> has been accepted by <strong>{provName}</strong>.
+            </p>
+            <p style="margin-top:16px;font-size:15px;color:#374151">
+              <strong>{provName}</strong> will be reaching out to you directly to discuss next steps.
+            </p>
             """;
+
+        var footer = "If you have any questions in the meantime, please contact the party who referred you.";
+
+        return Wrap("Your Case Has Been Accepted", body, footer);
     }
 
     private static string BuildProviderRejectionHtml(Referral r, Provider p)
     {
         var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        return $"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
-              <h2 style="color:#c81e1e">Referral Declined</h2>
-              <p>Hello{(!string.IsNullOrWhiteSpace(provName) ? $" {provName}" : "")},</p>
-              <p>
-                You have declined the referral for
-                <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
-                requesting <strong>{r.RequestedService}</strong>.
-              </p>
-              <p>The referring party has been notified of your decision.</p>
-            </body>
-            </html>
+
+        var summaryRows =
+            Row("Patient", $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Service", r.RequestedService) +
+            Row("Case #",  r.CaseNumber);
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">Dear <strong>{provName}</strong>,</p>
+            <p style="margin:0 0 4px;font-size:15px;color:#374151">
+              You have declined the referral below. The referring party has been notified of your decision.
+            </p>
+            {Section("Referral Summary", summaryRows)}
             """;
+
+        return Wrap("Referral Declined", body);
     }
 
     private static string BuildReferrerRejectionHtml(Referral r, Provider p)
     {
         var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        var recipientGreeting = r.ReferrerName is { Length: > 0 } n ? $" {n}" : "";
-        return $"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
-              <h2 style="color:#c81e1e">Your Referral Was Declined</h2>
-              <p>Hello{recipientGreeting},</p>
-              <p>
-                Your referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
-                requesting <strong>{r.RequestedService}</strong> has been declined by
-                <strong>{provName}</strong>.
-              </p>
-              <p>
-                You may wish to search for an alternative provider or contact
-                <strong>{provName}</strong> for more information.
-              </p>
-            </body>
-            </html>
+        var greeting = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
+
+        var summaryRows =
+            Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Service",  r.RequestedService) +
+            Row("Provider", provName) +
+            Row("Case #",   r.CaseNumber);
+
+        var footer = $"You may search for an alternative provider or contact <strong>{provName}</strong> directly for more information.";
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">{greeting}</p>
+            <p style="margin:0 0 4px;font-size:15px;color:#374151">
+              Unfortunately, <strong>{provName}</strong> has declined your referral for
+              <strong>{r.ClientFirstName} {r.ClientLastName}</strong>.
+            </p>
+            {Section("Referral Summary", summaryRows)}
             """;
+
+        return Wrap("Your Referral Was Declined", body, footer);
     }
 
     private static string BuildProviderCancellationHtml(Referral r, Provider p)
     {
         var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        return $"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
-              <h2 style="color:#9b1c1c">Referral Cancelled</h2>
-              <p>Hello{(!string.IsNullOrWhiteSpace(provName) ? $" {provName}" : "")},</p>
-              <p>
-                The referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
-                requesting <strong>{r.RequestedService}</strong> has been cancelled.
-              </p>
-              <p>No further action is required on your part.</p>
-            </body>
-            </html>
+
+        var summaryRows =
+            Row("Patient", $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Service", r.RequestedService) +
+            Row("Case #",  r.CaseNumber);
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">Dear <strong>{provName}</strong>,</p>
+            <p style="margin:0 0 4px;font-size:15px;color:#374151">
+              The referral below has been cancelled. No further action is required on your part.
+            </p>
+            {Section("Referral Summary", summaryRows)}
             """;
+
+        return Wrap("Referral Cancelled", body);
     }
 
     private static string BuildReferrerCancellationHtml(Referral r, Provider p)
     {
         var provName = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
-        var recipientGreeting = r.ReferrerName is { Length: > 0 } n ? $" {n}" : "";
-        return $"""
-            <!DOCTYPE html>
-            <html>
-            <body style="font-family:Arial,sans-serif;color:#111;max-width:600px;margin:auto;padding:24px">
-              <h2 style="color:#9b1c1c">Your Referral Was Cancelled</h2>
-              <p>Hello{recipientGreeting},</p>
-              <p>
-                Your referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
-                requesting <strong>{r.RequestedService}</strong> to
-                <strong>{provName}</strong> has been cancelled.
-              </p>
-              <p>
-                If this was not expected, please contact the involved parties for
-                more information.
-              </p>
-            </body>
-            </html>
+        var greeting = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
+
+        var summaryRows =
+            Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Service",  r.RequestedService) +
+            Row("Provider", provName) +
+            Row("Case #",   r.CaseNumber);
+
+        var footer = "If this cancellation was unexpected, please contact the involved parties for more information.";
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">{greeting}</p>
+            <p style="margin:0 0 4px;font-size:15px;color:#374151">
+              Your referral for <strong>{r.ClientFirstName} {r.ClientLastName}</strong>
+              to <strong>{provName}</strong> has been cancelled.
+            </p>
+            {Section("Referral Summary", summaryRows)}
             """;
+
+        return Wrap("Your Referral Was Cancelled", body, footer);
     }
 }
