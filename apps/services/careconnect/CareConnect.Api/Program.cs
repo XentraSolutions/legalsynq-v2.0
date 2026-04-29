@@ -418,5 +418,21 @@ static async Task EnsureSchemaObjectsAsync(
         if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `TenantProvisionedAtUtc` datetime(6) NULL",
             "cc_Providers.TenantProvisionedAtUtc")) applied++;
 
+    // ── 20260429120000_AddReferralComments ──────────────────────────────────
+    if (!await TableExists("cc_ReferralComments"))
+        if (await Exec("""
+            CREATE TABLE `cc_ReferralComments` (
+                `Id`         char(36)      NOT NULL,
+                `TenantId`   char(36)      NOT NULL,
+                `ReferralId` char(36)      NOT NULL,
+                `SenderType` varchar(20)   NOT NULL,
+                `SenderName` varchar(200)  NOT NULL,
+                `Message`    varchar(4000) NOT NULL,
+                `CreatedAt`  datetime(6)   NOT NULL,
+                PRIMARY KEY (`Id`),
+                KEY `IX_ReferralComments_TenantId_ReferralId_CreatedAt` (`TenantId`, `ReferralId`, `CreatedAt`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+            """, "cc_ReferralComments")) applied++;
+
     logger.LogInformation("EnsureSchemaObjects: {Count} DDL change(s) applied.", applied);
 }
