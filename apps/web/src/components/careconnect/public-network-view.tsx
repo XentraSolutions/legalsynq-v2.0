@@ -358,19 +358,26 @@ const ProviderRow = forwardRef<
 
 // ── Referral panel ────────────────────────────────────────────────────────────
 
+interface TreatmentType {
+  id:           string;
+  name:         string;
+  category:     string | null;
+  displayOrder: number;
+}
+
 interface ReferralForm {
-  patientName:  string;
-  patientPhone: string;
-  serviceType:  string;
-  notes:        string;
-  firmName:     string;
-  contactName:  string;
-  email:        string;
-  phone:        string;
+  patientName:     string;
+  patientPhone:    string;
+  treatmentTypeId: string;
+  notes:           string;
+  firmName:        string;
+  contactName:     string;
+  email:           string;
+  phone:           string;
 }
 
 const EMPTY_FORM: ReferralForm = {
-  patientName: '', patientPhone: '', serviceType: '', notes: '',
+  patientName: '', patientPhone: '', treatmentTypeId: '', notes: '',
   firmName: '', contactName: '', email: '', phone: '',
 };
 
@@ -384,12 +391,22 @@ function ReferralPanel({
   allCount:  number;
   onClose:   () => void;
 }) {
-  const [form,        setForm]    = useState<ReferralForm>(EMPTY_FORM);
-  const [state,       setState]   = useState<PanelState>('form');
-  const [errorMsg,    setErrMsg]  = useState('');
-  const [fieldErrors, setErrors]  = useState<Record<string, string>>({});
-  const [openSection, setSection] = useState<'patient' | 'firm' | 'providers'>('firm');
-  const [docFile,     setDocFile] = useState<File | null>(null);
+  const [form,           setForm]         = useState<ReferralForm>(EMPTY_FORM);
+  const [state,          setState]        = useState<PanelState>('form');
+  const [errorMsg,       setErrMsg]       = useState('');
+  const [fieldErrors,    setErrors]       = useState<Record<string, string>>({});
+  const [openSection,    setSection]      = useState<'patient' | 'firm' | 'providers'>('firm');
+  const [providerFiles,  setProviderFiles] = useState<Record<string, File | null>>({});
+  const [treatmentTypes, setTreatmentTypes] = useState<TreatmentType[]>([]);
+
+  useEffect(() => {
+    fetch('/api/public/careconnect/api/public/treatment-types', {
+      headers: { 'X-Tenant-Id': tenantId },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: TreatmentType[] | null) => { if (data) setTreatmentTypes(data); })
+      .catch(() => {});
+  }, [tenantId]);
 
   const update = useCallback((field: keyof ReferralForm, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -426,6 +443,9 @@ function ReferralPanel({
     const [firstName, ...rest] = form.patientName.trim().split(' ');
     const lastName = rest.join(' ') || firstName;
 
+    const selectedTreatment = treatmentTypes.find(t => t.id === form.treatmentTypeId);
+    const serviceTypeName   = selectedTreatment?.name.trim() || undefined;
+
     const payloads: PublicReferralRequest[] = providers.map(p => ({
       providerId:       p.id,
       senderName:       form.contactName.trim() || form.firmName.trim(),
@@ -433,7 +453,7 @@ function ReferralPanel({
       patientFirstName: firstName,
       patientLastName:  lastName,
       patientPhone:     stripPhone(form.patientPhone),
-      serviceType:      form.serviceType.trim() || undefined,
+      serviceType:      serviceTypeName,
       notes:            [
         form.notes,
         form.phone ? `Firm phone: ${form.phone}` : '',
@@ -450,21 +470,21 @@ function ReferralPanel({
         }).then(res => {
           if (res.status === 422) return res.json().then(b => { throw b; });
           if (!res.ok)           return res.json().then(b => { throw b; }).catch(() => { throw new Error('Server error'); });
-          return res.json() as Promise<{ referralId: string }>;
+          return res.json() as Promise<{ referralId: string; providerId: string }>;
         }),
       ));
 
-      if (docFile) {
-        await Promise.allSettled(responses.map(r => {
-          const fd = new FormData();
-          fd.append('file', docFile);
-          return fetch(`/api/public/careconnect/api/public/referrals/${r.referralId}/attachments/upload`, {
-            method:  'POST',
-            headers: { 'X-Tenant-Id': tenantId },
-            body:    fd,
-          });
-        }));
-      }
+      await Promise.allSettled(responses.map(r => {
+        const fileForProvider = providerFiles[r.providerId] ?? null;
+        if (!fileForProvider) return Promise.resolve();
+        const fd = new FormData();
+        fd.append('file', fileForProvider);
+        return fetch(`/api/public/careconnect/api/public/referrals/${r.referralId}/attachments/upload`, {
+          method:  'POST',
+          headers: { 'X-Tenant-Id': tenantId },
+          body:    fd,
+        });
+      }));
 
       setState('success');
     } catch (err: unknown) {
@@ -485,7 +505,7 @@ function ReferralPanel({
       setErrMsg(msg);
       setState('error');
     }
-  }, [form, providers, tenantId, validate]);
+  }, [form, providers, tenantId, validate, treatmentTypes, providerFiles]);
 
   return (
     <div className="w-[320px] flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
@@ -621,14 +641,18 @@ function ReferralPanel({
                     className={panelInputCls(!!fieldErrors['patientPhone'])}
                   />
                 </PanelField>
-                <PanelField label="Referral is for" hint="optional">
-                  <input
-                    type="text" value={form.serviceType}
-                    placeholder="e.g. Physical therapy, Chiropractic, MRI"
-                    onChange={e => update('serviceType', e.target.value)}
+                <PanelField label="Treatment type" hint="optional">
+                  <select
+                    value={form.treatmentTypeId}
+                    onChange={e => update('treatmentTypeId', e.target.value)}
                     disabled={state === 'submitting'}
                     className={panelInputCls(false)}
-                  />
+                  >
+                    <option value="">— Select type —</option>
+                    {treatmentTypes.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
                 </PanelField>
                 <PanelField label="Notes" hint="optional">
                   <textarea
@@ -638,34 +662,6 @@ function ReferralPanel({
                     disabled={state === 'submitting'}
                     className={panelInputCls(false) + ' resize-none'}
                   />
-                </PanelField>
-                <PanelField label="Document" hint="optional · PDF, image, Word">
-                  {docFile ? (
-                    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-50 border border-blue-200">
-                      <i className="ri-file-line text-blue-600 text-sm flex-shrink-0" />
-                      <span className="text-xs text-blue-700 truncate flex-1">{docFile.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => setDocFile(null)}
-                        disabled={state === 'submitting'}
-                        className="text-blue-400 hover:text-blue-600 flex-shrink-0"
-                      >
-                        <i className="ri-close-line text-sm" />
-                      </button>
-                    </div>
-                  ) : (
-                    <label className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-dashed cursor-pointer transition-colors ${state === 'submitting' ? 'opacity-50 pointer-events-none' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'}`}>
-                      <i className="ri-upload-2-line text-gray-400 text-sm" />
-                      <span className="text-xs text-gray-500">Attach a file</span>
-                      <input
-                        type="file"
-                        className="sr-only"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.xls,.xlsx"
-                        disabled={state === 'submitting'}
-                        onChange={e => setDocFile(e.target.files?.[0] ?? null)}
-                      />
-                    </label>
-                  )}
                 </PanelField>
               </div>
             </SectionRow>
@@ -679,18 +675,52 @@ function ReferralPanel({
               open={openSection === 'providers'}
               onToggle={() => setSection(s => s === 'providers' ? 'patient' : 'providers')}
             >
-              <div className="px-4 pb-3 space-y-1">
-                {providers.map(p => (
-                  <div key={p.id} className="flex items-center gap-2 py-1.5 border-b border-gray-100 last:border-0">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <i className="ri-hospital-line text-xs text-blue-600" />
+              <div className="px-4 pb-3 space-y-3">
+                {providers.map(p => {
+                  const file = providerFiles[p.id] ?? null;
+                  return (
+                    <div key={p.id} className="rounded-lg border border-gray-100 bg-gray-50 p-2.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                          <i className="ri-hospital-line text-xs text-blue-600" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-gray-800 truncate">{p.name}</p>
+                          <p className="text-xs text-gray-400 truncate">{p.city}, {p.state}</p>
+                        </div>
+                      </div>
+                      {file ? (
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-50 border border-blue-200">
+                          <i className="ri-file-line text-blue-600 text-sm flex-shrink-0" />
+                          <span className="text-xs text-blue-700 truncate flex-1">{file.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => setProviderFiles(prev => ({ ...prev, [p.id]: null }))}
+                            disabled={state === 'submitting'}
+                            className="text-blue-400 hover:text-blue-600 flex-shrink-0"
+                          >
+                            <i className="ri-close-line text-sm" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className={`flex items-center gap-2 px-2 py-1.5 rounded-md border border-dashed cursor-pointer transition-colors ${state === 'submitting' ? 'opacity-50 pointer-events-none' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'}`}>
+                          <i className="ri-upload-2-line text-gray-400 text-sm" />
+                          <span className="text-xs text-gray-500">Attach document for {p.name}</span>
+                          <input
+                            type="file"
+                            className="sr-only"
+                            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.xls,.xlsx"
+                            disabled={state === 'submitting'}
+                            onChange={e => {
+                              const f = e.target.files?.[0] ?? null;
+                              if (f) setProviderFiles(prev => ({ ...prev, [p.id]: f }));
+                            }}
+                          />
+                        </label>
+                      )}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-gray-800 truncate">{p.name}</p>
-                      <p className="text-xs text-gray-400 truncate">{p.city}, {p.state}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </SectionRow>
 

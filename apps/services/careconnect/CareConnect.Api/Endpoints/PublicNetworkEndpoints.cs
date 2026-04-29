@@ -208,6 +208,55 @@ public static class PublicNetworkEndpoints
             return detail == null ? Results.NotFound() : Results.Ok(detail);
         }).AllowAnonymous();
 
+        // ── GET /api/public/treatment-types ────────────────────────────────
+        // Returns the platform-wide treatment type lookup list.
+        // Trust-boundary validated (same as other public endpoints).
+        app.MapGet("/api/public/treatment-types", async (
+            HttpContext       http,
+            IConfiguration    config,
+            CareConnect.Infrastructure.Data.CareConnectDbContext db,
+            CancellationToken ct) =>
+        {
+            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
+            if (tenantId == null)
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
+
+            try
+            {
+                var conn = db.Database.GetDbConnection();
+                if (conn.State != System.Data.ConnectionState.Open)
+                    await conn.OpenAsync(ct);
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = """
+                    SELECT `Id`, `Name`, `Category`, `DisplayOrder`
+                    FROM `cc_TreatmentTypes`
+                    WHERE `IsActive` = 1
+                    ORDER BY `DisplayOrder` ASC, `Name` ASC
+                    """;
+                var result = new List<object>();
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    result.Add(new
+                    {
+                        id           = reader.GetString(0),
+                        name         = reader.GetString(1),
+                        category     = reader.IsDBNull(2) ? null : reader.GetString(2),
+                        displayOrder = reader.GetInt32(3),
+                    });
+                }
+                return Results.Ok(result);
+            }
+            catch (Exception ex)
+            {
+                var log = http.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("CareConnect.PublicTreatmentTypes");
+                log.LogError(ex, "Failed to query cc_TreatmentTypes.");
+                return Results.Problem("Unable to load treatment types.");
+            }
+        }).AllowAnonymous();
+
         // ── POST /api/public/referrals ──────────────────────────────────────
         // CC2-INT-B08 — Public referral initiation.
         // Accepts an unauthenticated referral submission from the public network directory.

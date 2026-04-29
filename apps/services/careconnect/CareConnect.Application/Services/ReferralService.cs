@@ -28,6 +28,7 @@ public class ReferralService : IReferralService
     private readonly IActivationRequestService? _activationRequests; // LSCC-009 (optional — avoid circular DI)
     private readonly ILogger<ReferralService> _logger;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IReferralAttachmentRepository _referralAttachments;
 
     public ReferralService(
         IReferralRepository referrals,
@@ -40,6 +41,7 @@ public class ReferralService : IReferralService
         IAuditEventClient auditClient,
         ILogger<ReferralService> logger,
         IHttpContextAccessor httpContextAccessor,
+        IReferralAttachmentRepository referralAttachments,
         IActivationRequestService? activationRequests = null)
     {
         _referrals            = referrals;
@@ -53,6 +55,7 @@ public class ReferralService : IReferralService
         _activationRequests   = activationRequests;
         _logger               = logger;
         _httpContextAccessor  = httpContextAccessor;
+        _referralAttachments  = referralAttachments;
     }
 
     public async Task<PagedResponse<ReferralResponse>> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default)
@@ -1112,15 +1115,27 @@ public class ReferralService : IReferralService
         if (referral is null)                             return null;
         if (tokenResult.TokenVersion != referral.TokenVersion) return null;
 
+        var attachments = await _referralAttachments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
+
         return new ReferralPublicSummaryResponse
         {
-            ReferralId       = referral.Id,
-            ClientFirstName  = referral.ClientFirstName,
-            ClientLastName   = referral.ClientLastName,
-            ReferrerName     = referral.ReferrerName ?? "",
-            ProviderName     = referral.Provider?.Name ?? "",
-            RequestedService = referral.RequestedService,
-            Status           = referral.Status,
+            ReferralId            = referral.Id,
+            TenantId              = referral.TenantId,
+            ClientFirstName       = referral.ClientFirstName,
+            ClientLastName        = referral.ClientLastName,
+            ReferrerName          = referral.ReferrerName ?? "",
+            ProviderName          = referral.Provider?.Name ?? "",
+            RequestedService      = referral.RequestedService,
+            Status                = referral.Status,
+            ProviderPhone         = referral.Provider?.Phone         ?? "",
+            ProviderEmail         = referral.Provider?.Email         ?? "",
+            ProviderAddressLine1  = referral.Provider?.AddressLine1  ?? "",
+            ProviderCity          = referral.Provider?.City          ?? "",
+            ProviderState         = referral.Provider?.State         ?? "",
+            ProviderPostalCode    = referral.Provider?.PostalCode    ?? "",
+            Attachments           = attachments
+                .Select(a => new PublicAttachmentInfo(a.Id, a.FileName, a.ContentType, a.FileSizeBytes))
+                .ToList(),
         };
     }
 

@@ -35,15 +35,29 @@ interface PageProps {
   searchParams: Promise<{ token?: string; reason?: string }>;
 }
 
+interface PublicAttachmentInfo {
+  id:            string;
+  fileName:      string;
+  contentType:   string;
+  fileSizeBytes: number;
+}
+
 interface PublicSummary {
-  referralId:       string;
-  clientFirstName:  string;
-  clientLastName:   string;
-  referrerName:     string;
-  providerName:     string;
-  requestedService: string;
-  status:           string;
-  isAlreadyAccepted: boolean;
+  referralId:           string;
+  clientFirstName:      string;
+  clientLastName:       string;
+  referrerName:         string;
+  providerName:         string;
+  providerPhone:        string;
+  providerEmail:        string;
+  providerAddressLine1: string;
+  providerCity:         string;
+  providerState:        string;
+  providerPostalCode:   string;
+  requestedService:     string;
+  status:               string;
+  isAlreadyAccepted:    boolean;
+  attachments:          PublicAttachmentInfo[];
 }
 
 // ── Static screen components (no interactivity needed) ────────────────────────

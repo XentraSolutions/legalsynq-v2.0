@@ -456,6 +456,52 @@ public static class ReferralEndpoints
         });
         // Note: no .RequireAuthorization — intentionally public, token-gated
 
+        // GET /api/referrals/{id}/public-attachments/{attachmentId}/url?token=...&download=false
+        // Returns a short-lived signed URL for a shared-scope attachment.
+        // Token-gated: the same HMAC view token used by the activation landing page.
+        // Allows unauthenticated providers to download documents submitted with their referral.
+        group.MapGet("/{id:guid}/public-attachments/{attachmentId:guid}/url", async (
+            Guid                      id,
+            Guid                      attachmentId,
+            [FromQuery] string        token,
+            [FromQuery] bool          download,
+            IReferralService          service,
+            IReferralAttachmentService attachmentSvc,
+            CancellationToken         ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(token))
+                return Results.BadRequest(new { error = "token is required." });
+
+            // Reuse GetPublicSummaryAsync to validate the token — null means invalid/expired.
+            var summary = await service.GetPublicSummaryAsync(id, token, ct);
+            if (summary is null)
+                return Results.Unauthorized();
+
+            try
+            {
+                // isAdmin=true bypasses scope enforcement — safe because token is already HMAC-validated.
+                var result = await attachmentSvc.GetSignedUrlAsync(
+                    summary.TenantId,
+                    id,
+                    attachmentId,
+                    callerOrgId:   null,
+                    callerOrgType: null,
+                    isAdmin:       true,
+                    isDownload:    download,
+                    ct:            ct);
+
+                if (result is null)
+                    return Results.Problem("The document is not currently accessible.", statusCode: 503);
+
+                return Results.Ok(result);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Results.Forbid();
+            }
+        });
+        // Note: no .RequireAuthorization — token-gated, intentionally public
+
         // LSCC-01-002-01: Public token-only acceptance is permanently retired.
         // This endpoint no longer mutates referral state.
         // Providers must log in to accept referrals from the authenticated referral detail page.

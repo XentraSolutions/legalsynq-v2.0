@@ -434,5 +434,53 @@ static async Task EnsureSchemaObjectsAsync(
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
             """, "cc_ReferralComments")) applied++;
 
+    // ── 20260429130000_AddTreatmentTypes ────────────────────────────────────
+    if (!await TableExists("cc_TreatmentTypes"))
+    {
+        if (await Exec("""
+            CREATE TABLE `cc_TreatmentTypes` (
+                `Id`           char(36)     NOT NULL,
+                `Name`         varchar(150) NOT NULL,
+                `Category`     varchar(100) NULL,
+                `DisplayOrder` int          NOT NULL DEFAULT 0,
+                `IsActive`     tinyint(1)   NOT NULL DEFAULT 1,
+                PRIMARY KEY (`Id`),
+                KEY `IX_cc_TreatmentTypes_Category_DisplayOrder` (`Category`, `DisplayOrder`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+            """, "cc_TreatmentTypes")) applied++;
+
+        // Seed default treatment types (deterministic GUIDs — idempotent on re-run via INSERT IGNORE)
+        try
+        {
+            await using var cmd = db.CreateCommand();
+            cmd.CommandText = """
+                INSERT IGNORE INTO `cc_TreatmentTypes` (`Id`, `Name`, `Category`, `DisplayOrder`, `IsActive`) VALUES
+                ('a1000001-0000-0000-0000-000000000001', 'Chiropractic Care',        'Musculoskeletal',    10, 1),
+                ('a1000002-0000-0000-0000-000000000001', 'Physical Therapy',         'Rehabilitation',     20, 1),
+                ('a1000003-0000-0000-0000-000000000001', 'Occupational Therapy',     'Rehabilitation',     30, 1),
+                ('a1000004-0000-0000-0000-000000000001', 'Orthopedic Evaluation',    'Musculoskeletal',    40, 1),
+                ('a1000005-0000-0000-0000-000000000001', 'Neurology Evaluation',     'Neurological',       50, 1),
+                ('a1000006-0000-0000-0000-000000000001', 'Pain Management',          'Pain',               60, 1),
+                ('a1000007-0000-0000-0000-000000000001', 'MRI / Radiology',          'Diagnostic',         70, 1),
+                ('a1000008-0000-0000-0000-000000000001', 'X-Ray',                    'Diagnostic',         80, 1),
+                ('a1000009-0000-0000-0000-000000000001', 'Acupuncture',              'Alternative',        90, 1),
+                ('a1000010-0000-0000-0000-000000000001', 'Psychological Evaluation', 'Mental Health',     100, 1),
+                ('a1000011-0000-0000-0000-000000000001', 'Toxicology',               'Diagnostic',        110, 1),
+                ('a1000012-0000-0000-0000-000000000001', 'Internal Medicine',        'General',           120, 1),
+                ('a1000013-0000-0000-0000-000000000001', 'Podiatry',                 'Musculoskeletal',   130, 1),
+                ('a1000014-0000-0000-0000-000000000001', 'Ophthalmology',            'Specialized',       140, 1),
+                ('a1000015-0000-0000-0000-000000000001', 'Cardiology',               'Specialized',       150, 1),
+                ('a1000016-0000-0000-0000-000000000001', 'Dermatology',              'Specialized',       160, 1),
+                ('a1000017-0000-0000-0000-000000000001', 'General Referral',         'General',           999, 1)
+                """;
+            await cmd.ExecuteNonQueryAsync();
+            logger.LogInformation("EnsureSchemaObjects: cc_TreatmentTypes — seed data inserted.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "EnsureSchemaObjects: cc_TreatmentTypes seed — failed (non-fatal).");
+        }
+    }
+
     logger.LogInformation("EnsureSchemaObjects: {Count} DDL change(s) applied.", applied);
 }
