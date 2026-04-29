@@ -11,8 +11,8 @@ public interface IReferralService
     /// </param>
     Task<ReferralResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default, bool isPlatformAdmin = false);
     Task MarkAsOpenedAsync(Guid id, CancellationToken ct = default);
-    Task<ReferralResponse> CreateAsync(Guid tenantId, Guid? userId, CreateReferralRequest request, CancellationToken ct = default);
-    Task<ReferralResponse> UpdateAsync(Guid tenantId, Guid id, Guid? userId, UpdateReferralRequest request, CancellationToken ct = default, bool bypassTenantScope = false);
+    Task<ReferralResponse> CreateAsync(Guid tenantId, Guid? userId, CreateReferralRequest request, CancellationToken ct = default, string? actorName = null);
+    Task<ReferralResponse> UpdateAsync(Guid tenantId, Guid id, Guid? userId, UpdateReferralRequest request, CancellationToken ct = default, bool bypassTenantScope = false, string? actorName = null);
 
     /// <summary>
     /// Reassigns the referral to a different provider and fires a PROVIDER_ASSIGNED notification

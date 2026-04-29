@@ -5,7 +5,7 @@ namespace CareConnect.Application.Interfaces;
 public interface IAppointmentService
 {
     Task<PagedResponse<SlotResponse>> SearchSlotsAsync(Guid tenantId, SlotSearchParams query, CancellationToken ct = default);
-    Task<AppointmentResponse> CreateAppointmentAsync(Guid tenantId, Guid? userId, CreateAppointmentRequest request, CancellationToken ct = default);
+    Task<AppointmentResponse> CreateAppointmentAsync(Guid tenantId, Guid? userId, CreateAppointmentRequest request, CancellationToken ct = default, string? actorName = null);
     // LSCC-002: referringOrgId/receivingOrgId added for org-participant scoping
     Task<PagedResponse<AppointmentResponse>> SearchAppointmentsAsync(Guid tenantId, AppointmentSearchParams query, Guid? referringOrgId = null, Guid? receivingOrgId = null, CancellationToken ct = default);
     Task<AppointmentResponse> GetAppointmentByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);

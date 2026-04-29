@@ -189,7 +189,7 @@ public static class ReferralEndpoints
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.ReferralCreate, ct);
             request.ReferringOrganizationId = ctx.OrgId;
-            var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct);
+            var referral = await service.CreateAsync(tenantId, ctx.UserId, request, ct, actorName: ctx.Name ?? ctx.Email);
             return Results.Created($"/api/referrals/{referral.Id}", referral);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
@@ -225,7 +225,7 @@ public static class ReferralEndpoints
                     return Results.NotFound();
             }
 
-            var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct, bypassTenantScope: bypassTenant);
+            var referral = await service.UpdateAsync(tenantId, id, ctx.UserId, request, ct, bypassTenantScope: bypassTenant, actorName: ctx.Name ?? ctx.Email);
             return Results.Ok(referral);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)

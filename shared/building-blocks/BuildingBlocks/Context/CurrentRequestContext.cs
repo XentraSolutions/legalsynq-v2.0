@@ -45,6 +45,8 @@ public class CurrentRequestContext : ICurrentRequestContext
 
     public string? Email => User?.FindFirstValue("email");
 
+    public string? Name => User?.FindFirstValue("name");
+
     public Guid? OrgId =>
         Guid.TryParse(User?.FindFirstValue("org_id"), out var oid) ? oid : null;
 

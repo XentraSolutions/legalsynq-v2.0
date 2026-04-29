@@ -7,6 +7,12 @@ public interface ICurrentRequestContext
     Guid? TenantId { get; }
     string? TenantCode { get; }
     string? Email { get; }
+    /// <summary>
+    /// Full display name from the "name" JWT claim (e.g. "John Smith").
+    /// Populated by JwtTokenService when the token is issued.
+    /// Null for service-token callers or tokens issued before the claim was added.
+    /// </summary>
+    string? Name { get; }
     Guid? OrgId { get; }
     string? OrgType { get; }
 

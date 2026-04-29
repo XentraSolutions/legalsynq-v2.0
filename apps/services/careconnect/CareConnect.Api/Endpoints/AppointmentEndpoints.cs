@@ -23,7 +23,7 @@ public static class AppointmentEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             await CareConnectAuthHelper.RequireAsync(ctx, authSvc, PermissionCodes.AppointmentCreate, ct);
-            var appointment = await service.CreateAppointmentAsync(tenantId, ctx.UserId, request, ct);
+            var appointment = await service.CreateAppointmentAsync(tenantId, ctx.UserId, request, ct, actorName: ctx.Name ?? ctx.Email);
             return Results.Created($"/api/appointments/{appointment.Id}", appointment);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)

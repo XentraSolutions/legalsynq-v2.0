@@ -73,7 +73,8 @@ public class AppointmentService : IAppointmentService
         Guid tenantId,
         Guid? userId,
         CreateAppointmentRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? actorName = null)
     {
         var errors = new Dictionary<string, string[]>();
 
@@ -142,8 +143,8 @@ public class AppointmentService : IAppointmentService
             Actor = new AuditEventActorDto
             {
                 Id   = userId?.ToString(),
-                Type = ActorType.User,
-                Name = userId?.ToString() ?? "(system)",
+                Type = userId.HasValue ? ActorType.User : ActorType.System,
+                Name = actorName ?? userId?.ToString() ?? "(system)",
             },
             Entity  = new AuditEventEntityDto { Type = "Appointment", Id = appointment.Id.ToString() },
             Action  = "AppointmentScheduled",

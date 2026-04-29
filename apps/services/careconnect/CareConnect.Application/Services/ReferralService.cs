@@ -101,7 +101,7 @@ public class ReferralService : IReferralService
         }
     }
 
-    public async Task<ReferralResponse> CreateAsync(Guid tenantId, Guid? userId, CreateReferralRequest request, CancellationToken ct = default)
+    public async Task<ReferralResponse> CreateAsync(Guid tenantId, Guid? userId, CreateReferralRequest request, CancellationToken ct = default, string? actorName = null)
     {
         ValidateCreate(request);
 
@@ -205,8 +205,8 @@ public class ReferralService : IReferralService
             Actor = new AuditEventActorDto
             {
                 Id   = userId?.ToString(),
-                Type = ActorType.User,
-                Name = userId?.ToString() ?? "(system)",
+                Type = userId.HasValue ? ActorType.User : ActorType.System,
+                Name = actorName ?? userId?.ToString() ?? "(system)",
             },
             Entity      = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
             Action      = "ReferralCreated",
@@ -232,7 +232,7 @@ public class ReferralService : IReferralService
         return ToResponse(loaded!);
     }
 
-    public async Task<ReferralResponse> UpdateAsync(Guid tenantId, Guid id, Guid? userId, UpdateReferralRequest request, CancellationToken ct = default, bool bypassTenantScope = false)
+    public async Task<ReferralResponse> UpdateAsync(Guid tenantId, Guid id, Guid? userId, UpdateReferralRequest request, CancellationToken ct = default, bool bypassTenantScope = false, string? actorName = null)
     {
         var referral = bypassTenantScope
             ? await _referrals.GetByIdGlobalAsync(id, ct)
@@ -324,6 +324,7 @@ public class ReferralService : IReferralService
             {
                 Id   = userId?.ToString(),
                 Type = userId.HasValue ? ActorType.User : ActorType.System,
+                Name = actorName ?? userId?.ToString(),
             },
             Entity = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
             Action      = statusChanged ? "ReferralStatusChanged" : "ReferralUpdated",
