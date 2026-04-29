@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Notifications;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Application.Services;
@@ -143,8 +144,11 @@ public static class DependencyInjection
 
         // LS-NOTIF-CORE-023: Canonical notification producer — routes outbound emails
         // through POST /v1/notifications on the platform Notifications service.
-        // HTTP client already registered above via AddHttpClient("NotificationsService").
-        services.AddHttpClient("NotificationsService");
+        // NotificationsAuthDelegatingHandler mints a short-lived service JWT (svc claim)
+        // so the Notifications service ServiceSubmission policy accepts the request.
+        services.AddTransient<NotificationsAuthDelegatingHandler>();
+        services.AddHttpClient("NotificationsService")
+            .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
         services.AddScoped<INotificationsProducer, NotificationsProducerClient>();
         services.AddScoped<IReferralEmailService, ReferralEmailService>();
 
