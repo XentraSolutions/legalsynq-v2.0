@@ -1,14 +1,21 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 
 import { careConnectApi }    from '@/lib/careconnect-api';
 import { AccessStageBadge }  from '@/components/careconnect/status-badge';
 import type {
   NetworkDetail,
   NetworkProviderItem,
+  NetworkProviderMarker,
   ProviderSearchResult,
 } from '@/types/careconnect';
+
+const MyNetworkMap = dynamic(
+  () => import('@/components/careconnect/my-network-map').then(m => m.MyNetworkMap),
+  { ssr: false, loading: () => <div className="h-[480px] rounded-xl bg-gray-100 animate-pulse" /> },
+);
 
 interface AddressSuggestion {
   displayName:  string;
@@ -26,6 +33,7 @@ interface MyNetworkClientProps {
 }
 
 type PanelMode = 'closed' | 'search' | 'confirm' | 'create';
+type ViewMode  = 'list' | 'cards' | 'map';
 
 const EMPTY_NEW_FORM = {
   name: '', organizationName: '', email: '', phone: '',
@@ -37,6 +45,13 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
   const [network,   setNetwork]   = useState<NetworkDetail | null>(initialNetwork);
   const [providers, setProviders] = useState<NetworkProviderItem[]>(initialNetwork?.providers ?? []);
   const [creating,  setCreating]  = useState(false);
+
+  // View mode
+  const [viewMode,       setViewMode]       = useState<ViewMode>('list');
+  const [markers,        setMarkers]        = useState<NetworkProviderMarker[]>([]);
+  const [markersLoaded,  setMarkersLoaded]  = useState(false);
+  const [markersLoading, setMarkersLoading] = useState(false);
+  const [mapSelectedId,  setMapSelectedId]  = useState<string | null>(null);
 
   // Add-provider panel state
   const [panelMode,    setPanelMode]    = useState<PanelMode>('closed');
@@ -109,6 +124,24 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
       setTimeout(() => setUrlCopied(false), 2000);
     } catch {
       showToast('Could not copy URL. Please copy it manually.');
+    }
+  }
+
+  // ── View mode + marker loading ────────────────────────────────────────────
+
+  async function switchView(mode: ViewMode) {
+    setViewMode(mode);
+    if (mode === 'map' && network && !markersLoaded) {
+      setMarkersLoading(true);
+      try {
+        const { data } = await careConnectApi.networks.getMarkers(network.id);
+        setMarkers(data ?? []);
+        setMarkersLoaded(true);
+      } catch {
+        showToast('Could not load map data. Please try again.');
+      } finally {
+        setMarkersLoading(false);
+      }
     }
   }
 
@@ -801,14 +834,44 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
         </div>
       )}
 
-      {/* ── Provider Table ──────────────────────────────────────────────────── */}
-      {providers.length === 0 ? (
+      {/* ── View toggle bar ─────────────────────────────────────────────────── */}
+      {providers.length > 0 && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-400">{providers.length} provider{providers.length !== 1 ? 's' : ''}</span>
+          <div className="inline-flex rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm">
+            {([ 
+              { mode: 'list'  as ViewMode, icon: 'ri-list-unordered', label: 'List'  },
+              { mode: 'cards' as ViewMode, icon: 'ri-layout-grid-line', label: 'Cards' },
+              { mode: 'map'   as ViewMode, icon: 'ri-map-2-line',       label: 'Map'   },
+            ]).map(({ mode, icon, label }) => (
+              <button
+                key={mode}
+                onClick={() => switchView(mode)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-r border-gray-200 last:border-0 ${
+                  viewMode === mode
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                <i className={icon} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Empty state ─────────────────────────────────────────────────────── */}
+      {providers.length === 0 && (
         <div className="rounded-xl border-2 border-dashed border-gray-200 py-14 text-center">
           <i className="ri-hospital-line text-4xl text-gray-300" />
           <p className="mt-3 text-sm font-medium text-gray-500">No providers in your network yet.</p>
           <p className="text-xs text-gray-400 mt-1">Click "Add Provider" above to search the registry or add a new one.</p>
         </div>
-      ) : (
+      )}
+
+      {/* ── List view ───────────────────────────────────────────────────────── */}
+      {providers.length > 0 && viewMode === 'list' && (
         <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px] text-sm">
@@ -817,7 +880,6 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Provider</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Contact</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Location</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">NPI</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Referrals</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Access</th>
@@ -838,11 +900,128 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
           </div>
         </div>
       )}
+
+      {/* ── Cards view ──────────────────────────────────────────────────────── */}
+      {providers.length > 0 && viewMode === 'cards' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {providers.map(p => (
+            <ProviderCard
+              key={p.id}
+              provider={p}
+              removing={removingId === p.id}
+              onRemove={() => handleRemove(p.id, p.name)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* ── Map view ────────────────────────────────────────────────────────── */}
+      {providers.length > 0 && viewMode === 'map' && (
+        <div className="rounded-xl border border-gray-200 overflow-hidden">
+          {markersLoading ? (
+            <div className="h-[480px] bg-gray-100 flex items-center justify-center">
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <span className="h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                Loading map…
+              </div>
+            </div>
+          ) : markers.filter(m => m.latitude && m.longitude).length === 0 ? (
+            <div className="h-[480px] bg-gray-50 flex flex-col items-center justify-center gap-3">
+              <i className="ri-map-2-line text-4xl text-gray-300" />
+              <p className="text-sm text-gray-500">No location data available for your providers.</p>
+              <p className="text-xs text-gray-400">Add address information when creating providers to see them on the map.</p>
+            </div>
+          ) : (
+            <MyNetworkMap
+              markers={markers}
+              selectedId={mapSelectedId}
+              onSelect={setMapSelectedId}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Provider row ───────────────────────────────────────────────────────────────
+// ── Provider card (cards view) ────────────────────────────────────────────────
+
+function ProviderCard({
+  provider,
+  removing,
+  onRemove,
+}: {
+  provider: NetworkProviderItem;
+  removing: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 flex flex-col gap-4 hover:shadow-sm transition-shadow">
+      {/* Card header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+            <i className="ri-user-heart-line text-blue-600 text-lg" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-gray-900 leading-tight truncate">{provider.name}</p>
+            {provider.organizationName && (
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{provider.organizationName}</p>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={onRemove}
+          disabled={removing}
+          title="Remove from network"
+          className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors shrink-0"
+        >
+          <i className={`text-base ${removing ? 'ri-loader-4-line animate-spin' : 'ri-close-circle-line'}`} />
+        </button>
+      </div>
+
+      {/* Contact + location */}
+      <div className="space-y-1.5 text-xs text-gray-600">
+        {(provider.email || provider.phone) && (
+          <div className="flex items-start gap-2">
+            <i className="ri-phone-line text-gray-400 mt-0.5 shrink-0" />
+            <div className="space-y-0.5">
+              {provider.phone && <p>{provider.phone}</p>}
+              {provider.email && <p className="truncate">{provider.email}</p>}
+            </div>
+          </div>
+        )}
+        {(provider.city || provider.state) && (
+          <div className="flex items-center gap-2">
+            <i className="ri-map-pin-line text-gray-400 shrink-0" />
+            <span>{provider.city}{provider.city && provider.state ? ', ' : ''}{provider.state}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Badges */}
+      <div className="flex flex-wrap gap-1.5 pt-1 border-t border-gray-100">
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+          provider.isActive
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            : 'bg-gray-50 text-gray-500 border-gray-200'
+        }`}>
+          {provider.isActive ? 'Active' : 'Inactive'}
+        </span>
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+          provider.acceptingReferrals
+            ? 'bg-green-50 text-green-700 border-green-200'
+            : 'bg-amber-50 text-amber-700 border-amber-200'
+        }`}>
+          {provider.acceptingReferrals ? 'Accepting referrals' : 'Not accepting'}
+        </span>
+        <AccessStageBadge stage={provider.accessStage} />
+      </div>
+    </div>
+  );
+}
+
+// ── Provider row (list view) ───────────────────────────────────────────────────
 
 function ProviderRow({
   provider,
