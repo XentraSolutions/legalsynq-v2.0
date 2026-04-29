@@ -345,9 +345,10 @@ export default async function ReferralsPage({ searchParams }: ReferralsPageProps
 
   // ── Network manager view ───────────────────────────────────────────────────
   // Lien companies with the network manager role see all referrals flowing through
-  // their network, grouped by law firm, instead of just their own sent/received referrals.
+  // their network, grouped by law firm. This takes priority over any referrer/receiver
+  // role the account may also hold — lien companies do not send referrals themselves.
 
-  if (isNetworkManager && !isReferrer && !isReceiver) {
+  if (isNetworkManager) {
     const searchText = searchParamsData.search?.trim() || undefined;
 
     return (
