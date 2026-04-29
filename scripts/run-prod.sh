@@ -240,6 +240,7 @@ if command -v dotnet &>/dev/null; then
           launch_svc "$_svc_label" "$csproj" env \
             "IdentityService__BaseUrl=http://localhost:5001" \
             "TenantService__BaseUrl=http://localhost:5005" \
+            "TenantService__ProvisioningToken=${TenantService__ProvisioningToken:-}" \
             "AppBaseUrl=${_portal_url}" \
             "AppBaseDomain=${_portal_domain}"
           PID_CARECONNECT=$! ;;

@@ -109,6 +109,8 @@ PID_CC=$!
   dotnet run --no-build --project "$ROOT/apps/services/fund/Fund.Api/Fund.Api.csproj" &
   AppBaseUrl="${PORTAL_BASE_URL:-https://demo.legalsynq.com}" \
     AppBaseDomain="${Route53__BaseDomain:-demo.legalsynq.com}" \
+    TenantService__BaseUrl=http://localhost:5005 \
+    TenantService__ProvisioningToken="${TenantService__ProvisioningToken:-}" \
     dotnet run --no-build --project "$ROOT/apps/services/careconnect/CareConnect.Api/CareConnect.Api.csproj" &
   dotnet run --no-build --project "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" &
   ASPNETCORE_ENVIRONMENT=Development ASPNETCORE_URLS=http://0.0.0.0:5007 dotnet run --no-build --project "$ROOT/apps/services/audit/PlatformAuditEventService.csproj" &
