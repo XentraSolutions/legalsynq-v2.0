@@ -104,9 +104,11 @@ function InvalidScreen({ reason }: { reason: string }) {
               </li>
               <li className="flex gap-2">
                 <span className="font-semibold text-gray-400 shrink-0">3.</span>
-                If you are an existing platform user, you can{' '}
-                <Link href="/login" className="text-primary hover:underline">log in</Link>
-                {' '}to view referrals sent to your organisation.
+                <span>
+                  If you are an existing platform user, you can{' '}
+                  <Link href="/login" className="text-primary hover:underline">log in</Link>
+                  {' '}to view referrals sent to your organisation.
+                </span>
               </li>
             </ol>
           </div>
