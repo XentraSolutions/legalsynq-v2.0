@@ -1260,6 +1260,18 @@ public class NotificationServiceImpl : INotificationService
     {
         var messageJson = JsonSerializer.Serialize(request.Message);
 
+        // Extract inline subject from the message payload (e.g. CareConnect sends
+        // message: { subject, html }) so it is immediately visible in the delivery log
+        // even before template rendering runs.
+        string? inlineSubject = null;
+        try
+        {
+            var msgEl = JsonSerializer.Deserialize<JsonElement>(messageJson);
+            if (msgEl.TryGetProperty("subject", out var subProp))
+                inlineSubject = subProp.GetString();
+        }
+        catch { /* best-effort; subject stays null */ }
+
         // Merge canonical producer context fields into metadata (LS-NOTIF-CORE-020).
         // Producer-supplied metadata is preserved; canonical fields are added as
         // fallback keys so they never overwrite intentional metadata values.
@@ -1330,7 +1342,11 @@ public class NotificationServiceImpl : INotificationService
             return MapToResult(notification);
         }
 
-        string? renderedSubject = null, renderedBody = null, renderedText = null;
+        // Seed renderedSubject with the inline subject extracted from the message payload
+        // so it is stored even when no template is involved (e.g. CareConnect pre-renders
+        // its own HTML and passes subject/html directly).  Template rendering overwrites
+        // this when a TemplateKey + TemplateData pair is present.
+        string? renderedSubject = inlineSubject, renderedBody = null, renderedText = null;
         Guid? templateId = null, templateVersionId = null;
 
         if (!string.IsNullOrEmpty(request.TemplateKey) && request.TemplateData != null)
