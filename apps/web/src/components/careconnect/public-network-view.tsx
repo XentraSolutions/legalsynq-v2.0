@@ -529,7 +529,7 @@ function ReferralPanel({
 
             {/* ── Law firm section ── */}
             <SectionRow
-              avatar="L" avatarBg="bg-indigo-500"
+              icon="ri-briefcase-line" avatarBg="bg-indigo-500"
               title="Law firm"
               subtitle="Who is sending the referral"
               open={openSection === 'firm'}
@@ -578,7 +578,7 @@ function ReferralPanel({
 
             {/* ── Patient section ── */}
             <SectionRow
-              avatar="P" avatarBg="bg-teal-500"
+              icon="ri-user-heart-line" avatarBg="bg-teal-500"
               title="Patient"
               subtitle="Who is being referred"
               open={openSection === 'patient'}
@@ -618,7 +618,7 @@ function ReferralPanel({
 
             {/* ── Providers section ── */}
             <SectionRow
-              avatar="P" avatarBg="bg-gray-700"
+              icon="ri-hospital-line" avatarBg="bg-gray-700"
               title="Providers"
               subtitle="Who will treat the patient"
               badge={providers.length}
@@ -682,9 +682,9 @@ function ReferralPanel({
 // ── Section row ───────────────────────────────────────────────────────────────
 
 function SectionRow({
-  avatar, avatarBg, title, subtitle, badge, open, hasError, onToggle, children,
+  icon, avatarBg, title, subtitle, badge, open, hasError, onToggle, children,
 }: {
-  avatar:     string;
+  icon:       string;
   avatarBg:   string;
   title:      string;
   subtitle:   string;
@@ -702,7 +702,7 @@ function SectionRow({
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
       >
         <div className={`relative w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center flex-shrink-0`}>
-          <span className="text-xs font-bold text-white">{avatar}</span>
+          <i className={`${icon} text-base text-white`} />
           {hasError && (
             <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white" />
           )}
