@@ -47,6 +47,16 @@ export default async function CommonPortalLayout({
             <span className="text-sm text-gray-500">{orgLabel}</span>
           </div>
 
+          {/* Nav links */}
+          <nav className="flex items-center gap-1">
+            <Link
+              href="/provider/dashboard"
+              className="text-sm font-medium text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            >
+              Referrals
+            </Link>
+          </nav>
+
           {/* User info + sign out */}
           <div className="flex items-center gap-4">
             <span className="text-xs text-gray-500 hidden sm:block truncate max-w-[200px]">

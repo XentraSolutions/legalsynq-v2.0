@@ -107,6 +107,8 @@ export interface NavItem {
   requiredRoles?: ProductRoleValue[];
   sellModeOnly?: boolean;
   adminOnly?: boolean;
+  /** Item is hidden for these org types (e.g. hide Network from PROVIDER orgs). */
+  hiddenForOrgTypes?: OrgTypeValue[];
 }
 
 export interface NavSection {

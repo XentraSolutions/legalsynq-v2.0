@@ -1,5 +1,5 @@
-import type { NavSection, PlatformSession, ProductRoleValue } from '@/types';
-import { ProductRole } from '@/types';
+import type { NavSection, PlatformSession, ProductRoleValue, OrgTypeValue } from '@/types';
+import { ProductRole, OrgType } from '@/types';
 
 // ── Per-product sidebar navigation (sections) ─────────────────────────────────
 
@@ -8,10 +8,9 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     {
       items: [
         { href: '/careconnect/dashboard',    label: 'Dashboard',    icon: 'ri-dashboard-line' },
-        { href: '/careconnect/providers',    label: 'Providers',    icon: 'ri-hospital-line', requiredRoles: [ProductRole.CareConnectReferrer] },
         { href: '/careconnect/referrals',    label: 'Referrals',    icon: 'ri-file-list-3-line', badgeKey: 'newReferrals' },
-        // Preferred provider network management — authenticated view for lien companies
-        { href: '/careconnect/my-network',   label: 'Network',      icon: 'ri-share-circle-line' },
+        // Network management — hidden for Provider orgs (they don't manage networks)
+        { href: '/careconnect/my-network',   label: 'Network',      icon: 'ri-share-circle-line', hiddenForOrgTypes: [OrgType.Provider] },
         // CC2-INT-B06: full multi-network management — only visible to Network Managers
         { href: '/careconnect/networks',     label: 'Networks',     icon: 'ri-share-forward-2-line', requiredRoles: [ProductRole.CareConnectNetworkManager] },
       ],
@@ -149,12 +148,17 @@ export function filterNavByAccess(
   sections: NavSection[],
   userRoles: ProductRoleValue[],
   isSellMode: boolean,
+  orgType?: OrgTypeValue | null,
 ): NavSection[] {
   return filterNavByRoles(sections, userRoles)
     .filter((s) => !s.sellModeOnly || isSellMode)
     .map((s) => ({
       ...s,
-      items: s.items.filter((item) => !item.sellModeOnly || isSellMode),
+      items: s.items.filter((item) => {
+        if (item.sellModeOnly && !isSellMode) return false;
+        if (item.hiddenForOrgTypes && orgType && item.hiddenForOrgTypes.includes(orgType)) return false;
+        return true;
+      }),
     }))
     .filter((s) => s.items.length > 0);
 }
