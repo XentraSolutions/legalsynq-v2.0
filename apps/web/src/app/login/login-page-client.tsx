@@ -134,19 +134,17 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
           aria-hidden
         />
 
-        {/* Wordmark */}
+        {/* Logo */}
         <div className="relative z-10 mb-auto">
-          <div className="flex items-center gap-2.5">
-            <span
-              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-              style={{ backgroundColor: accentA, border: `1.5px solid ${accentB}` }}
-            >
-              <i className="ri-heart-pulse-line text-[18px]" style={{ color: accent }} />
-            </span>
-            <span className="text-white font-bold text-xl tracking-tight">
-              CareConnect
-            </span>
-          </div>
+          <Image
+            src="/legalsynq-logo-white.png"
+            alt="LegalSynq"
+            width={220}
+            height={52}
+            priority
+            unoptimized
+            className="h-12 w-auto"
+          />
         </div>
 
         {/* Hero copy */}
@@ -198,18 +196,25 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
       {/* ── Right panel — login form ───────────────────────────────────────── */}
       <div className="flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 px-6 py-12 bg-gray-50">
 
-        {/* Mobile wordmark */}
-        <div className="lg:hidden mb-10 flex items-center gap-2">
-          <span
-            className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: '#e0f2fe' }}
-          >
-            <i className="ri-heart-pulse-line text-[15px]" style={{ color: '#0284c7' }} />
-          </span>
-          <span className="text-gray-900 font-bold text-base tracking-tight">CareConnect</span>
+        {/* Mobile logo */}
+        <div className="lg:hidden mb-10">
+          <img
+            src="/synqconnect-logo.png"
+            alt="SynqConnect"
+            className="h-9 w-auto mx-auto"
+          />
         </div>
 
         <div className="w-full max-w-sm">
+          {/* SynqConnect logo above the form heading */}
+          <div className="mb-6">
+            <img
+              src="/synqconnect-logo.png"
+              alt="SynqConnect"
+              className="h-9 w-auto"
+            />
+          </div>
+
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Welcome back</h1>
             <p className="mt-1.5 text-sm text-gray-500">Sign in to your CareConnect portal</p>
