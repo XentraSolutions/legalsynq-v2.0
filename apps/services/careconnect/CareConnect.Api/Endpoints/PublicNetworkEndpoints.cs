@@ -139,12 +139,14 @@ public static class PublicNetworkEndpoints
                     if (network == null) return null;
 
                     var providers = await repo.GetNetworkProvidersAsync(tenantId.Value, id, ct);
+                    // Include every provider so the client can geocode those
+                    // whose coordinates have not yet been stored (0.0 signals
+                    // "needs geocoding" to the client-side geocoder).
                     return providers
-                        .Where(p => p.Latitude.HasValue && p.Longitude.HasValue)
                         .Select(p => new PublicProviderMarker(
                             p.Id, p.Name, p.OrganizationName,
                             p.City, p.State, p.AcceptingReferrals,
-                            p.Latitude!.Value, p.Longitude!.Value))
+                            p.Latitude ?? 0.0, p.Longitude ?? 0.0))
                         .ToList();
                 });
 
@@ -192,12 +194,12 @@ public static class PublicNetworkEndpoints
                             p.IsActive, p.AcceptingReferrals, p.AccessStage, null))
                         .ToList();
 
+                    // Include every provider (0.0 lat/lng = needs client-side geocoding).
                     var markers = providers
-                        .Where(p => p.Latitude.HasValue && p.Longitude.HasValue)
                         .Select(p => new PublicProviderMarker(
                             p.Id, p.Name, p.OrganizationName,
                             p.City, p.State, p.AcceptingReferrals,
-                            p.Latitude!.Value, p.Longitude!.Value))
+                            p.Latitude ?? 0.0, p.Longitude ?? 0.0))
                         .ToList();
 
                     return new PublicNetworkDetail(network.Id, network.Name, network.Description, items, markers);

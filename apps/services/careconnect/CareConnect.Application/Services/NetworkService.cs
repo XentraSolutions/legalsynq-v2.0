@@ -231,8 +231,10 @@ public class NetworkService : INetworkService
 
         var providers = await _networks.GetNetworkProvidersAsync(tenantId, networkId, ct);
 
+        // Include every provider in the network so the frontend can geocode
+        // those whose coordinates have not yet been stored (lat/lng = 0 signals
+        // "needs geocoding" to the client-side geocoder).
         return providers
-            .Where(p => p.Latitude.HasValue && p.Longitude.HasValue)
             .Select(p => new NetworkProviderMarker(
                 p.Id,
                 p.Name,
@@ -245,8 +247,8 @@ public class NetworkService : INetworkService
                 p.Phone,
                 p.AcceptingReferrals,
                 p.IsActive,
-                p.Latitude!.Value,
-                p.Longitude!.Value,
+                p.Latitude ?? 0.0,
+                p.Longitude ?? 0.0,
                 p.GeoPointSource))
             .ToList();
     }

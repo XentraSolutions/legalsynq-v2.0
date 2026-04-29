@@ -49,9 +49,12 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
 
   useEffect(() => {
     if (detail.providers.length === 0) return;
-    const missing = detail.providers.filter(
-      p => !detail.markers.some(m => m.id === p.id),
-    );
+    // A provider needs geocoding if it has no marker at all, OR if its marker
+    // has 0,0 coordinates (backend now returns 0.0 for providers with no stored lat/lng).
+    const missing = detail.providers.filter(p => {
+      const m = detail.markers.find(mk => mk.id === p.id);
+      return !m || (m.latitude === 0 && m.longitude === 0);
+    });
     if (missing.length === 0) return;
 
     let cancelled = false;
@@ -105,13 +108,15 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
     return list;
   }, [detail.providers, search, showAll]);
 
-  // Numbered markers for the map
+  // Numbered markers for the map — exclude ungeocoded providers (lat/lng = 0).
   const displayedMarkers = useMemo<NumberedMarker[]>(() => {
     const result: NumberedMarker[] = [];
     let idx = 1;
     for (const p of filtered) {
       const mk = markerById[p.id];
-      if (mk) result.push({ ...mk, index: idx++ });
+      if (mk && (mk.latitude !== 0 || mk.longitude !== 0)) {
+        result.push({ ...mk, index: idx++ });
+      }
     }
     return result;
   }, [filtered, markerById]);
@@ -138,7 +143,7 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
   }
 
   const selectedProviders = detail.providers.filter(p => selectedIds.has(p.id));
-  const hasMarkers        = markers.length > 0;
+  const hasMarkers        = markers.some(m => m.latitude !== 0 || m.longitude !== 0);
   const allCount          = detail.providers.filter(p => p.acceptingReferrals).length;
   const shownCount        = filtered.length;
 
