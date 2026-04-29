@@ -418,6 +418,16 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                 <i className={urlCopied ? 'ri-check-line text-green-600' : 'ri-clipboard-line'} />
                 {urlCopied ? 'Copied!' : 'Copy'}
               </button>
+              <a
+                href={networkUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open network URL in new tab"
+                className="shrink-0 inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                <i className="ri-external-link-line" />
+                Open
+              </a>
             </div>
           )}
         </div>
