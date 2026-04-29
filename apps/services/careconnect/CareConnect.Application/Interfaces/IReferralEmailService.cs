@@ -112,4 +112,14 @@ public interface IReferralEmailService
         Referral                referral,
         Provider                provider,
         CancellationToken       ct = default);
+
+    /// <summary>
+    /// Sends an email notification to the "other party" when a new comment is posted
+    /// on the public referral thread. If the comment is from the referrer, the provider
+    /// is notified, and vice versa.
+    /// </summary>
+    Task SendCommentNotificationAsync(
+        Referral        referral,
+        ReferralComment comment,
+        CancellationToken ct = default);
 }

@@ -40,6 +40,9 @@ public class CareConnectDbContext : DbContext
     public DbSet<ProviderNetwork>  ProviderNetworks  => Set<ProviderNetwork>();
     public DbSet<NetworkProvider>  NetworkProviders  => Set<NetworkProvider>();
 
+    // Public referral comment thread (token-authenticated, no login required)
+    public DbSet<ReferralComment> ReferralComments => Set<ReferralComment>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CareConnectDbContext).Assembly);

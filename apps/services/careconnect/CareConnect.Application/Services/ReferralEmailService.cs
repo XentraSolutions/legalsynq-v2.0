@@ -170,10 +170,10 @@ public class ReferralEmailService : IReferralEmailService
 
         var dedupeKey = $"referral:{referral.Id}:created:provider";
 
-        var token     = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var viewLink  = $"{_appBaseUrl}/referrals/view?token={token}";
-        var subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
-        var body      = BuildNewReferralEmailHtml(referral, provider, viewLink);
+        var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
+        var threadLink = $"{_appBaseUrl}/referrals/thread?token={token}";
+        var subject    = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
+        var body       = BuildNewReferralEmailHtml(referral, provider, threadLink);
 
         var notification = CareConnectNotification.Create(
             tenantId:          referral.TenantId,
@@ -183,7 +183,7 @@ public class ReferralEmailService : IReferralEmailService
             recipientType:     NotificationRecipientType.Provider,
             recipientAddress:  provider.Email,
             subject:           subject,
-            message:           viewLink,
+            message:           threadLink,
             scheduledForUtc:   null,
             createdByUserId:   referral.CreatedByUserId,
             triggerSource:     NotificationSource.Initial,
@@ -204,7 +204,7 @@ public class ReferralEmailService : IReferralEmailService
         {
             var refDedupeKey = $"referral:{referral.Id}:created:referrer";
             var refSubject   = $"Referral submitted — {referral.ClientFirstName} {referral.ClientLastName}";
-            var refBody      = BuildReferrerSubmissionHtml(referral, provider);
+            var refBody      = BuildReferrerSubmissionHtml(referral, provider, threadLink);
 
             var refNotif = CareConnectNotification.Create(
                 tenantId:          referral.TenantId,
@@ -214,7 +214,7 @@ public class ReferralEmailService : IReferralEmailService
                 recipientType:     NotificationRecipientType.InternalUser,
                 recipientAddress:  referral.ReferrerEmail,
                 subject:           refSubject,
-                message:           refSubject,
+                message:           threadLink,
                 scheduledForUtc:   null,
                 createdByUserId:   referral.CreatedByUserId,
                 triggerSource:     NotificationSource.Initial,
@@ -244,10 +244,10 @@ public class ReferralEmailService : IReferralEmailService
             return;
         }
 
-        var token     = GenerateViewToken(referral.Id, referral.TokenVersion);
-        var viewLink  = $"{_appBaseUrl}/referrals/view?token={token}";
-        var subject   = $"Referral (resent) — {referral.ClientFirstName} {referral.ClientLastName}";
-        var body      = BuildNewReferralEmailHtml(referral, provider, viewLink);
+        var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
+        var threadLink = $"{_appBaseUrl}/referrals/thread?token={token}";
+        var subject    = $"Referral (resent) — {referral.ClientFirstName} {referral.ClientLastName}";
+        var body       = BuildNewReferralEmailHtml(referral, provider, threadLink);
 
         var notification = CareConnectNotification.Create(
             tenantId:          referral.TenantId,
@@ -257,7 +257,7 @@ public class ReferralEmailService : IReferralEmailService
             recipientType:     NotificationRecipientType.Provider,
             recipientAddress:  provider.Email,
             subject:           subject,
-            message:           viewLink,
+            message:           threadLink,
             scheduledForUtc:   null,
             createdByUserId:   null,
             triggerSource:     NotificationSource.ManualResend);
@@ -619,10 +619,10 @@ public class ReferralEmailService : IReferralEmailService
                     await _notifications.UpdateAsync(notification, ct);
                     return;
                 }
-                var token    = GenerateViewToken(referral.Id, referral.TokenVersion);
-                var viewLink = $"{_appBaseUrl}/referrals/view?token={token}";
+                var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
+                var threadLink = $"{_appBaseUrl}/referrals/thread?token={token}";
                 subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
-                body      = BuildNewReferralEmailHtml(referral, provider, viewLink);
+                body      = BuildNewReferralEmailHtml(referral, provider, threadLink);
                 toAddress = provider.Email;
                 break;
             }
@@ -726,10 +726,10 @@ public class ReferralEmailService : IReferralEmailService
                     await _notifications.UpdateAsync(notification, ct);
                     return;
                 }
-                var token    = GenerateViewToken(referral.Id, referral.TokenVersion);
-                var viewLink = $"{_appBaseUrl}/referrals/view?token={token}";
+                var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
+                var threadLink = $"{_appBaseUrl}/referrals/thread?token={token}";
                 subject   = $"You have been assigned a referral — {referral.ClientFirstName} {referral.ClientLastName}";
-                body      = BuildProviderAssignedEmailHtml(referral, provider, viewLink);
+                body      = BuildProviderAssignedEmailHtml(referral, provider, threadLink);
                 toAddress = provider.Email;
                 break;
             }
@@ -753,6 +753,70 @@ public class ReferralEmailService : IReferralEmailService
             notification.AttemptCount + 1, ReferralRetryPolicy.MaxAttempts, referral.Id);
 
         await TrySendAndUpdateAsync(notification, toAddress, subject, body, ct, nextRetryAfterUtcOnFailure);
+    }
+
+    public async Task SendCommentNotificationAsync(
+        Referral        referral,
+        ReferralComment comment,
+        CancellationToken ct = default)
+    {
+        var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
+        var threadLink = $"{_appBaseUrl}/referrals/thread?token={token}";
+
+        var provName = referral.Provider is not null
+            ? (string.IsNullOrWhiteSpace(referral.Provider.OrganizationName)
+                ? referral.Provider.Name
+                : referral.Provider.OrganizationName)
+            : "Provider";
+
+        var isFromReferrer = comment.SenderType == "referrer";
+
+        // Notify the other party
+        string? toAddress;
+        string  recipientLabel;
+        if (isFromReferrer)
+        {
+            // referrer posted → notify provider
+            toAddress      = referral.Provider?.Email;
+            recipientLabel = provName;
+        }
+        else
+        {
+            // provider posted → notify referrer
+            toAddress      = referral.ReferrerEmail;
+            recipientLabel = referral.ReferrerName ?? "the law firm";
+        }
+
+        if (string.IsNullOrWhiteSpace(toAddress)) return;
+
+        var subject  = $"New message on referral — {referral.ClientFirstName} {referral.ClientLastName}";
+        var body     = BuildCommentNotificationHtml(referral, comment, provName, threadLink);
+        var dedupeKey = $"referral:{referral.Id}:comment:{comment.Id}";
+
+        var recipientType = isFromReferrer
+            ? NotificationRecipientType.Provider
+            : NotificationRecipientType.InternalUser;
+
+        var notification = CareConnectNotification.Create(
+            tenantId:          referral.TenantId,
+            notificationType:  NotificationType.ReferralCreated,
+            relatedEntityType: NotificationRelatedEntityType.Referral,
+            relatedEntityId:   referral.Id,
+            recipientType:     recipientType,
+            recipientAddress:  toAddress,
+            subject:           subject,
+            message:           threadLink,
+            scheduledForUtc:   null,
+            createdByUserId:   null,
+            triggerSource:     NotificationSource.Initial,
+            dedupeKey:         dedupeKey);
+
+        if (!await _notifications.TryAddWithDedupeAsync(notification, ct)) return;
+        await TrySendAndUpdateAsync(notification, toAddress, subject, body, ct);
+
+        _logger.LogInformation(
+            "ReferralThread: comment notification sent to {RecipientLabel} for referral {ReferralId}.",
+            recipientLabel, referral.Id);
     }
 
     // ── Internal: submit to Notifications service + update domain status ─────
@@ -960,7 +1024,7 @@ public class ReferralEmailService : IReferralEmailService
         return Wrap($"{provName} \u2013 Referral Request", body, footer);
     }
 
-    private static string BuildReferrerSubmissionHtml(Referral r, Provider p)
+    private static string BuildReferrerSubmissionHtml(Referral r, Provider p, string viewLink)
     {
         var provName   = string.IsNullOrWhiteSpace(p.OrganizationName) ? p.Name : p.OrganizationName;
         var greeting   = r.ReferrerName is { Length: > 0 } n ? $"Dear <strong>{n}</strong>," : "Hello,";
@@ -989,6 +1053,10 @@ public class ReferralEmailService : IReferralEmailService
             </p>
             {Section("Patient Details", patientRows)}
             {Section("Provider", providerRows)}
+            <div style="text-align:center;margin:28px 0">
+              <a href="{viewLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">Track Referral &amp; Send Messages</a>
+            </div>
+            <p style="margin:0;font-size:13px;color:#6b7280">Use the link above to check the referral status and communicate directly with the provider.</p>
             """;
 
         return Wrap("Referral Submitted", body, footer);
@@ -1205,5 +1273,36 @@ public class ReferralEmailService : IReferralEmailService
             """;
 
         return Wrap("Your Referral Was Cancelled", body, footer);
+    }
+
+    private static string BuildCommentNotificationHtml(Referral r, ReferralComment comment, string provName, string threadLink)
+    {
+        var isFromReferrer = comment.SenderType == "referrer";
+        var senderLabel    = isFromReferrer ? (r.ReferrerName ?? "the law firm") : provName;
+        var recipientLabel = isFromReferrer ? provName : (r.ReferrerName ?? "the law firm");
+
+        var summaryRows =
+            Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
+            Row("Service",  r.RequestedService) +
+            Row("From",     senderLabel);
+
+        var footer = "Reply directly in the referral thread using the button above.";
+
+        var body = $"""
+            <p style="margin:0 0 16px;font-size:15px">Hello,</p>
+            <p style="margin:0 0 16px;font-size:15px;color:#374151">
+              <strong>{senderLabel}</strong> sent a message regarding the referral for
+              <strong>{r.ClientFirstName} {r.ClientLastName}</strong>.
+            </p>
+            <div style="background:#f3f4f6;border-left:4px solid #1a56db;padding:14px 18px;border-radius:4px;margin:0 0 24px">
+              <p style="margin:0;font-size:14px;color:#111827;line-height:1.6">{System.Net.WebUtility.HtmlEncode(comment.Message)}</p>
+            </div>
+            {Section("Referral Details", summaryRows)}
+            <div style="text-align:center;margin:28px 0">
+              <a href="{threadLink}" style="display:inline-block;background:#1a56db;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px">View Thread &amp; Reply</a>
+            </div>
+            """;
+
+        return Wrap($"New message from {senderLabel}", body, footer);
     }
 }

@@ -44,6 +44,7 @@ const PUBLIC_PATHS = [
   // LSCC-005: Public referral token routes — no session required
   '/referrals/view',
   '/referrals/accept',
+  '/referrals/thread',
   // LSCC-008: Provider activation funnel — no session required
   '/referrals/activate',
   // CC2-INT-B07: Public tenant network directory — no session required

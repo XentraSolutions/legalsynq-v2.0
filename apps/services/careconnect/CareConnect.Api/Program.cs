@@ -272,6 +272,7 @@ app.MapAttachmentEndpoints();
 app.MapNotificationEndpoints();
 app.MapNetworkEndpoints();             // CC2-INT-B06: provider network management
 app.MapPublicNetworkEndpoints();       // CC2-INT-B07: public network surface (anonymous)
+app.MapReferralThreadEndpoints();      // Public referral comment thread (token-authenticated)
 app.MapProviderOnboardingEndpoints();  // CC2-INT-B09: provider tenant self-onboarding
 
 app.Run();

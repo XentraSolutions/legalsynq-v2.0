@@ -217,6 +217,18 @@ public static class SchemaRenamer
 
     private static readonly Dictionary<string, (string Column, string SqlType, string Default)[]> MissingColumns = new()
     {
+        ["ntf_RecipientContactHealth"] = new[]
+        {
+            ("Channel",          "varchar(20) CHARACTER SET utf8mb4 NOT NULL",  "''"),
+            ("HealthStatus",     "varchar(30) CHARACTER SET utf8mb4 NOT NULL",  "'valid'"),
+            ("BounceCount",      "int NOT NULL",                                "0"),
+            ("ComplaintCount",   "int NOT NULL",                                "0"),
+            ("DeliveryCount",    "int NOT NULL",                                "0"),
+            ("LastBounceAt",     "datetime(6) NULL",                            ""),
+            ("LastComplaintAt",  "datetime(6) NULL",                            ""),
+            ("LastDeliveryAt",   "datetime(6) NULL",                            ""),
+            ("LastRawEventType", "varchar(100) CHARACTER SET utf8mb4 NULL",     ""),
+        },
         ["ntf_ProviderHealth"] = new[]
         {
             ("ProviderType", "varchar(50) NOT NULL", "''"),
@@ -394,7 +406,7 @@ public static class SchemaRenamer
 
     private static async Task<HashSet<string>> GetColumnNamesAsync(NotificationsDbContext db, string dbName, string tableName)
     {
-        var columns = new HashSet<string>(StringComparer.Ordinal);
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         using var cmd = db.Database.GetDbConnection().CreateCommand();
         cmd.CommandText = $@"SELECT COLUMN_NAME FROM information_schema.columns
             WHERE table_schema = '{dbName}' AND table_name = '{tableName}'";
@@ -422,7 +434,7 @@ public static class SchemaRenamer
                 {
                     var defaultClause = string.IsNullOrEmpty(defaultValue) ? "" : $" DEFAULT {defaultValue}";
                     await db.Database.ExecuteSqlRawAsync(
-                        $"ALTER TABLE `{tableName}` ADD COLUMN IF NOT EXISTS `{colName}` {sqlType}{defaultClause}");
+                        $"ALTER TABLE `{tableName}` ADD COLUMN `{colName}` {sqlType}{defaultClause}");
                     logger.LogInformation("Added missing column {Table}.{Column}", tableName, colName);
                 }
                 catch (Exception ex)
