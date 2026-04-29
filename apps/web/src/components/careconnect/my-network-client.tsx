@@ -135,7 +135,31 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
       setMarkersLoading(true);
       try {
         const { data } = await careConnectApi.networks.getMarkers(network.id);
-        setMarkers(data ?? []);
+        const raw = data ?? [];
+
+        // Geocode any markers that are missing coordinates but have an address
+        const enriched = await Promise.all(
+          raw.map(async m => {
+            if (m.latitude && m.longitude) return m;
+
+            // Build best available query from address fields
+            const parts = [m.addressLine1, m.city, m.state, m.postalCode].filter(Boolean);
+            if (parts.length === 0) return m;
+
+            try {
+              const q   = encodeURIComponent(parts.join(', '));
+              const res = await fetch(`/api/geocode/address?q=${q}`, { credentials: 'include' });
+              if (!res.ok) return m;
+              const suggestions: { latitude: number; longitude: number }[] = await res.json();
+              if (suggestions.length > 0) {
+                return { ...m, latitude: suggestions[0].latitude, longitude: suggestions[0].longitude };
+              }
+            } catch { /* silently skip */ }
+            return m;
+          }),
+        );
+
+        setMarkers(enriched);
         setMarkersLoaded(true);
       } catch {
         showToast('Could not load map data. Please try again.');
@@ -917,26 +941,30 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
 
       {/* ── Map view ────────────────────────────────────────────────────────── */}
       {providers.length > 0 && viewMode === 'map' && (
-        <div className="rounded-xl border border-gray-200 overflow-hidden">
+        <div className="space-y-2">
           {markersLoading ? (
-            <div className="h-[480px] bg-gray-100 flex items-center justify-center">
+            <div className="h-[480px] rounded-xl bg-gray-100 flex items-center justify-center">
               <div className="flex items-center gap-2 text-sm text-gray-500">
                 <span className="h-4 w-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
                 Loading map…
               </div>
             </div>
-          ) : markers.filter(m => m.latitude && m.longitude).length === 0 ? (
-            <div className="h-[480px] bg-gray-50 flex flex-col items-center justify-center gap-3">
-              <i className="ri-map-2-line text-4xl text-gray-300" />
-              <p className="text-sm text-gray-500">No location data available for your providers.</p>
-              <p className="text-xs text-gray-400">Add address information when creating providers to see them on the map.</p>
-            </div>
           ) : (
-            <MyNetworkMap
-              markers={markers}
-              selectedId={mapSelectedId}
-              onSelect={setMapSelectedId}
-            />
+            <>
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <MyNetworkMap
+                  markers={markers}
+                  selectedId={mapSelectedId}
+                  onSelect={setMapSelectedId}
+                />
+              </div>
+              {markers.filter(m => m.latitude && m.longitude).length < providers.length && (
+                <p className="text-xs text-gray-400 text-center">
+                  <i className="ri-information-line mr-1" />
+                  {providers.length - markers.filter(m => m.latitude && m.longitude).length} provider(s) couldn't be located — add a full address when editing to pin them on the map.
+                </p>
+              )}
+            </>
           )}
         </div>
       )}
