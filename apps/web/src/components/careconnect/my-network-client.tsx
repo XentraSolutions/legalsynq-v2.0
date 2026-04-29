@@ -148,7 +148,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
 
             try {
               const q   = encodeURIComponent(parts.join(', '));
-              const res = await fetch(`/api/geocode/address?q=${q}`, { credentials: 'include' });
+              const res = await fetch(`/api/geocode/address?q=${q}&loose=1`, { credentials: 'include' });
               if (!res.ok) return m;
               const suggestions: { latitude: number; longitude: number }[] = await res.json();
               if (suggestions.length > 0) {

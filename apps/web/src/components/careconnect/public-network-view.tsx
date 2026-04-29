@@ -63,7 +63,7 @@ export function PublicNetworkView({ detail, tenantCode, tenantId }: PublicNetwor
           const q = [p.city, p.state, p.postalCode].filter(Boolean).join(' ');
           if (!q) return;
           try {
-            const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(q)}`);
+            const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(q)}&loose=1`);
             if (!res.ok) return;
             const suggestions = await res.json() as Array<{ latitude: number; longitude: number }>;
             if (suggestions.length === 0) return;

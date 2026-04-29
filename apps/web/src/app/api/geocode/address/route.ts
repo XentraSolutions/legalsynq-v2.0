@@ -38,7 +38,10 @@ const STATE_ABBR: Record<string, string> = {
 };
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const q = request.nextUrl.searchParams.get('q') ?? '';
+  const q     = request.nextUrl.searchParams.get('q') ?? '';
+  // loose=1: relax the addressLine1 requirement — used by map geocoding where
+  // city-level precision is sufficient (no street address needed).
+  const loose = request.nextUrl.searchParams.get('loose') === '1';
   if (q.trim().length < 3) {
     return NextResponse.json([] as AddressSuggestion[]);
   }
@@ -76,7 +79,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const road = addr.road ?? '';
     const addressLine1 = houseNumber ? `${houseNumber} ${road}` : road;
 
-    if (!addressLine1) continue;
+    // In strict mode (autocomplete form) require a street address.
+    // In loose mode (map geocoding) city-level results are acceptable.
+    if (!addressLine1 && !loose) continue;
 
     const city =
       addr.city ??
