@@ -393,22 +393,43 @@ function ReferralPanel({
     setErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
   }, []);
 
+  const validate = useCallback((): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    const name = form.patientName.trim();
+    if (!name) errs['patientName'] = 'Patient name is required.';
+    if (!form.patientPhone.trim()) errs['patientPhone'] = 'Patient phone is required.';
+    else if (form.patientPhone.trim().length < 7) errs['patientPhone'] = 'Enter a valid phone number.';
+    if (!form.firmName.trim()) errs['firmName'] = 'Firm name is required.';
+    if (!form.email.trim()) errs['email'] = 'Email is required.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs['email'] = 'Enter a valid email address.';
+    return errs;
+  }, [form]);
+
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
+    setErrMsg('');
+
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      if (errs['patientName'] || errs['patientPhone']) setSection('patient');
+      else if (errs['firmName'] || errs['email'])      setSection('firm');
+      return;
+    }
+
     setState('submitting');
     setErrors({});
-    setErrMsg('');
 
     const [firstName, ...rest] = form.patientName.trim().split(' ');
     const lastName = rest.join(' ') || firstName;
 
     const payloads: PublicReferralRequest[] = providers.map(p => ({
       providerId:       p.id,
-      senderName:       form.contactName || form.firmName,
-      senderEmail:      form.email,
+      senderName:       form.contactName.trim() || form.firmName.trim(),
+      senderEmail:      form.email.trim(),
       patientFirstName: firstName,
       patientLastName:  lastName,
-      patientPhone:     form.patientPhone,
+      patientPhone:     form.patientPhone.trim(),
       notes:            [
         form.notes,
         form.phone ? `Firm phone: ${form.phone}` : '',
@@ -430,13 +451,24 @@ function ReferralPanel({
       ));
       setState('success');
     } catch (err: unknown) {
+      const apiErrors = err && typeof err === 'object' && 'errors' in err
+        ? (err as { errors: Record<string, string> }).errors
+        : {};
       const msg = err && typeof err === 'object' && 'message' in err
         ? (err as { message: string }).message
         : 'Something went wrong. Please try again.';
+      if (Object.keys(apiErrors).length > 0) {
+        setErrors(apiErrors);
+        const keys = Object.keys(apiErrors);
+        if (keys.some(k => k === 'patientFirstName' || k === 'patientLastName' || k === 'patientPhone'))
+          setSection('patient');
+        else if (keys.some(k => k === 'senderName' || k === 'senderEmail'))
+          setSection('firm');
+      }
       setErrMsg(msg);
       setState('error');
     }
-  }, [form, providers, tenantId]);
+  }, [form, providers, tenantId, validate]);
 
   return (
     <div className="w-[320px] flex-shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-hidden">
@@ -501,6 +533,7 @@ function ReferralPanel({
               title="Patient"
               subtitle="Who is being referred"
               open={openSection === 'patient'}
+              hasError={!!(fieldErrors['patientName'] || fieldErrors['patientPhone'])}
               onToggle={() => setSection(s => s === 'patient' ? 'firm' : 'patient')}
             >
               <div className="px-4 pb-3 space-y-2">
@@ -540,6 +573,7 @@ function ReferralPanel({
               title="Law firm"
               subtitle="Who is sending the referral"
               open={openSection === 'firm'}
+              hasError={!!(fieldErrors['firmName'] || fieldErrors['email'])}
               onToggle={() => setSection(s => s === 'firm' ? 'patient' : 'firm')}
             >
               <div className="px-4 pb-3 space-y-2">
@@ -606,6 +640,24 @@ function ReferralPanel({
               </div>
             </SectionRow>
 
+            {/* Validation summary (shows after a failed submit attempt) */}
+            {Object.keys(fieldErrors).length > 0 && state !== 'submitting' && (() => {
+              const hasPatientErr = !!(fieldErrors['patientName'] || fieldErrors['patientPhone']);
+              const hasFirmErr    = !!(fieldErrors['firmName']    || fieldErrors['email']);
+              const sections = [
+                hasPatientErr && 'Patient',
+                hasFirmErr    && 'Law firm',
+              ].filter(Boolean).join(' and ');
+              return (
+                <div className="mx-4 mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2">
+                  <i className="ri-error-warning-line text-red-500 text-sm mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-red-700">
+                    Please complete required fields in the <strong>{sections}</strong> section{sections.includes('and') ? 's' : ''}.
+                  </p>
+                </div>
+              );
+            })()}
+
             {/* Submit */}
             <div className="px-4 py-4 border-t border-gray-100">
               <button
@@ -630,16 +682,17 @@ function ReferralPanel({
 // ── Section row ───────────────────────────────────────────────────────────────
 
 function SectionRow({
-  avatar, avatarBg, title, subtitle, badge, open, onToggle, children,
+  avatar, avatarBg, title, subtitle, badge, open, hasError, onToggle, children,
 }: {
-  avatar:    string;
-  avatarBg:  string;
-  title:     string;
-  subtitle:  string;
-  badge?:    number;
-  open:      boolean;
-  onToggle:  () => void;
-  children:  ReactNode;
+  avatar:     string;
+  avatarBg:   string;
+  title:      string;
+  subtitle:   string;
+  badge?:     number;
+  open:       boolean;
+  hasError?:  boolean;
+  onToggle:   () => void;
+  children:   ReactNode;
 }) {
   return (
     <div className="border-b border-gray-100">
@@ -648,11 +701,14 @@ function SectionRow({
         onClick={onToggle}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
       >
-        <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center flex-shrink-0`}>
+        <div className={`relative w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center flex-shrink-0`}>
           <span className="text-xs font-bold text-white">{avatar}</span>
+          {hasError && (
+            <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-red-500 border-2 border-white" />
+          )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-800">{title}</p>
+          <p className={`text-sm font-semibold ${hasError ? 'text-red-700' : 'text-gray-800'}`}>{title}</p>
           <p className="text-xs text-gray-400">{subtitle}</p>
         </div>
         {badge !== undefined && (
